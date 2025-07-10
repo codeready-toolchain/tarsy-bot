@@ -9,6 +9,10 @@ from typing import Dict, List, Any, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 class Settings(BaseSettings):
     """Application settings."""
@@ -81,7 +85,7 @@ class Settings(BaseSettings):
     # Alert Type to Runbook Mapping
     alert_runbook_mapping: Dict = Field(default={
         "Namespace is stuck in Terminating": {
-            "default_runbook": "https://github.com/codeready-toolchain/sandbox-sre/blob/master/runbooks/namespace-terminating.md",
+            "default_runbook": "https://github.com/alexeykazakov/runbooks/blob/master/namespace-terminating.md",
             "mcp_servers": ["kubernetes"]
         }
     })

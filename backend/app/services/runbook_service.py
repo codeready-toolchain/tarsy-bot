@@ -30,6 +30,10 @@ class RunbookService:
     async def download_runbook(self, url: str) -> str:
         """Download runbook content from GitHub URL."""
         try:
+            # Handle mock URLs for testing
+            if url.startswith("mock://"):
+                return self._get_mock_runbook_content()
+            
             # Convert GitHub URL to raw content URL
             raw_url = self._convert_to_raw_url(url)
             
@@ -41,6 +45,59 @@ class RunbookService:
             
         except httpx.HTTPError as e:
             raise Exception(f"Failed to download runbook from {url}: {str(e)}")
+    
+    def _get_mock_runbook_content(self) -> str:
+        """Return mock runbook content for testing."""
+        return """# High Memory Usage Runbook
+
+## Overview
+This runbook provides steps to diagnose and resolve high memory usage issues in Kubernetes pods.
+
+## Symptoms
+- Memory usage exceeds 85% of allocated resources
+- Pods being killed due to OOM (Out of Memory) errors
+- Application performance degradation
+
+## Investigation Steps
+
+### 1. Check Pod Status
+```bash
+kubectl get pods -n <namespace>
+kubectl describe pod <pod-name> -n <namespace>
+```
+
+### 2. Check Resource Usage
+```bash
+kubectl top pods -n <namespace>
+kubectl top nodes
+```
+
+### 3. Check Logs
+```bash
+kubectl logs <pod-name> -n <namespace>
+```
+
+### 4. Check Memory Metrics
+Review memory consumption patterns in your monitoring system.
+
+## Resolution Steps
+
+### 1. Immediate Actions
+- Scale down non-critical services if necessary
+- Restart pods showing memory leaks
+- Review recent deployments for memory-intensive changes
+
+### 2. Long-term Solutions
+- Optimize application memory usage
+- Increase memory limits if justified
+- Implement memory monitoring and alerting
+- Review and optimize container resource requests/limits
+
+## Prevention
+- Regular memory profiling
+- Proper resource limit configuration
+- Monitoring and alerting setup
+- Code reviews for memory-intensive changes"""
     
     def _convert_to_raw_url(self, github_url: str) -> str:
         """Convert GitHub URL to raw content URL."""

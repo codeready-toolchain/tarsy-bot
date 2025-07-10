@@ -29,11 +29,11 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
     alert: 'Namespace is stuck in Terminating',
     severity: 'warning',
     environment: 'production',
-    cluster: '',
-    namespace: '',
+    cluster: 'https://api.okomk-7rbqf-kq6.9pbs.p3.openshiftapps.com:443',
+    namespace: 'superman-dev',
     pod: '',
     message: 'namespace is stuck in \'Terminating\' phase',
-    runbook: 'https://github.com/codeready-toolchain/sandbox-sre/blob/master/runbooks/namespace-terminating.md'
+    runbook: 'https://github.com/alexeykazakov/runbooks/blob/master/namespace-terminating.md'
   });
 
   const [availableAlertTypes, setAvailableAlertTypes] = useState<string[]>([]);

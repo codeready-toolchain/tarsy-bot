@@ -1,0 +1,7 @@
+---
+description: Context7
+globs:
+alwaysApply: false
+---
+
+When the user requests code examples, setup or configuration steps, or library/API documentation use context7 tools to see if there is any documentation available for relevant libraries or freamworks.

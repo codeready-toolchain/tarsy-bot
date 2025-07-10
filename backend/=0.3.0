@@ -1,0 +1,99 @@
+Collecting langgraph
+  Downloading langgraph-0.5.2-py3-none-any.whl.metadata (6.7 kB)
+Collecting langchain-community
+  Downloading langchain_community-0.3.27-py3-none-any.whl.metadata (2.9 kB)
+Requirement already satisfied: langchain-core>=0.1 in /home/igels/.local/lib/python3.13/site-packages (from langgraph) (0.3.63)
+Collecting langgraph-checkpoint<3.0.0,>=2.1.0 (from langgraph)
+  Downloading langgraph_checkpoint-2.1.0-py3-none-any.whl.metadata (4.2 kB)
+Collecting langgraph-prebuilt<0.6.0,>=0.5.0 (from langgraph)
+  Downloading langgraph_prebuilt-0.5.2-py3-none-any.whl.metadata (4.5 kB)
+Collecting langgraph-sdk<0.2.0,>=0.1.42 (from langgraph)
+  Downloading langgraph_sdk-0.1.72-py3-none-any.whl.metadata (1.5 kB)
+Requirement already satisfied: pydantic>=2.7.4 in /home/igels/.local/lib/python3.13/site-packages (from langgraph) (2.11.5)
+Collecting xxhash>=3.5.0 (from langgraph)
+  Downloading xxhash-3.5.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (12 kB)
+Collecting ormsgpack>=1.10.0 (from langgraph-checkpoint<3.0.0,>=2.1.0->langgraph)
+  Downloading ormsgpack-1.10.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (43 kB)
+Collecting langchain-core>=0.1 (from langgraph)
+  Downloading langchain_core-0.3.68-py3-none-any.whl.metadata (5.8 kB)
+Requirement already satisfied: httpx>=0.25.2 in /home/igels/.local/lib/python3.13/site-packages (from langgraph-sdk<0.2.0,>=0.1.42->langgraph) (0.28.1)
+Requirement already satisfied: orjson>=3.10.1 in /home/igels/.local/lib/python3.13/site-packages (from langgraph-sdk<0.2.0,>=0.1.42->langgraph) (3.10.18)
+Collecting langchain<1.0.0,>=0.3.26 (from langchain-community)
+  Downloading langchain-0.3.26-py3-none-any.whl.metadata (7.8 kB)
+Requirement already satisfied: SQLAlchemy<3,>=1.4 in /home/igels/.local/lib/python3.13/site-packages (from langchain-community) (2.0.41)
+Requirement already satisfied: requests<3,>=2 in /usr/lib/python3/dist-packages (from langchain-community) (2.32.3)
+Requirement already satisfied: PyYAML>=5.3 in /usr/lib/python3/dist-packages (from langchain-community) (6.0.2)
+Requirement already satisfied: aiohttp<4.0.0,>=3.8.3 in /home/igels/.local/lib/python3.13/site-packages (from langchain-community) (3.12.7)
+Requirement already satisfied: tenacity!=8.4.0,<10,>=8.1.0 in /home/igels/.local/lib/python3.13/site-packages (from langchain-community) (9.1.2)
+Collecting dataclasses-json<0.7,>=0.5.7 (from langchain-community)
+  Using cached dataclasses_json-0.6.7-py3-none-any.whl.metadata (25 kB)
+Requirement already satisfied: pydantic-settings<3.0.0,>=2.4.0 in /home/igels/.local/lib/python3.13/site-packages (from langchain-community) (2.9.1)
+Requirement already satisfied: langsmith>=0.1.125 in /home/igels/.local/lib/python3.13/site-packages (from langchain-community) (0.3.44)
+Requirement already satisfied: httpx-sse<1.0.0,>=0.4.0 in /home/igels/.local/lib/python3.13/site-packages (from langchain-community) (0.4.0)
+Requirement already satisfied: numpy>=2.1.0 in /home/igels/.local/lib/python3.13/site-packages (from langchain-community) (2.3.1)
+Requirement already satisfied: aiohappyeyeballs>=2.5.0 in /home/igels/.local/lib/python3.13/site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community) (2.6.1)
+Requirement already satisfied: aiosignal>=1.1.2 in /home/igels/.local/lib/python3.13/site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community) (1.3.2)
+Requirement already satisfied: attrs>=17.3.0 in /usr/lib/python3/dist-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community) (25.1.0)
+Requirement already satisfied: frozenlist>=1.1.1 in /home/igels/.local/lib/python3.13/site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community) (1.6.0)
+Requirement already satisfied: multidict<7.0,>=4.5 in /home/igels/.local/lib/python3.13/site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community) (6.4.4)
+Requirement already satisfied: propcache>=0.2.0 in /home/igels/.local/lib/python3.13/site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community) (0.3.1)
+Requirement already satisfied: yarl<2.0,>=1.17.0 in /home/igels/.local/lib/python3.13/site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community) (1.20.0)
+Collecting marshmallow<4.0.0,>=3.18.0 (from dataclasses-json<0.7,>=0.5.7->langchain-community)
+  Using cached marshmallow-3.26.1-py3-none-any.whl.metadata (7.3 kB)
+Collecting typing-inspect<1,>=0.4.0 (from dataclasses-json<0.7,>=0.5.7->langchain-community)
+  Using cached typing_inspect-0.9.0-py3-none-any.whl.metadata (1.5 kB)
+Requirement already satisfied: langchain-text-splitters<1.0.0,>=0.3.8 in /home/igels/.local/lib/python3.13/site-packages (from langchain<1.0.0,>=0.3.26->langchain-community) (0.3.8)
+Collecting langsmith>=0.1.125 (from langchain-community)
+  Downloading langsmith-0.4.5-py3-none-any.whl.metadata (15 kB)
+Requirement already satisfied: jsonpatch<2.0,>=1.33 in /home/igels/.local/lib/python3.13/site-packages (from langchain-core>=0.1->langgraph) (1.33)
+Requirement already satisfied: packaging<25,>=23.2 in /home/igels/.local/lib/python3.13/site-packages (from langchain-core>=0.1->langgraph) (24.2)
+Requirement already satisfied: typing-extensions>=4.7 in /usr/lib/python3/dist-packages (from langchain-core>=0.1->langgraph) (4.12.2)
+Requirement already satisfied: jsonpointer>=1.9 in /usr/lib/python3/dist-packages (from jsonpatch<2.0,>=1.33->langchain-core>=0.1->langgraph) (2.4)
+Requirement already satisfied: annotated-types>=0.6.0 in /home/igels/.local/lib/python3.13/site-packages (from pydantic>=2.7.4->langgraph) (0.7.0)
+Requirement already satisfied: pydantic-core==2.33.2 in /home/igels/.local/lib/python3.13/site-packages (from pydantic>=2.7.4->langgraph) (2.33.2)
+Requirement already satisfied: typing-inspection>=0.4.0 in /home/igels/.local/lib/python3.13/site-packages (from pydantic>=2.7.4->langgraph) (0.4.1)
+Requirement already satisfied: python-dotenv>=0.21.0 in /home/igels/.local/lib/python3.13/site-packages (from pydantic-settings<3.0.0,>=2.4.0->langchain-community) (1.1.0)
+Requirement already satisfied: chardet>=3.0.2 in /usr/lib/python3/dist-packages (from requests<3,>=2->langchain-community) (5.2.0)
+Requirement already satisfied: idna<4,>=2.5 in /usr/lib/python3/dist-packages (from requests<3,>=2->langchain-community) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /usr/lib/python3/dist-packages (from requests<3,>=2->langchain-community) (2.3.0)
+Requirement already satisfied: certifi>=2017.4.17 in /usr/lib/python3/dist-packages (from requests<3,>=2->langchain-community) (2025.1.31)
+Requirement already satisfied: greenlet>=1 in /home/igels/.local/lib/python3.13/site-packages (from SQLAlchemy<3,>=1.4->langchain-community) (3.2.2)
+Collecting mypy-extensions>=0.3.0 (from typing-inspect<1,>=0.4.0->dataclasses-json<0.7,>=0.5.7->langchain-community)
+  Using cached mypy_extensions-1.1.0-py3-none-any.whl.metadata (1.1 kB)
+Requirement already satisfied: anyio in /home/igels/.local/lib/python3.13/site-packages (from httpx>=0.25.2->langgraph-sdk<0.2.0,>=0.1.42->langgraph) (4.9.0)
+Requirement already satisfied: httpcore==1.* in /home/igels/.local/lib/python3.13/site-packages (from httpx>=0.25.2->langgraph-sdk<0.2.0,>=0.1.42->langgraph) (1.0.9)
+Requirement already satisfied: h11>=0.16 in /home/igels/.local/lib/python3.13/site-packages (from httpcore==1.*->httpx>=0.25.2->langgraph-sdk<0.2.0,>=0.1.42->langgraph) (0.16.0)
+Requirement already satisfied: requests-toolbelt<2.0.0,>=1.0.0 in /home/igels/.local/lib/python3.13/site-packages (from langsmith>=0.1.125->langchain-community) (1.0.0)
+Requirement already satisfied: zstandard<0.24.0,>=0.23.0 in /home/igels/.local/lib/python3.13/site-packages (from langsmith>=0.1.125->langchain-community) (0.23.0)
+Requirement already satisfied: sniffio>=1.1 in /home/igels/.local/lib/python3.13/site-packages (from anyio->httpx>=0.25.2->langgraph-sdk<0.2.0,>=0.1.42->langgraph) (1.3.1)
+Downloading langgraph-0.5.2-py3-none-any.whl (143 kB)
+Downloading langgraph_checkpoint-2.1.0-py3-none-any.whl (43 kB)
+Downloading langgraph_prebuilt-0.5.2-py3-none-any.whl (23 kB)
+Downloading langgraph_sdk-0.1.72-py3-none-any.whl (50 kB)
+Downloading langchain_community-0.3.27-py3-none-any.whl (2.5 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.5/2.5 MB 29.9 MB/s eta 0:00:00
+Using cached dataclasses_json-0.6.7-py3-none-any.whl (28 kB)
+Downloading langchain-0.3.26-py3-none-any.whl (1.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.0/1.0 MB 29.1 MB/s eta 0:00:00
+Downloading langchain_core-0.3.68-py3-none-any.whl (441 kB)
+Using cached marshmallow-3.26.1-py3-none-any.whl (50 kB)
+Using cached typing_inspect-0.9.0-py3-none-any.whl (8.8 kB)
+Downloading langsmith-0.4.5-py3-none-any.whl (367 kB)
+Using cached mypy_extensions-1.1.0-py3-none-any.whl (5.0 kB)
+Downloading ormsgpack-1.10.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (216 kB)
+Downloading xxhash-3.5.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (194 kB)
+Installing collected packages: xxhash, ormsgpack, mypy-extensions, marshmallow, typing-inspect, langsmith, langgraph-sdk, dataclasses-json, langchain-core, langgraph-checkpoint, langgraph-prebuilt, langchain, langgraph, langchain-community
+  Attempting uninstall: langsmith
+    Found existing installation: langsmith 0.3.44
+    Uninstalling langsmith-0.3.44:
+      Successfully uninstalled langsmith-0.3.44
+  Attempting uninstall: langchain-core
+    Found existing installation: langchain-core 0.3.63
+    Uninstalling langchain-core-0.3.63:
+      Successfully uninstalled langchain-core-0.3.63
+  Attempting uninstall: langchain
+    Found existing installation: langchain 0.3.25
+    Uninstalling langchain-0.3.25:
+      Successfully uninstalled langchain-0.3.25
+
+Successfully installed dataclasses-json-0.6.7 langchain-0.3.26 langchain-community-0.3.27 langchain-core-0.3.68 langgraph-0.5.2 langgraph-checkpoint-2.1.0 langgraph-prebuilt-0.5.2 langgraph-sdk-0.1.72 langsmith-0.4.5 marshmallow-3.26.1 mypy-extensions-1.1.0 ormsgpack-1.10.0 typing-inspect-0.9.0 xxhash-3.5.0

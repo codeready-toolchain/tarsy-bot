@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from app.config.settings import get_settings
 from app.models.alert import Alert, AlertResponse, ProcessingStatus
-from app.services.alert_service import AlertService
+from app.services.langchain_alert_service import LangChainAlertService
 from app.services.websocket_manager import WebSocketManager
 from app.utils.logger import setup_logging, get_module_logger
 
@@ -23,7 +23,7 @@ logger = get_module_logger(__name__)
 
 # Global state for processing status tracking
 processing_status: Dict[str, ProcessingStatus] = {}
-alert_service: AlertService = None
+alert_service: LangChainAlertService = None
 websocket_manager: WebSocketManager = None
 
 
@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
     # Setup logging
     setup_logging(settings.log_level)
     
-    alert_service = AlertService(settings)
+    alert_service = LangChainAlertService(settings)
     websocket_manager = WebSocketManager()
     
     # Startup
@@ -126,24 +126,27 @@ async def get_processing_status(alert_id: str):
 @app.websocket("/ws/{alert_id}")
 async def websocket_endpoint(websocket: WebSocket, alert_id: str):
     """WebSocket endpoint for real-time progress updates."""
-    await websocket_manager.connect(websocket, alert_id)
-    
     try:
+        await websocket_manager.connect(websocket, alert_id)
+        
         # Send initial status if available
         if alert_id in processing_status:
             await websocket_manager.send_status_update(
                 alert_id, processing_status[alert_id]
             )
         
-        # Keep connection alive and handle messages
-        while True:
-            try:
+        # Keep connection alive - just wait for disconnect
+        try:
+            while True:
+                # Wait for any message or disconnect
                 await websocket.receive_text()
-            except WebSocketDisconnect:
-                break
+        except WebSocketDisconnect:
+            logger.info(f"WebSocket client disconnected for alert {alert_id}")
                 
     except WebSocketDisconnect:
-        pass
+        logger.info(f"WebSocket disconnected for alert {alert_id}")
+    except Exception as e:
+        logger.error(f"WebSocket endpoint error for alert {alert_id}: {str(e)}")
     finally:
         websocket_manager.disconnect(websocket, alert_id)
 
