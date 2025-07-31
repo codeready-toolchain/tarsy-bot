@@ -45,11 +45,11 @@ jobs:
     - name: Run tests with coverage
       working-directory: ./backend
       run: |
-        TESTING=true . .venv/bin/activate && python -m pytest tests/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing
+        TESTING=true uv run python -m pytest tests/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing
     
     - name: Upload coverage reports to Codecov
       if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: ./backend/coverage.xml
         fail_ci_if_error: false

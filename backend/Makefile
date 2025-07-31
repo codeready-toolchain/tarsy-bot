@@ -44,32 +44,32 @@ install-dev: ## Install development dependencies (includes test)
 .PHONY: test
 test: install ## Run all tests (unit + integration)
 	@echo "$(GREEN)Running all tests...$(NC)"
-	TESTING=true . .venv/bin/activate && $(PYTHON) -m pytest tests/ -v --tb=short
+	TESTING=true $(UV) run $(PYTHON) -m pytest tests/ -v --tb=short
 
 .PHONY: test-unit
 test-unit: install ## Run unit tests only
 	@echo "$(GREEN)Running unit tests...$(NC)"
-	TESTING=true . .venv/bin/activate && $(PYTHON) -m pytest tests/unit/ -v --tb=short
+	TESTING=true $(UV) run $(PYTHON) -m pytest tests/unit/ -v --tb=short
 
 .PHONY: test-integration
 test-integration: install ## Run integration tests only
 	@echo "$(GREEN)Running integration tests...$(NC)"
-	TESTING=true . .venv/bin/activate && $(PYTHON) -m pytest tests/integration/ -v --tb=short
+	TESTING=true $(UV) run $(PYTHON) -m pytest tests/integration/ -v --tb=short
 
 .PHONY: test-verbose
 test-verbose: ## Run all tests with verbose output
 	@echo "$(GREEN)Running all tests (verbose)...$(NC)"
-	TESTING=true . .venv/bin/activate && $(PYTHON) -m pytest tests/ -v
+	TESTING=true $(UV) run $(PYTHON) -m pytest tests/ -v
 
 .PHONY: test-coverage
 test-coverage: ## Run tests with coverage report
 	@echo "$(GREEN)Running tests with coverage...$(NC)"
-	TESTING=true . .venv/bin/activate && $(PYTHON) -m pytest tests/ --cov=tarsy --cov-report=html --cov-report=term-missing
+	TESTING=true $(UV) run $(PYTHON) -m pytest tests/ --cov=tarsy --cov-report=html --cov-report=term-missing
 
 .PHONY: test-quick
 test-quick: ## Run tests in parallel for faster execution
 	@echo "$(GREEN)Running tests in parallel...$(NC)"
-	TESTING=true . .venv/bin/activate && $(PYTHON) -m pytest tests/ -n auto
+	TESTING=true $(UV) run $(PYTHON) -m pytest tests/ -n auto
 
 # Code Quality
 .PHONY: lint
@@ -109,17 +109,17 @@ fix: lint-fix format ## Auto-fix linting issues and format code
 .PHONY: dev
 dev: ## Start development server with auto-reload
 	@echo "$(GREEN)Starting development server...$(NC)"
-	. .venv/bin/activate && uvicorn tarsy.main:app --reload --port 8000 --log-level info
+	$(UV) run uvicorn tarsy.main:app --reload --port 8000 --log-level info
 
 .PHONY: dev-debug
 dev-debug: ## Start development server with debug logging
 	@echo "$(GREEN)Starting development server (debug mode)...$(NC)"
-	. .venv/bin/activate && uvicorn tarsy.main:app --reload --port 8000 --log-level debug
+	$(UV) run uvicorn tarsy.main:app --reload --port 8000 --log-level debug
 
 .PHONY: run
 run: ## Start development server with manual venv activation
 	@echo "$(GREEN)Starting development server (manual venv)...$(NC)"
-	. .venv/bin/activate && uvicorn tarsy.main:app --reload --port 8000
+	$(UV) run uvicorn tarsy.main:app --reload --port 8000
 
 .PHONY: stop
 stop: ## Stop backend server running on port 8000
