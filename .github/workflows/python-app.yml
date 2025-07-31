@@ -49,10 +49,11 @@ jobs:
     
     - name: Upload coverage reports to Codecov
       if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       with:
-        file: ./backend/coverage.xml
+        files: ./backend/coverage.xml
         fail_ci_if_error: false
+        token: ${{ secrets.CODECOV_TOKEN }}
 
   frontend-tests:
     name: Frontend Tests
