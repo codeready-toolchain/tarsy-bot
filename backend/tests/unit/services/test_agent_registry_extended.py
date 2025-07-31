@@ -1,10 +1,12 @@
 """Extended unit tests for AgentRegistry with configuration support."""
 
-import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-from tarsy.services.agent_registry import AgentRegistry
+import pytest
+
 from tarsy.models.agent_config import AgentConfigModel
+from tarsy.services.agent_registry import AgentRegistry
+
 
 @pytest.mark.unit
 class TestAgentRegistryExtended:

@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 from tarsy.main import app
 from tarsy.models.alert import Alert
 from tarsy.models.alert_processing import AlertProcessingData
-from tarsy.services.alert_service import AlertService
 from tarsy.utils.timestamp import now_us
 from tests.conftest import alert_to_api_format
 
@@ -845,8 +844,9 @@ class TestAlertDuplicateDetection:
     def client(self):
         """Create test client."""
         # Initialize the semaphore that main.py expects
-        import tarsy.main
         import asyncio
+
+        import tarsy.main
         if tarsy.main.alert_processing_semaphore is None:
             tarsy.main.alert_processing_semaphore = asyncio.Semaphore(5)
         
@@ -887,7 +887,7 @@ class TestAlertDuplicateDetection:
         assert data1["status"] == "queued"
         
         # The key insight: verify that AlertKey generation works for identical data
-        from tarsy.models.alert_processing import AlertProcessingData, AlertKey
+        from tarsy.models.alert_processing import AlertKey, AlertProcessingData
         
         # Create identical alert processing data
         normalized_data = alert_data["data"].copy()

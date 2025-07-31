@@ -1,7 +1,7 @@
 # This workflow will install Python dependencies, run tests and lint with a single version of Python
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: Python application
+name: CI Pipeline
 
 on:
   push:
@@ -13,24 +13,72 @@ permissions:
   contents: read
 
 jobs:
-  build:
-
+  backend-tests:
+    name: Backend Tests
     runs-on: ubuntu-latest
-
+    
     steps:
     - uses: actions/checkout@v4
+    
     - name: Set up Python 3.13
       uses: actions/setup-python@v3
       with:
         python-version: "3.13"
+    
     - name: Set up uv
       uses: astral-sh/setup-uv@v1
+      with:
+        enable-cache: true
+    
     - name: Install dependencies
       working-directory: ./backend
-      run: uv sync --extra test
+      run: uv sync --extra dev --extra test
+    
     - name: Run unit tests
       working-directory: ./backend
       run: make test-unit
+    
     - name: Run integration tests
       working-directory: ./backend
       run: make test-integration
+    
+    - name: Run tests with coverage
+      working-directory: ./backend
+      run: |
+        TESTING=true . .venv/bin/activate && python -m pytest tests/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing
+    
+    - name: Upload coverage reports to Codecov
+      if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./backend/coverage.xml
+        fail_ci_if_error: false
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dashboard dependencies
+      working-directory: ./dashboard
+      run: npm ci
+    
+    - name: Run dashboard tests
+      working-directory: ./dashboard
+      run: npm test
+    
+    - name: Install alert-dev-ui dependencies
+      working-directory: ./alert-dev-ui
+      run: npm ci
+    
+    - name: Run alert-dev-ui tests
+      working-directory: ./alert-dev-ui
+      run: npm test -- --coverage --watchAll=false

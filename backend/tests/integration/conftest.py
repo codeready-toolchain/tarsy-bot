@@ -587,9 +587,7 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                 elif 'condition_name' in data_section:
                     analysis_content += f" condition: {data_section['condition_name']}"
                     
-                if 'violation_url' in alert_data:
-                    analysis_content += " with violation details"
-                elif 'violation_url' in data_section:
+                if 'violation_url' in alert_data or 'violation_url' in data_section:
                     analysis_content += " with violation details"
                     
                 # Splunk fields
@@ -824,10 +822,9 @@ def datetime_now_utc():
 @pytest.fixture
 def history_service_with_test_db(history_test_database_engine):
     """Create HistoryService with test database engine."""
-    from tarsy.services.history_service import HistoryService
-    from tarsy.repositories.base_repository import DatabaseManager
     from unittest.mock import patch
-    from sqlmodel import Session
+
+    from tarsy.services.history_service import HistoryService
     
     # Mock settings for history service
     mock_settings = Mock()

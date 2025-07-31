@@ -967,7 +967,7 @@ class TestHistoryRepositoryPerformance:
         repo = HistoryRepository(db_session)
         
         # Create test sessions with different statuses
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
         
         # Active sessions
         for i in range(3):
@@ -1164,7 +1164,6 @@ class TestHistoryRepositoryPerformance:
         repo = HistoryRepository(db_session)
         
         # Create sessions with known durations
-        from datetime import datetime, timezone, timedelta
         
         # Session 1: 60 seconds duration
         from tarsy.models.history import now_us
@@ -1568,8 +1567,6 @@ class TestFlexibleAlertDataPerformance:
     @pytest.fixture
     def repository_with_flexible_data(self, repository):
         """Create repository with flexible alert data for performance testing."""
-        import json
-        import time
         from datetime import datetime, timezone
         
         # Create 100 sessions with various flexible data structures

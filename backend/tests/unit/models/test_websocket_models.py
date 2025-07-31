@@ -10,7 +10,6 @@ performance and consistency with the rest of the system.
 import pytest
 from pydantic import ValidationError
 
-from tarsy.models.history import now_us
 from tarsy.models.websocket_models import (
     AlertStatusUpdate,
     ChannelType,

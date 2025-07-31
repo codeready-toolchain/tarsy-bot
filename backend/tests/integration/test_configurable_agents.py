@@ -1,16 +1,16 @@
 """End-to-end integration tests for configurable agents."""
 
-import pytest
-import tempfile
 import os
+import tempfile
 from unittest.mock import Mock, patch
-import yaml
 
-from tarsy.config.agent_config import ConfigurationLoader, ConfigurationError
+import pytest
+
+from tarsy.agents.configurable_agent import ConfigurableAgent
+from tarsy.config.agent_config import ConfigurationError, ConfigurationLoader
+from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.agent_registry import AgentRegistry
 from tarsy.services.mcp_server_registry import MCPServerRegistry
-from tarsy.services.agent_factory import AgentFactory
-from tarsy.agents.configurable_agent import ConfigurableAgent
 
 
 @pytest.mark.integration

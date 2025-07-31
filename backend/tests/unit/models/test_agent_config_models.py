@@ -5,9 +5,10 @@ from pydantic import ValidationError
 
 from tarsy.models.agent_config import (
     AgentConfigModel,
-    MCPServerConfigModel,
     CombinedConfigModel,
+    MCPServerConfigModel,
 )
+
 
 @pytest.mark.unit
 class TestAgentConfigModel:

@@ -5,7 +5,6 @@ Tests the complete history service integration including database operations,
 service interactions, and cross-component communication.
 """
 
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock, patch
@@ -890,9 +889,9 @@ class TestDuplicatePreventionIntegration:
     
     def test_alert_id_generation_uniqueness_under_load(self, history_service_with_test_db, sample_alert_data):
         """Test that alert ID generation remains unique under high load."""
+        from tarsy.config.settings import get_settings
         from tarsy.models.alert import Alert
         from tarsy.services.alert_service import AlertService
-        from tarsy.config.settings import get_settings
         
         # Create AlertService to test ID generation
         alert_service = AlertService(get_settings())

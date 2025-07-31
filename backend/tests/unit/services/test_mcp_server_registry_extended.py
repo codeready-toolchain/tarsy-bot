@@ -1,10 +1,12 @@
 """Extended unit tests for MCPServerRegistry with configuration support."""
 
-import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-from tarsy.services.mcp_server_registry import MCPServerRegistry
+import pytest
+
 from tarsy.models.agent_config import MCPServerConfigModel
+from tarsy.services.mcp_server_registry import MCPServerRegistry
+
 
 @pytest.mark.unit
 class TestMCPServerRegistryExtended:

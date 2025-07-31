@@ -6,7 +6,6 @@ ensuring proper test isolation and database handling.
 """
 
 import os
-import tempfile
 from pathlib import Path
 from typing import Generator
 from unittest.mock import Mock, patch
@@ -73,7 +72,6 @@ def test_database_engine(test_database_url):
     """Create a test database engine with all tables."""
     engine = create_engine(test_database_url, echo=False)
     # Import all models to ensure they're registered with SQLModel.metadata
-    from tarsy.models.history import AlertSession, LLMInteraction, MCPCommunication
     SQLModel.metadata.create_all(engine)
     return engine
 

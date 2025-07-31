@@ -6,7 +6,7 @@ including malformed data, resource constraints, and boundary conditions.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
