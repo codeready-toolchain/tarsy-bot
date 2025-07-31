@@ -5,7 +5,6 @@
 .DEFAULT_GOAL := help
 
 # Variables
-PYTHON := python3
 UV := uv
 TEST_DIR := tests
 APP_DIR := app
@@ -45,32 +44,32 @@ install-dev: ## Install development dependencies (includes test)
 .PHONY: test
 test: install ## Run all tests (unit + integration)
 	@echo "$(GREEN)Running all tests...$(NC)"
-	$(PYTEST) tests/ -v --tb=short
+	$(PYTEST) $(TEST_DIR)/ -v --tb=short
 
 .PHONY: test-unit
 test-unit: install ## Run unit tests only
 	@echo "$(GREEN)Running unit tests...$(NC)"
-	$(PYTEST) tests/unit/ -v --tb=short
+	$(PYTEST) $(TEST_DIR)/unit/ -v --tb=short
 
 .PHONY: test-integration
 test-integration: install ## Run integration tests only
 	@echo "$(GREEN)Running integration tests...$(NC)"
-	$(PYTEST) tests/integration/ -v --tb=short
+	$(PYTEST) $(TEST_DIR)/integration/ -v --tb=short
 
 .PHONY: test-verbose
 test-verbose: ## Run all tests with verbose output
 	@echo "$(GREEN)Running all tests (verbose)...$(NC)"
-	$(PYTEST) tests/ -v
+	$(PYTEST) $(TEST_DIR)/ -v
 
 .PHONY: test-coverage
 test-coverage: ## Run tests with coverage report
 	@echo "$(GREEN)Running tests with coverage...$(NC)"
-	$(PYTEST) tests/ --cov=tarsy --cov-report=html --cov-report=term-missing
+	$(PYTEST) $(TEST_DIR)/ --cov=tarsy --cov-report=html --cov-report=term-missing
 
 .PHONY: test-quick
 test-quick: ## Run tests in parallel for faster execution
 	@echo "$(GREEN)Running tests in parallel...$(NC)"
-	$(PYTEST) tests/ -n auto
+	$(PYTEST) $(TEST_DIR)/ -n auto
 
 # Code Quality
 .PHONY: lint
@@ -183,7 +182,7 @@ status: ## Show project status and health
 	@echo "Python version: $$(python3 --version)"
 	@echo "UV version: $$(uv --version)"
 	@echo "Dependencies: $$(if [ -f uv.lock ]; then echo 'Locked'; else echo 'Not locked'; fi)"
-	@echo "Tests: $$(find tests/ -name 'test_*.py' | wc -l) test files"
+	@echo "Tests: $$(find $(TEST_DIR)/ -name 'test_*.py' | wc -l) test files"
 	@echo "Database: $$(if [ -f history.db ]; then echo 'Present'; else echo 'Not found'; fi)"
 	@echo "Logs: $$(if [ -d logs ]; then ls logs/ | wc -l; else echo '0'; fi) log files"
 
