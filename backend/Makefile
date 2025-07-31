@@ -9,6 +9,7 @@ PYTHON := python3
 UV := uv
 TEST_DIR := tests
 APP_DIR := app
+PYTEST := TESTING=true $(UV) run python -m pytest
 
 # Colors for output
 GREEN := \033[0;32m
@@ -44,32 +45,32 @@ install-dev: ## Install development dependencies (includes test)
 .PHONY: test
 test: install ## Run all tests (unit + integration)
 	@echo "$(GREEN)Running all tests...$(NC)"
-	TESTING=true $(UV) run $(PYTHON) -m pytest tests/ -v --tb=short
+	$(PYTEST) tests/ -v --tb=short
 
 .PHONY: test-unit
 test-unit: install ## Run unit tests only
 	@echo "$(GREEN)Running unit tests...$(NC)"
-	TESTING=true $(UV) run $(PYTHON) -m pytest tests/unit/ -v --tb=short
+	$(PYTEST) tests/unit/ -v --tb=short
 
 .PHONY: test-integration
 test-integration: install ## Run integration tests only
 	@echo "$(GREEN)Running integration tests...$(NC)"
-	TESTING=true $(UV) run $(PYTHON) -m pytest tests/integration/ -v --tb=short
+	$(PYTEST) tests/integration/ -v --tb=short
 
 .PHONY: test-verbose
 test-verbose: ## Run all tests with verbose output
 	@echo "$(GREEN)Running all tests (verbose)...$(NC)"
-	TESTING=true $(UV) run $(PYTHON) -m pytest tests/ -v
+	$(PYTEST) tests/ -v
 
 .PHONY: test-coverage
 test-coverage: ## Run tests with coverage report
 	@echo "$(GREEN)Running tests with coverage...$(NC)"
-	TESTING=true $(UV) run $(PYTHON) -m pytest tests/ --cov=tarsy --cov-report=html --cov-report=term-missing
+	$(PYTEST) tests/ --cov=tarsy --cov-report=html --cov-report=term-missing
 
 .PHONY: test-quick
 test-quick: ## Run tests in parallel for faster execution
 	@echo "$(GREEN)Running tests in parallel...$(NC)"
-	TESTING=true $(UV) run $(PYTHON) -m pytest tests/ -n auto
+	$(PYTEST) tests/ -n auto
 
 # Code Quality
 .PHONY: lint
