@@ -38,7 +38,7 @@ class MaskingPattern(BaseModel):
         try:
             re.compile(v)
         except re.error as e:
-            raise ValueError(f"Invalid regex pattern: {e}")
+            raise ValueError(f"Invalid regex pattern: {e}") from e
         return v
     
     @field_validator('name')
