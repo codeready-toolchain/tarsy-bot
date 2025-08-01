@@ -353,21 +353,20 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
 
 ### 5.2 Data Masking and Sensitive Information Protection
 
-**REQ-5.2.1: MCP Response Masking**
+#### REQ-5.2.1: MCP Response Masking
 - The system shall automatically mask sensitive data in all MCP server responses before LLM processing, logging, or storage
 - The system shall apply masking consistently across all MCP servers and agent types
 - The system shall use pattern-based detection for common secret types (kubernetes_secret, api_key, password, certificate, token)
 
-**REQ-5.2.2: Configurable Masking Rules**
+#### REQ-5.2.2: Configurable Masking Rules
 - The system shall support server-specific masking configurations through YAML configuration and built-in server definitions
 - The system shall support built-in pattern groups (basic, secrets, security, kubernetes, all) for common use cases
 - The system shall support custom regex patterns for domain-specific sensitive data detection
 
-**REQ-5.2.3: Fail-Safe Security Behavior**
+#### REQ-5.2.3: Fail-Safe Security Behavior
 - The system shall implement fail-safe masking behavior that favors over-masking rather than under-masking
 - The system shall continue processing when masking encounters errors, applying comprehensive masking to prevent data leaks
 - The system shall validate custom regex patterns to prevent configuration errors
-
 ## 6. Reliability and Error Handling
 
 ### 6.1 Fault Tolerance
