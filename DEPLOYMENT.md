@@ -74,28 +74,50 @@ PORT=3001 npm start
 
 ## MCP Server Configuration
 
-The application uses the official MCP SDK to automatically start the Kubernetes MCP server via npx. No manual MCP server setup is required.
+The application uses the official MCP SDK to automatically start MCP servers. Built-in servers like Kubernetes are configured centrally, while custom servers can be added through YAML configuration.
 
-### How It Works
+### Template Variable Support
 
-1. **Automatic Startup**: The backend automatically starts the MCP server using:
+MCP server configurations now support **template variables** using `${VARIABLE_NAME}` syntax for environment-specific values:
+
+```yaml
+# In config/agents.yaml
+mcp_servers:
+  security-server:
+    server_id: "security-server"
+    server_type: "security"
+    enabled: true
+    connection_params:
+      command: "/opt/security-mcp/server"
+      # Template variables resolved from environment or defaults
+      args: ["--token", "${SECURITY_SERVER_TOKEN}", "--kubeconfig", "${KUBECONFIG}"]
+```
+
+**Environment Variables in .env:**
+```env
+# Required - no default available
+SECURITY_SERVER_TOKEN=your_secret_token_here
+
+# Optional - has built-in default of ~/.kube/config
+KUBECONFIG=/custom/path/to/kubeconfig
+```
+
+### Built-in Server Configuration
+
+1. **Kubernetes Server**: Automatically started with template support
    ```bash
-   npx -y kubernetes-mcp-server@latest
+   # Uses KUBECONFIG environment variable or ~/.kube/config default
+   npx -y kubernetes-mcp-server@latest --kubeconfig ${KUBECONFIG}
    ```
 
-2. **Configuration**: Configured in `backend/app/config/settings.py`:
-   ```python
-   mcp_servers = {
-       "kubernetes": {
-           "type": "kubernetes",
-           "enabled": True,
-           "command": "npx",
-           "args": ["-y", "kubernetes-mcp-server@latest"]
-       }
-   }
-   ```
+2. **Configuration Location**: Built-in servers configured in `backend/tarsy/config/builtin_config.py`
 
-3. **Communication**: Uses stdio-based communication via the MCP SDK
+3. **Template Resolution**: Environment variables are resolved at startup:
+   - **Environment First**: `KUBECONFIG=/custom/path` takes precedence
+   - **Settings Defaults**: Falls back to `~/.kube/config` if `KUBECONFIG` not set
+   - **Error Handling**: Missing required variables without defaults cause fallback to original config
+
+4. **Communication**: Uses stdio-based communication via the MCP SDK
 
 ### For Testing Without Kubernetes
 
@@ -492,30 +514,50 @@ The system uses LangChain for unified LLM access, so any LangChain-compatible pr
 
 ### Adding New MCP Servers
 
-To add a new MCP server:
+Add custom MCP servers through **YAML configuration** without code changes:
 
-1. **Update MCP Configuration**: Add to `mcp_servers` in `backend/app/config/settings.py`:
-   ```python
-   mcp_servers: Dict[str, Any] = Field(default={
-       # ... existing servers ...
-       "new_server": {
-           "type": "new_server",
-           "enabled": True,
-           "command": "npx",
-           "args": ["-y", "new-mcp-server@latest"]
-       }
-   })
+1. **Create Configuration**: Add to `config/agents.yaml`:
+   ```yaml
+   mcp_servers:
+     monitoring-server:
+       server_id: "monitoring-server"
+       server_type: "monitoring"
+       enabled: true
+       connection_params:
+         command: "monitoring-mcp-server"
+         # Use template variables for sensitive/environment-specific values
+         args: ["--prometheus-url", "${PROMETHEUS_URL}", "--grafana-token", "${GRAFANA_TOKEN}"]
+         environment:
+           LOG_LEVEL: "info"
+       instructions: |
+         Monitoring server instructions:
+         - Query Prometheus for metrics and alerts
+         - Access Grafana dashboards for visualization
+         - Provide performance insights and recommendations
    ```
 
-2. **Configure Alert Type Support**: Add the alert type to the supported alerts list:
-   ```python
-   supported_alerts: List[str] = Field(default=[
-       "NamespaceTerminating",
-       "New Alert Type"
-   ])
+2. **Set Environment Variables**: Add to `backend/.env`:
+   ```env
+   # Required environment variables for template resolution
+   PROMETHEUS_URL=http://prometheus:9090
+   GRAFANA_TOKEN=your_grafana_api_token_here
    ```
 
-The MCP client will automatically initialize and use the new server.
+3. **Assign to Agents**: Reference the server in agent configurations:
+   ```yaml
+   agents:
+     performance-agent:
+       alert_types: ["HighCPU", "HighMemory", "DiskSpaceFull"]
+       mcp_servers: ["monitoring-server", "kubernetes-server"]  # Built-in + custom
+   ```
+
+**Template Variable Features:**
+- **Environment Resolution**: `${VAR}` resolved from environment variables
+- **Settings Defaults**: Built-in defaults for common variables (e.g., `KUBECONFIG`)
+- **Error Handling**: Missing variables without defaults trigger fallback behavior
+- **Secure**: Keeps sensitive values out of configuration files
+
+The MCP client will automatically initialize and use the new server with resolved template variables.
 
 ## Support
 

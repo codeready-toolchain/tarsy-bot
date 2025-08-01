@@ -39,10 +39,12 @@ make dev
 ### 🛠️ Configuration-Based Agents (EP-0006)
 Deploy new agents without code changes:
 - **YAML Configuration**: Define agents and MCP servers in simple YAML files
+- **Template Variables**: Use `${VAR}` syntax for environment-specific values with built-in defaults
 - **No Code Changes**: Add new agent types through configuration alone
 - **Full Compatibility**: Traditional hardcoded agents and configured agents work simultaneously
 - **Automatic Registry**: Agent configurations auto-populate alert type mappings
 - **Mixed MCP Access**: Configured agents can use both built-in and configured MCP servers
+- **Secure Configuration**: Keep sensitive values in environment variables, not config files
 
 ### 🔧 Flexible Alert Data Structure (EP-0005)
 Support for diverse monitoring sources beyond Kubernetes:
