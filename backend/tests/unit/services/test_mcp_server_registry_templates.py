@@ -30,7 +30,7 @@ class TestMCPServerRegistryTemplateResolution:
             # Verify template was resolved with environment variable
             assert "/custom/kube/config" in k8s_config.connection_params["args"]
             # Should not use default since env var is set
-            assert "~/.kube/config" not in str(k8s_config.connection_params["args"])
+            assert k8s_config.connection_params["args"][-1] == "/custom/kube/config"
     
     def test_builtin_kubernetes_server_template_resolution_with_default(self):
         """Test built-in kubernetes-server template resolution with settings default."""
@@ -41,8 +41,9 @@ class TestMCPServerRegistryTemplateResolution:
             
             k8s_config = registry.get_server_config("kubernetes-server")
             
-            # Verify template was resolved with default value
-            assert "~/.kube/config" in k8s_config.connection_params["args"]
+            # Verify template was resolved with expanded default value (not tilde literal)
+            assert ".kube/config" in str(k8s_config.connection_params["args"])
+            assert "~" not in str(k8s_config.connection_params["args"])  # Tilde should be expanded
     
     def test_configured_server_template_resolution(self):
         """Test template resolution in configured MCP servers."""
@@ -162,7 +163,9 @@ class TestMCPServerRegistryTemplateResolution:
             # Verify all templates resolved correctly
             assert config.connection_params["command"] == "complex-production"
             assert config.connection_params["args"] == ["--endpoint", "https://api.company.com:8443/api"]
-            assert config.connection_params["env"]["CONFIG_PATH"] == "~/.kube/config"  # Default
+            # CONFIG_PATH should be expanded absolute path, not tilde literal
+            assert ".kube/config" in config.connection_params["env"]["CONFIG_PATH"]
+            assert "~" not in config.connection_params["env"]["CONFIG_PATH"]
             assert config.connection_params["env"]["AUTH_TOKEN"] == "bearer-token-123"  # Environment
 
 

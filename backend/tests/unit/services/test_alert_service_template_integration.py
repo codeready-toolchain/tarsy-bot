@@ -78,8 +78,9 @@ class TestAlertServiceTemplateIntegration:
                 # Get kubernetes server config
                 k8s_config = alert_service.mcp_server_registry.get_server_config("kubernetes-server")
                 
-                # Verify default was used
-                assert "~/.kube/config" in k8s_config.connection_params["args"]
+                # Verify expanded default was used (not tilde literal)
+                assert ".kube/config" in str(k8s_config.connection_params["args"])
+                assert "~" not in str(k8s_config.connection_params["args"])
     
     @patch('tarsy.services.alert_service.logger')
     def test_alert_service_template_error_handling(self, mock_logger):

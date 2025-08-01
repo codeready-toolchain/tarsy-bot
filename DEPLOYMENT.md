@@ -98,7 +98,8 @@ mcp_servers:
 # Required - no default available
 SECURITY_SERVER_TOKEN=your_secret_token_here
 
-# Optional - has built-in default of ~/.kube/config
+# Optional - has built-in default (expands to absolute path like /home/user/.kube/config)
+# Always use absolute paths - tilde expansion only works for built-in defaults
 KUBECONFIG=/custom/path/to/kubeconfig
 ```
 
@@ -106,16 +107,19 @@ KUBECONFIG=/custom/path/to/kubeconfig
 
 1. **Kubernetes Server**: Automatically started with template support
    ```bash
-   # Uses KUBECONFIG environment variable or ~/.kube/config default
+   # Uses KUBECONFIG environment variable or expanded absolute path default
    npx -y kubernetes-mcp-server@latest --kubeconfig ${KUBECONFIG}
    ```
 
 2. **Configuration Location**: Built-in servers configured in `backend/tarsy/config/builtin_config.py`
 
 3. **Template Resolution**: Environment variables are resolved at startup:
-   - **Environment First**: `KUBECONFIG=/custom/path` takes precedence
-   - **Settings Defaults**: Falls back to `~/.kube/config` if `KUBECONFIG` not set
+   - **Environment First**: `KUBECONFIG=/custom/path` takes precedence  
+   - **Settings Defaults**: Falls back to expanded absolute path (e.g., `/home/user/.kube/config`) if `KUBECONFIG` not set
+   - **Tilde Expansion**: Built-in defaults automatically expand `~` to the user's home directory
    - **Error Handling**: Missing required variables without defaults cause fallback to original config
+
+   **⚠️ Important**: When setting custom kubeconfig paths, always use absolute paths. The `~` character is only expanded for built-in defaults, not for user-provided environment variables.
 
 4. **Communication**: Uses stdio-based communication via the MCP SDK
 
