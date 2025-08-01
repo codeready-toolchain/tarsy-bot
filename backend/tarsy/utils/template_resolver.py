@@ -75,7 +75,7 @@ class TemplateResolver:
             logger.error(f"Template resolution failed: {e}")
             if isinstance(e, TemplateResolutionError):
                 raise
-            raise TemplateResolutionError(f"Unexpected error during template resolution: {e}")
+            raise TemplateResolutionError(f"Unexpected error during template resolution: {e}") from e
     
     def _resolve_recursive(self, obj: Any) -> Any:
         """
