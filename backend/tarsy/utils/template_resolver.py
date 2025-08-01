@@ -115,7 +115,7 @@ class TemplateResolver:
         if not matches:
             return text
         
-        logger.debug(f"Found template variables in '{text}': {matches}")
+        logger.debug("Found %s template variable(s) in string", len(matches))
         
         resolved_text = text
         
@@ -133,7 +133,7 @@ class TemplateResolver:
             template_pattern = f"${{{var_name}}}"
             resolved_text = resolved_text.replace(template_pattern, var_value)
         
-        logger.debug(f"Resolved template: '{text}' -> '{resolved_text}'")
+        logger.debug("Template successfully resolved")
         return resolved_text
     
     def _resolve_variable(self, var_name: str) -> str:
