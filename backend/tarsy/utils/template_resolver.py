@@ -56,7 +56,7 @@ class TemplateResolver:
         Raises:
             TemplateResolutionError: If template resolution fails
         """
-        logger.debug(f"Resolving templates in configuration")
+        logger.debug("Resolving templates in configuration")
         
         try:
             # Always validate all templates first before resolving
