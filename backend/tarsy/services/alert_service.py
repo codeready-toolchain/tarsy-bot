@@ -56,7 +56,7 @@ class AlertService:
         
         # Initialize registries first
         self.agent_registry = AgentRegistry()
-        self.mcp_server_registry = MCPServerRegistry()
+        self.mcp_server_registry = MCPServerRegistry(settings=settings)
         
         # Initialize services that depend on registries
         self.mcp_client = MCPClient(settings, self.mcp_server_registry)

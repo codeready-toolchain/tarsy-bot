@@ -12,6 +12,8 @@ from typing import Dict, List, Optional
 from ..models.mcp_config import MCPServerConfig
 from ..utils.logger import get_module_logger
 from ..config.builtin_config import BUILTIN_MCP_SERVERS
+from ..utils.template_resolver import TemplateResolver, TemplateResolutionError
+from ..config.settings import Settings
 
 # Import for type hints only (avoid circular imports)
 from typing import TYPE_CHECKING
@@ -38,7 +40,8 @@ class MCPServerRegistry:
     def __init__(
         self, 
         config: Optional[Dict[str, Dict]] = None,
-        configured_servers: Optional[Dict[str, "MCPServerConfigModel"]] = None
+        configured_servers: Optional[Dict[str, "MCPServerConfigModel"]] = None,
+        settings: Optional[Settings] = None
     ):
         """
         Initialize the MCP server registry with configurations.
@@ -48,6 +51,7 @@ class MCPServerRegistry:
                    If None, uses default configurations defined in the registry.
             configured_servers: Optional dictionary of configured MCP servers to include.
                               These are merged with the built-in servers.
+            settings: Optional Settings instance for template variable defaults.
         """
         # Static servers - no runtime changes, just a dictionary
         self.static_servers: Dict[str, MCPServerConfig] = {}
@@ -55,20 +59,40 @@ class MCPServerRegistry:
         # Store configured servers for access (copy to prevent external modification)
         self.configured_servers = configured_servers.copy() if configured_servers else None
         
+        # Initialize template resolver for environment variable expansion with settings defaults
+        self.template_resolver = TemplateResolver(settings=settings)
+        
         # Start with built-in server configurations (config parameter or defaults)
         server_configs = config or self._DEFAULT_SERVERS
         
-        # Convert built-in servers to MCPServerConfig objects
+        # Convert built-in servers to MCPServerConfig objects with template resolution
         for server_id, server_config in server_configs.items():
-            self.static_servers[server_id] = MCPServerConfig(**server_config)
+            try:
+                # Apply template resolution to built-in server configuration
+                resolved_config = self.template_resolver.resolve_configuration(server_config)
+                self.static_servers[server_id] = MCPServerConfig(**resolved_config)
+                logger.debug(f"Added built-in MCP server with template resolution: {server_id}")
+            except TemplateResolutionError as e:
+                logger.error(f"Template resolution failed for built-in MCP server '{server_id}': {e}")
+                # Use original config without template resolution as fallback
+                self.static_servers[server_id] = MCPServerConfig(**server_config)
+                logger.warning(f"Using original configuration for '{server_id}' due to template resolution failure")
         
         # Add configured servers if provided
         if configured_servers:
             for server_id, server_config in configured_servers.items():
-                # Convert MCPServerConfigModel to internal format and merge
-                server_dict = server_config.model_dump()
-                self.static_servers[server_id] = MCPServerConfig(**server_dict)
-                logger.debug(f"Added configured MCP server: {server_id}")
+                try:
+                    # Convert MCPServerConfigModel to dict and apply template resolution
+                    server_dict = server_config.model_dump()
+                    resolved_dict = self.template_resolver.resolve_configuration(server_dict)
+                    self.static_servers[server_id] = MCPServerConfig(**resolved_dict)
+                    logger.debug(f"Added configured MCP server with template resolution: {server_id}")
+                except TemplateResolutionError as e:
+                    logger.error(f"Template resolution failed for configured MCP server '{server_id}': {e}")
+                    # Use original config without template resolution as fallback
+                    server_dict = server_config.model_dump()
+                    self.static_servers[server_id] = MCPServerConfig(**server_dict)
+                    logger.warning(f"Using original configuration for '{server_id}' due to template resolution failure")
             
             logger.info(f"Added {len(configured_servers)} configured MCP servers")
         

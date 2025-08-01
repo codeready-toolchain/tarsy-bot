@@ -8,12 +8,20 @@
 # 1. Copy this file to ./config/agents.yaml
 # 2. Customize the agents and MCP servers for your environment
 # 3. Set AGENT_CONFIG_PATH=./config/agents.yaml in your .env file (optional - this is the default)
+# 4. Set required environment variables in your .env file for template substitution
 #
 # IMPORTANT NOTES:
 # - Agent names and MCP server IDs must be unique across configured and built-in components
 # - Each agent must handle at least one alert type and use at least one MCP server
 # - Configured agents can use both built-in MCP servers (like "kubernetes-server") and configured ones
 # - Alert types can only be handled by one agent (no conflicts allowed)
+#
+# TEMPLATE VARIABLES:
+# - MCP server configurations support ${VARIABLE_NAME} template syntax
+# - Template variables are resolved using environment variables from your .env file
+# - Built-in servers (like kubernetes-server) also support template variables
+# - Missing environment variables will cause startup errors - ensure all required variables are set
+# - Template variables can be used in args, command, and other string fields
 #
 # DATA MASKING:
 # - MCP servers can include optional data_masking configuration to protect sensitive data
@@ -37,9 +45,9 @@ mcp_servers:
     server_type: "security"
     enabled: true
     connection_params:
-      # Example: Custom security MCP server command
+      # Example: Custom security MCP server command with templated arguments
       command: "/opt/security-mcp/server"
-      args: ["--mode", "production", "--log-level", "info"]
+      args: ["--mode", "production", "--log-level", "info", "--token", "${SECURITY_SERVER_TOKEN}"]
       environment:
         SECURITY_DB_URL: "postgresql://user:pass@security-db:5432/security"
         API_TIMEOUT: "30"
@@ -73,7 +81,7 @@ mcp_servers:
     enabled: true
     connection_params:
       command: "npx"
-      args: ["-y", "@example/monitoring-mcp-server@latest"]
+      args: ["-y", "@example/monitoring-mcp-server@latest", "--prometheus-url", "${PROMETHEUS_URL}", "--grafana-token", "${GRAFANA_TOKEN}"]
       environment:
         PROMETHEUS_URL: "http://prometheus:9090"
         GRAFANA_URL: "http://grafana:3000"
@@ -97,7 +105,7 @@ mcp_servers:
     enabled: false  # Disabled by default - enable when AWS credentials are configured
     connection_params:
       command: "/usr/local/bin/aws-mcp-server"
-      args: ["--region", "us-west-2"]
+      args: ["--region", "${AWS_DEFAULT_REGION}", "--access-key", "${AWS_ACCESS_KEY_ID}"]
       environment:
         AWS_PROFILE: "production"
         AWS_DEFAULT_REGION: "us-west-2"
@@ -260,12 +268,13 @@ agents:
 # 1. □ Copy this file to ./config/agents.yaml
 # 2. □ Customize agent configurations for your environment
 # 3. □ Configure MCP server connection parameters
-# 4. □ Test MCP server connectivity independently
-# 5. □ Enable only the MCP servers you have properly configured
-# 6. □ Verify no alert type conflicts with existing built-in agents
-# 7. □ Set AGENT_CONFIG_PATH in .env if using a different location
-# 8. □ Test configuration validation: python -c "from tarsy.config.agent_config import ConfigurationLoader; ConfigurationLoader('./config/agents.yaml').load_and_validate()"
-# 9. □ Monitor application startup logs for configuration errors
-# 10. □ Verify agents are properly registered in the AgentRegistry
+# 4. □ Set required environment variables in .env for template substitution
+# 5. □ Test MCP server connectivity independently
+# 6. □ Enable only the MCP servers you have properly configured
+# 7. □ Verify no alert type conflicts with existing built-in agents
+# 8. □ Set AGENT_CONFIG_PATH in .env if using a different location
+# 9. □ Test configuration validation: python -c "from tarsy.config.agent_config import ConfigurationLoader; ConfigurationLoader('./config/agents.yaml').load_and_validate()"
+# 10. □ Monitor application startup logs for configuration errors
+# 11. □ Verify agents are properly registered in the AgentRegistry
 #
 # ============================================================================= 

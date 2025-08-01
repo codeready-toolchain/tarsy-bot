@@ -59,7 +59,7 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
         "enabled": True,
         "connection_params": {
             "command": "npx",
-            "args": ["-y", "kubernetes-mcp-server@latest", "--read-only", "--disable-destructive"]
+            "args": ["-y", "kubernetes-mcp-server@latest", "--read-only", "--disable-destructive", "--kubeconfig", "${KUBECONFIG}"]
         },
         "instructions": """For Kubernetes operations:
 - Be careful with cluster-scoped resource listings in large clusters
@@ -79,7 +79,7 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
     #     "enabled": True,
     #     "connection_params": {
     #         "command": "npx",
-    #         "args": ["-y", "argocd-mcp-server@latest"]
+    #         "args": ["-y", "argocd-mcp-server@latest", "--server", "${ARGOCD_SERVER}", "--auth-token", "${ARGOCD_TOKEN}"]
     #     },
     #     "instructions": "ArgoCD-specific instructions..."
     # },

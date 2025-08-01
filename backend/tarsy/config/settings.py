@@ -112,6 +112,13 @@ class Settings(BaseSettings):
         description="Path to agent and MCP server configuration file"
     )
     
+    # Template Variable Defaults
+    # These provide default values for template variables if not set in environment
+    kubeconfig_default: str = Field(
+        default="~/.kube/config",
+        description="Default kubeconfig path for Kubernetes MCP server"
+    )
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Set default database URL based on environment if not explicitly provided
@@ -147,6 +154,22 @@ class Settings(BaseSettings):
             config["api_key"] = ""
         
         return config
+    
+    def get_template_default(self, var_name: str) -> Optional[str]:
+        """
+        Get default value for a template variable.
+        
+        Args:
+            var_name: Template variable name (e.g., 'KUBECONFIG')
+            
+        Returns:
+            Default value if available, None otherwise
+        """
+        # Convert template variable name to settings attribute name
+        # KUBECONFIG -> kubeconfig_default
+        # PROMETHEUS_URL -> prometheus_url_default
+        default_attr = f"{var_name.lower()}_default"
+        return getattr(self, default_attr, None)
     
 
 @lru_cache()
