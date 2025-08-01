@@ -212,7 +212,8 @@ class TestMCPServerRegistryMaskingServiceIntegration:
     def test_masking_config_validation_during_registry_initialization(self):
         """Test that invalid masking configs fail during registry initialization."""
         # Invalid masking config should fail during MCPServerConfig creation
-        with pytest.raises(Exception):  # ValidationError from Pydantic
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
             server_configs = {
                 "invalid-server": {
                     "server_id": "invalid-server",
