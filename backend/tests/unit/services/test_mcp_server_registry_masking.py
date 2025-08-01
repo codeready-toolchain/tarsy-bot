@@ -10,9 +10,7 @@ Tests focus on practical masking integration scenarios:
 import pytest
 
 from tarsy.models.mcp_config import MCPServerConfig
-from tarsy.models.masking_config import MaskingConfig, MaskingPattern
 from tarsy.services.mcp_server_registry import MCPServerRegistry
-
 
 @pytest.mark.unit
 class TestMCPServerRegistryMaskingIntegration:
