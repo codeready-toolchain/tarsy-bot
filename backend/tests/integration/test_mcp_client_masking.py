@@ -13,8 +13,6 @@ from unittest.mock import Mock, AsyncMock, patch
 
 from tarsy.config.settings import Settings
 from tarsy.integrations.mcp.client import MCPClient
-from tarsy.models.mcp_config import MCPServerConfig
-from tarsy.models.masking_config import MaskingConfig, MaskingPattern
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 
 
