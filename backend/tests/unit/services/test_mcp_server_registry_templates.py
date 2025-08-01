@@ -13,7 +13,6 @@ from unittest.mock import patch, MagicMock
 from tarsy.config.settings import Settings
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.models.agent_config import MCPServerConfigModel
-from tarsy.utils.template_resolver import TemplateResolutionError
 
 
 @pytest.mark.unit
