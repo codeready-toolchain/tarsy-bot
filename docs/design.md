@@ -20,6 +20,7 @@
 This design document is a living document that evolves through [Enhancement Proposals (EPs)](enhancements/README.md). All significant architectural changes are documented through the EP process, ensuring traceable evolution and AI-friendly implementation.
 
 ### Recent Changes
+- **EP-0007 (IMPLEMENTED)**: Data Masking Service for Sensitive MCP Server Data - Added pattern-based masking service for secrets and credentials from MCP server responses, with built-in patterns for common secrets and configurable per-server masking rules
 - **EP-0006 (IMPLEMENTED)**: Configuration-Based Agents - Added YAML-based agent configuration system allowing deployment of new agents without code changes, supporting both traditional hardcoded agents and configuration-driven agents simultaneously
 - **EP-0005 (IMPLEMENTED)**: Flexible Alert Data Structure Support - Transformed rigid Kubernetes-specific alert model into flexible, agent-agnostic system supporting arbitrary JSON payloads with minimal validation, enhanced database with JSON indexing, and updated UI for dynamic alert data rendering
 - **EP-0004 (IMPLEMENTED)**: Dashboard UI for Alert History - Added standalone React dashboard for SRE operational monitoring with real-time WebSocket integration, historical analysis, and multiplexed WebSocket architecture
@@ -562,7 +563,7 @@ class LLMClient:
 
 ### 10. MCP Client
 
-MCP client implementation using the official MCP SDK with agent-specific server management:
+MCP client implementation using the official MCP SDK with agent-specific server management and integrated data masking:
 
 ```
 Interface Pattern:
@@ -576,10 +577,32 @@ class MCPClient:
 **Core Features:**
 - **Official MCP SDK Integration**: Uses the official MCP SDK with stdio transport for server connections
 - **Registry-Driven Initialization**: Automatically initializes all servers defined in MCP Server Registry
+- **Integrated Data Masking**: Automatically applies server-specific masking to all tool responses using DataMaskingService
 - **Connection Management**: Maintains persistent sessions using AsyncExitStack for proper cleanup
 - **Tool Discovery**: Dynamic tool inventory from connected MCP servers with detailed schema information
 - **Comprehensive Logging**: Detailed request/response logging for debugging and monitoring
 - **Error Handling**: Robust error handling with graceful degradation when servers are unavailable
+
+### 10a. Data Masking Service
+
+Pattern-based masking service for securing sensitive data in MCP server responses:
+
+```
+Interface Pattern:
+class DataMaskingService:
+    def __init__(self, mcp_registry: MCPServerRegistry)
+    def mask_response(self, server_name: str, response: Dict[str, Any]) -> Dict[str, Any]
+    def compile_patterns(self, config: MaskingConfig) -> Dict[str, str]
+```
+
+**Core Features:**
+- **Universal MCP Response Masking**: Automatically masks sensitive data before LLM processing, logging, or storage
+- **Built-in Pattern Library**: Pre-configured patterns for kubernetes_secret, api_key, password, certificate, token
+- **Pattern Groups**: Built-in groups (basic, secrets, security, kubernetes, all) for common use cases
+- **Server-Specific Configuration**: Per-MCP server masking rules through YAML and built-in configurations
+- **Custom Regex Patterns**: Support for user-defined regex patterns with validation
+- **Fail-Safe Behavior**: Over-masking approach with comprehensive error handling to prevent data leaks
+- **Performance Optimized**: Compiled regex patterns with minimal processing overhead
 
 ### 11. Runbook Service
 
@@ -1113,8 +1136,27 @@ MCP_SERVER_REGISTRY_CONFIG={...}
 **Enhanced Security Features:**
 - Agent registry configuration protected through environment variables
 - MCP server assignments secured at agent instantiation
+- **Data Masking Security**: Automatic masking of sensitive data (secrets, API keys, passwords) from MCP server responses
 - No additional authentication required for agent delegation
 - Same security boundaries maintained across agent layers
+
+### 1a. Data Masking Security Layer
+
+**Sensitive Data Protection:**
+```
+Data Masking Security Measures:
+- Universal masking applied to all MCP server responses before LLM processing, logging, or storage
+- Pattern-based detection for kubernetes_secret, api_key, password, certificate, token
+- Server-specific masking configurations through YAML and built-in rules
+- Fail-safe behavior: better to over-mask than under-mask sensitive data
+- Custom regex patterns with validation for domain-specific secrets
+```
+
+**Security Benefits:**
+- Prevents sensitive credentials from reaching LLM providers
+- Protects secrets in system logs and persistent storage
+- Configurable masking per MCP server type
+- Comprehensive pattern library for common credential formats
 
 ### 2. Agent Security Isolation
 

@@ -15,6 +15,13 @@
 # - Configured agents can use both built-in MCP servers (like "kubernetes-server") and configured ones
 # - Alert types can only be handled by one agent (no conflicts allowed)
 #
+# DATA MASKING:
+# - MCP servers can include optional data_masking configuration to protect sensitive data
+# - Built-in pattern groups: "basic" (api_key, password), "secrets" (basic + token), "security" (all + certificate), "kubernetes" (kubernetes_secret + basic), "all" (all patterns)
+# - Custom patterns can be defined with regex pattern, replacement text, and description
+# - Masking is applied to MCP server responses before reaching the LLM or logs
+# - Set enabled: false to disable masking for specific servers
+#
 # For more information, see docs/enhancements/approved/EP-0006-configurable-agents-design.md
 
 # =============================================================================
@@ -43,6 +50,21 @@ mcp_servers:
       - Provide detailed security recommendations with risk assessments
       - Include compliance considerations (SOC2, GDPR, etc.) in responses
       - Escalate critical security incidents immediately
+    data_masking:
+      enabled: true
+      pattern_groups:
+        - "security"          # Built-in group: api_key, password, token, certificate
+      custom_patterns:
+        - name: "security_token"
+          pattern: '(?i)(token|jwt|bearer)["\''']?\s*[:=]\s*["\''']?([A-Za-z0-9_\-\.]{40,})["\''']?'
+          replacement: '"security_token": "***MASKED_SECURITY_TOKEN***"'
+          description: "Security tokens and JWTs"
+          enabled: true
+        - name: "ssh_key"
+          pattern: 'ssh-(?:rsa|dss|ed25519|ecdsa)\s+[A-Za-z0-9+/=]+'
+          replacement: "***MASKED_SSH_KEY***"
+          description: "SSH public keys"
+          enabled: true
 
   # Monitoring and observability MCP server for performance analysis
   monitoring-server:
@@ -63,6 +85,10 @@ mcp_servers:
       - Provide actionable recommendations for performance optimization
       - Include relevant dashboards and queries in responses
       - Consider both immediate fixes and long-term capacity planning
+    data_masking:
+      enabled: true
+      pattern_groups:
+        - "basic"             # Built-in group: api_key, password
 
   # Custom cloud provider MCP server (example for AWS-specific operations)
   aws-server:
@@ -78,10 +104,12 @@ mcp_servers:
     instructions: |
       AWS cloud operations instructions:
       - Use AWS CLI and APIs for infrastructure management
-      - Always verify resource states before making changes
+      - Always verify resource states before making changes  
       - Include cost implications in recommendations
       - Follow AWS Well-Architected Framework principles
       - Ensure proper IAM permissions and security groups
+    data_masking:
+      enabled: false          # No masking for raw AWS data - handled by AWS IAM permissions
 
 # =============================================================================
 # AGENT CONFIGURATIONS

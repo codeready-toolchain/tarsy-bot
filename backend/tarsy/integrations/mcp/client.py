@@ -12,6 +12,7 @@ from mcp.client.stdio import stdio_client
 from tarsy.config.settings import Settings
 from tarsy.hooks.base_hooks import HookContext
 from tarsy.services.mcp_server_registry import MCPServerRegistry
+from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.utils.logger import get_module_logger
 
 # Setup logger for this module
@@ -27,6 +28,7 @@ class MCPClient:
     def __init__(self, settings: Settings, mcp_registry: Optional[MCPServerRegistry] = None):
         self.settings = settings
         self.mcp_registry = mcp_registry or MCPServerRegistry()
+        self.data_masking_service = DataMaskingService(self.mcp_registry) if mcp_registry else None
         self.sessions: Dict[str, ClientSession] = {}
         self.exit_stack = AsyncExitStack()
         self._initialized = False
@@ -204,7 +206,18 @@ class MCPClient:
                 else:
                     response_dict = {"result": str(result)}
                 
-                # Log the successful response
+                # Apply data masking if service is available
+                if self.data_masking_service:
+                    try:
+                        logger.debug(f"Applying data masking for server: {server_name}")
+                        response_dict = self.data_masking_service.mask_response(response_dict, server_name)
+                        logger.debug(f"Data masking completed for server: {server_name}")
+                    except Exception as e:
+                        logger.error(f"Error during data masking for server '{server_name}': {e}")
+                        # Continue with unmasked response rather than failing the entire call
+                        logger.warning(f"Continuing with unmasked response for server: {server_name}")
+                
+                # Log the successful response (after masking)
                 self._log_mcp_response(server_name, tool_name, response_dict, request_id)
                 
                 # Complete the hook context with success

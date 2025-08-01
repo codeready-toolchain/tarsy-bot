@@ -417,6 +417,11 @@ class TestMCPClientCallTool:
         """Set up test fixtures."""
         self.mock_settings = Mock(spec=Settings)
         self.mock_registry = Mock(spec=MCPServerRegistry)
+        
+        # Mock the registry's get_server_config_safe method to return None
+        # This disables data masking for these tests
+        self.mock_registry.get_server_config_safe.return_value = None
+        
         self.client = MCPClient(self.mock_settings, mcp_registry=self.mock_registry)
         self.client._initialized = True
         
@@ -821,6 +826,11 @@ class TestMCPClientIntegrationScenarios:
         """Set up test fixtures."""
         self.mock_settings = Mock(spec=Settings)
         self.mock_registry = Mock(spec=MCPServerRegistry)
+        
+        # Mock the registry's get_server_config_safe method to return None by default
+        # This disables data masking for these tests (individual tests can override)
+        self.mock_registry.get_server_config_safe.return_value = None
+        
         self.client = MCPClient(self.mock_settings, mcp_registry=self.mock_registry)
     
     @patch('tarsy.integrations.mcp.client.HookContext')

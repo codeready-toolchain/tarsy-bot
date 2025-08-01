@@ -106,20 +106,27 @@ fix: lint-fix format ## Auto-fix linting issues and format code
 	@echo "$(GREEN)Code fixes and formatting applied!$(NC)"
 
 # Development Server
+.PHONY: check-venv
+check-venv: ## Check if virtual environment exists and create if needed
+	@if [ ! -f .venv/bin/uvicorn ]; then \
+		echo "$(YELLOW)Virtual environment not found or incomplete. Running setup...$(NC)"; \
+		$(MAKE) install; \
+	fi
+
 .PHONY: dev
-dev: ## Start development server with auto-reload
+dev: check-venv ## Start development server with auto-reload
 	@echo "$(GREEN)Starting development server...$(NC)"
-	$(UV) run uvicorn tarsy.main:app --reload --port 8000 --log-level info
+	.venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-level info
 
 .PHONY: dev-debug
-dev-debug: ## Start development server with debug logging
+dev-debug: check-venv ## Start development server with debug logging
 	@echo "$(GREEN)Starting development server (debug mode)...$(NC)"
-	$(UV) run uvicorn tarsy.main:app --reload --port 8000 --log-level debug
+	.venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-level debug
 
 .PHONY: run
-run: ## Start development server with manual venv activation
+run: check-venv ## Start development server with manual venv activation
 	@echo "$(GREEN)Starting development server (manual venv)...$(NC)"
-	$(UV) run uvicorn tarsy.main:app --reload --port 8000
+	.venv/bin/uvicorn tarsy.main:app --reload --port 8000
 
 .PHONY: stop
 stop: ## Stop backend server running on port 8000

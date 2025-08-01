@@ -5,9 +5,11 @@ This module defines the data models for MCP server configurations
 used in the multi-layer agent architecture.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
+
+from tarsy.models.masking_config import MaskingConfig
 
 
 class MCPServerConfig(BaseModel):
@@ -41,6 +43,11 @@ class MCPServerConfig(BaseModel):
     instructions: str = Field(
         default="", 
         description="Embedded LLM instructions specific to this MCP server"
+    )
+    
+    data_masking: Optional[MaskingConfig] = Field(
+        default=None,
+        description="Optional data masking configuration for sensitive server data"
     )
     
     class Config:

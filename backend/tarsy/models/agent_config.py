@@ -6,8 +6,9 @@ loaded from YAML files. These models ensure configuration data integrity and pro
 clear validation errors for misconfigured agents.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, ConfigDict, model_validator
+from tarsy.models.masking_config import MaskingConfig
 
 
 class AgentConfigModel(BaseModel):
@@ -71,6 +72,10 @@ class MCPServerConfigModel(BaseModel):
     instructions: str = Field(
         default="",
         description="Server-specific LLM instructions describing capabilities and usage"
+    )
+    data_masking: Optional[MaskingConfig] = Field(
+        default=None,
+        description="Optional data masking configuration for sensitive server data"
     )
 
 

@@ -9,6 +9,7 @@ Tarsy-bot is an intelligent Site Reliability Engineering system that automates i
 This requirements document is a living document that evolves through [Enhancement Proposals (EPs)](enhancements/README.md). All significant changes to system requirements are documented through the EP process, ensuring traceable evolution and AI-friendly implementation.
 
 ### Recent Changes
+- **EP-0007 (IMPLEMENTED)**: Data Masking Service for Sensitive MCP Server Data - Added pattern-based masking service for secrets and credentials from MCP server responses, with built-in patterns for common secrets and configurable per-server masking rules
 - **EP-0006 (IMPLEMENTED)**: Configuration-Based Agents - Added YAML-based agent configuration system allowing deployment of new agents without code changes, supporting both traditional hardcoded agents and configuration-driven agents simultaneously
 - **EP-0005 (IMPLEMENTED)**: Flexible Alert Data Structure Support - Transformed rigid Kubernetes-specific alert model into flexible, agent-agnostic system supporting arbitrary JSON payloads with minimal validation
 - **EP-0004 (IMPLEMENTED)**: Dashboard UI for Alert History - Added standalone React dashboard for SRE operational monitoring with real-time WebSocket integration and historical alert analysis
@@ -349,6 +350,23 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
 - The system shall handle GitHub token authentication failures during runbook access
 - The system shall restrict MCP server access to authorized operations
 - The system shall implement secure communication channels
+
+### 5.2 Data Masking and Sensitive Information Protection
+
+**REQ-5.2.1: MCP Response Masking**
+- The system shall automatically mask sensitive data in all MCP server responses before LLM processing, logging, or storage
+- The system shall apply masking consistently across all MCP servers and agent types
+- The system shall use pattern-based detection for common secret types (kubernetes_secret, api_key, password, certificate, token)
+
+**REQ-5.2.2: Configurable Masking Rules**
+- The system shall support server-specific masking configurations through YAML configuration and built-in server definitions
+- The system shall support built-in pattern groups (basic, secrets, security, kubernetes, all) for common use cases
+- The system shall support custom regex patterns for domain-specific sensitive data detection
+
+**REQ-5.2.3: Fail-Safe Security Behavior**
+- The system shall implement fail-safe masking behavior that favors over-masking rather than under-masking
+- The system shall continue processing when masking encounters errors, applying comprehensive masking to prevent data leaks
+- The system shall validate custom regex patterns to prevent configuration errors
 
 ## 6. Reliability and Error Handling
 
