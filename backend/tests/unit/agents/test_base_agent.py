@@ -886,7 +886,22 @@ class TestBaseAgentIterativeWorkflow:
         )
         
         assert result == "Fallback analysis"
-        base_agent.analyze_alert.assert_called_once_with(sample_alert_data, "test runbook", {}, session_id="test-session-789")
+        
+        # Verify analyze_alert was called with error information instead of empty mcp_data
+        expected_mcp_data = {
+            "tool_selection_error": {
+                "error": "Tool selection failed",
+                "message": "MCP tool selection failed - the LLM response did not match the required format",
+                "required_format": {
+                    "description": "Each tool call must be a JSON object with these required fields:",
+                    "fields": ["server", "tool", "parameters", "reason"],
+                    "format": "JSON array of objects, each containing the four required fields above"
+                }
+            }
+        }
+        base_agent.analyze_alert.assert_called_once_with(
+            sample_alert_data, "test runbook", expected_mcp_data, session_id="test-session-789"
+        )
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -965,6 +980,36 @@ class TestBaseAgentIterativeWorkflow:
         
         assert "test-server" in mcp_data
         assert len(mcp_data["test-server"]) == 2  # Two tool results aggregated
+
+    @pytest.mark.unit 
+    @pytest.mark.asyncio
+    async def test_mcp_tool_selection_validation_error_as_tool_result(self, base_agent, sample_alert_data):
+        """Test that MCP tool selection validation errors are provided as tool results to the LLM."""
+        # Mock determine_mcp_tools to fail with validation error
+        validation_error = "Missing required field: reason"
+        base_agent.determine_mcp_tools = AsyncMock(side_effect=Exception(validation_error))
+        
+        # Mock analyze_alert to capture what mcp_data it receives
+        base_agent.analyze_alert = AsyncMock(return_value="Analysis with error context")
+        
+        # Call _iterative_analysis which should handle the error gracefully
+        result = await base_agent._iterative_analysis(
+            sample_alert_data, "test runbook", [], None, "test-session"
+        )
+        
+        # Verify the result
+        assert result == "Analysis with error context"
+        
+        # Verify analyze_alert was called with error information in mcp_data
+        base_agent.analyze_alert.assert_called_once()
+        call_args = base_agent.analyze_alert.call_args
+        
+        # Check that mcp_data contains the error information
+        mcp_data = call_args[0][2]  # Third positional argument (mcp_data)
+        assert "tool_selection_error" in mcp_data
+        assert mcp_data["tool_selection_error"]["error"] == validation_error
+        assert "required_format" in mcp_data["tool_selection_error"]
+        assert mcp_data["tool_selection_error"]["required_format"]["fields"] == ["server", "tool", "parameters", "reason"]
 
 
 @pytest.mark.unit
