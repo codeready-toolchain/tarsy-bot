@@ -504,9 +504,21 @@ class BaseAgent(ABC):
                 alert_data, runbook_content, {"tools": available_tools}, session_id=session_id
             )
         except Exception as e:
-            logger.error(f"Initial tool selection failed: {str(e)}")
-            # Fall back to analysis without tools
-            return await self.analyze_alert(alert_data, runbook_content, {}, session_id=session_id)
+            logger.info(f"Initial tool selection failed, providing error as tool result: {str(e)}")
+            # Instead of falling back to empty tools, provide the error as an MCP tool result
+            # This lets the LLM see what went wrong and work with it naturally
+            mcp_data = {
+                "tool_selection_error": {
+                    "error": str(e),
+                    "message": "MCP tool selection failed - the LLM response did not match the required format",
+                    "required_format": {
+                        "description": "Each tool call must be a JSON object with these required fields:",
+                        "fields": ["server", "tool", "parameters", "reason"],
+                        "format": "JSON array of objects, each containing the four required fields above"
+                    }
+                }
+            }
+            return await self.analyze_alert(alert_data, runbook_content, mcp_data, session_id=session_id)
         
         # Execute initial tools if any
         mcp_data = {}
