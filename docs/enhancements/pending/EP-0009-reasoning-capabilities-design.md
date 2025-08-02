@@ -2,7 +2,7 @@
 
 **Status:** Draft  
 **Created:** 2025-01-08  
-**Requirements:** `docs/enhancements/pending/EP-0009-thinking-capabilities-requirements.md`
+**Requirements:** `docs/enhancements/pending/EP-0009-reasoning-capabilities-requirements.md`
 
 ---
 
