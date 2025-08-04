@@ -27,8 +27,7 @@ make setup
 # - GITHUB_TOKEN (get from https://github.com/settings/tokens)
 
 # 3. Ensure Kubernetes/OpenShift access (REQUIRED)
-# See [K8s Access Requirements](#Kubernetes/OpenShift Access Requirements) section below for details
-
+# See [K8s Access Requirements](#kubernetesopenshift-access-requirements) section below for details
 # 4. Start all services  
 make dev
 ```
