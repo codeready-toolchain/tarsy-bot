@@ -27,7 +27,7 @@ make setup
 # - GITHUB_TOKEN (get from https://github.com/settings/tokens)
 
 # 3. Ensure Kubernetes/OpenShift access (REQUIRED)
-# See [K8s Access Requirements](#Kubernetes/OpenShift Access Requirements) section below for details
+# See [K8s Access Requirements](#k8s-access-reqs) section below for details
 
 # 4. Start all services  
 make dev
@@ -213,6 +213,7 @@ The LLM-driven approach with flexible data structures means diverse alert types 
 - An appropriate specialized agent is available or can be created
 - The MCP servers have relevant tools for the monitoring domain
 
+<a id="k8s-access-reqs"></a>
 ## Kubernetes/OpenShift Access Requirements
 
 TARSy-bot requires read-only access to a Kubernetes or OpenShift cluster to analyze and troubleshoot infrastructure issues. The system uses the **kubernetes-mcp-server** which connects to your cluster via kubeconfig.
