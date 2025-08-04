@@ -21,7 +21,15 @@ Inspired by the spirit of sci-fi AI, TARSy is your reliable SRE operations compa
 # 1. Initial setup (one-time only)
 make setup
 
-# 2. Start all services  
+# 2. Configure API keys (REQUIRED)
+# Edit backend/.env and set your API keys:
+# - GEMINI_API_KEY (get from https://aistudio.google.com/app/apikey)
+# - GITHUB_TOKEN (get from https://github.com/settings/tokens)
+
+# 3. Ensure Kubernetes/OpenShift access (REQUIRED)
+# See [K8s Access Requirements](#Kubernetes/OpenShift Access Requirements) section below for details
+
+# 4. Start all services  
 make dev
 ```
 
@@ -204,6 +212,73 @@ The LLM-driven approach with flexible data structures means diverse alert types 
 - A runbook exists for the alert type
 - An appropriate specialized agent is available or can be created
 - The MCP servers have relevant tools for the monitoring domain
+
+## Kubernetes/OpenShift Access Requirements
+
+TARSy-bot requires read-only access to a Kubernetes or OpenShift cluster to analyze and troubleshoot infrastructure issues. The system uses the **kubernetes-mcp-server** which connects to your cluster via kubeconfig.
+
+### 🔗 How TARSy Accesses Your Cluster
+
+TARSy-bot **does not use `oc` or `kubectl` commands directly**. Instead, it:
+
+1. **Uses Kubernetes MCP Server**: Runs `kubernetes-mcp-server@latest` via npm
+2. **Reads kubeconfig**: Authenticates using your existing kubeconfig file
+3. **Read-Only Operations**: Configured with `--read-only --disable-destructive` flags
+4. **No Modifications**: Cannot create, update, or delete cluster resources
+
+### ⚙️ Setup Instructions
+
+#### Option 1: Use Existing Session (Recommended)
+If you're already logged into your OpenShift/Kubernetes cluster:
+
+```bash
+# Verify your current access
+oc whoami
+oc cluster-info
+
+# TARSy-bot will automatically use your current kubeconfig
+# Default location: ~/.kube/config or $KUBECONFIG
+```
+
+#### Option 2: Custom Kubeconfig
+To use a specific kubeconfig file:
+
+```bash
+# Set in backend/.env
+KUBECONFIG=/path/to/your/kubeconfig
+
+# Or set environment variable
+export KUBECONFIG=/path/to/your/kubeconfig
+```
+
+### 🚨 Security Notes
+
+- **Read-Only**: TARSy-bot cannot modify any cluster resources
+- **No Destructive Operations**: Protected by `--disable-destructive` flag
+- **Credential Security**: Uses your existing authentication, no additional credentials stored
+- **Audit Trail**: All operations logged in TARSy-bot's history database
+- **Network Isolation**: Connects only through your configured kubeconfig endpoints
+
+### 🔧 Troubleshooting Cluster Access
+
+**Common Issues:**
+
+```bash
+# Check kubeconfig validity
+oc cluster-info
+
+# Verify TARSy-bot can access cluster
+# Check backend logs for kubernetes-mcp-server errors
+tail -f backend/logs/tarsy.log | grep kubernetes
+
+# Test kubernetes-mcp-server independently
+npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
+```
+
+**Permission Errors:**
+- Ensure your user/service account has at least `view` cluster role
+- Verify kubeconfig points to correct cluster
+- Check network connectivity to cluster API server
 
 ## API Endpoints
 
