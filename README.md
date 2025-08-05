@@ -1,5 +1,8 @@
 # TARSy-bot 🤖
 
+[![CI Pipeline](https://github.com/codeready-toolchain/tarsy-bot/workflows/CI%20Pipeline/badge.svg)](https://github.com/codeready-toolchain/tarsy-bot/actions)
+[![codecov](https://codecov.io/gh/codeready-toolchain/tarsy-bot/graph/badge.svg?token=VT3hVDcEMY)](https://codecov.io/gh/codeready-toolchain/tarsy-bot)
+
 An intelligent Site Reliability Engineering agent that automatically processes alerts, retrieves runbooks, and uses MCP (Model Context Protocol) servers to gather system information for comprehensive incident analysis.
 
 Inspired by the spirit of sci-fi AI, TARSy is your reliable SRE operations companion for SRE operations. 🚀
@@ -12,7 +15,18 @@ Inspired by the spirit of sci-fi AI, TARSy is your reliable SRE operations compa
 - **[docs/requirements.md](docs/requirements.md)**: Application requirements and specifications  
 - **[docs/design.md](docs/design.md)**: System design and architecture documentation
 
-> **New Users**: Run `make setup` to get started quickly! 🎯
+## Prerequisites
+
+Before running TARSy, ensure you have the following tools installed:
+
+- **Python 3.11+** - Core backend runtime
+- **Node.js 18+** - Frontend development and build tools  
+- **npm** - Node.js package manager (comes with Node.js)
+- **uv** - Modern Python package and project manager
+  - Install: `pip install uv`
+  - Alternative: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+> **Quick Check**: Run `make check-prereqs` to verify all prerequisites are installed.
 
 ## Quick Start
 
