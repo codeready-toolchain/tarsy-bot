@@ -48,7 +48,7 @@ sequenceDiagram
     participant M as Monitoring System
     participant T as Tarsy Orchestrator  
     participant A as Specialized Agent
-    participant R as Runbook Service
+    participant R as GitHub
     participant L as LLM (AI)
     participant MCP as MCP Tools
     participant D as Dashboard

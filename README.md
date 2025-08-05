@@ -77,6 +77,28 @@ Tarsy uses an AI-powered multi-layer architecture where specialized agents analy
 5. **Complete analysis** provided to engineers with actionable recommendations
 6. **Full audit trail** captured for monitoring and continuous improvement
 
+```mermaid
+sequenceDiagram
+    participant MonitoringSystem
+    participant Orchestrator
+    participant Agent
+    participant GitHub
+    participant AI
+    participant MCPTools
+    participant Dashboard
+    participant Engineer
+
+    MonitoringSystem->>Orchestrator: Send Alert
+    Orchestrator->>Agent: Assign Alert & Context
+    Agent->>GitHub: Download Runbook
+    loop Investigation Loop
+        Agent->>AI: Investigate with LLM
+        AI->>MCPTools: Query/Actuate as needed
+    end
+    Agent->>Dashboard: Send Analysis & Recommendations
+    Engineer->>Dashboard: Review & Take Action
+```
+
 ## Usage
 
 1. **Start All Services**: Run `make dev` to start backend, dashboard, and alert UI
