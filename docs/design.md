@@ -1,5 +1,7 @@
 # Tarsy-bot - Technical Design Document 🛠️
 
+> **🎯 For high-level concept overview**: See [Architecture Overview](architecture-overview.md)
+
 ## Table of Contents
 1. [System Overview](#system-overview)
 2. [Architecture Design](#architecture-design)
@@ -20,14 +22,18 @@
 This design document is a living document that evolves through [Enhancement Proposals (EPs)](enhancements/README.md). All significant architectural changes are documented through the EP process, ensuring traceable evolution and AI-friendly implementation.
 
 ### Recent Changes
-- **EP-0007 (IMPLEMENTED)**: Data Masking Service for Sensitive MCP Server Data - Added pattern-based masking service for secrets and credentials from MCP server responses, with built-in patterns for common secrets and configurable per-server masking rules
-- **EP-0006 (IMPLEMENTED)**: Configuration-Based Agents - Added YAML-based agent configuration system allowing deployment of new agents without code changes, supporting both traditional hardcoded agents and configuration-driven agents simultaneously
-- **EP-0005 (IMPLEMENTED)**: Flexible Alert Data Structure Support - Transformed rigid Kubernetes-specific alert model into flexible, agent-agnostic system supporting arbitrary JSON payloads with minimal validation, enhanced database with JSON indexing, and updated UI for dynamic alert data rendering
-- **EP-0004 (IMPLEMENTED)**: Dashboard UI for Alert History - Added standalone React dashboard for SRE operational monitoring with real-time WebSocket integration, historical analysis, and multiplexed WebSocket architecture
-- **EP-0003 (IMPLEMENTED)**: Alert Processing History Service - Added comprehensive audit trail capture and database persistence with REST API endpoints for historical data access
-- **EP-0002 (IMPLEMENTED)**: Multi-Layer Agent Architecture - Transformed monolithic alert processing into orchestrator + specialized agents architecture
+- **EP-0007 (IMPLEMENTED)**: Data Masking Service for Sensitive MCP Server Data - Added comprehensive pattern-based masking service for secrets and credentials from MCP server responses, with built-in patterns for common secrets (kubernetes_data_section, api_key, password, certificate, token) and configurable per-server masking rules with pattern groups
+- **EP-0006 (IMPLEMENTED)**: Configuration-Based Agents - Added YAML-based agent configuration system allowing deployment of new agents without code changes, supporting both traditional hardcoded agents and configuration-driven agents simultaneously via ConfigurableAgent class
+- **EP-0005 (IMPLEMENTED)**: Flexible Alert Data Structure Support - Transformed rigid Kubernetes-specific alert model into flexible, agent-agnostic system supporting arbitrary JSON payloads with minimal validation, enhanced database with JSON indexing for efficient querying, and updated UI for dynamic alert data rendering
+- **EP-0004 (IMPLEMENTED)**: Dashboard UI for Alert History - Added comprehensive standalone React 19.1.0 dashboard for SRE operational monitoring with real-time WebSocket integration, historical analysis, multiplexed WebSocket architecture with subscription management, and session-specific timeline visualization
+- **EP-0003 (IMPLEMENTED)**: Alert Processing History Service - Added comprehensive audit trail capture and database persistence with REST API endpoints for historical data access, including microsecond-precision timeline reconstruction and advanced filtering capabilities  
+- **EP-0002 (IMPLEMENTED)**: Multi-Layer Agent Architecture - Transformed monolithic alert processing into orchestrator + specialized agents architecture with BaseAgent abstract class, KubernetesAgent implementation, and integrated PromptBuilder system
 - This document was established as the baseline technical design
 - Future changes will be tracked through Enhancement Proposals in `docs/enhancements/`
+
+### Pending Enhancements
+- **EP-0009 (PENDING)**: Reasoning Capabilities - Advanced reasoning mechanisms for agent decision-making processes
+- **EP-0008 (PENDING)**: Agent Chains Pipeline Architecture - Pipeline-based agent orchestration for complex multi-step workflows
 
 For proposed architectural changes or new design patterns, see the [Enhancement Proposals directory](enhancements/README.md).
 
@@ -35,7 +41,9 @@ For proposed architectural changes or new design patterns, see the [Enhancement 
 
 ## System Overview
 
-Tarsy is a **distributed, event-driven system** designed to automate incident response through intelligent alert processing using a **multi-layer agent architecture**. The system implements an **iterative, multi-step analysis architecture** where an orchestrator layer delegates alerts to specialized agents that use Large Language Models (LLMs) to dynamically select and orchestrate Model Context Protocol (MCP) servers for comprehensive incident analysis.
+Tarsy is a **distributed, event-driven system** designed to automate incident response through intelligent alert processing using a **multi-layer agent architecture**. The system implements an **iterative, multi-step analysis architecture** where an orchestrator layer delegates alerts to specialized agents that use Large Language Models (LLMs) to dynamically select and orchestrate Model Context Protocol (MCP) servers for comprehensive incident analysis. The system includes comprehensive audit trail capture, real-time dashboard monitoring, and supports both hardcoded and configuration-driven agents.
+
+> **💡 For conceptual understanding**: See [Architecture Overview](architecture-overview.md) for a high-level introduction to Tarsy's concepts and benefits.
 
 ### Core Design Principles
 
@@ -54,21 +62,22 @@ Tarsy is a **distributed, event-driven system** designed to automate incident re
 ### Technology Stack
 
 **Backend:**
-- **Framework**: FastAPI (Python 3.11+) with asyncio for asynchronous processing
-- **Agent Architecture**: Abstract base class with inheritance-based specialization
-- **LLM Integration**: LangChain framework supporting multiple providers (OpenAI, Google Gemini, xAI Grok)
-- **MCP Integration**: Official MCP SDK with stdio transport, agent-specific server subsets
-- **Communication**: WebSocket for real-time updates with agent context, REST API for external integration
-- **Configuration**: Environment-based configuration with agent registry and MCP server registry
-- **Logging**: Structured logging with separate channels for orchestrator and agent components
-- **History Service**: SQLModel-based database persistence with comprehensive audit trail capture
-- **Database**: SQLite with PostgreSQL migration support, automatic schema creation and management
+- **Framework**: FastAPI (>=0.104.0, Python 3.11+) with asyncio for asynchronous processing
+- **Agent Architecture**: Abstract BaseAgent class with inheritance-based specialization and ConfigurableAgent for YAML-driven agents
+- **LLM Integration**: LangChain framework (>=0.3.0) supporting multiple providers (OpenAI >=0.2.0, Google Gemini >=2.0.0, xAI Grok >=0.2.0)
+- **MCP Integration**: Official MCP SDK (>=1.0.0) with stdio transport, agent-specific server subsets, and integrated data masking
+- **Communication**: WebSocket (>=12.0) for real-time updates with agent context, REST API for external integration
+- **Configuration**: Environment-based configuration with centralized builtin_config.py, agent registry and MCP server registry
+- **Database**: SQLModel (>=0.0.14) with SQLAlchemy (>=2.0.41) for audit trail persistence, SQLite with PostgreSQL migration support
+- **HTTP Client**: HTTPX (>=0.25.0) for external API integrations
+- **Additional**: Pydantic (>=2.5.0) for data validation, python-multipart for file uploads, markdown for documentation rendering
 
 **Dashboard UI (SRE Operational Monitoring):**
-- **Framework**: React 18.2.0 with TypeScript for standalone SRE dashboard
-- **UI Library**: Material-UI v5.15.0 with comprehensive Material Design components
-- **Communication**: Axios for HTTP requests, multiplexed WebSocket for real-time updates
-- **Features**: Active/historical alert monitoring, timeline visualization, filtering, virtual scrolling
+- **Framework**: React 19.1.0 with TypeScript for standalone SRE dashboard
+- **UI Library**: Material-UI v7.2.0 with comprehensive Material Design components, MUI X Date Pickers v8.9.0
+- **Communication**: Axios 1.11.0 for HTTP requests, native WebSocket with multiplexed subscription management
+- **Features**: Active/historical alert monitoring, session-specific timeline visualization, real-time filtering, advanced search
+- **Additional**: React Router DOM 7.7.1 for navigation, React Markdown 10.1.0 for content rendering, date-fns 4.1.0 for date handling
 
 **Alert Dev UI (Development/Testing Only):**
 - **Framework**: React with TypeScript
@@ -159,6 +168,8 @@ Tarsy is a **distributed, event-driven system** designed to automate incident re
 
 ### Component Interaction Diagram
 
+The following diagram shows the current implementation of component interactions in the Tarsy system:
+
 ```mermaid
 graph TD
     A[External Alert] --> B[API Gateway]
@@ -226,24 +237,23 @@ The main application layer provides HTTP API and WebSocket endpoints with agent-
 
 ```
 Core API Endpoints:
-POST /alerts              # Submit alert for processing (delegates to agents)
-GET /processing-status/{id}  # Check processing status (includes agent info)
-GET /alert-types          # Get supported alert types (from agent registry)
-GET /health               # Health check
-WebSocket /ws/{id}        # Real-time progress updates (agent-aware)
+GET /                              # Root health check endpoint
+GET /health                        # Comprehensive health check with service status
+POST /alerts                       # Submit alert for processing (with comprehensive validation)
+GET /processing-status/{alert_id}  # Check processing status (includes agent and MCP server info)
+GET /alert-types                   # Get supported alert types (from agent registry)
+WebSocket /ws/{alert_id}           # Real-time progress updates (agent-aware)
 
 History API Endpoints:
-GET /api/v1/history/sessions          # List alert processing sessions with filtering and pagination
-GET /api/v1/history/sessions/{id}     # Get detailed session information with chronological timeline
+GET /api/v1/history/sessions          # List alert processing sessions with advanced filtering and pagination
+GET /api/v1/history/sessions/{id}    # Get detailed session information with chronological timeline
 GET /api/v1/history/health           # History service health check
 
-Dashboard API Endpoints (EP-0004):
-GET /api/v1/history/metrics          # Dashboard overview metrics and statistics
-GET /api/v1/history/active-sessions  # Currently processing sessions with real-time status
-GET /api/v1/history/filter-options   # Dynamic filter options based on actual data
-GET /api/v1/history/sessions/{id}/export  # Export session data in JSON/CSV format
-GET /api/v1/history/search           # Multi-field session search functionality
-WebSocket /ws/dashboard/{user_id}    # Multiplexed WebSocket with subscription management
+Dashboard WebSocket:
+WebSocket /ws/dashboard/{user_id}     # Multiplexed WebSocket with subscription management
+
+Note: Dashboard-specific endpoints (metrics, active-sessions, etc.) mentioned in EP-0004 
+are currently handled through the general history endpoints with filtering.
 ```
 
 **Core Features:**
@@ -634,22 +644,38 @@ class WebSocketManager:
     def disconnect(self, websocket: WebSocket, alert_id: str)
     async def send_status_update(self, alert_id: str, status: ProcessingStatus)
     async def send_message(self, alert_id: str, message: dict)
+    async def connect_dashboard(self, websocket: WebSocket, user_id: str)
+    def disconnect_dashboard(self, user_id: str)
+    async def handle_dashboard_message(self, user_id: str, message: dict)
+    async def initialize_dashboard_broadcaster(self)
+    async def shutdown_dashboard_broadcaster(self)
     
-class DashboardWebSocketManager:
+class DashboardConnectionManager:
     def __init__(self)
-    async def connect(self, websocket: WebSocket, user_id: str)
-    async def subscribe(self, user_id: str, channel: str, filters: dict = None)
-    async def broadcast_dashboard_update(self, channel: str, data: dict)
+    async def connect_user(self, websocket: WebSocket, user_id: str)
+    async def disconnect_user(self, user_id: str)
+    async def send_to_user(self, user_id: str, data: dict)
+    async def broadcast_to_all(self, data: dict)
+    
+class SubscriptionManager:
+    def __init__(self)
+    def validate_channel(self, channel: str) -> tuple[bool, Optional[str]]
+    def subscribe_user(self, user_id: str, channel: str, filters: dict = None) -> bool
+    def unsubscribe_user(self, user_id: str, channel: str) -> bool
+    def get_user_subscriptions(self, user_id: str) -> set[str]
+    def get_channel_subscribers(self, channel: str) -> set[str]
 ```
 
 **Core Features:**
 - **Connection Management**: Per-alert WebSocket connection tracking and cleanup
-- **Dashboard Integration**: Multiplexed WebSocket endpoint with subscription management
+- **Dashboard Integration**: Multiplexed WebSocket endpoint (`/ws/dashboard/{user_id}`) with subscription management
 - **Status Broadcasting**: Send ProcessingStatus updates to all connected clients for an alert
-- **Subscription Management**: Channel-based message routing for dashboard updates
-- **Custom Messaging**: Support for custom message types beyond status updates
-- **Error Handling**: Automatic cleanup of broken connections
-- **DateTime Serialization**: Built-in support for datetime object serialization in JSON messages
+- **Subscription Management**: Channel-based message routing for dashboard updates with validation and filtering
+- **Session-Specific Channels**: Dynamic session channels for real-time timeline updates
+- **Custom Messaging**: Support for custom message types beyond status updates including subscription responses
+- **Error Handling**: Automatic cleanup of broken connections with graceful degradation
+- **Dashboard Broadcasting**: Integrated with DashboardBroadcaster for system-wide real-time updates
+- **Multi-User Support**: Support for multiple dashboard users with individual subscription management
 
 ### 13. History Service
 
@@ -921,16 +947,16 @@ sequenceDiagram
 
 **Alert Data Model:**
 ```
-FlexibleAlert Entity:
+Alert Entity:
 - alert_type: string              # Alert type for agent selection (required)
 - runbook: string                 # GitHub runbook URL (required)
-- data: object                    # Arbitrary JSON payload for monitoring data
-  - severity: Optional[string]    # Defaults to "warning" if not provided
-  - timestamp: Optional[number]   # Unix microseconds, auto-generated if not provided
-  - environment: Optional[string] # Defaults to "production" if not provided
-  - [any_field]: any              # Support for arbitrary monitoring system data
-                                  # Examples: cluster, namespace, pod, service_name,
-                                  # aws_region, argocd_app, prometheus_labels, etc.
+- data: object                    # Arbitrary JSON payload for monitoring data (default: {})
+- severity: Optional[string]      # Alert severity (defaults to "warning" if not provided)
+- timestamp: Optional[int]        # Alert timestamp in unix microseconds (defaults to current time)
+
+AlertProcessingData Entity:
+- alert_type: string              # Alert type for agent selection
+- alert_data: dict                # Complete normalized alert data including defaults and metadata
 ```
 
 **Processing Status Model:**
@@ -940,56 +966,66 @@ ProcessingStatus Entity:
 - status: string                  # queued, processing, completed, error
 - progress: integer               # 0-100 percentage (validated 0-100)
 - current_step: string            # Human-readable step description
-- current_agent: Optional[string] # Currently processing agent
+- current_agent: Optional[string] # Name of the agent currently processing
 - assigned_mcp_servers: Optional[List[string]] # MCP servers assigned to agent
 - result: Optional[string]        # Final analysis result
 - error: Optional[string]         # Error message if failed
-- timestamp: datetime             # Auto-generated timestamp
-- session_id: Optional[string]    # History session ID for audit trail access
+- timestamp: datetime             # Auto-generated timestamp (with JSON encoder)
+- session_id: Optional[string]    # NOTE: Not currently in implementation, tracked in history separately
 ```
 
 **History Data Models:**
 ```
 AlertSession Entity:
-- session_id: string (primary key)
-- alert_id: string
-- alert_data: object              # Complete alert information
-- agent_type: string              # Processing agent type
-- alert_type: Optional[string]    # Alert type for filtering
-- status: string                  # pending, in_progress, completed, failed
-- started_at: datetime            # Session start timestamp
-- completed_at: Optional[datetime] # Session completion timestamp
-- error_message: Optional[string] # Error message if failed
-- final_analysis: Optional[string] # Final formatted analysis result if completed successfully
-- session_metadata: Optional[object] # Additional context
+- session_id: string (primary key, UUID)      # Unique identifier for alert processing session
+- alert_id: string (unique, indexed)          # External alert identifier from alert system
+- alert_data: dict (JSON column)              # Original alert payload and context data
+- agent_type: string                          # Type of processing agent (e.g., 'kubernetes', 'base')
+- alert_type: Optional[string]                # Alert type for filtering (e.g., 'NamespaceTerminating')
+- status: string                              # Current status (pending, in_progress, completed, failed)
+- started_at_us: int (indexed)                # Session start timestamp (microseconds since epoch UTC)
+- completed_at_us: Optional[int]              # Session completion timestamp (microseconds since epoch UTC)
+- error_message: Optional[string]             # Error message if processing failed
+- final_analysis: Optional[string]            # Final formatted analysis result if completed successfully
+- session_metadata: Optional[dict] (JSON)    # Additional context and metadata
+- llm_interactions: list[LLMInteraction]      # Related LLM interactions (cascade delete)
+- mcp_communications: list[MCPCommunication]  # Related MCP communications (cascade delete)
+
+JSON Indexes (for efficient querying):
+- ix_alert_data_gin: GIN index on alert_data (PostgreSQL)
+- ix_alert_data_severity: Index on alert_data->>'severity'
+- ix_alert_data_environment: Index on alert_data->>'environment'  
+- ix_alert_data_cluster: Index on alert_data->>'cluster'
 
 LLMInteraction Entity:
-- interaction_id: string (primary key)
-- session_id: string (foreign key)
-- timestamp: datetime             # Microsecond precision for chronological ordering
-- prompt_text: string             # Complete prompt sent to LLM
-- response_text: string           # Complete response from LLM
-- tool_calls: Optional[object]    # Tool calls made during interaction
-- tool_results: Optional[object]  # Results from tool calls
-- model_used: string              # LLM model identifier
-- token_usage: Optional[object]   # Token usage statistics
-- duration_ms: integer            # Interaction duration
-- step_description: string        # Human-readable step description
+- interaction_id: string (primary key, UUID)  # Unique identifier for LLM interaction
+- session_id: string (foreign key)            # Reference to parent alert session
+- timestamp_us: int (indexed)                 # Interaction timestamp (microseconds since epoch UTC)
+- prompt_text: string                         # Full prompt text sent to LLM
+- response_text: string                       # Complete response text from LLM
+- tool_calls: Optional[dict] (JSON)           # Tool calls made during interaction
+- tool_results: Optional[dict] (JSON)         # Results returned from tool calls
+- model_used: string                          # LLM model identifier
+- token_usage: Optional[dict] (JSON)          # Token usage statistics (input/output counts)
+- duration_ms: int                            # Interaction duration in milliseconds
+- step_description: string                    # Human-readable step description
+- session: AlertSession                       # Relationship back to session
 
 MCPCommunication Entity:
-- communication_id: string (primary key)
-- session_id: string (foreign key)
-- timestamp: datetime             # Microsecond precision for chronological ordering
-- server_name: string             # MCP server identifier
-- communication_type: string      # tool_list, tool_call, result
-- tool_name: Optional[string]     # Tool name for tool calls
-- tool_arguments: Optional[object] # Tool call arguments
-- tool_result: Optional[object]   # Tool call result
-- available_tools: Optional[object] # Available tools for tool_list
-- duration_ms: integer            # Communication duration
-- success: boolean                # Success/failure status
-- error_message: Optional[string] # Error message if failed
-- step_description: string        # Human-readable step description
+- communication_id: string (primary key, UUID) # Unique identifier for MCP communication
+- session_id: string (foreign key)             # Reference to parent alert session
+- timestamp_us: int (indexed)                  # Communication timestamp (microseconds since epoch UTC)
+- server_name: string                          # MCP server identifier (e.g., 'kubernetes-mcp')
+- communication_type: string                   # Type of communication (tool_list, tool_call, result)
+- tool_name: Optional[string]                  # Name of tool being called (for tool_call type)
+- tool_arguments: Optional[dict] (JSON)        # Arguments passed to tool call
+- tool_result: Optional[dict] (JSON)           # Result returned from tool call
+- available_tools: Optional[dict] (JSON)       # List of available tools (for tool_list type)
+- duration_ms: int                             # Communication duration in milliseconds
+- success: boolean                             # Whether communication was successful
+- error_message: Optional[string]              # Error message if communication failed
+- step_description: string                     # Human-readable step description
+- session: AlertSession                        # Relationship back to session
 ```
 
 **Agent Processing Context:**
@@ -1079,38 +1115,85 @@ The GitHub integration remains the same but now serves runbook content to specia
 
 ---
 
-## Alert Dev UI Development Interface
+## Dashboard UI - SRE Operational Monitoring
 
-The alert dev UI is enhanced to display agent-specific information while maintaining its role as a **React-based development and testing interface** for system validation and demonstration.
+The Dashboard UI is a comprehensive **standalone React 19.1.0 application** designed for SRE operational monitoring with real-time capabilities.
 
 ### Architecture Overview
 
 ```
-alert-dev-ui/ (Enhanced)
+dashboard/ (Current Implementation)
 ├── src/
 │   ├── components/
-│   │   ├── AlertForm.tsx       # Alert submission form (unchanged)
-│   │   ├── ProcessingStatus.tsx # Real-time progress with agent info (ENHANCED)
-│   │   └── ResultDisplay.tsx    # Analysis results with agent details (ENHANCED)
+│   │   ├── DashboardView.tsx          # Main dashboard with active/historical panels
+│   │   ├── ActiveAlertsPanel.tsx      # Real-time active alerts monitoring
+│   │   ├── HistoricalAlertsList.tsx   # Historical alerts with advanced filtering
+│   │   ├── SessionDetailPage.tsx      # Detailed session timeline visualization
+│   │   ├── TimelineVisualization.tsx  # Interactive chronological timeline
+│   │   ├── FilterPanel.tsx            # Advanced filtering interface
+│   │   ├── PaginationControls.tsx     # Efficient pagination for large datasets
+│   │   └── StatusBadge.tsx            # Session status indicators
 │   ├── services/
-│   │   ├── api.ts              # HTTP API client (unchanged)
-│   │   └── websocket.ts        # WebSocket client (unchanged)
+│   │   ├── api.ts                     # HTTP API client with filtering support
+│   │   └── websocket.ts               # Multiplexed WebSocket with subscription management
 │   ├── types/
-│   │   └── index.ts            # TypeScript type definitions (ENHANCED)
-│   └── App.tsx                 # Main application component (unchanged)
+│   │   └── index.ts                   # TypeScript definitions for dashboard data
+│   └── utils/
+│       ├── search.ts                  # Multi-field search functionality
+│       ├── filterPersistence.ts       # Filter state persistence
+│       └── timestamp.ts               # Timestamp formatting utilities
+```
+
+### Core Features
+
+1. **Real-time Monitoring**: Live view of active alert processing with progress indicators and agent information
+2. **Historical Analysis**: Comprehensive filtering of completed/failed sessions with advanced search
+3. **Timeline Visualization**: Interactive chronological view of complete processing workflows
+4. **Multiplexed WebSocket**: Efficient real-time updates with subscription-based architecture
+5. **Performance Optimized**: Advanced pagination and virtual scrolling for large datasets
+6. **Session Detail Views**: Complete audit trail with chronological interaction timeline
+7. **Advanced Filtering**: Multi-field filtering with persistent state management
+8. **Responsive Design**: Material-UI v7.2.0 components with modern design system
+
+### WebSocket Integration
+
+- **Connection Management**: Automatic reconnection with exponential backoff
+- **Subscription Channels**: `dashboard_updates`, `system_health`, and session-specific channels
+- **Message Routing**: Intelligent message routing based on session context
+- **Error Handling**: Graceful degradation with user feedback
+
+## Alert Dev UI - Development Interface
+
+The alert dev UI maintains its role as a **React-based development and testing interface** for system validation and demonstration.
+
+### Architecture Overview
+
+```
+alert-dev-ui/ 
+├── src/
+│   ├── components/
+│   │   ├── AlertForm.tsx       # Alert submission form with agent-type selection
+│   │   ├── ProcessingStatus.tsx # Real-time progress with agent info
+│   │   └── ResultDisplay.tsx    # Analysis results with agent details
+│   ├── services/
+│   │   ├── api.ts              # HTTP API client
+│   │   └── websocket.ts        # WebSocket client for real-time updates
+│   ├── types/
+│   │   └── index.ts            # TypeScript type definitions
+│   └── App.tsx                 # Main application component
 ```
 
 ### Enhanced Features
 
-1. **Alert Submission Form**: Pre-filled form with validation (no changes required)
-2. **Agent-Aware Progress Tracking**: WebSocket updates now include current processing agent
+1. **Alert Submission Form**: Pre-filled form with validation and agent-type dropdown
+2. **Agent-Aware Progress Tracking**: WebSocket updates include current processing agent and MCP servers
 3. **Enhanced Result Display**: Shows which agent processed the alert and agent-specific details
 4. **Agent Error Handling**: User-friendly error messages for agent selection failures
-5. **Responsive Design**: Material-UI components (unchanged)
+5. **Responsive Design**: Material-UI components with modern interface
 
 ### Agent-Specific UI Elements
 
-- **Processing Status**: "Processing with Kubernetes Agent - Iteration 3/10"
+- **Processing Status**: "Processing with KubernetesAgent - Iteration 3/10"
 - **Result Headers**: "Analysis completed by KubernetesAgent"
 - **Error Messages**: "No specialized agent available for alert type 'Unknown Alert'"
 - **Tool Information**: Shows which MCP servers were used by the agent
@@ -1424,6 +1507,57 @@ Configuration-Based Agent Alert Types:
 - Agent-specific tool subsets optimize LLM decision making
 - Domain expertise through agent specialization
 - Configuration-driven extensibility for both built-in and custom components
+
+## Backend Project Structure
+
+The backend follows a modular architecture with clear separation of concerns:
+
+```
+backend/tarsy/
+├── agents/                 # Agent implementation layer
+│   ├── base_agent.py      # Abstract base class with common processing logic
+│   ├── kubernetes_agent.py# Kubernetes-specialized agent implementation
+│   ├── configurable_agent.py # YAML configuration-driven agent
+│   └── prompt_builder.py  # LLM prompt composition system
+├── controllers/            # API layer
+│   └── history_controller.py # REST endpoints for historical data
+├── database/              # Data persistence layer
+│   └── init_db.py         # Database initialization and schema management
+├── hooks/                 # Event system
+│   ├── base_hooks.py      # Hook system foundation
+│   ├── history_hooks.py   # Audit trail capture hooks
+│   └── dashboard_hooks.py # Real-time dashboard update hooks
+├── models/                # Data models and schemas
+│   ├── alert.py           # Alert data structures
+│   ├── history.py         # Audit trail data models (SQLModel)
+│   ├── api_models.py      # REST API request/response models
+│   ├── agent_config.py    # Agent configuration models
+│   ├── mcp_config.py      # MCP server configuration models
+│   └── websocket_models.py# WebSocket communication models
+├── repositories/          # Data access layer
+│   ├── base_repository.py # Repository pattern foundation
+│   └── history_repository.py # Database operations for audit trail
+├── services/              # Business logic layer
+│   ├── alert_service.py   # Main orchestration service
+│   ├── agent_factory.py   # Agent instantiation with dependency injection
+│   ├── agent_registry.py  # Agent type mapping and discovery
+│   ├── history_service.py # Audit trail management
+│   ├── mcp_server_registry.py # MCP server configuration management
+│   ├── data_masking_service.py # Sensitive data protection
+│   ├── websocket_manager.py # Real-time communication
+│   └── dashboard_*        # Dashboard-specific services
+├── integrations/          # External service integrations
+│   ├── llm/client.py      # Multi-provider LLM client
+│   └── mcp/client.py      # MCP server communication
+├── config/                # Configuration management
+│   ├── settings.py        # Application settings with environment variables
+│   ├── agent_config.py    # Agent configuration loading and validation
+│   └── builtin_config.py  # Centralized built-in agent and server definitions
+└── utils/                 # Utility functions
+    ├── logger.py          # Structured logging system
+    ├── template_resolver.py # Environment variable template substitution
+    └── timestamp.py       # Unix timestamp utilities
+```
 
 ---
 

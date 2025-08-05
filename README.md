@@ -7,9 +7,8 @@ Inspired by the spirit of sci-fi AI, TARSy is your reliable SRE operations compa
 ## Documentation
 
 - **[README.md](README.md)**: This file - project overview and quick start
+- **[docs/architecture-overview.md](docs/architecture-overview.md)**: High-level architecture concepts and design principles
 - **[Makefile](Makefile)**: Development workflow automation (run this first!)
-- **[DEPLOYMENT.md](DEPLOYMENT.md)**: Advanced deployment, production setup, and development
-- **[backend/DEVELOPMENT.md](backend/DEVELOPMENT.md)**: Development setup guide and testing workflow
 - **[docs/requirements.md](docs/requirements.md)**: Application requirements and specifications  
 - **[docs/design.md](docs/design.md)**: System design and architecture documentation
 
@@ -40,151 +39,29 @@ make dev
 
 **Stop all services:** `make stop`
 
-> **Note**: Edit `backend/.env` with your API keys before starting services. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
-
 ## Key Features
 
-### 🛠️ Configuration-Based Agents (EP-0006)
-Deploy new agents without code changes:
-- **YAML Configuration**: Define agents and MCP servers in simple YAML files
-- **Template Variables**: Use `${VAR}` syntax for environment-specific values with built-in defaults
-- **No Code Changes**: Add new agent types through configuration alone
-- **Full Compatibility**: Traditional hardcoded agents and configured agents work simultaneously
-- **Automatic Registry**: Agent configurations auto-populate alert type mappings
-- **Mixed MCP Access**: Configured agents can use both built-in and configured MCP servers
-- **Secure Configuration**: Keep sensitive values in environment variables, not config files
-
-### 🔧 Flexible Alert Data Structure (EP-0005)
-Support for diverse monitoring sources beyond Kubernetes:
-- **Agent-Agnostic Design**: Accept arbitrary JSON payloads from any monitoring system
-- **Minimal Validation**: Only alert_type and runbook URL required, everything else flexible
-- **LLM-First Processing**: Agents receive complete JSON payloads for intelligent interpretation
-- **Dynamic UI Rendering**: Dashboard and dev UI dynamically display any alert data fields
-- **Enhanced Database**: JSON indexing for optimized queries on flexible data structures
-
-### 🧠 Multi-Layer Agent Architecture (EP-0002)
-The system implements a sophisticated multi-layer architecture:
-- **Orchestrator Layer**: Routes alerts to specialized agents based on alert type
-- **Specialized Agents**: Domain-specific agents (KubernetesAgent) with focused MCP server subsets
-- **Intelligent Tool Selection**: LLM-driven selection of appropriate MCP tools from agent's assigned servers
-- **Inheritance-Based Design**: Common processing logic shared across all specialized agents
-
-### 📊 Comprehensive Audit Trail (EP-0003)
-Complete visibility into alert processing workflows:
-- **Session Tracking**: Persistent storage of all alert processing sessions with lifecycle management
-- **Interaction Logging**: Automatic capture of all LLM interactions and MCP communications
-- **Chronological Timeline**: Microsecond-precision reconstruction of complete processing workflows
-- **Advanced Querying**: REST API with filtering, pagination, and complex query support
-- **Dashboard Ready**: Foundation for SRE monitoring dashboards with comprehensive historical data
-
-### 🖥️ SRE Dashboard (EP-0004)
-Standalone React dashboard for operational monitoring:
-- **Real-time Monitoring**: Live view of active alert processing with progress indicators
-- **Historical Analysis**: Comprehensive filtering of alert sessions
-- **Timeline Visualization**: Interactive chronological view of complete processing workflows
-- **Multiplexed WebSocket**: Efficient real-time updates with subscription-based architecture
-- **Performance Optimized**: Advanced pagination for large datasets
+- **🛠️ Configuration-Based Agents**: Deploy new agents via YAML configuration without code changes
+- **🔧 Flexible Alert Processing**: Accept arbitrary JSON payloads from any monitoring system  
+- **🧠 Multi-Layer Agent Architecture**: Specialized agents with domain-specific tools and AI reasoning
+- **📊 Comprehensive Audit Trail**: Complete visibility into alert processing workflows with timeline reconstruction
+- **🖥️ SRE Dashboard**: Real-time monitoring and historical analysis with interactive timeline visualization
+- **🔒 Data Masking**: Automatic protection of sensitive data in logs and responses
 
 ## Architecture
 
-Tarsy implements a modern, multi-layer architecture:
+Tarsy uses an AI-powered multi-layer architecture where specialized agents analyze alerts using domain-specific tools and provide expert recommendations to engineers.
 
-- **Multi-Layer Backend**: FastAPI-based service with orchestrator and specialized agent layers
-- **Flexible Alert Processing**: Agent-agnostic system supporting arbitrary JSON payloads from diverse monitoring sources
-- **Agent Specialization**: Domain-specific agents (KubernetesAgent) with focused MCP server subsets
-- **History Service**: Comprehensive audit trail capture with SQLModel database persistence
-- **SRE Dashboard**: Standalone React dashboard for operational monitoring with real-time WebSocket integration
-- **Alert Dev UI**: React TypeScript development interface for testing and demonstration
-- **MCP Integration**: Official `mcp` library with agent-specific server assignments and hook context
-- **LLM Support**: Unified LLM client supporting multiple providers (OpenAI, Google, xAI) with automatic interaction logging
-
-## Features
-
-### 🤖 Core Processing
-- **Multi-Layer Agent Architecture**: Orchestrator delegates to specialized agents based on alert type
-- **Flexible Alert Ingestion**: Accept arbitrary JSON payloads from any monitoring system with minimal validation
-- **LLM-First Processing**: Agents receive complete alert data for intelligent interpretation without rigid field extraction
-- **Intelligent Tool Selection**: Agents use LLM to select appropriate tools from their assigned MCP server subset
-- **Runbook Integration**: Automatic GitHub runbook download and distribution to specialized agents
-- **Agent Specialization**: Domain-specific agents (KubernetesAgent) with focused capabilities
-
-### 📈 History & Monitoring
-- **Comprehensive Audit Trail**: Persistent capture of all alert processing workflows
-- **SRE Dashboard**: Standalone React dashboard with real-time monitoring and historical analysis
-- **Timeline Visualization**: Interactive chronological view with LLM interactions and MCP communications
-- **Advanced Query API**: REST endpoints with filtering, pagination, and complex queries
-- **Multiplexed WebSocket**: Efficient real-time updates with subscription-based architecture
-- **Performance Optimized**: Virtual scrolling for 1000+ sessions with responsive UI
-
-### ⚡ Technical Features
-- **Multi-LLM Support**: Configurable providers (OpenAI, Google, xAI) with unified client interface
-- **Real-time Updates**: WebSocket-based progress tracking with agent identification
-- **Database Flexibility**: SQLite with PostgreSQL migration support
-- **Extensible Design**: Configuration-driven addition of new agents and MCP servers
-- **Graceful Degradation**: Robust error handling with service-level fault tolerance
+> **📖 For high-level architecture concepts**: See [Architecture Overview](docs/architecture-overview.md)
 
 ## How It Works
 
-### 🔄 Multi-Layer Processing Pipeline
-1. **Alert Received**: System receives an alert (e.g., "Namespace stuck in Terminating")
-2. **Agent Selection**: Orchestrator uses agent registry to select appropriate specialized agent (KubernetesAgent)
-3. **History Session Created**: System creates persistent session for complete audit trail
-4. **Runbook Downloaded**: Fetches the relevant runbook from GitHub and provides to selected agent
-5. **Agent Initialization**: Agent configures with its assigned MCP server subset (kubernetes-server)
-6. **Iterative Analysis**: Agent uses LLM to intelligently select and call tools from its server subset
-7. **Comprehensive Logging**: All LLM interactions and MCP communications automatically captured
-8. **Real-time Updates**: Dashboard receives live updates via multiplexed WebSocket with subscription channels
-9. **Final Analysis**: Agent provides specialized domain analysis with complete processing history
-
-### 📝 Audit Trail Capture
-- **Automatic Logging**: HookContext system transparently captures all interactions
-- **Microsecond Precision**: Exact chronological ordering of all processing steps
-- **Complete Visibility**: Full audit trail available for debugging and monitoring
-- **API Access**: Historical data accessible via REST endpoints for dashboard integration
-
-## Project Structure
-
-```
-tarsy-bot/
-├── backend/                # FastAPI backend with multi-layer agent architecture
-│   ├── tarsy/
-│   │   ├── agents/         # Specialized agent classes (KubernetesAgent, ConfigurableAgent, BaseAgent)
-│   │   ├── controllers/    # API controllers and REST endpoints
-│   │   ├── database/       # Database initialization and schema management
-│   │   ├── hooks/          # Event hooks for automatic interaction capture
-│   │   ├── models/         # Data models (Alert, History, API schemas, Agent configs)
-│   │   ├── repositories/   # Database access layer with SQLModel
-│   │   ├── services/       # Business logic (AlertService, HistoryService, AgentRegistry)
-│   │   ├── integrations/   # External integrations (LLM providers, MCP servers)
-│   │   ├── config/         # Configuration management (Settings, Agent config loading)
-│   │   └── utils/          # Utility functions and logging
-│   ├── tests/              # Comprehensive test suite (unit, integration, e2e)
-│   ├── pyproject.toml      # Python dependencies and project configuration
-│   └── env.template        # Environment variables template
-├── dashboard/              # React TypeScript SRE dashboard
-│   ├── src/
-│   │   ├── components/     # Dashboard components (ActiveAlertsPanel, SessionDetailPage, etc.)
-│   │   ├── services/       # API clients and WebSocket managers
-│   │   ├── hooks/          # Custom React hooks for state management
-│   │   └── types/          # TypeScript type definitions
-│   └── package.json        # Node.js dependencies
-├── alert-dev-ui/           # React TypeScript development interface
-│   ├── src/
-│   │   ├── components/     # React components (AlertForm, ProcessingStatus, ResultDisplay)
-│   │   ├── services/       # API and WebSocket clients
-│   │   └── types/          # TypeScript type definitions
-│   └── package.json        # Node.js dependencies
-├── docs/                   # Comprehensive documentation
-│   ├── requirements.md     # Application requirements and specifications
-│   ├── design.md           # Technical design and architecture documentation
-│   └── enhancements/       # Enhancement proposal system
-│       ├── implemented/    # Completed EPs (EP-0002 Multi-Layer Agents, EP-0003 History Service)
-│       ├── pending/        # Pending enhancement proposals
-│       └── templates/      # EP document templates
-├── Makefile                 # Development workflow automation
-├── DEPLOYMENT.md           # Production deployment guide
-└── docker-compose.yml      # Docker development environment
-```
+1. **Alert arrives** from monitoring systems with flexible JSON payload
+2. **Orchestrator selects** appropriate specialized agent based on alert type  
+3. **Runbook downloaded** automatically from GitHub for agent guidance
+4. **Agent investigates** using AI to select and execute domain-specific tools
+5. **Complete analysis** provided to engineers with actionable recommendations
+6. **Full audit trail** captured for monitoring and continuous improvement
 
 ## Usage
 
@@ -216,13 +93,13 @@ The LLM-driven approach with flexible data structures means diverse alert types 
 <a id="k8s-access-reqs"></a>
 ## Kubernetes/OpenShift Access Requirements
 
-TARSy-bot requires read-only access to a Kubernetes or OpenShift cluster to analyze and troubleshoot infrastructure issues. The system uses the **kubernetes-mcp-server** which connects to your cluster via kubeconfig.
+TARSy requires read-only access to a Kubernetes or OpenShift cluster to analyze and troubleshoot Kubernetes infrastructure issues. The system uses the [**kubernetes-mcp-server**](https://github.com/containers/kubernetes-mcp-server), which connects to your cluster via kubeconfig.
 
 ### 🔗 How TARSy Accesses Your Cluster
 
-TARSy-bot **does not use `oc` or `kubectl` commands directly**. Instead, it:
+TARSy **does not use `oc` or `kubectl` commands directly**. Instead, it:
 
-1. **Uses Kubernetes MCP Server**: Runs `kubernetes-mcp-server@latest` via npm
+1. **Uses [Kubernetes MCP Server](https://github.com/containers/kubernetes-mcp-server)**: Runs `kubernetes-mcp-server@latest` via npm
 2. **Reads kubeconfig**: Authenticates using your existing kubeconfig file
 3. **Read-Only Operations**: Configured with `--read-only --disable-destructive` flags
 4. **No Modifications**: Cannot create, update, or delete cluster resources
@@ -252,14 +129,6 @@ KUBECONFIG=/path/to/your/kubeconfig
 export KUBECONFIG=/path/to/your/kubeconfig
 ```
 
-### 🚨 Security Notes
-
-- **Read-Only**: TARSy-bot cannot modify any cluster resources
-- **No Destructive Operations**: Protected by `--disable-destructive` flag
-- **Credential Security**: Uses your existing authentication, no additional credentials stored
-- **Audit Trail**: All operations logged in TARSy-bot's history database
-- **Network Isolation**: Connects only through your configured kubeconfig endpoints
-
 ### 🔧 Troubleshooting Cluster Access
 
 **Common Issues:**
@@ -268,7 +137,7 @@ export KUBECONFIG=/path/to/your/kubeconfig
 # Check kubeconfig validity
 oc cluster-info
 
-# Verify TARSy-bot can access cluster
+# Verify TARSy can access cluster
 # Check backend logs for kubernetes-mcp-server errors
 tail -f backend/logs/tarsy.log | grep kubernetes
 
@@ -300,24 +169,18 @@ npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
 
 ### Adding New Components
 
-- **Alert Types**: Add to `supported_alerts` in `config/settings.py` and create corresponding runbooks, or use configuration-based agents via `config/agents.yaml`
+- **Alert Types**: Define any alert type in `config/agents.yaml` - no hardcoding required, just create corresponding runbooks
 - **MCP Servers**: Update `mcp_servers` configuration in `settings.py` or define in `config/agents.yaml`
 - **Agents**: Create traditional hardcoded agent classes extending BaseAgent, or define configuration-based agents in `config/agents.yaml`
-- **LLM Providers**: See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions
+- **LLM Providers**: Add new providers by extending the LLM client configuration
+
+> **📖 For detailed extensibility examples**: See [Extensibility section](docs/architecture-overview.md#extensibility) in the Architecture Overview
 
 ### Running Tests
 
 ```bash
-# Install test dependencies and run integration tests
-cd backend
+# Run back-end and front-end (dashboard) tests
 make test
 ```
 
 The test suite includes comprehensive end-to-end integration tests covering the complete alert processing pipeline, agent specialization, error handling, and performance scenarios with full mocking of external services.
-
-### Architecture Documents
-
-- [docs/requirements.md](docs/requirements.md): Application requirements and specifications
-- [docs/design.md](docs/design.md): System design and architecture documentation
-- [DEPLOYMENT.md](DEPLOYMENT.md) - Production deployment and advanced configuration
-```
