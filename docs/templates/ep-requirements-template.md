@@ -84,25 +84,6 @@
 
 ---
 
-## Acceptance Criteria
-
-### Functional Acceptance
-- [ ] [Specific testable criterion for core functionality]
-- [ ] [Specific testable criterion for user interface]
-- [ ] [Specific testable criterion for integration points]
-
-### Performance Acceptance
-- [ ] [Response time is acceptable for typical user workflows]
-- [ ] [System performs well under expected usage patterns]  
-- [ ] [Resource usage is reasonable and sustainable]
-
-### Security Acceptance
-- [ ] [Security validation criterion]
-- [ ] [Data protection validation criterion]
-- [ ] [Access control validation criterion]
-
----
-
 ## AI Notes
 
 ### Key Information for Design Phase
