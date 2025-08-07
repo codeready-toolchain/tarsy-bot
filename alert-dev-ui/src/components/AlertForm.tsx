@@ -61,13 +61,13 @@ const fieldPresets = [
 const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
   // Required fields
   const [alertType, setAlertType] = useState('kubernetes');
-  const [runbook, setRunbook] = useState('https://github.com/alexeykazakov/runbooks/blob/master/namespace-terminating.md');
+  const [runbook, setRunbook] = useState('https://github.com/alexeykazakov/runbooks/blob/master/namespace-terminating-v2.md');
   
   // Dynamic key-value pairs
   const [keyValuePairs, setKeyValuePairs] = useState<KeyValuePair[]>([
     { id: generateId(), key: 'severity', value: 'critical' },
     { id: generateId(), key: 'environment', value: 'production' },
-    { id: generateId(), key: 'cluster', value: 'https://api.or4jv-9yh6f-vmu.j1ae.p3.openshiftapps.com:443' },
+    { id: generateId(), key: 'cluster', value: 'https://api.e8i4w-m4zix-zr7.rrcb.p3.openshiftapps.com:443' },
     { id: generateId(), key: 'namespace', value: 'superman-dev' },
     { id: generateId(), key: 'message', value: 'Namespace is stuck in terminating state' }
   ]);

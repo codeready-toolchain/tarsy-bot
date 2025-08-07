@@ -810,7 +810,7 @@ You are in the **THINK** phase of classic ReAct reasoning. Think about the curre
 
 {available_actions}
 
-Use the following format:
+MANDATORY FORMAT - Follow this EXACT structure:
 
 Question: the input question you must answer
 Thought: you should always think about what to do
@@ -821,11 +821,32 @@ Observation: the result of the action
 Thought: I now know the final answer
 Final Answer: the final answer to the original input question
 
-IMPORTANT: Only provide the next step. Either:
-1. Continue investigating with "Thought: [reasoning] Action: [action] Action Input: [input]"  
-2. OR conclude with "Thought: I now know the final answer Final Answer: [your analysis]"
+CRITICAL INSTRUCTIONS:
+1. ALWAYS use colons after "Thought:", "Action:", and "Action Input:"
+2. For Action Input, provide ONLY parameter values (no YAML, no ```code blocks```, no formatting)
+3. STOP immediately after your "Action Input:" line
+4. NEVER write "Observation:" - the system provides that
 
-DO NOT write fake Observations - the system provides real observations after executing actions.
+EXAMPLE OF CORRECT FORMAT:
+Thought: I need to check the namespace status first.
+Action: kubernetes-server.resources_get
+Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
+
+EXAMPLE OF INCORRECT FORMAT (DO NOT DO THIS):
+Thought
+I need to check...
+Action: kubernetes-server.resources_get
+Action Input:
+```yaml
+apiVersion: v1
+kind: Namespace
+name: superman-dev
+```
+Observation: (fake observation)
+
+RESPONSE OPTIONS:
+1. Continue investigating: "Thought: [reasoning] Action: [tool] Action Input: [params]"
+2. OR conclude: "Thought: I now know the final answer Final Answer: [analysis]"
 
 Begin!
 
@@ -918,12 +939,15 @@ Be thorough in your investigation before providing the final answer."""
                 # Continue reading to capture multi-line final answer
                 
             # Only process first occurrence of each section to avoid fake content
-            elif line.startswith('Thought:') and 'thought' not in found_sections:
+            elif (line.startswith('Thought:') or line == 'Thought') and 'thought' not in found_sections:
                 if current_section:
                     parsed[current_section] = '\n'.join(content_lines).strip()
                 current_section = 'thought'
                 found_sections.add('thought')
-                content_lines = [line[8:].strip()]  # Remove 'Thought:' prefix
+                if line.startswith('Thought:'):
+                    content_lines = [line[8:].strip()]  # Remove 'Thought:' prefix
+                else:
+                    content_lines = []  # 'Thought' without colon, content on next lines
                 
             elif line.startswith('Action:') and 'action' not in found_sections:
                 if current_section:
