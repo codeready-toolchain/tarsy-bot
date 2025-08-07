@@ -150,7 +150,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
           return;
         }
         
-        const rawContent = contentStartMatch[1];
+        let rawContent = contentStartMatch[1];
         let messageContent = '';
         
         // The content ends when we hit ')' that's not escaped and not inside nested quotes

@@ -217,7 +217,7 @@ function InteractionDetails({
             const contentStartMatch = part.match(/content='(.*)$/s);
             if (!contentStartMatch) return;
             
-            const rawContent = contentStartMatch[1];
+            let rawContent = contentStartMatch[1];
             let messageContent = '';
             
             // Parse content character by character (same logic as JsonDisplay)

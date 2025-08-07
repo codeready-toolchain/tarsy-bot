@@ -15,12 +15,11 @@ import {
 import { ArrowBack } from '@mui/icons-material';
 import { apiClient, handleAPIError } from '../services/api';
 import { webSocketService } from '../services/websocket';
-import type { DetailedSession, SessionUpdate, ReactSession } from '../types';
+import type { DetailedSession, SessionUpdate } from '../types';
 import SessionHeader from './SessionHeader';
 import OriginalAlertCard from './OriginalAlertCard';
 import FinalAnalysisCard from './FinalAnalysisCard';
 import TimelineVisualization from './TimelineVisualization';
-import ReactReasoningPanel from './ReactReasoningPanel';
 
 
 /**
@@ -452,12 +451,6 @@ function SessionDetailPage() {
 
             {/* Original Alert Data */}
             <OriginalAlertCard alertData={session.alert_data} />
-
-            {/* ReAct Reasoning Panel (if ReAct is enabled) */}
-            <ReactReasoningPanel 
-              session={session as ReactSession}
-              currentReasoningSteps={[]} // TODO: Extract from timeline or fetch separately
-            />
 
             {/* Enhanced Processing Timeline */}
             <TimelineVisualization 
