@@ -74,7 +74,7 @@ class BaseAgent(ABC):
             mcp_client: Client for MCP server interactions
             mcp_registry: Registry of MCP server configurations (REQUIRED)
             progress_callback: Optional callback for progress updates
-            iteration_strategy: Which iteration strategy to use (default: REACT)
+            iteration_strategy: Which iteration strategy to use (configured per agent)
         """
         self.llm_client = llm_client
         self.mcp_client = mcp_client

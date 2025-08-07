@@ -9,6 +9,7 @@ clear validation errors for misconfigured agents.
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from tarsy.models.masking_config import MaskingConfig
+from tarsy.agents.constants import IterationStrategy
 
 
 class AgentConfigModel(BaseModel):
@@ -36,6 +37,10 @@ class AgentConfigModel(BaseModel):
     custom_instructions: str = Field(
         default="",
         description="Agent-specific instructions for LLM behavior customization"
+    )
+    iteration_strategy: IterationStrategy = Field(
+        default=IterationStrategy.REACT,
+        description="Iteration strategy for alert processing (REGULAR or REACT)"
     )
 
 

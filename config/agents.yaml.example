@@ -23,6 +23,14 @@
 # - Missing environment variables will cause startup errors - ensure all required variables are set
 # - Template variables can be used in args, command, and other string fields
 #
+# ITERATION STRATEGIES:
+# - Each agent can use different iteration strategies for alert processing:
+#   - "react": ReAct pattern with Think→Action→Observation cycles for systematic analysis
+#   - "regular": Simple tool iteration without reasoning overhead for fast response
+# - Built-in agents have default strategies: KubernetesAgent uses "react"
+# - Configured agents default to "react" if iteration_strategy is not specified
+# - Choose "react" for complex troubleshooting, "regular" for simple/fast operations
+#
 # DATA MASKING:
 # - MCP servers can include optional data_masking configuration to protect sensitive data
 # - Built-in pattern groups: "basic" (api_key, password), "secrets" (basic + token), "security" (all + certificate), "kubernetes" (kubernetes_secret + basic), "all" (all patterns)
@@ -136,6 +144,7 @@ agents:
     mcp_servers:
       - "security-server"         # Custom security MCP server (defined above)
       - "kubernetes-server"       # Built-in Kubernetes MCP server for cluster security
+    iteration_strategy: "react"   # Use ReAct strategy for systematic security analysis
     custom_instructions: |
       You are a security-focused SRE agent specializing in cybersecurity incidents.
       
@@ -163,6 +172,7 @@ agents:
     mcp_servers:
       - "monitoring-server"       # Custom monitoring MCP server (defined above)
       - "kubernetes-server"       # Built-in Kubernetes MCP server for cluster metrics
+    iteration_strategy: "regular" # Use regular strategy for fast performance issue resolution
     custom_instructions: |
       You are a performance-focused SRE agent specializing in system optimization.
       
@@ -188,6 +198,7 @@ agents:
       - "ReplicationLag"               # Database replication delays
     mcp_servers:
       - "kubernetes-server"            # Built-in Kubernetes MCP server only
+    # iteration_strategy: "react"      # Optional: defaults to "react" if not specified
     custom_instructions: |
       You are a database-focused SRE agent specializing in database operations.
       

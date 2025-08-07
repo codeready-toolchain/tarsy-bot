@@ -18,16 +18,24 @@ from typing import Dict, Any
 
 
 # ==============================================================================
-# BUILT-IN AGENT CLASS NAMES
+# BUILT-IN AGENTS (Single source of truth)
 # ==============================================================================
 
-# Central registry of all built-in agent class names
-# Format: "ClassName" -> "import.path.ClassName"
-BUILTIN_AGENT_CLASS_IMPORTS: Dict[str, str] = {
-    "KubernetesAgent": "tarsy.agents.kubernetes_agent.KubernetesAgent",
+# Central registry of all built-in agents, including import path and metadata
+# Format: "ClassName" -> { "import": "module.Class", "iteration_strategy": IterationStrategy, ... }
+BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
+    "KubernetesAgent": {
+        "import": "tarsy.agents.kubernetes_agent.KubernetesAgent",
+        # Store as plain string to avoid importing agent enums here (prevents circular imports)
+        "iteration_strategy": "react",  # ReAct strategy for complex k8s troubleshooting
+        "description": "Kubernetes-specialized agent using ReAct pattern for systematic analysis",
+    },
     # Future agents will be added here:
-    # "ArgoCDAgent": "tarsy.agents.argocd_agent.ArgoCDAgent",
-    # "KubernetesAWSAgent": "tarsy.agents.kubernetes_aws_agent.KubernetesAWSAgent",
+    # "ArgoCDAgent": {
+    #     "import": "tarsy.agents.argocd_agent.ArgoCDAgent",
+    #     "iteration_strategy": IterationStrategy.REGULAR,
+    #     "description": "ArgoCD-specialized agent using regular iteration for quick deployments",
+    # },
 }
 
 
@@ -152,12 +160,22 @@ BUILTIN_PATTERN_GROUPS: Dict[str, list[str]] = {
 
 def get_builtin_agent_class_names() -> set[str]:
     """Get all built-in agent class names."""
-    return set(BUILTIN_AGENT_CLASS_IMPORTS.keys())
+    return set(BUILTIN_AGENTS.keys())
 
 
 def get_builtin_mcp_server_ids() -> set[str]:
-    """Get all built-in MCP server IDs.""" 
+    """Get all built-in MCP server IDs."""
     return set(BUILTIN_MCP_SERVERS.keys())
+
+
+def get_builtin_agent_config(agent_class_name: str) -> Dict[str, Any]:
+    """Get configuration for a built-in agent class (includes import and metadata)."""
+    return BUILTIN_AGENTS.get(agent_class_name, {})
+
+
+def get_builtin_agent_import_mapping() -> Dict[str, str]:
+    """Get mapping of built-in agent class names to their import paths."""
+    return {name: meta.get("import", "") for name, meta in BUILTIN_AGENTS.items()}
 
 
 def get_builtin_alert_types() -> set[str]:
