@@ -911,9 +911,11 @@ Be thorough in your investigation before providing the final answer."""
             if line.startswith('Final Answer:'):
                 if current_section:
                     parsed[current_section] = '\n'.join(content_lines).strip()
-                parsed['final_answer'] = line[13:].strip()
+                current_section = 'final_answer'
+                found_sections.add('final_answer')
+                content_lines = [line[13:].strip()]  # Remove 'Final Answer:' prefix
                 parsed['is_complete'] = True
-                break
+                # Continue reading to capture multi-line final answer
                 
             # Only process first occurrence of each section to avoid fake content
             elif line.startswith('Thought:') and 'thought' not in found_sections:
@@ -950,7 +952,7 @@ Be thorough in your investigation before providing the final answer."""
                     content_lines.append(line)
         
         # Handle last section
-        if current_section and current_section not in ['final_answer']:
+        if current_section:
             parsed[current_section] = '\n'.join(content_lines).strip()
         
         return parsed
