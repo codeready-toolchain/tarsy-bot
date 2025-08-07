@@ -56,9 +56,9 @@ class ConfigurableAgent(BaseAgent):
             # Validate configuration and dependencies before initialization
             self._validate_initialization_parameters(config, llm_client, mcp_client, mcp_registry)
             
-            # Extract iteration strategy from config (defaults to CLASSIC_REACT)
+            # Extract iteration strategy from config (defaults to REACT)
             strategy_str = getattr(config, 'iteration_strategy', None)
-            iteration_strategy = IterationStrategy(strategy_str) if strategy_str else IterationStrategy.CLASSIC_REACT
+            iteration_strategy = IterationStrategy(strategy_str) if strategy_str else IterationStrategy.REACT
             
             # Initialize base agent with dependency injection
             super().__init__(llm_client, mcp_client, mcp_registry, progress_callback, iteration_strategy)

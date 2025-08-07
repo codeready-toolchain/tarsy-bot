@@ -64,7 +64,7 @@ class BaseAgent(ABC):
         mcp_client: MCPClient,
         mcp_registry: MCPServerRegistry,
         progress_callback: Optional[Callable] = None,
-        iteration_strategy: IterationStrategy = IterationStrategy.CLASSIC_REACT
+        iteration_strategy: IterationStrategy = IterationStrategy.REACT
     ):
         """
         Initialize the base agent with required dependencies.
@@ -74,7 +74,7 @@ class BaseAgent(ABC):
             mcp_client: Client for MCP server interactions
             mcp_registry: Registry of MCP server configurations (REQUIRED)
             progress_callback: Optional callback for progress updates
-            iteration_strategy: Which iteration strategy to use (default: CLASSIC_REACT)
+            iteration_strategy: Which iteration strategy to use (default: REACT)
         """
         self.llm_client = llm_client
         self.mcp_client = mcp_client
@@ -102,7 +102,7 @@ class BaseAgent(ABC):
         """
         if strategy == IterationStrategy.REGULAR:
             return RegularIterationController()
-        elif strategy == IterationStrategy.CLASSIC_REACT:
+        elif strategy == IterationStrategy.REACT:
             return SimpleReActController(self.llm_client, self._prompt_builder)
         else:
             raise ValueError(f"Unknown iteration strategy: {strategy}")
@@ -113,7 +113,7 @@ class BaseAgent(ABC):
         if isinstance(self._iteration_controller, RegularIterationController):
             return IterationStrategy.REGULAR
         elif isinstance(self._iteration_controller, SimpleReActController):
-            return IterationStrategy.CLASSIC_REACT
+            return IterationStrategy.REACT
         else:
             raise ValueError(f"Unknown controller type: {type(self._iteration_controller)}")
     

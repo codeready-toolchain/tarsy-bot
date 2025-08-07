@@ -80,16 +80,6 @@ class ToolExecutionError(AgentError):
         return result
 
 
-class AnalysisError(AgentError):
-    """
-    Error during final alert analysis.
-    
-    Usually non-recoverable as it represents a fundamental processing failure.
-    """
-    
-    def __init__(self, message: str, context: Optional[Dict[str, Any]] = None):
-        super().__init__(message, context, recoverable=False)
-
 
 class ConfigurationError(AgentError):
     """
@@ -108,27 +98,6 @@ class ConfigurationError(AgentError):
         return result
 
 
-class IterationLimitError(AgentError):
-    """
-    Error when maximum iterations are reached.
-    
-    Recoverable by proceeding with available data.
-    """
-    
-    def __init__(self, current_iteration: int, max_iterations: int, context: Optional[Dict[str, Any]] = None):
-        message = f"Reached maximum iterations: {current_iteration}/{max_iterations}"
-        super().__init__(message, context, recoverable=True)
-        self.current_iteration = current_iteration
-        self.max_iterations = max_iterations
-        
-    def to_dict(self) -> Dict[str, Any]:
-        result = super().to_dict()
-        result.update({
-            "current_iteration": self.current_iteration,
-            "max_iterations": self.max_iterations
-        })
-        return result
-
 
 # Recovery strategies
 class ErrorRecoveryHandler:
@@ -137,30 +106,6 @@ class ErrorRecoveryHandler:
     """
     
 
-    
-    @staticmethod
-    def handle_tool_selection_error(error: ToolSelectionError) -> Dict[str, Any]:
-        """
-        Handle tool selection errors by creating error data for LLM analysis.
-        
-        Args:
-            error: The tool selection error
-            
-        Returns:
-            Error data structure for LLM to process
-        """
-        return {
-            "tool_selection_error": {
-                "error": str(error),
-                "message": "MCP tool selection failed - the LLM response did not match the required format",
-                "llm_response": error.llm_response,
-                "required_format": {
-                    "description": "Each tool call must be a JSON object with these required fields:",
-                    "fields": ["server", "tool", "parameters", "reason"],
-                    "format": "JSON array of objects, each containing the four required fields above"
-                }
-            }
-        }
     
     @staticmethod
     def handle_tool_execution_error(error: ToolExecutionError) -> Dict[str, Any]:

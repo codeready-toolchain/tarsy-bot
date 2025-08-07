@@ -1,7 +1,7 @@
 """
 Simple ReAct iteration controller implementing the standard ReAct pattern.
 
-This controller follows the classic ReAct format:
+This controller follows the ReAct format:
 - Question: The alert analysis question
 - Thought: Agent reasons about what to do next
 - Action: Agent specifies which tool to use
@@ -13,7 +13,7 @@ This is a true ReAct implementation that follows the established pattern
 that LLMs are specifically trained to handle.
 """
 
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from tarsy.utils.logger import get_module_logger
 from tarsy.models.llm import LLMMessage

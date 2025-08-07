@@ -16,7 +16,7 @@ class IterationStrategy(str, Enum):
     
     Each strategy implements a different approach to alert analysis:
     - REGULAR: Simple tool iteration without reasoning overhead
-    - CLASSIC_REACT: Standard ReAct pattern with Think→Action→Observation cycles
+    - REACT: Standard ReAct pattern with Think→Action→Observation cycles
     """
     REGULAR = "regular"
-    CLASSIC_REACT = "classic_react"
+    REACT = "react"
