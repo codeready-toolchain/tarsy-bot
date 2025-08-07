@@ -81,16 +81,17 @@ class SimpleReActController(IterationController):
                 messages = [
                     LLMMessage(
                         role="system", 
-                        content="You are an expert SRE analyzing alerts. Follow the ReAct format exactly. Always start your response with 'Thought:' and use the exact format shown in the prompt."
+                        content="You are an expert SRE analyzing alerts. Follow the ReAct format exactly. CRITICAL: Only generate Thought, Action, and Action Input. DO NOT generate Observation - the system will provide that after executing your action. STOP after Action Input and wait for the real observation. Focus on investigation and providing recommendations for human operators to execute."
                     ),
                     LLMMessage(role="user", content=prompt)
                 ]
                 
                 response = await self.llm_client.generate_response(messages, context.session_id)
-                logger.info(f"LLM Response: {response[:200]}...")  # Log first 200 chars
+                logger.info(f"LLM Response (first 500 chars): {response[:500]}")
                 
                 # Parse ReAct response
                 parsed = self.prompt_builder.parse_react_response(response)
+                logger.info(f"Parsed ReAct response: {parsed}")
                 
                 # Add thought to history
                 if parsed['thought']:

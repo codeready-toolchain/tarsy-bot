@@ -821,10 +821,16 @@ Observation: the result of the action
 Thought: I now know the final answer
 Final Answer: the final answer to the original input question
 
+IMPORTANT: Only provide the next step. Either:
+1. Continue investigating with "Thought: [reasoning] Action: [action] Action Input: [input]"  
+2. OR conclude with "Thought: I now know the final answer Final Answer: [your analysis]"
+
+DO NOT write fake Observations - the system provides real observations after executing actions.
+
 Begin!
 
 Question: {self._format_react_question(context)}
-{history_text}Thought:"""
+{history_text}"""
         
         return prompt
 
@@ -872,7 +878,7 @@ Question: {self._format_react_question(context)}
 Use the available tools to investigate this alert and provide:
 1. Root cause analysis
 2. Current system state assessment  
-3. Specific remediation steps
+3. Specific remediation steps for human operators
 4. Prevention recommendations
 
 Be thorough in your investigation before providing the final answer."""
@@ -896,34 +902,50 @@ Be thorough in your investigation before providing the final answer."""
         
         current_section = None
         content_lines = []
+        found_sections = set()
         
         for line in lines:
             line = line.strip()
-            if line.startswith('Thought:'):
-                if current_section:
-                    parsed[current_section] = '\n'.join(content_lines).strip()
-                current_section = 'thought'
-                content_lines = [line[8:].strip()]  # Remove 'Thought:' prefix
-            elif line.startswith('Action:'):
-                if current_section:
-                    parsed[current_section] = '\n'.join(content_lines).strip()
-                current_section = 'action'
-                content_lines = [line[7:].strip()]  # Remove 'Action:' prefix
-            elif line.startswith('Action Input:'):
-                if current_section:
-                    parsed[current_section] = '\n'.join(content_lines).strip()
-                current_section = 'action_input'
-                content_lines = [line[13:].strip()]  # Remove 'Action Input:' prefix
-            elif line.startswith('Final Answer:'):
+            
+            # Handle Final Answer (can appear at any time)
+            if line.startswith('Final Answer:'):
                 if current_section:
                     parsed[current_section] = '\n'.join(content_lines).strip()
                 parsed['final_answer'] = line[13:].strip()
                 parsed['is_complete'] = True
                 break
-            elif line.startswith('Observation:'):
-                # Skip observations in parsing since we generate them
-                continue
+                
+            # Only process first occurrence of each section to avoid fake content
+            elif line.startswith('Thought:') and 'thought' not in found_sections:
+                if current_section:
+                    parsed[current_section] = '\n'.join(content_lines).strip()
+                current_section = 'thought'
+                found_sections.add('thought')
+                content_lines = [line[8:].strip()]  # Remove 'Thought:' prefix
+                
+            elif line.startswith('Action:') and 'action' not in found_sections:
+                if current_section:
+                    parsed[current_section] = '\n'.join(content_lines).strip()
+                current_section = 'action'
+                found_sections.add('action')
+                content_lines = [line[7:].strip()]  # Remove 'Action:' prefix
+                
+            elif line.startswith('Action Input:') and 'action_input' not in found_sections:
+                if current_section:
+                    parsed[current_section] = '\n'.join(content_lines).strip()
+                current_section = 'action_input'
+                found_sections.add('action_input')
+                content_lines = [line[13:].strip()]  # Remove 'Action Input:' prefix
+                
+            # Skip any fake Observations, subsequent Thoughts/Actions, or other content
+            elif line.startswith('Observation:') or line.startswith('[Based on'):
+                # Stop processing when we hit fake content
+                if current_section:
+                    parsed[current_section] = '\n'.join(content_lines).strip()
+                break
+                
             else:
+                # Only add content if we're in a valid section
                 if current_section:
                     content_lines.append(line)
         
@@ -943,32 +965,54 @@ Be thorough in your investigation before providing the final answer."""
         
         server, tool = action.split('.', 1)
         
-        # Parse action input (could be JSON or simple parameters)
+        # Parse action input (could be JSON, YAML-like, or simple parameters)
+        parameters = {}
+        action_input = action_input.strip()
+        
         try:
-            if action_input.strip().startswith('{'):
+            # Try JSON first
+            if action_input.startswith('{'):
                 parameters = json.loads(action_input)
             else:
-                # Simple key=value format or comma separated
-                parameters = {}
-                if ',' in action_input or '=' in action_input:
-                    for part in action_input.split(','):
-                        part = part.strip()
-                        if '=' in part:
-                            key, value = part.split('=', 1)
-                            parameters[key.strip()] = value.strip()
-                        else:
-                            # If no equals, treat as a single input parameter
-                            if not parameters:  # Only if we haven't added anything yet
-                                parameters['input'] = part
-                else:
-                    # Single parameter without key=value format
-                    parameters['input'] = action_input.strip()
+                # Handle YAML-like format: "apiVersion: v1, kind: Namespace, name: superman-dev"
+                # or key=value format
+                for part in action_input.split(','):
+                    part = part.strip()
+                    if ':' in part and '=' not in part:
+                        # YAML-like format (key: value)
+                        key, value = part.split(':', 1)
+                        parameters[key.strip()] = value.strip()
+                    elif '=' in part:
+                        # key=value format
+                        key, value = part.split('=', 1)
+                        parameters[key.strip()] = value.strip()
+                    else:
+                        # Single parameter without format
+                        if not parameters:  # Only if we haven't added anything yet
+                            parameters['input'] = action_input
+                            break
+                        
+                # If no structured format detected, treat as single input
+                if not parameters:
+                    parameters['input'] = action_input
+                        
         except json.JSONDecodeError:
-            # Fallback to simple string parameter
-            parameters = {'input': action_input}
+            # Fallback: try to parse as key: value or key=value
+            for part in action_input.split(','):
+                part = part.strip()
+                if ':' in part:
+                    key, value = part.split(':', 1)
+                    parameters[key.strip()] = value.strip()
+                elif '=' in part:
+                    key, value = part.split('=', 1)
+                    parameters[key.strip()] = value.strip()
+            
+            # Ultimate fallback
+            if not parameters:
+                parameters['input'] = action_input
         except Exception:
             # Ultimate fallback
-            parameters = {'input': action_input}
+            parameters['input'] = action_input
         
         return {
             'server': server,
