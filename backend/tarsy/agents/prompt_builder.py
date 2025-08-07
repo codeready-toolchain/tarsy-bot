@@ -169,37 +169,7 @@ If analysis can be completed:
 
 **Default to stopping if you have reasonable data to work with.** The analysis doesn't need to be perfect - it needs to be actionable based on the runbook steps."""
     
-    def build_partial_analysis_prompt(self, context: PromptContext) -> str:
-        """
-        Build partial analysis prompt for intermediate analysis steps.
-        
-        Args:
-            context: Prompt context containing all necessary data
-            
-        Returns:
-            Formatted partial analysis prompt
-        """
-        return f"""# Partial Analysis Request (Iteration {context.current_iteration})
 
-Analyze the current findings from this iteration and provide insights about what has been discovered so far.
-
-## Alert Information
-{self._build_alert_section(context.alert_data)}
-
-{self._build_runbook_section(context.runbook_content)}
-
-## Iteration History
-{self._format_iteration_history(context.iteration_history)}
-
-## Instructions
-Provide a concise analysis of what has been discovered in this iteration:
-
-1. **Key Findings**: What important information was gathered in this iteration?
-2. **Progress Assessment**: How does this align with the runbook steps?
-3. **Next Steps Guidance**: What should be investigated next (if anything)?
-4. **Confidence Level**: How confident are you in the current understanding of the issue?
-
-Keep this analysis focused and concise - this is an intermediate step, not the final analysis."""
     
     def _build_context_section(self, context: PromptContext) -> str:
         """Build the context section of the prompt."""
@@ -393,6 +363,12 @@ Please be specific and reference the actual data provided. Use exact resource na
                 return str(data)
         return str(data)
     
+    def _format_available_tools(self, available_tools: Dict) -> str:
+        """Format available tools for display in prompts."""
+        if not available_tools:
+            return "No tools available."
+        return json.dumps(available_tools, indent=2)
+    
     def _format_iteration_history(self, iteration_history: List[Dict]) -> str:
         """Format iteration history for display in prompts."""
         if not iteration_history:
@@ -496,9 +472,534 @@ Focus on root cause analysis and sustainable solutions."""
         """Get system message for iterative MCP tool selection."""
         return "You are an expert SRE analyzing alerts through multi-step runbooks. Based on the alert, runbook, available MCP tools, and previous iteration results, determine what tools should be called next or if the analysis is complete. Return only a valid JSON object with no additional text."
     
-    def get_partial_analysis_system_message(self) -> str:
-        """Get system message for partial analysis."""
-        return "You are an expert SRE analyzing alerts through multi-step runbooks. Analyze the current findings and provide insights about what has been discovered so far and what might be needed next."
+
+    
+    # ReAct Framework Prompts
+    
+    def build_react_thinking_prompt(self, context: PromptContext) -> str:
+        """Build a ReAct 'Thought' step prompt for generating reasoning."""
+        
+        return f"""# ReAct Analysis Framework - THINKING STEP
+
+## Current Situation
+**Alert Type**: {context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown'))}
+**Iteration**: {context.current_iteration} of {context.max_iterations}
+**Agent**: {context.agent_name}
+
+{self._build_alert_section(context.alert_data)}
+
+{self._build_runbook_section(context.runbook_content)}
+
+## Investigation History
+{self._format_iteration_history(context.iteration_history)}
+
+---
+
+## Instructions
+
+You are now in the **THINKING** phase of the ReAct framework. Express your current reasoning about:
+
+1. **What is happening?** - Your understanding of the alert and current situation
+2. **What do you know so far?** - Key findings from previous investigations
+3. **What questions remain?** - Gaps in your understanding that need investigation
+4. **What should you investigate next?** - Your strategy for the next steps
+
+Be specific and methodical. Think like an expert SRE who needs to understand the root cause and provide actionable recommendations.
+
+**Provide your reasoning in clear, concise prose - do not use JSON format.**"""
+
+    def build_react_continuation_prompt(self, context: PromptContext) -> str:
+        """Build a ReAct continuation decision prompt with reasoning."""
+        
+        return f"""# ReAct Analysis Framework - CONTINUATION DECISION
+
+## Current Analysis Status
+**Alert Type**: {context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown'))}
+**Current Iteration**: {context.current_iteration} of {context.max_iterations}
+**Agent**: {context.agent_name}
+
+{self._build_alert_section(context.alert_data)}
+
+{self._build_runbook_section(context.runbook_content)}
+
+## Investigation History
+{self._format_iteration_history(context.iteration_history)}
+
+---
+
+## Decision Required
+
+Based on the runbook steps and investigation findings so far, decide whether to continue the analysis or complete it.
+
+**IMPORTANT**: You are currently on iteration {context.current_iteration} of {context.max_iterations} maximum iterations. Be judicious about continuing - only continue if you genuinely need critical missing information that prevents completing the analysis.
+
+## Response Format
+
+Return a JSON object in this exact format:
+
+```json
+{{
+  "continue": boolean,
+  "reasoning": "Detailed explanation of your decision - what information is sufficient/missing and why"
+}}
+```
+
+**Examples:**
+
+Continue if missing critical info:
+```json
+{{
+  "continue": true,
+  "reasoning": "I can see the pod is failing, but I need to check the container logs and events to understand why it's crashing. The runbook specifically requires log analysis for CrashLoopBackOff issues."
+}}
+```
+
+Stop if sufficient info gathered:
+```json
+{{
+  "continue": false,
+  "reasoning": "I have identified the root cause: insufficient memory allocation causing OOMKilled errors. The resource limits and usage patterns are clear. I can now provide actionable recommendations."
+}}
+```
+
+**Default to stopping if you have reasonable data to work with.** The analysis doesn't need to be perfect - it needs to be actionable based on the runbook steps."""
+
+    def build_react_action_planning_prompt(self, context: PromptContext) -> str:
+        """Build a prompt for planning the next ReAct action step."""
+        
+        return f"""# ReAct Analysis Framework - ACTION PLANNING
+
+## Current Context
+**Alert Type**: {context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown'))}
+**Iteration**: {context.current_iteration} of {context.max_iterations}
+**Agent**: {context.agent_name}
+
+## Available Tools
+{self._format_available_tools(context.available_tools)}
+
+## Current Thinking Context
+Based on your previous thinking step, you've decided to continue the investigation.
+
+## Available MCP Tools
+{self._format_available_tools(context.available_tools)}
+
+{context.server_guidance}
+
+## Instructions
+
+Plan the specific actions (tool calls) you want to execute based on your thinking step. Focus on gathering the most critical information needed to progress your investigation.
+
+Return a JSON array of tool calls in this format:
+
+```json
+[
+  {{
+    "server": "kubernetes-server",
+    "tool": "get_pods", 
+    "parameters": {{
+      "namespace": "production",
+      "label_selector": "app=webapp"
+    }},
+    "reason": "Need to check pod status and recent events to understand the failure pattern"
+  }}
+]
+```
+
+Select tools strategically based on:
+1. Your current thinking and hypotheses
+2. The runbook requirements
+3. Information gaps from previous iterations
+
+**Focus on the most impactful tools that will advance your understanding of the incident.**"""
+
+    def build_react_observation_prompt(self, context: PromptContext, tool_results: dict, previous_thinking: str) -> str:
+        """Build a prompt for ReAct observation analysis."""
+        
+        return f"""# ReAct Analysis Framework - OBSERVATION ANALYSIS
+
+## Context
+**Previous Thinking**: {previous_thinking[:300]}...
+
+## Tool Results Received
+```json
+{json.dumps(tool_results, indent=2)}
+```
+
+## Analysis Required
+
+You are now in the **OBSERVATION** phase of the ReAct framework. Analyze the tool results you just received:
+
+1. **What do these results tell you?** - Key insights from the data
+2. **How do they relate to your hypothesis?** - Confirmation, contradiction, or new information
+3. **What patterns do you see?** - Trends, anomalies, or correlations in the data
+4. **What new questions arise?** - Based on these findings, what else might you need to investigate
+
+Be analytical and specific. Focus on actionable insights that move your investigation forward.
+
+**Provide your observation analysis in clear, concise prose - do not use JSON format.**"""
+
+    def build_streamlined_react_prompt(self, context: PromptContext) -> str:
+        """
+        Build prompt for streamlined ReAct thinking that combines analysis, continuation, and planning.
+        
+        This prompt is designed to get comprehensive reasoning in a single LLM call,
+        optimizing for performance while maintaining ReAct benefits.
+        
+        Args:
+            context: Prompt context containing all necessary data
+            
+        Returns:
+            Formatted streamlined ReAct prompt
+        """
+        # Build iteration history summary
+        history_summary = ""
+        if context.iteration_history:
+            history_summary = "\n## Previous Investigation\n"
+            for i, entry in enumerate(context.iteration_history, 1):
+                tools = entry.get('tools_called', [])
+                tool_names = [f"{tool['server']}.{tool['tool']}" for tool in tools] if tools else ["no tools"]
+                history_summary += f"**Iteration {i}:** Called {', '.join(tool_names)}\n"
+        
+        # Build current data summary
+        data_summary = ""
+        if context.mcp_data:
+            data_count = sum(len(server_data) if isinstance(server_data, list) else 1 
+                           for server_data in context.mcp_data.values())
+            data_summary = f"\n## Available Data\nWe have collected {data_count} data points from previous tool executions.\n"
+        
+        prompt = f"""# Streamlined ReAct Analysis Framework
+
+## Current Situation
+**Agent**: {context.agent_name}
+**Iteration**: {context.current_iteration} of {context.max_iterations}
+
+{self._build_alert_section(context.alert_data)}
+
+{self._build_runbook_section(context.runbook_content)}
+{history_summary}{data_summary}
+## Available Tools
+{json.dumps(context.available_tools, indent=2)}
+
+{context.server_guidance}
+
+## Instructions
+
+In ONE comprehensive response, provide:
+
+### 1. ANALYSIS
+Analyze the current situation:
+- What is happening with this alert?
+- What do we know so far from previous data gathering?
+- What are the key findings and patterns?
+
+### 2. CONTINUATION DECISION  
+Decide whether to continue investigating:
+- Do we have sufficient information to complete the analysis?
+- Are there critical gaps that need more investigation?
+- Should we continue or stop?
+
+### 3. NEXT ACTION PLAN
+If continuing, plan the next tools to execute:
+- What specific information do we need?
+- Which tools should we use to get that information?
+- Why are these tools the best choice?
+
+**Format your response as natural reasoning text. Be specific about your decisions and reasoning.**"""
+        
+        return prompt.strip()
+    
+    def build_classic_react_thinking_prompt(self, context: PromptContext, available_tools: Dict) -> str:
+        """
+        Build prompt for classic ReAct thinking that directly outputs next action.
+        
+        This implements true classic ReAct where the THINK step directly decides
+        what action to take, without separate continuation or tool selection phases.
+        """
+        tool_descriptions = json.dumps(available_tools, indent=2)
+        
+        prompt = f"""# Classic ReAct Analysis Framework - THINK
+
+## Current Situation
+**Agent**: {context.agent_name}
+**Iteration**: {context.current_iteration} of {context.max_iterations}
+
+{context.server_guidance}
+
+{context.agent_specific_guidance}
+
+{self._build_alert_section(context.alert_data)}
+
+{self._build_runbook_section(context.runbook_content)}
+
+## Previous Actions and Findings
+{self._format_mcp_data_for_display(context.mcp_data) if context.mcp_data else "**This is the first iteration - no previous investigation data available yet.**"}
+
+## Iteration Context
+- **Current Iteration**: {context.current_iteration}/{context.max_iterations}
+- **Previous Investigation History**: {len(context.iteration_history or [])} steps completed
+
+## Available Tools
+{tool_descriptions}
+
+## Instructions
+
+You are in the **THINK** phase of classic ReAct reasoning. Think about the current situation and **directly decide your next action**.
+
+**Your task**: Analyze what you know so far and decide:
+1. **What is the current state of the investigation?**
+2. **Do I have enough information to provide a complete analysis? Or do I need more data?**
+3. **If I need more data, which specific tool should I use next and why?**
+
+**Output format**: Write your reasoning as natural text. Be specific about:
+- Your understanding of the current situation
+- Whether you should continue investigating or conclude
+- If continuing, which specific tool you want to use and why
+
+**Examples of good THINK responses**:
+- "I can see the namespace is stuck terminating, but I need to check what resources are still in it. I should use resources_list to see what's blocking the deletion."
+- "I now have all the information I need - the pod is failing due to insufficient memory. I can provide a complete analysis."
+
+**Think step by step and be direct about your next action.**"""
+        
+        return prompt.strip()
+
+    def _format_mcp_data_for_display(self, mcp_data: Dict[str, Any]) -> str:
+        """
+        Format MCP data for display in prompts.
+        
+        Args:
+            mcp_data: Raw MCP data from tools
+            
+        Returns:
+            Formatted string suitable for display in prompts
+        """
+        if not mcp_data:
+            return "**No investigation data available yet.**"
+        
+        formatted_parts = []
+        for server_name, server_data in mcp_data.items():
+            if isinstance(server_data, list) and server_data:
+                formatted_parts.append(f"**{server_name}:**")
+                for item in server_data:
+                    if isinstance(item, dict):
+                        # Format each tool result nicely
+                        formatted_parts.append(f"- {json.dumps(item, indent=2)}")
+                    else:
+                        formatted_parts.append(f"- {str(item)}")
+            elif server_data:
+                formatted_parts.append(f"**{server_name}:** {json.dumps(server_data, indent=2)}")
+        
+        return "\n".join(formatted_parts) if formatted_parts else "**No significant findings from previous investigations.**"
+
+    # ====================================================================
+    # Standard ReAct Framework Methods 
+    # ====================================================================
+
+    def build_standard_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+        """Build standard ReAct prompt following the established ReAct pattern."""
+        
+        # Build the ReAct history from previous iterations
+        history_text = ""
+        if react_history:
+            history_text = "\n".join(react_history) + "\n"
+        
+        available_actions = self._format_available_actions(context.available_tools)
+        action_names = self._get_action_names(context.available_tools)
+        
+        prompt = f"""Answer the following question as best you can. You have access to the following tools:
+
+{available_actions}
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{', '.join(action_names)}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!
+
+Question: {self._format_react_question(context)}
+{history_text}Thought:"""
+        
+        return prompt
+
+    def _format_available_actions(self, available_tools: Dict) -> str:
+        """Format available tools as ReAct actions."""
+        if not available_tools or not available_tools.get("tools"):
+            return "No tools available."
+        
+        actions = []
+        for tool in available_tools["tools"]:
+            action_name = f"{tool.get('server', 'unknown')}.{tool.get('name', tool.get('tool', 'unknown'))}"
+            description = tool.get('description', 'No description available')
+            
+            # Get parameter info from input schema
+            parameters = tool.get('input_schema', {}).get('properties', {})
+            if parameters:
+                param_desc = ', '.join([f"{k}: {v.get('description', 'no description')}" for k, v in parameters.items()])
+                actions.append(f"{action_name}: {description}\n  Parameters: {param_desc}")
+            else:
+                actions.append(f"{action_name}: {description}")
+        
+        return '\n'.join(actions)
+
+    def _get_action_names(self, available_tools: Dict) -> List[str]:
+        """Get list of action names for the ReAct prompt."""
+        if not available_tools or not available_tools.get("tools"):
+            return ["No tools available"]
+        
+        return [f"{tool.get('server', 'unknown')}.{tool.get('name', tool.get('tool', 'unknown'))}" 
+                for tool in available_tools["tools"]]
+
+    def _format_react_question(self, context: PromptContext) -> str:
+        """Format the alert analysis as a ReAct question."""
+        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
+        
+        # Create concise question for ReAct
+        question = f"""Analyze this {alert_type} alert and provide actionable recommendations.
+
+## Alert Details
+{self._build_alert_section(context.alert_data)}
+
+{self._build_runbook_section(context.runbook_content)}
+
+## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps
+4. Prevention recommendations
+
+Be thorough in your investigation before providing the final answer."""
+        
+        return question
+
+    # ====================================================================
+    # ReAct Response Parsing Methods
+    # ====================================================================
+
+    def parse_react_response(self, response: str) -> Dict[str, Any]:
+        """Parse structured ReAct response into components."""
+        lines = response.strip().split('\n')
+        parsed = {
+            'thought': None,
+            'action': None,
+            'action_input': None,
+            'final_answer': None,
+            'is_complete': False
+        }
+        
+        current_section = None
+        content_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith('Thought:'):
+                if current_section:
+                    parsed[current_section] = '\n'.join(content_lines).strip()
+                current_section = 'thought'
+                content_lines = [line[8:].strip()]  # Remove 'Thought:' prefix
+            elif line.startswith('Action:'):
+                if current_section:
+                    parsed[current_section] = '\n'.join(content_lines).strip()
+                current_section = 'action'
+                content_lines = [line[7:].strip()]  # Remove 'Action:' prefix
+            elif line.startswith('Action Input:'):
+                if current_section:
+                    parsed[current_section] = '\n'.join(content_lines).strip()
+                current_section = 'action_input'
+                content_lines = [line[13:].strip()]  # Remove 'Action Input:' prefix
+            elif line.startswith('Final Answer:'):
+                if current_section:
+                    parsed[current_section] = '\n'.join(content_lines).strip()
+                parsed['final_answer'] = line[13:].strip()
+                parsed['is_complete'] = True
+                break
+            elif line.startswith('Observation:'):
+                # Skip observations in parsing since we generate them
+                continue
+            else:
+                if current_section:
+                    content_lines.append(line)
+        
+        # Handle last section
+        if current_section and current_section not in ['final_answer']:
+            parsed[current_section] = '\n'.join(content_lines).strip()
+        
+        return parsed
+
+    def convert_action_to_tool_call(self, action: str, action_input: str) -> Dict[str, Any]:
+        """Convert ReAct Action/Action Input to MCP tool call format."""
+        if not action:
+            raise ValueError("Action cannot be empty")
+        
+        if '.' not in action:
+            raise ValueError(f"Action must be in format 'server.tool', got: {action}")
+        
+        server, tool = action.split('.', 1)
+        
+        # Parse action input (could be JSON or simple parameters)
+        try:
+            if action_input.strip().startswith('{'):
+                parameters = json.loads(action_input)
+            else:
+                # Simple key=value format or comma separated
+                parameters = {}
+                if ',' in action_input or '=' in action_input:
+                    for part in action_input.split(','):
+                        part = part.strip()
+                        if '=' in part:
+                            key, value = part.split('=', 1)
+                            parameters[key.strip()] = value.strip()
+                        else:
+                            # If no equals, treat as a single input parameter
+                            if not parameters:  # Only if we haven't added anything yet
+                                parameters['input'] = part
+                else:
+                    # Single parameter without key=value format
+                    parameters['input'] = action_input.strip()
+        except json.JSONDecodeError:
+            # Fallback to simple string parameter
+            parameters = {'input': action_input}
+        except Exception:
+            # Ultimate fallback
+            parameters = {'input': action_input}
+        
+        return {
+            'server': server,
+            'tool': tool,
+            'parameters': parameters,
+            'reason': f'ReAct Action: {action}'
+        }
+
+    def format_observation(self, mcp_data: Dict[str, Any]) -> str:
+        """Format MCP data as observation text for ReAct."""
+        if not mcp_data:
+            return "No data returned from the action."
+        
+        observations = []
+        for server, results in mcp_data.items():
+            if isinstance(results, list):
+                for result in results:
+                    if 'result' in result and result['result']:
+                        # Format the result nicely
+                        if isinstance(result['result'], dict):
+                            formatted_result = json.dumps(result['result'], indent=2)
+                        else:
+                            formatted_result = str(result['result'])
+                        observations.append(f"{server}.{result.get('tool', 'unknown')}: {formatted_result}")
+                    elif 'error' in result:
+                        observations.append(f"{server}.{result.get('tool', 'unknown')} error: {result['error']}")
+            else:
+                # Legacy format
+                observations.append(f"{server}: {json.dumps(results, indent=2)}")
+        
+        return '\n'.join(observations) if observations else "Action completed but no specific data returned."
 
 
 # Shared instance since PromptBuilder is stateless

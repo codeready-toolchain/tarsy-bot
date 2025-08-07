@@ -15,9 +15,10 @@ import {
   Refresh,
   Schedule,
   OpenInNew,
+  Psychology,
 } from '@mui/icons-material';
-import type { ActiveAlertCardProps } from '../types';
-import { formatTimestamp, formatDuration, getCurrentTimestampUs, formatDurationMs } from '../utils/timestamp';
+import type { ActiveAlertCardProps, ReactSession } from '../types';
+import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import ProgressIndicator from './ProgressIndicator';
 
 // Helper function to get status chip configuration
@@ -132,6 +133,7 @@ const LiveDuration: React.FC<{
  */
 const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({ 
   session, 
+  progress,
   onClick 
 }) => {
   const statusConfig = getStatusChipConfig(session.status);
@@ -210,6 +212,44 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
         >
           {session.alert_type}
         </Typography>
+
+        {/* ReAct Information (if enabled) - using live data from session */}
+        {(session as ReactSession).react_enabled && (
+          <Box sx={{ mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Psychology color="primary" sx={{ fontSize: '1.1rem' }} />
+              <Typography variant="body2" color="primary" sx={{ fontWeight: 500 }}>
+                ReAct Analysis Active
+              </Typography>
+              {(session as ReactSession).current_iteration && (
+                <Chip
+                  label={`Iteration ${(session as ReactSession).current_iteration}`}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                />
+              )}
+              {(session as ReactSession).total_iterations && (
+                <Chip
+                  label={`${(session as ReactSession).total_iterations} completed`}
+                  size="small"
+                  color="default"
+                  variant="outlined"
+                />
+              )}
+            </Box>
+            
+            {(session as ReactSession).latest_reasoning_step && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.4 }}>
+                Latest: <strong>{(session as ReactSession).latest_reasoning_step?.step_type}</strong> - 
+                {(() => {
+                  const reasoning = (session as ReactSession).latest_reasoning_step?.reasoning_text || '';
+                  return reasoning.length > 80 ? ` ${reasoning.substring(0, 80)}...` : ` ${reasoning}`;
+                })()}
+              </Typography>
+            )}
+          </Box>
+        )}
 
         {/* Time and Duration */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>

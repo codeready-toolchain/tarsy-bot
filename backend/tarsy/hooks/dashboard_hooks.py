@@ -14,6 +14,7 @@ from typing import Any, Dict
 from tarsy.services.websocket_manager import WebSocketManager
 
 from .base_hooks import BaseLLMHook, BaseMCPHook
+# BaseReActHook removed - dead code cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,23 @@ class DashboardLLMHooks(BaseLLMHook):
             "error_message": interaction_data["error_message"]
         }
         
+        # Check for ReAct context in the interaction data
+        react_step_type = interaction_data.get("react_step_type")
+        if react_step_type and interaction_data["success"]:
+            # This is a ReAct reasoning step - enhance the update with ReAct data
+            session_update_data["react_reasoning_active"] = True
+            session_update_data["react_step_type"] = react_step_type
+            session_update_data["current_iteration"] = interaction_data.get("react_iteration", 0)
+            session_update_data["total_iterations"] = interaction_data.get("react_total_iterations", 0)
+            session_update_data["latest_reasoning_step"] = {
+                "step_type": react_step_type,
+                "reasoning_text": interaction_data.get("response_text", "")[:200] + "..." if len(interaction_data.get("response_text", "")) > 200 else interaction_data.get("response_text", ""),
+                "confidence_level": "high",  # Could be enhanced
+                "timestamp_us": interaction_data["timestamp_us"]
+            }
+            
+            logger.debug(f"📊 ReAct step detected: {react_step_type} for iteration {interaction_data.get('react_iteration')}")
+        
         # Include truncated content for debugging (not full content due to size)
         if interaction_data["prompt_text"]:
             prompt_text = interaction_data["prompt_text"]
@@ -72,8 +90,10 @@ class DashboardLLMHooks(BaseLLMHook):
         dashboard_manager = self.websocket_manager.dashboard_manager
         if dashboard_manager.update_service:
             # Use update service for intelligent batching and session tracking
+            # Broadcast ReAct steps immediately for real-time dashboard updates
+            broadcast_immediately = (not interaction_data["success"]) or bool(react_step_type)
             sent_count = await dashboard_manager.update_service.process_llm_interaction(
-                session_id, session_update_data, broadcast_immediately=not interaction_data["success"]  # Broadcast errors immediately
+                session_id, session_update_data, broadcast_immediately=broadcast_immediately
             )
             
             if sent_count > 0:
@@ -93,6 +113,16 @@ class DashboardLLMHooks(BaseLLMHook):
                 "duration_ms": interaction_data["duration_ms"],
                 "timestamp_us": interaction_data["timestamp_us"]
             }
+            
+            # Add ReAct data to dashboard update if present
+            if react_step_type and interaction_data["success"]:
+                dashboard_update_data.update({
+                    "react_reasoning_active": True,
+                    "react_step_type": react_step_type,
+                    "current_iteration": interaction_data.get("react_iteration", 0),
+                    "total_iterations": interaction_data.get("react_total_iterations", 0),
+                    "latest_reasoning_step": session_update_data["latest_reasoning_step"]
+                })
             
             dashboard_sent = await self.websocket_manager.broadcast_dashboard_update_advanced(
                 dashboard_update_data
@@ -187,6 +217,9 @@ class DashboardMCPHooks(BaseMCPHook):
                 logger.debug(f"Broadcast MCP communication for session {session_id} to {session_sent + dashboard_sent} subscribers: {communication_data['step_description']}")
 
 
+# DashboardReActHooks class removed - dead code cleanup
+
+
 def register_dashboard_hooks(websocket_manager: WebSocketManager):
     """
     Register dashboard broadcast hooks with the global hook manager.
@@ -211,7 +244,9 @@ def register_dashboard_hooks(websocket_manager: WebSocketManager):
     hook_manager.register_hook("mcp.post", mcp_dashboard_hooks)
     hook_manager.register_hook("mcp.error", mcp_dashboard_hooks)
     
-    logger.info("Dashboard broadcast hooks registered successfully")
+    # ReAct hooks removed - dead code cleanup
+    
+    logger.info("Dashboard broadcast hooks registered successfully (LLM, MCP)")
     return hook_manager
 
 

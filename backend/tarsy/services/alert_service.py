@@ -8,12 +8,8 @@ Uses Unix timestamps (microseconds since epoch) throughout for optimal
 performance and consistency with the rest of the system.
 """
 
-import asyncio
-import hashlib
-import json
-import logging
 import uuid
-from typing import Callable, Optional, Dict, Any
+from typing import Callable, Optional
 
 from tarsy.config.settings import Settings
 from tarsy.integrations.llm.client import LLMManager
@@ -146,7 +142,7 @@ class AlertService:
             
             # Step 2: Determine appropriate agent
             if progress_callback:
-                await progress_callback(5, "Selecting specialized agent")
+                await progress_callback({"status": "processing", "message": "Starting alert analysis"})
             
             alert_type = alert.alert_type
             try:
@@ -159,7 +155,7 @@ class AlertService:
                 self._update_session_error(session_id, error_msg)
                 
                 if progress_callback:
-                    await progress_callback(100, f"Error: {error_msg}")
+                    await progress_callback({"status": "error", "message": error_msg})
                     
                 return self._format_error_response(alert, error_msg)
             
@@ -172,24 +168,18 @@ class AlertService:
             self._update_session_status(session_id, AlertSessionStatus.IN_PROGRESS, f"Selected agent: {agent_class_name}")
             
             # Step 3: Extract runbook from alert data
-            if progress_callback:
-                await progress_callback(10, "Extracting runbook")
-            
             runbook = alert.get_runbook()
             if not runbook:
                 error_msg = "No runbook specified in alert data"
                 logger.error(error_msg)
                 self._update_session_error(session_id, error_msg)
                 if progress_callback:
-                    await progress_callback(100, f"Error: {error_msg}")
+                    await progress_callback({"status": "error", "message": error_msg})
                 return self._format_error_response(alert, error_msg)
             
             runbook_content = await self.runbook_service.download_runbook(runbook)
             
             # Step 4: Create agent instance
-            if progress_callback:
-                await progress_callback(15, f"Initializing {agent_class_name}")
-            
             try:
                 # Update factory's progress callback for this request
                 self.agent_factory.progress_callback = progress_callback
@@ -205,21 +195,13 @@ class AlertService:
                 self._update_session_error(session_id, error_msg)
                 
                 if progress_callback:
-                    await progress_callback(100, f"Error: {error_msg}")
+                    await progress_callback({"status": "error", "message": error_msg})
                     
                 return self._format_error_response(alert, error_msg)
             
             # Step 5: Delegate processing to agent with flexible data
-            if progress_callback:
-                await progress_callback(20, f"Delegating to {agent_class_name}")
-            
-            # Create progress wrapper that includes agent context
-            agent_progress_callback = None
-            if progress_callback:
-                agent_progress_callback = lambda status: progress_callback(
-                    status.get('progress', 50),
-                    f"[{agent_class_name}] {status.get('message', 'Processing...')}"
-                )
+            # Create progress wrapper that passes through simplified status
+            agent_progress_callback = progress_callback
             
             # Process alert with agent - pass alert data from Pydantic model
             agent_result = await agent.process_alert(
@@ -247,7 +229,7 @@ class AlertService:
                 self._update_session_completed(session_id, AlertSessionStatus.COMPLETED, final_analysis=final_result)
                 
                 if progress_callback:
-                    await progress_callback(100, "Analysis completed successfully")
+                    await progress_callback({"status": "completed", "message": "Analysis completed successfully"})
                 
                 return final_result
             else:
@@ -259,7 +241,7 @@ class AlertService:
                 self._update_session_error(session_id, error_msg)
                 
                 if progress_callback:
-                    await progress_callback(100, f"Error: {error_msg}")
+                    await progress_callback({"status": "error", "message": error_msg})
                 
                 return self._format_error_response(alert, error_msg)
                 
@@ -271,7 +253,7 @@ class AlertService:
             self._update_session_error(session_id, error_msg)
             
             if progress_callback:
-                await progress_callback(100, f"Error: {error_msg}")
+                await progress_callback({"status": "error", "message": error_msg})
             
             return self._format_error_response(alert, error_msg)
 

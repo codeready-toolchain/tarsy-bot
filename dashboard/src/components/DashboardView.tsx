@@ -20,7 +20,7 @@ import {
   getDefaultSort,
   mergeWithDefaults
 } from '../utils/filterPersistence';
-import type { Session, SessionUpdate, SessionFilter, PaginationState, SortState, FilterOptions } from '../types';
+import type { Session, ReactSession, SessionUpdate, SessionFilter, PaginationState, SortState, FilterOptions } from '../types';
 
 /**
  * DashboardView component for the Tarsy Dashboard - Phase 6
@@ -350,12 +350,69 @@ function DashboardView() {
           console.log('📊 System metrics update - no session changes, skipping refresh');
         }
       } else if (update.type === 'session_status_change') {
-        // Session status changes affect the main dashboard
-        console.log('🔄 Session status change - refreshing dashboard data');
-        throttledRefresh();
+        // Session status changes - check for ReAct data for immediate UI updates
+        console.log('🔄 Session status change received:', update);
+        
+        // If this has ReAct data, update the active alerts immediately
+        if (update.react_enabled || update.latest_reasoning_step || update.current_iteration) {
+          console.log('📊 ReAct status update received:', {
+            session_id: update.session_id,
+            react_enabled: update.react_enabled,
+            current_iteration: update.current_iteration,
+            total_iterations: update.total_iterations,
+            latest_reasoning_step: update.latest_reasoning_step
+          });
+          
+          // Update active alerts state with ReAct data
+          setActiveAlerts(prev => prev.map(session => {
+            if (session.session_id === update.session_id) {
+              return {
+                ...session,
+                // Update basic status if provided
+                status: update.status || session.status,
+                // Add/update ReAct fields
+                react_enabled: update.react_enabled,
+                current_iteration: update.current_iteration,
+                total_iterations: update.total_iterations,
+                latest_reasoning_step: update.latest_reasoning_step,
+                iteration_summaries: update.iteration_summaries
+              } as ReactSession;
+            }
+            return session;
+          }));
+        } else {
+          // Regular session status change - refresh dashboard data
+          console.log('🔄 Non-ReAct session status change - refreshing dashboard data');
+          throttledRefresh();
+        }
       } else if (update.type === 'llm_interaction' || update.type === 'mcp_communication') {
-        // Session-specific updates don't require dashboard refresh - these are for detail views
-        console.log('📊 Session-specific update - no dashboard refresh needed');
+        // Check if this LLM interaction contains ReAct data for immediate UI updates
+        if (update.type === 'llm_interaction' && (update.react_enabled || update.latest_reasoning_step)) {
+          console.log('📊 ReAct LLM interaction received:', {
+            session_id: update.session_id,
+            react_step_type: update.react_step_type,
+            current_iteration: update.current_iteration,
+            total_iterations: update.total_iterations,
+            latest_reasoning_step: update.latest_reasoning_step
+          });
+          
+          // Update active alerts state with ReAct data from LLM interaction
+          setActiveAlerts(prev => prev.map(session => {
+            if (session.session_id === update.session_id) {
+              return {
+                ...session,
+                react_enabled: update.react_enabled || session.react_enabled,
+                current_iteration: update.current_iteration || session.current_iteration,
+                total_iterations: update.total_iterations || session.total_iterations,
+                latest_reasoning_step: update.latest_reasoning_step || session.latest_reasoning_step,
+              } as ReactSession;
+            }
+            return session;
+          }));
+        } else {
+          // Regular session-specific updates don't require dashboard refresh - these are for detail views
+          console.log('📊 Session-specific update - no dashboard refresh needed');
+        }
       } else if (update.type === 'batched_session_updates') {
         // Batched timeline updates are session-specific - no dashboard refresh needed
         console.log('📊 Batched session updates - no dashboard refresh needed');

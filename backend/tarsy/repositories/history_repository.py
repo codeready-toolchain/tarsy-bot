@@ -13,6 +13,7 @@ from sqlmodel import Session, asc, desc, func, select, and_, or_
 
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.history import AlertSession, LLMInteraction, MCPCommunication, now_us
+# ReAct models removed - dead code cleanup
 from tarsy.repositories.base_repository import BaseRepository
 from tarsy.utils.logger import get_logger
 
@@ -38,6 +39,8 @@ class HistoryRepository:
         self.alert_session_repo = BaseRepository(session, AlertSession)
         self.llm_interaction_repo = BaseRepository(session, LLMInteraction)
         self.mcp_communication_repo = BaseRepository(session, MCPCommunication)
+        
+        # ReAct repositories removed - dead code cleanup
     
     # AlertSession operations
     def create_alert_session(self, alert_session: AlertSession) -> Optional[AlertSession]:
@@ -792,4 +795,6 @@ class HistoryRepository:
         except Exception as e:
             self.session.rollback()
             logger.error(f"Failed to cleanup old sessions: {str(e)}")
-            return 0 
+            return 0
+    
+    # ReAct methods removed during cleanup - dead code that was never called by SimpleReActController 

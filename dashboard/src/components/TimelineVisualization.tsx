@@ -75,7 +75,7 @@ function TimelineVisualization({
                   const contentStartMatch = part.match(/content='(.*)$/s);
                   if (!contentStartMatch) return;
                   
-                  let rawContent = contentStartMatch[1];
+                  const rawContent = contentStartMatch[1];
                   let messageContent = '';
                   
                   // Parse content character by character (same logic as InteractionDetails)

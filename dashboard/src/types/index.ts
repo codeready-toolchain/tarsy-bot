@@ -30,11 +30,11 @@ export interface AlertData {
 export interface TimelineItem {
   id: string;
   event_id: string;
-  type: 'llm' | 'mcp' | 'system';
+  type: 'llm' | 'mcp' | 'system' | 'reasoning';
   timestamp_us: number; // Unix timestamp (microseconds since epoch)
   step_description: string;
   duration_ms: number | null;
-  details?: LLMInteraction | MCPInteraction | SystemEvent;
+  details?: LLMInteraction | MCPInteraction | SystemEvent | ReasoningTrace;
 }
 
 // Phase 3: LLM interaction details
@@ -60,6 +60,36 @@ export interface SystemEvent {
   event_type: string;
   description: string;
   metadata?: Record<string, any>;
+}
+
+// ReAct Reasoning Types
+export interface ReasoningTrace {
+  step_type: 'thought' | 'action' | 'observation' | 'analysis' | 'conclusion';
+  reasoning_text: string;
+  iteration_number: number;
+  step_sequence: number;
+  confidence_level?: string;
+  timestamp_us: number;
+  context_data?: Record<string, any>;
+}
+
+export interface IterationSummary {
+  iteration_number: number;
+  objective: string;
+  key_findings: string;
+  continue_decision: boolean;
+  continue_reasoning?: string;
+  next_steps?: string;
+  duration_ms: number;
+}
+
+// Enhanced session types with ReAct information
+export interface ReactSession extends Session {
+  react_enabled?: boolean;
+  current_iteration?: number;
+  total_iterations?: number;
+  latest_reasoning_step?: ReasoningTrace;
+  iteration_summaries?: IterationSummary[];
 }
 
 // Pagination information from backend
@@ -101,6 +131,25 @@ export interface SessionUpdate {
   error_message?: string | null;
   completed_at_us?: number | null; // Unix timestamp (microseconds since epoch)
   data?: any; // Additional update data containing interaction_type, etc.
+  
+  // ReAct reasoning fields for live progress updates
+  react_enabled?: boolean;
+  current_iteration?: number;
+  total_iterations?: number;
+  latest_reasoning_step?: {
+    step_type: string;
+    reasoning_text: string;
+    confidence_level?: string;
+    timestamp_us: number;
+  };
+  iteration_summaries?: Array<{
+    iteration_number: number;
+    objective: string;
+    steps_count: number;
+    duration_ms: number;
+    continue_decision?: boolean;
+    continue_reasoning?: string;
+  }>;
 }
 
 // API response wrapper format (for other endpoints)

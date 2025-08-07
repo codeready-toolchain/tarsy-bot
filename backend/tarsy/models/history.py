@@ -15,9 +15,7 @@ from sqlalchemy import text
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.utils.timestamp import now_us
 
-if TYPE_CHECKING:
-    # Import for type hints only to avoid circular imports
-    pass
+# ReAct models removed - dead code cleanup
 
 
 class AlertSession(SQLModel, table=True):
@@ -107,6 +105,8 @@ class AlertSession(SQLModel, table=True):
         back_populates="session", 
         sa_relationship_kwargs={"lazy": "select", "cascade": "all, delete-orphan"}
     )
+    
+    # ReAct relationships removed - dead code cleanup
 
 
 class LLMInteraction(SQLModel, table=True):

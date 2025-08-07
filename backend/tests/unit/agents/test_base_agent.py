@@ -742,37 +742,7 @@ class TestBaseAgentCoreProcessing:
         with pytest.raises(Exception, match="Iterative tool selection error"):
             await base_agent.determine_next_mcp_tools({}, "", {}, [], 1, "test-session-error")
 
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    @patch('tarsy.agents.base_agent.get_prompt_builder')
-    async def test_analyze_partial_results_success(self, mock_get_prompt_builder, base_agent, mock_llm_client):
-        """Test partial results analysis."""
-        mock_llm_client.generate_response.return_value = "Partial analysis complete"
-        
-        # Mock prompt builder
-        mock_prompt_builder = Mock()
-        mock_prompt_builder.get_partial_analysis_system_message.return_value = "Partial analysis system message"
-        mock_get_prompt_builder.return_value = mock_prompt_builder
-        base_agent._prompt_builder = mock_prompt_builder
-        base_agent.build_partial_analysis_prompt = Mock(return_value="Partial analysis prompt")
-        
-        alert_data = {"alert": "TestAlert"}
-        runbook_content = "Test runbook"
-        iteration_history = [{"tools_called": [], "mcp_data": {}}]
-        
-        result = await base_agent.analyze_partial_results(alert_data, runbook_content, iteration_history, 1)
-        
-        assert result == "Partial analysis complete"
-        mock_llm_client.generate_response.assert_called_once()
 
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_analyze_partial_results_error(self, base_agent, mock_llm_client):
-        """Test partial results analysis with error."""
-        mock_llm_client.generate_response.side_effect = Exception("Analysis failed")
-        
-        with pytest.raises(Exception, match="Partial analysis error: Analysis failed"):
-            await base_agent.analyze_partial_results({}, "", [], 1)
 
 
 @pytest.mark.unit

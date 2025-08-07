@@ -5,7 +5,7 @@ Uses Unix timestamps (microseconds since epoch) throughout for optimal
 performance and consistency with the rest of the system.
 """
 
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
 from tarsy.models.history import now_us
@@ -68,6 +68,27 @@ class SystemHealthUpdate(WebSocketMessage):
     channel: str = "system_health"
 
 
+class ReasoningStepMessage(BaseModel):
+    """Individual reasoning step for WebSocket transmission."""
+    step_type: str  # thought, action, observation, analysis, conclusion
+    reasoning_text: str
+    iteration_number: int
+    step_sequence: int
+    confidence_level: Optional[str] = None
+    timestamp_us: int
+
+
+class IterationSummaryMessage(BaseModel):
+    """Iteration summary for WebSocket transmission."""
+    iteration_number: int
+    objective: str
+    key_findings: str
+    continue_decision: bool
+    continue_reasoning: Optional[str] = None
+    next_steps: Optional[str] = None
+    duration_ms: int
+
+
 class AlertStatusUpdate(WebSocketMessage):
     """Alert processing status update."""
     type: Literal["alert_status"] = "alert_status"
@@ -79,6 +100,11 @@ class AlertStatusUpdate(WebSocketMessage):
     assigned_mcp_servers: Optional[list] = None
     result: Optional[str] = None
     error: Optional[str] = None
+    
+    # ReAct reasoning enhancements
+    current_iteration: Optional[int] = None
+    latest_reasoning_step: Optional[ReasoningStepMessage] = None
+    iteration_summaries: Optional[List[IterationSummaryMessage]] = None
 
 
 # Union type for all possible incoming messages from clients

@@ -523,28 +523,26 @@ async def process_alert_background(alert_id: str, alert: AlertProcessingData):
             alert_type = alert.alert_type or "unknown"
             logger.info(f"Processing alert {alert_id} of type '{alert_type}' with {len(alert.alert_data)} data fields")
             
-            # Process the alert using AlertService with flexible data
-            # The orchestrator sends progress as a dict with agent information
-            def progress_handler(progress, step):
+            # Process the alert using AlertService - simplified progress updates
+            def progress_handler(status_dict):
                 try:
-                    # Handle both simple (progress, step) and dict-based callbacks
-                    if isinstance(progress, dict):
-                        # New format from agent callbacks
-                        agent_info = progress
+                    # Simplified progress handler - just status and message
+                    if isinstance(status_dict, dict):
+                        status = status_dict.get('status', 'processing')
+                        message = status_dict.get('message', 'Processing...')
+                        
+                        # Set progress percentage based on status
+                        if status == 'processing':
+                            progress_pct = 50
+                        elif status == 'completed':
+                            progress_pct = 100
+                        elif status == 'error':
+                            progress_pct = 0
+                        else:
+                            progress_pct = 50
+                        
                         return asyncio.create_task(
-                            update_processing_status(
-                                alert_id,
-                                agent_info.get('status', 'processing'),
-                                agent_info.get('progress', 50),
-                                agent_info.get('message', step),
-                                current_agent=agent_info.get('agent'),
-                                assigned_mcp_servers=agent_info.get('assigned_mcp_servers')
-                            )
-                        )
-                    else:
-                        # Legacy format (progress, step)
-                        return asyncio.create_task(
-                            update_processing_status(alert_id, "processing", progress, step)
+                            update_processing_status(alert_id, status, progress_pct, message)
                         )
                 except Exception as e:
                     logger.error(f"Error in progress_handler for alert {alert_id}: {str(e)}")
@@ -670,7 +668,7 @@ async def update_processing_status(
         error=error
     )
     
-    # Send update via WebSocket
+    # Send update via WebSocket (Dev UI only)
     if websocket_manager:
         await websocket_manager.send_status_update(
             alert_id, processing_status[alert_id]
