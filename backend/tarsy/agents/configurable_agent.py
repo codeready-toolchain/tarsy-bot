@@ -6,7 +6,7 @@ to use configuration data instead of hardcoded behavior. This allows
 creating agents through YAML configuration files without writing Python code.
 """
 
-from typing import Callable, List, Optional, TYPE_CHECKING
+from typing import Callable, List, Optional
 
 from ..integrations.llm.client import LLMClient
 from ..integrations.mcp.client import MCPClient
@@ -15,9 +15,6 @@ from ..services.mcp_server_registry import MCPServerRegistry
 from ..utils.logger import get_module_logger
 from .base_agent import BaseAgent
 from .constants import IterationStrategy
-
-if TYPE_CHECKING:
-    from ..services.history_service import HistoryService
 
 logger = get_module_logger(__name__)
 
@@ -60,8 +57,8 @@ class ConfigurableAgent(BaseAgent):
             self._validate_initialization_parameters(config, llm_client, mcp_client, mcp_registry)
             
             # Extract iteration strategy from config (defaults to CLASSIC_REACT)
-            strategy_str = getattr(config, 'iteration_strategy', 'classic_react')
-            iteration_strategy = IterationStrategy(strategy_str)
+            strategy_str = getattr(config, 'iteration_strategy', None)
+            iteration_strategy = IterationStrategy(strategy_str) if strategy_str else IterationStrategy.CLASSIC_REACT
             
             # Initialize base agent with dependency injection
             super().__init__(llm_client, mcp_client, mcp_registry, progress_callback, iteration_strategy)

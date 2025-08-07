@@ -15,9 +15,6 @@ from sqlalchemy import text
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.utils.timestamp import now_us
 
-# ReAct models removed - dead code cleanup
-
-
 class AlertSession(SQLModel, table=True):
     """
     Represents an alert processing session with complete lifecycle tracking.
@@ -106,9 +103,6 @@ class AlertSession(SQLModel, table=True):
         sa_relationship_kwargs={"lazy": "select", "cascade": "all, delete-orphan"}
     )
     
-    # ReAct relationships removed - dead code cleanup
-
-
 class LLMInteraction(SQLModel, table=True):
     """
     Captures comprehensive LLM interaction data for audit trails.

@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Optional
 from tarsy.config.settings import get_settings
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.history import AlertSession, LLMInteraction, MCPCommunication, now_us
-# ReAct models removed - dead code cleanup
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository
 

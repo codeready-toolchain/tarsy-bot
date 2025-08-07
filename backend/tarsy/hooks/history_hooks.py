@@ -12,7 +12,6 @@ from typing import Any, Dict
 from tarsy.services.history_service import get_history_service
 
 from .base_hooks import BaseLLMHook, BaseMCPHook
-# BaseReActHook removed - dead code cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -128,11 +127,9 @@ class ReActHooks:
             event_type = reasoning_data.get("event_type")
             
             if event_type == "reasoning_step":
-                # ReAct step logging removed - dead code cleanup
                 logger.debug(f"ReAct reasoning step event ignored - simplified implementation")
             
             elif event_type == "iteration_complete":
-                # ReAct iteration processing removed - dead code cleanup
                 logger.debug(f"ReAct iteration complete event ignored - simplified implementation")
         
         except Exception as e:
@@ -159,8 +156,6 @@ def register_history_hooks():
     mcp_hooks = MCPHooks()
     hook_manager.register_hook("mcp.post", mcp_hooks)
     hook_manager.register_hook("mcp.error", mcp_hooks)
-    
-    # ReAct hooks removed - dead code cleanup
     
     logger.info("History hooks registered successfully (LLM, MCP)")
     return hook_manager 

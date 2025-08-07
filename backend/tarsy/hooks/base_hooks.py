@@ -649,9 +649,6 @@ class BaseMCPHook(BaseEventHook):
 # Global hook manager instance
 _global_hook_manager: Optional[HookManager] = None
 
-# BaseReActHook class removed - dead code cleanup
-
-
 def get_hook_manager() -> HookManager:
     """
     Get the global hook manager instance.

@@ -14,7 +14,6 @@ from typing import Any, Dict
 from tarsy.services.websocket_manager import WebSocketManager
 
 from .base_hooks import BaseLLMHook, BaseMCPHook
-# BaseReActHook removed - dead code cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -217,9 +216,6 @@ class DashboardMCPHooks(BaseMCPHook):
                 logger.debug(f"Broadcast MCP communication for session {session_id} to {session_sent + dashboard_sent} subscribers: {communication_data['step_description']}")
 
 
-# DashboardReActHooks class removed - dead code cleanup
-
-
 def register_dashboard_hooks(websocket_manager: WebSocketManager):
     """
     Register dashboard broadcast hooks with the global hook manager.
@@ -243,8 +239,6 @@ def register_dashboard_hooks(websocket_manager: WebSocketManager):
     mcp_dashboard_hooks = DashboardMCPHooks(websocket_manager=websocket_manager)
     hook_manager.register_hook("mcp.post", mcp_dashboard_hooks)
     hook_manager.register_hook("mcp.error", mcp_dashboard_hooks)
-    
-    # ReAct hooks removed - dead code cleanup
     
     logger.info("Dashboard broadcast hooks registered successfully (LLM, MCP)")
     return hook_manager
