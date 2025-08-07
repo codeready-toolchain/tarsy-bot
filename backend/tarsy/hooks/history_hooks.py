@@ -97,45 +97,6 @@ class MCPHooks(BaseMCPHook):
         else:
             logger.warning(f"Failed to log MCP communication for session {session_id}")
 
-
-class ReActHooks:
-    """
-    ReAct reasoning hooks for history logging.
-    
-    Captures ReAct reasoning steps and iterations, logging them to the history service
-    for complete audit trails and analytics.
-    """
-    
-    def __init__(self):
-        """Initialize ReAct history hooks."""
-        super().__init__("react_history_hook")
-        self.history_service = get_history_service()
-    
-    async def process_react_reasoning(self, session_id: str, reasoning_data: Dict[str, Any]) -> None:
-        """
-        Process ReAct reasoning by logging to history service.
-        
-        Args:
-            session_id: Session identifier
-            reasoning_data: Processed reasoning data from base class
-        """
-        if not self.history_service or not self.history_service.enabled:
-            logger.debug(f"History service unavailable for ReAct reasoning in session {session_id}")
-            return
-        
-        try:
-            event_type = reasoning_data.get("event_type")
-            
-            if event_type == "reasoning_step":
-                logger.debug(f"ReAct reasoning step event ignored - simplified implementation")
-            
-            elif event_type == "iteration_complete":
-                logger.debug(f"ReAct iteration complete event ignored - simplified implementation")
-        
-        except Exception as e:
-            logger.error(f"Error processing ReAct reasoning for session {session_id}: {str(e)}")
-
-
 def register_history_hooks():
     """
     Register history hooks with the global hook manager.
