@@ -8,6 +8,7 @@ from tarsy.models.agent_config import (
     CombinedConfigModel,
     MCPServerConfigModel,
 )
+from tarsy.agents.constants import IterationStrategy
 
 
 @pytest.mark.unit
@@ -40,6 +41,7 @@ class TestAgentConfigModel:
         assert config.alert_types == ["security"]
         assert config.mcp_servers == ["security-tools"]
         assert config.custom_instructions == ""
+        assert config.iteration_strategy == IterationStrategy.REACT  # Default value
 
     def test_empty_alert_types_fails(self):
         """Test that empty alert_types list fails validation."""
@@ -110,6 +112,70 @@ class TestAgentConfigModel:
             
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("mcp_servers",) for e in errors)
+
+    def test_valid_iteration_strategy_react(self):
+        """Test valid agent config with REACT iteration strategy."""
+        config_data = {
+            "alert_types": ["security"],
+            "mcp_servers": ["security-tools"],
+            "iteration_strategy": "react"
+        }
+        
+        config = AgentConfigModel(**config_data)
+        
+        assert config.iteration_strategy == IterationStrategy.REACT
+
+    def test_valid_iteration_strategy_regular(self):
+        """Test valid agent config with REGULAR iteration strategy."""
+        config_data = {
+            "alert_types": ["performance"],
+            "mcp_servers": ["monitoring-tools"],
+            "iteration_strategy": "regular"
+        }
+        
+        config = AgentConfigModel(**config_data)
+        
+        assert config.iteration_strategy == IterationStrategy.REGULAR
+
+    def test_invalid_iteration_strategy_fails(self):
+        """Test that invalid iteration strategy fails validation."""
+        config_data = {
+            "alert_types": ["security"],
+            "mcp_servers": ["security-tools"],
+            "iteration_strategy": "invalid_strategy"
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            AgentConfigModel(**config_data)
+            
+        errors = exc_info.value.errors()
+        assert any(e["loc"] == ("iteration_strategy",) for e in errors)
+
+    def test_iteration_strategy_case_sensitive(self):
+        """Test that iteration strategy is case sensitive."""
+        config_data = {
+            "alert_types": ["security"],
+            "mcp_servers": ["security-tools"],
+            "iteration_strategy": "REACT"  # Wrong case
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            AgentConfigModel(**config_data)
+            
+        errors = exc_info.value.errors()
+        assert any(e["loc"] == ("iteration_strategy",) for e in errors)
+
+    def test_iteration_strategy_enum_values(self):
+        """Test that iteration strategy accepts enum values directly."""
+        config_data = {
+            "alert_types": ["security"],
+            "mcp_servers": ["security-tools"],
+            "iteration_strategy": IterationStrategy.REACT
+        }
+        
+        config = AgentConfigModel(**config_data)
+        
+        assert config.iteration_strategy == IterationStrategy.REACT
 
 @pytest.mark.unit
 class TestMCPServerConfigModel:

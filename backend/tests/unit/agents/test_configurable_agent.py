@@ -6,6 +6,7 @@ import pytest
 
 from tarsy.agents.configurable_agent import ConfigurableAgent
 from tarsy.models.agent_config import AgentConfigModel
+from tarsy.agents.constants import IterationStrategy
 
 
 @pytest.mark.unit
@@ -328,4 +329,172 @@ class TestConfigurableAgent:
         )
         
         instructions = agent.custom_instructions()
-        assert instructions == "Analysez les menaces de sécurité 🔒 and respond appropriately" 
+        assert instructions == "Analysez les menaces de sécurité 🔒 and respond appropriately"
+
+
+@pytest.mark.unit
+class TestConfigurableAgentIterationStrategies:
+    """Test iteration strategy support in ConfigurableAgent."""
+    
+    @pytest.fixture
+    def mock_llm_client(self):
+        return Mock()
+    
+    @pytest.fixture
+    def mock_mcp_client(self):
+        return Mock()
+    
+    @pytest.fixture
+    def mock_mcp_registry(self):
+        return Mock()
+    
+    def test_default_iteration_strategy_react(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Test that ConfigurableAgent defaults to REACT iteration strategy."""
+        config = AgentConfigModel(
+            alert_types=["security"],
+            mcp_servers=["security-tools"]
+            # No iteration_strategy specified - should default to REACT
+        )
+        
+        agent = ConfigurableAgent(
+            agent_name="test-agent",
+            config=config,
+            llm_client=mock_llm_client,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry
+        )
+        
+        assert agent.iteration_strategy == IterationStrategy.REACT
+    
+    def test_explicit_react_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Test ConfigurableAgent with explicit REACT iteration strategy."""
+        config = AgentConfigModel(
+            alert_types=["security"],
+            mcp_servers=["security-tools"],
+            iteration_strategy=IterationStrategy.REACT
+        )
+        
+        agent = ConfigurableAgent(
+            agent_name="test-agent",
+            config=config,
+            llm_client=mock_llm_client,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry
+        )
+        
+        assert agent.iteration_strategy == IterationStrategy.REACT
+    
+    def test_regular_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Test ConfigurableAgent with REGULAR iteration strategy."""
+        config = AgentConfigModel(
+            alert_types=["performance"],
+            mcp_servers=["monitoring-tools"],
+            iteration_strategy=IterationStrategy.REGULAR
+        )
+        
+        agent = ConfigurableAgent(
+            agent_name="performance-agent",
+            config=config,
+            llm_client=mock_llm_client,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry
+        )
+        
+        assert agent.iteration_strategy == IterationStrategy.REGULAR
+    
+    def test_string_iteration_strategy_react(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Test ConfigurableAgent with string-based REACT iteration strategy."""
+        config = AgentConfigModel(
+            alert_types=["security"],
+            mcp_servers=["security-tools"],
+            iteration_strategy="react"
+        )
+        
+        agent = ConfigurableAgent(
+            agent_name="test-agent",
+            config=config,
+            llm_client=mock_llm_client,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry
+        )
+        
+        assert agent.iteration_strategy == IterationStrategy.REACT
+    
+    def test_string_iteration_strategy_regular(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Test ConfigurableAgent with string-based REGULAR iteration strategy."""
+        config = AgentConfigModel(
+            alert_types=["performance"],
+            mcp_servers=["monitoring-tools"],
+            iteration_strategy="regular"
+        )
+        
+        agent = ConfigurableAgent(
+            agent_name="perf-agent",
+            config=config,
+            llm_client=mock_llm_client,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry
+        )
+        
+        assert agent.iteration_strategy == IterationStrategy.REGULAR
+    
+    def test_iteration_strategy_affects_controller_type(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Test that different iteration strategies create different controller types."""
+        from tarsy.agents.iteration_controllers.regular_iteration_controller import RegularIterationController
+        from tarsy.agents.iteration_controllers.react_iteration_controller import SimpleReActController
+        
+        # Create agent with REGULAR strategy
+        regular_config = AgentConfigModel(
+            alert_types=["performance"],
+            mcp_servers=["monitoring-tools"],
+            iteration_strategy=IterationStrategy.REGULAR
+        )
+        
+        regular_agent = ConfigurableAgent(
+            agent_name="regular-agent",
+            config=regular_config,
+            llm_client=mock_llm_client,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry
+        )
+        
+        # Create agent with REACT strategy
+        react_config = AgentConfigModel(
+            alert_types=["security"],
+            mcp_servers=["security-tools"],
+            iteration_strategy=IterationStrategy.REACT
+        )
+        
+        react_agent = ConfigurableAgent(
+            agent_name="react-agent",
+            config=react_config,
+            llm_client=mock_llm_client,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry
+        )
+        
+        # Verify different controller types
+        assert isinstance(regular_agent._iteration_controller, RegularIterationController)
+        assert isinstance(react_agent._iteration_controller, SimpleReActController)
+        
+        # Verify strategies are correct
+        assert regular_agent.iteration_strategy == IterationStrategy.REGULAR
+        assert react_agent.iteration_strategy == IterationStrategy.REACT
+    
+    def test_config_property_includes_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Test that agent config property reflects the iteration strategy."""
+        config = AgentConfigModel(
+            alert_types=["security"],
+            mcp_servers=["security-tools"],
+            iteration_strategy=IterationStrategy.REGULAR
+        )
+        
+        agent = ConfigurableAgent(
+            agent_name="test-agent",
+            config=config,
+            llm_client=mock_llm_client,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry
+        )
+        
+        assert agent.config.iteration_strategy == IterationStrategy.REGULAR 
