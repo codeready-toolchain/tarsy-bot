@@ -40,8 +40,8 @@ class LLMHooks(BaseLLMHook):
         # Log the interaction to history service
         success = self.history_service.log_llm_interaction(
             session_id=session_id,
-            prompt_text=interaction_data["prompt_text"][:1000000],  # Limit to 1MB - SQLite supports up to 1GB
-            response_text=interaction_data["response_text"][:1000000] if interaction_data["response_text"] else "",
+            prompt_text=interaction_data["prompt_text"][:10000000],  # Limit to 10MB - SQLite supports up to 1GB
+            response_text=interaction_data["response_text"][:10000000],  # Always has content (success or error message)
             model_used=interaction_data["model_used"],
             step_description=interaction_data["step_description"],
             tool_calls=interaction_data["tool_calls"],
@@ -97,7 +97,6 @@ class MCPHooks(BaseMCPHook):
         else:
             logger.warning(f"Failed to log MCP communication for session {session_id}")
 
-
 def register_history_hooks():
     """
     Register history hooks with the global hook manager.
@@ -119,5 +118,5 @@ def register_history_hooks():
     hook_manager.register_hook("mcp.post", mcp_hooks)
     hook_manager.register_hook("mcp.error", mcp_hooks)
     
-    logger.info("History hooks registered successfully")
+    logger.info("History hooks registered successfully (LLM, MCP)")
     return hook_manager 

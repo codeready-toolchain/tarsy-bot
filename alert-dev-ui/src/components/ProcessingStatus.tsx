@@ -2,7 +2,7 @@
  * Processing status component to show real-time progress
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Card,
@@ -10,16 +10,9 @@ import {
   Typography,
   LinearProgress,
   Alert,
-  Stepper,
-  Step,
-  StepLabel,
   Chip,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
 } from '@mui/material';
 import {
-  ExpandMore as ExpandMoreIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   HourglassTop as HourglassIcon,
@@ -39,18 +32,32 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete
   const [wsError, setWsError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   
-  const wsService = new WebSocketService();
+  // Create WebSocket service only once per component lifecycle
+  const wsServiceRef = useRef<WebSocketService | null>(null);
+  
+  if (!wsServiceRef.current) {
+    wsServiceRef.current = new WebSocketService();
+  }
+  
+  const wsService = wsServiceRef.current;
 
   useEffect(() => {
     const initializeWebSocket = async () => {
       try {
+        // Skip if already connected
+        if (wsService.isConnected()) {
+          return;
+        }
+
         // Set up event handlers
         wsService.onStatusUpdateHandler((statusUpdate) => {
           setStatus(statusUpdate);
           
           // Call onComplete callback when processing is done
           if (statusUpdate.status === 'completed' && onComplete) {
-            setTimeout(onComplete, 1000); // Small delay to show completion
+            setTimeout(() => {
+              if (onComplete) onComplete();
+            }, 1000); // Small delay to show completion
           }
         });
 
@@ -66,10 +73,12 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete
         // Connect to WebSocket
         await wsService.connect(alertId);
         setWsConnected(true);
+        setWsError(null); // Clear any previous errors
         
       } catch (error) {
         console.error('Failed to connect to WebSocket:', error);
         setWsError('Failed to connect to real-time updates');
+        setWsConnected(false);
       }
     };
 
@@ -77,7 +86,10 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete
 
     // Cleanup on unmount
     return () => {
-      wsService.disconnect();
+      if (wsServiceRef.current) {
+        wsServiceRef.current.disconnect();
+        wsServiceRef.current = null;
+      }
     };
   }, [alertId, onComplete]);
 
@@ -110,36 +122,14 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete
     }
   };
 
-  const processingSteps = [
-    'Alert received',
-    'Downloading runbook',
-    'Analyzing runbook and determining data requirements',
-    'Gathering system data from MCP servers',
-    'Performing AI analysis',
-    'Analysis complete'
-  ];
-
-  const getCurrentStep = () => {
-    if (!status) return 0;
-    
-    const currentStepText = status.current_step.toLowerCase();
-    
-    if (currentStepText.includes('alert received')) return 0;
-    if (currentStepText.includes('downloading')) return 1;
-    if (currentStepText.includes('analyzing') || currentStepText.includes('determining')) return 2;
-    if (currentStepText.includes('gathering')) return 3;
-    if (currentStepText.includes('performing')) return 4;
-    if (currentStepText.includes('complete')) return 5;
-    
-    return Math.floor((status.progress / 100) * processingSteps.length);
-  };
+  // Simplified - no detailed steps, just processing or done
 
   if (!status) {
     return (
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Connecting to Alert Processing...
+            Processing...
           </Typography>
           <LinearProgress />
           {wsError && (
@@ -175,37 +165,13 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete
           </Typography>
 
           <Box mb={3}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-              <Typography variant="body2">
-                {status.current_step}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {status.progress}%
-              </Typography>
-            </Box>
-            <LinearProgress 
-              variant="determinate" 
-              value={status.progress} 
-              color={getStatusColor(status.status)}
-            />
+            <Typography variant="body1" gutterBottom>
+              {status.current_step}
+            </Typography>
+            {status.status === 'processing' && (
+              <LinearProgress color={getStatusColor(status.status)} />
+            )}
           </Box>
-
-          <Accordion>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="subtitle2">Processing Steps</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Stepper activeStep={getCurrentStep()} orientation="vertical">
-                {processingSteps.map((step, index) => (
-                  <Step key={step}>
-                    <StepLabel>
-                      <Typography variant="body2">{step}</Typography>
-                    </StepLabel>
-                  </Step>
-                ))}
-              </Stepper>
-            </AccordionDetails>
-          </Accordion>
 
           {status.error && (
             <Alert severity="error" sx={{ mt: 2 }}>

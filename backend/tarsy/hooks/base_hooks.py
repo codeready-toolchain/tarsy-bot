@@ -333,7 +333,6 @@ def generate_step_description(operation: str, context: Dict[str, Any]) -> str:
 
 
 
-
 class BaseLLMHook(BaseEventHook):
     """
     Abstract base class for LLM interaction hooks.
@@ -382,7 +381,14 @@ class BaseLLMHook(BaseEventHook):
         
         # Extract core interaction data
         prompt_text = method_args.get('prompt', '') or method_args.get('messages', '')
-        response_text = self._extract_response_text(result) if success else None
+        if success:
+            response_text = self._extract_response_text(result)
+            # Handle empty successful responses - LLM connected but returned no content
+            if not response_text or response_text.strip() == "":
+                response_text = "⚠️ LLM returned empty response - the model generated no content for this request"
+        else:
+            # Use error message as response text so operators can see what went wrong in history
+            response_text = f"❌ LLM API Error: {error}" if error else "❌ Unknown LLM error"
         model_used = method_args.get('model', 'unknown')
         
         # Extract tool calls and timing
@@ -401,7 +407,7 @@ class BaseLLMHook(BaseEventHook):
         # Prepare standardized interaction data
         interaction_data = {
             "prompt_text": str(prompt_text),
-            "response_text": str(response_text) if response_text else None,
+            "response_text": str(response_text),  # Always has content (success response or error message)
             "model_used": model_used,
             "step_description": step_description,
             "tool_calls": tool_calls,
@@ -643,7 +649,6 @@ class BaseMCPHook(BaseEventHook):
 # Global hook manager instance
 _global_hook_manager: Optional[HookManager] = None
 
-
 def get_hook_manager() -> HookManager:
     """
     Get the global hook manager instance.
@@ -654,4 +659,4 @@ def get_hook_manager() -> HookManager:
     global _global_hook_manager
     if _global_hook_manager is None:
         _global_hook_manager = HookManager()
-    return _global_hook_manager 
+    return _global_hook_manager

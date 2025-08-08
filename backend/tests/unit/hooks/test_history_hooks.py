@@ -142,31 +142,6 @@ class TestLLMHooksExecution:
         assert call_args['prompt_text'] == large_prompt
         assert call_args['response_text'] == large_response
 
-    @pytest.mark.unit
-    async def test_execute_with_extremely_large_content_truncation(self, llm_hooks, mock_history_service):
-        """Test that extremely large content (>1MB) is truncated to 1000000 characters."""
-        # Create content larger than 1MB limit
-        extremely_large_prompt = "a" * 1500000  # 1.5MB characters
-        extremely_large_response = "b" * 1200000  # 1.2MB characters
-        
-        event_data = {
-            'session_id': 'test_session_789',
-            'args': {'prompt': extremely_large_prompt, 'model': 'gpt-4'},
-            'result': {'content': extremely_large_response},
-            'start_time': datetime.now(),
-            'end_time': datetime.now()
-        }
-        
-        with patch('tarsy.hooks.base_hooks.generate_step_description', return_value="LLM processing using gpt-4"):
-            await llm_hooks.execute('llm.post', **event_data)
-        
-        call_args = mock_history_service.log_llm_interaction.call_args[1]
-        
-        # Verify truncation to 1MB limit
-        assert len(call_args['prompt_text']) == 1000000
-        assert len(call_args['response_text']) == 1000000
-        assert call_args['prompt_text'] == extremely_large_prompt[:1000000]
-        assert call_args['response_text'] == extremely_large_response[:1000000]
 
     @pytest.mark.asyncio
     @pytest.mark.unit

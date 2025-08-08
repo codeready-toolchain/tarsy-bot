@@ -14,6 +14,7 @@ from ..models.agent_config import AgentConfigModel
 from ..services.mcp_server_registry import MCPServerRegistry
 from ..utils.logger import get_module_logger
 from .base_agent import BaseAgent
+from .constants import IterationStrategy
 
 logger = get_module_logger(__name__)
 
@@ -34,8 +35,7 @@ class ConfigurableAgent(BaseAgent):
         llm_client: Optional[LLMClient],
         mcp_client: Optional[MCPClient],
         mcp_registry: Optional[MCPServerRegistry],
-        agent_name: Optional[str] = None,
-        progress_callback: Optional[Callable] = None
+        agent_name: Optional[str] = None
     ):
         """
         Initialize the configurable agent with configuration and dependencies.
@@ -46,7 +46,6 @@ class ConfigurableAgent(BaseAgent):
             mcp_client: Client for MCP server interactions (validated for None)
             mcp_registry: Registry of MCP server configurations (validated for None)
             agent_name: Optional name for the agent (used for identification)
-            progress_callback: Optional callback for progress updates
             
         Raises:
             ValueError: If configuration is invalid or dependencies are missing
@@ -55,8 +54,12 @@ class ConfigurableAgent(BaseAgent):
             # Validate configuration and dependencies before initialization
             self._validate_initialization_parameters(config, llm_client, mcp_client, mcp_registry)
             
+            # Extract iteration strategy from config (defaults to REACT)
+            strategy_str = getattr(config, 'iteration_strategy', None)
+            iteration_strategy = IterationStrategy(strategy_str) if strategy_str else IterationStrategy.REACT
+            
             # Initialize base agent with dependency injection
-            super().__init__(llm_client, mcp_client, mcp_registry, progress_callback)
+            super().__init__(llm_client, mcp_client, mcp_registry, iteration_strategy)
             
             # Store configuration for behavior customization
             self._config = config
@@ -252,4 +255,5 @@ class ConfigurableAgent(BaseAgent):
             raise RuntimeError(
                 "ConfigurableAgent is not properly initialized - configuration is missing"
             )
-        return self._config 
+        return self._config
+     

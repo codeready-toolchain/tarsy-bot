@@ -6,21 +6,32 @@ It implements common processing logic and defines abstract methods for agent-spe
 """
 
 import asyncio
-import json
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
-from tarsy.models.constants import AlertSessionStatus
+
 from tarsy.models.llm import LLMMessage
+from .iteration_controllers import (
+    IterationController, RegularIterationController, SimpleReActController, 
+    IterationContext
+)
+from .exceptions import (
+    AgentError, 
+    ToolExecutionError, ConfigurationError,
+    ErrorRecoveryHandler
+)
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
+from .constants import IterationStrategy
+from .json_parser import parse_llm_json_response
 from .prompt_builder import PromptContext, get_prompt_builder
+
 
 logger = get_module_logger(__name__)
 
@@ -37,6 +48,10 @@ class BaseAgent(ABC):
     2. MCP server-specific instructions (from assigned servers)
     3. Custom instructions (agent-specific, optional)
     
+    Uses configurable iteration strategies to provide different approaches
+    to alert analysis, from simple processing to transparent reasoning cycles
+    for enhanced observability and decision-making.
+    
     Agents also control their own prompt building to leverage domain-specific context.
     """
     
@@ -45,7 +60,7 @@ class BaseAgent(ABC):
         llm_client: LLMClient,
         mcp_client: MCPClient,
         mcp_registry: MCPServerRegistry,
-        progress_callback: Optional[Callable] = None
+        iteration_strategy: IterationStrategy = IterationStrategy.REACT
     ):
         """
         Initialize the base agent with required dependencies.
@@ -54,17 +69,52 @@ class BaseAgent(ABC):
             llm_client: Client for LLM interactions
             mcp_client: Client for MCP server interactions
             mcp_registry: Registry of MCP server configurations (REQUIRED)
-            progress_callback: Optional callback for progress updates
+            iteration_strategy: Which iteration strategy to use (configured per agent)
         """
         self.llm_client = llm_client
         self.mcp_client = mcp_client
         self.mcp_registry = mcp_registry
-        self.progress_callback = progress_callback
         self._iteration_count = 0
         self._max_iterations = get_settings().max_llm_mcp_iterations
         self._configured_servers: Optional[List[str]] = None
         self._prompt_builder = get_prompt_builder()
         
+        # Create appropriate iteration controller based on configuration
+        self._iteration_controller: IterationController = self._create_iteration_controller(iteration_strategy)
+    
+    def _create_iteration_controller(self, strategy: IterationStrategy) -> IterationController:
+        """
+        Factory method to create appropriate iteration controller.
+        
+        Args:
+            strategy: Which iteration strategy to use
+            
+        Returns:
+            Appropriate IterationController instance
+        """
+        if strategy == IterationStrategy.REGULAR:
+            return RegularIterationController()
+        elif strategy == IterationStrategy.REACT:
+            return SimpleReActController(self.llm_client, self._prompt_builder)
+        else:
+            raise ValueError(f"Unknown iteration strategy: {strategy}")
+    
+    @property
+    def iteration_strategy(self) -> IterationStrategy:
+        """Get the current iteration strategy for this agent."""
+        if isinstance(self._iteration_controller, RegularIterationController):
+            return IterationStrategy.REGULAR
+        elif isinstance(self._iteration_controller, SimpleReActController):
+            return IterationStrategy.REACT
+        else:
+            raise ValueError(f"Unknown controller type: {type(self._iteration_controller)}")
+
+    @property
+    def max_iterations(self) -> int:
+        """Get the maximum number of iterations allowed for this agent."""
+        return self._max_iterations
+
+
     @abstractmethod
     def mcp_servers(self) -> List[str]:
         """
@@ -98,7 +148,7 @@ class BaseAgent(ABC):
         Agents can override this method to customize prompt building based on their domain.
         The default implementation provides a comprehensive SRE analysis prompt.
         """
-        context = self._create_prompt_context(
+        context = self.create_prompt_context(
             alert_data=alert_data,
             runbook_content=runbook_content,
             mcp_data=mcp_data
@@ -111,7 +161,7 @@ class BaseAgent(ABC):
         
         Agents can override this method to customize tool selection logic.
         """
-        context = self._create_prompt_context(
+        context = self.create_prompt_context(
             alert_data=alert_data,
             runbook_content=runbook_content,
             mcp_data={},
@@ -127,7 +177,7 @@ class BaseAgent(ABC):
         
         Agents can override this method to customize iterative tool selection logic.
         """
-        context = self._create_prompt_context(
+        context = self.create_prompt_context(
             alert_data=alert_data,
             runbook_content=runbook_content,
             mcp_data={},
@@ -138,23 +188,7 @@ class BaseAgent(ABC):
         )
         return self._prompt_builder.build_iterative_mcp_tool_selection_prompt(context)
 
-    def build_partial_analysis_prompt(self, alert_data: Dict, runbook_content: str, 
-                                    iteration_history: List[Dict], current_iteration: int) -> str:
-        """
-        Build partial analysis prompt with agent-specific context.
-        
-        Agents can override this method to customize partial analysis logic.
-        """
-        context = self._create_prompt_context(
-            alert_data=alert_data,
-            runbook_content=runbook_content,
-            mcp_data={},
-            iteration_history=iteration_history,
-            current_iteration=current_iteration
-        )
-        return self._prompt_builder.build_partial_analysis_prompt(context)
-
-    def _create_prompt_context(self, 
+    def create_prompt_context(self, 
                              alert_data: Dict, 
                              runbook_content: str, 
                              mcp_data: Dict,
@@ -162,7 +196,21 @@ class BaseAgent(ABC):
                              iteration_history: Optional[List[Dict]] = None,
                              current_iteration: Optional[int] = None,
                              max_iterations: Optional[int] = None) -> PromptContext:
-        """Create a PromptContext object with all necessary data for prompt building."""
+        """
+        Create a PromptContext object with all necessary data for prompt building.
+        
+        Args:
+            alert_data: Complete alert data as flexible dictionary
+            runbook_content: The downloaded runbook content
+            mcp_data: Data from MCP tool executions
+            available_tools: Available MCP tools (optional)
+            iteration_history: History of previous iterations (optional)
+            current_iteration: Current iteration number (optional)
+            max_iterations: Maximum number of iterations (optional)
+            
+        Returns:
+            PromptContext object ready for prompt building
+        """
         return PromptContext(
             agent_name=self.__class__.__name__,
             alert_data=alert_data,
@@ -193,6 +241,7 @@ class BaseAgent(ABC):
                     guidance_parts.append(server_config.instructions)
         
         return "\n\n".join(guidance_parts) if guidance_parts else ""
+
 
     async def analyze_alert(self, 
                           alert_data: Dict, 
@@ -254,7 +303,7 @@ class BaseAgent(ABC):
             response = await self.llm_client.generate_response(messages, session_id, **kwargs)
             
             # Parse the JSON response
-            tools_to_call = self._parse_json_response(response, expected_type=list)
+            tools_to_call = parse_llm_json_response(response, expected_type=list)
             
             # Validate each tool call
             for tool_call in tools_to_call:
@@ -305,7 +354,7 @@ class BaseAgent(ABC):
             response = await self.llm_client.generate_response(messages, session_id, **kwargs)
             
             # Parse the JSON response
-            next_action = self._parse_json_response(response, expected_type=dict)
+            next_action = parse_llm_json_response(response, expected_type=dict)
             
             # Validate the response format
             if "continue" not in next_action:
@@ -332,81 +381,19 @@ class BaseAgent(ABC):
             logger.error(f"Iterative MCP tool selection failed with {self.__class__.__name__}: {str(e)}")
             raise Exception(f"Iterative tool selection error: {str(e)}")
 
-    async def analyze_partial_results(self,
-                                    alert_data: Dict,
-                                    runbook_content: str,
-                                    iteration_history: List[Dict],
-                                    current_iteration: int,
-                                    **kwargs) -> str:
-        """Analyze partial results from current iteration to guide next steps."""
-        logger.info(f"Starting partial analysis with {self.__class__.__name__} - Iteration {current_iteration}")
-        
-        # Build prompt using agent-specific prompt building
-        prompt = self.build_partial_analysis_prompt(
-            alert_data, runbook_content, iteration_history, current_iteration
-        )
-        
-        # Create messages
-        messages = [
-            LLMMessage(
-                role="system",
-                content=self._prompt_builder.get_partial_analysis_system_message()
-            ),
-            LLMMessage(
-                role="user",
-                content=prompt
-            )
-        ]
-        
-        try:
-            result = await self.llm_client.generate_response(messages, **kwargs)
-            logger.info(f"Partial analysis completed with {self.__class__.__name__}")
-            return result
-        except Exception as e:
-            logger.error(f"Partial analysis failed with {self.__class__.__name__}: {str(e)}")
-            raise Exception(f"Partial analysis error: {str(e)}")
-
-    def _parse_json_response(self, response: str, expected_type: type) -> any:
-        """Parse JSON response from LLM, handling markdown code blocks."""
-        response = response.strip()
-        
-        # Find JSON in the response (handle markdown code blocks)
-        if "```json" in response:
-            start = response.find("```json") + 7
-            end = response.find("```", start)
-            response = response[start:end].strip()
-        elif "```" in response:
-            start = response.find("```") + 3
-            end = response.find("```", start)
-            response = response[start:end].strip()
-        
-        # Parse the JSON
-        try:
-            parsed = json.loads(response)
-        except json.JSONDecodeError as e:
-            raise Exception(f"Failed to parse LLM response as JSON: {str(e)}")
-        
-        # Validate type
-        if not isinstance(parsed, expected_type):
-            raise ValueError(f"Response must be a JSON {expected_type.__name__}")
-        
-        return parsed
-    
     async def process_alert(
         self,
         alert_data: Dict[str, Any],
         runbook_content: str,
-        session_id: str,
-        callback: Optional[Callable] = None
+        session_id: str
     ) -> Dict[str, Any]:
         """
-        Process an alert using the LLM-first approach.
+        Process an alert using the appropriate iteration strategy (ReAct or Regular).
         
         Args:
             alert_data: Complete alert data as flexible dictionary
             runbook_content: The downloaded runbook content  
             session_id: Session ID for timeline logging
-            callback: Optional callback for progress updates
             
         Returns:
             Dictionary containing the analysis result and metadata
@@ -416,15 +403,6 @@ class BaseAgent(ABC):
             raise ValueError("session_id is required for alert processing")
                        
         try:
-            # Use provided callback or fall back to constructor callback
-            progress_callback = callback or self.progress_callback
-            
-            # Start processing
-            await self._update_progress(
-                progress_callback,
-                status="processing",
-                message=f"Starting analysis with {self.__class__.__name__}"
-            )
             
             # Configure MCP client with agent-specific servers
             await self._configure_mcp_client()
@@ -432,158 +410,75 @@ class BaseAgent(ABC):
             # Get available tools from assigned MCP servers
             available_tools = await self._get_available_tools()
             
-            # Iterative analysis loop with flexible data
-            analysis_result = await self._iterative_analysis(
-                alert_data, 
-                runbook_content, 
-                available_tools,
-                progress_callback,
-                session_id=session_id
+            # Create iteration context for controller
+            context = IterationContext(
+                alert_data=alert_data,
+                runbook_content=runbook_content,
+                available_tools=available_tools,
+                session_id=session_id,
+                agent=self
             )
             
-            # Final result
-            await self._update_progress(
-                progress_callback,
-                status=AlertSessionStatus.COMPLETED,
-                message="Analysis completed successfully"
-            )
+            # Delegate to appropriate iteration controller - no conditionals!
+            analysis_result = await self._iteration_controller.execute_analysis_loop(context)
             
             return {
                 "status": "success",
                 "agent": self.__class__.__name__,
                 "analysis": analysis_result,
-                "iterations": self._iteration_count,
+                "strategy": self.iteration_strategy.value,
                 "timestamp_us": now_us()
             }
             
-        except Exception as e:
-            # Simple error handling: log and fail
-            error_msg = f"Agent processing failed: {str(e)}"
-            logger.error(error_msg, exc_info=True)
+        except AgentError as e:
+            # Handle structured agent errors with recovery information
+            logger.error(f"Agent processing failed with structured error: {e.to_dict()}", exc_info=True)
             
-            await self._update_progress(
-                progress_callback,
-                status="error",
-                message=error_msg
-            )
+            return {
+                "status": "error",
+                "agent": self.__class__.__name__,
+                "error": str(e),
+                "error_details": e.to_dict(),
+                "recoverable": e.recoverable,
+                "timestamp_us": now_us()
+            }
+        except Exception as e:
+            # Handle unexpected errors
+            error_msg = f"Agent processing failed with unexpected error: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             
             return {
                 "status": "error",
                 "agent": self.__class__.__name__,
                 "error": error_msg,
+                "recoverable": False,
                 "timestamp_us": now_us()
             }
-
-    async def _iterative_analysis(
-        self,
-        alert_data: Dict[str, Any],
-        runbook_content: str,
-        available_tools: List[Dict[str, Any]],
-        progress_callback: Optional[Callable],
-        session_id: str
-    ) -> str:
+    
+    def merge_mcp_data(self, existing_data: Dict[str, Any], new_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Perform iterative analysis using flexible alert data (LLM-First Processing).
+        Merge new MCP data with existing data.
         
-        Args:
-            alert_data: Complete flexible alert data dictionary
-            runbook_content: The runbook content
-            available_tools: List of available MCP tools
-            progress_callback: Optional progress callback
-            session_id: Session ID for timeline logging
-            
-        Returns:
-            Final analysis result
+        Handles both list and non-list data formats gracefully.
         """
-        iteration_history = []
-        self._iteration_count = 0
+        merged_data = existing_data.copy()
         
-        # Initial tool selection with flexible data
-        try:
-            initial_tools = await self.determine_mcp_tools(
-                alert_data, runbook_content, {"tools": available_tools}, session_id=session_id
-            )
-        except Exception as e:
-            logger.info(f"Initial tool selection failed, providing error as tool result: {str(e)}")
-            # Instead of falling back to empty tools, provide the error as an MCP tool result
-            # This lets the LLM see what went wrong and work with it naturally
-            mcp_data = {
-                "tool_selection_error": {
-                    "error": str(e),
-                    "message": "MCP tool selection failed - the LLM response did not match the required format",
-                    "required_format": {
-                        "description": "Each tool call must be a JSON object with these required fields:",
-                        "fields": ["server", "tool", "parameters", "reason"],
-                        "format": "JSON array of objects, each containing the four required fields above"
-                    }
-                }
-            }
-            return await self.analyze_alert(alert_data, runbook_content, mcp_data, session_id=session_id)
-        
-        # Execute initial tools if any
-        mcp_data = {}
-        if initial_tools:
-            mcp_data = await self._execute_mcp_tools(initial_tools, session_id=session_id)
-            iteration_history.append({
-                "tools_called": initial_tools,
-                "mcp_data": mcp_data
-            })
-        
-        while self._iteration_count < self._max_iterations:
-            self._iteration_count += 1
-            
-            await self._update_progress(
-                progress_callback,
-                status="processing",
-                message=f"Analysis iteration {self._iteration_count}/{self._max_iterations}"
-            )
-            
-            # Determine if we need more tools
-            try:
-                next_action = await self.determine_next_mcp_tools(
-                    alert_data, runbook_content, {"tools": available_tools},
-                    iteration_history, self._iteration_count, session_id=session_id
-                )
-            except Exception as e:
-                logger.error(f"Next tool determination failed in iteration {self._iteration_count}: {str(e)}")
-                break
-            
-            # Check if we should continue
-            if not next_action.get("continue", False):
-                logger.info(f"Analysis complete after {self._iteration_count} iterations")
-                break
-            
-            # Execute additional tools
-            additional_tools = next_action.get("tools", [])
-            if additional_tools:
-                additional_mcp_data = await self._execute_mcp_tools(additional_tools, session_id=session_id)
-                # Merge with existing data
-                for server_name, server_data in additional_mcp_data.items():
-                    if server_name in mcp_data:
-                        if isinstance(mcp_data[server_name], list) and isinstance(server_data, list):
-                            mcp_data[server_name].extend(server_data)
-                        else:
-                            # Convert to list format if needed
-                            if not isinstance(mcp_data[server_name], list):
-                                mcp_data[server_name] = [mcp_data[server_name]]
-                            if isinstance(server_data, list):
-                                mcp_data[server_name].extend(server_data)
-                            else:
-                                mcp_data[server_name].append(server_data)
+        for server_name, server_data in new_data.items():
+            if server_name in merged_data:
+                if isinstance(merged_data[server_name], list) and isinstance(server_data, list):
+                    merged_data[server_name].extend(server_data)
+                else:
+                    # Convert to list format if needed
+                    if not isinstance(merged_data[server_name], list):
+                        merged_data[server_name] = [merged_data[server_name]]
+                    if isinstance(server_data, list):
+                        merged_data[server_name].extend(server_data)
                     else:
-                        mcp_data[server_name] = server_data
-                
-                iteration_history.append({
-                    "tools_called": additional_tools,
-                    "mcp_data": additional_mcp_data
-                })
+                        merged_data[server_name].append(server_data)
+            else:
+                merged_data[server_name] = server_data
         
-        # Final analysis with all collected data
-        try:
-            return await self.analyze_alert(alert_data, runbook_content, mcp_data, session_id=session_id)
-        except Exception as e:
-            logger.error(f"Final analysis failed: {str(e)}")
-            return f"Analysis incomplete due to error: {str(e)}"
+        return merged_data
 
     def _compose_instructions(self) -> str:
         """
@@ -642,8 +537,19 @@ class BaseAgent(ABC):
         available_server_ids = [config.server_id for config in server_configs]
         missing_servers = set(mcp_server_ids) - set(available_server_ids)
         if missing_servers:
-            logger.error(f"Missing MCP server configurations for: {missing_servers}")
-            raise ValueError(f"Required MCP servers not configured: {missing_servers}")
+            missing_list = list(missing_servers)
+            config_error = ConfigurationError(
+                message=f"Required MCP servers not configured: {missing_list}",
+                missing_config="mcp_servers",
+                context={
+                    "required_servers": mcp_server_ids,
+                    "available_servers": available_server_ids,
+                    "missing_servers": missing_list,
+                    "agent_class": self.__class__.__name__
+                }
+            )
+            logger.error(f"Missing MCP server configurations: {config_error.to_dict()}")
+            raise config_error
         
         # Configure agent to use only the assigned servers
         self._configured_servers = mcp_server_ids
@@ -676,8 +582,20 @@ class BaseAgent(ABC):
             logger.error(f"Failed to retrieve tools for agent {self.__class__.__name__}: {str(e)}")
             return []
 
-    async def _execute_mcp_tools(self, tools_to_call: List[Dict], session_id: str) -> Dict[str, List[Dict]]:
-        """Execute a list of MCP tool calls and return organized results."""
+    async def execute_mcp_tools(self, tools_to_call: List[Dict], session_id: str) -> Dict[str, List[Dict]]:
+        """
+        Execute a list of MCP tool calls and return organized results.
+        
+        This method provides the public interface for executing MCP tools,
+        handling proper validation, error recovery, and result organization.
+        
+        Args:
+            tools_to_call: List of tool call dictionaries with server, tool, parameters
+            session_id: Session ID for tracking and logging
+            
+        Returns:
+            Dictionary organized by server containing tool execution results
+        """
         results = {}
         
         for tool_call in tools_to_call:
@@ -704,41 +622,28 @@ class BaseAgent(ABC):
                 })
                 
             except Exception as e:
-                logger.error(f"Tool execution failed for {tool_name}: {str(e)}")
+                # Create structured error with recovery strategy
+                tool_exec_error = ToolExecutionError(
+                    message=f"Tool execution failed: {str(e)}",
+                    tool_name=tool_name,
+                    server_name=server_name,
+                    context={
+                        "parameters": tool_params,
+                        "agent_class": self.__class__.__name__
+                    }
+                )
+                logger.error(f"Tool execution failed: {tool_exec_error.to_dict()}")
+                
+                # Use recovery handler to create error result
                 if server_name not in results:
                     results[server_name] = []
                 
-                results[server_name].append({
-                    "tool": tool_name,
+                error_result = ErrorRecoveryHandler.handle_tool_execution_error(tool_exec_error)
+                error_result.update({
                     "parameters": tool_params,
-                    "error": str(e),
                     "timestamp": datetime.now(UTC).isoformat()
                 })
+                results[server_name].append(error_result)
         
         return results
-    
-    async def _update_progress(
-        self,
-        callback: Optional[Callable],
-        status: str,
-        message: str
-    ):
-        """Update progress through callback if available."""
-        if callback:
-            try:
-                progress_data = {
-                    "status": status,
-                    "message": message,
-                    "agent": self.__class__.__name__,
-                    "iteration": self._iteration_count,
-                    "timestamp": datetime.now(UTC).isoformat()
-                }
-                
-                # Handle both sync and async callbacks
-                if asyncio.iscoroutinefunction(callback):
-                    await callback(progress_data)
-                else:
-                    callback(progress_data)
-                    
-            except Exception as e:
-                logger.error(f"Progress callback failed: {str(e)}") 
+ 

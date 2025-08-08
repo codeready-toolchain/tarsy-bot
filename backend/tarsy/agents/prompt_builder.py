@@ -169,37 +169,7 @@ If analysis can be completed:
 
 **Default to stopping if you have reasonable data to work with.** The analysis doesn't need to be perfect - it needs to be actionable based on the runbook steps."""
     
-    def build_partial_analysis_prompt(self, context: PromptContext) -> str:
-        """
-        Build partial analysis prompt for intermediate analysis steps.
-        
-        Args:
-            context: Prompt context containing all necessary data
-            
-        Returns:
-            Formatted partial analysis prompt
-        """
-        return f"""# Partial Analysis Request (Iteration {context.current_iteration})
 
-Analyze the current findings from this iteration and provide insights about what has been discovered so far.
-
-## Alert Information
-{self._build_alert_section(context.alert_data)}
-
-{self._build_runbook_section(context.runbook_content)}
-
-## Iteration History
-{self._format_iteration_history(context.iteration_history)}
-
-## Instructions
-Provide a concise analysis of what has been discovered in this iteration:
-
-1. **Key Findings**: What important information was gathered in this iteration?
-2. **Progress Assessment**: How does this align with the runbook steps?
-3. **Next Steps Guidance**: What should be investigated next (if anything)?
-4. **Confidence Level**: How confident are you in the current understanding of the issue?
-
-Keep this analysis focused and concise - this is an intermediate step, not the final analysis."""
     
     def _build_context_section(self, context: PromptContext) -> str:
         """Build the context section of the prompt."""
@@ -393,6 +363,12 @@ Please be specific and reference the actual data provided. Use exact resource na
                 return str(data)
         return str(data)
     
+    def _format_available_tools(self, available_tools: Dict) -> str:
+        """Format available tools for display in prompts."""
+        if not available_tools:
+            return "No tools available."
+        return json.dumps(available_tools, indent=2)
+    
     def _format_iteration_history(self, iteration_history: List[Dict]) -> str:
         """Format iteration history for display in prompts."""
         if not iteration_history:
@@ -496,9 +472,343 @@ Focus on root cause analysis and sustainable solutions."""
         """Get system message for iterative MCP tool selection."""
         return "You are an expert SRE analyzing alerts through multi-step runbooks. Based on the alert, runbook, available MCP tools, and previous iteration results, determine what tools should be called next or if the analysis is complete. Return only a valid JSON object with no additional text."
     
-    def get_partial_analysis_system_message(self) -> str:
-        """Get system message for partial analysis."""
-        return "You are an expert SRE analyzing alerts through multi-step runbooks. Analyze the current findings and provide insights about what has been discovered so far and what might be needed next."
+
+    # ====================================================================
+    # Standard ReAct Framework Methods 
+    # ====================================================================
+
+    def build_standard_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+        """Build standard ReAct prompt following the established ReAct pattern."""
+        
+        # Build the ReAct history from previous iterations
+        history_text = ""
+        if react_history:
+            history_text = "\n".join(react_history) + "\n"
+        
+        available_actions = self._format_available_actions(context.available_tools)
+        action_names = self._get_action_names(context.available_tools)
+        
+        prompt = f"""Answer the following question as best you can. You have access to the following tools:
+
+{available_actions}
+
+MANDATORY FORMAT - Follow this EXACT structure:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{', '.join(action_names)}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+CRITICAL INSTRUCTIONS:
+1. ALWAYS use colons after "Thought:", "Action:", and "Action Input:"
+2. For Action Input, provide ONLY parameter values (no YAML, no ```code blocks```, no formatting)
+3. STOP immediately after your "Action Input:" line
+4. NEVER write "Observation:" - the system provides that
+
+EXAMPLE OF CORRECT FORMAT:
+Thought: I need to check the namespace status first.
+Action: kubernetes-server.resources_get
+Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
+
+EXAMPLE OF INCORRECT FORMAT (DO NOT DO THIS):
+Thought
+I need to check...
+Action: kubernetes-server.resources_get
+Action Input:
+```yaml
+apiVersion: v1
+kind: Namespace
+name: superman-dev
+```
+Observation: (fake observation)
+
+RESPONSE OPTIONS:
+1. Continue investigating: "Thought: [reasoning] Action: [tool] Action Input: [params]"
+2. OR conclude: "Thought: I now know the final answer Final Answer: [analysis]"
+
+Begin!
+
+Question: {self._format_react_question(context)}
+{history_text}"""
+        
+        return prompt
+
+    def _format_available_actions(self, available_tools: Dict) -> str:
+        """Format available tools as ReAct actions."""
+        if not available_tools or not available_tools.get("tools"):
+            return "No tools available."
+        
+        actions = []
+        for tool in available_tools["tools"]:
+            action_name = f"{tool.get('server', 'unknown')}.{tool.get('name', tool.get('tool', 'unknown'))}"
+            description = tool.get('description', 'No description available')
+            
+            # Get parameter info from input schema
+            parameters = tool.get('input_schema', {}).get('properties', {})
+            if parameters:
+                param_desc = ', '.join([f"{k}: {v.get('description', 'no description')}" for k, v in parameters.items()])
+                actions.append(f"{action_name}: {description}\n  Parameters: {param_desc}")
+            else:
+                actions.append(f"{action_name}: {description}")
+        
+        return '\n'.join(actions)
+
+    def _get_action_names(self, available_tools: Dict) -> List[str]:
+        """Get list of action names for the ReAct prompt."""
+        if not available_tools or not available_tools.get("tools"):
+            return ["No tools available"]
+        
+        return [f"{tool.get('server', 'unknown')}.{tool.get('name', tool.get('tool', 'unknown'))}" 
+                for tool in available_tools["tools"]]
+
+    def _format_react_question(self, context: PromptContext) -> str:
+        """Format the alert analysis as a ReAct question."""
+        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
+        
+        # Create concise question for ReAct
+        question = f"""Analyze this {alert_type} alert and provide actionable recommendations.
+
+## Alert Details
+{self._build_alert_section(context.alert_data)}
+
+{self._build_runbook_section(context.runbook_content)}
+
+## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
+
+Be thorough in your investigation before providing the final answer."""
+        
+        return question
+
+    # ====================================================================
+    # ReAct Response Parsing Methods
+    # ====================================================================
+
+    def _extract_section_content(self, line: str, prefix: str) -> str:
+        """Safely extract content from a line with given prefix, with defensive checks."""
+        if not line or not prefix:
+            return ""
+        
+        # Ensure the line is long enough to contain the prefix plus potential content
+        if len(line) < len(prefix):
+            return ""
+        
+        # Safely extract content after prefix
+        if len(line) > len(prefix):
+            return line[len(prefix):].strip()
+        
+        return ""
+
+    def _is_section_header(self, line: str, section_type: str, found_sections: set) -> bool:
+        """Check if line is a valid section header that hasn't been processed yet."""
+        if not line or section_type in found_sections:
+            return False
+            
+        if section_type == 'thought':
+            return line.startswith('Thought:') or line == 'Thought'
+        elif section_type == 'action':
+            return line.startswith('Action:')
+        elif section_type == 'action_input':
+            return line.startswith('Action Input:')
+        elif section_type == 'final_answer':
+            return line.startswith('Final Answer:')
+        
+        return False
+
+    def _should_stop_parsing(self, line: str) -> bool:
+        """Check if we should stop parsing due to fake content markers."""
+        if not line:
+            return False
+        return line.startswith('Observation:') or line.startswith('[Based on')
+
+    def _finalize_current_section(self, parsed: Dict[str, Any], current_section: str, content_lines: List[str]) -> None:
+        """Safely finalize the current section by joining content lines."""
+        if current_section and content_lines is not None:
+            parsed[current_section] = '\n'.join(content_lines).strip()
+
+    def parse_react_response(self, response: str) -> Dict[str, Any]:
+        """Parse structured ReAct response into components with robust error handling."""
+        # Input validation
+        if not response or not isinstance(response, str):
+            return {
+                'thought': None,
+                'action': None,
+                'action_input': None,
+                'final_answer': None,
+                'is_complete': False
+            }
+
+        lines = response.strip().split('\n')
+        parsed = {
+            'thought': None,
+            'action': None,
+            'action_input': None,
+            'final_answer': None,
+            'is_complete': False
+        }
+        
+        current_section = None
+        content_lines = []  # Always initialize as empty list
+        found_sections = set()
+        
+        try:
+            for line in lines:
+                # Safely strip line, handle None/empty cases
+                line = line.strip() if line else ""
+                
+                # Skip empty lines when not in a section
+                if not line and not current_section:
+                    continue
+                
+                # Check for stop conditions first
+                if self._should_stop_parsing(line):
+                    self._finalize_current_section(parsed, current_section, content_lines)
+                    break
+                
+                # Handle Final Answer (can appear at any time)
+                if self._is_section_header(line, 'final_answer', set()):  # Always allow final_answer
+                    self._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'final_answer'
+                    found_sections.add('final_answer')
+                    content_lines = [self._extract_section_content(line, 'Final Answer:')]
+                    parsed['is_complete'] = True
+                    
+                # Handle Thought section  
+                elif self._is_section_header(line, 'thought', found_sections):
+                    self._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'thought'
+                    found_sections.add('thought')
+                    if line.startswith('Thought:'):
+                        content_lines = [self._extract_section_content(line, 'Thought:')]
+                    else:
+                        content_lines = []  # 'Thought' without colon, content on next lines
+                    
+                # Handle Action section
+                elif self._is_section_header(line, 'action', found_sections):
+                    self._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'action'
+                    found_sections.add('action')
+                    content_lines = [self._extract_section_content(line, 'Action:')]
+                    
+                # Handle Action Input section
+                elif self._is_section_header(line, 'action_input', found_sections):
+                    self._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'action_input'
+                    found_sections.add('action_input')
+                    content_lines = [self._extract_section_content(line, 'Action Input:')]
+                    
+                else:
+                    # Only add content if we're in a valid section
+                    if current_section and content_lines is not None:
+                        content_lines.append(line)
+            
+            # Handle last section
+            self._finalize_current_section(parsed, current_section, content_lines)
+            
+        except Exception as e:
+            # Log the error if needed, but return a safe default structure
+            # In a production environment, you might want to add logging here
+            pass
+        
+        return parsed
+
+    def convert_action_to_tool_call(self, action: str, action_input: str) -> Dict[str, Any]:
+        """Convert ReAct Action/Action Input to MCP tool call format."""
+        if not action:
+            raise ValueError("Action cannot be empty")
+        
+        if '.' not in action:
+            raise ValueError(f"Action must be in format 'server.tool', got: {action}")
+        
+        server, tool = action.split('.', 1)
+        
+        # Parse action input (could be JSON, YAML-like, or simple parameters)
+        parameters = {}
+        action_input = action_input.strip()
+        
+        try:
+            # Try JSON first
+            if action_input.startswith('{'):
+                parameters = json.loads(action_input)
+            else:
+                # Handle YAML-like format: "apiVersion: v1, kind: Namespace, name: superman-dev"
+                # or key=value format
+                for part in action_input.split(','):
+                    part = part.strip()
+                    if ':' in part and '=' not in part:
+                        # YAML-like format (key: value)
+                        key, value = part.split(':', 1)
+                        parameters[key.strip()] = value.strip()
+                    elif '=' in part:
+                        # key=value format
+                        key, value = part.split('=', 1)
+                        parameters[key.strip()] = value.strip()
+                    else:
+                        # Single parameter without format
+                        if not parameters:  # Only if we haven't added anything yet
+                            parameters['input'] = action_input
+                            break
+                        
+                # If no structured format detected, treat as single input
+                if not parameters:
+                    parameters['input'] = action_input
+                        
+        except json.JSONDecodeError:
+            # Fallback: try to parse as key: value or key=value
+            for part in action_input.split(','):
+                part = part.strip()
+                if ':' in part:
+                    key, value = part.split(':', 1)
+                    parameters[key.strip()] = value.strip()
+                elif '=' in part:
+                    key, value = part.split('=', 1)
+                    parameters[key.strip()] = value.strip()
+            
+            # Ultimate fallback
+            if not parameters:
+                parameters['input'] = action_input
+        except Exception:
+            # Ultimate fallback
+            parameters['input'] = action_input
+        
+        return {
+            'server': server,
+            'tool': tool,
+            'parameters': parameters,
+            'reason': f'ReAct Action: {action}'
+        }
+
+    def format_observation(self, mcp_data: Dict[str, Any]) -> str:
+        """Format MCP data as observation text for ReAct."""
+        if not mcp_data:
+            return "No data returned from the action."
+        
+        observations = []
+        for server, results in mcp_data.items():
+            if isinstance(results, list):
+                for result in results:
+                    if 'result' in result and result['result']:
+                        # Format the result nicely
+                        if isinstance(result['result'], dict):
+                            formatted_result = json.dumps(result['result'], indent=2)
+                        else:
+                            formatted_result = str(result['result'])
+                        observations.append(f"{server}.{result.get('tool', 'unknown')}: {formatted_result}")
+                    elif 'error' in result:
+                        observations.append(f"{server}.{result.get('tool', 'unknown')} error: {result['error']}")
+            else:
+                # Legacy format
+                observations.append(f"{server}: {json.dumps(results, indent=2)}")
+        
+        return '\n'.join(observations) if observations else "Action completed but no specific data returned."
 
 
 # Shared instance since PromptBuilder is stateless

@@ -3,7 +3,7 @@
  */
 
 import axios from 'axios';
-import { Alert, AlertResponse, ProcessingStatus } from '../types';
+import { AlertResponse } from '../types';
 
 // Configure axios defaults
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -54,18 +54,6 @@ export class ApiService {
     }
   }
 
-  /**
-   * Get processing status for an alert
-   */
-  static async getProcessingStatus(alertId: string): Promise<ProcessingStatus> {
-    try {
-      const response = await api.get<ProcessingStatus>(`/processing-status/${alertId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error getting processing status:', error);
-      throw new Error('Failed to get processing status');
-    }
-  }
 
   /**
    * Get supported alert types for the development/testing web interface dropdown.

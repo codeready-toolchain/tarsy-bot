@@ -15,11 +15,6 @@ from sqlalchemy import text
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.utils.timestamp import now_us
 
-if TYPE_CHECKING:
-    # Import for type hints only to avoid circular imports
-    pass
-
-
 class AlertSession(SQLModel, table=True):
     """
     Represents an alert processing session with complete lifecycle tracking.
@@ -107,8 +102,7 @@ class AlertSession(SQLModel, table=True):
         back_populates="session", 
         sa_relationship_kwargs={"lazy": "select", "cascade": "all, delete-orphan"}
     )
-
-
+    
 class LLMInteraction(SQLModel, table=True):
     """
     Captures comprehensive LLM interaction data for audit trails.

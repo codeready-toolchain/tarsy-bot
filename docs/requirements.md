@@ -9,6 +9,7 @@ Tarsy-bot is an intelligent Site Reliability Engineering system that automates i
 This requirements document is a living document that evolves through [Enhancement Proposals (EPs)](enhancements/README.md). All significant changes to system requirements are documented through the EP process, ensuring traceable evolution and AI-friendly implementation.
 
 ### Recent Changes
+- **ITERATION STRATEGIES (IMPLEMENTED)**: Agent Iteration Flow Strategies - Added ReAct vs Regular iteration strategy support allowing agents to use either the standard ReAct pattern (Think→Action→Observation cycles) for systematic analysis or regular iteration pattern for faster processing without reasoning overhead
 - **EP-0007 (IMPLEMENTED)**: Data Masking Service for Sensitive MCP Server Data - Added pattern-based masking service for secrets and credentials from MCP server responses, with built-in patterns for common secrets and configurable per-server masking rules
 - **EP-0006 (IMPLEMENTED)**: Configuration-Based Agents - Added YAML-based agent configuration system allowing deployment of new agents without code changes, supporting both traditional hardcoded agents and configuration-driven agents simultaneously
 - **EP-0005 (IMPLEMENTED)**: Flexible Alert Data Structure Support - Transformed rigid Kubernetes-specific alert model into flexible, agent-agnostic system supporting arbitrary JSON payloads with minimal validation
@@ -72,8 +73,10 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
 **REQ-1.2.3: Specialized Agent Architecture**
 - The system shall implement specialized agents inheriting from a common base agent class
 - The system shall support both traditional hardcoded agents and YAML configuration-based agents simultaneously
+- The system shall support configurable iteration strategies per agent (ReAct or Regular)
 - The system shall load agent configurations from filesystem-based YAML file without requiring code changes
 - Each agent shall specify its required MCP server subset through abstract method implementation or configuration
+- Each agent shall specify its iteration strategy through built-in configuration or YAML configuration
 - Agents shall process flexible alert data structures without preprocessing
 - Agents shall receive complete JSON payloads for intelligent LLM interpretation
 - Agents shall support diverse monitoring sources beyond Kubernetes through flexible data handling
@@ -108,22 +111,30 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
   - xAI Grok (grok-3)
 - The system shall allow configuration of default LLM provider
 - The system shall return an error if no LLM provider is available or accessible
-- The system shall provide unified LLM access to all specialized agents
+- The system shall provide unified LLM access to all specialized agents and iteration strategies
 
 **REQ-1.4.2: Agent-Based Iterative Analysis Process**
-- The system shall perform iterative analysis through specialized agents with the following phases:
-  1. Alert type to agent mapping and agent instantiation
-  2. Agent-specific tool selection based on alert and runbook
+- The system shall perform iterative analysis through specialized agents using configurable iteration strategies:
+  1. Alert type to agent mapping and agent instantiation with specified iteration strategy
+  2. Strategy-specific analysis execution:
+     - **ReAct Strategy**: Think→Action→Observation cycles with structured reasoning
+     - **Regular Strategy**: Direct tool selection and execution for faster processing
   3. Data collection using agent's assigned MCP server subset
-  4. Partial analysis of collected data by specialized agent
-  5. Agent determination of next steps (continue or stop)
-  6. Additional tool selection for deeper investigation within agent's domain
-  7. Final comprehensive analysis with all collected data
+  4. Strategy-appropriate analysis of collected data by specialized agent
+  5. Strategy-specific continuation logic (ReAct reasoning vs Regular tool iteration)
+  6. Final comprehensive analysis with all collected data
 
-**REQ-1.4.3: Analysis Constraints**
-- The system shall limit analysis to maximum 10 iterations by default per agent
-- The system shall prevent infinite loops through safety mechanisms in each agent
+**REQ-1.4.3: Iteration Strategy Configuration**
+- The system shall support configurable iteration strategies per agent (ReAct or Regular)
+- Built-in agents shall have default strategies defined in central configuration
+- Configuration-based agents shall support iteration_strategy specification in YAML
+- The system shall default to ReAct strategy for systematic analysis when not specified
+
+**REQ-1.4.4: Analysis Constraints**
+- The system shall limit analysis to maximum 10 iterations by default per agent regardless of strategy
+- The system shall prevent infinite loops through safety mechanisms in each iteration strategy
 - The system shall provide configurable iteration limits per agent type
+- ReAct strategy shall include structured parsing and validation of LLM reasoning responses
 
 ### 1.5 System Data Collection
 
@@ -427,22 +438,23 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
 **REQ-8.1.1: Processing Sequence**
 1. Alert submission and validation
 2. Agent selection based on alert type registry mapping
-3. Agent instantiation with dependency injection (LLM client, agent-specific MCP servers)
+3. Agent instantiation with dependency injection (LLM client, agent-specific MCP servers, iteration strategy)
 4. Runbook download (raw markdown content) and distribution to selected agent
 5. Agent-specific MCP tool discovery from assigned server subset
-6. Iterative LLM-driven analysis by specialized agent:
-   - Agent-specific tool selection from assigned MCP servers
+6. Strategy-specific iterative analysis by specialized agent:
+   - **ReAct Strategy**: Think→Action→Observation cycles with structured reasoning
+   - **Regular Strategy**: Direct tool selection and iterative analysis
    - Data collection using agent's MCP server subset
-   - Agent-specific partial analysis
-   - Agent continuation decision
+   - Strategy-appropriate analysis and continuation logic
 7. Final comprehensive analysis by specialized agent
-8. Result presentation with agent metadata
+8. Result presentation with agent and strategy metadata
 
 **REQ-8.1.2: Agent Specialization Flow**
 - The system shall route alerts to appropriate specialized agents based on alert type
 - Agents shall only access their configured subset of MCP servers
-- Agents shall apply domain-specific analysis logic and instructions
+- Agents shall apply domain-specific analysis logic and instructions using their configured iteration strategy
 - Agents shall provide specialized error handling and recovery within their domain
+- Agents shall use strategy-specific processing patterns (ReAct reasoning vs Regular tool iteration)
 
 **REQ-8.1.3: History Capture Flow**
 - The system shall automatically create history sessions at alert processing initiation

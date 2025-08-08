@@ -14,7 +14,8 @@ from tarsy.agents.base_agent import BaseAgent
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.utils.logger import get_module_logger
-from tarsy.config.builtin_config import BUILTIN_AGENT_CLASS_IMPORTS
+from tarsy.config.builtin_config import get_builtin_agent_import_mapping, get_builtin_agent_config
+from tarsy.agents.constants import IterationStrategy
 
 from .mcp_server_registry import MCPServerRegistry
 
@@ -40,7 +41,6 @@ class AgentFactory:
         llm_client: LLMClient,
         mcp_client: MCPClient,
         mcp_registry: MCPServerRegistry,
-        progress_callback: Optional[Any] = None,
         agent_configs: Optional[Dict[str, "AgentConfigModel"]] = None
     ):
         """
@@ -50,13 +50,11 @@ class AgentFactory:
             llm_client: Client for LLM interactions
             mcp_client: Client for MCP server interactions
             mcp_registry: Registry of MCP server configurations (REQUIRED)
-            progress_callback: Optional callback for progress updates
             agent_configs: Optional dictionary of configured agents for ConfigurableAgent creation
         """
         self.llm_client = llm_client
         self.mcp_client = mcp_client
         self.mcp_registry = mcp_registry
-        self.progress_callback = progress_callback
         self.agent_configs = agent_configs
         
         # Static registry of available agent classes - loaded from central configuration
@@ -72,7 +70,7 @@ class AgentFactory:
         Uses import paths to avoid circular imports.
         """
         
-        for class_name, import_path in BUILTIN_AGENT_CLASS_IMPORTS.items():
+        for class_name, import_path in get_builtin_agent_import_mapping().items():
             try:
                 # Parse module and class name from import path
                 module_path, class_name_from_path = import_path.rsplit('.', 1)
@@ -146,11 +144,24 @@ class AgentFactory:
             # Validate dependencies before creation
             self._validate_dependencies_for_traditional_agent(agent_class_name)
             
+            # Get iteration strategy from built-in configuration
+            agent_config = get_builtin_agent_config(agent_class_name)
+            strategy_value = agent_config.get("iteration_strategy", IterationStrategy.REACT)
+            # Convert string from builtin config to IterationStrategy enum and validate
+            try:
+                iteration_strategy = IterationStrategy(strategy_value)
+            except ValueError:
+                allowed = ", ".join([s.value for s in IterationStrategy])
+                raise ValueError(
+                    f"Invalid iteration strategy '{strategy_value}' for built-in agent '{agent_class_name}'. "
+                    f"Allowed values: {allowed}"
+                )
+            
             agent = agent_class(
                 llm_client=self.llm_client,
                 mcp_client=self.mcp_client,
                 mcp_registry=self.mcp_registry,
-                progress_callback=self.progress_callback
+                iteration_strategy=iteration_strategy
             )
             
             logger.info(f"Created traditional agent instance: {agent_class_name}")
@@ -192,8 +203,7 @@ class AgentFactory:
                 llm_client=self.llm_client,
                 mcp_client=self.mcp_client,
                 mcp_registry=self.mcp_registry,
-                agent_name=agent_name,
-                progress_callback=self.progress_callback
+                agent_name=agent_name
             )
             
             logger.info(f"Created configured agent instance: {agent_name}")

@@ -470,13 +470,9 @@ class TestAlertServiceHistoryIntegration:
     @pytest.mark.integration
     async def test_alert_processing_with_history_tracking(self, alert_service_with_history, sample_alert):
         """Test complete alert processing with history tracking."""
-        # Mock progress callback as async
-        progress_callback = AsyncMock()
-        
         # Process alert
         result = await alert_service_with_history.process_alert(
-            alert_to_api_format(sample_alert),
-            progress_callback=progress_callback
+            alert_to_api_format(sample_alert)
         )
         
         # Verify alert processing succeeded
@@ -515,8 +511,7 @@ class TestAlertServiceHistoryIntegration:
         
         # Process alert (should handle error gracefully)
         result = await alert_service_with_history.process_alert(
-            alert_to_api_format(sample_alert),
-            progress_callback=AsyncMock()
+            alert_to_api_format(sample_alert)
         )
         
         # Verify error was handled

@@ -60,14 +60,14 @@ const fieldPresets = [
 
 const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
   // Required fields
-  const [alertType, setAlertType] = useState('kubernetes');
-  const [runbook, setRunbook] = useState('https://github.com/alexeykazakov/runbooks/blob/master/namespace-terminating.md');
+  const [alertType, setAlertType] = useState('');
+  const [runbook, setRunbook] = useState('https://github.com/alexeykazakov/runbooks/blob/master/namespace-terminating-v2.md');
   
   // Dynamic key-value pairs
   const [keyValuePairs, setKeyValuePairs] = useState<KeyValuePair[]>([
     { id: generateId(), key: 'severity', value: 'critical' },
     { id: generateId(), key: 'environment', value: 'production' },
-    { id: generateId(), key: 'cluster', value: 'https://api.a9x7t-qs8zr-ajf.sztj.p3.openshiftapps.com:443' },
+    { id: generateId(), key: 'cluster', value: 'https://api.crc.testing:6443' },
     { id: generateId(), key: 'namespace', value: 'superman-dev' },
     { id: generateId(), key: 'message', value: 'Namespace is stuck in terminating state' }
   ]);
@@ -83,6 +83,12 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
       try {
         const alertTypes = await ApiService.getAlertTypes();
         setAvailableAlertTypes(alertTypes);
+        // Set default alertType to 'kubernetes' if available, otherwise first available type
+        if (alertTypes.includes('kubernetes')) {
+          setAlertType('kubernetes');
+        } else if (alertTypes.length > 0) {
+          setAlertType(alertTypes[0]);
+        }
       } catch (error) {
         console.error('Failed to load alert types:', error);
         setError('Failed to load alert types from backend');
@@ -419,12 +425,17 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
                 onChange={(e) => setAlertType(e.target.value)}
                 required
                 helperText="The type of alert for agent selection"
+                disabled={availableAlertTypes.length === 0}
               >
-                {availableAlertTypes.map((type) => (
-                  <MenuItem key={type} value={type}>
-                    {type}
-                  </MenuItem>
-                ))}
+                {availableAlertTypes.length === 0 ? (
+                  <MenuItem disabled>Loading alert types...</MenuItem>
+                ) : (
+                  availableAlertTypes.map((type) => (
+                    <MenuItem key={type} value={type}>
+                      {type}
+                    </MenuItem>
+                  ))
+                )}
               </TextField>
             </Grid>
 

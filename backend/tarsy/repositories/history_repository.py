@@ -38,7 +38,7 @@ class HistoryRepository:
         self.alert_session_repo = BaseRepository(session, AlertSession)
         self.llm_interaction_repo = BaseRepository(session, LLMInteraction)
         self.mcp_communication_repo = BaseRepository(session, MCPCommunication)
-    
+        
     # AlertSession operations
     def create_alert_session(self, alert_session: AlertSession) -> Optional[AlertSession]:
         """
@@ -792,4 +792,5 @@ class HistoryRepository:
         except Exception as e:
             self.session.rollback()
             logger.error(f"Failed to cleanup old sessions: {str(e)}")
-            return 0 
+            return 0
+    

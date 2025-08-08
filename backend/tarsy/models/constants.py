@@ -22,17 +22,6 @@ class AlertSessionStatus:
     ALL_STATUSES: List[str] = [PENDING, IN_PROGRESS, COMPLETED, FAILED]
 
 
-class ProcessingStatus:
-    """Constants for ProcessingStatus values (used in ProcessingStatus model)."""
-    
-    QUEUED = "queued"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    ERROR = "error"
-    
-    ALL_STATUSES: List[str] = [QUEUED, PROCESSING, COMPLETED, ERROR]
-
-
 class DashboardStatus:
     """Constants for Dashboard/UI status values."""
     
