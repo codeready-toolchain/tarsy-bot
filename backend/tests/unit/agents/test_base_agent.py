@@ -280,7 +280,7 @@ class TestBaseAgentInstructionComposition:
         available_tools = {"tools": [{"name": "test-tool"}]}
         iteration_history = [{"tools_called": [], "mcp_data": {}}]
         
-        context = base_agent._create_prompt_context(
+        context = base_agent.create_prompt_context(
             alert_data=alert_data,
             runbook_content=runbook_content,
             mcp_data=mcp_data,
@@ -401,7 +401,7 @@ class TestBaseAgentMCPIntegration:
             }
         ]
         
-        results = await base_agent._execute_mcp_tools(tools_to_call, "test-session-123")
+        results = await base_agent.execute_mcp_tools(tools_to_call, "test-session-123")
         
         assert "test-server" in results
         assert len(results["test-server"]) == 1
@@ -427,7 +427,7 @@ class TestBaseAgentMCPIntegration:
             }
         ]
         
-        results = await base_agent._execute_mcp_tools(tools_to_call, "test-session-456")
+        results = await base_agent.execute_mcp_tools(tools_to_call, "test-session-456")
         
         assert "forbidden-server" in results
         assert "not allowed for agent" in results["forbidden-server"][0]["error"]
@@ -448,7 +448,7 @@ class TestBaseAgentMCPIntegration:
             }
         ]
         
-        results = await base_agent._execute_mcp_tools(tools_to_call, "test-session-789")
+        results = await base_agent.execute_mcp_tools(tools_to_call, "test-session-789")
         
         assert "test-server" in results
         assert "Tool execution failed" in results["test-server"][0]["error"]
@@ -673,7 +673,7 @@ class TestBaseAgentCoreProcessing:
     @pytest.fixture
     def base_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
-        agent._max_iterations = 3
+        # The max_iterations property is read-only, we can't set it in tests
         return agent
 
     @pytest.fixture

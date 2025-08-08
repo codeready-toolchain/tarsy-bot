@@ -109,6 +109,11 @@ class BaseAgent(ABC):
         else:
             raise ValueError(f"Unknown controller type: {type(self._iteration_controller)}")
 
+    @property
+    def max_iterations(self) -> int:
+        """Get the maximum number of iterations allowed for this agent."""
+        return self._max_iterations
+
 
     @abstractmethod
     def mcp_servers(self) -> List[str]:
@@ -143,7 +148,7 @@ class BaseAgent(ABC):
         Agents can override this method to customize prompt building based on their domain.
         The default implementation provides a comprehensive SRE analysis prompt.
         """
-        context = self._create_prompt_context(
+        context = self.create_prompt_context(
             alert_data=alert_data,
             runbook_content=runbook_content,
             mcp_data=mcp_data
@@ -156,7 +161,7 @@ class BaseAgent(ABC):
         
         Agents can override this method to customize tool selection logic.
         """
-        context = self._create_prompt_context(
+        context = self.create_prompt_context(
             alert_data=alert_data,
             runbook_content=runbook_content,
             mcp_data={},
@@ -172,7 +177,7 @@ class BaseAgent(ABC):
         
         Agents can override this method to customize iterative tool selection logic.
         """
-        context = self._create_prompt_context(
+        context = self.create_prompt_context(
             alert_data=alert_data,
             runbook_content=runbook_content,
             mcp_data={},
@@ -183,7 +188,7 @@ class BaseAgent(ABC):
         )
         return self._prompt_builder.build_iterative_mcp_tool_selection_prompt(context)
 
-    def _create_prompt_context(self, 
+    def create_prompt_context(self, 
                              alert_data: Dict, 
                              runbook_content: str, 
                              mcp_data: Dict,
@@ -191,7 +196,21 @@ class BaseAgent(ABC):
                              iteration_history: Optional[List[Dict]] = None,
                              current_iteration: Optional[int] = None,
                              max_iterations: Optional[int] = None) -> PromptContext:
-        """Create a PromptContext object with all necessary data for prompt building."""
+        """
+        Create a PromptContext object with all necessary data for prompt building.
+        
+        Args:
+            alert_data: Complete alert data as flexible dictionary
+            runbook_content: The downloaded runbook content
+            mcp_data: Data from MCP tool executions
+            available_tools: Available MCP tools (optional)
+            iteration_history: History of previous iterations (optional)
+            current_iteration: Current iteration number (optional)
+            max_iterations: Maximum number of iterations (optional)
+            
+        Returns:
+            PromptContext object ready for prompt building
+        """
         return PromptContext(
             agent_name=self.__class__.__name__,
             alert_data=alert_data,
@@ -222,7 +241,6 @@ class BaseAgent(ABC):
                     guidance_parts.append(server_config.instructions)
         
         return "\n\n".join(guidance_parts) if guidance_parts else ""
-
 
 
     async def analyze_alert(self, 
@@ -564,8 +582,20 @@ class BaseAgent(ABC):
             logger.error(f"Failed to retrieve tools for agent {self.__class__.__name__}: {str(e)}")
             return []
 
-    async def _execute_mcp_tools(self, tools_to_call: List[Dict], session_id: str) -> Dict[str, List[Dict]]:
-        """Execute a list of MCP tool calls and return organized results."""
+    async def execute_mcp_tools(self, tools_to_call: List[Dict], session_id: str) -> Dict[str, List[Dict]]:
+        """
+        Execute a list of MCP tool calls and return organized results.
+        
+        This method provides the public interface for executing MCP tools,
+        handling proper validation, error recovery, and result organization.
+        
+        Args:
+            tools_to_call: List of tool call dictionaries with server, tool, parameters
+            session_id: Session ID for tracking and logging
+            
+        Returns:
+            Dictionary organized by server containing tool execution results
+        """
         results = {}
         
         for tool_call in tools_to_call:

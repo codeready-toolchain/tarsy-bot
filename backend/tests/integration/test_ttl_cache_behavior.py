@@ -102,7 +102,7 @@ class TestTTLCacheBehavior:
             alert_ids = [f"alert-{i}" for i in range(5)]
             session_ids = [f"session-{i}" for i in range(5)]
             
-            for alert_id, session_id in zip(alert_ids, session_ids):
+            for alert_id, session_id in zip(alert_ids, session_ids, strict=True):
                 service.register_alert_id(alert_id)
                 service.store_alert_session_mapping(alert_id, session_id)
             
@@ -124,7 +124,7 @@ class TestTTLCacheBehavior:
         
         # Measure insertion time
         start_time = time.time()
-        for alert_id, session_id in zip(alert_ids, session_ids):
+        for alert_id, session_id in zip(alert_ids, session_ids, strict=True):
             service.register_alert_id(alert_id)
             service.store_alert_session_mapping(alert_id, session_id)
         insertion_time = time.time() - start_time

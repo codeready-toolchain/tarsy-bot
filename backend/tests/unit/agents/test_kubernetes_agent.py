@@ -91,7 +91,7 @@ class TestKubernetesAgentInitialization:
         
         # Check that it has BaseAgent attributes and methods
         assert hasattr(agent, '_iteration_count')
-        assert hasattr(agent, '_max_iterations')
+        assert hasattr(agent, 'max_iterations')
         assert hasattr(agent, 'process_alert')
         assert hasattr(agent, 'analyze_alert')
         assert hasattr(agent, '_compose_instructions')
@@ -509,7 +509,7 @@ class TestKubernetesAgentMCPIntegration:
             }
         ]
         
-        result = await agent._execute_mcp_tools(tools_to_call, session_id="test-session-123")
+        result = await agent.execute_mcp_tools(tools_to_call, session_id="test-session-123")
         
         assert "kubernetes-server" in result
         assert len(result["kubernetes-server"]) == 1
@@ -541,7 +541,7 @@ class TestKubernetesAgentMCPIntegration:
             }
         ]
         
-        result = await agent._execute_mcp_tools(tools_to_call, session_id="test-session-123")
+        result = await agent.execute_mcp_tools(tools_to_call, session_id="test-session-123")
         
         # Should record error for unauthorized server
         assert "unauthorized-server" in result
@@ -567,7 +567,7 @@ class TestKubernetesAgentMCPIntegration:
             }
         ]
         
-        result = await agent._execute_mcp_tools(tools_to_call, session_id="test-session-123")
+        result = await agent.execute_mcp_tools(tools_to_call, session_id="test-session-123")
         
         assert "kubernetes-server" in result
         tool_result = result["kubernetes-server"][0]

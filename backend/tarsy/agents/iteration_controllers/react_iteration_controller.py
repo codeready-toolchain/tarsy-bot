@@ -58,11 +58,11 @@ class SimpleReActController(IterationController):
         if not agent:
             raise ValueError("Agent reference is required in context")
         
-        max_iterations = agent._max_iterations
+        max_iterations = agent.max_iterations
         react_history = []
         
         # Create initial prompt context
-        prompt_context = agent._create_prompt_context(
+        prompt_context = agent.create_prompt_context(
             alert_data=context.alert_data,
             runbook_content=context.runbook_content,
             mcp_data={},
@@ -132,7 +132,7 @@ Focus on investigation and providing recommendations for human operators to exec
                         )
                         
                         # Execute tool
-                        mcp_data = await agent._execute_mcp_tools([tool_call], context.session_id)
+                        mcp_data = await agent.execute_mcp_tools([tool_call], context.session_id)
                         
                         # Format observation
                         observation = self.prompt_builder.format_observation(mcp_data)

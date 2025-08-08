@@ -52,7 +52,7 @@ class RegularIterationController(IterationController):
         
         if initial_tools:
             try:
-                mcp_data = await agent._execute_mcp_tools(initial_tools, context.session_id)
+                mcp_data = await agent.execute_mcp_tools(initial_tools, context.session_id)
                 iteration_history.append({
                     "tools_called": initial_tools,
                     "mcp_data": mcp_data
@@ -69,7 +69,7 @@ class RegularIterationController(IterationController):
         
         # Step 3: Iterative tool selection and execution until ready for analysis
         iteration_count = 1
-        max_iterations = agent._max_iterations
+        max_iterations = agent.max_iterations
         
         while iteration_count < max_iterations:
             try:
@@ -90,7 +90,7 @@ class RegularIterationController(IterationController):
                 if additional_tools:
                     logger.info(f"Iteration {iteration_count + 1}: Executing {len(additional_tools)} additional tools")
                     
-                    additional_mcp_data = await agent._execute_mcp_tools(
+                    additional_mcp_data = await agent.execute_mcp_tools(
                         additional_tools, context.session_id
                     )
                     

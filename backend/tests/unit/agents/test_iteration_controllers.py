@@ -66,11 +66,11 @@ class TestRegularIterationController:
                 "reason": "test reason"
             }
         ])
-        agent._execute_mcp_tools = AsyncMock(return_value={
+        agent.execute_mcp_tools = AsyncMock(return_value={
             "test-server": [{"tool": "test-tool", "result": "success"}]
         })
         agent.analyze_alert = AsyncMock(return_value="Regular analysis complete")
-        agent._max_iterations = 3
+        agent.max_iterations = 3
         return agent
     
     @pytest.fixture
@@ -98,7 +98,7 @@ class TestRegularIterationController:
         
         # Verify the flow was followed correctly
         mock_agent.determine_mcp_tools.assert_called_once()
-        mock_agent._execute_mcp_tools.assert_called()
+        mock_agent.execute_mcp_tools.assert_called()
         mock_agent.analyze_alert.assert_called_once()
     
     @pytest.mark.asyncio
@@ -176,9 +176,9 @@ class TestSimpleReActController:
     def mock_agent(self):
         """Create mock agent for ReAct testing."""
         agent = Mock()
-        agent._max_iterations = 3
-        agent._create_prompt_context.return_value = Mock()
-        agent._execute_mcp_tools = AsyncMock(return_value={
+        agent.max_iterations = 3
+        agent.create_prompt_context.return_value = Mock()
+        agent.execute_mcp_tools = AsyncMock(return_value={
             "test-server": [{"tool": "test-tool", "result": "success"}]
         })
         return agent
@@ -258,7 +258,7 @@ class TestSimpleReActController:
         assert result == "Complete analysis"
         
         # Verify tool was executed
-        mock_agent._execute_mcp_tools.assert_called_once()
+        mock_agent.execute_mcp_tools.assert_called_once()
         
         # Verify multiple LLM calls for iterations
         assert mock_llm_client.generate_response.call_count >= 2
@@ -268,7 +268,7 @@ class TestSimpleReActController:
         self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
     ):
         """Test ReAct loop that reaches maximum iterations."""
-        mock_agent._max_iterations = 1  # Force max iterations quickly
+        mock_agent.max_iterations = 1  # Force max iterations quickly
         
         # Always return incomplete response to force max iterations
         mock_prompt_builder.parse_react_response.return_value = {
@@ -293,7 +293,7 @@ class TestSimpleReActController:
     ):
         """Test ReAct loop with tool execution error."""
         # Mock tool execution to fail
-        mock_agent._execute_mcp_tools.side_effect = Exception("Tool execution failed")
+        mock_agent.execute_mcp_tools.side_effect = Exception("Tool execution failed")
         
         # Return action first, then completion
         mock_prompt_builder.parse_react_response.side_effect = [
@@ -318,7 +318,7 @@ class TestSimpleReActController:
         assert result == "Analysis with error"
         
         # Verify tool execution was attempted
-        mock_agent._execute_mcp_tools.assert_called_once()
+        mock_agent.execute_mcp_tools.assert_called_once()
 
 
 @pytest.mark.unit
