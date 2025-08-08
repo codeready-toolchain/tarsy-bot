@@ -138,6 +138,58 @@ class TestRegularIterationController:
         assert result == "Regular analysis complete"
         # Should still execute analysis even with no tools
         mock_agent.analyze_alert.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_execute_analysis_loop_continue_true_empty_tools(self, controller, sample_context, mock_agent):
+        """Test analysis loop when determine_next_mcp_tools returns continue=true with empty tools."""
+        # Mock determine_next_mcp_tools to return continue=true with empty tools list
+        mock_agent.determine_next_mcp_tools = AsyncMock(return_value={
+            "continue": True,
+            "tools": []
+        })
+        # Mock _merge_mcp_data method
+        mock_agent._merge_mcp_data = Mock(return_value={
+            "test-server": [{"tool": "test-tool", "result": "success"}]
+        })
+        
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        assert result == "Regular analysis complete"
+        
+        # Verify the sequence of calls
+        mock_agent.determine_mcp_tools.assert_called_once()  # Initial tool selection
+        mock_agent.execute_mcp_tools.assert_called_once()  # Initial tool execution
+        mock_agent.determine_next_mcp_tools.assert_called_once()  # Next iteration check
+        mock_agent.analyze_alert.assert_called_once()  # Final analysis
+        
+        # Verify that no additional tools were executed (only initial ones)
+        assert mock_agent.execute_mcp_tools.call_count == 1
+    
+    @pytest.mark.asyncio
+    async def test_execute_analysis_loop_continue_false_early_return(self, controller, sample_context, mock_agent):
+        """Test analysis loop when determine_next_mcp_tools returns continue=false for early exit."""
+        # Mock determine_next_mcp_tools to return continue=false
+        mock_agent.determine_next_mcp_tools = AsyncMock(return_value={
+            "continue": False,
+            "reason": "Sufficient data gathered"
+        })
+        # Mock _merge_mcp_data method
+        mock_agent._merge_mcp_data = Mock(return_value={
+            "test-server": [{"tool": "test-tool", "result": "success"}]
+        })
+        
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        assert result == "Regular analysis complete"
+        
+        # Verify the sequence of calls
+        mock_agent.determine_mcp_tools.assert_called_once()  # Initial tool selection
+        mock_agent.execute_mcp_tools.assert_called_once()  # Initial tool execution
+        mock_agent.determine_next_mcp_tools.assert_called_once()  # Next iteration check
+        mock_agent.analyze_alert.assert_called_once()  # Final analysis
+        
+        # Verify that no additional tools were executed (only initial ones)
+        assert mock_agent.execute_mcp_tools.call_count == 1
 
 
 @pytest.mark.unit

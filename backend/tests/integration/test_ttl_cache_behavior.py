@@ -123,12 +123,10 @@ class TestTTLCacheBehavior:
         alert_ids = [str(uuid.uuid4()) for _ in range(100)]
         session_ids = [f"session-{i}" for i in range(100)]
         
-        # Measure insertion time
-        start_time = time.time()
+        # Register alert IDs and store alert session mappings
         for alert_id, session_id in zip(alert_ids, session_ids, strict=True):
             service.register_alert_id(alert_id)
             service.store_alert_session_mapping(alert_id, session_id)
-        insertion_time = time.time() - start_time
         
         # Measure lookup time
         start_time = time.time()

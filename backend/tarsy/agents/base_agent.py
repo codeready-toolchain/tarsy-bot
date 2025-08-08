@@ -455,7 +455,7 @@ class BaseAgent(ABC):
                 "timestamp_us": now_us()
             }
     
-    def _merge_mcp_data(self, existing_data: Dict[str, Any], new_data: Dict[str, Any]) -> Dict[str, Any]:
+    def merge_mcp_data(self, existing_data: Dict[str, Any], new_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Merge new MCP data with existing data.
         

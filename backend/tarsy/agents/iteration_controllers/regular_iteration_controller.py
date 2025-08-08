@@ -68,7 +68,7 @@ class RegularIterationController(IterationController):
                 )
         
         # Step 3: Iterative tool selection and execution until ready for analysis
-        iteration_count = 1
+        iteration_count = 0
         max_iterations = agent.max_iterations
         
         while iteration_count < max_iterations:
@@ -80,6 +80,11 @@ class RegularIterationController(IterationController):
                     iteration_count, context.session_id
                 )
                 
+                # Ensure next_action is a dict to avoid attribute errors
+                if not isinstance(next_action, dict):
+                    logger.warning(f"Expected dict from determine_next_mcp_tools, got {type(next_action)}")
+                    next_action = {}
+                
                 # Check if we should continue
                 if not next_action.get("continue", False):
                     logger.info(f"Analysis ready after {iteration_count} iterations")
@@ -88,14 +93,17 @@ class RegularIterationController(IterationController):
                 # Execute additional tools if any
                 additional_tools = next_action.get("tools", [])
                 if additional_tools:
-                    logger.info(f"Iteration {iteration_count + 1}: Executing {len(additional_tools)} additional tools")
+                    logger.info(
+                        f"Iteration {iteration_count + 1}: Executing "
+                        f"{len(additional_tools)} additional tools"
+                    )
                     
                     additional_mcp_data = await agent.execute_mcp_tools(
                         additional_tools, context.session_id
                     )
                     
                     # Merge with existing data
-                    mcp_data = agent._merge_mcp_data(mcp_data, additional_mcp_data)
+                    mcp_data = agent.merge_mcp_data(mcp_data, additional_mcp_data)
                     
                     # Add to iteration history
                     iteration_history.append({
