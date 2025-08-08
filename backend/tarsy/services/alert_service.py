@@ -9,7 +9,7 @@ performance and consistency with the rest of the system.
 """
 
 import uuid
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 
 from tarsy.config.settings import Settings
 from tarsy.integrations.llm.client import LLMManager
