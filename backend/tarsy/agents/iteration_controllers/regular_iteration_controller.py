@@ -34,7 +34,7 @@ class RegularIterationController(IterationController):
             initial_tools = await agent.determine_mcp_tools(
                 context.alert_data,
                 context.runbook_content, 
-                context.available_tools,
+                {"tools": context.available_tools},
                 context.session_id
             )
             logger.info(f"Selected {len(initial_tools)} initial tools for investigation")

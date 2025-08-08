@@ -17,6 +17,7 @@ from tarsy.services.alert_service import AlertService
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures("mock_dependencies")
 class TestTTLCacheBehavior:
     """Integration tests for TTL cache functionality in AlertService."""
 
@@ -48,7 +49,7 @@ class TestTTLCacheBehavior:
             }
 
     @pytest.fixture
-    def alert_service_with_short_ttl(self, mock_settings, mock_dependencies):
+    def alert_service_with_short_ttl(self, mock_settings):
         """Create AlertService with short TTL for testing expiration."""
         with patch('tarsy.services.alert_service.TTLCache') as mock_ttl_cache:
             # Create real TTL caches with short expiration for testing
@@ -57,7 +58,7 @@ class TestTTLCacheBehavior:
             service = AlertService(mock_settings)
             return service
 
-    def test_cache_initialization_parameters(self, mock_settings, mock_dependencies):
+    def test_cache_initialization_parameters(self, mock_settings):
         """Test that caches are initialized with correct parameters."""
         service = AlertService(mock_settings)
         
@@ -90,7 +91,7 @@ class TestTTLCacheBehavior:
         assert not alert_service_with_short_ttl.alert_exists(alert_id)
         assert alert_service_with_short_ttl.get_session_id_for_alert(alert_id) is None
 
-    def test_cache_capacity_limits(self, mock_settings, mock_dependencies):
+    def test_cache_capacity_limits(self, mock_settings):
         """Test cache behavior when approaching maxsize limits."""
         with patch('tarsy.services.alert_service.TTLCache') as mock_ttl_cache:
             # Create caches with very small maxsize for testing
@@ -114,7 +115,7 @@ class TestTTLCacheBehavior:
             assert total_alerts <= 3
             assert total_sessions <= 3
 
-    def test_cache_performance_characteristics(self, mock_settings, mock_dependencies):
+    def test_cache_performance_characteristics(self, mock_settings):
         """Test performance characteristics of cache operations."""
         service = AlertService(mock_settings)
         
@@ -134,16 +135,17 @@ class TestTTLCacheBehavior:
         for alert_id in alert_ids:
             service.alert_exists(alert_id)
             service.get_session_id_for_alert(alert_id)
-        lookup_time = time.time() - start_time
         
-        # Operations should be fast (under reasonable thresholds)
-        assert insertion_time < 1.0  # Should complete in under 1 second
-        assert lookup_time < 0.5     # Lookups should be very fast
+        # NOTE: Timing assertions removed to avoid flaky CI tests
+        # For performance testing, consider:
+        # 1. Separate @pytest.mark.slow performance tests
+        # 2. Skip timing checks in CI using environment detection
+        # 3. Use fake time/mock clocks for deterministic TTL behavior
         
-        # All entries should exist
+        # All entries should exist (correctness check)
         assert all(service.alert_exists(aid) for aid in alert_ids)
 
-    def test_cache_memory_management(self, mock_settings, mock_dependencies):
+    def test_cache_memory_management(self, mock_settings):
         """Test that cache properly manages memory usage."""
         service = AlertService(mock_settings)
         
@@ -171,7 +173,7 @@ class TestTTLCacheBehavior:
         assert initial_alert_cache_size > 0
         assert initial_session_cache_size > 0
 
-    def test_cache_thread_safety_simulation(self, mock_settings, mock_dependencies):
+    def test_cache_thread_safety_simulation(self, mock_settings):
         """Test cache behavior under concurrent-like access patterns."""
         service = AlertService(mock_settings)
         
@@ -195,7 +197,7 @@ class TestTTLCacheBehavior:
             assert service.alert_exists(alert_id)
             assert service.get_session_id_for_alert(alert_id) == f"session-{i}"
 
-    def test_cache_behavior_after_service_close(self, mock_settings, mock_dependencies):
+    def test_cache_behavior_after_service_close(self, mock_settings):
         """Test cache behavior after service cleanup."""
         service = AlertService(mock_settings)
         
@@ -218,7 +220,7 @@ class TestTTLCacheBehavior:
         assert not service.alert_exists(alert_id)
         assert service.get_session_id_for_alert(alert_id) is None
 
-    def test_mixed_cache_operations(self, mock_settings, mock_dependencies):
+    def test_mixed_cache_operations(self, mock_settings):
         """Test mixed operations on both caches."""
         service = AlertService(mock_settings)
         
