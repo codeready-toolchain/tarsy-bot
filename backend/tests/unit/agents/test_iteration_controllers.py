@@ -132,6 +132,7 @@ class TestRegularIterationController:
     async def test_execute_analysis_loop_empty_tools(self, controller, sample_context, mock_agent):
         """Test analysis loop with no tools selected."""
         mock_agent.determine_mcp_tools.return_value = []
+        mock_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
         
         result = await controller.execute_analysis_loop(sample_context)
         
