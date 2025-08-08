@@ -8,13 +8,9 @@ and provide the expected processing patterns for agent execution.
 from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
--from tarsy.agents.iteration_controllers.base_iteration_controller import (
--    IterationController, 
--    IterationContext
--)
-+from tarsy.agents.iteration_controllers.base_iteration_controller import (
-+    IterationContext,
-+)
+from tarsy.agents.iteration_controllers.base_iteration_controller import (
+    IterationContext,
+)
 from tarsy.agents.iteration_controllers.regular_iteration_controller import RegularIterationController
 from tarsy.agents.iteration_controllers.react_iteration_controller import SimpleReActController
 from tarsy.agents.constants import IterationStrategy
