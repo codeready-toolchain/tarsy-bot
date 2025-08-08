@@ -124,7 +124,7 @@ class TestRegularIterationController:
         # Mock tool selection to fail
         mock_agent.determine_mcp_tools.side_effect = Exception("Tool selection failed")
         
-        result = await controller.execute_analysis_loop(sample_context)
+        await controller.execute_analysis_loop(sample_context)
         
         # Should still return analysis result with error info
         mock_agent.analyze_alert.assert_called_once()
