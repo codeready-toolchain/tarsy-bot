@@ -25,7 +25,6 @@ class IterationContext:
     runbook_content: str
     available_tools: List[Dict[str, Any]]
     session_id: str
-    progress_callback: Optional[Callable] = None
     agent: Optional['BaseAgent'] = None
 
 

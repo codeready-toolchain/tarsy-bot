@@ -41,7 +41,6 @@ class AgentFactory:
         llm_client: LLMClient,
         mcp_client: MCPClient,
         mcp_registry: MCPServerRegistry,
-        progress_callback: Optional[Any] = None,
         agent_configs: Optional[Dict[str, "AgentConfigModel"]] = None
     ):
         """
@@ -51,13 +50,11 @@ class AgentFactory:
             llm_client: Client for LLM interactions
             mcp_client: Client for MCP server interactions
             mcp_registry: Registry of MCP server configurations (REQUIRED)
-            progress_callback: Optional callback for progress updates
             agent_configs: Optional dictionary of configured agents for ConfigurableAgent creation
         """
         self.llm_client = llm_client
         self.mcp_client = mcp_client
         self.mcp_registry = mcp_registry
-        self.progress_callback = progress_callback
         self.agent_configs = agent_configs
         
         # Static registry of available agent classes - loaded from central configuration
@@ -164,7 +161,6 @@ class AgentFactory:
                 llm_client=self.llm_client,
                 mcp_client=self.mcp_client,
                 mcp_registry=self.mcp_registry,
-                progress_callback=self.progress_callback,
                 iteration_strategy=iteration_strategy
             )
             
@@ -207,8 +203,7 @@ class AgentFactory:
                 llm_client=self.llm_client,
                 mcp_client=self.mcp_client,
                 mcp_registry=self.mcp_registry,
-                agent_name=agent_name,
-                progress_callback=self.progress_callback
+                agent_name=agent_name
             )
             
             logger.info(f"Created configured agent instance: {agent_name}")

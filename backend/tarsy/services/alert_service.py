@@ -9,7 +9,7 @@ performance and consistency with the rest of the system.
 """
 
 import uuid
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 from tarsy.config.settings import Settings
 from tarsy.integrations.llm.client import LLMManager
@@ -58,13 +58,13 @@ class AlertService:
         self.mcp_client = MCPClient(settings, self.mcp_server_registry)
         self.llm_manager = LLMManager(settings)
         
+        # Track API alert_id to session_id mapping for dashboard websocket integration
+        self.alert_session_mapping: Dict[str, str] = {}
+        
         # Initialize agent factory with dependencies
         self.agent_factory = None  # Will be initialized in initialize()
         
         logger.info("AlertService initialized with agent delegation support")
-
-
-
 
     async def initialize(self):
         """
@@ -87,7 +87,6 @@ class AlertService:
             self.agent_factory = AgentFactory(
                 llm_client=self.llm_manager,
                 mcp_client=self.mcp_client,
-                progress_callback=None,  # Will be set per-request
                 mcp_registry=self.mcp_server_registry
             )
             
@@ -101,32 +100,32 @@ class AlertService:
     async def process_alert(
         self, 
         alert: AlertProcessingData, 
-        progress_callback: Optional[Callable] = None
+        api_alert_id: Optional[str] = None
     ) -> str:
         """
         Process an alert by delegating to the appropriate specialized agent.
         
         Args:
             alert: Alert processing data with validated structure
-            progress_callback: Optional callback for progress updates
+            api_alert_id: API alert ID for session mapping
             
         Returns:
             Analysis result as a string
         """
         # Process alert directly (duplicate detection handled at API level)
-        return await self._process_alert_internal(alert, progress_callback)
+        return await self._process_alert_internal(alert, api_alert_id)
     
     async def _process_alert_internal(
         self, 
         alert: AlertProcessingData, 
-        progress_callback: Optional[Callable] = None
+        api_alert_id: Optional[str] = None
     ) -> str:
         """
         Internal alert processing logic with all the actual processing steps.
         
         Args:
             alert: Alert processing data with validated structure
-            progress_callback: Optional callback for progress updates
+            api_alert_id: API alert ID for session mapping
             
         Returns:
             Analysis result as a string
@@ -141,9 +140,6 @@ class AlertService:
                 raise Exception("Agent factory not initialized - call initialize() first")
             
             # Step 2: Determine appropriate agent
-            if progress_callback:
-                await progress_callback({"status": "processing", "message": "Starting alert analysis"})
-            
             alert_type = alert.alert_type
             try:
                 agent_class_name = self.agent_registry.get_agent_for_alert_type(alert_type)
@@ -153,9 +149,6 @@ class AlertService:
                 
                 # Update history session with error
                 self._update_session_error(session_id, error_msg)
-                
-                if progress_callback:
-                    await progress_callback({"status": "error", "message": error_msg})
                     
                 return self._format_error_response(alert, error_msg)
             
@@ -163,6 +156,10 @@ class AlertService:
             
             # Create history session with alert data
             session_id = self._create_history_session(alert, agent_class_name)
+            
+            # Store API alert_id to session_id mapping if both are available
+            if api_alert_id and session_id:
+                self.store_alert_session_mapping(api_alert_id, session_id)
             
             # Update history session with agent selection
             self._update_session_status(session_id, AlertSessionStatus.IN_PROGRESS, f"Selected agent: {agent_class_name}")
@@ -173,17 +170,12 @@ class AlertService:
                 error_msg = "No runbook specified in alert data"
                 logger.error(error_msg)
                 self._update_session_error(session_id, error_msg)
-                if progress_callback:
-                    await progress_callback({"status": "error", "message": error_msg})
                 return self._format_error_response(alert, error_msg)
             
             runbook_content = await self.runbook_service.download_runbook(runbook)
             
             # Step 4: Create agent instance
             try:
-                # Update factory's progress callback for this request
-                self.agent_factory.progress_callback = progress_callback
-                
                 agent = self.agent_factory.create_agent(agent_class_name)
                 logger.info(f"Created {agent_class_name} instance")
                 
@@ -193,21 +185,14 @@ class AlertService:
                 
                 # Update history session with agent creation error
                 self._update_session_error(session_id, error_msg)
-                
-                if progress_callback:
-                    await progress_callback({"status": "error", "message": error_msg})
                     
                 return self._format_error_response(alert, error_msg)
             
             # Step 5: Delegate processing to agent with flexible data
-            # Create progress wrapper that passes through simplified status
-            agent_progress_callback = progress_callback
-            
             # Process alert with agent - pass alert data from Pydantic model
             agent_result = await agent.process_alert(
                 alert_data=alert.alert_data,
                 runbook_content=runbook_content,
-                callback=agent_progress_callback,
                 session_id=session_id
             )
             
@@ -228,9 +213,6 @@ class AlertService:
                 # Mark history session as completed successfully
                 self._update_session_completed(session_id, AlertSessionStatus.COMPLETED, final_analysis=final_result)
                 
-                if progress_callback:
-                    await progress_callback({"status": "completed", "message": "Analysis completed successfully"})
-                
                 return final_result
             else:
                 # Handle agent processing error
@@ -240,9 +222,6 @@ class AlertService:
                 # Update history session with processing error
                 self._update_session_error(session_id, error_msg)
                 
-                if progress_callback:
-                    await progress_callback({"status": "error", "message": error_msg})
-                
                 return self._format_error_response(alert, error_msg)
                 
         except Exception as e:
@@ -251,9 +230,6 @@ class AlertService:
             
             # Update history session with processing error
             self._update_session_error(session_id, error_msg)
-            
-            if progress_callback:
-                await progress_callback({"status": "error", "message": error_msg})
             
             return self._format_error_response(alert, error_msg)
 
@@ -383,6 +359,15 @@ class AlertService:
         except Exception as e:
             logger.warning(f"Failed to create history session: {str(e)}")
             return None
+    
+    def store_alert_session_mapping(self, api_alert_id: str, session_id: str):
+        """Store mapping between API alert ID and session ID for dashboard websocket integration."""
+        self.alert_session_mapping[api_alert_id] = session_id
+        logger.debug(f"Stored alert-session mapping: {api_alert_id} -> {session_id}")
+    
+    def get_session_id_for_alert(self, api_alert_id: str) -> Optional[str]:
+        """Get session ID for an API alert ID."""
+        return self.alert_session_mapping.get(api_alert_id)
     
     def _update_session_status(self, session_id: Optional[str], status: str, message: Optional[str] = None):
         """

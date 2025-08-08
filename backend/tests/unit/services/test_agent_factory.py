@@ -6,6 +6,7 @@ error handling, and validation of created agent instances.
 """
 
 from unittest.mock import Mock, patch
+from unittest import mock
 
 import pytest
 
@@ -25,8 +26,7 @@ class TestAgentFactoryInitialization:
         return {
             'llm_client': Mock(spec=LLMClient),
             'mcp_client': Mock(spec=MCPClient),
-            'mcp_registry': Mock(spec=MCPServerRegistry),
-            'progress_callback': Mock()
+            'mcp_registry': Mock(spec=MCPServerRegistry)
         }
     
     def test_initialization_success(self, mock_dependencies):
@@ -34,26 +34,27 @@ class TestAgentFactoryInitialization:
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
-            mcp_registry=mock_dependencies['mcp_registry'],
-            progress_callback=mock_dependencies['progress_callback']
+            mcp_registry=mock_dependencies['mcp_registry']
         )
         
         assert factory.llm_client == mock_dependencies['llm_client']
         assert factory.mcp_client == mock_dependencies['mcp_client']
         assert factory.mcp_registry == mock_dependencies['mcp_registry']
-        assert factory.progress_callback == mock_dependencies['progress_callback']
+        assert factory.agent_configs is None  # Default value
         assert isinstance(factory.static_agent_classes, dict)
         assert len(factory.static_agent_classes) >= 1  # At least KubernetesAgent
     
-    def test_initialization_without_progress_callback(self, mock_dependencies):
-        """Test initialization without progress callback."""
+    def test_initialization_with_agent_configs(self, mock_dependencies):
+        """Test initialization with agent configs."""
+        mock_agent_configs = {'test-agent': Mock()}
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
-            mcp_registry=mock_dependencies['mcp_registry']
+            mcp_registry=mock_dependencies['mcp_registry'],
+            agent_configs=mock_agent_configs
         )
         
-        assert factory.progress_callback is None
+        assert factory.agent_configs == mock_agent_configs
         assert factory.llm_client == mock_dependencies['llm_client']
         assert factory.mcp_client == mock_dependencies['mcp_client']
         assert factory.mcp_registry == mock_dependencies['mcp_registry']
@@ -101,8 +102,7 @@ class TestAgentCreation:
         return {
             'llm_client': Mock(spec=LLMClient),
             'mcp_client': Mock(spec=MCPClient),
-            'mcp_registry': Mock(spec=MCPServerRegistry),
-            'progress_callback': Mock()
+            'mcp_registry': Mock(spec=MCPServerRegistry)
         }
     
     @pytest.fixture
@@ -111,8 +111,7 @@ class TestAgentCreation:
         return AgentFactory(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
-            mcp_registry=mock_dependencies['mcp_registry'],
-            progress_callback=mock_dependencies['progress_callback']
+            mcp_registry=mock_dependencies['mcp_registry']
         )
     
     def test_create_kubernetes_agent_success(self, mock_dependencies):
@@ -125,8 +124,7 @@ class TestAgentCreation:
             agent_factory = AgentFactory(
                 llm_client=mock_dependencies['llm_client'],
                 mcp_client=mock_dependencies['mcp_client'],
-                mcp_registry=mock_dependencies['mcp_registry'],
-                progress_callback=mock_dependencies['progress_callback']
+                mcp_registry=mock_dependencies['mcp_registry']
             )
             
             agent = agent_factory.create_agent("KubernetesAgent")
@@ -136,15 +134,15 @@ class TestAgentCreation:
                 llm_client=mock_dependencies['llm_client'],
                 mcp_client=mock_dependencies['mcp_client'],
                 mcp_registry=mock_dependencies['mcp_registry'],
-                progress_callback=mock_dependencies['progress_callback']
+                iteration_strategy=mock.ANY  # Accept any IterationStrategy enum value
             )
             
             # Verify correct instance returned
             assert agent == mock_agent_instance
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
-    def test_create_agent_without_progress_callback(self, mock_kubernetes_agent, mock_dependencies):
-        """Test agent creation without progress callback."""
+    def test_create_agent_with_default_strategy(self, mock_kubernetes_agent, mock_dependencies):
+        """Test agent creation with default iteration strategy."""
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
@@ -156,12 +154,13 @@ class TestAgentCreation:
         
         agent = factory.create_agent("KubernetesAgent")
         
-        # Verify agent class was called with None progress callback
+        # Verify agent class was called with default iteration strategy
+        from tarsy.agents.constants import IterationStrategy
         mock_kubernetes_agent.assert_called_once_with(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry'],
-            progress_callback=None
+            iteration_strategy=IterationStrategy.REACT  # Default strategy
         )
         
         assert agent == mock_agent_instance
@@ -222,6 +221,8 @@ class TestAgentCreation:
                 assert call[1]['llm_client'] == mock_dependencies['llm_client']
                 assert call[1]['mcp_client'] == mock_dependencies['mcp_client']
                 assert call[1]['mcp_registry'] == mock_dependencies['mcp_registry']
+                # iteration_strategy should be present in all calls
+                assert 'iteration_strategy' in call[1]
 
 
 @pytest.mark.unit
@@ -301,14 +302,10 @@ class TestDependencyInjection:
         mcp_registry = Mock(spec=MCPServerRegistry)
         mcp_registry.name = "test_mcp_registry"
         
-        progress_callback = Mock()
-        progress_callback.name = "test_progress_callback"
-        
         return {
             'llm_client': llm_client,
             'mcp_client': mcp_client,
-            'mcp_registry': mcp_registry,
-            'progress_callback': progress_callback
+            'mcp_registry': mcp_registry
         }
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
@@ -317,18 +314,18 @@ class TestDependencyInjection:
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
-            mcp_registry=mock_dependencies['mcp_registry'],
-            progress_callback=mock_dependencies['progress_callback']
+            mcp_registry=mock_dependencies['mcp_registry']
         )
         
         factory.create_agent("KubernetesAgent")
         
         # Verify all dependencies were passed correctly
+        from tarsy.agents.constants import IterationStrategy
         mock_kubernetes_agent.assert_called_once_with(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry'],
-            progress_callback=mock_dependencies['progress_callback']
+            iteration_strategy=IterationStrategy.REACT
         )
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
@@ -337,8 +334,7 @@ class TestDependencyInjection:
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
-            mcp_registry=mock_dependencies['mcp_registry'],
-            progress_callback=mock_dependencies['progress_callback']
+            mcp_registry=mock_dependencies['mcp_registry']
         )
         
         factory.create_agent("KubernetesAgent")
@@ -347,26 +343,32 @@ class TestDependencyInjection:
         call_args = mock_kubernetes_agent.call_args
         
         # Verify keyword arguments are correct
+        from tarsy.agents.constants import IterationStrategy
         assert call_args[1]['llm_client'] == mock_dependencies['llm_client']
         assert call_args[1]['mcp_client'] == mock_dependencies['mcp_client']
         assert call_args[1]['mcp_registry'] == mock_dependencies['mcp_registry']
-        assert call_args[1]['progress_callback'] == mock_dependencies['progress_callback']
+        assert call_args[1]['iteration_strategy'] == IterationStrategy.REACT
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
-    def test_dependency_injection_with_none_callback(self, mock_kubernetes_agent, mock_dependencies):
-        """Test dependency injection with None progress callback."""
+    def test_dependency_injection_with_agent_configs(self, mock_kubernetes_agent, mock_dependencies):
+        """Test dependency injection with agent configs."""
+        mock_configs = {'test-agent': Mock()}
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry'],
-            progress_callback=None
+            agent_configs=mock_configs
         )
         
         factory.create_agent("KubernetesAgent")
         
-        # Verify None callback is passed
+        # Verify factory stores agent configs
+        assert factory.agent_configs == mock_configs
+        
+        # Verify agent is still created with correct parameters
         call_args = mock_kubernetes_agent.call_args
-        assert call_args[1]['progress_callback'] is None
+        from tarsy.agents.constants import IterationStrategy
+        assert call_args[1]['iteration_strategy'] == IterationStrategy.REACT
     
     def test_mcp_registry_requirement(self, mock_dependencies):
         """Test that mcp_registry is required parameter."""

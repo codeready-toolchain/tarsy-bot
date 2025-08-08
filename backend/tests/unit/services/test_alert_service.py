@@ -127,7 +127,6 @@ class TestAlertServiceAsyncInitialization:
             mock_factory.assert_called_once_with(
                 llm_client=alert_service.llm_manager,
                 mcp_client=alert_service.mcp_client,
-                progress_callback=None,
                 mcp_registry=alert_service.mcp_server_registry
             )
     
@@ -230,14 +229,11 @@ class TestAlertProcessing:
         # Mock LLM availability
         dependencies['llm_manager'].is_available.return_value = True
         
-        # Mock progress callback  
-        progress_callback = AsyncMock()
-        
         # Convert Alert object to dictionary for the new interface
         alert_dict = alert_to_api_format(sample_alert)
         
         # Process alert
-        result = await service.process_alert(alert_dict, progress_callback)
+        result = await service.process_alert(alert_dict)
         
         # Assertions - check that the analysis result is included in the formatted response
         assert "Test analysis result" in result
@@ -284,7 +280,7 @@ class TestAlertProcessing:
         service.agent_factory.create_agent.side_effect = ValueError("Agent creation failed")
         
         alert_dict = alert_to_api_format(sample_alert)
-        result = await service.process_alert(alert_dict, progress_callback=None)
+        result = await service.process_alert(alert_dict)
         
         # Verify that the system handles agent creation failure gracefully
         # The specific error message may vary due to async mock interactions,

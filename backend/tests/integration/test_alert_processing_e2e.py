@@ -44,18 +44,14 @@ class TestAlertProcessingE2E:
     async def test_happy_path_kubernetes_alert_processing(self, alert_service_with_mocks, sample_alert):
         """Test happy path alert processing workflow."""
         alert_service, mock_dependencies = alert_service_with_mocks
-        progress_callback_mock = AsyncMock()
         
         # Convert Alert to dict for the new interface
         alert_dict = alert_to_api_format(sample_alert)
         
-        result = await alert_service.process_alert(alert_dict, progress_callback_mock)
+        result = await alert_service.process_alert(alert_dict)
         
         assert isinstance(result, str)
         assert "analysis" in result.lower() or "error" in result.lower()
-        
-        # Verify progress callback was called
-        assert progress_callback_mock.call_count > 0
 
     async def test_agent_selection_and_delegation(
         self, 
@@ -150,18 +146,14 @@ class TestAlertProcessingE2E:
         alert_service_with_mocks, 
         sample_alert
     ):
-        """Test progress callback integration."""
+        """Test alert processing workflow completion."""
         alert_service, mock_dependencies = alert_service_with_mocks
-        progress_callback = AsyncMock()
         
         # Convert Alert to dict for the new interface
         alert_dict = alert_to_api_format(sample_alert)
         
         # Act
-        result = await alert_service.process_alert(alert_dict, progress_callback)
-        
-        # Assert - Progress callback should be called during processing
-        assert progress_callback.call_count > 0
+        result = await alert_service.process_alert(alert_dict)
         
         # Result should indicate processing occurred
         assert result is not None
@@ -196,8 +188,7 @@ class TestErrorHandlingScenarios:
 
     async def test_unknown_alert_type_error(
         self,
-        alert_service,
-        progress_callback_mock
+        alert_service
     ):
         """Test handling of unknown alert types."""
         # Arrange - Create alert with unknown type
@@ -219,18 +210,13 @@ class TestErrorHandlingScenarios:
         # Mock agent registry to raise exception for unknown type
         with patch.object(alert_service.agent_registry, 'get_agent_for_alert_type', side_effect=ValueError("No agent for alert type 'Unknown Alert Type'. Available: ['kubernetes']")):
             # Act
-            result = await alert_service.process_alert(alert_dict, progress_callback_mock)
+            result = await alert_service.process_alert(alert_dict)
         
         # Assert - Should return error response
         assert result is not None
         assert "error" in result.lower() or "Error" in result
         assert "no agent for alert type" in result.lower()
         assert "Unknown Alert Type" in result
-        
-        # Should have called progress callback with error
-        assert progress_callback_mock.call_count >= 1
-        error_call = progress_callback_mock.call_args_list[-1]
-        assert "error" in error_call.args[1].lower()
 
     async def test_llm_unavailable_error(
         self,
@@ -409,13 +395,11 @@ class TestConcurrencyAndPerformance:
     async def test_concurrent_alert_processing(
         self,
         alert_service,
-        sample_alert,
-        progress_callback_mock
+        sample_alert
     ):
         """Test processing multiple alerts concurrently."""
         # Arrange - Create multiple alerts
         alerts = []
-        callbacks = []
         for i in range(3):
             alert = Alert(
                 alert_type="NamespaceTerminating",
@@ -426,14 +410,12 @@ class TestConcurrencyAndPerformance:
                 message=f"Test alert {i}",
                 runbook="https://github.com/company/runbooks/blob/main/k8s-namespace-terminating.md"
             )
-            callback = AsyncMock()
             alerts.append(alert)
-            callbacks.append(callback)
         
         # Act - Process alerts concurrently
         tasks = [
-            alert_service.process_alert(alert_to_api_format(alert), callback) 
-            for alert, callback in zip(alerts, callbacks, strict=False)
+            alert_service.process_alert(alert_to_api_format(alert)) 
+            for alert in alerts
         ]
         results = await asyncio.gather(*tasks)
         
@@ -442,10 +424,6 @@ class TestConcurrencyAndPerformance:
         for result in results:
             assert result is not None
             assert len(result) > 100  # Should have substantial content
-        
-        # All callbacks should have been called
-        for callback in callbacks:
-            assert callback.call_count >= 3
 
     async def test_processing_timeout_resilience(
         self,
@@ -682,12 +660,11 @@ data:
     async def test_monitoring_alert_with_complex_nested_data(self, alert_service_with_mocks, monitoring_alert_with_nested_data):
         """Test processing monitoring alert with complex nested data structures."""
         alert_service, mock_dependencies = alert_service_with_mocks
-        progress_callback_mock = AsyncMock()
 
         # Convert to API format
         alert_dict = flexible_alert_to_api_format(monitoring_alert_with_nested_data)
 
-        result = await alert_service.process_alert(alert_dict, progress_callback_mock)
+        result = await alert_service.process_alert(alert_dict)
 
         # Verify processing completed
         assert isinstance(result, str)
@@ -702,19 +679,15 @@ data:
         # Verify YAML config was included
         assert "ConfigMap" in result or "monitoring-config" in result
 
-        # Verify progress callbacks were made
-        assert progress_callback_mock.call_count > 0
-
     @pytest.mark.asyncio
     async def test_database_alert_with_array_structures(self, alert_service_with_mocks, database_alert_with_arrays):
         """Test processing database alert with array data structures."""
         alert_service, mock_dependencies = alert_service_with_mocks
-        progress_callback_mock = AsyncMock()
 
         # Convert to API format
         alert_dict = flexible_alert_to_api_format(database_alert_with_arrays)
 
-        result = await alert_service.process_alert(alert_dict, progress_callback_mock)
+        result = await alert_service.process_alert(alert_dict)
 
         # Verify processing completed
         assert isinstance(result, str)
@@ -726,19 +699,15 @@ data:
         assert "degraded" in result or "healthy" in result
         assert "connection_pool" in result or "connections" in result.lower()
 
-        # Verify progress callbacks were made
-        assert progress_callback_mock.call_count > 0
-
     @pytest.mark.asyncio
     async def test_minimal_network_alert_processing(self, alert_service_with_mocks, network_alert_minimal_data):
         """Test processing alert with minimal data structure."""
         alert_service, mock_dependencies = alert_service_with_mocks
-        progress_callback_mock = AsyncMock()
 
         # Convert to API format
         alert_dict = flexible_alert_to_api_format(network_alert_minimal_data)
 
-        result = await alert_service.process_alert(alert_dict, progress_callback_mock)
+        result = await alert_service.process_alert(alert_dict)
 
         # Verify processing completed despite minimal data
         assert isinstance(result, str)
@@ -747,9 +716,6 @@ data:
         # Verify minimal data is included
         assert "HighLatency" in result or "latency" in result.lower()
         assert "network" in result.lower()
-
-        # Verify progress callbacks were made
-        assert progress_callback_mock.call_count > 0
 
     @pytest.mark.asyncio
     async def test_agent_selection_with_new_alert_types(self, alert_service_with_mocks):

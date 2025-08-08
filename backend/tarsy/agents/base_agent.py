@@ -63,7 +63,6 @@ class BaseAgent(ABC):
         llm_client: LLMClient,
         mcp_client: MCPClient,
         mcp_registry: MCPServerRegistry,
-        progress_callback: Optional[Callable] = None,
         iteration_strategy: IterationStrategy = IterationStrategy.REACT
     ):
         """
@@ -73,19 +72,15 @@ class BaseAgent(ABC):
             llm_client: Client for LLM interactions
             mcp_client: Client for MCP server interactions
             mcp_registry: Registry of MCP server configurations (REQUIRED)
-            progress_callback: Optional callback for progress updates
             iteration_strategy: Which iteration strategy to use (configured per agent)
         """
         self.llm_client = llm_client
         self.mcp_client = mcp_client
         self.mcp_registry = mcp_registry
-        self.progress_callback = progress_callback
         self._iteration_count = 0
         self._max_iterations = get_settings().max_llm_mcp_iterations
         self._configured_servers: Optional[List[str]] = None
         self._prompt_builder = get_prompt_builder()
-        
-
         
         # Create appropriate iteration controller based on configuration
         self._iteration_controller: IterationController = self._create_iteration_controller(iteration_strategy)
@@ -116,9 +111,6 @@ class BaseAgent(ABC):
             return IterationStrategy.REACT
         else:
             raise ValueError(f"Unknown controller type: {type(self._iteration_controller)}")
-    
-
-    
 
 
     @abstractmethod
@@ -193,8 +185,6 @@ class BaseAgent(ABC):
             max_iterations=self._max_iterations
         )
         return self._prompt_builder.build_iterative_mcp_tool_selection_prompt(context)
-
-
 
     def _create_prompt_context(self, 
                              alert_data: Dict, 
@@ -376,13 +366,11 @@ class BaseAgent(ABC):
             logger.error(f"Iterative MCP tool selection failed with {self.__class__.__name__}: {str(e)}")
             raise Exception(f"Iterative tool selection error: {str(e)}")
 
-
     async def process_alert(
         self,
         alert_data: Dict[str, Any],
         runbook_content: str,
-        session_id: str,
-        callback: Optional[Callable] = None
+        session_id: str
     ) -> Dict[str, Any]:
         """
         Process an alert using the appropriate iteration strategy (ReAct or Regular).
@@ -391,7 +379,6 @@ class BaseAgent(ABC):
             alert_data: Complete alert data as flexible dictionary
             runbook_content: The downloaded runbook content  
             session_id: Session ID for timeline logging
-            callback: Optional callback for progress updates
             
         Returns:
             Dictionary containing the analysis result and metadata
@@ -401,15 +388,6 @@ class BaseAgent(ABC):
             raise ValueError("session_id is required for alert processing")
                        
         try:
-            # Use provided callback or fall back to constructor callback
-            progress_callback = callback or self.progress_callback
-            
-            # Start processing
-            await self._update_progress(
-                progress_callback,
-                status="processing",
-                message=f"Starting analysis with {self.__class__.__name__}"
-            )
             
             # Configure MCP client with agent-specific servers
             await self._configure_mcp_client()
@@ -423,19 +401,11 @@ class BaseAgent(ABC):
                 runbook_content=runbook_content,
                 available_tools=available_tools,
                 session_id=session_id,
-                progress_callback=progress_callback,
                 agent=self
             )
             
             # Delegate to appropriate iteration controller - no conditionals!
             analysis_result = await self._iteration_controller.execute_analysis_loop(context)
-            
-            # Final result
-            await self._update_progress(
-                progress_callback,
-                status=AlertSessionStatus.COMPLETED,
-                message="Analysis completed successfully"
-            )
             
             return {
                 "status": "success",
@@ -448,12 +418,6 @@ class BaseAgent(ABC):
         except AgentError as e:
             # Handle structured agent errors with recovery information
             logger.error(f"Agent processing failed with structured error: {e.to_dict()}", exc_info=True)
-            
-            await self._update_progress(
-                progress_callback,
-                status="error",
-                message=str(e)
-            )
             
             return {
                 "status": "error",
@@ -468,12 +432,6 @@ class BaseAgent(ABC):
             error_msg = f"Agent processing failed with unexpected error: {str(e)}"
             logger.error(error_msg, exc_info=True)
             
-            await self._update_progress(
-                progress_callback,
-                status="error",
-                message=error_msg
-            )
-            
             return {
                 "status": "error",
                 "agent": self.__class__.__name__,
@@ -481,10 +439,6 @@ class BaseAgent(ABC):
                 "recoverable": False,
                 "timestamp_us": now_us()
             }
-
-
-    
-
     
     def _merge_mcp_data(self, existing_data: Dict[str, Any], new_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -510,8 +464,6 @@ class BaseAgent(ABC):
                 merged_data[server_name] = server_data
         
         return merged_data
-    
-
 
     def _compose_instructions(self) -> str:
         """
@@ -667,27 +619,4 @@ class BaseAgent(ABC):
                 results[server_name].append(error_result)
         
         return results
-    
-    async def _update_progress(
-        self,
-        callback: Optional[Callable],
-        status: str,
-        message: str
-    ):
-        """Update progress through callback if available - simplified for dev UI."""
-        if callback:
-            try:
-                # Simplified progress data - just status and message
-                progress_data = {
-                    "status": status,
-                    "message": message
-                }
-                
-                # Handle both sync and async callbacks
-                if asyncio.iscoroutinefunction(callback):
-                    await callback(progress_data)
-                else:
-                    callback(progress_data)
-                    
-            except Exception as e:
-                logger.error(f"Progress callback failed: {str(e)}") 
+ 
