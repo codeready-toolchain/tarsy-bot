@@ -82,7 +82,7 @@ class RegularIterationController(IterationController):
                 
                 # Ensure next_action is a dict to avoid attribute errors
                 if not isinstance(next_action, dict):
-                    logger.warning(f"Expected dict from determine_next_mcp_tools, got {type(next_action)}")
+                    logger.error(f"Expected dict from determine_next_mcp_tools, got {type(next_action)}")
                     next_action = {}
                 
                 # Check if we should continue
