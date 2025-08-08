@@ -497,7 +497,6 @@ class TestIterationControllerIntegration:
             )
             
             # Verify different controller types
-            assert type(regular_agent._iteration_controller) != type(react_agent._iteration_controller)
             assert isinstance(regular_agent._iteration_controller, RegularIterationController)
             assert isinstance(react_agent._iteration_controller, SimpleReActController)
             
