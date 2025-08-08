@@ -675,7 +675,10 @@ class TestAgentFactoryIterationStrategies:
         
         with caplog.at_level("INFO"):
             agent = factory.create_agent("ConfigurableAgent:test-agent")
-        
+            
+            from tarsy.agents.configurable_agent import ConfigurableAgent
+            assert isinstance(agent, ConfigurableAgent)
+            assert agent.agent_name == "test-agent"
         # Should log successful creation with strategy info
         log_messages = [record.message for record in caplog.records]
         creation_logs = [msg for msg in log_messages if "ConfigurableAgent" in msg]
