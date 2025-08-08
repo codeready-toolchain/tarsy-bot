@@ -435,7 +435,8 @@ mcp_servers:
         try:
             # Should fail during validation
             loader = ConfigurationLoader(temp_path)
-            with pytest.raises(Exception):  # ValidationError or ConfigurationError
+            from tarsy.config.exceptions import ConfigurationError
+            with pytest.raises(ConfigurationError):
                 loader.load_and_validate()
                 
         finally:
