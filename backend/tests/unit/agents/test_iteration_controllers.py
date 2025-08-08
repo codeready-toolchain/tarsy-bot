@@ -345,7 +345,8 @@ class TestSimpleReActController:
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_tool_execution_error(
-        self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
+    async def test_execute_analysis_loop_tool_execution_error(
+        self, controller, sample_context, mock_agent, mock_prompt_builder
     ):
         """Test ReAct loop with tool execution error."""
         # Mock tool execution to fail
