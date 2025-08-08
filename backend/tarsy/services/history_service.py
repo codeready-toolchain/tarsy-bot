@@ -420,8 +420,6 @@ class HistoryService:
             logger.error(f"Failed to log MCP communication for session {session_id}: {str(e)}")
             return False
     
-    # ReAct methods removed during cleanup - dead code that was never called by SimpleReActController
-    
     # Properties
     @property
     def enabled(self) -> bool:

@@ -794,4 +794,3 @@ class HistoryRepository:
             logger.error(f"Failed to cleanup old sessions: {str(e)}")
             return 0
     
-    # ReAct methods removed during cleanup - dead code that was never called by SimpleReActController 
