@@ -27,6 +27,7 @@ graph LR
 ### 2. Specialized Agents
 - **Domain experts** for different infrastructure areas (Kubernetes, databases, networks, etc.)
 - Each agent comes with its own **dedicated MCP servers/tools** (kubectl, database clients, network diagnostics, etc.)
+- **Configurable processing approaches**: ReAct (systematic reasoning) for complex analysis or Regular (fast iteration) for quick responses
 - Uses AI to intelligently select and use the right tools for investigation and analysis
 
 ### 3. AI + Tools Integration
@@ -50,7 +51,7 @@ sequenceDiagram
     participant A as Specialized Agent
     participant R as GitHub
     participant L as LLM (AI)
-    participant MCP as MCP Tools
+    participant MCP as MCP Servers
     participant D as Dashboard
     participant E as Engineers
 
@@ -59,24 +60,46 @@ sequenceDiagram
     T->>R: Download runbook for alert type
     R->>T: Return runbook content
     T->>A: Provide runbook content
-    A->>A: Configure agent-specific MCP servers
+    A->>A: Configure agent-specific MCP servers & select processing approach
     A->>MCP: Get available tools
     MCP->>A: Return tool list
     
-    loop Investigation Loop
-        A->>L: "Which tools should I use for investigation?"
-        L->>A: Selected tools and parameters
-        A->>MCP: Execute selected tools
-        MCP->>A: Tool results
-        A->>L: "Do I need more information?"
-        L->>A: Continue=true/false + next tools (if needed)
-    end
-    
-    A->>L: "Generate final analysis from all data"
+    A->>L: Investigate using AI + specialized tools
     L->>A: Complete analysis and recommendations
-    A->>T: Return analysis results
+    
+    A->>T: Return complete analysis
     T->>D: Update dashboard
     D->>E: Engineers review and take action
+```
+
+### ReAct Processing Detail
+
+For agents using ReAct strategy, the investigation follows this detailed pattern:
+
+```mermaid
+sequenceDiagram
+    participant A as Agent
+    participant L as LLM
+    participant MCP as MCP Servers
+
+    A->>L: Alert context + available tools + runbook
+    
+    loop ReAct Investigation Cycles
+        L->>A: ReAct structured response
+        Note over L,A: Thought: [reasoning about what to investigate]<br/>Action: [specific tool name]<br/>Action Input: [tool parameters]
+        A->>MCP: Execute the specified tool with parameters
+        MCP->>A: Tool execution results
+        A->>L: "Observation: [formatted tool results]"
+        
+        alt LLM needs more investigation
+            Note over L: Continue with another Thought→Action→Observation cycle
+        else LLM has sufficient information
+            L->>A: ReAct completion response
+            Note over L,A: Thought: I have enough data to provide analysis<br/>Final Answer: [complete analysis and recommendations]
+        end
+    end
+    
+    A->>A: Process final analysis for return
 ```
 
 ## System Architecture
@@ -144,7 +167,7 @@ Each agent operates with four types of knowledge:
 3. **Tool-Specific Instructions**: How to effectively use their available tools
 4. **Runbook Knowledge**: Alert-specific investigation procedures and context from downloaded runbooks
 
-The AI combines all four to make intelligent decisions about investigation approaches and generate expert recommendations.
+The AI combines all four to make intelligent decisions about investigation approaches and generate expert recommendations. Agents can use either systematic ReAct reasoning (Think→Action→Observation cycles) or fast Regular iteration based on the complexity of the situation.
 
 ## Extensibility
 
@@ -177,6 +200,7 @@ The AI combines all four to make intelligent decisions about investigation appro
       mcp_servers:
         - "prometheus-server"
         - "kubernetes-server"
+      iteration_strategy: "regular"  # Fast iteration for performance issues
       custom_instructions: |
         You are a performance-focused SRE agent.
         Prioritize system stability and resource optimization.

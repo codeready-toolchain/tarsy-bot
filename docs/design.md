@@ -22,6 +22,7 @@
 This design document is a living document that evolves through [Enhancement Proposals (EPs)](enhancements/README.md). All significant architectural changes are documented through the EP process, ensuring traceable evolution and AI-friendly implementation.
 
 ### Recent Changes
+- **ITERATION STRATEGIES (IMPLEMENTED)**: Agent Iteration Flow Strategies - Added ReAct vs Regular iteration strategy support allowing agents to use either the standard ReAct pattern (Think→Action→Observation cycles) for systematic analysis or regular iteration pattern for faster processing without reasoning overhead
 - **EP-0007 (IMPLEMENTED)**: Data Masking Service for Sensitive MCP Server Data - Added comprehensive pattern-based masking service for secrets and credentials from MCP server responses, with built-in patterns for common secrets (kubernetes_data_section, api_key, password, certificate, token) and configurable per-server masking rules with pattern groups
 - **EP-0006 (IMPLEMENTED)**: Configuration-Based Agents - Added YAML-based agent configuration system allowing deployment of new agents without code changes, supporting both traditional hardcoded agents and configuration-driven agents simultaneously via ConfigurableAgent class
 - **EP-0005 (IMPLEMENTED)**: Flexible Alert Data Structure Support - Transformed rigid Kubernetes-specific alert model into flexible, agent-agnostic system supporting arbitrary JSON payloads with minimal validation, enhanced database with JSON indexing for efficient querying, and updated UI for dynamic alert data rendering
@@ -52,10 +53,10 @@ Tarsy is a **distributed, event-driven system** designed to automate incident re
 3. **Configuration-Driven Extensibility**: Support for both hardcoded agents and YAML-configured agents without code changes
 4. **Flexible Alert Data Structure**: Agent-agnostic system supporting arbitrary JSON payloads from diverse monitoring sources
 5. **LLM-First Processing**: Agents receive complete JSON payloads for intelligent interpretation without rigid field extraction
-6. **Iterative Intelligence**: Multi-step LLM-driven analysis that mimics human troubleshooting methodology
+6. **Dual Iteration Strategies**: Configurable ReAct (systematic reasoning) vs Regular (fast tool iteration) processing patterns per agent
 7. **Dynamic Tool Selection**: Agents intelligently choose appropriate MCP tools from their assigned server subsets
-8. **Extensible Architecture**: Inheritance-based agent design for easy addition of new specialized agents
-9. **Real-time Communication**: WebSocket-based progress updates and status tracking with agent identification
+8. **Extensible Architecture**: Inheritance-based agent design with composition-based iteration strategy for easy addition of new specialized agents
+9. **Real-time Communication**: Dashboard-based WebSocket updates with multiplexed subscription management
 10. **Resilient Design**: Graceful degradation and comprehensive error handling across agent layers
 11. **Comprehensive Audit Trail**: Persistent history capture of all alert processing workflows with chronological timeline reconstruction
 
@@ -184,16 +185,17 @@ graph TD
     C --> I[WebSocket Manager]
     I --> J[Client Interface]
     
-    F --> K[LLM Manager]
+    F --> IC[IterationController]
+    IC --> K[LLM Manager]
     K --> L[LLM Providers]
     
-    F --> M[MCP Client]
+    IC --> M[MCP Client]
     M --> N[Agent-Specific MCP Servers]
     
     F --> O[MCP Server Registry]
     O --> P[Server Configurations with Instructions]
     
-    F --> PB[PromptBuilder]
+    IC --> PB[PromptBuilder]
     PB --> Q[Instruction Composition]
     
     C --> R[Progress Updates]
@@ -202,21 +204,37 @@ graph TD
     C --> HS[History Service]
     HS --> HDB[(History Database)]
     
-    F --> HC[Hook Context]
+    IC --> HC[Hook Context]
     HC --> HS
     
-    subgraph "Agent Processing Loop"
-        F --> Q
-        Q --> S[Tool Selection from Agent Subset]
-        S --> M
-        M --> T[Data Collection]
-        T --> U[Partial Analysis via PromptBuilder]
-        U --> V{Continue?}
-        V -->|Yes| S
-        V -->|No| W[Final Analysis via PromptBuilder]
+    subgraph "Strategy-Based Processing"
+        F --> |Creates based on strategy| IC
+        IC --> |ReAct Strategy| ReactLoop[ReAct Loop]
+        IC --> |Regular Strategy| RegularLoop[Regular Loop]
+        
+        subgraph ReactLoop [ReAct Processing]
+            RQ[Build ReAct Prompt] --> RT[Think Phase]
+            RT --> RA[Action Phase]
+            RA --> RO[Observation Phase]
+            RO --> RC{Complete?}
+            RC -->|No| RT
+            RC -->|Yes| RF[Final Answer]
+        end
+        
+        subgraph RegularLoop [Regular Processing]
+            RS[Tool Selection] --> RD[Data Collection]
+            RD --> RP[Partial Analysis]
+            RP --> RV{Continue?}
+            RV -->|Yes| RS
+            RV -->|No| RL[Final Analysis]
+        end
     end
     
-    W --> C
+    ReactLoop --> PB
+    RegularLoop --> PB
+    PB --> M
+    RF --> C
+    RL --> C
     C --> I
     
     subgraph "History Capture"
@@ -240,20 +258,24 @@ Core API Endpoints:
 GET /                              # Root health check endpoint
 GET /health                        # Comprehensive health check with service status
 POST /alerts                       # Submit alert for processing (with comprehensive validation)
-GET /processing-status/{alert_id}  # Check processing status (includes agent and MCP server info)
+GET /session-id/{alert_id}         # Get session ID for an alert (needed for dashboard WebSocket subscription)
 GET /alert-types                   # Get supported alert types (from agent registry)
-WebSocket /ws/{alert_id}           # Real-time progress updates (agent-aware)
 
 History API Endpoints:
-GET /api/v1/history/sessions          # List alert processing sessions with advanced filtering and pagination
-GET /api/v1/history/sessions/{id}    # Get detailed session information with chronological timeline
-GET /api/v1/history/health           # History service health check
+GET /api/v1/history/sessions              # List alert processing sessions with advanced filtering and pagination
+GET /api/v1/history/sessions/{session_id}    # Get detailed session information with chronological timeline
+GET /api/v1/history/health                # History service health check
+GET /api/v1/history/metrics               # Dashboard metrics overview
+GET /api/v1/history/active-sessions       # Get currently active/processing sessions
+GET /api/v1/history/filter-options        # Get available filter options for dashboard
+GET /api/v1/history/sessions/{session_id}/export  # Export session data in JSON or CSV format
+GET /api/v1/history/search                # Search sessions by content, error messages, or metadata
 
 Dashboard WebSocket:
-WebSocket /ws/dashboard/{user_id}     # Multiplexed WebSocket with subscription management
+WebSocket /ws/dashboard/{user_id}     # Multiplexed WebSocket with subscription management for real-time updates
 
-Note: Dashboard-specific endpoints (metrics, active-sessions, etc.) mentioned in EP-0004 
-are currently handled through the general history endpoints with filtering.
+Note: The /processing-status/{alert_id} endpoint was removed. Alert processing status 
+is now tracked through the history service and dashboard WebSocket subscriptions.
 ```
 
 **Core Features:**
@@ -261,7 +283,7 @@ are currently handled through the general history endpoints with filtering.
 - **CORS Support**: Configurable cross-origin resource sharing
 - **Lifecycle Management**: Startup/shutdown hooks for service and agent initialization
 - **State Management**: Processing status tracking with agent identification
-- **Real-time Communication**: WebSocket-based progress broadcasting with agent context
+- **Real-time Communication**: Dashboard-based WebSocket updates with agent-aware status broadcasting
 - **Dashboard WebSocket**: Multiplexed WebSocket endpoint (`/ws/dashboard/{user_id}`) with subscription management
 
 ### 2. AlertService
@@ -273,7 +295,7 @@ Interface Pattern:
 class AlertService:
     def __init__(self, settings: Settings)
     async def initialize(self)
-    async def process_alert(self, alert: Alert, progress_callback: Optional[Callable] = None) -> str
+    async def process_alert(self, alert_data: Dict[str, Any], runbook_content: str, session_id: str) -> Dict[str, Any]
 ```
 
 **Core Responsibilities:**
@@ -281,7 +303,7 @@ class AlertService:
 - **Agent Selection**: Use agent registry to determine appropriate specialized agent for alert type
 - **Runbook Management**: Download runbooks using RunbookService
 - **Agent Delegation**: Use agent factory to instantiate and delegate processing to specialized agents
-- **Progress Coordination**: Coordinate progress callbacks and status updates
+- **Status Updates**: Coordinate WebSocket-based status updates and dashboard broadcasting
 - **Error Handling**: Handle agent-level errors and provide formatted error responses
 - **Result Formatting**: Format and return agent analysis results with context
 
@@ -290,7 +312,7 @@ class AlertService:
 2. **Agent Selection**: Use agent registry to determine appropriate specialized agent class
 3. **Runbook Download**: Retrieve runbook content from GitHub using RunbookService
 4. **Agent Instantiation**: Use agent factory to create specialized agent instance with dependencies
-5. **Agent Delegation**: Delegate processing to specialized agent with runbook content and progress callbacks
+5. **Agent Delegation**: Delegate processing to specialized agent with runbook content and session ID
 6. **Result Processing**: Format and return agent analysis results with context and metadata
 7. **Error Handling**: Handle and format any errors that occur during processing
 
@@ -385,8 +407,7 @@ class AgentFactory:
     def __init__(self,
                  llm_client: LLMClient,
                  mcp_client: MCPClient,
-                 mcp_registry: MCPServerRegistry,
-                 progress_callback: Optional[Any] = None)
+                 mcp_registry: MCPServerRegistry)
     def create_agent(self, agent_class_name: str) -> BaseAgent
     def _register_available_agents(self) -> None
 ```
@@ -399,13 +420,14 @@ class AgentFactory:
 
 ### 5. BaseAgent (Abstract Base Class)
 
-Abstract base class providing common processing logic and interface for all specialized agents:
+Abstract base class providing common processing logic and interface for all specialized agents with configurable iteration strategies:
 
 ```
 Interface Pattern:
 class BaseAgent(ABC):
     def __init__(self, llm_client: LLMClient, mcp_client: MCPClient, 
-                 mcp_registry: MCPServerRegistry, progress_callback: Optional[Callable] = None)
+                 mcp_registry: MCPServerRegistry, 
+                 iteration_strategy: IterationStrategy = IterationStrategy.REACT)
     
     # Abstract methods that must be implemented by specialized agents
     @abstractmethod
@@ -413,27 +435,34 @@ class BaseAgent(ABC):
     @abstractmethod  
     def custom_instructions(self) -> str
     
-    # Prompt building methods (can be overridden by specialized agents)
-    def build_analysis_prompt(self, alert_data: Dict, runbook_content: str, mcp_data: Dict) -> str
-    def build_mcp_tool_selection_prompt(self, alert_data: Dict, runbook_content: str, available_tools: Dict) -> str
-    def build_partial_analysis_prompt(self, alert_data: Dict, runbook_content: str, 
-                                     iteration_history: List[Dict], current_iteration: int) -> str
+    # Iteration strategy management
+    @property
+    def iteration_strategy(self) -> IterationStrategy
+    def _create_iteration_controller(self, strategy: IterationStrategy) -> IterationController
     
-    # Common processing methods
-    async def process_alert(self, alert: Alert, runbook_content: str, callback: Optional[Callable] = None) -> Dict[str, Any]
-    async def analyze_alert(self, alert_data: Dict, runbook_content: str, mcp_data: Dict, **kwargs) -> str
-    async def determine_mcp_tools(self, alert_data: Dict, runbook_content: str, available_tools: Dict, **kwargs) -> List[Dict]
-    async def analyze_partial_results(self, alert_data: Dict, runbook_content: str, 
-                                     iteration_history: List[Dict], current_iteration: int, **kwargs) -> str
+    # Main processing method using composition pattern
+    async def process_alert(self, alert_data: Dict[str, Any], runbook_content: str, session_id: str) -> Dict[str, Any]
+    
+    # Legacy methods for backward compatibility (used by Regular strategy)
+    async def analyze_alert(self, alert_data: Dict, runbook_content: str, mcp_data: Dict, session_id: str) -> str
+    async def determine_mcp_tools(self, alert_data: Dict, runbook_content: str, available_tools: Dict, session_id: str) -> List[Dict]
+    async def determine_next_mcp_tools(self, alert_data: Dict, runbook_content: str, available_tools: Dict, 
+                                       iteration_history: List[Dict], current_iteration: int, session_id: str) -> Dict
 ```
 
 **Core Features:**
-- **Inheritance-Based Design**: Common logic shared across all specialized agents
+- **Inheritance + Composition Design**: Common logic shared across all specialized agents with pluggable iteration strategies
+- **Configurable Iteration Strategies**: Each agent can use ReAct (systematic reasoning) or Regular (fast iteration) processing patterns
+- **Strategy-Based Processing**: Delegates alert processing to appropriate IterationController based on configuration
 - **Three-Tier Instruction Composition**: General + MCP server + agent-specific instructions
 - **Agent-Specific MCP Access**: Each agent only accesses its assigned MCP server subset
-- **Iterative Processing**: Bounded multi-step LLM analysis with safety mechanisms
-- **Progress Reporting**: Standardized progress callback integration
-- **Error Handling**: Consistent error handling patterns across all agents
+- **Status Updates**: Standardized WebSocket-based status broadcasting integration
+- **Error Handling**: Consistent error handling patterns across all agents and strategies
+
+**Iteration Strategy Support:**
+- **IterationStrategy.REACT**: Uses SimpleReActController for structured Think→Action→Observation cycles
+- **IterationStrategy.REGULAR**: Uses RegularIterationController for straightforward tool iteration
+- **Default Strategy**: REACT for systematic analysis (configurable per agent)
 
 **Instruction Composition Pattern:**
 ```
@@ -452,28 +481,89 @@ BaseAgent uses a centralized PromptBuilder for consistent prompt construction ac
 - Iteration history formatting
 - System message construction
 
+### 5a. IterationController (Strategy Pattern)
+
+Strategy pattern implementation for different agent processing approaches with clean separation between ReAct and Regular iteration flows:
+
+```
+Interface Pattern:
+abstract class IterationController:
+    @abstractmethod
+    async def execute_analysis_loop(self, context: IterationContext) -> str
+
+class RegularIterationController(IterationController):
+    async def execute_analysis_loop(self, context: IterationContext) -> str
+        # Straightforward tool selection and execution for faster processing
+
+class SimpleReActController(IterationController):
+    def __init__(self, llm_client: LLMClient, prompt_builder: PromptBuilder)
+    async def execute_analysis_loop(self, context: IterationContext) -> str
+        # ReAct Think→Action→Observation cycles with structured reasoning
+
+@dataclass
+class IterationContext:
+    alert_data: Dict[str, Any]
+    runbook_content: str
+    available_tools: Dict[str, Any]
+    session_id: str
+    agent: Optional['BaseAgent'] = None
+```
+
+**Core Features:**
+- **Clean Strategy Separation**: No conditional logic in BaseAgent - pure composition pattern
+- **ReAct Pattern Implementation**: True ReAct format with Think→Action→Observation cycles that LLMs are trained on
+- **Regular Pattern Implementation**: Direct tool iteration without reasoning overhead for fast response
+- **Structured Parsing**: ReAct controller includes specialized LLM response parsing and validation
+- **Error Handling**: Each controller handles strategy-specific errors and edge cases
+- **Context Isolation**: IterationContext provides clean data passing without coupling
+
+**ReAct Strategy Features:**
+- Standard ReAct prompting format with mandatory formatting rules
+- Structured response parsing for Thought, Action, Action Input, and Final Answer
+- Action-to-tool-call conversion for MCP execution
+- Observation formatting for structured feedback
+- Complete/incomplete detection for proper loop termination
+
+**Regular Strategy Features:**
+- Traditional tool selection and iterative analysis
+- Faster processing without reasoning overhead
+- Backward compatibility with existing agent logic
+- Simple continuation logic based on data sufficiency
+
 ### 6. PromptBuilder
 
-Centralized prompt construction service used by all agents for consistent LLM interactions:
+Centralized prompt construction service used by all agents for consistent LLM interactions with dual iteration strategy support:
 
 ```
 Interface Pattern:
 class PromptBuilder:
+    # Regular iteration strategy methods
     def build_analysis_prompt(self, context: PromptContext) -> str
     def build_mcp_tool_selection_prompt(self, context: PromptContext) -> str
     def build_iterative_mcp_tool_selection_prompt(self, context: PromptContext) -> str
     def build_partial_analysis_prompt(self, context: PromptContext) -> str
+    
+    # ReAct iteration strategy methods
+    def build_standard_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str
+    def parse_react_response(self, response: str) -> Dict[str, Any]
+    def convert_action_to_tool_call(self, action: str, action_input: str) -> Dict[str, Any]
+    def format_observation(self, mcp_data: Dict[str, Any]) -> str
+    
+    # Common system messages
     def get_general_instructions(self) -> str
     def get_mcp_tool_selection_system_message(self) -> str
     def get_partial_analysis_system_message(self) -> str
 ```
 
 **Core Features:**
-- **Template Standardization**: Consistent prompt formats across all agents
+- **Dual Strategy Support**: Supports both Regular and ReAct iteration patterns with strategy-specific prompts
+- **Template Standardization**: Consistent prompt formats across all agents and strategies
+- **ReAct Pattern Implementation**: Full ReAct prompt building with Think→Action→Observation format
+- **ReAct Response Parsing**: Structured parsing of ReAct responses with thought, action, and completion detection
 - **Context Management**: Structured context data handling via PromptContext dataclass
-- **Iteration History Formatting**: Comprehensive formatting of multi-step analysis history
-- **System Message Generation**: Specialized system messages for different LLM interaction types
-- **Data Formatting**: Intelligent formatting of MCP data and alert information
+- **Iteration History Formatting**: Comprehensive formatting for both regular iteration history and ReAct conversation history
+- **System Message Generation**: Specialized system messages for different LLM interaction types and strategies
+- **Data Formatting**: Intelligent formatting of MCP data and alert information for both patterns
 - **Shared Instance**: Stateless design with global shared instance for efficiency
 
 **PromptContext Data Structure:**
@@ -495,7 +585,7 @@ class PromptContext:
 
 ### 7. KubernetesAgent (Specialized Agent)
 
-First implemented specialized agent for Kubernetes-related alerts:
+First implemented specialized agent for Kubernetes-related alerts with ReAct iteration strategy:
 
 ```
 Interface Pattern:
@@ -508,10 +598,23 @@ class KubernetesAgent(BaseAgent):
 ```
 
 **Core Features:**
-- **Domain Specialization**: Focused on Kubernetes namespace and pod issues
+- **Domain Specialization**: Focused on Kubernetes namespace and pod issues with ReAct reasoning pattern
+- **ReAct Processing**: Uses ReAct iteration strategy by default for systematic Kubernetes troubleshooting
 - **Focused Tool Access**: Only accesses kubernetes-server MCP tools
-- **Kubernetes Expertise**: Inherits all common processing logic from BaseAgent
+- **Kubernetes Expertise**: Inherits all common processing logic from BaseAgent with ReAct-specific systematic analysis
+- **Configurable Strategy**: Can be configured to use Regular iteration for faster processing if needed
 - **Future Extensibility**: Can be extended with custom Kubernetes-specific instructions
+
+**Built-in Configuration:**
+```python
+BUILTIN_AGENTS = {
+    "KubernetesAgent": {
+        "import": "tarsy.agents.kubernetes_agent.KubernetesAgent",
+        "iteration_strategy": "react",  # ReAct for systematic k8s troubleshooting
+        "description": "Kubernetes-specialized agent using ReAct pattern for systematic analysis"
+    }
+}
+```
 
 ### 8. MCP Server Registry
 
@@ -855,7 +958,7 @@ async with HookContext(service_type="llm", method_name="generate_response",
 
 ## Data Flow Architecture
 
-### 1. Multi-Layer Alert Processing Pipeline with History Capture
+### 1. Multi-Layer Alert Processing Pipeline
 
 ```mermaid
 sequenceDiagram
@@ -866,6 +969,7 @@ sequenceDiagram
     participant AF as Agent Factory
     participant MSR as MCP Server Registry
     participant KA as Kubernetes Agent
+    participant IC as Iteration Controller
     participant WS as WebSocket Manager
     participant LLM as LLM Manager
     participant MCP as MCP Client
@@ -890,52 +994,60 @@ sequenceDiagram
     AS->>AR: get_agent_for_alert_type("NamespaceTerminating")
     alt Agent Available
         AR-->>AS: "KubernetesAgent"
-        AS->>AF: create_agent("KubernetesAgent")
-        AF-->>AS: Instantiated KubernetesAgent
+        AS->>AF: create_agent("KubernetesAgent") with iteration strategy
+        AF-->>AS: Instantiated KubernetesAgent (ReAct strategy)
         
-        AS->>KA: process_alert(alert, runbook_content, callback)
-        Note over KA: Agent configures MCP client<br/>with kubernetes-server only
+        AS->>KA: process_alert(alert_data, runbook_content, session_id)
+        Note over KA: Agent creates appropriate<br/>IterationController based on strategy
         AS->>HS: update_session_status(in_progress)
         HS->>HDB: Update session
-        KA->>WS: Update status (processing - Kubernetes Agent)
-        WS->>Client: Status update with agent info
+        KA->>WS: Update status (processing - Kubernetes Agent - ReAct)
+        WS->>Client: Status update with agent and strategy info
         
         KA->>MSR: get_server_configs(["kubernetes-server"])
         MSR-->>KA: Kubernetes server config + instructions
         
-        Note over KA: Compose instructions:<br/>General + K8s Server + Custom via PromptBuilder
-        
         KA->>MCP: list_tools(kubernetes-server)
         MCP-->>KA: Kubernetes-specific tool inventory
         
-        loop Iterative Analysis (bounded)
-            Note over KA,LLM: HookContext captures LLM interaction
-            KA->>LLM: determine_mcp_tools (via PromptBuilder)
-            LLM-->>HS: log_llm_interaction (via HookContext)
-            HS->>HDB: Store LLM interaction
-            LLM-->>KA: Tool selection + parameters
-            Note over KA,MCP: HookContext captures MCP communication
-            KA->>MCP: call_tool (kubernetes-server)
-            MCP-->>HS: log_mcp_communication (via HookContext)
-            HS->>HDB: Store MCP communication
-            MCP-->>KA: Tool results
-            KA->>LLM: analyze_partial_results (via PromptBuilder)
-            LLM-->>HS: log_llm_interaction (via HookContext)
-            HS->>HDB: Store LLM interaction
-            LLM-->>KA: Continue/stop decision
-            KA->>WS: Progress update
-            WS->>Client: Status update with iteration info
+        KA->>IC: execute_analysis_loop(IterationContext)
+        
+        alt ReAct Strategy
+            loop ReAct Analysis (Think→Action→Observation)
+                Note over IC,LLM: HookContext captures ReAct interaction
+                IC->>LLM: ReAct prompt (via PromptBuilder)
+                LLM-->>HS: log_llm_interaction (via HookContext)
+                HS->>HDB: Store LLM interaction
+                LLM-->>IC: Thought + Action + Action Input
+                IC->>MCP: Execute selected action
+                MCP-->>HS: log_mcp_communication (via HookContext)
+                HS->>HDB: Store MCP communication
+                MCP-->>IC: Observation data
+                IC->>WS: Progress update (ReAct iteration N)
+                WS->>Client: Status update with ReAct progress
+            end
+        else Regular Strategy
+            loop Regular Analysis (Tool Iteration)
+                Note over IC,LLM: HookContext captures LLM interaction
+                IC->>LLM: Tool selection (via PromptBuilder)
+                LLM-->>HS: log_llm_interaction (via HookContext)
+                HS->>HDB: Store LLM interaction
+                LLM-->>IC: Tool selection + parameters
+                IC->>MCP: Execute selected tools
+                MCP-->>HS: log_mcp_communication (via HookContext)
+                HS->>HDB: Store MCP communication
+                MCP-->>IC: Tool results
+                IC->>WS: Progress update (Regular iteration N)
+                WS->>Client: Status update with Regular progress
+            end
         end
         
-        KA->>LLM: analyze_alert (final analysis via PromptBuilder)
-        LLM-->>HS: log_llm_interaction (via HookContext)
-        HS->>HDB: Store final LLM interaction
-        LLM-->>KA: Complete analysis
-        KA-->>AS: Analysis result with agent metadata
+        IC-->>KA: Final analysis result
+        KA-->>AS: Analysis result with agent and strategy metadata
         AS->>HS: update_session_status(completed)
         HS->>HDB: Update session as completed
         AS->>WS: Update status (completed)
-        WS->>Client: Final result with agent details
+        WS->>Client: Final result with agent and strategy details
     else No Agent Available
         AR-->>AS: None (no mapping found)
         AS->>WS: Update status (error - No specialized agent available)
@@ -1031,13 +1143,14 @@ MCPCommunication Entity:
 **Agent Processing Context:**
 ```
 AgentProcessingContext:
-- alert: Alert
+- alert_data: Dict[str, Any]       # Flexible alert data structure
 - runbook_content: string
 - agent_class_name: string
 - agent_instance: BaseAgent
+- iteration_strategy: IterationStrategy
 - selected_mcp_servers: array<MCPServerConfig>
 - composed_instructions: string   # General + MCP + Custom instructions
-- progress_callback: Callable
+- session_id: string              # For history tracking and WebSocket updates
 ```
 
 **Iteration History Pattern (Enhanced):**
@@ -1518,7 +1631,13 @@ backend/tarsy/
 │   ├── base_agent.py      # Abstract base class with common processing logic
 │   ├── kubernetes_agent.py# Kubernetes-specialized agent implementation
 │   ├── configurable_agent.py # YAML configuration-driven agent
-│   └── prompt_builder.py  # LLM prompt composition system
+│   ├── constants.py       # Iteration strategy enums and constants
+│   ├── prompt_builder.py  # LLM prompt composition system with ReAct support
+│   └── iteration_controllers/
+│       ├── __init__.py                        # Controller pattern exports
+│       ├── base_iteration_controller.py       # Abstract controller and context
+│       ├── regular_iteration_controller.py    # Regular tool iteration strategy
+│       └── react_iteration_controller.py     # ReAct reasoning strategy
 ├── controllers/            # API layer
 │   └── history_controller.py # REST endpoints for historical data
 ├── database/              # Data persistence layer

@@ -83,7 +83,7 @@ sequenceDiagram
     participant Agent
     participant GitHub
     participant AI
-    participant MCPTools
+    participant MCPServers
     participant Dashboard
     participant Engineer
 
@@ -92,7 +92,7 @@ sequenceDiagram
     Agent->>GitHub: Download Runbook
     loop Investigation Loop
         Agent->>AI: Investigate with LLM
-        AI->>MCPTools: Query/Actuate as needed
+        AI->>MCPServers: Query/Actuate as needed
     end
     Agent->>Dashboard: Send Analysis & Recommendations
     Engineer->>Dashboard: Review & Take Action
