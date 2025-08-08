@@ -20,8 +20,7 @@ from tarsy.models.llm import LLMMessage
 from .base_iteration_controller import IterationController, IterationContext
 
 if TYPE_CHECKING:
-    from ..base_agent import BaseAgent
-
+    pass
 logger = get_module_logger(__name__)
 
 
