@@ -10,11 +10,6 @@ from typing import TYPE_CHECKING
 from tarsy.utils.logger import get_module_logger
 from .base_iteration_controller import IterationController, IterationContext
 
--from typing import TYPE_CHECKING
--
- from tarsy.utils.logger import get_module_logger
- from .base_iteration_controller import IterationController, IterationContext
-
 logger = get_module_logger(__name__)
 
 
