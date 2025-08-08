@@ -592,8 +592,60 @@ Be thorough in your investigation before providing the final answer."""
     # ReAct Response Parsing Methods
     # ====================================================================
 
+    def _extract_section_content(self, line: str, prefix: str) -> str:
+        """Safely extract content from a line with given prefix, with defensive checks."""
+        if not line or not prefix:
+            return ""
+        
+        # Ensure the line is long enough to contain the prefix plus potential content
+        if len(line) < len(prefix):
+            return ""
+        
+        # Safely extract content after prefix
+        if len(line) > len(prefix):
+            return line[len(prefix):].strip()
+        
+        return ""
+
+    def _is_section_header(self, line: str, section_type: str, found_sections: set) -> bool:
+        """Check if line is a valid section header that hasn't been processed yet."""
+        if not line or section_type in found_sections:
+            return False
+            
+        if section_type == 'thought':
+            return line.startswith('Thought:') or line == 'Thought'
+        elif section_type == 'action':
+            return line.startswith('Action:')
+        elif section_type == 'action_input':
+            return line.startswith('Action Input:')
+        elif section_type == 'final_answer':
+            return line.startswith('Final Answer:')
+        
+        return False
+
+    def _should_stop_parsing(self, line: str) -> bool:
+        """Check if we should stop parsing due to fake content markers."""
+        if not line:
+            return False
+        return line.startswith('Observation:') or line.startswith('[Based on')
+
+    def _finalize_current_section(self, parsed: Dict[str, Any], current_section: str, content_lines: List[str]) -> None:
+        """Safely finalize the current section by joining content lines."""
+        if current_section and content_lines is not None:
+            parsed[current_section] = '\n'.join(content_lines).strip()
+
     def parse_react_response(self, response: str) -> Dict[str, Any]:
-        """Parse structured ReAct response into components."""
+        """Parse structured ReAct response into components with robust error handling."""
+        # Input validation
+        if not response or not isinstance(response, str):
+            return {
+                'thought': None,
+                'action': None,
+                'action_input': None,
+                'final_answer': None,
+                'is_complete': False
+            }
+
         lines = response.strip().split('\n')
         parsed = {
             'thought': None,
@@ -604,62 +656,67 @@ Be thorough in your investigation before providing the final answer."""
         }
         
         current_section = None
-        content_lines = []
+        content_lines = []  # Always initialize as empty list
         found_sections = set()
         
-        for line in lines:
-            line = line.strip()
-            
-            # Handle Final Answer (can appear at any time)
-            if line.startswith('Final Answer:'):
-                if current_section:
-                    parsed[current_section] = '\n'.join(content_lines).strip()
-                current_section = 'final_answer'
-                found_sections.add('final_answer')
-                content_lines = [line[13:].strip()]  # Remove 'Final Answer:' prefix
-                parsed['is_complete'] = True
-                # Continue reading to capture multi-line final answer
+        try:
+            for line in lines:
+                # Safely strip line, handle None/empty cases
+                line = line.strip() if line else ""
                 
-            # Only process first occurrence of each section to avoid fake content
-            elif (line.startswith('Thought:') or line == 'Thought') and 'thought' not in found_sections:
-                if current_section:
-                    parsed[current_section] = '\n'.join(content_lines).strip()
-                current_section = 'thought'
-                found_sections.add('thought')
-                if line.startswith('Thought:'):
-                    content_lines = [line[8:].strip()]  # Remove 'Thought:' prefix
+                # Skip empty lines when not in a section
+                if not line and not current_section:
+                    continue
+                
+                # Check for stop conditions first
+                if self._should_stop_parsing(line):
+                    self._finalize_current_section(parsed, current_section, content_lines)
+                    break
+                
+                # Handle Final Answer (can appear at any time)
+                if self._is_section_header(line, 'final_answer', set()):  # Always allow final_answer
+                    self._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'final_answer'
+                    found_sections.add('final_answer')
+                    content_lines = [self._extract_section_content(line, 'Final Answer:')]
+                    parsed['is_complete'] = True
+                    
+                # Handle Thought section  
+                elif self._is_section_header(line, 'thought', found_sections):
+                    self._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'thought'
+                    found_sections.add('thought')
+                    if line.startswith('Thought:'):
+                        content_lines = [self._extract_section_content(line, 'Thought:')]
+                    else:
+                        content_lines = []  # 'Thought' without colon, content on next lines
+                    
+                # Handle Action section
+                elif self._is_section_header(line, 'action', found_sections):
+                    self._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'action'
+                    found_sections.add('action')
+                    content_lines = [self._extract_section_content(line, 'Action:')]
+                    
+                # Handle Action Input section
+                elif self._is_section_header(line, 'action_input', found_sections):
+                    self._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'action_input'
+                    found_sections.add('action_input')
+                    content_lines = [self._extract_section_content(line, 'Action Input:')]
+                    
                 else:
-                    content_lines = []  # 'Thought' without colon, content on next lines
-                
-            elif line.startswith('Action:') and 'action' not in found_sections:
-                if current_section:
-                    parsed[current_section] = '\n'.join(content_lines).strip()
-                current_section = 'action'
-                found_sections.add('action')
-                content_lines = [line[7:].strip()]  # Remove 'Action:' prefix
-                
-            elif line.startswith('Action Input:') and 'action_input' not in found_sections:
-                if current_section:
-                    parsed[current_section] = '\n'.join(content_lines).strip()
-                current_section = 'action_input'
-                found_sections.add('action_input')
-                content_lines = [line[13:].strip()]  # Remove 'Action Input:' prefix
-                
-            # Skip any fake Observations, subsequent Thoughts/Actions, or other content
-            elif line.startswith('Observation:') or line.startswith('[Based on'):
-                # Stop processing when we hit fake content
-                if current_section:
-                    parsed[current_section] = '\n'.join(content_lines).strip()
-                break
-                
-            else:
-                # Only add content if we're in a valid section
-                if current_section:
-                    content_lines.append(line)
-        
-        # Handle last section
-        if current_section:
-            parsed[current_section] = '\n'.join(content_lines).strip()
+                    # Only add content if we're in a valid section
+                    if current_section and content_lines is not None:
+                        content_lines.append(line)
+            
+            # Handle last section
+            self._finalize_current_section(parsed, current_section, content_lines)
+            
+        except Exception as e:
+            # Log the error if needed, but return a safe default structure
+            # In a production environment, you might want to add logging here
+            pass
         
         return parsed
 

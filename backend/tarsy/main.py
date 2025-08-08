@@ -372,6 +372,9 @@ async def submit_alert(request: Request):
             # Generate unique alert ID (only if not duplicate)
             alert_id = str(uuid.uuid4())
             
+            # Register the alert ID as valid
+            alert_service.register_alert_id(alert_id)
+            
             # Register this alert key as being processed
             processing_alert_keys[alert_key_str] = alert_id
         
@@ -409,6 +412,10 @@ async def get_session_id(alert_id: str):
     Needed for dashboard websocket subscription because
     the client which sent the alert request needs to know the session ID (generated later)
     to subscribe to the alert updates."""
+    # Check if the alert_id exists
+    if not alert_service.alert_exists(alert_id):
+        raise HTTPException(status_code=404, detail=f"Alert ID '{alert_id}' not found")
+    
     session_id = alert_service.get_session_id_for_alert(alert_id)
     if session_id:
         return {"alert_id": alert_id, "session_id": session_id}

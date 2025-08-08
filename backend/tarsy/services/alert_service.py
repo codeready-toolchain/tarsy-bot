@@ -11,6 +11,7 @@ performance and consistency with the rest of the system.
 import uuid
 from typing import Dict, Optional
 
+from cachetools import TTLCache
 from tarsy.config.settings import Settings
 from tarsy.integrations.llm.client import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
@@ -59,7 +60,12 @@ class AlertService:
         self.llm_manager = LLMManager(settings)
         
         # Track API alert_id to session_id mapping for dashboard websocket integration
-        self.alert_session_mapping: Dict[str, str] = {}
+        # Using TTL cache to prevent memory leaks - entries expire after 4 hours
+        self.alert_session_mapping: TTLCache = TTLCache(maxsize=10000, ttl=4*3600)
+        
+        # Track all valid alert IDs that have been generated
+        # Using TTL cache to prevent memory leaks - entries expire after 4 hours
+        self.valid_alert_ids: TTLCache = TTLCache(maxsize=10000, ttl=4*3600)
         
         # Initialize agent factory with dependencies
         self.agent_factory = None  # Will be initialized in initialize()
@@ -369,6 +375,15 @@ class AlertService:
         """Get session ID for an API alert ID."""
         return self.alert_session_mapping.get(api_alert_id)
     
+    def register_alert_id(self, api_alert_id: str):
+        """Register a valid alert ID."""
+        self.valid_alert_ids[api_alert_id] = True  # Use cache as a key-only store
+        logger.debug(f"Registered alert ID: {api_alert_id}")
+    
+    def alert_exists(self, api_alert_id: str) -> bool:
+        """Check if an alert ID exists (has been generated)."""
+        return api_alert_id in self.valid_alert_ids
+    
     def _update_session_status(self, session_id: Optional[str], status: str, message: Optional[str] = None):
         """
         Update history session status.
@@ -435,13 +450,35 @@ class AlertService:
         except Exception as e:
             logger.warning(f"Failed to update session error: {str(e)}")
     
+    def clear_caches(self):
+        """
+        Clear alert session mapping and valid alert ID caches.
+        Useful for testing or manual cache cleanup.
+        """
+        self.alert_session_mapping.clear()
+        self.valid_alert_ids.clear()
+        logger.info("Cleared alert session mapping and valid alert ID caches")
+    
     async def close(self):
         """
         Clean up resources.
         """
+        import asyncio
         try:
-            await self.runbook_service.close()
-            await self.mcp_client.close()
+            # Safely close runbook service (handle both sync and async close methods)
+            if hasattr(self.runbook_service, 'close'):
+                result = self.runbook_service.close()
+                if asyncio.iscoroutine(result):
+                    await result
+            
+            # Safely close MCP client (handle both sync and async close methods)
+            if hasattr(self.mcp_client, 'close'):
+                result = self.mcp_client.close()
+                if asyncio.iscoroutine(result):
+                    await result
+            
+            # Clear caches to free memory
+            self.clear_caches()
             logger.info("AlertService resources cleaned up")
         except Exception as e:
             logger.error(f"Error during cleanup: {str(e)}")

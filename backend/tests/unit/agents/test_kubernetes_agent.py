@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from tarsy.agents.constants import IterationStrategy
 from tarsy.agents.exceptions import ConfigurationError
 from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.integrations.llm.client import LLMClient
@@ -67,12 +68,10 @@ class TestKubernetesAgentInitialization:
         assert agent._iteration_count == 0
         assert agent._configured_servers is None
         # Verify default iteration strategy
-        from tarsy.agents.constants import IterationStrategy
         assert agent.iteration_strategy == IterationStrategy.REACT
     
     def test_initialization_with_custom_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test KubernetesAgent initialization with custom iteration strategy."""
-        from tarsy.agents.constants import IterationStrategy
         agent = KubernetesAgent(
             llm_client=mock_llm_client,
             mcp_client=mock_mcp_client,

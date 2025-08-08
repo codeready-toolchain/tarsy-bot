@@ -17,13 +17,9 @@ from .builtin_config import (
     get_builtin_mcp_server_ids, 
     BUILTIN_AGENT_MAPPINGS
 )
+from .exceptions import ConfigurationError
 
 logger = get_module_logger(__name__)
-
-
-class ConfigurationError(Exception):
-    """Raised when configuration loading or validation fails."""
-    pass
 
 
 class ConfigurationLoader:

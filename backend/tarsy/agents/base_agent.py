@@ -8,19 +8,19 @@ It implements common processing logic and defines abstract methods for agent-spe
 import asyncio
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
-from tarsy.models.constants import AlertSessionStatus
+
 from tarsy.models.llm import LLMMessage
 from .iteration_controllers import (
     IterationController, RegularIterationController, SimpleReActController, 
     IterationContext
 )
 from .exceptions import (
-    AgentError, ToolSelectionError, 
+    AgentError, 
     ToolExecutionError, ConfigurationError,
     ErrorRecoveryHandler
 )
@@ -29,14 +29,11 @@ from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
 from .constants import IterationStrategy
+from .json_parser import parse_llm_json_response
 from .prompt_builder import PromptContext, get_prompt_builder
 
-# Import for type hints only - will be injected during runtime
-from typing import TYPE_CHECKING
 
 logger = get_module_logger(__name__)
-
-from .json_parser import parse_llm_json_response
 
 
 class BaseAgent(ABC):

@@ -91,7 +91,7 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete
         wsServiceRef.current = null;
       }
     };
-  }, [alertId]);
+  }, [alertId, onComplete]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
