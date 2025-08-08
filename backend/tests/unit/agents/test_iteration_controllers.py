@@ -168,11 +168,6 @@ class TestRegularIterationController:
             "continue": False,
             "reason": "Sufficient data gathered"
         })
-        # Mock _merge_mcp_data method
-        mock_agent._merge_mcp_data = Mock(return_value={
-            "test-server": [{"tool": "test-tool", "result": "success"}]
-        })
-        
         result = await controller.execute_analysis_loop(sample_context)
         
         assert result == "Regular analysis complete"
