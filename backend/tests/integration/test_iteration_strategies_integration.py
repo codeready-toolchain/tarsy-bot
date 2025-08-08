@@ -16,10 +16,8 @@ from tarsy.agents.constants import IterationStrategy
 from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.models.agent_config import AgentConfigModel
-from tarsy.models.alert import Alert
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.mcp_server_registry import MCPServerRegistry
-from tarsy.utils.timestamp import now_us
 
 
 @pytest.mark.integration
