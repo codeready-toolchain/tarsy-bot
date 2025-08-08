@@ -95,6 +95,10 @@ export class WebSocketService {
   /**
    * Get session ID and subscribe to session-specific channel
    */
+  // Add retry tracking for session subscription
+  private sessionRetryCount = 0;
+  private maxSessionRetries = 10;
+
   private async subscribeToSession(): Promise<void> {
     if (!this.alertId) return;
 
@@ -105,19 +109,30 @@ export class WebSocketService {
       
       if (data.session_id) {
         this.sessionId = data.session_id;
+        this.sessionRetryCount = 0; // Reset on success
         console.log(`Got session ID: ${this.sessionId}`);
         
         // Subscribe to session-specific channel
         this.subscribeToChannel(`session_${this.sessionId}`);
       } else {
+        if (this.sessionRetryCount >= this.maxSessionRetries) {
+          console.error('Max session retries reached');
+          return;
+        }
+        this.sessionRetryCount++;
         console.log('Session ID not available yet, will retry...');
-        // Retry after a delay
-        setTimeout(() => this.subscribeToSession(), 2000);
+        // Retry after a delay with a simple backoff
+        setTimeout(() => this.subscribeToSession(), 2000 * Math.min(this.sessionRetryCount, 5));
       }
     } catch (error) {
+      if (this.sessionRetryCount >= this.maxSessionRetries) {
+        console.error('Max session retries reached');
+        return;
+      }
+      this.sessionRetryCount++;
       console.error('Error getting session ID:', error);
-      // Retry after a delay
-      setTimeout(() => this.subscribeToSession(), 2000);
+      // Retry after a delay with a simple backoff
+      setTimeout(() => this.subscribeToSession(), 2000 * Math.min(this.sessionRetryCount, 5));
     }
   }
 
