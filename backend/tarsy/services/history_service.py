@@ -622,60 +622,6 @@ class HistoryService:
                 ]
             }
 
-    def export_session_data(self, session_id: str, format: str) -> Dict[str, Any]:
-        """
-        Export session data in the specified format.
-        
-        Args:
-            session_id: The session identifier
-            format: Export format ("json" or "csv")
-            
-        Returns:
-            Dictionary containing session data and metadata
-        """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    return {
-                        "session_id": session_id,
-                        "format": format,
-                        "data": None,
-                        "error": "Repository unavailable"
-                    }
-                
-                # Repository returns the complete structure
-                return repo.export_session_data(session_id, format)
-                
-        except Exception as e:
-            return {
-                "session_id": session_id,
-                "format": format,
-                "data": None,
-                "error": str(e)
-            }
-
-    def search_sessions(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Search sessions based on query string.
-        
-        Args:
-            query: Search query string
-            limit: Maximum number of results to return
-            
-        Returns:
-            List of matching session dictionaries
-        """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    return []
-                
-                return repo.search_sessions(query, limit)
-                
-        except Exception as e:
-            logger.error(f"Failed to search sessions: {str(e)}")
-            return []
-
     # Maintenance Operations
     def cleanup_orphaned_sessions(self) -> int:
         """
