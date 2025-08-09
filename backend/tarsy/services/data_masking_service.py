@@ -5,7 +5,7 @@ sensitive data from reaching the LLM, logging, and storage systems.
 """
 
 import re
-from typing import Any, Dict, List, Optional, Pattern, Union
+from typing import Any, Dict, List, Optional, Pattern
 import json
 
 from tarsy.models.masking_config import MaskingConfig, MaskingPattern
@@ -91,8 +91,6 @@ class DataMaskingService:
                 self.compiled_patterns[pattern_key] = compiled_pattern
                 
                 # Store custom pattern metadata for replacement lookup
-                if not hasattr(self, 'custom_pattern_metadata'):
-                    self.custom_pattern_metadata = {}
                 self.custom_pattern_metadata[pattern_key] = {
                     'replacement': custom_pattern.replacement,
                     'description': custom_pattern.description

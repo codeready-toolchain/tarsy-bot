@@ -176,18 +176,3 @@ def get_builtin_agent_config(agent_class_name: str) -> Dict[str, Any]:
 def get_builtin_agent_import_mapping() -> Dict[str, str]:
     """Get mapping of built-in agent class names to their import paths."""
     return {name: meta.get("import", "") for name, meta in BUILTIN_AGENTS.items()}
-
-
-def get_builtin_alert_types() -> set[str]:
-    """Get all built-in alert types."""
-    return set(BUILTIN_AGENT_MAPPINGS.keys())
-
-
-def get_builtin_masking_pattern_names() -> set[str]:
-    """Get all built-in masking pattern names."""
-    return set(BUILTIN_MASKING_PATTERNS.keys())
-
-
-def get_builtin_pattern_group_names() -> set[str]:
-    """Get all built-in pattern group names."""
-    return set(BUILTIN_PATTERN_GROUPS.keys()) 

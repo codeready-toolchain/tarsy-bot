@@ -30,21 +30,20 @@ class TestDashboardSystemIntegration:
         # Create connection manager
         connection_manager = DashboardConnectionManager()
         
-        # Create and start broadcaster
+        # Create broadcaster
         broadcaster = DashboardBroadcaster(connection_manager)
-        await broadcaster.start()
         
         # Create and start update service
         update_service = DashboardUpdateService(broadcaster)
         await update_service.start()
         
         # Create hooks with mock WebSocket manager
-        mock_websocket_manager = Mock()
-        mock_websocket_manager.dashboard_manager = connection_manager
+        mock_dashboard_manager = Mock()
+        mock_dashboard_manager = connection_manager
         connection_manager.update_service = update_service
         
-        llm_hooks = DashboardLLMHooks(websocket_manager=mock_websocket_manager)
-        mcp_hooks = DashboardMCPHooks(websocket_manager=mock_websocket_manager)
+        llm_hooks = DashboardLLMHooks(dashboard_manager=mock_dashboard_manager)
+        mcp_hooks = DashboardMCPHooks(dashboard_manager=mock_dashboard_manager)
         
         system = {
             'connection_manager': connection_manager,
@@ -58,7 +57,7 @@ class TestDashboardSystemIntegration:
         
         # Cleanup
         await update_service.stop()
-        await broadcaster.stop()
+
 
     @pytest.mark.asyncio
     async def test_complete_llm_workflow_via_hooks(self, dashboard_system):
@@ -87,11 +86,10 @@ class TestDashboardSystemIntegration:
         await llm_hooks.execute("llm.post", **llm_event_data)
         
         # Verify session was created and tracked
-        session = update_service.get_session_summary(session_id)
-        assert session is not None
+        assert session_id in update_service.active_sessions
+        session = update_service.active_sessions[session_id]
         assert session.session_id == session_id
         assert session.llm_interactions >= 1
-        assert "LLM" in session.current_step
 
     @pytest.mark.asyncio
     async def test_complete_mcp_workflow_via_hooks(self, dashboard_system):
@@ -119,11 +117,10 @@ class TestDashboardSystemIntegration:
         await mcp_hooks.execute("mcp.post", **mcp_event_data)
         
         # Verify session was created and tracked
-        session = update_service.get_session_summary(session_id)
-        assert session is not None
+        assert session_id in update_service.active_sessions
+        session = update_service.active_sessions[session_id]
         assert session.session_id == session_id
         assert session.mcp_communications >= 1
-        assert "kubectl" in session.current_step
 
     @pytest.mark.asyncio
     async def test_session_lifecycle_management(self, dashboard_system):
@@ -134,14 +131,13 @@ class TestDashboardSystemIntegration:
         
         # Create session via status change
         sent_count = await update_service.process_session_status_change(
-            session_id, "active", {"current_step": "Session started"}
+            session_id, "active", {}
         )
         assert sent_count >= 0
         
         # Update session multiple times
         await update_service.process_session_status_change(
             session_id, "processing", {
-                "current_step": "Step 1: Analysis", 
                 "agent_type": "analyzer_agent",
                 "progress_percentage": 25
             }
@@ -149,7 +145,6 @@ class TestDashboardSystemIntegration:
         
         await update_service.process_session_status_change(
             session_id, "processing", {
-                "current_step": "Step 2: Execution", 
                 "agent_type": "executor_agent",
                 "progress_percentage": 75
             }
@@ -158,14 +153,12 @@ class TestDashboardSystemIntegration:
         # Complete session
         await update_service.process_session_status_change(
             session_id, "completed", {
-                "current_step": "All tasks completed successfully",
                 "progress_percentage": 100
             }
         )
         
         # Session should be archived after completion
-        session = update_service.get_session_summary(session_id)
-        assert session is None  # Moved to history
+        assert session_id not in update_service.active_sessions  # Moved to history
 
     @pytest.mark.asyncio
     async def test_real_time_broadcasting(self, dashboard_system):
@@ -175,7 +168,7 @@ class TestDashboardSystemIntegration:
         update_service = dashboard_system['update_service']
         
         # Disable batching for immediate delivery in tests
-        broadcaster.batching_enabled = False
+
         
         # Mock WebSocket connections
         mock_ws1 = AsyncMock()
@@ -195,7 +188,7 @@ class TestDashboardSystemIntegration:
         
         # Generate updates using actual API
         sent_count = await update_service.process_session_status_change(
-            session_id, "processing", {"current_step": "Broadcasting test"}
+            session_id, "processing", {}
         )
         
         # Verify the update was sent to subscribers
@@ -249,7 +242,8 @@ class TestDashboardSystemIntegration:
         await mcp_hooks.execute("mcp.post", **mcp_event)
         
         # Verify session has both interaction types
-        session = update_service.get_session_summary(session_id)
+        assert session_id in update_service.active_sessions
+        session = update_service.active_sessions[session_id]
         assert session.llm_interactions >= 1
         assert session.mcp_communications >= 1
 
@@ -270,7 +264,7 @@ class TestDashboardSystemIntegration:
         
         for session_id, status in sessions:
             await update_service.process_session_status_change(
-                session_id, status, {"current_step": f"Step for {status}"}
+                session_id, status, {}
             )
             
             # Add some interactions via hooks
@@ -283,12 +277,12 @@ class TestDashboardSystemIntegration:
             }
             await llm_hooks.execute("llm.post", **llm_event)
         
-        # Broadcast metrics
-        sent_count = await update_service.broadcast_system_metrics()
+        # Broadcast active sessions
+        sent_count = await update_service.broadcast_active_sessions()
         assert sent_count >= 0
         
         # Verify metrics calculation
-        all_sessions = update_service.get_all_active_sessions()
+        all_sessions = list(update_service.active_sessions.values())
         assert len(all_sessions) >= 3  # completed session should be archived
         
         # Check session statuses
@@ -306,7 +300,7 @@ class TestDashboardSystemIntegration:
         
         # Create session
         await update_service.process_session_status_change(
-            session_id, "active", {"current_step": "Starting"}
+            session_id, "active", {}
         )
         
         # Simulate broadcaster failure temporarily
@@ -317,15 +311,15 @@ class TestDashboardSystemIntegration:
         
         # Try to update session (should handle error gracefully)
         sent_count = await update_service.process_session_status_change(
-            session_id, "processing", {"current_step": "Processing with error"}
+            session_id, "processing", {}
         )
         
         # Should return 0 due to failure but not crash
         assert sent_count == 0
         
         # Session should still be tracked locally
-        session = update_service.get_session_summary(session_id)
-        assert session is not None
+        assert session_id in update_service.active_sessions
+        session = update_service.active_sessions[session_id]
         assert session.status == "processing"
         
         # Restore broadcaster
@@ -333,7 +327,7 @@ class TestDashboardSystemIntegration:
         
         # Subsequent updates should work
         sent_count = await update_service.process_session_status_change(
-            session_id, "completed", {"current_step": "Recovered successfully"}
+            session_id, "completed", {}
         )
         
         assert sent_count >= 0
@@ -377,10 +371,10 @@ class TestDashboardSystemIntegration:
                 
                 # Status updates
                 await update_service.process_session_status_change(
-                    sid, "processing", {"current_step": "Concurrent processing"}
+                    sid, "processing", {}
                 )
                 await update_service.process_session_status_change(
-                    sid, "completed", {"current_step": "Concurrent session completed"}
+                    sid, "completed", {}
                 )
             
             tasks.append(process_session(session_id))
@@ -389,39 +383,9 @@ class TestDashboardSystemIntegration:
         await asyncio.gather(*tasks)
         
         # Verify sessions were processed (completed ones are archived)
-        all_sessions = update_service.get_all_active_sessions()
+        all_sessions = list(update_service.active_sessions.values())
         # Some sessions might still be active, others archived
 
-    @pytest.mark.asyncio
-    async def test_system_health_monitoring(self, dashboard_system):
-        """Test system health monitoring and status updates."""
-        broadcaster = dashboard_system['broadcaster']
-        connection_manager = dashboard_system['connection_manager']
-        
-        # Mock WebSocket for health updates
-        mock_ws = AsyncMock()
-        await connection_manager.connect(mock_ws, "health_monitor")
-        connection_manager.subscribe_to_channel("health_monitor", ChannelType.SYSTEM_HEALTH)
-        
-        # Test different health statuses using correct method name
-        health_statuses = [
-            ("healthy", {"database": "healthy", "llm": "healthy", "mcp": "healthy"}),
-            ("degraded", {"database": "healthy", "llm": "degraded", "mcp": "healthy"}),
-            ("unhealthy", {"database": "unhealthy", "llm": "healthy", "mcp": "healthy"})
-        ]
-        
-        for status, services in health_statuses:
-            sent_count = await broadcaster.broadcast_system_health_update(status, services)
-            assert sent_count >= 0
-            
-            # Allow time for broadcasting
-            await asyncio.sleep(0.01)
-        
-        # Verify health updates were broadcast
-        assert mock_ws.send_text.call_count >= len(health_statuses)
-        
-        # Cleanup
-        connection_manager.disconnect("health_monitor")
 
     @pytest.mark.asyncio
     async def test_subscription_channel_management(self, dashboard_system):
@@ -431,7 +395,7 @@ class TestDashboardSystemIntegration:
         update_service = dashboard_system['update_service']
         
         # Disable batching for immediate delivery in tests
-        broadcaster.batching_enabled = False
+
         
         # Mock multiple users
         users = [("user1", AsyncMock()), ("user2", AsyncMock()), ("user3", AsyncMock())]
@@ -451,11 +415,11 @@ class TestDashboardSystemIntegration:
         connection_manager.subscribe_to_channel("user3", session_channel)
         
         # Generate updates that should reach different users
-        metrics_sent = await update_service.broadcast_system_metrics()  # Should reach user1 and user2
+        metrics_sent = await update_service.broadcast_active_sessions()  # Should reach user1 and user2
         assert metrics_sent >= 2
         
         session_sent = await update_service.process_session_status_change(
-            "test_session", "processing", {"current_step": "Test"}
+            "test_session", "processing", {}
         )  # Should reach user2 and user3 via dashboard broadcasts
         assert session_sent >= 2
         
@@ -485,7 +449,7 @@ class TestDashboardErrorScenarios:
         """Create dashboard system for failure testing."""
         connection_manager = DashboardConnectionManager()
         broadcaster = DashboardBroadcaster(connection_manager)
-        await broadcaster.start()
+
         
         update_service = DashboardUpdateService(broadcaster)
         await update_service.start()
@@ -500,7 +464,7 @@ class TestDashboardErrorScenarios:
         
         # Cleanup
         await update_service.stop()
-        await broadcaster.stop()
+
 
     @pytest.mark.asyncio
     async def test_resilience_to_websocket_failures(self, dashboard_system_with_failures):
@@ -510,7 +474,7 @@ class TestDashboardErrorScenarios:
         update_service = dashboard_system_with_failures['update_service']
         
         # Disable batching for immediate delivery in tests
-        broadcaster.batching_enabled = False
+
         
         # Create failing WebSocket mock
         failing_ws = AsyncMock()
@@ -527,7 +491,7 @@ class TestDashboardErrorScenarios:
         connection_manager.subscribe_to_channel("working_user", ChannelType.DASHBOARD_UPDATES)
         
         # Generate update
-        sent_count = await update_service.broadcast_system_metrics()
+        sent_count = await update_service.broadcast_active_sessions()
         
         # Should attempt to send to both users, but failing one will be disconnected
         assert sent_count >= 1  # At least working user should receive
@@ -555,27 +519,23 @@ class TestDashboardErrorScenarios:
         
         # Create session before restart
         await update_service.process_session_status_change(
-            session_id, "processing", {"current_step": "Before restart"}
+            session_id, "processing", {}
         )
         
         # Verify session exists
-        session = update_service.get_session_summary(session_id)
-        assert session is not None
+        assert session_id in update_service.active_sessions
+        session = update_service.active_sessions[session_id]
         assert session.status == "processing"
         
         # Simulate service restart (stop/start background tasks only)
         await update_service.stop()
-        await broadcaster.stop()
-        
-        await broadcaster.start()
         await update_service.start()
         
         # Session data persists in memory across stop/start of background tasks
         # Only a full process restart would clear the session data
-        session = update_service.get_session_summary(session_id)
-        assert session is not None  # Sessions persist across task restart
+        assert session_id in update_service.active_sessions  # Sessions persist across task restart
+        session = update_service.active_sessions[session_id]
         assert session.status == "processing"
-        assert session.current_step == "Before restart"
 
     @pytest.mark.asyncio 
     async def test_high_load_stress_test(self, dashboard_system_with_failures):
@@ -601,7 +561,7 @@ class TestDashboardErrorScenarios:
         for i in range(update_count):
             session_id = f"stress_session_{i % 5}"  # 5 concurrent sessions
             task = update_service.process_session_status_change(
-                session_id, "processing", {"current_step": f"Stress test update {i}"}
+                session_id, "processing", {}
             )
             tasks.append(task)
         
@@ -616,7 +576,7 @@ class TestDashboardErrorScenarios:
         assert success_rate >= 0.8
         
         # System should still be responsive
-        await update_service.broadcast_system_metrics()
+        await update_service.broadcast_active_sessions()
         
         # Cleanup
         for user_id, _ in users:

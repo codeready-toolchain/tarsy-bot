@@ -21,7 +21,7 @@ class TestDashboardLLMHooks:
         return service
     
     @pytest.fixture
-    def mock_websocket_manager(self):
+    def mock_dashboard_manager(self):
         """Mock WebSocket manager as fallback."""
         manager = AsyncMock()
         manager.broadcast_dashboard_update = AsyncMock()
@@ -34,23 +34,23 @@ class TestDashboardLLMHooks:
         return manager
     
     @pytest.fixture
-    def dashboard_hooks(self, mock_websocket_manager, mock_update_service):
+    def dashboard_hooks(self, mock_dashboard_manager, mock_update_service):
         """Create DashboardLLMHooks instance for testing."""
         return DashboardLLMHooks(
-            websocket_manager=mock_websocket_manager,
+            dashboard_manager=mock_dashboard_manager,
             update_service=mock_update_service
         )
     
     @pytest.mark.unit
-    def test_initialization(self, dashboard_hooks, mock_update_service, mock_websocket_manager):
+    def test_initialization(self, dashboard_hooks, mock_update_service, mock_dashboard_manager):
         """Test DashboardLLMHooks initialization."""
         assert dashboard_hooks.update_service == mock_update_service
-        assert dashboard_hooks.websocket_manager == mock_websocket_manager
+        assert dashboard_hooks.dashboard_manager == mock_dashboard_manager
         
         # Test with only websocket manager
-        hooks = DashboardLLMHooks(websocket_manager=mock_websocket_manager)
+        hooks = DashboardLLMHooks(dashboard_manager=mock_dashboard_manager)
         assert hooks.update_service is None
-        assert hooks.websocket_manager == mock_websocket_manager
+        assert hooks.dashboard_manager == mock_dashboard_manager
 
 
 class TestDashboardHooksContentTruncation:
@@ -59,12 +59,12 @@ class TestDashboardHooksContentTruncation:
     @pytest.fixture
     def llm_hooks(self):
         """Create LLM hooks instance."""
-        return DashboardLLMHooks(websocket_manager=None)
+        return DashboardLLMHooks(dashboard_manager=None)
 
     @pytest.fixture
     def mcp_hooks(self):
         """Create MCP hooks instance."""
-        return DashboardMCPHooks(websocket_manager=None)
+        return DashboardMCPHooks(dashboard_manager=None)
 
     @pytest.mark.unit
     def test_prompt_preview_truncation_over_200_chars(self, llm_hooks):
@@ -139,7 +139,7 @@ class TestDashboardLLMHooksExecution:
         return service
     
     @pytest.fixture
-    def mock_websocket_manager(self):
+    def mock_dashboard_manager(self):
         """Mock WebSocket manager."""
         manager = AsyncMock()
         dashboard_manager = Mock()
@@ -149,19 +149,19 @@ class TestDashboardLLMHooksExecution:
         return manager
     
     @pytest.fixture
-    def llm_hooks_with_service(self, mock_websocket_manager, mock_update_service):
+    def llm_hooks_with_service(self, mock_dashboard_manager, mock_update_service):
         """Create LLM hooks with update service."""
-        mock_websocket_manager.dashboard_manager.update_service = mock_update_service
+        mock_dashboard_manager.update_service = mock_update_service
         return DashboardLLMHooks(
-            websocket_manager=mock_websocket_manager,
+            dashboard_manager=mock_dashboard_manager,
             update_service=mock_update_service
         )
     
     @pytest.fixture
-    def llm_hooks_without_service(self, mock_websocket_manager):
+    def llm_hooks_without_service(self, mock_dashboard_manager):
         """Create LLM hooks without update service (fallback mode)."""
-        mock_websocket_manager.dashboard_manager.update_service = None
-        return DashboardLLMHooks(websocket_manager=mock_websocket_manager)
+        mock_dashboard_manager.update_service = None
+        return DashboardLLMHooks(dashboard_manager=mock_dashboard_manager)
     
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -191,14 +191,12 @@ class TestDashboardLLMHooksExecution:
         # Extract positional and keyword arguments
         args, kwargs = call_args
         session_id, update_data = args
-        broadcast_immediately = kwargs.get('broadcast_immediately', False)
         
         assert session_id == 'test_session_123'
         assert update_data['interaction_type'] == 'llm'
         assert update_data['model_used'] == 'gpt-4'
         assert update_data['success'] is True
         assert 'step_description' in update_data
-        assert broadcast_immediately is False  # Success should not broadcast immediately (not success = False)
     
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -223,16 +221,14 @@ class TestDashboardLLMHooksExecution:
         # Extract positional and keyword arguments
         args, kwargs = call_args
         session_id, update_data = args
-        broadcast_immediately = kwargs.get('broadcast_immediately', False)
         
         assert session_id == 'test_session_456'
         assert update_data['success'] is False
         assert update_data['error_message'] == error_msg
-        assert broadcast_immediately is True  # Errors should broadcast immediately (not success = True)
     
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_execute_llm_fallback_to_websocket(self, llm_hooks_without_service, mock_websocket_manager):
+    async def test_execute_llm_fallback_to_websocket(self, llm_hooks_without_service, mock_dashboard_manager):
         """Test fallback when update_service is None."""
         event_data = {
             'session_id': 'test_session_789',
@@ -245,11 +241,11 @@ class TestDashboardLLMHooksExecution:
         await llm_hooks_without_service.execute('llm.post', **event_data)
         
         # Verify fallback to direct WebSocket broadcasting
-        mock_websocket_manager.broadcast_session_update_advanced.assert_called_once()
-        mock_websocket_manager.broadcast_dashboard_update_advanced.assert_called_once()
+        mock_dashboard_manager.broadcaster.broadcast_session_update.assert_called_once()
+        mock_dashboard_manager.broadcaster.broadcast_dashboard_update.assert_called_once()
         
         # Check session update call
-        session_call_args = mock_websocket_manager.broadcast_session_update_advanced.call_args
+        session_call_args = mock_dashboard_manager.broadcaster.broadcast_session_update.call_args
         session_id, session_data = session_call_args[0]
         assert session_id == 'test_session_789'
         assert session_data['interaction_type'] == 'llm'
@@ -295,7 +291,7 @@ class TestDashboardMCPHooks:
         return service
     
     @pytest.fixture
-    def mock_websocket_manager(self):
+    def mock_dashboard_manager(self):
         """Mock WebSocket manager as fallback."""
         manager = AsyncMock()
         manager.broadcast_dashboard_update = AsyncMock()
@@ -308,18 +304,18 @@ class TestDashboardMCPHooks:
         return manager
     
     @pytest.fixture
-    def dashboard_hooks(self, mock_websocket_manager, mock_update_service):
+    def dashboard_hooks(self, mock_dashboard_manager, mock_update_service):
         """Create DashboardMCPHooks instance for testing."""  
         return DashboardMCPHooks(
-            websocket_manager=mock_websocket_manager,
+            dashboard_manager=mock_dashboard_manager,
             update_service=mock_update_service
         )
     
     @pytest.mark.unit
-    def test_initialization(self, dashboard_hooks, mock_update_service, mock_websocket_manager):
+    def test_initialization(self, dashboard_hooks, mock_update_service, mock_dashboard_manager):
         """Test DashboardMCPHooks initialization."""
         assert dashboard_hooks.update_service == mock_update_service
-        assert dashboard_hooks.websocket_manager == mock_websocket_manager
+        assert dashboard_hooks.dashboard_manager == mock_dashboard_manager
 
 
 class TestDashboardMCPHooksExecution:
@@ -333,7 +329,7 @@ class TestDashboardMCPHooksExecution:
         return service
     
     @pytest.fixture
-    def mock_websocket_manager(self):
+    def mock_dashboard_manager(self):
         """Mock WebSocket manager."""
         manager = AsyncMock()
         dashboard_manager = Mock()
@@ -343,19 +339,19 @@ class TestDashboardMCPHooksExecution:
         return manager
     
     @pytest.fixture
-    def mcp_hooks_with_service(self, mock_websocket_manager, mock_update_service):
+    def mcp_hooks_with_service(self, mock_dashboard_manager, mock_update_service):
         """Create MCP hooks with update service."""
-        mock_websocket_manager.dashboard_manager.update_service = mock_update_service
+        mock_dashboard_manager.update_service = mock_update_service
         return DashboardMCPHooks(
-            websocket_manager=mock_websocket_manager,
+            dashboard_manager=mock_dashboard_manager,
             update_service=mock_update_service
         )
     
     @pytest.fixture
-    def mcp_hooks_without_service(self, mock_websocket_manager):
+    def mcp_hooks_without_service(self, mock_dashboard_manager):
         """Create MCP hooks without update service (fallback mode)."""
-        mock_websocket_manager.dashboard_manager.update_service = None
-        return DashboardMCPHooks(websocket_manager=mock_websocket_manager)
+        mock_dashboard_manager.update_service = None
+        return DashboardMCPHooks(dashboard_manager=mock_dashboard_manager)
     
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -384,7 +380,6 @@ class TestDashboardMCPHooksExecution:
         # Extract positional and keyword arguments
         args, kwargs = call_args
         session_id, update_data = args
-        broadcast_immediately = kwargs.get('broadcast_immediately', False)
         
         assert session_id == 'mcp_session_123'
         assert update_data['interaction_type'] == 'mcp'
@@ -392,7 +387,6 @@ class TestDashboardMCPHooksExecution:
         assert update_data['tool_name'] == 'kubectl'
         assert update_data['success'] is True
         assert 'step_description' in update_data
-        assert broadcast_immediately is False  # Success should not broadcast immediately (not success = False)
     
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -418,16 +412,14 @@ class TestDashboardMCPHooksExecution:
         # Extract positional and keyword arguments
         args, kwargs = call_args
         session_id, update_data = args
-        broadcast_immediately = kwargs.get('broadcast_immediately', False)
         
         assert session_id == 'mcp_session_456'
         assert update_data['success'] is False
         assert update_data['error_message'] == error_msg
-        assert broadcast_immediately is True  # Errors should broadcast immediately (not success = True)
     
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_execute_mcp_fallback_to_websocket(self, mcp_hooks_without_service, mock_websocket_manager):
+    async def test_execute_mcp_fallback_to_websocket(self, mcp_hooks_without_service, mock_dashboard_manager):
         """Test fallback when update_service is None."""
         event_data = {
             'session_id': 'mcp_session_789',
@@ -441,11 +433,11 @@ class TestDashboardMCPHooksExecution:
         await mcp_hooks_without_service.execute('mcp.post', **event_data)
         
         # Verify fallback to direct WebSocket broadcasting
-        mock_websocket_manager.broadcast_session_update_advanced.assert_called_once()
-        mock_websocket_manager.broadcast_dashboard_update_advanced.assert_called_once()
+        mock_dashboard_manager.broadcaster.broadcast_session_update.assert_called_once()
+        mock_dashboard_manager.broadcaster.broadcast_dashboard_update.assert_called_once()
         
         # Check session update call
-        session_call_args = mock_websocket_manager.broadcast_session_update_advanced.call_args
+        session_call_args = mock_dashboard_manager.broadcaster.broadcast_session_update.call_args
         session_id, session_data = session_call_args[0]
         assert session_id == 'mcp_session_789'
         assert session_data['interaction_type'] == 'mcp'
@@ -489,7 +481,7 @@ class TestHookRegistration:
         """Test registering dashboard hooks with both services."""
         mock_hook_manager = Mock()
         mock_update_service = AsyncMock()
-        mock_websocket_manager = AsyncMock()
+        mock_dashboard_manager = AsyncMock()
         
         with patch('tarsy.hooks.dashboard_hooks.DashboardLLMHooks') as mock_llm_hooks_class:
             with patch('tarsy.hooks.dashboard_hooks.DashboardMCPHooks') as mock_mcp_hooks_class:
@@ -503,16 +495,12 @@ class TestHookRegistration:
                     mock_mcp_hooks_class.return_value = mock_mcp_hooks
                     
                     register_dashboard_hooks(
-                        websocket_manager=mock_websocket_manager
+                        dashboard_manager=mock_dashboard_manager
                     )
                     
                     # Verify hooks were created with correct parameters
-                    mock_llm_hooks_class.assert_called_once_with(
-                        websocket_manager=mock_websocket_manager
-                    )
-                    mock_mcp_hooks_class.assert_called_once_with(
-                        websocket_manager=mock_websocket_manager
-                    )
+                    mock_llm_hooks_class.assert_called_once_with(mock_dashboard_manager)
+                    mock_mcp_hooks_class.assert_called_once_with(mock_dashboard_manager)
                     
                     # Verify hooks were registered
                     assert mock_hook_manager.register_hook.call_count == 4  # 2 LLM hooks + 2 MCP hooks
@@ -521,43 +509,37 @@ class TestHookRegistration:
     def test_register_dashboard_hooks_websocket_only(self):
         """Test registering dashboard hooks with only WebSocket manager."""
         mock_hook_manager = Mock()
-        mock_websocket_manager = AsyncMock()
+        mock_dashboard_manager = AsyncMock()
         
         with patch('tarsy.hooks.dashboard_hooks.DashboardLLMHooks') as mock_llm_hooks_class:
             with patch('tarsy.hooks.dashboard_hooks.DashboardMCPHooks') as mock_mcp_hooks_class:
                 from tarsy.hooks.dashboard_hooks import register_dashboard_hooks
                 
                 register_dashboard_hooks(
-                    websocket_manager=mock_websocket_manager
+                    dashboard_manager=mock_dashboard_manager
                 )
                 
                 # Verify hooks were created with only WebSocket manager
-                mock_llm_hooks_class.assert_called_once_with(
-                    websocket_manager=mock_websocket_manager
-                )
-                mock_mcp_hooks_class.assert_called_once_with(
-                    websocket_manager=mock_websocket_manager
-                )
+                mock_llm_hooks_class.assert_called_once_with(mock_dashboard_manager)
+                mock_mcp_hooks_class.assert_called_once_with(mock_dashboard_manager)
     
     @pytest.mark.unit
     def test_register_integrated_hooks(self):
         """Test registering integrated hooks with history system."""
         mock_hook_manager = Mock()
         mock_update_service = AsyncMock()
-        mock_websocket_manager = AsyncMock()
+        mock_dashboard_manager = AsyncMock()
         
         # Mock the history hooks registration function
         with patch('tarsy.hooks.dashboard_hooks.register_history_hooks') as mock_register_history:
             with patch('tarsy.hooks.dashboard_hooks.register_dashboard_hooks') as mock_register_dashboard:
                 from tarsy.hooks.dashboard_hooks import register_integrated_hooks
                 
-                register_integrated_hooks(
-                    websocket_manager=mock_websocket_manager
-                )
+                register_integrated_hooks(mock_dashboard_manager)
                 
                 # Verify both registration functions were called
                 mock_register_history.assert_called_once()
-                mock_register_dashboard.assert_called_once_with(mock_websocket_manager)
+                mock_register_dashboard.assert_called_once_with(mock_dashboard_manager)
 
 
 class TestHookErrorHandling:
@@ -570,7 +552,7 @@ class TestHookErrorHandling:
         return service
     
     @pytest.fixture
-    def mock_websocket_manager(self):
+    def mock_dashboard_manager(self):
         """Mock WebSocket manager."""
         manager = AsyncMock()
         return manager
@@ -579,11 +561,11 @@ class TestHookErrorHandling:
     def test_hooks_with_none_services(self):
         """Test hooks initialization with None services."""
         # Should not raise exception
-        llm_hooks = DashboardLLMHooks(websocket_manager=None)
-        mcp_hooks = DashboardMCPHooks(websocket_manager=None)
+        llm_hooks = DashboardLLMHooks(dashboard_manager=None)
+        mcp_hooks = DashboardMCPHooks(dashboard_manager=None)
         
-        assert llm_hooks.websocket_manager is None
-        assert mcp_hooks.websocket_manager is None
+        assert llm_hooks.dashboard_manager is None
+        assert mcp_hooks.dashboard_manager is None
 
 if __name__ == "__main__":
     pytest.main([__file__]) 

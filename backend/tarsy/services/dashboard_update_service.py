@@ -7,19 +7,12 @@ performance and user experience.
 """
 
 import asyncio
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set
-from dataclasses import dataclass, asdict
+from datetime import datetime
+from typing import Any, Dict, Optional
+from dataclasses import dataclass
 
 from tarsy.utils.logger import get_module_logger
-from tarsy.models.websocket_models import (
-    ChannelType,
-    DashboardUpdate,
-    SessionUpdate,
-    SystemHealthUpdate,
-    AlertStatusUpdate
-)
+
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
 
 logger = get_module_logger(__name__)
@@ -37,20 +30,7 @@ class SessionSummary:
     llm_interactions: int = 0
     mcp_communications: int = 0
     errors_count: int = 0
-    current_step: Optional[str] = None
     progress_percentage: int = 0
-
-
-@dataclass
-class DashboardMetrics:
-    """Current dashboard metrics."""
-    active_sessions: int = 0
-    completed_sessions: int = 0
-    failed_sessions: int = 0
-    total_interactions: int = 0
-    avg_session_duration: float = 0.0
-    error_rate: float = 0.0
-    last_updated: datetime = None
 
 
 class DashboardUpdateService:
@@ -72,48 +52,32 @@ class DashboardUpdateService:
         
         # Session tracking
         self.active_sessions: Dict[str, SessionSummary] = {}
-        self.session_history: deque = deque(maxlen=1000)  # Keep last 1000 sessions
         
-        # Metrics tracking
-        self.metrics = DashboardMetrics(last_updated=datetime.now())
-        self.metrics_update_interval = 30  # Update metrics every 30 seconds
-        self.heartbeat_interval = 120  # Send heartbeat every 2 minutes even if no changes
+        # Session change tracking and heartbeat
+        self.last_active_count = 0
+        self.session_check_interval = 10  # Check for session changes every 10 seconds
+        self.heartbeat_interval = 60  # Send heartbeat every minute to keep WebSocket alive
         self.last_heartbeat = datetime.now()
-        self.first_metrics_sent = False  # Ensure first metrics update is always sent
-        
-        # Update batching and filtering
-        self.pending_session_updates: Dict[str, List[Dict]] = defaultdict(list)
-        self.batch_timeout = 2.0  # Batch updates for 2 seconds
-        self.max_updates_per_session = 10  # Max updates per session per batch
         
         # Background tasks
-        self.metrics_task: Optional[asyncio.Task] = None
-        self.batch_processor_task: Optional[asyncio.Task] = None
+        self.session_tracker_task: Optional[asyncio.Task] = None
         self.running = False
     
     async def start(self):
-        """Start background tasks for metrics and batching."""
+        """Start background tasks for session tracking."""
         if not self.running:
             self.running = True
-            self.metrics_task = asyncio.create_task(self._metrics_updater())
-            self.batch_processor_task = asyncio.create_task(self._batch_processor())
+            self.session_tracker_task = asyncio.create_task(self._session_tracker())
             logger.info("DashboardUpdateService started")
     
     async def stop(self):
         """Stop background tasks."""
         self.running = False
         
-        if self.metrics_task:
-            self.metrics_task.cancel()
+        if self.session_tracker_task:
+            self.session_tracker_task.cancel()
             try:
-                await self.metrics_task
-            except asyncio.CancelledError:
-                pass
-        
-        if self.batch_processor_task:
-            self.batch_processor_task.cancel()
-            try:
-                await self.batch_processor_task
+                await self.session_tracker_task
             except asyncio.CancelledError:
                 pass
         
@@ -122,8 +86,7 @@ class DashboardUpdateService:
     async def process_llm_interaction(
         self, 
         session_id: str, 
-        interaction_data: Dict[str, Any],
-        broadcast_immediately: bool = False
+        interaction_data: Dict[str, Any]
     ) -> int:
         """
         Process LLM interaction update for dashboard.
@@ -131,7 +94,6 @@ class DashboardUpdateService:
         Args:
             session_id: Session identifier
             interaction_data: LLM interaction data from hooks
-            broadcast_immediately: Whether to bypass batching
             
         Returns:
             Number of clients the update was sent to
@@ -142,19 +104,13 @@ class DashboardUpdateService:
         # Format update for dashboard
         formatted_update = self._format_llm_update(session_id, interaction_data)
         
-        if broadcast_immediately:
-            # Send immediately
-            return await self._broadcast_update(formatted_update)
-        else:
-            # Add to batch
-            self._add_to_batch(session_id, formatted_update)
-            return 0
+        # Always broadcast immediately
+        return await self._broadcast_update(formatted_update)
     
     async def process_mcp_communication(
         self, 
         session_id: str, 
-        communication_data: Dict[str, Any],
-        broadcast_immediately: bool = False
+        communication_data: Dict[str, Any]
     ) -> int:
         """
         Process MCP communication update for dashboard.
@@ -162,7 +118,6 @@ class DashboardUpdateService:
         Args:
             session_id: Session identifier
             communication_data: MCP communication data from hooks
-            broadcast_immediately: Whether to bypass batching
             
         Returns:
             Number of clients the update was sent to
@@ -173,13 +128,8 @@ class DashboardUpdateService:
         # Format update for dashboard
         formatted_update = self._format_mcp_update(session_id, communication_data)
         
-        if broadcast_immediately:
-            # Send immediately
-            return await self._broadcast_update(formatted_update)
-        else:
-            # Add to batch
-            self._add_to_batch(session_id, formatted_update)
-            return 0
+        # Always broadcast immediately
+        return await self._broadcast_update(formatted_update)
     
     async def process_session_status_change(
         self, 
@@ -215,8 +165,6 @@ class DashboardUpdateService:
             session = self.active_sessions[session_id]
             if 'agent_type' in details:
                 session.agent_type = details['agent_type']
-            if 'current_step' in details:
-                session.current_step = details['current_step']
             if 'progress_percentage' in details:
                 session.progress_percentage = details['progress_percentage']
         
@@ -241,22 +189,20 @@ class DashboardUpdateService:
         
         return sent_count
     
-    async def broadcast_system_metrics(self) -> int:
+    async def broadcast_active_sessions(self) -> int:
         """
-        Broadcast current system metrics to dashboard.
+        Broadcast active sessions list to dashboard for refresh triggering.
         
         Returns:
             Number of clients the update was sent to
         """
-        metrics_data = {
-            "type": "system_metrics",
-            "metrics": asdict(self.metrics),
+        session_data = {
+            "type": "system_metrics",  # Keep same type for frontend compatibility
             "active_sessions_list": [
                 {
                     "session_id": s.session_id,
                     "status": s.status,
                     "agent_type": s.agent_type,
-                    "current_step": s.current_step,
                     "progress": s.progress_percentage,
                     "interactions": s.interactions_count,
                     "errors": s.errors_count
@@ -266,19 +212,9 @@ class DashboardUpdateService:
             "timestamp": datetime.now().isoformat()
         }
         
-        return await self.broadcaster.broadcast_dashboard_update(metrics_data)
+        return await self.broadcaster.broadcast_dashboard_update(session_data)
     
-    def get_session_summary(self, session_id: str) -> Optional[SessionSummary]:
-        """Get summary for a specific session."""
-        return self.active_sessions.get(session_id)
-    
-    def get_all_active_sessions(self) -> List[SessionSummary]:
-        """Get all active session summaries."""
-        return list(self.active_sessions.values())
-    
-    def get_dashboard_metrics(self) -> DashboardMetrics:
-        """Get current dashboard metrics."""
-        return self.metrics
+
     
     # Private methods
     
@@ -299,16 +235,6 @@ class DashboardUpdateService:
         
         if not interaction_data.get('success', True):
             session.errors_count += 1
-        
-        # Update current step based on if the interaction was successful or not
-        if interaction_data.get('success', True):
-            session.current_step = "LLM processing completed"
-        else:
-            session.current_step = "LLM processing failed"
-        
-        # Update current step if provided directly
-        if 'step_description' in interaction_data:
-            session.current_step = interaction_data['step_description']
     
     def _update_session_from_mcp(self, session_id: str, communication_data: Dict[str, Any]):
         """Update session summary from MCP communication."""
@@ -327,15 +253,6 @@ class DashboardUpdateService:
         
         if not communication_data.get('success', True):
             session.errors_count += 1
-        
-        # Update current step based on tool name
-        tool_name = communication_data.get('tool_name')
-        if tool_name:
-            session.current_step = f"Executing tool: {tool_name}"
-        
-        # Update current step if provided directly
-        if 'step_description' in communication_data:
-            session.current_step = communication_data['step_description']
     
     def _format_llm_update(self, session_id: str, interaction_data: Dict[str, Any]) -> Dict[str, Any]:
         """Format LLM interaction data for dashboard."""
@@ -365,11 +282,6 @@ class DashboardUpdateService:
             "error_message": communication_data.get('error_message')
         }
     
-    def _add_to_batch(self, session_id: str, update: Dict[str, Any]):
-        """Add update to batching queue."""
-        if len(self.pending_session_updates[session_id]) < self.max_updates_per_session:
-            self.pending_session_updates[session_id].append(update)
-    
     async def _broadcast_update(self, update: Dict[str, Any]) -> int:
         """Broadcast single update via broadcaster."""
         try:
@@ -384,8 +296,8 @@ class DashboardUpdateService:
                 # Send to session-specific channel for detail views
                 session_count = await self.broadcaster.broadcast_session_update(session_id, update)
                 
-                # For session status changes and batched updates, also send to dashboard channel
-                if update['type'] in ['session_status_change', 'batched_session_updates']:
+                # For session status changes, also send to dashboard channel
+                if update['type'] == 'session_status_change':
                     logger.debug(f"Also broadcasting session update to dashboard channel: {update['type']}")
                     dashboard_count = await self.broadcaster.broadcast_dashboard_update(update)
                     return session_count + dashboard_count
@@ -400,60 +312,24 @@ class DashboardUpdateService:
             return 0
     
     def _archive_session(self, session_id: str):
-        """Move completed session to history."""
+        """Remove completed session from active sessions."""
         if session_id in self.active_sessions:
-            session = self.active_sessions[session_id]
-            self.session_history.append(session)
             del self.active_sessions[session_id]
             logger.debug(f"Archived completed session: {session_id}")
     
-    async def _metrics_updater(self):
-        """Background task to update dashboard metrics."""
+    async def _session_tracker(self):
+        """Background task to track session changes and send heartbeats."""
         while self.running:
             try:
-                # Calculate metrics
-                active_count = len(self.active_sessions)
-                completed_count = len([s for s in self.session_history if s.status == "completed"])
-                failed_count = len([s for s in self.session_history if s.status in ["error", "timeout"]])
+                # Check if active session count changed
+                current_active_count = len(self.active_sessions)
+                should_broadcast = False
                 
-                total_interactions = sum(s.interactions_count for s in self.active_sessions.values())
-                total_interactions += sum(s.interactions_count for s in self.session_history)
-                
-                # Calculate average session duration
-                completed_sessions = [s for s in self.session_history if s.status == "completed" and s.start_time]
-                if completed_sessions:
-                    durations = [
-                        (s.last_activity - s.start_time).total_seconds()
-                        for s in completed_sessions
-                        if s.last_activity and s.start_time
-                    ]
-                    avg_duration = sum(durations) / len(durations) if durations else 0.0
-                else:
-                    avg_duration = 0.0
-                
-                # Calculate error rate
-                total_sessions = active_count + completed_count + failed_count
-                error_rate = (failed_count / total_sessions * 100) if total_sessions > 0 else 0.0
-                
-                # Update metrics
-                new_metrics = DashboardMetrics(
-                    active_sessions=active_count,
-                    completed_sessions=completed_count,
-                    failed_sessions=failed_count,
-                    total_interactions=total_interactions,
-                    avg_session_duration=avg_duration,
-                    error_rate=error_rate,
-                    last_updated=datetime.now()
-                )
-                
-                # Only broadcast if metrics changed significantly
-                should_broadcast = (
-                    not self.first_metrics_sent or  # Always send first metrics update
-                    self.metrics.active_sessions != new_metrics.active_sessions or
-                    self.metrics.completed_sessions != new_metrics.completed_sessions or
-                    self.metrics.failed_sessions != new_metrics.failed_sessions or
-                    abs(self.metrics.error_rate - new_metrics.error_rate) > 0.1  # Threshold for error rate changes
-                )
+                # Broadcast if session count changed
+                if current_active_count != self.last_active_count:
+                    should_broadcast = True
+                    logger.debug(f"Active session count changed: {self.last_active_count} → {current_active_count}")
+                    self.last_active_count = current_active_count
                 
                 # Also broadcast if it's been too long since last heartbeat (keep WebSocket alive)
                 time_since_heartbeat = (datetime.now() - self.last_heartbeat).total_seconds()
@@ -461,64 +337,16 @@ class DashboardUpdateService:
                     should_broadcast = True
                     logger.debug(f"Heartbeat broadcast after {time_since_heartbeat:.0f}s")
                 
-                # Update stored metrics
-                self.metrics = new_metrics
-                
-                # Broadcast metrics update only if changed or heartbeat needed
+                # Broadcast session update if needed
                 if should_broadcast:
-                    if not self.first_metrics_sent:
-                        logger.debug(f"Broadcasting initial metrics: active={active_count}, completed={completed_count}, failed={failed_count}")
-                        self.first_metrics_sent = True
-                    elif time_since_heartbeat >= self.heartbeat_interval:
-                        logger.debug(f"Broadcasting heartbeat to keep WebSocket connections alive")
-                    else:
-                        logger.debug(f"Broadcasting metrics update: active={active_count}, completed={completed_count}, failed={failed_count}")
-                    
-                    await self.broadcast_system_metrics()
+                    await self.broadcast_active_sessions()
                     self.last_heartbeat = datetime.now()
-                else:
-                    logger.debug("Metrics unchanged, skipping broadcast")
                 
-                # Wait for next update
-                await asyncio.sleep(self.metrics_update_interval)
+                # Wait for next check
+                await asyncio.sleep(self.session_check_interval)
                 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Error in metrics updater: {str(e)}")
+                logger.error(f"Error in session tracker: {str(e)}")
                 await asyncio.sleep(5)  # Wait before retry
-    
-    async def _batch_processor(self):
-        """Background task to process batched updates."""
-        while self.running:
-            try:
-                # Process pending batches
-                if self.pending_session_updates:
-                    sessions_to_process = list(self.pending_session_updates.keys())
-                    
-                    for session_id in sessions_to_process:
-                        updates = self.pending_session_updates[session_id]
-                        if updates:
-                            # Create batched update
-                            batched_update = {
-                                "type": "batched_session_updates",
-                                "session_id": session_id,
-                                "updates": updates,
-                                "count": len(updates),
-                                "timestamp": datetime.now().isoformat()
-                            }
-                            
-                            # Broadcast batch
-                            await self._broadcast_update(batched_update)
-                            
-                            # Clear processed updates
-                            del self.pending_session_updates[session_id]
-                
-                # Wait before next batch processing
-                await asyncio.sleep(self.batch_timeout)
-                
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error in batch processor: {str(e)}")
-                await asyncio.sleep(1)  # Wait before retry 

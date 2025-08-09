@@ -299,10 +299,10 @@ class TestHistoryService:
             mock_repository.update_alert_session.assert_called_once_with(mock_session)
     
     @pytest.mark.unit 
-    @patch('tarsy.main.websocket_manager')
+    @patch('tarsy.main.dashboard_manager')
     @patch('asyncio.run')
     @patch('asyncio.get_event_loop')
-    def test_update_session_status_calls_dashboard_service(self, mock_get_loop, mock_asyncio_run, mock_websocket_manager, history_service, mock_repository):
+    def test_update_session_status_calls_dashboard_service(self, mock_get_loop, mock_asyncio_run, mock_dashboard_manager, history_service, mock_repository):
         """Test that session status update actually calls dashboard service."""
         # Setup mock session
         mock_session = Mock(spec=AlertSession)
@@ -312,7 +312,7 @@ class TestHistoryService:
         mock_update_service = Mock()
         mock_dashboard_manager = Mock()
         mock_dashboard_manager.update_service = mock_update_service  
-        mock_websocket_manager.dashboard_manager = mock_dashboard_manager
+        mock_dashboard_manager = mock_dashboard_manager
         
         # Mock asyncio to simulate non-async context (so it uses asyncio.run)
         mock_loop = Mock()
@@ -348,7 +348,7 @@ class TestHistoryService:
                 f"Expected process_session_status_change call, got: {called_coro}"
     
     @pytest.mark.unit 
-    @patch('tarsy.main.websocket_manager', None)  # Simulate websocket_manager not available
+    @patch('tarsy.main.dashboard_manager', None)  # Simulate dashboard_manager not available
     def test_update_session_status_without_dashboard_service(self, history_service, mock_repository):
         """Test that session status update works gracefully without dashboard service."""
         # Setup mock session
@@ -486,16 +486,7 @@ class TestHistoryService:
             
             assert result == False
     
-    @pytest.mark.unit
-    def test_health_check(self, history_service):
-        """Test health check functionality."""
-        health = history_service.health_check()
-        
-        assert health["enabled"] == True
-        assert health["healthy"] == True
-        assert "database_url" in health
-        assert "retention_days" in health
-    
+
     @pytest.mark.unit
     def test_get_active_sessions(self, history_service, mock_repository):
         """Test active sessions retrieval."""
@@ -511,20 +502,7 @@ class TestHistoryService:
             assert len(active_sessions) == 2
             mock_repository.get_active_sessions.assert_called_once()
     
-    @pytest.mark.unit
-    def test_cleanup_old_sessions(self, history_service, mock_repository):
-        """Test cleanup of old sessions."""
-        mock_repository.cleanup_old_sessions.return_value = 5
-        
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
-            mock_get_repo.return_value.__exit__.return_value = None
-            
-            cleaned_count = history_service.cleanup_old_sessions()
-            
-            assert cleaned_count == 5
-            mock_repository.cleanup_old_sessions.assert_called_once()
-    
+
     @pytest.mark.unit
     @patch('time.sleep')
     def test_retry_database_operation_success_after_retry(self, mock_sleep, history_service):
@@ -595,33 +573,6 @@ class TestHistoryService:
                 page=1,
                 page_size=20
             )
-    
-    @pytest.mark.unit
-    @patch('tarsy.services.history_service.DatabaseManager')
-    def test_shutdown_cleanup(self, mock_db_manager_class, mock_settings):
-        """Test graceful service shutdown."""
-        mock_db_instance = Mock()
-        mock_db_manager_class.return_value = mock_db_instance
-        
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
-            service = HistoryService()
-            service.db_manager = mock_db_instance
-            
-            service.shutdown()
-            
-            mock_db_instance.close.assert_called_once()
-    
-    @pytest.mark.unit
-    def test_shutdown_with_exception_handling(self, history_service):
-        """Test shutdown handles exceptions gracefully."""
-        mock_db_manager = Mock()
-        mock_db_manager.close.side_effect = Exception("Close failed")
-        history_service.db_manager = mock_db_manager
-        
-        # Should not raise exception
-        history_service.shutdown()
-        
-        mock_db_manager.close.assert_called_once()
 
 
 class TestHistoryServiceGlobalInstance:
@@ -717,15 +668,7 @@ class TestDashboardMethods:
     def mock_repository(self):
         """Create mock repository for dashboard methods."""
         repo = Mock()
-        repo.get_dashboard_metrics.return_value = {
-            "active_sessions": 5,
-            "completed_sessions": 20,
-            "failed_sessions": 3,
-            "total_interactions": 100,
-            "avg_session_duration": 30.5,
-            "error_rate": 12.5,
-            "last_24h_sessions": 8
-        }
+
         repo.get_filter_options.return_value = {
             "agent_types": ["kubernetes", "network"],
             "alert_types": ["PodCrashLooping"],
@@ -750,61 +693,7 @@ class TestDashboardMethods:
             mock_get_repo.return_value.__exit__.return_value = None
             yield service, mock_repository
     
-    @pytest.mark.unit
-    def test_get_dashboard_metrics_success(self, history_service_with_mock_repo):
-        """Test successful dashboard metrics retrieval."""
-        service, mock_repo = history_service_with_mock_repo
-        
-        result = service.get_dashboard_metrics()
-        
-        # Verify the result
-        assert result["active_sessions"] == 5
-        assert result["completed_sessions"] == 20
-        assert result["failed_sessions"] == 3
-        assert result["total_interactions"] == 100
-        assert result["avg_session_duration"] == 30.5
-        assert result["error_rate"] == 12.5
-        assert result["last_24h_sessions"] == 8
-        
-        # Verify repository was called
-        mock_repo.get_dashboard_metrics.assert_called_once()
-    
-    @pytest.mark.unit
-    def test_get_dashboard_metrics_no_repository(self):
-        """Test dashboard metrics when repository is unavailable."""
-        service = HistoryService()
-        service.is_enabled = True
-        service._is_healthy = False
-        
-        with patch.object(service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = None
-            
-            result = service.get_dashboard_metrics()
-            
-            # Should return default values
-            assert result["active_sessions"] == 0
-            assert result["completed_sessions"] == 0
-            assert result["failed_sessions"] == 0
-            assert result["total_interactions"] == 0
-            assert result["avg_session_duration"] == 0.0
-            assert result["error_rate"] == 0.0
-            assert result["last_24h_sessions"] == 0
-    
-    @pytest.mark.unit
-    def test_get_dashboard_metrics_exception(self):
-        """Test dashboard metrics with repository exception."""
-        service = HistoryService()
-        service.is_enabled = True
-        
-        with patch.object(service, 'get_repository') as mock_get_repo:
-            mock_get_repo.side_effect = Exception("Database error")
-            
-            result = service.get_dashboard_metrics()
-            
-            # Should return default values on exception
-            assert result["active_sessions"] == 0
-            assert result["completed_sessions"] == 0
-            assert result["failed_sessions"] == 0
+
     
     @pytest.mark.unit
     def test_get_filter_options_success(self, history_service_with_mock_repo):

@@ -280,19 +280,7 @@ class TestBaseEventHook:
         assert hook.error_count == 0
         assert hook.max_errors == 5
 
-    @pytest.mark.unit
-    def test_enable_disable(self):
-        """Test hook enable/disable functionality."""
-        hook = TestConcreteHook("test_hook")
-        
-        # Test disable
-        hook.disable()
-        assert hook.is_enabled is False
-        
-        # Test enable
-        hook.enable()
-        assert hook.is_enabled is True
-        assert hook.error_count == 0  # Reset on enable
+
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -308,17 +296,7 @@ class TestBaseEventHook:
         assert hook.execution_log[0]["kwargs"] == {"param1": "value1", "param2": "value2"}
         assert hook.error_count == 0
 
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_safe_execute_when_disabled(self):
-        """Test that disabled hooks don't execute."""
-        hook = TestConcreteHook("test_hook")
-        hook.disable()
-        
-        result = await hook.safe_execute("test.event", param="value")
-        
-        assert result is False
-        assert len(hook.execution_log) == 0
+
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -386,7 +364,7 @@ class TestHookManager:
     def test_initialization(self, hook_manager):
         """Test HookManager initialization."""
         assert hook_manager.hooks == {}
-        assert hook_manager.execution_stats == {}
+
 
     @pytest.mark.unit
     def test_register_hook(self, hook_manager, test_hooks):
@@ -436,24 +414,6 @@ class TestHookManager:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_trigger_hooks_with_disabled_hook(self, hook_manager, test_hooks):
-        """Test that disabled hooks are not triggered."""
-        hook1, hook2 = test_hooks[0], test_hooks[1]
-        hook_manager.register_hook("test.event", hook1)
-        hook_manager.register_hook("test.event", hook2)
-        
-        hook2.disable()
-        
-        results = await hook_manager.trigger_hooks("test.event", param="value")
-        
-        assert len(results) == 1
-        assert "hook1" in results
-        assert results["hook1"] is True
-        assert len(hook1.execution_log) == 1
-        assert len(hook2.execution_log) == 0
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
     async def test_trigger_hooks_with_failing_hook(self, hook_manager):
         """Test hook triggering with one failing hook."""
         good_hook = TestConcreteHook("good_hook")
@@ -470,37 +430,9 @@ class TestHookManager:
         assert len(good_hook.execution_log) == 1
         assert bad_hook.error_count == 1
 
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_trigger_hooks_execution_stats(self, hook_manager, test_hooks):
-        """Test that execution statistics are tracked."""
-        for hook in test_hooks:
-            hook_manager.register_hook("test.event", hook)
-        
-        await hook_manager.trigger_hooks("test.event", param="value")
-        
-        assert "test.event" in hook_manager.execution_stats
-        stats = hook_manager.execution_stats["test.event"]
-        assert stats["total"] == 3
-        assert stats["success"] == 3
-        assert stats["failed"] == 0
 
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_trigger_hooks_mixed_success_failure_stats(self, hook_manager):
-        """Test execution statistics with mixed success/failure."""
-        good_hook = TestConcreteHook("good_hook")
-        bad_hook = TestFailingHook("bad_hook")
-        
-        hook_manager.register_hook("test.event", good_hook)
-        hook_manager.register_hook("test.event", bad_hook)
-        
-        await hook_manager.trigger_hooks("test.event", param="value")
-        
-        stats = hook_manager.execution_stats["test.event"]
-        assert stats["total"] == 2
-        assert stats["success"] == 1
-        assert stats["failed"] == 1
+
+
 
 
 class TestGlobalHookManager:

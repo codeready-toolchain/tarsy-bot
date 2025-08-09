@@ -11,8 +11,6 @@ performance and consistency with the rest of the system.
 import logging
 from typing import Any, Dict
 
-from tarsy.services.websocket_manager import WebSocketManager
-
 from .base_hooks import BaseLLMHook, BaseMCPHook
 
 logger = logging.getLogger(__name__)
@@ -27,16 +25,16 @@ class DashboardLLMHooks(BaseLLMHook):
     using the same event data for consistency.
     """
     
-    def __init__(self, websocket_manager: WebSocketManager, update_service=None):
+    def __init__(self, dashboard_manager, update_service=None):
         """
         Initialize dashboard LLM broadcast hooks.
         
         Args:
-            websocket_manager: WebSocket manager for dashboard broadcasting
+        dashboard_manager: Dashboard connection manager for broadcasting
             update_service: Optional dashboard update service for intelligent batching
         """
         super().__init__("llm_dashboard_broadcast_hook")
-        self.websocket_manager = websocket_manager
+        self.dashboard_manager = dashboard_manager
         self.update_service = update_service
     
     async def process_llm_interaction(self, session_id: str, interaction_data: Dict[str, Any]) -> None:
@@ -69,18 +67,22 @@ class DashboardLLMHooks(BaseLLMHook):
             session_update_data["response_preview"] = response_text[:200] + "..." if len(response_text) > 200 else response_text
         
         # Use dashboard update service if available, otherwise fallback to direct broadcasting
-        dashboard_manager = self.websocket_manager.dashboard_manager
+        dashboard_manager = self.dashboard_manager
         if dashboard_manager.update_service:
-            # Use update service for intelligent batching and session tracking
-            sent_count = await dashboard_manager.update_service.process_llm_interaction(
-                session_id, session_update_data, broadcast_immediately=not interaction_data["success"]  # Broadcast errors immediately
+            # Use update service for session tracking and immediate broadcasting
+            sent_count = await self.dashboard_manager.update_service.process_llm_interaction(
+                session_id, session_update_data
             )
             
             if sent_count > 0:
                 logger.debug(f"Dashboard update service processed LLM interaction for session {session_id}: {interaction_data['step_description']}")
         else:
-            # Fallback to direct broadcasting
-            session_sent = await self.websocket_manager.broadcast_session_update_advanced(
+            session_sent = 0
+            dashboard_sent = 0
+            
+            # Fallback to direct broadcaster calls if available
+            if self.dashboard_manager.broadcaster:
+                session_sent = await self.dashboard_manager.broadcaster.broadcast_session_update(
                 session_id, session_update_data
             )
             
@@ -94,7 +96,7 @@ class DashboardLLMHooks(BaseLLMHook):
                 "timestamp_us": interaction_data["timestamp_us"]
             }
             
-            dashboard_sent = await self.websocket_manager.broadcast_dashboard_update_advanced(
+            dashboard_sent = await self.dashboard_manager.broadcaster.broadcast_dashboard_update(
                 dashboard_update_data
             )
             
@@ -110,17 +112,17 @@ class DashboardMCPHooks(BaseMCPHook):
     clients, maintaining exact chronological ordering with LLM interactions.
     """
     
-    def __init__(self, websocket_manager: WebSocketManager, update_service=None):
+    def __init__(self, dashboard_manager, update_service=None):
         """
         Initialize dashboard MCP broadcast hooks.
         
         Args:
-            websocket_manager: WebSocket manager for dashboard broadcasting
+        dashboard_manager: Dashboard connection manager for broadcasting
             update_service: Optional dashboard update service for intelligent batching
         """
         super().__init__("mcp_dashboard_broadcast_hook")
         self.update_service = update_service
-        self.websocket_manager = websocket_manager
+        self.dashboard_manager = dashboard_manager
     
     async def process_mcp_communication(self, session_id: str, communication_data: Dict[str, Any]) -> None:
         """
@@ -153,18 +155,23 @@ class DashboardMCPHooks(BaseMCPHook):
             session_update_data["tool_result_preview"] = result_str[:300] + "..." if len(result_str) > 300 else result_str
         
         # Use dashboard update service if available, otherwise fallback to direct broadcasting
-        dashboard_manager = self.websocket_manager.dashboard_manager
+        dashboard_manager = self.dashboard_manager
         if dashboard_manager.update_service:
-            # Use update service for intelligent batching and session tracking
-            sent_count = await dashboard_manager.update_service.process_mcp_communication(
-                session_id, session_update_data, broadcast_immediately=not communication_data["success"]  # Broadcast errors immediately
+            # Use update service for session tracking and immediate broadcasting
+            sent_count = await self.dashboard_manager.update_service.process_mcp_communication(
+                session_id, session_update_data
             )
             
             if sent_count > 0:
                 logger.debug(f"Dashboard update service processed MCP communication for session {session_id}: {communication_data['step_description']}")
         else:
             # Fallback to direct broadcasting
-            session_sent = await self.websocket_manager.broadcast_session_update_advanced(
+            session_sent = 0
+            dashboard_sent = 0
+            
+            # Fallback to direct broadcaster calls if available
+            if self.dashboard_manager.broadcaster:
+                session_sent = await self.dashboard_manager.broadcaster.broadcast_session_update(
                 session_id, session_update_data
             )
             
@@ -179,7 +186,7 @@ class DashboardMCPHooks(BaseMCPHook):
                 "timestamp_us": communication_data["timestamp_us"]
             }
             
-            dashboard_sent = await self.websocket_manager.broadcast_dashboard_update_advanced(
+            dashboard_sent = await self.dashboard_manager.broadcaster.broadcast_dashboard_update(
                 dashboard_update_data
             )
             
@@ -187,7 +194,7 @@ class DashboardMCPHooks(BaseMCPHook):
                 logger.debug(f"Broadcast MCP communication for session {session_id} to {session_sent + dashboard_sent} subscribers: {communication_data['step_description']}")
 
 
-def register_dashboard_hooks(websocket_manager: WebSocketManager):
+def register_dashboard_hooks(dashboard_manager):
     """
     Register dashboard broadcast hooks with the global hook manager.
     
@@ -195,19 +202,19 @@ def register_dashboard_hooks(websocket_manager: WebSocketManager):
     automatic dashboard broadcasting for LLM and MCP interactions.
     
     Args:
-        websocket_manager: WebSocket manager for dashboard broadcasting
+        dashboard_manager: Dashboard connection manager for broadcasting
     """
     from .base_hooks import get_hook_manager
     
     hook_manager = get_hook_manager()
     
     # Register dashboard LLM hooks
-    llm_dashboard_hooks = DashboardLLMHooks(websocket_manager=websocket_manager)
+    llm_dashboard_hooks = DashboardLLMHooks(dashboard_manager)
     hook_manager.register_hook("llm.post", llm_dashboard_hooks)
     hook_manager.register_hook("llm.error", llm_dashboard_hooks)
     
     # Register dashboard MCP hooks
-    mcp_dashboard_hooks = DashboardMCPHooks(websocket_manager=websocket_manager)
+    mcp_dashboard_hooks = DashboardMCPHooks(dashboard_manager)
     hook_manager.register_hook("mcp.post", mcp_dashboard_hooks)
     hook_manager.register_hook("mcp.error", mcp_dashboard_hooks)
     
@@ -215,7 +222,7 @@ def register_dashboard_hooks(websocket_manager: WebSocketManager):
     return hook_manager
 
 
-def register_integrated_hooks(websocket_manager: WebSocketManager):
+def register_integrated_hooks(dashboard_manager):
     """
     Register both history and dashboard hooks with the global hook manager.
     
@@ -224,7 +231,7 @@ def register_integrated_hooks(websocket_manager: WebSocketManager):
     consistency between historical records and real-time dashboard updates.
     
     Args:
-        websocket_manager: WebSocket manager for dashboard broadcasting
+        dashboard_manager: Dashboard connection manager for broadcasting
     """
     from .base_hooks import get_hook_manager
     
@@ -232,7 +239,7 @@ def register_integrated_hooks(websocket_manager: WebSocketManager):
     register_history_hooks()
     
     # Register dashboard hooks alongside history hooks
-    register_dashboard_hooks(websocket_manager)
+    register_dashboard_hooks(dashboard_manager)
     
     hook_manager = get_hook_manager()
     logger.info("Integrated hook system registered: history + dashboard broadcasting")

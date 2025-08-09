@@ -8,12 +8,11 @@ import json
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List
 import re
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from tarsy.config.settings import get_settings
@@ -21,9 +20,8 @@ from tarsy.controllers.history_controller import router as history_router
 from tarsy.database.init_db import get_database_info, initialize_database
 from tarsy.models.alert import Alert, AlertResponse
 from tarsy.models.alert_processing import AlertProcessingData, AlertKey
-from tarsy.models.constants import AlertSessionStatus
 from tarsy.services.alert_service import AlertService
-from tarsy.services.websocket_manager import WebSocketManager
+from tarsy.services.dashboard_connection_manager import DashboardConnectionManager
 from tarsy.utils.logger import get_module_logger, setup_logging
 from tarsy.utils.timestamp import now_us
 
@@ -35,14 +33,14 @@ processing_alert_keys: Dict[str, str] = {}  # alert_key -> alert_id mapping
 alert_keys_lock = asyncio.Lock()  # Protect the processing_alert_keys dict
 
 alert_service: AlertService = None
-websocket_manager: WebSocketManager = None
+dashboard_manager: DashboardConnectionManager = None
 alert_processing_semaphore: asyncio.Semaphore = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    global alert_service, websocket_manager, alert_processing_semaphore
+    global alert_service, dashboard_manager, alert_processing_semaphore
     
     # Initialize services
     settings = get_settings()
@@ -72,17 +70,17 @@ async def lifespan(app: FastAPI):
             logger.error(f"Failed to cleanup orphaned sessions during startup: {str(e)}")
     
     alert_service = AlertService(settings)
-    websocket_manager = WebSocketManager()
+    dashboard_manager = DashboardConnectionManager()
     
     # Startup
     await alert_service.initialize()
     
     # Initialize dashboard broadcaster
-    await websocket_manager.initialize_dashboard_broadcaster()
+    await dashboard_manager.initialize_broadcaster()
     
     # Register integrated hook system (history + dashboard broadcasting)
     from tarsy.hooks import register_integrated_hooks
-    register_integrated_hooks(websocket_manager)
+    register_integrated_hooks(dashboard_manager)
     
     logger.info("Tarsy started successfully!")
     
@@ -99,7 +97,7 @@ async def lifespan(app: FastAPI):
     logger.info("Tarsy shutting down...")
     
     # Shutdown dashboard broadcaster
-    await websocket_manager.shutdown_dashboard_broadcaster()
+    await dashboard_manager.shutdown_broadcaster()
     
     await alert_service.close()
     logger.info("Tarsy shutdown complete")
@@ -319,8 +317,6 @@ async def submit_alert(request: Request):
         if alert_data.runbook and not re.match(r'^https?://', alert_data.runbook):
             logger.warning(f"Suspicious runbook URL format: {alert_data.runbook}")
         
-
-        
         # Apply defaults for missing fields (inline normalization)
         normalized_data = alert_data.data.copy() if alert_data.data else {}
         
@@ -404,8 +400,6 @@ async def submit_alert(request: Request):
             }
         )
 
-
-
 @app.get("/session-id/{alert_id}")
 async def get_session_id(alert_id: str):
     """Get session ID for an alert.
@@ -427,12 +421,12 @@ async def get_session_id(alert_id: str):
 async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
     """WebSocket endpoint for dashboard real-time updates."""
     try:
-        await websocket_manager.connect_dashboard(websocket, user_id)
+        await dashboard_manager.connect(websocket, user_id)
         
         # Send initial connection confirmation
         from tarsy.models.websocket_models import ConnectionEstablished
         connection_msg = ConnectionEstablished(user_id=user_id)
-        await websocket_manager.dashboard_manager.send_to_user(
+        await dashboard_manager.send_to_user(
             user_id, 
             connection_msg.model_dump()
         )
@@ -444,12 +438,12 @@ async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
                 message_text = await websocket.receive_text()
                 try:
                     message = json.loads(message_text)
-                    await websocket_manager.handle_dashboard_message(user_id, message)
+                    await dashboard_manager.handle_subscription_message(user_id, message)
                 except json.JSONDecodeError:
                     # Send error response for invalid JSON
                     from tarsy.models.websocket_models import ErrorMessage
                     error_msg = ErrorMessage(message="Invalid JSON message format")
-                    await websocket_manager.dashboard_manager.send_to_user(
+                    await dashboard_manager.send_to_user(
                         user_id, 
                         error_msg.model_dump()
                     )
@@ -461,7 +455,7 @@ async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
     except Exception as e:
         logger.error(f"Dashboard WebSocket error for user {user_id}: {str(e)}")
     finally:
-        websocket_manager.disconnect_dashboard(user_id)
+        dashboard_manager.disconnect(user_id)
 
 
 async def process_alert_background(alert_id: str, alert: AlertProcessingData):
@@ -532,14 +526,6 @@ async def process_alert_background(alert_id: str, alert: AlertProcessingData):
                 f"Alert {alert_id} unexpected error after {duration:.2f}s: {error_msg}", 
                 exc_info=True
             )
-            
-            # Try to provide more context about the error
-            error_context = {
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "processing_duration_seconds": duration,
-                "alert_type": alert.alert_type if alert else "unknown"
-            }
         
         finally:
             # Clean up alert key tracking regardless of success or failure

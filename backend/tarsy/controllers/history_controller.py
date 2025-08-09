@@ -8,12 +8,9 @@ Uses Unix timestamps (microseconds since epoch) throughout for optimal
 performance and consistency with the rest of the system.
 """
 
-import csv
-import io
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from fastapi.responses import StreamingResponse
 
 from tarsy.models.api_models import (
     ErrorResponse,
@@ -187,6 +184,7 @@ async def list_sessions(
     - All timestamps are Unix timestamps in microseconds since epoch (UTC)
     """
 )
+
 async def get_session_detail(
     session_id: str = Path(..., description="Unique session identifier"),
     history_service: HistoryService = Depends(get_history_service)
@@ -281,6 +279,7 @@ async def get_session_detail(
     - All timestamps are Unix timestamps in microseconds since epoch (UTC)
     """
 )
+
 async def health_check(
     history_service: HistoryService = Depends(get_history_service)
 ) -> HealthCheckResponse:
@@ -346,20 +345,6 @@ async def health_check(
 # Dashboard-specific endpoints for EP-0004 implementation
 
 @router.get(
-    "/metrics",
-    summary="Dashboard Metrics",
-    description="Get dashboard overview metrics for active and completed sessions"
-)
-async def get_dashboard_metrics(
-    history_service: HistoryService = Depends(get_history_service)
-):
-    """Get dashboard metrics including session counts and status distribution."""
-    try:
-        return history_service.get_dashboard_metrics()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get metrics: {str(e)}")
-
-@router.get(
     "/active-sessions",
     summary="Active Sessions", 
     description="Get currently active/processing sessions"
@@ -405,92 +390,5 @@ async def get_filter_options(
         return history_service.get_filter_options()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get filter options: {str(e)}")
-
-@router.get(
-    "/sessions/{session_id}/export",
-    summary="Export Session Data",
-    description="Export session data with timeline in JSON or CSV format"
-)
-async def export_session_data(
-    session_id: str = Path(..., description="Session ID to export"),
-    format: str = Query("json", regex="^(json|csv)$", description="Export format: json or csv"),
-    history_service: HistoryService = Depends(get_history_service)
-):
-    """Export comprehensive session data including timeline."""
-    try:
-        export_result = history_service.export_session_data(session_id, format)
-        
-        if export_result.get("error"):
-            if "not found" in export_result["error"].lower():
-                raise HTTPException(status_code=404, detail=export_result["error"])
-            else:
-                raise HTTPException(status_code=500, detail=export_result["error"])
-        
-        export_data = export_result["data"]
-        
-        if format == "csv":
-            # Generate CSV format
-            output = io.StringIO()
-            writer = csv.writer(output)
-            
-            # Write session header
-            writer.writerow(["Session Information"])
-            writer.writerow(["Field", "Value"])
-            writer.writerow(["Session ID", export_data["session"]["session_id"]])
-            writer.writerow(["Alert ID", export_data["session"]["alert_id"]])
-            writer.writerow(["Agent Type", export_data["session"]["agent_type"]])
-            writer.writerow(["Alert Type", export_data["session"]["alert_type"]])
-            writer.writerow(["Status", export_data["session"]["status"]])
-            writer.writerow(["Started At (us)", export_data["session"]["started_at_us"]])
-            writer.writerow(["Completed At (us)", export_data["session"]["completed_at_us"] or "N/A"])
-            writer.writerow(["Error Message", export_data["session"]["error_message"] or "None"])
-            writer.writerow([])
-            
-            # Write timeline interactions
-            writer.writerow(["Timeline Interactions"])
-            writer.writerow(["Timestamp (us)", "Type", "Description", "Duration (ms)", "Success"])
-            
-            for interaction in export_data["timeline"].get("interactions", []):
-                writer.writerow([
-                    interaction.get("timestamp_us", ""),
-                    interaction.get("type", ""),
-                    interaction.get("description", "")[:100] + "..." if len(interaction.get("description", "")) > 100 else interaction.get("description", ""),
-                    interaction.get("duration_ms", ""),
-                    interaction.get("success", "")
-                ])
-            
-            csv_content = output.getvalue()
-            output.close()
-            
-            return StreamingResponse(
-                io.BytesIO(csv_content.encode('utf-8')),
-                media_type="text/csv",
-                headers={"Content-Disposition": f"attachment; filename=session_{session_id}.csv"}
-            )
-        else:
-            # Return JSON format
-            return export_data
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to export session data: {str(e)}")
-
-@router.get(
-    "/search",
-    summary="Search Sessions",
-    description="Search sessions by alert content, error messages, or metadata"
-)
-async def search_sessions(
-    q: str = Query(..., description="Search query string"),
-    limit: int = Query(10, ge=1, le=100, description="Maximum number of results"),
-    history_service: HistoryService = Depends(get_history_service)
-):
-    """Search sessions by various fields."""
-    try:
-        results = history_service.search_sessions(q, limit)
-        return results
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to search sessions: {str(e)}")
 
 # Note: Exception handlers should be registered at the app level in main.py 

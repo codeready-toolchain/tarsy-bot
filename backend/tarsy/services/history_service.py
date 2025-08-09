@@ -10,7 +10,6 @@ import logging
 import random
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from tarsy.config.settings import get_settings
@@ -263,8 +262,8 @@ class HistoryService:
                     # Notify dashboard update service of session status change
                     try:
                         # Import here to avoid circular imports
-                        from tarsy.main import websocket_manager
-                        if websocket_manager and websocket_manager.dashboard_manager and websocket_manager.dashboard_manager.update_service:
+                        from tarsy.main import dashboard_manager
+                        if dashboard_manager and dashboard_manager.update_service:
                             # Prepare details for dashboard update
                             details = {}
                             if error_message:
@@ -277,14 +276,14 @@ class HistoryService:
                             if asyncio.get_event_loop().is_running():
                                 # If we're in an async context, create a task
                                 asyncio.create_task(
-                                    websocket_manager.dashboard_manager.update_service.process_session_status_change(
+                                    dashboard_manager.update_service.process_session_status_change(
                                         session_id, status, details
                                     )
                                 )
                             else:
                                 # If not in async context, run directly
                                 asyncio.run(
-                                    websocket_manager.dashboard_manager.update_service.process_session_status_change(
+                                    dashboard_manager.update_service.process_session_status_change(
                                         session_id, status, details
                                     )
                                 )
@@ -584,39 +583,6 @@ class HistoryService:
             logger.error(f"Failed to get active sessions: {str(e)}")
             return []
     
-    def get_dashboard_metrics(self) -> Dict[str, Any]:
-        """
-        Get dashboard metrics including session counts and statistics.
-        
-        Returns:
-            Dictionary containing dashboard metrics
-        """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    return {
-                        "active_sessions": 0,
-                        "completed_sessions": 0,
-                        "failed_sessions": 0,
-                        "total_interactions": 0,
-                        "avg_session_duration": 0.0,
-                        "error_rate": 0.0,
-                        "last_24h_sessions": 0
-                    }
-                
-                return repo.get_dashboard_metrics()
-                
-        except Exception as e:
-            logger.error(f"Failed to get dashboard metrics: {str(e)}")
-            return {
-                "active_sessions": 0,
-                "completed_sessions": 0,
-                "failed_sessions": 0,
-                "total_interactions": 0,
-                "avg_session_duration": 0.0,
-                "error_rate": 0.0,
-                "last_24h_sessions": 0
-            }
     
     def get_filter_options(self) -> Dict[str, Any]:
         """
@@ -655,49 +621,49 @@ class HistoryService:
                     {"label": "This Week", "value": "week"}
                 ]
             }
-    
-    def export_session_data(self, session_id: str, format: str = 'json') -> Dict[str, Any]:
+
+    def export_session_data(self, session_id: str, format: str) -> Dict[str, Any]:
         """
         Export session data in the specified format.
         
         Args:
-            session_id: The session ID to export
-            format: Export format ('json' or 'csv')
+            session_id: The session identifier
+            format: Export format ("json" or "csv")
             
         Returns:
-            Dictionary containing export data and metadata
+            Dictionary containing session data and metadata
         """
         try:
             with self.get_repository() as repo:
                 if not repo:
                     return {
-                        "error": "Repository unavailable",
                         "session_id": session_id,
                         "format": format,
-                        "data": None
+                        "data": None,
+                        "error": "Repository unavailable"
                     }
                 
+                # Repository returns the complete structure
                 return repo.export_session_data(session_id, format)
                 
         except Exception as e:
-            logger.error(f"Failed to export session data for {session_id}: {str(e)}")
             return {
-                "error": str(e),
                 "session_id": session_id,
                 "format": format,
-                "data": None
+                "data": None,
+                "error": str(e)
             }
-    
+
     def search_sessions(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
-        Search sessions by alert content, error messages, or metadata.
+        Search sessions based on query string.
         
         Args:
             query: Search query string
             limit: Maximum number of results to return
             
         Returns:
-            List of matching session summaries
+            List of matching session dictionaries
         """
         try:
             with self.get_repository() as repo:
@@ -707,28 +673,10 @@ class HistoryService:
                 return repo.search_sessions(query, limit)
                 
         except Exception as e:
-            logger.error(f"Failed to search sessions with query '{query}': {str(e)}")
+            logger.error(f"Failed to search sessions: {str(e)}")
             return []
-    
+
     # Maintenance Operations
-    def cleanup_old_sessions(self) -> int:
-        """
-        Clean up sessions older than retention period.
-        
-        Returns:
-            Number of sessions cleaned up
-        """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    return 0
-                
-                return repo.cleanup_old_sessions(self.settings.history_retention_days)
-                
-        except Exception as e:
-            logger.error(f"Failed to cleanup old sessions: {str(e)}")
-            return 0
-    
     def cleanup_orphaned_sessions(self) -> int:
         """
         Clean up sessions that were left in active states due to unexpected backend shutdown.
@@ -792,29 +740,6 @@ class HistoryService:
         except Exception as e:
             logger.error(f"Failed to cleanup orphaned sessions: {str(e)}")
             return 0
-    
-    def health_check(self) -> Dict[str, Any]:
-        """
-        Get health status of history service.
-        
-        Returns:
-            Dictionary containing health status information
-        """
-        return {
-            "enabled": self.is_enabled,
-            "healthy": self._is_healthy,
-            "database_url": self.settings.history_database_url if self.is_enabled else None,
-            "retention_days": self.settings.history_retention_days if self.is_enabled else None
-        }
-    
-    def shutdown(self) -> None:
-        """Gracefully shutdown history service."""
-        try:
-            if self.db_manager:
-                self.db_manager.close()
-                logger.info("History service shutdown complete")
-        except Exception as e:
-            logger.error(f"Error during history service shutdown: {str(e)}")
 
 
 # Global history service instance

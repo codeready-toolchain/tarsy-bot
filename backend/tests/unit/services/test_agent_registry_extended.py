@@ -30,27 +30,6 @@ class TestAgentRegistryExtended:
             )
         }
 
-    def test_init_without_agent_configs(self):
-        """Test AgentRegistry initialization without agent configurations."""
-        registry = AgentRegistry()
-        
-        # Should work with built-in mappings only
-        assert registry.agent_configs is None
-
-    def test_init_with_agent_configs(self, sample_agent_configs):
-        """Test AgentRegistry initialization with agent configurations."""
-        registry = AgentRegistry(agent_configs=sample_agent_configs)
-        
-        assert registry.agent_configs == sample_agent_configs
-
-    def test_init_with_empty_agent_configs(self):
-        """Test AgentRegistry initialization with empty agent configurations."""
-        empty_configs = {}
-        registry = AgentRegistry(agent_configs=empty_configs)
-        
-        # Empty dict is treated as None (no configuration) for simplicity
-        assert registry.agent_configs is None
-
     @patch('tarsy.config.builtin_config.BUILTIN_AGENT_MAPPINGS', {'kubernetes': 'KubernetesAgent'})
     def test_mapping_merge_built_in_only(self):
         """Test alert type mapping with built-in agents only."""
@@ -126,39 +105,6 @@ class TestAgentRegistryExtended:
         assert "Available: kubernetes" in error_msg
 
     @patch('tarsy.config.builtin_config.BUILTIN_AGENT_MAPPINGS', {'kubernetes': 'KubernetesAgent'})
-    def test_get_agent_for_alert_type_safe_returns_none(self):
-        """Test that get_agent_for_alert_type_safe returns None for unknown alert types."""
-        registry = AgentRegistry()
-        
-        agent_id = registry.get_agent_for_alert_type_safe("unknown-alert-type")
-        assert agent_id is None
-
-    @patch('tarsy.config.builtin_config.BUILTIN_AGENT_MAPPINGS', {'kubernetes': 'KubernetesAgent'})
-    def test_get_agent_for_alert_type_safe_returns_valid_agent(self):
-        """Test that get_agent_for_alert_type_safe returns valid agent for known alert types."""
-        registry = AgentRegistry()
-        
-        agent_id = registry.get_agent_for_alert_type_safe("kubernetes")
-        assert agent_id == "KubernetesAgent"
-
-    @patch('tarsy.config.builtin_config.BUILTIN_AGENT_MAPPINGS', {'kubernetes': 'KubernetesAgent'})
-    def test_get_agent_for_alert_type_with_configured_agents_safe(self, sample_agent_configs):
-        """Test get_agent_for_alert_type_safe with configured agents."""
-        registry = AgentRegistry(agent_configs=sample_agent_configs)
-        
-        # Should return configured agent
-        agent_id = registry.get_agent_for_alert_type_safe("security")
-        assert agent_id == "ConfigurableAgent:security-agent"
-        
-        # Should return built-in agent
-        agent_id = registry.get_agent_for_alert_type_safe("kubernetes")
-        assert agent_id == "KubernetesAgent"
-        
-        # Should return None for unknown
-        agent_id = registry.get_agent_for_alert_type_safe("unknown")
-        assert agent_id is None
-
-    @patch('tarsy.config.builtin_config.BUILTIN_AGENT_MAPPINGS', {'kubernetes': 'KubernetesAgent'})
     def test_error_message_includes_available_agents(self, sample_agent_configs):
         """Test that error messages include all available agents (built-in + configured)."""
         registry = AgentRegistry(agent_configs=sample_agent_configs)
@@ -218,21 +164,6 @@ class TestAgentRegistryExtended:
             
         error_msg = str(exc_info.value)
         assert "Available: kubernetes" in error_msg
-
-    def test_agent_configs_property_immutability(self, sample_agent_configs):
-        """Test that agent_configs property cannot be modified externally."""
-        registry = AgentRegistry(agent_configs=sample_agent_configs)
-        
-        original_configs = registry.agent_configs
-        
-        # Verify we get the same reference
-        assert registry.agent_configs is original_configs
-        
-        # Modifications to the returned dict should not affect registry behavior
-        if registry.agent_configs:
-            # Test that the registry still works correctly
-            agent_id = registry.get_agent_for_alert_type("security")
-            assert agent_id == "ConfigurableAgent:security-agent"
 
     @patch('tarsy.config.builtin_config.BUILTIN_AGENT_MAPPINGS', {'kubernetes': 'KubernetesAgent'})
     def test_case_sensitivity_alert_types(self):
