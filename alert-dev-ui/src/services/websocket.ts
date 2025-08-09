@@ -67,6 +67,9 @@ export class WebSocketService {
           this.connecting = false;
           this.reconnectAttempts = 0;
           
+          // Subscribe to dashboard updates for general updates
+          this.subscribeToChannel('dashboard_updates');
+          
           // Try to get session ID and subscribe to session channel
           await this.subscribeToSession();
           resolve();
@@ -215,7 +218,18 @@ export class WebSocketService {
    */
   private handleDashboardUpdate(data: any) {
     console.log('Dashboard update received:', data);
-    // For now, we mainly care about session-specific updates
+    
+    // Process LLM/MCP interactions and session status changes
+    if (data.type === 'llm_interaction' || data.type === 'mcp_communication' || data.type === 'session_status_change') {
+      // Check if this update is for our current session
+      if (data.session_id === this.sessionId || !this.sessionId) {
+        const processingStatus = this.convertToProcessingStatus(data);
+        if (processingStatus && this.onStatusUpdate) {
+          console.log('Converted dashboard update to processing status:', processingStatus);
+          this.onStatusUpdate(processingStatus);
+        }
+      }
+    }
   }
 
   /**
@@ -383,6 +397,13 @@ export class WebSocketService {
    */
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * Get current alert ID
+   */
+  getCurrentAlertId(): string | null {
+    return this.alertId;
   }
 }
 

@@ -296,9 +296,10 @@ class DashboardUpdateService:
                 # Send to session-specific channel for detail views
                 session_count = await self.broadcaster.broadcast_session_update(session_id, update)
                 
-                # For session status changes, also send to dashboard channel
-                if update['type'] == 'session_status_change':
-                    logger.debug(f"Also broadcasting session update to dashboard channel: {update['type']}")
+                # Also send LLM/MCP interactions and session status changes to dashboard channel
+                # This ensures dashboard clients receive updates even if they haven't subscribed to specific session channels yet
+                if update['type'] in ['session_status_change', 'llm_interaction', 'mcp_communication']:
+                    logger.debug(f"Also broadcasting {update['type']} to dashboard channel")
                     dashboard_count = await self.broadcaster.broadcast_dashboard_update(update)
                     return session_count + dashboard_count
                 else:

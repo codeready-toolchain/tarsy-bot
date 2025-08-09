@@ -41,11 +41,15 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete
   
   const wsService = wsServiceRef.current;
 
+  // Store onComplete in a ref to avoid effect re-runs when it changes
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
   useEffect(() => {
     const initializeWebSocket = async () => {
       try {
-        // Skip if already connected
-        if (wsService.isConnected()) {
+        // Skip if already connected to the same alert
+        if (wsService.isConnected() && wsService.getCurrentAlertId() === alertId) {
           return;
         }
 
@@ -54,9 +58,9 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete
           setStatus(statusUpdate);
           
           // Call onComplete callback when processing is done
-          if (statusUpdate.status === 'completed' && onComplete) {
+          if (statusUpdate.status === 'completed' && onCompleteRef.current) {
             setTimeout(() => {
-              if (onComplete) onComplete();
+              if (onCompleteRef.current) onCompleteRef.current();
             }, 1000); // Small delay to show completion
           }
         });
@@ -84,14 +88,21 @@ const ProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete
 
     initializeWebSocket();
 
-    // Cleanup on unmount
+    // Only cleanup when component unmounts, not on effect re-runs
+    return () => {
+      // No cleanup here to prevent race conditions
+    };
+  }, [alertId]); // Removed onComplete from dependencies
+
+  // Separate cleanup effect that only runs on unmount
+  useEffect(() => {
     return () => {
       if (wsServiceRef.current) {
         wsServiceRef.current.disconnect();
         wsServiceRef.current = null;
       }
     };
-  }, [alertId, onComplete]);
+  }, []);
 
   const getStatusColor = (status: string) => {
     switch (status) {
