@@ -57,8 +57,27 @@ export class WebSocketService {
         
         this.connecting = true;
         this.alertId = alertId;
-        const wsUrl = `ws://localhost:8000/ws/dashboard/${this.userId}`;
         
+        // Use environment variable or derive from current page origin for HTTPS/proxy support
+        let wsBaseUrl: string | undefined;
+        
+        // Safety check: import.meta.env might be undefined in some environments
+        try {
+          wsBaseUrl = import.meta.env?.VITE_WS_BASE_URL;
+        } catch (error) {
+          console.warn('import.meta.env not available, falling back to window.location');
+          wsBaseUrl = undefined;
+        }
+        
+        if (!wsBaseUrl) {
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          // Dev UI should connect directly to backend port, not proxy through Vite dev server
+          const host = window.location.hostname;  // Get hostname without port
+          const port = '8000';  // Backend port
+          wsBaseUrl = `${protocol}//${host}:${port}`;
+        }
+        
+        const wsUrl = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
         console.log(`Connecting to dashboard WebSocket: ${wsUrl}`);
         this.ws = new WebSocket(wsUrl);
 
@@ -66,9 +85,6 @@ export class WebSocketService {
           console.log('Dashboard WebSocket connected');
           this.connecting = false;
           this.reconnectAttempts = 0;
-          
-          // Subscribe to dashboard updates for general updates
-          this.subscribeToChannel('dashboard_updates');
           
           // Try to get session ID and subscribe to session channel
           await this.subscribeToSession();
@@ -218,18 +234,7 @@ export class WebSocketService {
    */
   private handleDashboardUpdate(data: any) {
     console.log('Dashboard update received:', data);
-    
-    // Process LLM/MCP interactions and session status changes
-    if (data.type === 'llm_interaction' || data.type === 'mcp_communication' || data.type === 'session_status_change') {
-      // Check if this update is for our current session
-      if (data.session_id === this.sessionId || !this.sessionId) {
-        const processingStatus = this.convertToProcessingStatus(data);
-        if (processingStatus && this.onStatusUpdate) {
-          console.log('Converted dashboard update to processing status:', processingStatus);
-          this.onStatusUpdate(processingStatus);
-        }
-      }
-    }
+    // For now, we mainly care about session-specific updates
   }
 
   /**

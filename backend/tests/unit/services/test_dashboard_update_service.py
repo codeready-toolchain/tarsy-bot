@@ -149,7 +149,7 @@ class TestLLMInteractionProcessing:
         
         # Test immediate processing (no batching)
         sent_count = await update_service.process_llm_interaction(session_id, interaction_data)
-        assert sent_count == 2  # Sent to session channel
+        assert sent_count == 2  # Sent to session channel only
         
         # Verify session was created/updated
         assert session_id in update_service.active_sessions

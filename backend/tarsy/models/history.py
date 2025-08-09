@@ -130,12 +130,16 @@ class LLMInteraction(SQLModel, table=True):
         index=True
     )
     
-    prompt_text: str = Field(
-        description="Full prompt text sent to the LLM"
+    request_json: Optional[dict] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Full JSON request sent to LLM API (model, messages, temperature, etc.)"
     )
     
-    response_text: str = Field(
-        description="Complete response text received from the LLM"
+    response_json: Optional[dict] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Full JSON response received from LLM API"
     )
     
     tool_calls: Optional[dict] = Field(

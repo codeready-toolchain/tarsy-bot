@@ -421,6 +421,7 @@ async def get_session_id(alert_id: str):
 async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
     """WebSocket endpoint for dashboard real-time updates."""
     try:
+        logger.info(f"🔌 New WebSocket connection from user: {user_id}")
         await dashboard_manager.connect(websocket, user_id)
         
         # Send initial connection confirmation

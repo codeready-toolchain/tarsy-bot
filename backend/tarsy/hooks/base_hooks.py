@@ -19,103 +19,6 @@ from tarsy.models.history import now_us
 logger = logging.getLogger(__name__)
 
 
-class HookContext:
-    """
-    Context manager for handling hook lifecycle with automatic timing and error handling.
-    
-    Eliminates code duplication in service integrations by providing a standardized
-    way to handle pre/post/error hooks with timing and context management.
-    """
-    
-    def __init__(self, service_type: str, method_name: str, session_id: Optional[str] = None, **method_args):
-        """
-        Initialize hook context.
-        
-        Args:
-            service_type: Type of service (e.g., 'llm', 'mcp')
-            method_name: Name of the method being hooked
-            session_id: Session ID for history tracking
-            **method_args: Method arguments to include in context
-        """
-        self.service_type = service_type
-        self.method_name = method_name
-        self.session_id = session_id
-        self.method_args = method_args
-        
-        # Generate unique request ID and timing
-        self.request_id = str(uuid.uuid4())[:8]
-        self.start_time_us: Optional[int] = None
-        self.end_time_us: Optional[int] = None
-        
-        # Hook context and manager
-        self.hook_context: Dict[str, Any] = {}
-        self.hook_manager: Optional[HookManager] = None
-        
-    async def __aenter__(self) -> 'HookContext':
-        """Enter the hook context and trigger pre-execution hooks."""
-        self.start_time_us = now_us()
-        self.hook_manager = get_hook_manager()
-        
-        # Prepare hook context for pre-execution
-        self.hook_context = {
-            'session_id': self.session_id,
-            'method': self.method_name,
-            'args': {
-                'request_id': self.request_id,
-                **self.method_args
-            },
-            'start_time_us': self.start_time_us,
-            'timestamp_us': self.start_time_us
-        }
-        
-        # Trigger pre-execution hooks
-        await self.hook_manager.trigger_hooks(f"{self.service_type}.pre", **self.hook_context)
-        
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Exit the hook context and trigger post/error hooks based on outcome."""
-        self.end_time_us = now_us()
-        
-        if exc_type is None:
-            # Success case - will be updated with result via complete_success()
-            pass
-        else:
-            # Error case - trigger error hooks
-            self.hook_context.update({
-                'error': str(exc_val) if exc_val else 'Unknown error',
-                'end_time_us': self.end_time_us,
-                'success': False
-            })
-            
-            if self.hook_manager:
-                await self.hook_manager.trigger_hooks(f"{self.service_type}.error", **self.hook_context)
-        
-        # Don't suppress exceptions
-        return False
-    
-    async def complete_success(self, result: Any) -> None:
-        """
-        Mark the operation as successful and trigger post-execution hooks.
-        
-        Args:
-            result: The result of the operation
-        """
-        if not self.end_time_us:
-            self.end_time_us = now_us()
-            
-        self.hook_context.update({
-            'result': result,
-            'end_time_us': self.end_time_us,
-            'success': True
-        })
-        
-        if self.hook_manager:
-            await self.hook_manager.trigger_hooks(f"{self.service_type}.post", **self.hook_context)
-    
-    def get_request_id(self) -> str:
-        """Get the generated request ID for logging purposes."""
-        return self.request_id
 
 class BaseEventHook(ABC):
     """
@@ -323,22 +226,36 @@ class BaseLLMHook(BaseEventHook):
             return
         
         # Extract interaction details
-        method_args = kwargs.get('args', {})
-        result = kwargs.get('result', {})
+        # Note: The HookContext spreads data directly into kwargs, not under 'args'
+        method_args = kwargs  # All data is spread directly into kwargs
+        
+        # Extract the actual result data - it's mixed in kwargs, so we need to identify the result keys
+        # From LLM client: {'content': response.content, 'provider': ..., 'model': ..., 'request_id': ...}
+        result = {
+            'content': kwargs.get('content'),
+            'provider': kwargs.get('provider'),
+            'model': kwargs.get('model'),
+            'request_id': kwargs.get('request_id')
+        }
+        
         error = kwargs.get('error')
         success = not bool(error)
         
-        # Extract core interaction data
-        prompt_text = method_args.get('prompt', '') or method_args.get('messages', '')
+        # Extract JSON request/response format
+        request_json = self._extract_request_json(method_args)
+        response_json = self._extract_response_json(result) if success else None
+        
+        # Extract response text from JSON for error handling and previews
         if success:
-            response_text = self._extract_response_text(result)
-            # Handle empty successful responses - LLM connected but returned no content
+            response_text = self._extract_response_from_json(response_json)
             if not response_text or response_text.strip() == "":
                 response_text = "⚠️ LLM returned empty response - the model generated no content for this request"
         else:
-            # Use error message as response text so operators can see what went wrong in history
+            # Use error message as response text for debugging
             response_text = f"❌ LLM API Error: {error}" if error else "❌ Unknown LLM error"
-        model_used = method_args.get('model', 'unknown')
+        
+        # Extract model information
+        model_used = self._extract_model_info(method_args)
         
         # Extract tool calls and timing
         tool_calls = self._extract_tool_calls(method_args, result) if success else None
@@ -349,14 +266,14 @@ class BaseLLMHook(BaseEventHook):
         # Generate human-readable step description
         step_description = generate_step_description("llm_interaction", {
             "model": model_used,
-            "purpose": self._infer_purpose(prompt_text),
+            "purpose": self._infer_purpose_from_json(request_json),
             "has_tools": bool(tool_calls)
         })
         
         # Prepare standardized interaction data
         interaction_data = {
-            "prompt_text": str(prompt_text),
-            "response_text": str(response_text),  # Always has content (success response or error message)
+            "request_json": request_json,  # Full API request format
+            "response_json": response_json,  # Full API response format
             "model_used": model_used,
             "step_description": step_description,
             "tool_calls": tool_calls,
@@ -373,21 +290,39 @@ class BaseLLMHook(BaseEventHook):
         # Delegate to concrete implementation
         await self.process_llm_interaction(session_id, interaction_data)
     
-    def _extract_response_text(self, result: Any) -> str:
-        """Extract response text from LLM result."""
-        if isinstance(result, str):
-            return result
-        elif isinstance(result, dict):
-            for field in ['content', 'text', 'response', 'message']:
-                if field in result:
-                    return str(result[field])
-            return str(result)
-        elif hasattr(result, 'content'):
-            return str(result.content)
-        elif hasattr(result, 'text'):
-            return str(result.text)
-        else:
-            return str(result)
+
+    def _extract_model_info(self, method_args: Dict) -> str:
+        """Extract model information from method arguments."""
+        # Try 'model' first
+        if 'model' in method_args and method_args['model']:
+            return str(method_args['model'])
+        
+        # Try 'provider' as fallback
+        if 'provider' in method_args and method_args['provider']:
+            return str(method_args['provider'])
+        
+        return "unknown"
+    
+    def _extract_response_from_json(self, response_json: Optional[Dict]) -> str:
+        """Extract response text from response JSON."""
+        if not response_json:
+            return "No response available"
+            
+        # Extract from OpenAI-style response format
+        if 'choices' in response_json and response_json['choices']:
+            choice = response_json['choices'][0]
+            if isinstance(choice, dict) and 'message' in choice:
+                message = choice['message']
+                if isinstance(message, dict) and 'content' in message:
+                    return str(message['content'])
+        
+        # Fallback - look for any content in the JSON
+        if isinstance(response_json, dict):
+            for key in ['content', 'text', 'response', 'answer']:
+                if key in response_json:
+                    return str(response_json[key])
+        
+        return "No response content available"
     
     def _extract_tool_calls(self, args: Dict, result: Any) -> Optional[Dict]:
         """Extract tool calls from LLM interaction."""
@@ -427,23 +362,145 @@ class BaseLLMHook(BaseEventHook):
                 return str(usage)
         return None
     
+    def _extract_request_json(self, method_args: Dict) -> Optional[Dict]:
+        """
+        Extract full request JSON in the format sent to LLM APIs.
+        
+        Args:
+            method_args: Arguments passed to the LLM method
+            
+        Returns:
+            Dictionary matching the API request format, or None if extraction fails
+        """
+        try:
+            request_data = {}
+            
+            # Extract model
+            if 'model' in method_args and method_args['model']:
+                request_data['model'] = str(method_args['model'])
+            
+            # Extract messages (most important part)
+            if 'messages' in method_args and method_args['messages']:
+                messages = method_args['messages']
+                if isinstance(messages, list):
+                    # Convert LLMMessage objects to API format
+                    api_messages = []
+                    for msg in messages:
+                        if hasattr(msg, 'role') and hasattr(msg, 'content'):
+                            # LLMMessage object - safely convert to dict
+                            api_messages.append({
+                                "role": str(msg.role),
+                                "content": str(msg.content)
+                            })
+                        elif isinstance(msg, dict):
+                            # Already in dict format
+                            api_messages.append({
+                                "role": str(msg.get('role', 'unknown')),
+                                "content": str(msg.get('content', ''))
+                            })
+                    
+                    request_data['messages'] = api_messages
+                else:
+                    # Fallback for non-list messages
+                    request_data['messages'] = [{"role": "user", "content": str(messages)}]
+            
+            # Extract other common LLM parameters
+            for param in ['temperature', 'max_tokens', 'top_p', 'frequency_penalty', 'presence_penalty', 'stop']:
+                if param in method_args and method_args[param] is not None:
+                    request_data[param] = method_args[param]
+            
+            # Only return if we have at least messages
+            return request_data if 'messages' in request_data else None
+            
+        except Exception as e:
+            # Log error but don't fail the hook
+            logger.error(f"Failed to extract request JSON: {str(e)}")
+            return None
+    
+    def _extract_response_json(self, result: Any) -> Optional[Dict]:
+        """
+        Extract full response JSON in the format received from LLM APIs.
+        
+        Args:
+            result: Raw result from the LLM method
+            
+        Returns:
+            Dictionary matching the API response format, or None if extraction fails
+        """
+        try:
+            response_data = {}
+            
+            # Extract response text and build proper API format
+            if isinstance(result, str):
+                response_content = result
+            elif isinstance(result, dict):
+                response_content = None
+                for field in ['content', 'text', 'response', 'message']:
+                    if field in result:
+                        response_content = str(result[field])
+                        break
+                if not response_content:
+                    response_content = str(result)
+            elif hasattr(result, 'content'):
+                response_content = str(result.content)
+            elif hasattr(result, 'text'):
+                response_content = str(result.text)
+            else:
+                response_content = str(result)
+            
+            if response_content:
+                response_data['choices'] = [{
+                    "message": {
+                        "role": "assistant", 
+                        "content": response_content
+                    },
+                    "finish_reason": "stop"
+                }]
+            
+            # Extract usage information if available
+            usage = self._extract_token_usage(result)
+            if usage:
+                response_data['usage'] = usage
+            
+            # Add model info if available in result
+            if hasattr(result, 'model') or (isinstance(result, dict) and 'model' in result):
+                model = getattr(result, 'model', None) or result.get('model')
+                if model:
+                    response_data['model'] = str(model)
+            
+            return response_data if response_data else None
+            
+        except Exception as e:
+            # Log error but don't fail the hook
+            logger.error(f"Failed to extract response JSON: {str(e)}")
+            return None
+    
     def _calculate_duration(self, start_time_us: Optional[int], end_time_us: Optional[int]) -> int:
         """Calculate interaction duration in milliseconds."""
         if start_time_us and end_time_us:
             return int((end_time_us - start_time_us) / 1000)  # Convert microseconds to milliseconds
         return 0
     
-    def _infer_purpose(self, prompt_text: str) -> str:
-        """Infer the purpose of the LLM interaction from prompt."""
-        prompt_lower = str(prompt_text).lower()
+    def _infer_purpose_from_json(self, request_json: Optional[Dict]) -> str:
+        """Infer the purpose of the LLM interaction from request JSON."""
+        if not request_json or 'messages' not in request_json:
+            return "processing"
         
-        if any(word in prompt_lower for word in ['analyze', 'analysis', 'investigate']):
+        # Analyze message content to infer purpose
+        all_content = ""
+        for message in request_json['messages']:
+            if isinstance(message, dict) and 'content' in message:
+                all_content += " " + str(message['content'])
+        
+        content_lower = all_content.lower()
+        
+        if any(word in content_lower for word in ['analyze', 'analysis', 'investigate']):
             return "analysis"
-        elif any(word in prompt_lower for word in ['fix', 'resolve', 'solve', 'repair']):
+        elif any(word in content_lower for word in ['fix', 'resolve', 'solve', 'repair']):
             return "resolution"
-        elif any(word in prompt_lower for word in ['check', 'status', 'inspect']):
+        elif any(word in content_lower for word in ['check', 'status', 'inspect']):
             return "inspection"
-        elif any(word in prompt_lower for word in ['plan', 'strategy', 'approach']):
+        elif any(word in content_lower for word in ['plan', 'strategy', 'approach']):
             return "planning"
         else:
             return "processing"
@@ -489,16 +546,17 @@ class BaseMCPHook(BaseEventHook):
             return
         
         # Extract communication details
-        method_args = kwargs.get('args', {})
-        result = kwargs.get('result')
+        # Note: The HookContext spreads data directly into kwargs, not under 'args'
+        method_args = kwargs  # All data is spread directly into kwargs
+        result = kwargs  # Result data is also spread directly into kwargs, not under 'result' key
         error = kwargs.get('error')
         success = not bool(error)
         
         # Extract MCP-specific data
-        server_name = method_args.get('server_name', 'unknown')
+        server_name = self._extract_server_name(method_args, kwargs)
         communication_type = self._infer_communication_type(kwargs.get('method', ''), method_args)
-        tool_name = method_args.get('tool_name')
-        tool_arguments = method_args.get('tool_arguments') or method_args.get('arguments')
+        tool_name = self._extract_tool_name(method_args)
+        tool_arguments = self._extract_tool_arguments(method_args)
         tool_result = self._extract_tool_result(result) if success else None
         available_tools = self._extract_available_tools(result) if communication_type == "tool_list" else None
         
@@ -592,6 +650,162 @@ class BaseMCPHook(BaseEventHook):
                 return f"Execute {tool_name} via {server_name}"
         else:
             return f"Communicate with {server_name}"
+    
+    def _extract_server_name(self, method_args: Dict, kwargs: Dict) -> str:
+        """Extract server name from method arguments with fallbacks."""
+        # Try direct extraction first
+        if 'server_name' in method_args and method_args['server_name']:
+            return str(method_args['server_name'])
+        
+        # Try from other context if available
+        if 'server' in method_args and method_args['server']:
+            return str(method_args['server'])
+            
+        # Try from kwargs context
+        if 'server_name' in kwargs and kwargs['server_name']:
+            return str(kwargs['server_name'])
+            
+        return "unknown"
+    
+    def _extract_tool_name(self, method_args: Dict) -> Optional[str]:
+        """Extract tool name from method arguments."""
+        # Try 'tool_name' first
+        if 'tool_name' in method_args and method_args['tool_name']:
+            return str(method_args['tool_name'])
+        
+        # Try 'tool' as fallback
+        if 'tool' in method_args and method_args['tool']:
+            return str(method_args['tool'])
+            
+        return None
+    
+    def _extract_tool_arguments(self, method_args: Dict) -> Optional[Dict]:
+        """Extract tool arguments from method arguments."""
+        # Try 'tool_arguments' first (what MCP client should pass)
+        if 'tool_arguments' in method_args and method_args['tool_arguments']:
+            args = method_args['tool_arguments']
+            if isinstance(args, dict):
+                return args
+            else:
+                return {"arguments": args}
+        
+        # Try 'arguments' as fallback
+        if 'arguments' in method_args and method_args['arguments']:
+            args = method_args['arguments']
+            if isinstance(args, dict):
+                return args
+            else:
+                return {"arguments": args}
+        
+        # Try 'parameters' as another fallback
+        if 'parameters' in method_args and method_args['parameters']:
+            args = method_args['parameters']
+            if isinstance(args, dict):
+                return args
+            else:
+                return {"parameters": args}
+                
+        return None
+
+
+class HookContext:
+    """
+    Context manager for hook execution during service operations.
+    
+    Provides automatic hook triggering with proper error handling and timing.
+    Restored after cleanup to fix real-time dashboard updates.
+    """
+    
+    def __init__(self, service_type: str, method_name: str, session_id: str, **kwargs):
+        """
+        Initialize hook context.
+        
+        Args:
+            service_type: Service type (e.g., 'llm', 'mcp')
+            method_name: Method being called (e.g., 'generate_response', 'call_tool')
+            session_id: Session ID for tracking
+            **kwargs: Additional context data to pass to hooks
+        """
+        self.service_type = service_type
+        self.method_name = method_name
+        self.session_id = session_id
+        self.context_data = kwargs.copy()
+        self.start_time_us = None
+        self.request_id = None
+        self.hook_manager = get_hook_manager()
+        
+        # Generate unique request ID
+        import uuid
+        self.request_id = f"{service_type}_{uuid.uuid4().hex[:8]}"
+        
+    async def __aenter__(self):
+        """Enter async context - start timing."""
+        self.start_time_us = now_us()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context - handle errors if any occurred."""
+        if exc_type is not None:
+            # An error occurred during operation
+            duration_ms = (now_us() - self.start_time_us) / 1000 if self.start_time_us else 0
+            
+            error_data = {
+                'session_id': self.session_id,
+                'request_id': self.request_id,
+                'method_name': self.method_name,
+                'error_message': str(exc_val),
+                'duration_ms': duration_ms,
+                'timestamp_us': now_us(),
+                'success': False,
+                **self.context_data
+            }
+            
+            # Trigger error hooks
+            error_event = f"{self.service_type}.error"
+            await self.hook_manager.trigger_hooks(error_event, **error_data)
+        
+        return False  # Don't suppress exceptions
+    
+    async def complete_success(self, result_data: Dict[str, Any]):
+        """
+        Complete the operation successfully and trigger post hooks.
+        
+        Args:
+            result_data: Result data from the operation
+        """
+        duration_ms = (now_us() - self.start_time_us) / 1000 if self.start_time_us else 0
+        
+        # Prepare success data for hooks
+        success_data = {
+            'session_id': self.session_id,
+            'request_id': self.request_id,
+            'method_name': self.method_name,
+            'duration_ms': duration_ms,
+            'timestamp_us': now_us(),
+            'success': True,
+            **self.context_data,
+            **result_data
+        }
+        
+        # Generate human-readable step description
+        if self.service_type == 'llm':
+            step_desc = f"LLM analysis using {self.context_data.get('model', 'unknown model')}"
+        elif self.service_type == 'mcp':
+            tool_name = self.context_data.get('tool_name') or result_data.get('tool_name', 'unknown tool')
+            server_name = self.context_data.get('server_name') or result_data.get('server_name', 'unknown server')
+            step_desc = f"Execute {tool_name} via {server_name}"
+        else:
+            step_desc = f"{self.service_type} operation"
+        
+        success_data['step_description'] = step_desc
+        
+        # Trigger post hooks (these should trigger dashboard/history updates)
+        post_event = f"{self.service_type}.post"
+        await self.hook_manager.trigger_hooks(post_event, **success_data)
+    
+    def get_request_id(self) -> str:
+        """Get the unique request ID for this operation."""
+        return self.request_id
 
 
 # Global hook manager instance

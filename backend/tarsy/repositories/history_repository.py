@@ -407,11 +407,11 @@ class HistoryRepository:
                     "step_description": interaction.step_description,
                     "duration_ms": interaction.duration_ms,
                     "details": {
-                        "prompt": interaction.prompt_text or "No prompt available",
-                        "response": interaction.response_text or "No response available", 
+                        "request_json": interaction.request_json,
+                        "response_json": interaction.response_json,
                         "model_name": interaction.model_used,
                         "tokens_used": interaction.token_usage,
-                        "temperature": None  # Not stored in current model
+                        "temperature": interaction.request_json.get('temperature') if interaction.request_json else None
                     }
                 })
             

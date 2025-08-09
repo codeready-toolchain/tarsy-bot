@@ -37,6 +37,7 @@ class TestMCPServerRegistryExtended:
             )
         }
 
+    @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_init_without_configured_servers(self):
         """Test MCPServerRegistry initialization without configured servers."""
         registry = MCPServerRegistry()
@@ -45,6 +46,7 @@ class TestMCPServerRegistryExtended:
         assert len(registry.static_servers) > 0
         assert "kubernetes-server" in registry.get_all_server_ids()
 
+    @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_init_with_configured_servers(self, sample_mcp_server_configs):
         """Test MCPServerRegistry initialization with configured servers."""
         registry = MCPServerRegistry(configured_servers=sample_mcp_server_configs)
@@ -54,6 +56,7 @@ class TestMCPServerRegistryExtended:
             assert server_id in registry.get_all_server_ids()
             assert registry.get_server_config(server_id) is not None
 
+    @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_init_with_empty_configured_servers(self):
         """Test MCPServerRegistry initialization with empty configured servers."""
         empty_configs = {}

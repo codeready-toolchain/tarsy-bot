@@ -40,14 +40,14 @@ class LLMHooks(BaseLLMHook):
         # Log the interaction to history service
         success = self.history_service.log_llm_interaction(
             session_id=session_id,
-            prompt_text=interaction_data["prompt_text"][:10000000],  # Limit to 10MB - SQLite supports up to 1GB
-            response_text=interaction_data["response_text"][:10000000],  # Always has content (success or error message)
             model_used=interaction_data["model_used"],
             step_description=interaction_data["step_description"],
             tool_calls=interaction_data["tool_calls"],
             tool_results=interaction_data["tool_results"],
             token_usage=interaction_data["token_usage"],
-            duration_ms=interaction_data["duration_ms"]
+            duration_ms=interaction_data["duration_ms"],
+            request_json=interaction_data.get("request_json"),
+            response_json=interaction_data.get("response_json")
         )
         
         if success:

@@ -268,8 +268,8 @@ class TestChannelType:
     @pytest.mark.unit
     def test_session_channel_generation(self):
         """Test session channel name generation."""
-        channel = ChannelType.session_channel("session_123")
-        assert channel == "session_session_123"
+        channel = ChannelType.session_channel("123")
+        assert channel == "session_123"
     
     @pytest.mark.unit
     def test_is_session_channel(self):

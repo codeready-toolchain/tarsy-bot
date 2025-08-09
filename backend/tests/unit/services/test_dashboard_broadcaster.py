@@ -53,7 +53,7 @@ class TestDashboardBroadcaster:
     async def test_broadcast_message_with_exclusions(self, broadcaster, mock_connection_manager):
         """Test broadcasting with user exclusions."""
         message = SessionUpdate(session_id="123", data={"status": "active"})
-        channel = f"session:123"
+        channel = ChannelType.session_channel("123")
         exclude_users = {"user1"}
         
         sent_count = await broadcaster.broadcast_message(channel, message, exclude_users)

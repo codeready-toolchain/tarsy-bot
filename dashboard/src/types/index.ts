@@ -39,8 +39,20 @@ export interface TimelineItem {
 
 // Phase 3: LLM interaction details
 export interface LLMInteraction {
-  prompt: string;
-  response: string;
+  // New JSON-first shape coming from backend
+  request_json?: {
+    model?: string;
+    messages?: Array<{ role: string; content: any }>;
+    temperature?: number;
+    [key: string]: any;
+  };
+  response_json?: {
+    choices?: any[];
+    usage?: any;
+    [key: string]: any;
+  };
+
+  // Normalized metadata
   model_name: string;
   tokens_used?: number;
   temperature?: number;

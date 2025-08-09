@@ -61,7 +61,22 @@ function TimelineVisualization({
         switch (item.type) {
           case 'llm':
             const llmDetails = item.details as any;
-            if (llmDetails.prompt) {
+            // Prefer JSON-first request/response
+            const msgs: any[] | undefined = llmDetails.request_json?.messages;
+            const choice = llmDetails.response_json?.choices?.[0];
+            const respContent = choice?.message?.content;
+            if (Array.isArray(msgs) && msgs.length > 0) {
+              const system = msgs.find((m: any) => m?.role === 'system');
+              const user = msgs.find((m: any) => m?.role === 'user');
+              if (system?.content !== undefined) {
+                const s = typeof system.content === 'string' ? system.content : JSON.stringify(system.content);
+                formatted += `  SYSTEM:\n  ${s.replace(/\n/g, '\n  ')}\n\n`;
+              }
+              if (user?.content !== undefined) {
+                const u = typeof user.content === 'string' ? user.content : JSON.stringify(user.content);
+                formatted += `  USER:\n  ${u.replace(/\n/g, '\n  ')}\n\n`;
+              }
+            } else if (llmDetails.prompt) {
               // Parse LLM messages if they're in Python format
               const prompt = llmDetails.prompt.trim();
               if (prompt.startsWith('[') && prompt.includes('LLMMessage(') && prompt.includes('role=')) {
@@ -118,16 +133,19 @@ function TimelineVisualization({
                 // NO TRUNCATION - Full prompt
                 formatted += `  PROMPT: ${llmDetails.prompt.replace(/\n/g, '\n  ')}\n`;
               }
-              
-              if (llmDetails.response) {
-                // NO TRUNCATION - Full response
-                formatted += `  RESPONSE: ${llmDetails.response.replace(/\n/g, '\n  ')}\n`;
-              }
-              
-              if (llmDetails.model_name) formatted += `  MODEL: ${llmDetails.model_name}\n`;
-              if (llmDetails.tokens_used) formatted += `  TOKENS: ${llmDetails.tokens_used}\n`;
-              if (llmDetails.temperature !== undefined) formatted += `  TEMPERATURE: ${llmDetails.temperature}\n`;
             }
+
+            // Response
+            if (respContent !== undefined) {
+              const r = typeof respContent === 'string' ? respContent : JSON.stringify(respContent);
+              formatted += `  RESPONSE: ${r.replace(/\n/g, '\n  ')}\n`;
+            } else if (llmDetails.response) {
+              formatted += `  RESPONSE: ${llmDetails.response.replace(/\n/g, '\n  ')}\n`;
+            }
+
+            if (llmDetails.model_name) formatted += `  MODEL: ${llmDetails.model_name}\n`;
+            if (llmDetails.tokens_used) formatted += `  TOKENS: ${llmDetails.tokens_used}\n`;
+            if (llmDetails.temperature !== undefined) formatted += `  TEMPERATURE: ${llmDetails.temperature}\n`;
             break;
             
           case 'mcp':

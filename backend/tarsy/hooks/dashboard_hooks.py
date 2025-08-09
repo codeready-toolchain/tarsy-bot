@@ -35,7 +35,8 @@ class DashboardLLMHooks(BaseLLMHook):
         """
         super().__init__("llm_dashboard_broadcast_hook")
         self.dashboard_manager = dashboard_manager
-        self.update_service = update_service
+        # Use provided update_service or fall back to dashboard_manager's update_service
+        self.update_service = update_service or getattr(dashboard_manager, 'update_service', None)
     
     async def process_llm_interaction(self, session_id: str, interaction_data: Dict[str, Any]) -> None:
         """
@@ -58,19 +59,29 @@ class DashboardLLMHooks(BaseLLMHook):
             "error_message": interaction_data["error_message"]
         }
         
-        # Include truncated content for debugging (not full content due to size)
-        if interaction_data["prompt_text"]:
-            prompt_text = interaction_data["prompt_text"]
-            session_update_data["prompt_preview"] = prompt_text[:200] + "..." if len(prompt_text) > 200 else prompt_text
-        if interaction_data["response_text"]:
-            response_text = interaction_data["response_text"]
+        # Include JSON format for proper dashboard display
+        session_update_data["request_json"] = interaction_data.get("request_json")
+        session_update_data["response_json"] = interaction_data.get("response_json")
+        
+        # Extract response text from JSON for quick preview
+        response_json = interaction_data.get("response_json")
+        response_text = ""
+        if response_json:
+            # Extract from OpenAI-style response format
+            if 'choices' in response_json and response_json['choices']:
+                choice = response_json['choices'][0]
+                if isinstance(choice, dict) and 'message' in choice:
+                    message = choice['message']
+                    if isinstance(message, dict) and 'content' in message:
+                        response_text = str(message['content'])
+        
+        if response_text:
             session_update_data["response_preview"] = response_text[:200] + "..." if len(response_text) > 200 else response_text
         
         # Use dashboard update service if available, otherwise fallback to direct broadcasting
-        dashboard_manager = self.dashboard_manager
-        if dashboard_manager.update_service:
+        if self.update_service:
             # Use update service for session tracking and immediate broadcasting
-            sent_count = await self.dashboard_manager.update_service.process_llm_interaction(
+            sent_count = await self.update_service.process_llm_interaction(
                 session_id, session_update_data
             )
             
@@ -121,8 +132,9 @@ class DashboardMCPHooks(BaseMCPHook):
             update_service: Optional dashboard update service for intelligent batching
         """
         super().__init__("mcp_dashboard_broadcast_hook")
-        self.update_service = update_service
         self.dashboard_manager = dashboard_manager
+        # Use provided update_service or fall back to dashboard_manager's update_service
+        self.update_service = update_service or getattr(dashboard_manager, 'update_service', None)
     
     async def process_mcp_communication(self, session_id: str, communication_data: Dict[str, Any]) -> None:
         """
@@ -155,10 +167,9 @@ class DashboardMCPHooks(BaseMCPHook):
             session_update_data["tool_result_preview"] = result_str[:300] + "..." if len(result_str) > 300 else result_str
         
         # Use dashboard update service if available, otherwise fallback to direct broadcasting
-        dashboard_manager = self.dashboard_manager
-        if dashboard_manager.update_service:
+        if self.update_service:
             # Use update service for session tracking and immediate broadcasting
-            sent_count = await self.dashboard_manager.update_service.process_mcp_communication(
+            sent_count = await self.update_service.process_mcp_communication(
                 session_id, session_update_data
             )
             
@@ -208,13 +219,13 @@ def register_dashboard_hooks(dashboard_manager):
     
     hook_manager = get_hook_manager()
     
-    # Register dashboard LLM hooks
-    llm_dashboard_hooks = DashboardLLMHooks(dashboard_manager)
+    # Register dashboard LLM hooks with update_service reference
+    llm_dashboard_hooks = DashboardLLMHooks(dashboard_manager, dashboard_manager.update_service)
     hook_manager.register_hook("llm.post", llm_dashboard_hooks)
     hook_manager.register_hook("llm.error", llm_dashboard_hooks)
     
-    # Register dashboard MCP hooks
-    mcp_dashboard_hooks = DashboardMCPHooks(dashboard_manager)
+    # Register dashboard MCP hooks with update_service reference
+    mcp_dashboard_hooks = DashboardMCPHooks(dashboard_manager, dashboard_manager.update_service)
     hook_manager.register_hook("mcp.post", mcp_dashboard_hooks)
     hook_manager.register_hook("mcp.error", mcp_dashboard_hooks)
     

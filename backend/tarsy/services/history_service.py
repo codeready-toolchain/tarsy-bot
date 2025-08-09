@@ -299,28 +299,28 @@ class HistoryService:
     def log_llm_interaction(
         self,
         session_id: str,
-        prompt_text: str,
-        response_text: str,
         model_used: str,
         step_description: str,
         tool_calls: Optional[Dict] = None,
         tool_results: Optional[Dict] = None,
         token_usage: Optional[Dict] = None,
-        duration_ms: int = 0
+        duration_ms: int = 0,
+        request_json: Optional[Dict] = None,
+        response_json: Optional[Dict] = None
     ) -> bool:
         """
         Log an LLM interaction with comprehensive details.
         
         Args:
             session_id: The session identifier
-            prompt_text: Full prompt sent to LLM
-            response_text: Complete response from LLM
             model_used: LLM model identifier
             step_description: Human-readable description of this step
             tool_calls: Tool calls made during interaction
             tool_results: Results from tool calls
             token_usage: Token usage statistics
             duration_ms: Interaction duration in milliseconds
+            request_json: Full JSON request sent to LLM API
+            response_json: Full JSON response received from LLM API
             
         Returns:
             True if logged successfully, False otherwise
@@ -336,14 +336,14 @@ class HistoryService:
                 
                 interaction = LLMInteraction(
                     session_id=session_id,
-                    prompt_text=prompt_text,
-                    response_text=response_text,
                     model_used=model_used,
                     step_description=step_description,
                     tool_calls=tool_calls,
                     tool_results=tool_results,
                     token_usage=token_usage,
-                    duration_ms=duration_ms
+                    duration_ms=duration_ms,
+                    request_json=request_json,
+                    response_json=response_json
                 )
                 
                 repo.create_llm_interaction(interaction)

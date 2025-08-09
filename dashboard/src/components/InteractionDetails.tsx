@@ -26,6 +26,23 @@ function InteractionDetails({
   expanded = false
 }: InteractionDetailsProps) {
 
+  const extractSystemUserFromRequest = (llm: LLMInteraction) => {
+    const systemMsg = llm.request_json?.messages?.find((m: any) => m?.role === 'system');
+    const userMsg = llm.request_json?.messages?.find((m: any) => m?.role === 'user');
+    return {
+      system: typeof systemMsg?.content === 'string' ? systemMsg.content : JSON.stringify(systemMsg?.content ?? ''),
+      user: typeof userMsg?.content === 'string' ? userMsg.content : JSON.stringify(userMsg?.content ?? ''),
+    };
+  };
+
+  const extractResponseText = (llm: LLMInteraction) => {
+    const choice = llm.response_json?.choices?.[0];
+    const content = choice?.message?.content;
+    if (typeof content === 'string') return content;
+    if (content !== undefined) return JSON.stringify(content);
+    return '';
+  };
+
   const renderLLMDetails = (llmDetails: LLMInteraction) => (
     <Stack spacing={2}>
       <Box>
@@ -34,28 +51,165 @@ function InteractionDetails({
             Prompt
           </Typography>
           <CopyButton
-            text={llmDetails.prompt}
+            text={(() => {
+              const { system, user } = extractSystemUserFromRequest(llmDetails);
+              if (system || user) {
+                return `System:\n${system}\n\nUser:\n${user}`;
+              }
+              return '';
+            })()}
             variant="icon"
             size="small"
             tooltip="Copy prompt"
           />
         </Box>
-                                                    <JsonDisplay data={llmDetails.prompt} />
+        {(() => {
+          const { system, user } = extractSystemUserFromRequest(llmDetails);
+          if (system || user) {
+            return (
+              <Stack spacing={2}>
+                {system && (
+                  <Box>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      mb: 1
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{
+                          px: 1,
+                          py: 0.5,
+                          bgcolor: 'secondary.main',
+                          color: 'secondary.contrastText',
+                          borderRadius: 1,
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          System
+                        </Box>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                        {system.length.toLocaleString()} chars
+                      </Typography>
+                    </Box>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        p: 1.5,
+                        bgcolor: 'grey.50',
+                        borderRadius: 1,
+                        border: 1,
+                        borderColor: 'divider',
+                        maxHeight: 200,
+                        overflow: 'auto'
+                      }}
+                    >
+                      {system}
+                    </Typography>
+                  </Box>
+                )}
+                {user && (
+                  <Box>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      mb: 1
+                    }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{
+                          px: 1,
+                          py: 0.5,
+                          bgcolor: 'primary.main',
+                          color: 'primary.contrastText',
+                          borderRadius: 1,
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          User
+                        </Box>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                        {user.length.toLocaleString()} chars
+                      </Typography>
+                    </Box>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        p: 1.5,
+                        bgcolor: 'grey.50',
+                        borderRadius: 1,
+                        border: 1,
+                        borderColor: 'divider',
+                        maxHeight: 200,
+                        overflow: 'auto'
+                      }}
+                    >
+                      {user}
+                    </Typography>
+                  </Box>
+                )}
+              </Stack>
+            );
+          }
+          return null;
+        })()}
         </Box>
         
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              Response
-            </Typography>
-            <CopyButton
-              text={llmDetails.response}
-              variant="icon"
-              size="small"
-              tooltip="Copy response"
-            />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{
+                px: 1,
+                py: 0.5,
+                bgcolor: 'success.main',
+                color: 'success.contrastText',
+                borderRadius: 1,
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                Response
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                {extractResponseText(llmDetails).length.toLocaleString()} chars
+              </Typography>
+              <CopyButton
+                text={extractResponseText(llmDetails)}
+                variant="icon"
+                size="small"
+                tooltip="Copy response"
+              />
+            </Box>
           </Box>
-         <JsonDisplay data={llmDetails.response} />
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              p: 1.5,
+              bgcolor: 'grey.50',
+              borderRadius: 1,
+              border: 1,
+              borderColor: 'divider',
+              maxHeight: 300,
+              overflow: 'auto'
+            }}
+          >
+            {extractResponseText(llmDetails)}
+          </Typography>
       </Box>
 
       {/* Model metadata */}
@@ -199,75 +353,34 @@ function InteractionDetails({
   // Get formatted, human-readable text using the same parsing logic as display
   const getFormattedInteractionText = () => {
     switch (type) {
-      case 'llm':
+      case 'llm': {
         const llm = details as LLMInteraction;
         // Parse and format LLM messages nicely
         let formatted = '=== LLM INTERACTION ===\n\n';
         
-        // Try to parse the prompt for structured messages
-        const prompt = llm.prompt.trim();
-        if (prompt.startsWith('[') && prompt.includes('LLMMessage(') && prompt.includes('role=')) {
-          // Parse Python LLMMessage objects
-          const messageParts = prompt.split('LLMMessage(').slice(1);
-          messageParts.forEach((part) => {
-            const roleMatch = part.match(/role='([^']+)'/);
-            if (!roleMatch) return;
-            
-            const role = roleMatch[1];
-            const contentStartMatch = part.match(/content='(.*)$/s);
-            if (!contentStartMatch) return;
-            
-            let rawContent = contentStartMatch[1];
-            let messageContent = '';
-            
-            // Parse content character by character (same logic as JsonDisplay)
-            let i = 0;
-            let escapeNext = false;
-            
-            while (i < rawContent.length) {
-              const char = rawContent[i];
-              
-              if (escapeNext) {
-                messageContent += char;
-                escapeNext = false;
-              } else if (char === '\\') {
-                messageContent += char;
-                escapeNext = true;
-              } else if (char === "'") {
-                const nextChars = rawContent.substring(i + 1, i + 5);
-                if (nextChars.startsWith(')') || nextChars.match(/^,\s*[a-zA-Z_]+=/) || i === rawContent.length - 1) {
-                  break;
-                }
-                messageContent += char;
-              } else {
-                messageContent += char;
-              }
-              i++;
-            }
-            
-            // Clean up escaped characters
-            messageContent = messageContent
-              .replace(/\\n/g, '\n')
-              .replace(/\\'/g, "'")
-              .replace(/\\"/g, '"')
-              .replace(/\\\\/g, '\\')
-              .replace(/\\t/g, '\t');
-            
-            formatted += `${role.toUpperCase()} MESSAGE:\n`;
-            formatted += `${messageContent}\n\n`;
-          });
-        } else {
-          formatted += `PROMPT:\n${llm.prompt}\n\n`;
+        // New JSON-first formatting
+        if (llm.request_json?.messages?.length) {
+          const system = llm.request_json.messages.find((m: any) => m?.role === 'system');
+          const user = llm.request_json.messages.find((m: any) => m?.role === 'user');
+          if (system) {
+            const s = typeof system.content === 'string' ? system.content : JSON.stringify(system.content);
+            formatted += `SYSTEM:\n${s}\n\n`;
+          }
+          if (user) {
+            const u = typeof user.content === 'string' ? user.content : JSON.stringify(user.content);
+            formatted += `USER:\n${u}\n\n`;
+          }
         }
-        
-        formatted += `RESPONSE:\n${llm.response}\n\n`;
+
+        const resp = extractResponseText(llm);
+        formatted += `RESPONSE:\n${resp}\n\n`;
         formatted += `MODEL: ${llm.model_name}`;
         if (llm.tokens_used) formatted += ` | TOKENS: ${llm.tokens_used}`;
         if (llm.temperature !== undefined) formatted += ` | TEMPERATURE: ${llm.temperature}`;
         
         return formatted;
-        
-      case 'mcp':
+      }
+      case 'mcp': {
         const mcp = details as MCPInteraction;
         let mcpFormatted = '=== MCP TOOL CALL ===\n\n';
         mcpFormatted += `TOOL: ${mcp.tool_name}\n`;
@@ -276,8 +389,8 @@ function InteractionDetails({
         mcpFormatted += `\nPARAMETERS:\n${JSON.stringify(mcp.parameters, null, 2)}\n\n`;
         mcpFormatted += `RESULT:\n${JSON.stringify(mcp.result, null, 2)}`;
         return mcpFormatted;
-        
-      case 'system':
+      }
+      case 'system': {
         const system = details as SystemEvent;
         let systemFormatted = '=== SYSTEM EVENT ===\n\n';
         systemFormatted += `DESCRIPTION:\n${system.description}`;
@@ -285,7 +398,7 @@ function InteractionDetails({
           systemFormatted += `\n\nMETADATA:\n${JSON.stringify(system.metadata, null, 2)}`;
         }
         return systemFormatted;
-        
+      }
       default:
         return '';
     }
@@ -294,15 +407,25 @@ function InteractionDetails({
   // Get raw text (original function, renamed for clarity)
   const getRawInteractionText = () => {
     switch (type) {
-      case 'llm':
+      case 'llm': {
         const llm = details as LLMInteraction;
-        return `${llm.prompt}\n\n---\n\n${llm.response}`;
-      case 'mcp':
+        const system = llm.request_json?.messages?.find((m: any) => m?.role === 'system');
+        const user = llm.request_json?.messages?.find((m: any) => m?.role === 'user');
+        const s = system ? (typeof system.content === 'string' ? system.content : JSON.stringify(system.content)) : '';
+        const u = user ? (typeof user.content === 'string' ? user.content : JSON.stringify(user.content)) : '';
+        const choice = llm.response_json?.choices?.[0];
+        const resp = choice?.message?.content ?? '';
+        const respStr = typeof resp === 'string' ? resp : JSON.stringify(resp);
+        return `${s}${u ? '\n\n' + u : ''}\n\n---\n\n${respStr}`;
+      }
+      case 'mcp': {
         const mcp = details as MCPInteraction;
         return `${mcp.tool_name}(${JSON.stringify(mcp.parameters, null, 2)})\n\n---\n\n${JSON.stringify(mcp.result, null, 2)}`;
-      case 'system':
+      }
+      case 'system': {
         const system = details as SystemEvent;
         return `${system.description}${system.metadata ? '\n\n' + JSON.stringify(system.metadata, null, 2) : ''}`;
+      }
       default:
         return '';
     }
