@@ -7,11 +7,11 @@ for all repository classes in the system.
 
 import logging
 from abc import ABC
-from typing import Any, Generic, List, Optional, TypeVar
+from typing import Any, Generic, Optional, TypeVar
 
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import Session, SQLModel, func, select
+from sqlmodel import Session, SQLModel, select
 
 logger = logging.getLogger(__name__)
 
@@ -79,31 +79,6 @@ class BaseRepository(ABC, Generic[ModelType]):
             logger.error(f"Failed to get {self.model_class.__name__} by ID {id_value}: {str(e)}")
             raise
     
-    def get_all(self, limit: Optional[int] = None, offset: Optional[int] = None) -> List[ModelType]:
-        """
-        Retrieve all records with optional pagination.
-        
-        Args:
-            limit: Maximum number of records to return
-            offset: Number of records to skip
-            
-        Returns:
-            List of model instances
-        """
-        try:
-            statement = select(self.model_class)
-            
-            if offset is not None:
-                statement = statement.offset(offset)
-            if limit is not None:
-                statement = statement.limit(limit)
-                
-            results = self.session.exec(statement).all()
-            return results
-        except Exception as e:
-            logger.error(f"Failed to get all {self.model_class.__name__} records: {str(e)}")
-            raise
-    
     def update(self, obj: ModelType) -> ModelType:
         """
         Update an existing record in the database.
@@ -123,44 +98,6 @@ class BaseRepository(ABC, Generic[ModelType]):
         except Exception as e:
             self.session.rollback()
             logger.error(f"Failed to update {self.model_class.__name__}: {str(e)}")
-            raise
-    
-    def delete(self, id_value: Any) -> bool:
-        """
-        Delete a record by its primary key.
-        
-        Args:
-            id_value: The primary key value
-            
-        Returns:
-            True if deleted successfully, False if record not found
-        """
-        try:
-            obj = self.get_by_id(id_value)
-            if obj:
-                self.session.delete(obj)
-                self.session.commit()
-                logger.debug(f"Deleted {self.model_class.__name__} with ID: {id_value}")
-                return True
-            return False
-        except Exception as e:
-            self.session.rollback()
-            logger.error(f"Failed to delete {self.model_class.__name__} with ID {id_value}: {str(e)}")
-            raise
-    
-    def count(self) -> int:
-        """
-        Count total records in the table.
-        
-        Returns:
-            Total number of records
-        """
-        try:
-            statement = select(func.count()).select_from(self.model_class)
-            result = self.session.exec(statement).first()
-            return result or 0
-        except Exception as e:
-            logger.error(f"Failed to count {self.model_class.__name__} records: {str(e)}")
             raise
     
     def _get_primary_key_field(self) -> str:

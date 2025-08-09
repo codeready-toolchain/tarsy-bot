@@ -68,19 +68,6 @@ class SystemHealthUpdate(WebSocketMessage):
     channel: str = "system_health"
 
 
-class AlertStatusUpdate(WebSocketMessage):
-    """Alert processing status update."""
-    type: Literal["alert_status"] = "alert_status"
-    alert_id: str
-    status: str
-    progress: int
-    current_step: str
-    current_agent: Optional[str] = None
-    assigned_mcp_servers: Optional[list] = None
-    result: Optional[str] = None
-    error: Optional[str] = None
-
-
 # Union type for all possible incoming messages from clients
 IncomingMessage = Union[SubscriptionMessage]
 
@@ -91,8 +78,7 @@ OutgoingMessage = Union[
     ErrorMessage,
     DashboardUpdate,
     SessionUpdate,
-    SystemHealthUpdate,
-    AlertStatusUpdate
+    SystemHealthUpdate
 ]
 
 

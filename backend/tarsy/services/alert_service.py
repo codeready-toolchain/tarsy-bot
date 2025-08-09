@@ -9,7 +9,7 @@ performance and consistency with the rest of the system.
 """
 
 import uuid
-from typing import Dict, Optional
+from typing import Optional
 
 from cachetools import TTLCache
 from tarsy.config.settings import Settings
@@ -35,8 +35,6 @@ class AlertService:
     This class implements a multi-layer architecture that delegates 
     processing to specialized agents based on alert type.
     """
-    
-
     
     def __init__(self, settings: Settings):
         """
@@ -168,7 +166,7 @@ class AlertService:
                 self.store_alert_session_mapping(api_alert_id, session_id)
             
             # Update history session with agent selection
-            self._update_session_status(session_id, AlertSessionStatus.IN_PROGRESS, f"Selected agent: {agent_class_name}")
+            self._update_session_status(session_id, AlertSessionStatus.IN_PROGRESS)
             
             # Step 3: Extract runbook from alert data
             runbook = alert.get_runbook()
@@ -343,7 +341,10 @@ class AlertService:
             
             # Use provided agent class name or determine it
             if agent_class_name is None:
-                agent_class_name = self.agent_registry.get_agent_for_alert_type_safe(alert.alert_type)
+                try:
+                    agent_class_name = self.agent_registry.get_agent_for_alert_type(alert.alert_type)
+                except ValueError:
+                    agent_class_name = None
             agent_type = agent_class_name or 'unknown'
             
             # Generate unique alert ID for this processing session
@@ -384,14 +385,13 @@ class AlertService:
         """Check if an alert ID exists (has been generated)."""
         return api_alert_id in self.valid_alert_ids
     
-    def _update_session_status(self, session_id: Optional[str], status: str, message: Optional[str] = None):
+    def _update_session_status(self, session_id: Optional[str], status: str):
         """
         Update history session status.
         
         Args:
             session_id: Session ID to update
             status: New status
-            message: Optional status message (not used by current history service API)
         """
         try:
             if not session_id or not self.history_service or not self.history_service.enabled:

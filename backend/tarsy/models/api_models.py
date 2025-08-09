@@ -11,17 +11,6 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
-# Request Models
-class SessionFilters(BaseModel):
-    """Query filters for session list endpoint."""
-    status: Optional[str] = Field(None, description="Filter by session status (e.g., 'in_progress', 'completed', 'error')")
-    agent_type: Optional[str] = Field(None, description="Filter by agent type (e.g., 'kubernetes')")
-    alert_type: Optional[str] = Field(None, description="Filter by alert type (e.g., 'NamespaceTerminating')")
-    start_date_us: Optional[int] = Field(None, description="Filter sessions started after this timestamp (microseconds since epoch UTC)")
-    end_date_us: Optional[int] = Field(None, description="Filter sessions started before this timestamp (microseconds since epoch UTC)")
-    page: int = Field(1, ge=1, description="Page number for pagination")
-    page_size: int = Field(20, ge=1, le=100, description="Number of items per page (1-100)")
-
 # Response Models
 class PaginationInfo(BaseModel):
     """Pagination information for paginated responses."""

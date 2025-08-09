@@ -5,7 +5,7 @@
  * and provide various formatting options for display to users in their local timezone.
  */
 
-import { formatDistanceToNow, format, parseISO, isValid } from 'date-fns';
+import { formatDistanceToNow, format, isValid } from 'date-fns';
 
 /**
  * Convert Unix timestamp (microseconds) to JavaScript Date object
@@ -114,102 +114,8 @@ export const isWithinLastMinutes = (timestampUs: number, minutes: number): boole
 };
 
 /**
- * Check if a timestamp is today
- */
-export const isToday = (timestampUs: number): boolean => {
-  const date = timestampUsToDate(timestampUs);
-  const today = new Date();
-  return date.toDateString() === today.toDateString();
-};
-
-/**
- * Get relative time status for UI indicators
- */
-export const getTimeStatus = (timestampUs: number): 'recent' | 'today' | 'older' => {
-  if (isWithinLastMinutes(timestampUs, 30)) {
-    return 'recent';
-  }
-  if (isToday(timestampUs)) {
-    return 'today';
-  }
-  return 'older';
-};
-
-/**
- * Sort timestamps in chronological order (oldest first)
- */
-export const sortTimestampsAsc = <T extends { timestamp_us: number }>(items: T[]): T[] => {
-  return [...items].sort((a, b) => a.timestamp_us - b.timestamp_us);
-};
-
-/**
  * Sort timestamps in reverse chronological order (newest first)
  */
 export const sortTimestampsDesc = <T extends { timestamp_us: number }>(items: T[]): T[] => {
   return [...items].sort((a, b) => b.timestamp_us - a.timestamp_us);
 };
-
-/**
- * Group items by date
- */
-export const groupByDate = <T extends { timestamp_us: number }>(
-  items: T[]
-): Record<string, T[]> => {
-  const groups: Record<string, T[]> = {};
-  
-  items.forEach(item => {
-    const date = timestampUsToDate(item.timestamp_us);
-    const dateKey = format(date, 'yyyy-MM-dd');
-    
-    if (!groups[dateKey]) {
-      groups[dateKey] = [];
-    }
-    groups[dateKey].push(item);
-  });
-  
-  return groups;
-};
-
-/**
- * Create timestamp range for filtering (start of day to end of day)
- */
-export const createDayRange = (date: Date): { start: number; end: number } => {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
-  
-  return {
-    start: start.getTime() * 1000, // Convert to microseconds
-    end: end.getTime() * 1000      // Convert to microseconds
-  };
-};
-
-/**
- * Format timestamp for data export (ISO string)
- */
-export const formatForExport = (timestampUs: number): string => {
-  return timestampUsToDate(timestampUs).toISOString();
-};
-
-/**
- * Parse various timestamp formats and convert to Unix microseconds
- * Handles backwards compatibility with ISO strings if needed
- */
-export const parseTimestamp = (timestamp: string | number): number => {
-  if (typeof timestamp === 'number') {
-    // Already a Unix timestamp, assume microseconds
-    return timestamp;
-  }
-  
-  // Try to parse as ISO string
-  const date = parseISO(timestamp);
-  if (isValid(date)) {
-    return date.getTime() * 1000; // Convert to microseconds
-  }
-  
-  // Fallback to current time
-  console.warn('Failed to parse timestamp:', timestamp);
-  return getCurrentTimestampUs();
-}; 

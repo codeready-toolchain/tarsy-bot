@@ -42,18 +42,9 @@ class WebSocketService {
     this.userId = 'dashboard-' + Math.random().toString(36).substr(2, 9);
     
     // WebSocket URL configuration
-    // In development, use relative URLs to work with Vite proxy
-    // In production, use the full URL from environment variables
-    if (import.meta.env.DEV) {
-      // Development: use current host with ws protocol
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      this.url = `${protocol}//${host}/ws/dashboard/${this.userId}`;
-    } else {
-      // Production: use environment variable
-      const wsBaseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000';
-      this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
-    }
+    // Always connect to backend server (localhost:8000) regardless of environment
+    const wsBaseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000';
+    this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
 
     // Start periodic health check to recover from permanently disabled state
     this.startHealthCheck();

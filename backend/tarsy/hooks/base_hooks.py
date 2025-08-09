@@ -9,8 +9,6 @@ performance and consistency with the rest of the system.
 """
 
 import asyncio
-import functools
-import inspect
 import logging
 import uuid
 from abc import ABC, abstractmethod
@@ -150,17 +148,6 @@ class BaseEventHook(ABC):
         """
         pass
     
-    def enable(self) -> None:
-        """Enable this hook."""
-        self.is_enabled = True
-        self.error_count = 0
-        logger.info(f"Hook '{self.name}' enabled")
-    
-    def disable(self) -> None:
-        """Disable this hook."""
-        self.is_enabled = False
-        logger.info(f"Hook '{self.name}' disabled")
-    
     async def safe_execute(self, event_type: str, **kwargs) -> bool:
         """
         Safely execute the hook with error handling.
@@ -186,7 +173,7 @@ class BaseEventHook(ABC):
             
             # Disable hook if too many errors
             if self.error_count >= self.max_errors:
-                self.disable()
+                self.is_enabled = False
                 logger.warning(f"Hook '{self.name}' disabled due to excessive errors")
             
             return False
@@ -196,14 +183,13 @@ class HookManager:
     """
     Manages registration and execution of event hooks.
     
-    Provides centralized hook management with async execution,
-    error isolation, and performance monitoring.
+    Provides centralized hook management with async execution
+    and error isolation.
     """
     
     def __init__(self):
         """Initialize hook manager."""
         self.hooks: Dict[str, List[BaseEventHook]] = {}
-        self.execution_stats: Dict[str, Dict[str, int]] = {}
     
     def register_hook(self, event_type: str, hook: BaseEventHook) -> None:
         """
@@ -219,8 +205,6 @@ class HookManager:
         self.hooks[event_type].append(hook)
         logger.info(f"Registered hook '{hook.name}' for event type '{event_type}'")
     
-
-    
     async def trigger_hooks(self, event_type: str, **kwargs) -> Dict[str, bool]:
         """
         Trigger all hooks for a specific event type.
@@ -234,10 +218,6 @@ class HookManager:
         """
         if event_type not in self.hooks:
             return {}
-        
-        # Initialize stats if needed
-        if event_type not in self.execution_stats:
-            self.execution_stats[event_type] = {"total": 0, "success": 0, "failed": 0}
         
         results = {}
         start_time_us = now_us()
@@ -261,15 +241,8 @@ class HookManager:
                     if isinstance(result, Exception):
                         logger.error(f"Hook '{hook_name}' raised exception: {result}")
                         results[hook_name] = False
-                        self.execution_stats[event_type]["failed"] += 1
                     else:
                         results[hook_name] = result
-                        if result:
-                            self.execution_stats[event_type]["success"] += 1
-                        else:
-                            self.execution_stats[event_type]["failed"] += 1
-                
-                self.execution_stats[event_type]["total"] += len(hook_results)
                 
             except Exception as e:
                 logger.error(f"Unexpected error executing hooks for '{event_type}': {e}")
@@ -280,27 +253,6 @@ class HookManager:
         logger.debug(f"Triggered {len(results)} hooks for '{event_type}' in {duration_ms:.1f}ms")
         
         return results
-    
-
-
-
-def create_sync_hook_wrapper(func: Callable) -> Callable:
-    """
-    Create a wrapper that converts sync functions to async hooks.
-    
-    Args:
-        func: Synchronous function to wrap
-        
-    Returns:
-        Async wrapper function
-    """
-    @functools.wraps(func)
-    async def async_wrapper(*args, **kwargs):
-        # Run sync function in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
-    
-    return async_wrapper
 
 def generate_step_description(operation: str, context: Dict[str, Any]) -> str:
     """
@@ -329,9 +281,6 @@ def generate_step_description(operation: str, context: Dict[str, Any]) -> str:
     
     else:
         return f"Execute {operation}"
-
-
-
 
 class BaseLLMHook(BaseEventHook):
     """
@@ -498,7 +447,6 @@ class BaseLLMHook(BaseEventHook):
             return "planning"
         else:
             return "processing"
-
 
 class BaseMCPHook(BaseEventHook):
     """

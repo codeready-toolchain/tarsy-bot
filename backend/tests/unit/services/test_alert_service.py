@@ -446,7 +446,7 @@ class TestHistorySessionManagement:
         """Test successful session status update."""
         service = alert_service_with_history
         
-        service._update_session_status("session_123", "in_progress", "Processing alert")
+        service._update_session_status("session_123", "in_progress")
         
         service.history_service.update_session_status.assert_called_once_with(
             session_id="session_123",

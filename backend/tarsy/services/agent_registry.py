@@ -51,9 +51,7 @@ class AgentRegistry:
         # Start with built-in mappings (config parameter or defaults)
         self.static_mappings: Dict[str, str] = config or self._DEFAULT_MAPPINGS.copy()
         
-        # Store agent configs for access (copy to prevent external modification)
-        self.agent_configs = agent_configs.copy() if agent_configs else None
-        
+
         # Add configured agent mappings if provided
         if agent_configs:
             configured_mappings = self._create_configured_mappings(agent_configs)
@@ -110,19 +108,7 @@ class AgentRegistry:
         logger.debug(f"Found agent '{agent_name}' for alert type '{alert_type}'")
         return agent_name
     
-    def get_agent_for_alert_type_safe(self, alert_type: str) -> Optional[str]:
-        """
-        Get the agent class name for a given alert type without failing.
-        Used when None is an acceptable result.
-        
-        Args:
-            alert_type: The type of alert to find an agent for
-            
-        Returns:
-            Agent class name if found, None otherwise
-        """
-        return self.static_mappings.get(alert_type)
-    
+
     def get_supported_alert_types(self) -> list[str]:
         """
         Get all alert types that have registered agents.
