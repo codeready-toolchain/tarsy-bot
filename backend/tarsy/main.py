@@ -78,9 +78,19 @@ async def lifespan(app: FastAPI):
     # Initialize dashboard broadcaster
     await dashboard_manager.initialize_broadcaster()
     
-    # Register integrated hook system (history + dashboard broadcasting)
-    from tarsy.hooks import register_integrated_hooks
-    register_integrated_hooks(dashboard_manager)
+    # Initialize typed hook system
+    from tarsy.hooks.hook_registry import get_typed_hook_registry
+    from tarsy.services.history_service import get_history_service
+    typed_hook_registry = get_typed_hook_registry()
+    if settings.history_enabled and db_init_success:
+        history_service = get_history_service()
+        await typed_hook_registry.initialize_hooks(
+            history_service=history_service,
+            dashboard_broadcaster=dashboard_manager.broadcaster
+        )
+        logger.info("Typed hook system initialized successfully")
+    else:
+        logger.info("Typed hook system skipped - history service disabled")
     
     logger.info("Tarsy started successfully!")
     

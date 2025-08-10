@@ -60,11 +60,14 @@ export interface LLMInteraction {
 
 // Phase 3: MCP interaction details
 export interface MCPInteraction {
-  tool_name: string;
+  tool_name: string | null;
   parameters: Record<string, any>;
   result: any;
+  available_tools?: Record<string, any[]>;
   server_name: string;
+  communication_type: string;
   execution_time_ms: number;
+  success: boolean;
 }
 
 // Phase 3: System event details

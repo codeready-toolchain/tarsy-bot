@@ -1,24 +1,53 @@
 """
-Event hooks package for transparent integration with existing services.
+Typed hooks package for clean, type-safe interaction handling.
 
-Provides event hook infrastructure for capturing LLM interactions and MCP
-communications without modifying core service logic, with both history logging
-and dashboard broadcasting capabilities.
+Provides typed hook infrastructure for capturing LLM interactions and MCP
+communications with structured Pydantic models, ensuring data integrity
+and preventing contamination between hook contexts and actual results.
 """
 
-from .base_hooks import BaseEventHook, HookContext, HookManager
-from .history_hooks import LLMHooks, MCPHooks, register_history_hooks
-from .dashboard_hooks import DashboardLLMHooks, DashboardMCPHooks, register_dashboard_hooks, register_integrated_hooks
+from .typed_context import (
+    BaseTypedHook, 
+    TypedHookManager, 
+    TypedHookContext, 
+    get_typed_hook_manager,
+    llm_interaction_context,
+    mcp_interaction_context,
+    mcp_list_context
+)
+from .typed_history_hooks import (
+    TypedLLMHistoryHook, 
+    TypedMCPHistoryHook, 
+    TypedMCPListHistoryHook
+)
+from .typed_dashboard_hooks import (
+    TypedLLMDashboardHook, 
+    TypedMCPDashboardHook, 
+    TypedMCPListDashboardHook
+)
+from .hook_registry import TypedHookRegistry, get_typed_hook_registry
 
 __all__ = [
-    "BaseEventHook", 
-    "HookManager", 
-    "HookContext", 
-    "LLMHooks", 
-    "MCPHooks",
-    "DashboardLLMHooks",
-    "DashboardMCPHooks", 
-    "register_history_hooks",
-    "register_dashboard_hooks",
-    "register_integrated_hooks"
-] 
+    # Core typed hook system
+    "BaseTypedHook",
+    "TypedHookManager", 
+    "TypedHookContext",
+    "get_typed_hook_manager",
+    
+    # Context managers
+    "llm_interaction_context",
+    "mcp_interaction_context", 
+    "mcp_list_context",
+    
+    # Typed hook implementations
+    "TypedLLMHistoryHook",
+    "TypedMCPHistoryHook", 
+    "TypedMCPListHistoryHook",
+    "TypedLLMDashboardHook",
+    "TypedMCPDashboardHook",
+    "TypedMCPListDashboardHook",
+    
+    # Registry
+    "TypedHookRegistry",
+    "get_typed_hook_registry"
+]

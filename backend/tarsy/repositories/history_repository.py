@@ -430,6 +430,7 @@ class HistoryRepository:
                         "communication_type": communication.communication_type,
                         "parameters": communication.tool_arguments or {},
                         "result": communication.tool_result or {},
+                        "available_tools": communication.available_tools or {},
                         "success": communication.success
                     }
                 })

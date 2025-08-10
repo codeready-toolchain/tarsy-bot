@@ -168,3 +168,36 @@ class DashboardBroadcaster:
         
         message = SessionUpdate(session_id=session_id, data=data)
         return await self.broadcast_message(ChannelType.session_channel(session_id), message, exclude_users)
+    
+    async def broadcast_interaction_update(
+        self,
+        session_id: str,
+        update_data: Dict[str, Any],
+        exclude_users: Set[str] = None
+    ) -> int:
+        """
+        Broadcast interaction update to both session-specific and dashboard channels.
+        
+        This ensures real-time updates are visible in both the session detail view
+        and the main dashboard during active processing.
+        
+        Args:
+            session_id: Session identifier
+            update_data: Interaction update data
+            exclude_users: Users to exclude from broadcast
+            
+        Returns:
+            Total number of clients the update was sent to
+        """
+        total_sent = 0
+        
+        # Send to session-specific channel for detail views
+        session_sent = await self.broadcast_session_update(session_id, update_data, exclude_users)
+        total_sent += session_sent
+        
+        # Also send to dashboard channel for real-time updates in main dashboard
+        dashboard_sent = await self.broadcast_dashboard_update(update_data, exclude_users)
+        total_sent += dashboard_sent
+        
+        logger.debug(f"Broadcasted interaction update for session {session_id}: session={session_sent}, dashboard={dashboard_sent}")
+        return total_sent

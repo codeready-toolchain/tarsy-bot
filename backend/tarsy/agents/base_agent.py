@@ -328,8 +328,7 @@ class BaseAgent(ABC):
                                      available_tools: Dict,
                                      iteration_history: List[Dict],
                                      current_iteration: int,
-                                     session_id: str,
-                                     **kwargs) -> Dict:
+                                     session_id: str) -> Dict:
         """Determine next MCP tools to call based on current context and previous iterations."""
         logger.info(f"Starting iterative MCP tool selection with {self.__class__.__name__} - Iteration {current_iteration}")
         
@@ -408,7 +407,7 @@ class BaseAgent(ABC):
             await self._configure_mcp_client()
             
             # Get available tools from assigned MCP servers
-            available_tools = await self._get_available_tools()
+            available_tools = await self._get_available_tools(session_id)
             
             # Create iteration context for controller
             context = IterationContext(
@@ -555,7 +554,7 @@ class BaseAgent(ABC):
         self._configured_servers = mcp_server_ids
         logger.info(f"Configured agent {self.__class__.__name__} with MCP servers: {mcp_server_ids}")
     
-    async def _get_available_tools(self) -> List[Dict[str, Any]]:
+    async def _get_available_tools(self, session_id: str) -> List[Dict[str, Any]]:
         """Get available tools from assigned MCP servers."""
         try:
             all_tools = []
@@ -568,7 +567,7 @@ class BaseAgent(ABC):
             
             # Use only configured servers for this agent
             for server_name in self._configured_servers:
-                server_tools = await self.mcp_client.list_tools(server_name=server_name)
+                server_tools = await self.mcp_client.list_tools(session_id=session_id, server_name=server_name)
                 if server_name in server_tools:
                     for tool in server_tools[server_name]:
                         tool_with_server = tool.copy()

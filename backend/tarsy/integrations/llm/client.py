@@ -12,8 +12,9 @@ from langchain_openai import ChatOpenAI
 from langchain_xai import ChatXAI
 
 from tarsy.config.settings import Settings
-from tarsy.hooks.base_hooks import HookContext
+from tarsy.hooks.typed_context import llm_interaction_context
 from tarsy.models.llm import LLMMessage
+from tarsy.models.interactions import LLMRequest, LLMMessage as TypedLLMMessage, LLMResponse, LLMChoice, LLMUsage
 from tarsy.utils.logger import get_module_logger
 
 # Setup logger for this module
@@ -90,9 +91,9 @@ class LLMClient:
                 langchain_messages.append(AIMessage(content=msg.content))
         return langchain_messages
     
-    async def generate_response(self, messages: List[LLMMessage], session_id: str, **kwargs) -> str:
+    async def generate_response(self, messages: List[LLMMessage], session_id: str) -> str:
         """
-        Generate a response from the LLM using LangChain.
+        Generate a response from the LLM using LangChain with typed interactions.
         
         This is the core method that handles communication with any LLM provider.
         All business logic should be handled by the calling code.
@@ -100,28 +101,26 @@ class LLMClient:
         Args:
             messages: List of messages for the conversation
             session_id: Required session ID for timeline logging and tracking
-            **kwargs: Optional LLM parameters (temperature, max_tokens, etc.)
         """
         if not self.available or not self.llm_client:
             raise Exception(f"{self.provider_name} client not available")
         
-        # Use HookContext to handle all hook lifecycle management
-        # CLEAN PATTERN: Explicit session_id parameter - no extraction needed
-        async with HookContext(
-            service_type="llm",
-            method_name="generate_response", 
-            session_id=session_id,
-            messages=messages,
-            model=self.model,
-            provider=self.provider_name,
-            **kwargs
-        ) as hook_ctx:
+        # Prepare request data for typed context
+        request_data = {
+            'messages': messages,
+            'model': self.model,
+            'provider': self.provider_name,
+            'temperature': self.temperature
+        }
+        
+        # Use typed hook context for clean data flow
+        async with llm_interaction_context(session_id, request_data) as ctx:
             
             # Get request ID for logging
-            request_id = hook_ctx.get_request_id()
+            request_id = ctx.get_request_id()
             
             # Log the outgoing prompt/messages
-            self._log_llm_request(messages, request_id, **kwargs)
+            self._log_llm_request(messages, request_id)
             
             try:
                 # Execute the LLM call
@@ -131,16 +130,25 @@ class LLMClient:
                 # Log the response
                 self._log_llm_response(response.content, request_id)
                 
-                # Prepare result for hooks
-                result = {
-                    'content': response.content,
-                    'provider': self.provider_name,
-                    'model': self.model,
-                    'request_id': request_id
-                }
+                # Create typed response
+                typed_response = LLMResponse(
+                    choices=[
+                        LLMChoice(
+                            message=TypedLLMMessage(role="assistant", content=response.content),
+                            finish_reason="stop"
+                        )
+                    ],
+                    model=self.model,
+                    usage=None  # LangChain doesn't provide usage info by default
+                )
                 
-                # Complete the hook context with success
-                await hook_ctx.complete_success(result)
+                # Update the interaction with response data
+                ctx.interaction.response = typed_response
+                ctx.interaction.provider = self.provider_name
+                ctx.interaction.model_name = self.model
+                
+                # Complete the typed context with success
+                await ctx.complete_success({})
                 
                 return response.content
                 
@@ -149,15 +157,13 @@ class LLMClient:
                 self._log_llm_error(str(e), request_id)
                 raise Exception(f"{self.provider_name} API error: {str(e)}")
     
-    def _log_llm_request(self, messages: List[LLMMessage], request_id: str, **kwargs):
+    def _log_llm_request(self, messages: List[LLMMessage], request_id: str):
         """Log the outgoing LLM request."""
         llm_comm_logger.info(f"=== LLM REQUEST [{self.provider_name}] [ID: {request_id}] ===")
         llm_comm_logger.info(f"Request ID: {request_id}")
         llm_comm_logger.info(f"Provider: {self.provider_name}")
         llm_comm_logger.info(f"Model: {self.model}")
         llm_comm_logger.info(f"Temperature: {self.temperature}")
-        if kwargs:
-            llm_comm_logger.info(f"Additional kwargs: {kwargs}")
         
         llm_comm_logger.info("--- MESSAGES ---")
         for i, msg in enumerate(messages):
@@ -221,22 +227,20 @@ class LLMManager:
     async def generate_response(self, 
                               messages: List[LLMMessage],
                               session_id: str,
-                              provider: str = None,
-                              **kwargs) -> str:
+                              provider: str = None) -> str:
         """Generate a response using the specified or default LLM provider.
         
         Args:
             messages: List of messages for the conversation
             session_id: Required session ID for timeline logging and tracking
             provider: Optional provider override (uses default if not specified)
-            **kwargs: Optional LLM parameters (temperature, max_tokens, etc.)
         """
         client = self.get_client(provider)
         if not client:
             available = list(self.clients.keys())
             raise Exception(f"LLM provider not available. Available: {available}")
         
-        return await client.generate_response(messages, session_id, **kwargs)
+        return await client.generate_response(messages, session_id)
 
     def list_available_providers(self) -> List[str]:
         """List available LLM providers."""

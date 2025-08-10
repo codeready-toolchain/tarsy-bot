@@ -251,7 +251,7 @@ class TestMCPClientListTools:
         self.mock_tool2.description = None  # Test None description
         self.mock_tool2.inputSchema = {"type": "string"}
     
-    @patch('tarsy.integrations.mcp.client.HookContext')
+    @patch('tarsy.integrations.mcp.client.mcp_list_context')
     async def test_list_tools_all_servers_success(self, mock_hook_context):
         """Test listing tools from all servers successfully."""
         # Setup hook context mock
@@ -271,7 +271,7 @@ class TestMCPClientListTools:
         with patch.object(self.client, '_log_mcp_list_tools_request') as mock_log_req, \
              patch.object(self.client, '_log_mcp_list_tools_response') as mock_log_resp:
             
-            result = await self.client.list_tools()
+            result = await self.client.list_tools(session_id="test_session")
         
         # Verify result structure
         assert "server1" in result
@@ -313,7 +313,7 @@ class TestMCPClientListTools:
         with patch.object(self.client, '_log_mcp_list_tools_request') as mock_log_req, \
              patch.object(self.client, '_log_mcp_list_tools_response') as mock_log_resp:
             
-            result = await self.client.list_tools(server_name="server1")
+            result = await self.client.list_tools(session_id="test_session", server_name="server1")
         
         # Verify only server1 is in result
         assert "server1" in result
@@ -336,7 +336,7 @@ class TestMCPClientListTools:
         mock_hook_context.return_value.__aenter__.return_value = mock_ctx
         
         with patch.object(self.client, '_log_mcp_list_tools_request') as mock_log_req:
-            result = await self.client.list_tools(server_name="nonexistent")
+            result = await self.client.list_tools(session_id="test_session", server_name="nonexistent")
         
         # Should return empty result for nonexistent server
         assert result == {}
@@ -362,7 +362,7 @@ class TestMCPClientListTools:
         self.mock_session2.list_tools.return_value = mock_tools_result
         
         with patch.object(self.client, '_log_mcp_list_tools_error') as mock_log_error:
-            result = await self.client.list_tools()
+            result = await self.client.list_tools(session_id="test_session")
         
         # Should return empty list for failed server, normal results for working server
         assert result["server1"] == []
@@ -372,30 +372,6 @@ class TestMCPClientListTools:
         mock_logger.error.assert_called_once()
         mock_log_error.assert_called_once_with("server1", "Server error", "req-error")
     
-    @patch('tarsy.integrations.mcp.client.HookContext')
-    async def test_list_tools_with_kwargs(self, mock_hook_context):
-        """Test list_tools passes kwargs to HookContext."""
-        mock_ctx = AsyncMock()
-        mock_ctx.get_request_id = Mock(return_value="req-kwargs")
-        mock_hook_context.return_value.__aenter__.return_value = mock_ctx
-        
-        # Mock empty sessions for quick test
-        self.client.sessions = {}
-        
-        await self.client.list_tools(
-            server_name="test-server", 
-            session_id="session-123",
-            custom_param="custom_value"
-        )
-        
-        # Verify HookContext was called with correct parameters
-        mock_hook_context.assert_called_once_with(
-            service_type="mcp",
-            method_name="list_tools",
-            session_id="session-123",
-            server_name="test-server",
-            custom_param="custom_value"
-        )
     
     @patch.object(MCPClient, 'initialize')
     async def test_list_tools_auto_initialize(self, mock_initialize):
@@ -404,7 +380,7 @@ class TestMCPClientListTools:
         self.client.sessions = {}  # Empty to avoid actual tool listing
         
         with patch('tarsy.integrations.mcp.client.HookContext'):
-            await self.client.list_tools()
+            await self.client.list_tools(session_id="test_session")
         
         mock_initialize.assert_called_once()
 
@@ -883,7 +859,7 @@ class TestMCPClientIntegrationScenarios:
             assert "workflow-server" in self.client.sessions
             
             # 2. List tools
-            tools = await self.client.list_tools()
+            tools = await self.client.list_tools(session_id="test_session")
             assert "workflow-server" in tools
             assert len(tools["workflow-server"]) == 1
             assert tools["workflow-server"][0]["name"] == "test-tool"
@@ -946,7 +922,7 @@ class TestMCPClientIntegrationScenarios:
         # Execute concurrent operations
         import asyncio
         
-        tools_task = asyncio.create_task(self.client.list_tools("concurrent-server"))
+        tools_task = asyncio.create_task(self.client.list_tools(session_id="test_session", server_name="concurrent-server"))
         call_task = asyncio.create_task(
             self.client.call_tool("concurrent-server", "test-tool", {"param": "value"}, "test-session-concurrent")
         )

@@ -150,20 +150,46 @@ function TimelineVisualization({
             
           case 'mcp':
             const mcpDetails = item.details as any;
-            if (mcpDetails.tool_name) formatted += `  TOOL: ${mcpDetails.tool_name}\n`;
-            if (mcpDetails.server_name) formatted += `  SERVER: ${mcpDetails.server_name}\n`;
-            if (mcpDetails.execution_time_ms) formatted += `  EXECUTION TIME: ${mcpDetails.execution_time_ms}ms\n`;
             
-            if (mcpDetails.parameters && Object.keys(mcpDetails.parameters).length > 0) {
-              formatted += `  PARAMETERS: ${JSON.stringify(mcpDetails.parameters, null, 2).replace(/\n/g, '\n  ')}\n`;
-            }
+            // Check if this is a tool list or tool call
+            const isToolList = mcpDetails.communication_type === 'tool_list';
             
-            if (mcpDetails.result) {
-              const resultStr = typeof mcpDetails.result === 'string' 
-                ? mcpDetails.result 
-                : JSON.stringify(mcpDetails.result, null, 2);
-              // NO TRUNCATION - Full result
-              formatted += `  RESULT: ${resultStr.replace(/\n/g, '\n  ')}\n`;
+            if (isToolList) {
+              // Handle tool list operations
+              if (mcpDetails.server_name) formatted += `  SERVER: ${mcpDetails.server_name}\n`;
+              if (mcpDetails.execution_time_ms) formatted += `  EXECUTION TIME: ${mcpDetails.execution_time_ms}ms\n`;
+              
+              if (mcpDetails.available_tools) {
+                // Count total tools across all servers
+                let totalTools = 0;
+                Object.values(mcpDetails.available_tools).forEach((tools: any) => {
+                  if (Array.isArray(tools)) {
+                    totalTools += tools.length;
+                  }
+                });
+                formatted += `  TOOLS FOUND: ${totalTools}\n`;
+                
+                // Include full available tools data
+                const toolsStr = JSON.stringify(mcpDetails.available_tools, null, 2);
+                formatted += `  AVAILABLE TOOLS: ${toolsStr.replace(/\n/g, '\n  ')}\n`;
+              }
+            } else {
+              // Handle tool call operations
+              if (mcpDetails.tool_name) formatted += `  TOOL: ${mcpDetails.tool_name}\n`;
+              if (mcpDetails.server_name) formatted += `  SERVER: ${mcpDetails.server_name}\n`;
+              if (mcpDetails.execution_time_ms) formatted += `  EXECUTION TIME: ${mcpDetails.execution_time_ms}ms\n`;
+              
+              if (mcpDetails.parameters && Object.keys(mcpDetails.parameters).length > 0) {
+                formatted += `  PARAMETERS: ${JSON.stringify(mcpDetails.parameters, null, 2).replace(/\n/g, '\n  ')}\n`;
+              }
+              
+              if (mcpDetails.result) {
+                const resultStr = typeof mcpDetails.result === 'string' 
+                  ? mcpDetails.result 
+                  : JSON.stringify(mcpDetails.result, null, 2);
+                // NO TRUNCATION - Full result
+                formatted += `  RESULT: ${resultStr.replace(/\n/g, '\n  ')}\n`;
+              }
             }
             break;
             

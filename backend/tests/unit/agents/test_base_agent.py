@@ -358,12 +358,12 @@ class TestBaseAgentMCPIntegration:
         """Test getting available tools from configured servers."""
         base_agent._configured_servers = ["test-server"]
         
-        tools = await base_agent._get_available_tools()
+        tools = await base_agent._get_available_tools("test_session")
         
         assert len(tools) == 1
         assert tools[0]["name"] == "kubectl-get"
         assert tools[0]["server"] == "test-server"
-        mock_mcp_client.list_tools.assert_called_once_with(server_name="test-server")
+        mock_mcp_client.list_tools.assert_called_once_with(session_id="test_session", server_name="test-server")
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -372,7 +372,7 @@ class TestBaseAgentMCPIntegration:
         base_agent._configured_servers = None
         
         # The method catches the ValueError and returns empty list instead
-        tools = await base_agent._get_available_tools()
+        tools = await base_agent._get_available_tools("test_session")
         assert tools == []
 
     @pytest.mark.unit
@@ -382,7 +382,7 @@ class TestBaseAgentMCPIntegration:
         base_agent._configured_servers = ["test-server"]
         mock_mcp_client.list_tools.side_effect = Exception("MCP connection failed")
         
-        tools = await base_agent._get_available_tools()
+        tools = await base_agent._get_available_tools("test_session")
         
         assert tools == []  # Should return empty list on error
 
