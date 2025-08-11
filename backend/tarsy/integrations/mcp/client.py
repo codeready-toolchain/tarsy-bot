@@ -141,8 +141,7 @@ class MCPClient:
                         all_tools[name] = []
             
             # Update the interaction with result data
-            from tarsy.models.interactions import MCPToolListResult
-            ctx.interaction.result = MCPToolListResult(tools=all_tools)
+            ctx.interaction.available_tools = all_tools
             
             # Complete the typed context with success
             await ctx.complete_success({})
@@ -211,8 +210,7 @@ class MCPClient:
                 self._log_mcp_response(server_name, tool_name, response_dict, request_id)
                 
                 # Update the interaction with result data
-                from tarsy.models.interactions import MCPToolResult
-                ctx.interaction.tool_result = MCPToolResult(result=response_dict["result"])
+                ctx.interaction.tool_result = response_dict
                 
                 # Complete the typed context with success
                 await ctx.complete_success({})

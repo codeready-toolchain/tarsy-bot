@@ -11,30 +11,30 @@ import logging
 from typing import Any, Dict, Optional
 
 from tarsy.hooks.typed_context import BaseTypedHook
-from tarsy.models.interactions import LLMInteractionData, MCPInteractionData, MCPToolListData
-from tarsy.models.history import now_us
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.utils.timestamp import now_us
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
 
 logger = logging.getLogger(__name__)
 
 
-class TypedLLMDashboardHook(BaseTypedHook[LLMInteractionData]):
+class TypedLLMDashboardHook(BaseTypedHook[LLMInteraction]):
     """
     Typed hook for broadcasting LLM interactions to dashboard.
     
-    Receives structured LLMInteractionData and broadcasts it to WebSocket clients.
+    Receives unified LLMInteraction and broadcasts it to WebSocket clients.
     """
     
     def __init__(self, dashboard_broadcaster: DashboardBroadcaster):
         super().__init__("typed_llm_dashboard")
         self.dashboard_broadcaster = dashboard_broadcaster
 
-    async def execute(self, interaction: LLMInteractionData) -> None:
+    async def execute(self, interaction: LLMInteraction) -> None:
         """
         Broadcast LLM interaction to dashboard.
         
         Args:
-            interaction: Typed LLM interaction data
+            interaction: Unified LLM interaction data
         """
         try:
             # Create dashboard update from typed interaction
@@ -74,23 +74,23 @@ class TypedLLMDashboardHook(BaseTypedHook[LLMInteractionData]):
             raise
 
 
-class TypedMCPDashboardHook(BaseTypedHook[MCPInteractionData]):
+class TypedMCPDashboardHook(BaseTypedHook[MCPInteraction]):
     """
     Typed hook for broadcasting MCP tool interactions to dashboard.
     
-    Receives structured MCPInteractionData and broadcasts it to WebSocket clients.
+    Receives unified MCPInteraction and broadcasts it to WebSocket clients.
     """
     
     def __init__(self, dashboard_broadcaster: DashboardBroadcaster):
         super().__init__("typed_mcp_dashboard")
         self.dashboard_broadcaster = dashboard_broadcaster
 
-    async def execute(self, interaction: MCPInteractionData) -> None:
+    async def execute(self, interaction: MCPInteraction) -> None:
         """
         Broadcast MCP interaction to dashboard.
         
         Args:
-            interaction: Typed MCP interaction data
+            interaction: Unified MCP interaction data
         """
         try:
             # Create dashboard update from typed interaction
@@ -125,23 +125,23 @@ class TypedMCPDashboardHook(BaseTypedHook[MCPInteractionData]):
             raise
 
 
-class TypedMCPListDashboardHook(BaseTypedHook[MCPToolListData]):
+class TypedMCPListDashboardHook(BaseTypedHook[MCPInteraction]):
     """
     Typed hook for broadcasting MCP tool list operations to dashboard.
     
-    Receives structured MCPToolListData and broadcasts it to WebSocket clients.
+    Receives unified MCPInteraction and broadcasts it to WebSocket clients.
     """
     
     def __init__(self, dashboard_broadcaster: DashboardBroadcaster):
         super().__init__("typed_mcp_list_dashboard")
         self.dashboard_broadcaster = dashboard_broadcaster
 
-    async def execute(self, interaction: MCPToolListData) -> None:
+    async def execute(self, interaction: MCPInteraction) -> None:
         """
         Broadcast MCP tool list operation to dashboard.
         
         Args:
-            interaction: Typed MCP tool list data
+            interaction: Unified MCP tool list data
         """
         try:
             # Create dashboard update from typed interaction

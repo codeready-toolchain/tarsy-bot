@@ -12,13 +12,13 @@ from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from typing import Any, AsyncContextManager, Dict, Generic, Optional, TypeVar, Union
 
-from tarsy.models.history import now_us
-from tarsy.models.interactions import LLMInteractionData, MCPInteractionData, MCPToolListData
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.utils.timestamp import now_us
 
 logger = logging.getLogger(__name__)
 
 # Type variables for generic hook context
-TInteraction = TypeVar('TInteraction', LLMInteractionData, MCPInteractionData, MCPToolListData)
+TInteraction = TypeVar('TInteraction', LLMInteraction, MCPInteraction)
 
 
 class BaseTypedHook(ABC, Generic[TInteraction]):
@@ -82,34 +82,34 @@ class TypedHookManager:
     """
     
     def __init__(self):
-        self.llm_hooks: Dict[str, BaseTypedHook[LLMInteractionData]] = {}
-        self.mcp_hooks: Dict[str, BaseTypedHook[MCPInteractionData]] = {}
-        self.mcp_list_hooks: Dict[str, BaseTypedHook[MCPToolListData]] = {}
+        self.llm_hooks: Dict[str, BaseTypedHook[LLMInteraction]] = {}
+        self.mcp_hooks: Dict[str, BaseTypedHook[MCPInteraction]] = {}
+        self.mcp_list_hooks: Dict[str, BaseTypedHook[MCPInteraction]] = {}
 
-    def register_llm_hook(self, hook: BaseTypedHook[LLMInteractionData]) -> None:
+    def register_llm_hook(self, hook: BaseTypedHook[LLMInteraction]) -> None:
         """Register an LLM interaction hook."""
         self.llm_hooks[hook.name] = hook
         logger.info(f"Registered typed LLM hook: {hook.name}")
 
-    def register_mcp_hook(self, hook: BaseTypedHook[MCPInteractionData]) -> None:
+    def register_mcp_hook(self, hook: BaseTypedHook[MCPInteraction]) -> None:
         """Register an MCP interaction hook."""
         self.mcp_hooks[hook.name] = hook
         logger.info(f"Registered typed MCP hook: {hook.name}")
 
-    def register_mcp_list_hook(self, hook: BaseTypedHook[MCPToolListData]) -> None:
+    def register_mcp_list_hook(self, hook: BaseTypedHook[MCPInteraction]) -> None:
         """Register an MCP tool list hook."""
         self.mcp_list_hooks[hook.name] = hook
         logger.info(f"Registered typed MCP list hook: {hook.name}")
 
-    async def trigger_llm_hooks(self, interaction: LLMInteractionData) -> Dict[str, bool]:
+    async def trigger_llm_hooks(self, interaction: LLMInteraction) -> Dict[str, bool]:
         """Trigger all LLM hooks with typed data."""
         return await self._trigger_hooks(self.llm_hooks, interaction, "LLM")
 
-    async def trigger_mcp_hooks(self, interaction: MCPInteractionData) -> Dict[str, bool]:
+    async def trigger_mcp_hooks(self, interaction: MCPInteraction) -> Dict[str, bool]:
         """Trigger all MCP hooks with typed data."""
         return await self._trigger_hooks(self.mcp_hooks, interaction, "MCP")
 
-    async def trigger_mcp_list_hooks(self, interaction: MCPToolListData) -> Dict[str, bool]:
+    async def trigger_mcp_list_hooks(self, interaction: MCPInteraction) -> Dict[str, bool]:
         """Trigger all MCP list hooks with typed data."""
         return await self._trigger_hooks(self.mcp_list_hooks, interaction, "MCP_LIST")
 
@@ -221,34 +221,35 @@ class TypedHookContext(Generic[TInteraction]):
 
     def _update_interaction_with_result(self, result_data: Dict[str, Any]) -> None:
         """Update interaction template with result data."""
-        # Type-specific result handling
-        if isinstance(self.interaction, LLMInteractionData):
+        # Type-specific result handling for unified models
+        if isinstance(self.interaction, LLMInteraction):
             # LLM-specific result processing
-            if 'response' in result_data:
-                self.interaction.response = result_data['response']
+            if 'response_json' in result_data:
+                self.interaction.response_json = result_data['response_json']
             if 'provider' in result_data:
                 self.interaction.provider = result_data['provider']
-            if 'model' in result_data:
-                self.interaction.model_name = result_data['model']
+            if 'model_name' in result_data:
+                self.interaction.model_name = result_data['model_name']
+            if 'token_usage' in result_data:
+                self.interaction.token_usage = result_data['token_usage']
                 
-        elif isinstance(self.interaction, (MCPInteractionData, MCPToolListData)):
+        elif isinstance(self.interaction, MCPInteraction):
             # MCP-specific result processing
-            if 'result' in result_data:
-                if isinstance(self.interaction, MCPInteractionData):
-                    from tarsy.models.interactions import MCPToolResult
-                    self.interaction.tool_result = MCPToolResult(result=result_data['result'])
-                else:  # MCPToolListData
-                    from tarsy.models.interactions import MCPToolListResult
-                    self.interaction.result = MCPToolListResult(tools=result_data['result'])
+            if 'tool_result' in result_data:
+                self.interaction.tool_result = result_data['tool_result']
+            if 'available_tools' in result_data:
+                self.interaction.available_tools = result_data['available_tools']
 
     async def _trigger_appropriate_hooks(self) -> None:
         """Trigger the appropriate typed hooks based on interaction type."""
-        if isinstance(self.interaction, LLMInteractionData):
+        if isinstance(self.interaction, LLMInteraction):
             await self.typed_hook_manager.trigger_llm_hooks(self.interaction)
-        elif isinstance(self.interaction, MCPInteractionData):
-            await self.typed_hook_manager.trigger_mcp_hooks(self.interaction)
-        elif isinstance(self.interaction, MCPToolListData):
-            await self.typed_hook_manager.trigger_mcp_list_hooks(self.interaction)
+        elif isinstance(self.interaction, MCPInteraction):
+            # Determine if it's a tool list or tool call based on communication_type
+            if self.interaction.communication_type == "tool_list":
+                await self.typed_hook_manager.trigger_mcp_list_hooks(self.interaction)
+            else:
+                await self.typed_hook_manager.trigger_mcp_hooks(self.interaction)
         else:
             logger.warning(f"Unknown interaction type: {type(self.interaction)}")
 
@@ -269,7 +270,7 @@ def get_typed_hook_manager() -> TypedHookManager:
 
 
 @asynccontextmanager
-async def llm_interaction_context(session_id: str, request_data: Dict[str, Any]) -> AsyncContextManager[TypedHookContext[LLMInteractionData]]:
+async def llm_interaction_context(session_id: str, request_data: Dict[str, Any]) -> AsyncContextManager[TypedHookContext[LLMInteraction]]:
     """
     Create a typed context for LLM interactions.
     
@@ -280,30 +281,13 @@ async def llm_interaction_context(session_id: str, request_data: Dict[str, Any])
     Yields:
         Typed hook context for LLM interaction
     """
-    from tarsy.models.interactions import LLMRequest, LLMMessage
-    
-    # Build typed request
-    messages = []
-    for msg in request_data.get('messages', []):
-        if hasattr(msg, 'role') and hasattr(msg, 'content'):
-            messages.append(LLMMessage(role=msg.role, content=msg.content))
-        elif isinstance(msg, dict):
-            messages.append(LLMMessage(role=msg.get('role', 'user'), content=msg.get('content', '')))
-    
-    typed_request = LLMRequest(
-        model=request_data.get('model', 'unknown'),
-        messages=messages,
-        temperature=request_data.get('temperature')
-    )
-    
-    interaction = LLMInteractionData(
+    interaction = LLMInteraction(
         session_id=session_id,
-        request=typed_request,
-        provider=request_data.get('provider', 'unknown'),
         model_name=request_data.get('model', 'unknown'),
+        provider=request_data.get('provider', 'unknown'),
+        request_json=request_data,
         start_time_us=now_us(),
-        end_time_us=0,
-        timestamp_us=0
+        step_description=""  # Will be set by history service
     )
     
     async with TypedHookContext(interaction, get_typed_hook_manager()) as ctx:
@@ -312,7 +296,7 @@ async def llm_interaction_context(session_id: str, request_data: Dict[str, Any])
 
 @asynccontextmanager
 async def mcp_interaction_context(session_id: str, server_name: str, tool_name: str, 
-                                 arguments: Dict[str, Any]) -> AsyncContextManager[TypedHookContext[MCPInteractionData]]:
+                                 arguments: Dict[str, Any]) -> AsyncContextManager[TypedHookContext[MCPInteraction]]:
     """
     Create a typed context for MCP tool interactions.
     
@@ -325,20 +309,14 @@ async def mcp_interaction_context(session_id: str, server_name: str, tool_name: 
     Yields:
         Typed hook context for MCP interaction
     """
-    from tarsy.models.interactions import MCPToolCall
-    
-    tool_call = MCPToolCall(
-        server_name=server_name,
-        tool_name=tool_name,
-        arguments=arguments
-    )
-    
-    interaction = MCPInteractionData(
+    interaction = MCPInteraction(
         session_id=session_id,
-        tool_call=tool_call,
+        server_name=server_name,
+        communication_type="tool_call",
+        tool_name=tool_name,
+        tool_arguments=arguments,
         start_time_us=now_us(),
-        end_time_us=0,
-        timestamp_us=0
+        step_description=""  # Will be set by history service
     )
     
     async with TypedHookContext(interaction, get_typed_hook_manager()) as ctx:
@@ -346,7 +324,7 @@ async def mcp_interaction_context(session_id: str, server_name: str, tool_name: 
 
 
 @asynccontextmanager
-async def mcp_list_context(session_id: str, server_name: Optional[str] = None) -> AsyncContextManager[TypedHookContext[MCPToolListData]]:
+async def mcp_list_context(session_id: str, server_name: Optional[str] = None) -> AsyncContextManager[TypedHookContext[MCPInteraction]]:
     """
     Create a typed context for MCP tool listing.
     
@@ -357,12 +335,12 @@ async def mcp_list_context(session_id: str, server_name: Optional[str] = None) -
     Yields:
         Typed hook context for MCP tool list interaction
     """
-    interaction = MCPToolListData(
+    interaction = MCPInteraction(
         session_id=session_id,
-        server_name=server_name,
+        server_name=server_name or "all_servers",
+        communication_type="tool_list",
         start_time_us=now_us(),
-        end_time_us=0,
-        timestamp_us=0
+        step_description=""  # Will be set by history service
     )
     
     async with TypedHookContext(interaction, get_typed_hook_manager()) as ctx:
