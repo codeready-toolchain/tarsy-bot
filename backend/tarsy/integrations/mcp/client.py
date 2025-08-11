@@ -10,7 +10,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from tarsy.config.settings import Settings
-from tarsy.hooks.base_hooks import HookContext
+from tarsy.hooks.typed_context import mcp_interaction_context, mcp_list_context
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.utils.logger import get_module_logger
@@ -75,23 +75,19 @@ class MCPClient:
         
         self._initialized = True
     
-    async def list_tools(self, server_name: Optional[str] = None, **kwargs) -> Dict[str, List[Dict[str, Any]]]:
+    async def list_tools(self, session_id: str, server_name: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
         """List available tools from MCP servers."""
         if not self._initialized:
             await self.initialize()
         
-        # Use HookContext to handle all hook lifecycle management
-        session_id = kwargs.pop('session_id', None)  # Remove session_id from kwargs to avoid duplicate
-        async with HookContext(
-            service_type="mcp",
-            method_name="list_tools",
-            session_id=session_id,
-            server_name=server_name,
-            **kwargs
-        ) as hook_ctx:
+        if not session_id:
+            raise ValueError("session_id is required for MCP tool listing")
+        
+        # Use typed hook context for clean data flow
+        async with mcp_list_context(session_id, server_name) as ctx:
             
             # Get request ID for logging
-            request_id = hook_ctx.get_request_id()
+            request_id = ctx.get_request_id()
             
             # Log the tools listing request
             self._log_mcp_list_tools_request(server_name, request_id)
@@ -144,12 +140,15 @@ class MCPClient:
                         self._log_mcp_list_tools_error(name, str(e), request_id)
                         all_tools[name] = []
             
-            # Complete the hook context with success
-            await hook_ctx.complete_success(all_tools)
+            # Update the interaction with result data
+            ctx.interaction.available_tools = all_tools
+            
+            # Complete the typed context with success
+            await ctx.complete_success({})
             
             return all_tools
     
-    async def call_tool(self, server_name: str, tool_name: str, parameters: Dict[str, Any], session_id: str, **kwargs) -> Dict[str, Any]:
+    async def call_tool(self, server_name: str, tool_name: str, parameters: Dict[str, Any], session_id: str) -> Dict[str, Any]:
         """Call a specific tool on an MCP server.
         
         Args:
@@ -157,7 +156,6 @@ class MCPClient:
             tool_name: Name of the tool to call
             parameters: Parameters to pass to the tool
             session_id: Required session ID for timeline logging and tracking
-            **kwargs: Optional additional parameters
         """
         if not self._initialized:
             await self.initialize()
@@ -165,20 +163,11 @@ class MCPClient:
         if server_name not in self.sessions:
             raise Exception(f"MCP server not found: {server_name}")
         
-        # Use HookContext to handle all hook lifecycle management
-        # CLEAN PATTERN: Explicit session_id parameter - no extraction needed
-        async with HookContext(
-            service_type="mcp",
-            method_name="call_tool",
-            session_id=session_id,
-            server_name=server_name,
-            tool_name=tool_name,
-            tool_arguments=parameters,
-            **kwargs
-        ) as hook_ctx:
+        # Use typed hook context for clean data flow
+        async with mcp_interaction_context(session_id, server_name, tool_name, parameters) as ctx:
             
             # Get request ID for logging
-            request_id = hook_ctx.get_request_id()
+            request_id = ctx.get_request_id()
             
             # Log the outgoing tool call
             self._log_mcp_request(server_name, tool_name, parameters, request_id)
@@ -220,8 +209,11 @@ class MCPClient:
                 # Log the successful response (after masking)
                 self._log_mcp_response(server_name, tool_name, response_dict, request_id)
                 
-                # Complete the hook context with success
-                await hook_ctx.complete_success(response_dict)
+                # Update the interaction with result data
+                ctx.interaction.tool_result = response_dict
+                
+                # Complete the typed context with success
+                await ctx.complete_success({})
                 
                 return response_dict
                     

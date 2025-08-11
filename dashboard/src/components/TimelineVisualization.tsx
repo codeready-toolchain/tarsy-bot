@@ -18,9 +18,11 @@ import {
   ExpandMore, 
   ExpandLess
 } from '@mui/icons-material';
-import type { TimelineItem as TimelineItemType } from '../types';
+import type { TimelineItem as TimelineItemType, LLMInteraction, MCPInteraction } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import InteractionDetails from './InteractionDetails';
+import LLMInteractionPreview from './LLMInteractionPreview';
+import MCPInteractionPreview from './MCPInteractionPreview';
 
 import CopyButton from './CopyButton';
 
@@ -61,7 +63,22 @@ function TimelineVisualization({
         switch (item.type) {
           case 'llm':
             const llmDetails = item.details as any;
-            if (llmDetails.prompt) {
+            // Prefer JSON-first request/response
+            const msgs: any[] | undefined = llmDetails.request_json?.messages;
+            const choice = llmDetails.response_json?.choices?.[0];
+            const respContent = choice?.message?.content;
+            if (Array.isArray(msgs) && msgs.length > 0) {
+              const system = msgs.find((m: any) => m?.role === 'system');
+              const user = msgs.find((m: any) => m?.role === 'user');
+              if (system?.content !== undefined) {
+                const s = typeof system.content === 'string' ? system.content : JSON.stringify(system.content);
+                formatted += `  SYSTEM:\n  ${s.replace(/\n/g, '\n  ')}\n\n`;
+              }
+              if (user?.content !== undefined) {
+                const u = typeof user.content === 'string' ? user.content : JSON.stringify(user.content);
+                formatted += `  USER:\n  ${u.replace(/\n/g, '\n  ')}\n\n`;
+              }
+            } else if (llmDetails.prompt) {
               // Parse LLM messages if they're in Python format
               const prompt = llmDetails.prompt.trim();
               if (prompt.startsWith('[') && prompt.includes('LLMMessage(') && prompt.includes('role=')) {
@@ -118,34 +135,63 @@ function TimelineVisualization({
                 // NO TRUNCATION - Full prompt
                 formatted += `  PROMPT: ${llmDetails.prompt.replace(/\n/g, '\n  ')}\n`;
               }
-              
-              if (llmDetails.response) {
-                // NO TRUNCATION - Full response
-                formatted += `  RESPONSE: ${llmDetails.response.replace(/\n/g, '\n  ')}\n`;
-              }
-              
-              if (llmDetails.model_name) formatted += `  MODEL: ${llmDetails.model_name}\n`;
-              if (llmDetails.tokens_used) formatted += `  TOKENS: ${llmDetails.tokens_used}\n`;
-              if (llmDetails.temperature !== undefined) formatted += `  TEMPERATURE: ${llmDetails.temperature}\n`;
             }
+
+            // Response
+            if (respContent !== undefined) {
+              const r = typeof respContent === 'string' ? respContent : JSON.stringify(respContent);
+              formatted += `  RESPONSE: ${r.replace(/\n/g, '\n  ')}\n`;
+            } else if (llmDetails.response) {
+              formatted += `  RESPONSE: ${llmDetails.response.replace(/\n/g, '\n  ')}\n`;
+            }
+
+            if (llmDetails.model_name) formatted += `  MODEL: ${llmDetails.model_name}\n`;
+            if (llmDetails.tokens_used) formatted += `  TOKENS: ${llmDetails.tokens_used}\n`;
+            if (llmDetails.temperature !== undefined) formatted += `  TEMPERATURE: ${llmDetails.temperature}\n`;
             break;
             
           case 'mcp':
             const mcpDetails = item.details as any;
-            if (mcpDetails.tool_name) formatted += `  TOOL: ${mcpDetails.tool_name}\n`;
-            if (mcpDetails.server_name) formatted += `  SERVER: ${mcpDetails.server_name}\n`;
-            if (mcpDetails.execution_time_ms) formatted += `  EXECUTION TIME: ${mcpDetails.execution_time_ms}ms\n`;
             
-            if (mcpDetails.parameters && Object.keys(mcpDetails.parameters).length > 0) {
-              formatted += `  PARAMETERS: ${JSON.stringify(mcpDetails.parameters, null, 2).replace(/\n/g, '\n  ')}\n`;
-            }
+            // Check if this is a tool list or tool call
+            const isToolList = mcpDetails.communication_type === 'tool_list';
             
-            if (mcpDetails.result) {
-              const resultStr = typeof mcpDetails.result === 'string' 
-                ? mcpDetails.result 
-                : JSON.stringify(mcpDetails.result, null, 2);
-              // NO TRUNCATION - Full result
-              formatted += `  RESULT: ${resultStr.replace(/\n/g, '\n  ')}\n`;
+            if (isToolList) {
+              // Handle tool list operations
+              if (mcpDetails.server_name) formatted += `  SERVER: ${mcpDetails.server_name}\n`;
+              if (mcpDetails.execution_time_ms) formatted += `  EXECUTION TIME: ${mcpDetails.execution_time_ms}ms\n`;
+              
+              if (mcpDetails.available_tools) {
+                // Count total tools across all servers
+                let totalTools = 0;
+                Object.values(mcpDetails.available_tools).forEach((tools: any) => {
+                  if (Array.isArray(tools)) {
+                    totalTools += tools.length;
+                  }
+                });
+                formatted += `  TOOLS FOUND: ${totalTools}\n`;
+                
+                // Include full available tools data
+                const toolsStr = JSON.stringify(mcpDetails.available_tools, null, 2);
+                formatted += `  AVAILABLE TOOLS: ${toolsStr.replace(/\n/g, '\n  ')}\n`;
+              }
+            } else {
+              // Handle tool call operations
+              if (mcpDetails.tool_name) formatted += `  TOOL: ${mcpDetails.tool_name}\n`;
+              if (mcpDetails.server_name) formatted += `  SERVER: ${mcpDetails.server_name}\n`;
+              if (mcpDetails.execution_time_ms) formatted += `  EXECUTION TIME: ${mcpDetails.execution_time_ms}ms\n`;
+              
+              if (mcpDetails.parameters && Object.keys(mcpDetails.parameters).length > 0) {
+                formatted += `  PARAMETERS: ${JSON.stringify(mcpDetails.parameters, null, 2).replace(/\n/g, '\n  ')}\n`;
+              }
+              
+              if (mcpDetails.result) {
+                const resultStr = typeof mcpDetails.result === 'string' 
+                  ? mcpDetails.result 
+                  : JSON.stringify(mcpDetails.result, null, 2);
+                // NO TRUNCATION - Full result
+                formatted += `  RESULT: ${resultStr.replace(/\n/g, '\n  ')}\n`;
+              }
             }
             break;
             
@@ -310,26 +356,74 @@ function TimelineVisualization({
                       </Typography>
                     </Box>
                   }
-                  action={
-                    item.details && (
-                      <IconButton 
-                        onClick={() => toggleExpansion(itemKey)}
-                        size="small"
-                        sx={{ 
-                          color: `${getInteractionColor(item.type)}.main`,
-                          '&:hover': { bgcolor: `${getInteractionColor(item.type)}.light` }
-                        }}
-                      >
-                        {expandedItems[itemKey] ? <ExpandLess /> : <ExpandMore />}
-                      </IconButton>
-                    )
-                  }
+                  action={null}
                   sx={{ pb: item.details && !expandedItems[itemKey] ? 2 : 1 }}
                 />
                 
                 {/* Expandable interaction details */}
                 {item.details && (
                   <CardContent sx={{ pt: 0 }}>
+                    {/* Show LLM preview when not expanded */}
+                    {item.type === 'llm' && !expandedItems[itemKey] && (
+                      <LLMInteractionPreview 
+                        interaction={item.details as LLMInteraction}
+                        showFullPreview={true}
+                      />
+                    )}
+                    
+                    {/* Show MCP preview when not expanded */}
+                    {item.type === 'mcp' && !expandedItems[itemKey] && (
+                      <MCPInteractionPreview 
+                        interaction={item.details as MCPInteraction}
+                        showFullPreview={true}
+                      />
+                    )}
+                    
+                    {/* Expand/Collapse button */}
+                    <Box sx={{ 
+                      display: 'flex', 
+                      justifyContent: 'center', 
+                      mt: expandedItems[itemKey] ? 0 : 2,
+                      mb: 1 
+                    }}>
+                      <Box 
+                        onClick={() => toggleExpansion(itemKey)}
+                        sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 0.5,
+                          cursor: 'pointer',
+                          py: 0.5,
+                          '&:hover': { 
+                            '& .expand-text': {
+                              textDecoration: 'underline'
+                            }
+                          },
+                          transition: 'all 0.2s ease-in-out'
+                        }}
+                      >
+                        <Typography 
+                          className="expand-text"
+                          variant="body2" 
+                          sx={{ 
+                            color: `${getInteractionColor(item.type)}.main`,
+                            fontWeight: 500,
+                            fontSize: '0.875rem'
+                          }}
+                        >
+                          {expandedItems[itemKey] ? 'Show Less' : 'Show Full Details'}
+                        </Typography>
+                        <Box sx={{ 
+                          color: `${getInteractionColor(item.type)}.main`,
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}>
+                          {expandedItems[itemKey] ? <ExpandLess /> : <ExpandMore />}
+                        </Box>
+                      </Box>
+                    </Box>
+                    
+                    {/* Full interaction details when expanded */}
                     <InteractionDetails
                       type={item.type}
                       details={item.details}

@@ -10,12 +10,12 @@ import logging
 import random
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from tarsy.config.settings import get_settings
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.history import AlertSession, LLMInteraction, MCPCommunication, now_us
+from tarsy.models.history import AlertSession, now_us
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository
 
@@ -263,8 +263,8 @@ class HistoryService:
                     # Notify dashboard update service of session status change
                     try:
                         # Import here to avoid circular imports
-                        from tarsy.main import websocket_manager
-                        if websocket_manager and websocket_manager.dashboard_manager and websocket_manager.dashboard_manager.update_service:
+                        from tarsy.main import dashboard_manager
+                        if dashboard_manager and dashboard_manager.update_service:
                             # Prepare details for dashboard update
                             details = {}
                             if error_message:
@@ -277,14 +277,14 @@ class HistoryService:
                             if asyncio.get_event_loop().is_running():
                                 # If we're in an async context, create a task
                                 asyncio.create_task(
-                                    websocket_manager.dashboard_manager.update_service.process_session_status_change(
+                                    dashboard_manager.update_service.process_session_status_change(
                                         session_id, status, details
                                     )
                                 )
                             else:
                                 # If not in async context, run directly
                                 asyncio.run(
-                                    websocket_manager.dashboard_manager.update_service.process_session_status_change(
+                                    dashboard_manager.update_service.process_session_status_change(
                                         session_id, status, details
                                     )
                                 )
@@ -297,36 +297,17 @@ class HistoryService:
         return result if result is not None else False
     
     # LLM Interaction Logging
-    def log_llm_interaction(
-        self,
-        session_id: str,
-        prompt_text: str,
-        response_text: str,
-        model_used: str,
-        step_description: str,
-        tool_calls: Optional[Dict] = None,
-        tool_results: Optional[Dict] = None,
-        token_usage: Optional[Dict] = None,
-        duration_ms: int = 0
-    ) -> bool:
+    def log_llm_interaction(self, interaction: LLMInteraction) -> bool:
         """
-        Log an LLM interaction with comprehensive details.
+        Log an LLM interaction using unified model.
         
         Args:
-            session_id: The session identifier
-            prompt_text: Full prompt sent to LLM
-            response_text: Complete response from LLM
-            model_used: LLM model identifier
-            step_description: Human-readable description of this step
-            tool_calls: Tool calls made during interaction
-            tool_results: Results from tool calls
-            token_usage: Token usage statistics
-            duration_ms: Interaction duration in milliseconds
+            interaction: LLMInteraction instance with all interaction details
             
         Returns:
             True if logged successfully, False otherwise
         """
-        if not self.is_enabled or not session_id:
+        if not self.is_enabled or not interaction.session_id:
             return False
             
         try:
@@ -335,61 +316,32 @@ class HistoryService:
                     logger.warning("History repository unavailable - LLM interaction not logged")
                     return False
                 
-                interaction = LLMInteraction(
-                    session_id=session_id,
-                    prompt_text=prompt_text,
-                    response_text=response_text,
-                    model_used=model_used,
-                    step_description=step_description,
-                    tool_calls=tool_calls,
-                    tool_results=tool_results,
-                    token_usage=token_usage,
-                    duration_ms=duration_ms
-                )
+                # Set step description if not already set
+                if not interaction.step_description:
+                    interaction.step_description = f"LLM analysis using {interaction.model_name}"
                 
+                # Direct storage - no conversion needed!
                 repo.create_llm_interaction(interaction)
-                logger.debug(f"Logged LLM interaction for session {session_id}: {step_description}")
+                logger.debug(f"Logged LLM interaction for session {interaction.session_id}")
                 return True
                 
         except Exception as e:
-            logger.error(f"Failed to log LLM interaction for session {session_id}: {str(e)}")
+            logger.error(f"Failed to log LLM interaction for session {interaction.session_id}: {str(e)}")
             return False
+
     
     # MCP Communication Logging
-    def log_mcp_communication(
-        self,
-        session_id: str,
-        server_name: str,
-        communication_type: str,
-        step_description: str,
-        success: bool,
-        duration_ms: int = 0,
-        tool_name: Optional[str] = None,
-        tool_arguments: Optional[Dict] = None,
-        tool_result: Optional[Dict] = None,
-        available_tools: Optional[Dict] = None,
-        error_message: Optional[str] = None
-    ) -> bool:
+    def log_mcp_interaction(self, interaction: MCPInteraction) -> bool:
         """
-        Log an MCP communication with comprehensive details.
+        Log an MCP interaction using unified model.
         
         Args:
-            session_id: The session identifier
-            server_name: MCP server identifier
-            communication_type: Type of communication (tool_list, tool_call, result)
-            step_description: Human-readable description of this step
-            success: Whether the communication was successful
-            duration_ms: Communication duration in milliseconds
-            tool_name: Name of the tool (for tool_call type)
-            tool_arguments: Arguments passed to tool call
-            tool_result: Result from tool call
-            available_tools: List of available tools (for tool_list type)
-            error_message: Error message if communication failed
+            interaction: MCPInteraction instance with all interaction details
             
         Returns:
             True if logged successfully, False otherwise
         """
-        if not self.is_enabled or not session_id:
+        if not self.is_enabled or not interaction.session_id:
             return False
             
         try:
@@ -398,27 +350,19 @@ class HistoryService:
                     logger.warning("History repository unavailable - MCP communication not logged")
                     return False
                 
-                communication = MCPCommunication(
-                    session_id=session_id,
-                    server_name=server_name,
-                    communication_type=communication_type,
-                    step_description=step_description,
-                    success=success,
-                    duration_ms=duration_ms,
-                    tool_name=tool_name,
-                    tool_arguments=tool_arguments,
-                    tool_result=tool_result,
-                    available_tools=available_tools,
-                    error_message=error_message
-                )
+                # Set step description if not already set
+                if not interaction.step_description:
+                    interaction.step_description = interaction.get_step_description()
                 
-                repo.create_mcp_communication(communication)
-                logger.debug(f"Logged MCP communication for session {session_id}: {step_description}")
+                # Direct storage - no conversion needed!
+                repo.create_mcp_communication(interaction)
+                logger.debug(f"Logged MCP communication for session {interaction.session_id}")
                 return True
                 
         except Exception as e:
-            logger.error(f"Failed to log MCP communication for session {session_id}: {str(e)}")
+            logger.error(f"Failed to log MCP communication for session {interaction.session_id}: {str(e)}")
             return False
+
     
     # Properties
     @property
@@ -584,39 +528,6 @@ class HistoryService:
             logger.error(f"Failed to get active sessions: {str(e)}")
             return []
     
-    def get_dashboard_metrics(self) -> Dict[str, Any]:
-        """
-        Get dashboard metrics including session counts and statistics.
-        
-        Returns:
-            Dictionary containing dashboard metrics
-        """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    return {
-                        "active_sessions": 0,
-                        "completed_sessions": 0,
-                        "failed_sessions": 0,
-                        "total_interactions": 0,
-                        "avg_session_duration": 0.0,
-                        "error_rate": 0.0,
-                        "last_24h_sessions": 0
-                    }
-                
-                return repo.get_dashboard_metrics()
-                
-        except Exception as e:
-            logger.error(f"Failed to get dashboard metrics: {str(e)}")
-            return {
-                "active_sessions": 0,
-                "completed_sessions": 0,
-                "failed_sessions": 0,
-                "total_interactions": 0,
-                "avg_session_duration": 0.0,
-                "error_rate": 0.0,
-                "last_24h_sessions": 0
-            }
     
     def get_filter_options(self) -> Dict[str, Any]:
         """
@@ -655,80 +566,8 @@ class HistoryService:
                     {"label": "This Week", "value": "week"}
                 ]
             }
-    
-    def export_session_data(self, session_id: str, format: str = 'json') -> Dict[str, Any]:
-        """
-        Export session data in the specified format.
-        
-        Args:
-            session_id: The session ID to export
-            format: Export format ('json' or 'csv')
-            
-        Returns:
-            Dictionary containing export data and metadata
-        """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    return {
-                        "error": "Repository unavailable",
-                        "session_id": session_id,
-                        "format": format,
-                        "data": None
-                    }
-                
-                return repo.export_session_data(session_id, format)
-                
-        except Exception as e:
-            logger.error(f"Failed to export session data for {session_id}: {str(e)}")
-            return {
-                "error": str(e),
-                "session_id": session_id,
-                "format": format,
-                "data": None
-            }
-    
-    def search_sessions(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Search sessions by alert content, error messages, or metadata.
-        
-        Args:
-            query: Search query string
-            limit: Maximum number of results to return
-            
-        Returns:
-            List of matching session summaries
-        """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    return []
-                
-                return repo.search_sessions(query, limit)
-                
-        except Exception as e:
-            logger.error(f"Failed to search sessions with query '{query}': {str(e)}")
-            return []
-    
+
     # Maintenance Operations
-    def cleanup_old_sessions(self) -> int:
-        """
-        Clean up sessions older than retention period.
-        
-        Returns:
-            Number of sessions cleaned up
-        """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    return 0
-                
-                return repo.cleanup_old_sessions(self.settings.history_retention_days)
-                
-        except Exception as e:
-            logger.error(f"Failed to cleanup old sessions: {str(e)}")
-            return 0
-    
     def cleanup_orphaned_sessions(self) -> int:
         """
         Clean up sessions that were left in active states due to unexpected backend shutdown.
@@ -792,29 +631,6 @@ class HistoryService:
         except Exception as e:
             logger.error(f"Failed to cleanup orphaned sessions: {str(e)}")
             return 0
-    
-    def health_check(self) -> Dict[str, Any]:
-        """
-        Get health status of history service.
-        
-        Returns:
-            Dictionary containing health status information
-        """
-        return {
-            "enabled": self.is_enabled,
-            "healthy": self._is_healthy,
-            "database_url": self.settings.history_database_url if self.is_enabled else None,
-            "retention_days": self.settings.history_retention_days if self.is_enabled else None
-        }
-    
-    def shutdown(self) -> None:
-        """Gracefully shutdown history service."""
-        try:
-            if self.db_manager:
-                self.db_manager.close()
-                logger.info("History service shutdown complete")
-        except Exception as e:
-            logger.error(f"Error during history service shutdown: {str(e)}")
 
 
 # Global history service instance

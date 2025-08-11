@@ -42,34 +42,4 @@ export const hasActiveFilters = (filters: {
   );
 };
 
-/**
- * Counts the number of active filters
- * @param filters - The session filters object  
- * @returns the total number of active filters
- */
-export const countActiveFilters = (filters: {
-  search?: string;
-  status?: string[];
-  agent_type?: string[];
-  alert_type?: string[];
-}): number => {
-  let count = 0;
-  
-  if (filters.search && filters.search.trim()) {
-    count += 1;
-  }
-  
-  if (filters.status && filters.status.length > 0) {
-    count += filters.status.length;
-  }
-  
-  if (filters.agent_type && filters.agent_type.length > 0) {
-    count += filters.agent_type.length;
-  }
-  
-  if (filters.alert_type && filters.alert_type.length > 0) {
-    count += filters.alert_type.length;
-  }
-  
-  return count;
-}; 
+ 

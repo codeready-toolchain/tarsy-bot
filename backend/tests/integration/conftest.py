@@ -15,7 +15,8 @@ from tarsy.config.settings import Settings
 from tarsy.integrations.llm.client import LLMClient, LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert import Alert
-from tarsy.models.history import AlertSession, LLMInteraction, MCPCommunication
+from tarsy.models.history import AlertSession
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.models.mcp_config import MCPServerConfig
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.agent_registry import AgentRegistry
@@ -783,11 +784,10 @@ def sample_llm_interaction():
     return LLMInteraction(
         interaction_id="llm-interaction-789",
         session_id="test-session-123",
-        prompt_text="Analyze the namespace termination issue",
-        response_text="The namespace is stuck due to finalizers",
-        model_used="gpt-4",
-        timestamp=pytest.lazy_fixture('datetime_now_utc'),
+        model_name="gpt-4",
         step_description="Initial analysis",
+        request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
+        response_json={"choices": [{"message": {"role": "assistant", "content": "The namespace is stuck due to finalizers"}, "finish_reason": "stop"}]},
         duration_ms=1500,
         token_usage={"prompt_tokens": 150, "completion_tokens": 50, "total_tokens": 200}
     )
@@ -795,8 +795,8 @@ def sample_llm_interaction():
 
 @pytest.fixture
 def sample_mcp_communication():
-    """Create sample MCPCommunication for testing."""
-    return MCPCommunication(
+    """Create sample MCPInteraction for testing."""
+    return MCPInteraction(
         communication_id="mcp-comm-101",
         session_id="test-session-123",
         server_name="kubernetes-server",
@@ -804,7 +804,6 @@ def sample_mcp_communication():
         tool_name="kubectl_get_namespace",
         tool_arguments={"namespace": "stuck-namespace"},
         tool_result={"status": "Terminating", "finalizers": ["test-finalizer"]},
-        timestamp=pytest.lazy_fixture('datetime_now_utc'),
         step_description="Check namespace status",
         duration_ms=800,
         success=True,

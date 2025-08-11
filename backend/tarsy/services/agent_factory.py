@@ -8,7 +8,7 @@ configuration-based agents.
 """
 
 import importlib
-from typing import Any, Dict, Optional, Type
+from typing import Dict, Optional, Type
 
 from tarsy.agents.base_agent import BaseAgent
 from tarsy.integrations.llm.client import LLMClient

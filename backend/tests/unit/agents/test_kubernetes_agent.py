@@ -338,7 +338,7 @@ class TestKubernetesAgentInheritedFunctionality:
         ]
         kubernetes_agent.mcp_client.list_tools.return_value = {"kubernetes-server": mock_tools}
         
-        tools = await kubernetes_agent._get_available_tools()
+        tools = await kubernetes_agent._get_available_tools("test_session")
         
         assert len(tools) == 2
         for tool in tools:
@@ -346,13 +346,13 @@ class TestKubernetesAgentInheritedFunctionality:
             assert "name" in tool
             assert "description" in tool
         
-        kubernetes_agent.mcp_client.list_tools.assert_called_once_with(server_name="kubernetes-server")
+        kubernetes_agent.mcp_client.list_tools.assert_called_once_with(session_id="test_session", server_name="kubernetes-server")
     
     async def test_get_available_tools_not_configured(self, kubernetes_agent):
         """Test that unconfigured agent returns empty tools list."""
         kubernetes_agent._configured_servers = None
         
-        tools = await kubernetes_agent._get_available_tools()
+        tools = await kubernetes_agent._get_available_tools("test_session")
         
         # Should return empty list when not configured (error is caught and logged)
         assert tools == []

@@ -15,6 +15,7 @@ from sqlmodel import SQLModel, create_engine
 
 from tarsy.main import app
 from tarsy.models.alert import Alert
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 
 # Import history models to ensure they're registered with SQLModel.metadata
 from tarsy.services.alert_service import AlertService
@@ -141,19 +142,21 @@ class TestHistoryServiceIntegration:
         assert result == True
         
         # Log LLM interaction
-        llm_result = history_service_with_db.log_llm_interaction(
+        from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+        llm_interaction = LLMInteraction(
             session_id=session_id,
-            prompt_text="Analyze the namespace termination issue",
-            response_text="The namespace is stuck due to finalizers",
-            model_used="gpt-4",
+            model_name="gpt-4",
             step_description="Initial analysis",
+            request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "The namespace is stuck due to finalizers"}, "finish_reason": "stop"}]},
             token_usage={"prompt_tokens": 150, "completion_tokens": 50, "total_tokens": 200},
             duration_ms=1500
         )
+        llm_result = history_service_with_db.log_llm_interaction(llm_interaction)
         assert llm_result == True
         
         # Log MCP communication
-        mcp_result = history_service_with_db.log_mcp_communication(
+        mcp_interaction = MCPInteraction(
             session_id=session_id,
             server_name="kubernetes-server",
             communication_type="tool_call",
@@ -164,6 +167,7 @@ class TestHistoryServiceIntegration:
             duration_ms=800,
             success=True
         )
+        mcp_result = history_service_with_db.log_mcp_interaction(mcp_interaction)
         assert mcp_result == True
         
         # Complete session
@@ -198,21 +202,22 @@ class TestHistoryServiceIntegration:
         base_time = datetime.now(timezone.utc)
         
         # First LLM interaction
-        history_service_with_db.log_llm_interaction(
+        llm_interaction1 = LLMInteraction(
             session_id=session_id,
-            prompt_text="Initial analysis prompt",
-            response_text="Initial analysis response",
-            model_used="gpt-4",
+            model_name="gpt-4",
             step_description="Initial analysis",
+            request_json={"messages": [{"role": "user", "content": "Initial analysis prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Initial analysis response"}, "finish_reason": "stop"}]},
             duration_ms=1200
         )
+        history_service_with_db.log_llm_interaction(llm_interaction1)
         
         # Sleep to ensure different timestamp
         import time
         time.sleep(0.01)
         
         # MCP tool call
-        history_service_with_db.log_mcp_communication(
+        mcp_interaction1 = MCPInteraction(
             session_id=session_id,
             server_name="kubernetes-server",
             communication_type="tool_call",
@@ -220,17 +225,19 @@ class TestHistoryServiceIntegration:
             step_description="Get namespace info",
             success=True
         )
+        history_service_with_db.log_mcp_interaction(mcp_interaction1)
         
         time.sleep(0.01)
         
         # Second LLM interaction
-        history_service_with_db.log_llm_interaction(
+        llm_interaction2 = LLMInteraction(
             session_id=session_id,
-            prompt_text="Follow-up analysis prompt",
-            response_text="Follow-up analysis response",
-            model_used="gpt-4",
-            step_description="Follow-up analysis"
+            model_name="gpt-4",
+            step_description="Follow-up analysis",
+            request_json={"messages": [{"role": "user", "content": "Follow-up analysis prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Follow-up analysis response"}, "finish_reason": "stop"}]}
         )
+        history_service_with_db.log_llm_interaction(llm_interaction2)
         
         # Get timeline and verify ordering
         timeline = history_service_with_db.get_session_timeline(session_id)
@@ -292,13 +299,14 @@ class TestHistoryServiceIntegration:
             
             # Add some interactions for variety
             if session_id in ["session-1", "session-3"]:
-                history_service_with_db.log_llm_interaction(
+                llm_interaction_variety = LLMInteraction(
                     session_id=sid,
-                    prompt_text=f"Test prompt for {session_id}",
-                    response_text=f"Test response for {session_id}",
-                    model_used="gpt-4",
-                    step_description=f"Analysis for {session_id}"
+                    model_name="gpt-4",
+                    step_description=f"Analysis for {session_id}",
+                    request_json={"messages": [{"role": "user", "content": f"Test prompt for {session_id}"}]},
+                    response_json={"choices": [{"message": {"role": "assistant", "content": f"Test response for {session_id}"}, "finish_reason": "stop"}]}
                 )
+                history_service_with_db.log_llm_interaction(llm_interaction_variety)
         
         # Test 1: Filter by alert_type + status
         sessions, count = history_service_with_db.get_sessions_list(
@@ -345,13 +353,14 @@ class TestHistoryServiceIntegration:
         assert session_id is not None  # Should still create session
         
         # Test logging with invalid session ID
-        result = history_service_with_db.log_llm_interaction(
+        llm_interaction_invalid = LLMInteraction(
             session_id="non-existent-session",
-            prompt_text="Test prompt",
-            response_text="Test response",
-            model_used="gpt-4",
-            step_description="Test interaction"
+            model_name="gpt-4",
+            step_description="Test interaction",
+            request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]}
         )
+        result = history_service_with_db.log_llm_interaction(llm_interaction_invalid)
         # The service allows logging interactions even for non-existent sessions
         # This is by design for performance and graceful degradation
         assert result == True  # Service handles this gracefully without validation

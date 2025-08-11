@@ -4,20 +4,17 @@ Dashboard connection manager for WebSocket connections.
 
 import json
 from datetime import datetime
-from typing import Dict, List, Set
+from typing import Dict, Set
 
 from fastapi import WebSocket
 from pydantic import ValidationError
 
 from tarsy.utils.logger import get_module_logger
-from tarsy.services.subscription_manager import SubscriptionManager
 from tarsy.models.websocket_models import (
     ChannelType,
     SubscriptionMessage,
     SubscriptionResponse,
-    ConnectionEstablished,
-    ErrorMessage,
-    OutgoingMessage
+    ErrorMessage
 )
 
 logger = get_module_logger(__name__)
@@ -33,8 +30,6 @@ class DashboardConnectionManager:
         self.user_subscriptions: Dict[str, Set[str]] = {}
         # Track channels to users mapping for efficient broadcasting
         self.channel_subscribers: Dict[str, Set[str]] = {}
-        # Enhanced subscription management
-        self.subscription_manager = SubscriptionManager()
         # Advanced broadcasting with batching and throttling
         self.broadcaster = None  # Will be initialized after connection manager is created
         # Dashboard update service for intelligent update management
@@ -112,46 +107,9 @@ class DashboardConnectionManager:
                 del self.channel_subscribers[channel]
         
         logger.info(f"User {user_id} unsubscribed from channel: {channel}")
-        return True
+        return True    
     
-    def _internal_subscribe(self, user_id: str, channel: str):
-        """Internal method to handle subscription state management."""
-        if user_id not in self.user_subscriptions:
-            self.user_subscriptions[user_id] = set()
-        
-        if user_id not in self.active_connections:
-            logger.warning(f"Attempted to subscribe inactive user {user_id} to channel {channel}")
-            return False
-        
-        # Add to user subscriptions
-        self.user_subscriptions[user_id].add(channel)
-        
-        # Add to channel subscribers
-        if channel not in self.channel_subscribers:
-            self.channel_subscribers[channel] = set()
-        self.channel_subscribers[channel].add(user_id)
-        
-        return True
-    
-    def _internal_unsubscribe(self, user_id: str, channel: str):
-        """Internal method to handle unsubscription state management."""
-        # Remove from user subscriptions
-        if user_id in self.user_subscriptions:
-            self.user_subscriptions[user_id].discard(channel)
-        
-        # Remove from channel subscribers
-        if channel in self.channel_subscribers:
-            self.channel_subscribers[channel].discard(user_id)
-            # Clean up empty channels
-            if not self.channel_subscribers[channel]:
-                del self.channel_subscribers[channel]
-        
-        return True
-    
-    def get_user_subscriptions(self, user_id: str) -> Set[str]:
-        """Get all channels a user is subscribed to."""
-        return self.user_subscriptions.get(user_id, set()).copy()
-    
+
     def get_channel_subscribers(self, channel: str) -> Set[str]:
         """Get all users subscribed to a channel."""
         return self.channel_subscribers.get(channel, set()).copy()
@@ -172,54 +130,58 @@ class DashboardConnectionManager:
             self.disconnect(user_id)
             return False
     
-    async def broadcast_to_channel(self, channel: str, message: dict, exclude_users: Set[str] = None):
-        """Broadcast message to all users subscribed to a channel."""
-        if channel not in self.channel_subscribers:
-            logger.debug(f"No subscribers for channel: {channel}")
-            return 0
+
+    def _is_valid_channel(self, channel: str) -> bool:
+        """Validate if a channel is valid for subscription."""
+        # Check predefined channels
+        predefined_channels = [ChannelType.DASHBOARD_UPDATES, ChannelType.SYSTEM_HEALTH]
+        if channel in predefined_channels:
+            return True
         
-        exclude_users = exclude_users or set()
-        subscribers = self.channel_subscribers[channel] - exclude_users
+        # Check session channels (any string starting with "session_")
+        if ChannelType.is_session_channel(channel):
+            session_id = ChannelType.extract_session_id(channel)
+            return session_id is not None and len(session_id) > 0
         
-        if not subscribers:
-            logger.debug(f"No eligible subscribers for channel {channel} after exclusions")
-            return 0
-        
-        sent_count = 0
-        failed_users = []
-        
-        for user_id in subscribers:
-            success = await self.send_to_user(user_id, message)
-            if success:
-                sent_count += 1
-            else:
-                failed_users.append(user_id)
-        
-        if failed_users:
-            logger.warning(f"Failed to send to {len(failed_users)} users in channel {channel}")
-        
-        logger.debug(f"Broadcast to channel {channel}: {sent_count} successful, {len(failed_users)} failed")
-        return sent_count
+        # Unknown channel
+        return False
     
     async def handle_subscription_message(self, user_id: str, message: dict):
         """Handle subscription/unsubscription messages from clients."""
         try:
             # Validate and parse subscription message
             subscription_msg = SubscriptionMessage(**message)
+            channel = subscription_msg.channel
+            action = subscription_msg.type
             
-            # Process subscription request through subscription manager
-            response = self.subscription_manager.process_subscription_request(
-                user_id, subscription_msg
+            # Validate channel
+            if not self._is_valid_channel(channel):
+                logger.warning(f"Invalid subscription request from {user_id} to channel {channel}")
+                response = SubscriptionResponse(
+                    action=action,
+                    channel=channel,
+                    success=False,
+                    message=f"Unknown channel: {channel}"
+                )
+                await self.send_to_user(user_id, response.model_dump())
+                return
+            
+            # Handle subscription/unsubscription
+            if action == "subscribe":
+                self.subscribe_to_channel(user_id, channel)
+            elif action == "unsubscribe":
+                self.unsubscribe_from_channel(user_id, channel)
+            
+            # Log successful request
+            logger.info(f"Processed {action} request from {user_id} for channel {channel}")
+            
+            # Send success response
+            response = SubscriptionResponse(
+                action=action,
+                channel=channel,
+                success=True,
+                message=f"Successfully {action}d to {channel}"
             )
-            
-            # If subscription manager approved, update connection state
-            if response.success:
-                if subscription_msg.type == "subscribe":
-                    self._internal_subscribe(user_id, subscription_msg.channel)
-                elif subscription_msg.type == "unsubscribe":
-                    self._internal_unsubscribe(user_id, subscription_msg.channel)
-            
-            # Send response to user
             await self.send_to_user(user_id, response.model_dump())
             
         except ValidationError as e:
@@ -236,40 +198,6 @@ class DashboardConnectionManager:
             )
             await self.send_to_user(user_id, error_response.model_dump())
     
-    def get_connection_stats(self):
-        """Get connection statistics for monitoring."""
-        connection_stats = {
-            "active_connections": len(self.active_connections),
-            "total_subscriptions": sum(len(subs) for subs in self.user_subscriptions.values()),
-            "active_channels": len(self.channel_subscribers),
-            "users_with_subscriptions": len(self.user_subscriptions)
-        }
-        
-        # Include subscription manager statistics
-        subscription_stats = self.subscription_manager.get_subscription_stats()
-        
-        return {
-            **connection_stats,
-            "subscription_manager": subscription_stats
-        }
-    
-    async def broadcast_system_health_update(self, status: str, services: dict):
-        """Broadcast system health update to system_health channel subscribers."""
-        from tarsy.models.websocket_models import SystemHealthUpdate
-        
-        health_update = SystemHealthUpdate(
-            status=status,
-            services=services
-        )
-        
-        sent_count = await self.broadcast_to_channel(
-            ChannelType.SYSTEM_HEALTH, 
-            health_update.model_dump()
-        )
-        
-        logger.debug(f"Broadcast system health update to {sent_count} subscribers")
-        return sent_count
-    
     async def initialize_broadcaster(self):
         """Initialize the advanced broadcaster and update service."""
         from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
@@ -277,8 +205,11 @@ class DashboardConnectionManager:
         
         if self.broadcaster is None:
             self.broadcaster = DashboardBroadcaster(self)
-            await self.broadcaster.start()
-            logger.info("Dashboard broadcaster initialized and started")
+            logger.info("Dashboard broadcaster initialized")
+            
+            # Start the session buffer cleanup task
+            self.broadcaster.start_cleanup_task()
+            logger.info("Dashboard broadcaster cleanup task started")
             
             # Initialize update service with broadcaster
             self.update_service = DashboardUpdateService(self.broadcaster)
@@ -295,44 +226,8 @@ class DashboardConnectionManager:
             logger.info("Dashboard update service stopped")
             
         if self.broadcaster:
-            await self.broadcaster.stop()
+            # Stop the cleanup task before shutting down broadcaster
+            self.broadcaster.stop_cleanup_task()
+            logger.info("Dashboard broadcaster cleanup task stopped")
             self.broadcaster = None
             logger.info("Dashboard broadcaster stopped")
-    
-    async def broadcast_with_advanced_features(
-        self, 
-        channel: str, 
-        message: OutgoingMessage, 
-        exclude_users: Set[str] = None
-    ) -> int:
-        """Broadcast message using advanced broadcaster if available, fallback to basic broadcast."""
-        if self.broadcaster:
-            return await self.broadcaster.broadcast_message(channel, message, exclude_users)
-        else:
-            # Fallback to basic broadcasting
-            message_dict = message.model_dump() if hasattr(message, 'model_dump') else message
-            return await self.broadcast_to_channel(channel, message_dict, exclude_users)
-    
-    def configure_broadcaster(self, **kwargs):
-        """Configure broadcaster settings."""
-        if self.broadcaster:
-            # Configure batching
-            if 'batching_enabled' in kwargs:
-                self.broadcaster.configure_batching(
-                    kwargs.get('batching_enabled', True),
-                    kwargs.get('batch_size', 5),
-                    kwargs.get('batch_timeout_seconds', 2)
-                )
-            
-            # Configure throttling
-            if 'throttle_limits' in kwargs:
-                for channel, limits in kwargs['throttle_limits'].items():
-                    self.broadcaster.set_throttle_limit(
-                        channel, 
-                        limits['max_messages'], 
-                        limits['time_window_seconds']
-                    )
-            
-            logger.info("Broadcaster configuration updated")
-        else:
-            logger.warning("Broadcaster not initialized, cannot configure") 

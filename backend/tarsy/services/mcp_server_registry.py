@@ -56,9 +56,6 @@ class MCPServerRegistry:
         # Static servers - no runtime changes, just a dictionary
         self.static_servers: Dict[str, MCPServerConfig] = {}
         
-        # Store configured servers for access (copy to prevent external modification)
-        self.configured_servers = configured_servers.copy() if configured_servers else None
-        
         # Initialize template resolver for environment variable expansion with settings defaults
         self.template_resolver = TemplateResolver(settings=settings)
         

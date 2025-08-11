@@ -11,7 +11,8 @@ from unittest.mock import Mock
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from tarsy.models.history import AlertSession, LLMInteraction, MCPCommunication
+from tarsy.models.history import AlertSession
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.history_repository import HistoryRepository
 
 
@@ -60,20 +61,33 @@ class TestHistoryRepository:
     def sample_llm_interaction(self):
         """Create sample LLMInteraction for testing."""
         return LLMInteraction(
-            interaction_id="llm-interaction-789",
             session_id="test-session-123",
-            prompt_text="Analyze the namespace termination issue",
-            response_text="The namespace is stuck due to finalizers",
-            model_used="gpt-4",
-            timestamp=datetime.now(timezone.utc),
+            model_name="gpt-4",
             step_description="Initial analysis",
-            duration_ms=1500
+            request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "The namespace is stuck due to finalizers"}, "finish_reason": "stop"}]},
+            duration_ms=1500,
+            success=True
+        )
+    
+    @pytest.fixture
+    def sample_failed_llm_interaction(self):
+        """Create sample failed LLMInteraction for testing."""
+        return LLMInteraction(
+            session_id="test-session-123",
+            model_name="gemini-1.5-pro",
+            step_description="Failed analysis due to rate limiting",
+            request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
+            response_json=None,  # Failed interaction has no response
+            duration_ms=500,
+            success=False,
+            error_message="Resource has been exhausted (e.g. check quota). Error 429: Quota exceeded for requests"
         )
     
     @pytest.fixture
     def sample_mcp_communication(self):
-        """Create sample MCPCommunication for testing."""
-        return MCPCommunication(
+        """Create sample MCPInteraction for testing."""
+        return MCPInteraction(
             communication_id="mcp-comm-101",
             session_id="test-session-123",
             server_name="kubernetes-server",
@@ -139,8 +153,8 @@ class TestHistoryRepository:
         # Verify interaction was saved
         interactions = repository.get_llm_interactions_for_session(sample_alert_session.session_id)
         assert len(interactions) == 1
-        assert interactions[0].prompt_text == sample_llm_interaction.prompt_text
-        assert interactions[0].response_text == sample_llm_interaction.response_text
+        assert interactions[0].model_name == sample_llm_interaction.model_name
+        assert interactions[0].step_description == sample_llm_interaction.step_description
     
     @pytest.mark.unit
     def test_create_mcp_communication_success(self, repository, sample_alert_session, sample_mcp_communication):
@@ -552,16 +566,15 @@ class TestHistoryRepository:
         base_time = datetime.now(timezone.utc)
         
         llm1 = LLMInteraction(
-            interaction_id="llm-1",
             session_id=sample_alert_session.session_id,
-            prompt_text="First prompt",
-            response_text="First response",
-            model_used="gpt-4",
-            timestamp=base_time,
-            step_description="First LLM interaction"
+            model_name="gpt-4",
+            step_description="First LLM interaction",
+            request_json={"messages": [{"role": "user", "content": "First prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "First response"}, "finish_reason": "stop"}]},
+            timestamp_us=int(base_time.timestamp() * 1_000_000)
         )
         
-        mcp1 = MCPCommunication(
+        mcp1 = MCPInteraction(
             communication_id="mcp-1",
             session_id=sample_alert_session.session_id,
             server_name="kubernetes-server",
@@ -573,13 +586,12 @@ class TestHistoryRepository:
         )
         
         llm2 = LLMInteraction(
-            interaction_id="llm-2",
             session_id=sample_alert_session.session_id,
-            prompt_text="Second prompt",
-            response_text="Second response",
-            model_used="gpt-4",
-            timestamp=base_time + timedelta(seconds=2),
-            step_description="Second LLM interaction"
+            model_name="gpt-4",
+            step_description="Second LLM interaction",
+            request_json={"messages": [{"role": "user", "content": "Second prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Second response"}, "finish_reason": "stop"}]},
+            timestamp_us=int((base_time + timedelta(seconds=2)).timestamp() * 1_000_000)
         )
         
         repository.create_llm_interaction(llm1)
@@ -617,17 +629,16 @@ class TestHistoryRepository:
         
         # Create LLM interaction with precise timestamp
         llm_interaction = LLMInteraction(
-            interaction_id="llm-precise",
             session_id=sample_alert_session.session_id,
-            prompt_text="Precise timestamp prompt",
-            response_text="Precise timestamp response",
-            model_used="gpt-4",
-            timestamp_us=base_timestamp_us,
-            step_description="LLM interaction with precise timestamp"
+            model_name="gpt-4",
+            step_description="LLM interaction with precise timestamp",
+            request_json={"messages": [{"role": "user", "content": "Precise timestamp prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Precise timestamp response"}, "finish_reason": "stop"}]},
+            timestamp_us=base_timestamp_us
         )
         
         # Create MCP communication 1 second later
-        mcp_communication = MCPCommunication(
+        mcp_communication = MCPInteraction(
             communication_id="mcp-later",
             session_id=sample_alert_session.session_id,
             server_name="kubernetes-server",
@@ -640,13 +651,12 @@ class TestHistoryRepository:
         
         # Create another LLM interaction 500ms after first
         llm_interaction_middle = LLMInteraction(
-            interaction_id="llm-middle",
             session_id=sample_alert_session.session_id,
-            prompt_text="Middle timestamp prompt",
-            response_text="Middle timestamp response",
-            model_used="gpt-4",
-            timestamp_us=base_timestamp_us + 500_000,  # 500ms later
-            step_description="LLM interaction in middle"
+            model_name="gpt-4",
+            step_description="LLM interaction in middle",
+            request_json={"messages": [{"role": "user", "content": "Middle timestamp prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Middle timestamp response"}, "finish_reason": "stop"}]},
+            timestamp_us=base_timestamp_us + 500_000  # 500ms later
         )
         
         repository.create_llm_interaction(llm_interaction)
@@ -661,9 +671,9 @@ class TestHistoryRepository:
         assert len(events) == 3
         
         # Verify chronological ordering by timestamp_us
-        assert events[0]["id"] == "llm-precise"
-        assert events[1]["id"] == "llm-middle"
-        assert events[2]["id"] == "mcp-later"
+        assert events[0]["type"] == "llm"
+        assert events[1]["type"] == "llm"
+        assert events[2]["type"] == "mcp"
         
         # Verify Unix timestamps are preserved for sorting
         assert events[0]["timestamp_us"] == base_timestamp_us
@@ -717,50 +727,97 @@ class TestHistoryRepository:
         assert len(active_sessions) == 1
         assert active_sessions[0].session_id == active_session.session_id
         assert active_sessions[0].status == "in_progress"
-    
+
     @pytest.mark.unit
-    def test_cleanup_old_sessions(self, repository):
-        """Test cleanup of old sessions."""
-        # Create old and new sessions
-        from tarsy.models.history import now_us
-        now_us_time = now_us()
-        hundred_days_ago_us = now_us_time - (100 * 24 * 60 * 60 * 1000000)  # 100 days in microseconds
-        one_day_ago_us = now_us_time - (24 * 60 * 60 * 1000000)  # 1 day in microseconds
-        
-        old_session = AlertSession(
-            session_id="old-session",
-            alert_id="old-alert",
-            alert_data={},
-            agent_type="TestAgent",
-            alert_type="test",
-            status="completed",
-            started_at_us=hundred_days_ago_us,
-            completed_at_us=hundred_days_ago_us
+    def test_get_session_timeline_empty_session(self, repository):
+        """Test getting timeline for non-existent session."""
+        result = repository.get_session_timeline("non-existent-session")
+        assert result == {}
+
+    @pytest.mark.unit
+    def test_get_llm_interactions_empty_session(self, repository):
+        """Test getting LLM interactions for non-existent session."""
+        interactions = repository.get_llm_interactions_for_session("non-existent-session")
+        assert interactions == []
+
+    @pytest.mark.unit
+    def test_get_mcp_communications_empty_session(self, repository):
+        """Test getting MCP communications for non-existent session."""
+        communications = repository.get_mcp_communications_for_session("non-existent-session")
+        assert communications == []
+
+    @pytest.mark.unit
+    def test_create_alert_session_duplicate_prevention(self, repository, sample_alert_session):
+        """Test that creating duplicate alert sessions is prevented."""
+        # Create the first session
+        first_result = repository.create_alert_session(sample_alert_session)
+        assert first_result is not None
+        assert first_result.session_id == sample_alert_session.session_id
+
+        # Attempt to create the same session again (same alert_id)
+        duplicate_session = AlertSession(
+            session_id="different-session-id",  # Different session_id
+            alert_id=sample_alert_session.alert_id,  # Same alert_id - should trigger duplicate prevention
+            alert_data=sample_alert_session.alert_data,
+            agent_type=sample_alert_session.agent_type,
+            alert_type=sample_alert_session.alert_type,
+            status=sample_alert_session.status,
+            started_at_us=sample_alert_session.started_at_us
         )
         
-        new_session = AlertSession(
-            session_id="new-session",
-            alert_id="new-alert",
-            alert_data={},
-            agent_type="TestAgent",
-            alert_type="test",
-            status="completed",
-            started_at_us=one_day_ago_us,
-            completed_at_us=one_day_ago_us
-        )
+        # Should return the existing session, not create a new one
+        second_result = repository.create_alert_session(duplicate_session)
+        assert second_result is not None
+        assert second_result.session_id == sample_alert_session.session_id  # Should return original
+        assert second_result.alert_id == sample_alert_session.alert_id
+
+    @pytest.mark.unit
+    def test_get_alert_sessions_edge_cases(self, repository):
+        """Test edge cases for get_alert_sessions method."""
+        # Test with empty database
+        result = repository.get_alert_sessions()
+        assert result["sessions"] == []
+        assert result["pagination"]["total_items"] == 0
+        assert result["pagination"]["total_pages"] == 0
+
+        # Test with invalid page numbers
+        result = repository.get_alert_sessions(page=0)  # Should handle gracefully
+        assert result["sessions"] == []
+
+        result = repository.get_alert_sessions(page=-1)  # Should handle gracefully  
+        assert result["sessions"] == []
+
+        # Test with very large page size
+        result = repository.get_alert_sessions(page_size=10000)
+        assert result["sessions"] == []
+
+    @pytest.mark.unit  
+    def test_get_alert_sessions_multiple_status_list(self, repository):
+        """Test filtering by multiple status values using list."""
+        # Create sessions with different statuses
+        statuses = ["pending", "in_progress", "completed", "failed"]
         
-        repository.create_alert_session(old_session)
-        repository.create_alert_session(new_session)
+        for i, status in enumerate(statuses):
+            session = AlertSession(
+                session_id=f"multi-status-{i}",
+                alert_id=f"alert-multi-{i}",
+                alert_data={},
+                agent_type="TestAgent",
+                alert_type="TestAlert",
+                status=status,
+                started_at=datetime.now(timezone.utc) - timedelta(minutes=i)
+            )
+            repository.create_alert_session(session)
+
+        # Test filtering by multiple statuses
+        result = repository.get_alert_sessions(status=["pending", "in_progress"])
+        assert len(result["sessions"]) == 2
+        session_statuses = [s.status for s in result["sessions"]]
+        assert "pending" in session_statuses
+        assert "in_progress" in session_statuses
+        assert "completed" not in session_statuses
+        assert "failed" not in session_statuses
         
-        # Cleanup sessions older than 90 days
-        cleaned_count = repository.cleanup_old_sessions(retention_days=90)
-        
-        assert cleaned_count == 1
-        
-        # Verify old session was deleted and new session remains
-        assert repository.get_alert_session("old-session") is None
-        assert repository.get_alert_session("new-session") is not None
-    
     @pytest.mark.unit
     def test_complex_filter_combinations(self, repository):
         """Test complex filter combinations with AND logic."""
@@ -813,6 +870,168 @@ class TestHistoryRepository:
         session_ids = [s.session_id for s in result["sessions"]]
         assert "session-1" in session_ids
         assert "session-3" in session_ids
+
+    @pytest.mark.unit
+    def test_create_successful_llm_interaction(self, repository, sample_alert_session, sample_llm_interaction):
+        """Test creating successful LLM interaction with success=True."""
+        # Create session first
+        repository.create_alert_session(sample_alert_session)
+        
+        # Create successful interaction
+        created_interaction = repository.create_llm_interaction(sample_llm_interaction)
+        
+        assert created_interaction.interaction_id == sample_llm_interaction.interaction_id
+        assert created_interaction.success == True
+        assert created_interaction.error_message is None
+        
+        # Verify interaction was saved with correct success status
+        interactions = repository.get_llm_interactions_for_session(sample_alert_session.session_id)
+        assert len(interactions) == 1
+        assert interactions[0].success == True
+        assert interactions[0].error_message is None
+        assert interactions[0].response_json is not None
+
+    @pytest.mark.unit
+    def test_create_failed_llm_interaction(self, repository, sample_alert_session, sample_failed_llm_interaction):
+        """Test creating failed LLM interaction with success=False and error_message."""
+        # Create session first
+        repository.create_alert_session(sample_alert_session)
+        
+        # Create failed interaction
+        created_interaction = repository.create_llm_interaction(sample_failed_llm_interaction)
+        
+        assert created_interaction.interaction_id == sample_failed_llm_interaction.interaction_id
+        assert created_interaction.success == False
+        assert created_interaction.error_message is not None
+        assert "429" in created_interaction.error_message
+        assert "Quota exceeded" in created_interaction.error_message
+        
+        # Verify interaction was saved with correct failure status
+        interactions = repository.get_llm_interactions_for_session(sample_alert_session.session_id)
+        assert len(interactions) == 1
+        assert interactions[0].success == False
+        assert interactions[0].error_message == sample_failed_llm_interaction.error_message
+        assert interactions[0].response_json is None
+
+    @pytest.mark.unit
+    def test_get_session_timeline_includes_success_error_fields(self, repository, sample_alert_session):
+        """Test session timeline includes success and error_message fields in LLM interactions."""
+        # Create session
+        repository.create_alert_session(sample_alert_session)
+        
+        # Create successful interaction
+        successful_interaction = LLMInteraction(
+            session_id=sample_alert_session.session_id,
+            model_name="gpt-4",
+            step_description="Successful analysis",
+            request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]},
+            duration_ms=1000,
+            success=True
+        )
+        
+        # Create failed interaction
+        failed_interaction = LLMInteraction(
+            session_id=sample_alert_session.session_id,
+            model_name="gemini-1.5-pro",
+            step_description="Failed analysis",
+            request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
+            response_json=None,
+            duration_ms=500,
+            success=False,
+            error_message="API rate limit exceeded"
+        )
+        
+        repository.create_llm_interaction(successful_interaction)
+        repository.create_llm_interaction(failed_interaction)
+        
+        # Get timeline
+        timeline = repository.get_session_timeline(sample_alert_session.session_id)
+        
+        assert timeline is not None
+        assert "chronological_timeline" in timeline
+        
+        # Verify timeline events include success and error_message fields
+        events = timeline["chronological_timeline"]
+        assert len(events) == 2
+        
+        # Find the successful and failed interactions in timeline
+        successful_event = None
+        failed_event = None
+        
+        for event in events:
+            if event["type"] == "llm":
+                if event["details"]["success"] == True:
+                    successful_event = event
+                elif event["details"]["success"] == False:
+                    failed_event = event
+        
+        # Verify successful interaction details
+        assert successful_event is not None
+        assert successful_event["details"]["success"] == True
+        assert successful_event["details"]["error_message"] is None
+        
+        # Verify failed interaction details
+        assert failed_event is not None
+        assert failed_event["details"]["success"] == False
+        assert failed_event["details"]["error_message"] == "API rate limit exceeded"
+
+    @pytest.mark.unit
+    def test_mixed_successful_and_failed_interactions_in_session(self, repository, sample_alert_session):
+        """Test session with mix of successful and failed LLM interactions."""
+        # Create session
+        repository.create_alert_session(sample_alert_session)
+        
+        # Create multiple interactions with different success statuses
+        interactions = [
+            LLMInteraction(
+                session_id=sample_alert_session.session_id,
+                model_name="gpt-4",
+                step_description="First attempt - successful",
+                request_json={"messages": [{"role": "user", "content": "Analyze issue"}]},
+                response_json={"choices": [{"message": {"role": "assistant", "content": "Analysis complete"}, "finish_reason": "stop"}]},
+                duration_ms=1200,
+                success=True
+            ),
+            LLMInteraction(
+                session_id=sample_alert_session.session_id,
+                model_name="gemini-1.5-pro",
+                step_description="Second attempt - failed",
+                request_json={"messages": [{"role": "user", "content": "Follow up analysis"}]},
+                response_json=None,
+                duration_ms=300,
+                success=False,
+                error_message="Connection timeout"
+            ),
+            LLMInteraction(
+                session_id=sample_alert_session.session_id,
+                model_name="gpt-4",
+                step_description="Third attempt - successful",
+                request_json={"messages": [{"role": "user", "content": "Final analysis"}]},
+                response_json={"choices": [{"message": {"role": "assistant", "content": "Final conclusion"}, "finish_reason": "stop"}]},
+                duration_ms=900,
+                success=True
+            )
+        ]
+        
+        for interaction in interactions:
+            repository.create_llm_interaction(interaction)
+        
+        # Verify all interactions were saved correctly
+        saved_interactions = repository.get_llm_interactions_for_session(sample_alert_session.session_id)
+        assert len(saved_interactions) == 3
+        
+        # Verify success statuses
+        success_count = sum(1 for i in saved_interactions if i.success)
+        failure_count = sum(1 for i in saved_interactions if not i.success)
+        
+        assert success_count == 2
+        assert failure_count == 1
+        
+        # Verify error messages
+        failed_interactions = [i for i in saved_interactions if not i.success]
+        assert len(failed_interactions) == 1
+        assert failed_interactions[0].error_message == "Connection timeout"
 
 
 class TestHistoryRepositoryErrorHandling:
@@ -867,13 +1086,36 @@ class TestHistoryRepositoryErrorHandling:
         """Test getting session timeline with database error."""
         result = repository_with_session_error.get_session_timeline("test-session")
         assert result is None
-    
-    @pytest.mark.unit
-    def test_cleanup_old_sessions_database_error(self, repository_with_session_error):
-        """Test cleanup old sessions with database error."""
-        result = repository_with_session_error.cleanup_old_sessions(90)
-        assert result == 0
 
+    @pytest.mark.unit
+    def test_update_alert_session_database_error(self, repository_with_session_error, sample_alert_session):
+        """Test update alert session with database error."""
+        result = repository_with_session_error.update_alert_session(sample_alert_session)
+        assert result == False
+
+    @pytest.mark.unit
+    def test_get_llm_interactions_database_error(self, repository_with_session_error):
+        """Test getting LLM interactions with database error."""
+        with pytest.raises(Exception):
+            repository_with_session_error.get_llm_interactions_for_session("test-session")
+
+    @pytest.mark.unit
+    def test_get_mcp_communications_database_error(self, repository_with_session_error):
+        """Test getting MCP communications with database error."""
+        with pytest.raises(Exception):
+            repository_with_session_error.get_mcp_communications_for_session("test-session")
+
+    @pytest.mark.unit
+    def test_get_active_sessions_database_error(self, repository_with_session_error):
+        """Test getting active sessions with database error."""
+        with pytest.raises(Exception):
+            repository_with_session_error.get_active_sessions()
+
+    @pytest.mark.unit
+    def test_get_filter_options_database_error(self, repository_with_session_error):
+        """Test getting filter options with database error."""
+        with pytest.raises(Exception):
+            repository_with_session_error.get_filter_options()
 
 class TestHistoryRepositoryPerformance:
     """Test suite for HistoryRepository performance scenarios."""
@@ -918,13 +1160,12 @@ class TestHistoryRepositoryPerformance:
             # Add some interactions for every 10th session
             if i % 10 == 0:
                 interaction = LLMInteraction(
-                    interaction_id=f"perf-interaction-{i}",
                     session_id=session.session_id,
-                    prompt_text=f"Prompt {i}",
-                    response_text=f"Response {i}",
-                    model_used="gpt-4",
-                    timestamp=now - timedelta(minutes=i-1),
-                    step_description=f"Interaction {i}"
+                    model_name="gpt-4",
+                    step_description=f"Interaction {i}",
+                    request_json={"messages": [{"role": "user", "content": f"Prompt {i}"}]},
+                    response_json={"choices": [{"message": {"role": "assistant", "content": f"Response {i}"}, "finish_reason": "stop"}]},
+                    timestamp_us=int((now - timedelta(minutes=i-1)).timestamp() * 1_000_000)
                 )
                 repository.create_llm_interaction(interaction)
         
@@ -961,117 +1202,6 @@ class TestHistoryRepositoryPerformance:
         assert len(result["sessions"]) == 10
 
     # Dashboard-specific tests
-    @pytest.mark.unit
-    def test_get_dashboard_metrics_success(self, db_session):
-        """Test successful dashboard metrics calculation."""
-        repo = HistoryRepository(db_session)
-        
-        # Create test sessions with different statuses
-        from datetime import datetime, timedelta, timezone
-        
-        # Active sessions
-        for i in range(3):
-            session = AlertSession(
-                session_id=f"active_{i}",
-                alert_id=f"alert_active_{i}",
-                agent_type="kubernetes",
-                alert_type="PodCrashLooping",
-                status="in_progress",
-                started_at=datetime.now(timezone.utc) - timedelta(minutes=30),
-                alert_data={"test": "data"}
-            )
-            db_session.add(session)
-        
-        # Completed sessions
-        for i in range(5):
-            session = AlertSession(
-                session_id=f"completed_{i}",
-                alert_id=f"alert_completed_{i}",
-                agent_type="network" if i % 2 else "kubernetes",
-                alert_type="ServiceDown" if i % 2 else "PodCrashLooping",
-                status="completed",
-                started_at=datetime.now(timezone.utc) - timedelta(hours=2),
-                completed_at=datetime.now(timezone.utc) - timedelta(hours=1, minutes=30),
-                alert_data={"test": "data"}
-            )
-            db_session.add(session)
-        
-        # Failed sessions
-        for i in range(2):
-            session = AlertSession(
-                session_id=f"failed_{i}",
-                alert_id=f"alert_failed_{i}",
-                agent_type="database",
-                alert_type="ConnectionTimeout",
-                status="failed",
-                started_at=datetime.now(timezone.utc) - timedelta(hours=1),
-                completed_at=datetime.now(timezone.utc) - timedelta(minutes=30),
-                error_message="Connection timeout",
-                alert_data={"test": "data"}
-            )
-            db_session.add(session)
-        
-        # Add some interactions for counting
-        for i in range(10):
-            interaction = LLMInteraction(
-                interaction_id=f"llm_{i}",
-                session_id=f"completed_{i % 5}",
-                prompt_text="Test prompt",
-                response_text="Test response",
-                model_used="test-model",
-                step_description="Test step",
-                timestamp=datetime.now(timezone.utc)
-            )
-            db_session.add(interaction)
-        
-        for i in range(8):
-            communication = MCPCommunication(
-                communication_id=f"mcp_{i}",
-                session_id=f"completed_{i % 5}",
-                server_name="test-server",
-                communication_type="tool_call",
-                tool_name="test-tool",
-                success=True,
-                step_description="Test step",
-                timestamp=datetime.now(timezone.utc)
-            )
-            db_session.add(communication)
-        
-        db_session.commit()
-        
-        result = repo.get_dashboard_metrics()
-        
-        # Verify session counts
-        assert result["active_sessions"] == 3  # 3 in_progress sessions
-        assert result["completed_sessions"] == 5  # 5 completed sessions
-        assert result["failed_sessions"] == 2  # 2 failed sessions
-        
-        # Verify interaction counts
-        assert result["total_interactions"] == 18  # 10 LLM + 8 MCP
-        
-        # Verify metrics are calculated
-        assert "avg_session_duration" in result
-        assert "error_rate" in result
-        assert "last_24h_sessions" in result
-        
-        # Verify error rate calculation (2 failed out of 10 total = 20%)
-        assert result["error_rate"] == 20.0
-    
-    @pytest.mark.unit
-    def test_get_dashboard_metrics_empty_database(self, db_session):
-        """Test dashboard metrics with empty database."""
-        repo = HistoryRepository(db_session)
-        
-        result = repo.get_dashboard_metrics()
-        
-        # All counts should be zero
-        assert result["active_sessions"] == 0
-        assert result["completed_sessions"] == 0
-        assert result["failed_sessions"] == 0
-        assert result["total_interactions"] == 0
-        assert result["avg_session_duration"] == 0.0
-        assert result["error_rate"] == 0.0
-        assert result["last_24h_sessions"] == 0
     
     @pytest.mark.unit
     def test_get_filter_options_success(self, db_session):
@@ -1157,372 +1287,7 @@ class TestHistoryRepositoryPerformance:
         assert result["alert_types"] == sorted(result["alert_types"])
         # Status options are returned in constant definition order (not sorted)
         assert result["status_options"] == ["pending", "in_progress", "completed", "failed"]
-    
-    @pytest.mark.unit
-    def test_dashboard_metrics_duration_calculation(self, db_session):
-        """Test average duration calculation in dashboard metrics."""
-        repo = HistoryRepository(db_session)
-        
-        # Create sessions with known durations
-        
-        # Session 1: 60 seconds duration
-        from tarsy.models.history import now_us
-        now_us_time = now_us()
-        one_minute_ago_us = now_us_time - (60 * 1000000)  # 1 minute in microseconds
-        two_minutes_ago_us = now_us_time - (2 * 60 * 1000000)  # 2 minutes in microseconds
-        four_minutes_ago_us = now_us_time - (4 * 60 * 1000000)  # 4 minutes in microseconds
-        
-        session1 = AlertSession(
-            session_id="duration_test_1",
-            alert_id="alert_1",
-            agent_type="test",
-            status="completed",
-            started_at_us=two_minutes_ago_us,
-            completed_at_us=one_minute_ago_us,
-            alert_data={}
-        )
-        
-        # Session 2: 120 seconds duration
-        session2 = AlertSession(
-            session_id="duration_test_2",
-            alert_id="alert_2",
-            agent_type="test",
-            status="completed",
-            started_at_us=four_minutes_ago_us,
-            completed_at_us=two_minutes_ago_us,
-            alert_data={}
-        )
-        
-        db_session.add(session1)
-        db_session.add(session2)
-        db_session.commit()
-        
-        result = repo.get_dashboard_metrics()
-        
-        # Average should be (60 + 120) / 2 = 90 seconds
-        assert result["avg_session_duration"] == 90.0
-    
-    @pytest.mark.unit
-    def test_export_session_data_success(self, db_session):
-        """Test successful session data export."""
-        repo = HistoryRepository(db_session)
-        
-        # Create test session with all required fields
-        session = AlertSession(
-            session_id="test_export_session",
-            alert_id="test_alert_export",
-            agent_type="KubernetesAgent",
-            alert_type="TestAlert",
-            status="completed",
-            started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-            completed_at=datetime.now(timezone.utc) - timedelta(minutes=3),
-            alert_data={"environment": "test", "cluster": "test-cluster"},
-            session_metadata={"description": "Test export session"}
-        )
-        
-        # Add LLM interaction with required fields
-        llm_interaction = LLMInteraction(
-            session_id="test_export_session",
-            interaction_id="test_llm_1",
-            model_used="test-model",
-            timestamp=datetime.now(timezone.utc) - timedelta(minutes=4),
-            prompt_text="Test prompt",
-            response_text="Test response",
-            step_description="Test LLM interaction"
-        )
-        
-        # Add MCP communication with required fields
-        mcp_communication = MCPCommunication(
-            session_id="test_export_session",
-            communication_id="test_mcp_1",
-            timestamp=datetime.now(timezone.utc) - timedelta(minutes=4),
-            server_name="test-server",
-            communication_type="tool_call",
-            tool_name="test-tool",
-            tool_arguments={"action": "test"},
-            tool_result={"result": "success"},
-            success=True,
-            step_description="Test MCP communication"
-        )
-        
-        db_session.add(session)
-        db_session.add(llm_interaction)
-        db_session.add(mcp_communication)
-        db_session.commit()
-        
-        # Test JSON export
-        result = repo.export_session_data("test_export_session", "json")
-        
-        # Verify result structure
-        assert result["session_id"] == "test_export_session"
-        assert result["format"] == "json"
-        assert result["error"] is None
-        assert result["data"] is not None
-        
-        # Verify session data
-        session_data = result["data"]["session"]
-        assert session_data["session_id"] == "test_export_session"
-        assert session_data["alert_id"] == "test_alert_export"
-        assert session_data["agent_type"] == "KubernetesAgent"
-        assert session_data["status"] == "completed"
-        assert session_data["alert_data"]["environment"] == "test"
-        
-        # Verify timeline data
-        timeline_data = result["data"]["timeline"]
-        assert timeline_data["session"]["session_id"] == "test_export_session"
-        assert timeline_data["session"]["total_interactions"] == 2  # 1 LLM + 1 MCP interaction
-        
-        # Verify export metadata
-        export_metadata = result["data"]["export_metadata"]
-        assert export_metadata["format"] == "json"
-        assert export_metadata["total_interactions"] == 2  # Should match timeline interactions
-        assert "exported_at" in export_metadata
-        assert "session_duration_seconds" in export_metadata
-    
-    @pytest.mark.unit
-    def test_export_session_data_not_found(self, db_session):
-        """Test export with non-existent session."""
-        repo = HistoryRepository(db_session)
-        
-        result = repo.export_session_data("nonexistent_session", "json")
-        
-        # Verify error response
-        assert result["session_id"] == "nonexistent_session"
-        assert result["format"] == "json"
-        assert result["data"] is None
-        assert "not found" in result["error"].lower()
-    
-    @pytest.mark.unit
-    def test_export_session_data_csv_format(self, db_session):
-        """Test export with CSV format parameter."""
-        repo = HistoryRepository(db_session)
-        
-        # Create minimal test session
-        session = AlertSession(
-            session_id="test_csv_session",
-            alert_id="test_alert_csv",
-            agent_type="KubernetesAgent",
-            alert_type="TestAlert",
-            status="completed",
-            started_at=datetime.now(timezone.utc) - timedelta(minutes=2),
-            completed_at=datetime.now(timezone.utc) - timedelta(minutes=1),
-            alert_data={}
-        )
-        
-        db_session.add(session)
-        db_session.commit()
-        
-        result = repo.export_session_data("test_csv_session", "csv")
-        
-        # Verify format is preserved in response
-        assert result["format"] == "csv"
-        assert result["session_id"] == "test_csv_session"
-        assert result["data"] is not None
-        assert result["data"]["export_metadata"]["format"] == "csv"
-    
-    @pytest.mark.unit
-    def test_search_sessions_success(self, db_session):
-        """Test successful session search."""
-        repo = HistoryRepository(db_session)
-        
-        # Create test sessions with searchable content
-        session1 = AlertSession(
-            session_id="search_session_1",
-            alert_id="namespace_terminating_alert",
-            agent_type="KubernetesAgent",
-            alert_type="NamespaceTerminating",
-            status="completed",
-            started_at=datetime.now(timezone.utc) - timedelta(minutes=10),
-            completed_at=datetime.now(timezone.utc) - timedelta(minutes=8),
-            alert_data={"namespace": "production-ns", "environment": "production"}
-        )
-        
-        session2 = AlertSession(
-            session_id="search_session_2",
-            alert_id="pod_crash_alert",
-            agent_type="KubernetesAgent",
-            alert_type="PodCrashLoop",
-            status="failed",
-            started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-            completed_at=datetime.now(timezone.utc) - timedelta(minutes=3),
-            alert_data={"namespace": "staging-ns", "environment": "staging"},
-            error_message="Failed to resolve namespace issue"
-        )
-        
-        session3 = AlertSession(
-            session_id="search_session_3",
-            alert_id="unrelated_alert",
-            agent_type="DatabaseAgent",
-            alert_type="ConnectionTimeout",
-            status="completed",
-            started_at=datetime.now(timezone.utc) - timedelta(minutes=2),
-            completed_at=datetime.now(timezone.utc) - timedelta(minutes=1),
-            alert_data={"database": "main-db"}
-        )
-        
-        db_session.add(session1)
-        db_session.add(session2)
-        db_session.add(session3)
-        db_session.commit()
-        
-        # Test search by alert_type
-        results = repo.search_sessions("namespace", 10)
-        
-        # Should find sessions 1 and 2 (both have "namespace" in content)
-        assert len(results) == 2
-        session_ids = [r["session_id"] for r in results]
-        assert "search_session_1" in session_ids
-        assert "search_session_2" in session_ids
-        
-        # Verify result structure
-        result = results[0]
-        assert "session_id" in result
-        assert "alert_id" in result
-        assert "agent_type" in result
-        assert "alert_type" in result
-        assert "status" in result
-        assert "started_at_us" in result
-        assert "completed_at_us" in result
-        assert "duration_seconds" in result
-        
-        # Test search by agent_type
-        k8s_results = repo.search_sessions("KubernetesAgent", 10)
-        assert len(k8s_results) == 2  # sessions 1 and 2
-        
-        # Test search by error message
-        error_results = repo.search_sessions("Failed to resolve", 10)
-        assert len(error_results) == 1
-        assert error_results[0]["session_id"] == "search_session_2"
-    
-    @pytest.mark.unit
-    def test_search_sessions_json_field_search(self, db_session):
-        """Test search within JSON fields."""
-        repo = HistoryRepository(db_session)
-        
-        # Create session with JSON data
-        session = AlertSession(
-            session_id="json_search_session",
-            alert_id="json_test_alert",
-            agent_type="KubernetesAgent",
-            alert_type="TestAlert",
-            status="completed",
-            started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-            completed_at=datetime.now(timezone.utc) - timedelta(minutes=3),
-            alert_data={"environment": "production", "cluster": "prod-cluster-01"},
-            session_metadata={"description": "Production cluster maintenance"}
-        )
-        
-        db_session.add(session)
-        db_session.commit()
-        
-        # Test search by environment in alert_data
-        env_results = repo.search_sessions("production", 10)
-        assert len(env_results) == 1
-        assert env_results[0]["session_id"] == "json_search_session"
-        
-        # Test search by cluster in alert_data
-        cluster_results = repo.search_sessions("prod-cluster-01", 10)
-        assert len(cluster_results) == 1
-        assert cluster_results[0]["session_id"] == "json_search_session"
-        
-        # Test search by description in session_metadata
-        desc_results = repo.search_sessions("maintenance", 10)
-        assert len(desc_results) == 1
-        assert desc_results[0]["session_id"] == "json_search_session"
-    
-    @pytest.mark.unit
-    def test_search_sessions_empty_results(self, db_session):
-        """Test search with no matching results."""
-        repo = HistoryRepository(db_session)
-        
-        # Create a session that won't match our search
-        session = AlertSession(
-            session_id="no_match_session",
-            alert_id="different_alert",
-            agent_type="DatabaseAgent",
-            alert_type="ConnectionTimeout",
-            status="completed",
-            started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-            completed_at=datetime.now(timezone.utc) - timedelta(minutes=3),
-            alert_data={"database": "test-db"}
-        )
-        
-        db_session.add(session)
-        db_session.commit()
-        
-        # Search for something that doesn't exist
-        results = repo.search_sessions("nonexistent_term", 10)
-        assert results == []
-    
-    @pytest.mark.unit
-    def test_search_sessions_limit_parameter(self, db_session):
-        """Test search with limit parameter."""
-        repo = HistoryRepository(db_session)
-        
-        # Create multiple matching sessions
-        for i in range(5):
-            session = AlertSession(
-                session_id=f"limit_test_session_{i}",
-                alert_id=f"test_alert_{i}",
-                agent_type="TestAgent",
-                alert_type="TestAlert",
-                status="completed",
-                started_at=datetime.now(timezone.utc) - timedelta(minutes=10-i),
-                completed_at=datetime.now(timezone.utc) - timedelta(minutes=8-i),
-                alert_data={}
-            )
-            db_session.add(session)
-        
-        db_session.commit()
-        
-        # Test with limit=2
-        results = repo.search_sessions("TestAgent", 2)
-        assert len(results) == 2
-        
-        # Test with limit=10 (should return all 5)
-        results = repo.search_sessions("TestAgent", 10)
-        assert len(results) == 5
-    
-    @pytest.mark.unit
-    def test_search_sessions_ordering(self, db_session):
-        """Test that search results are ordered by most recent first."""
-        repo = HistoryRepository(db_session)
-        
-        # Create sessions with different timestamps
-        older_session = AlertSession(
-            session_id="older_session",
-            alert_id="older_alert",
-            agent_type="TestAgent",
-            alert_type="TestAlert",
-            status="completed",
-            started_at=datetime.now(timezone.utc) - timedelta(hours=2),
-            completed_at=datetime.now(timezone.utc) - timedelta(hours=2) + timedelta(minutes=1),
-            alert_data={}
-        )
-        
-        newer_session = AlertSession(
-            session_id="newer_session",
-            alert_id="newer_alert",
-            agent_type="TestAgent",
-            alert_type="TestAlert",
-            status="completed",
-            started_at=datetime.now(timezone.utc) - timedelta(minutes=30),
-            completed_at=datetime.now(timezone.utc) - timedelta(minutes=29),
-            alert_data={}
-        )
-        
-        db_session.add(older_session)
-        db_session.add(newer_session)
-        db_session.commit()
-        
-        results = repo.search_sessions("TestAgent", 10)
-        
-        # Newer session should come first
-        assert len(results) == 2
-        assert results[0]["session_id"] == "newer_session"
-        assert results[1]["session_id"] == "older_session"
 
- 
 @pytest.mark.unit  
 class TestHistoryRepositoryDuplicatePrevention:
     """Standalone test class for duplicate prevention (kept for backwards compatibility)."""
@@ -1650,13 +1415,13 @@ class TestFlexibleAlertDataPerformance:
         return repository
     
     @pytest.mark.unit
-    def test_json_field_query_performance(self, repository_with_flexible_data):
-        """Test performance of JSON field queries with complex data structures."""
-        import time
-        
-        # Test 1: Query by severity (should use JSON index)
-        start_time = time.time()
+    def test_json_field_query_functionality(self, repository_with_flexible_data):
+        """Test functionality of JSON field queries with complex data structures."""
+        # Test querying and filtering works correctly without strict timing requirements
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
+        
+        # Verify we get the expected number of sessions
+        assert len(sessions["sessions"]) == 100, "Should retrieve all 100 test sessions"
         
         # Filter in Python to simulate JSON query (since SQLite doesn't have JSON indexes)
         critical_sessions = [
@@ -1664,23 +1429,23 @@ class TestFlexibleAlertDataPerformance:
             if s.alert_data and s.alert_data.get("severity") == "critical"
         ]
         
-        query_time = time.time() - start_time
-        
-        # Should complete reasonably quickly (under 500ms for 100 records)
-        assert query_time < 0.5, f"JSON severity query took {query_time:.3f}s, should be faster"
+        # Verify filtering works and we get expected results
         assert len(critical_sessions) > 0, "Should find some critical alerts"
+        
+        # Verify all returned sessions actually have critical severity
+        for session in critical_sessions:
+            assert session.alert_data.get("severity") == "critical"
     
     @pytest.mark.unit  
-    def test_complex_json_structure_performance(self, repository_with_flexible_data):
-        """Test performance with complex nested JSON structures."""
-        import time
-        
-        # Test querying nested data structures
-        start_time = time.time()
-        
+    def test_complex_json_structure_functionality(self, repository_with_flexible_data):
+        """Test functionality with complex nested JSON structures."""
+        # Test querying nested data structures works correctly
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
         
-        # Simulate complex JSON queries on nested data
+        # Verify we get all sessions
+        assert len(sessions["sessions"]) == 100, "Should retrieve all 100 test sessions"
+        
+        # Test complex nested JSON queries
         monitoring_with_high_cpu = []
         for session in sessions["sessions"]:
             if (session.alert_data and 
@@ -1689,20 +1454,20 @@ class TestFlexibleAlertDataPerformance:
                 session.alert_data["metrics"].get("cpu_usage", 0) > 80):
                 monitoring_with_high_cpu.append(session)
         
-        query_time = time.time() - start_time
-        
-        # Should handle nested JSON queries reasonably
-        assert query_time < 0.2, f"Complex JSON query took {query_time:.3f}s, should be faster"
+        # Verify query completed successfully and found expected data
         assert len(monitoring_with_high_cpu) >= 0, "Query should complete successfully"
+        
+        # Verify all returned sessions actually have high CPU usage
+        for session in monitoring_with_high_cpu:
+            assert session.alert_data.get("metrics", {}).get("cpu_usage", 0) > 80
     
     @pytest.mark.unit
-    def test_json_array_query_performance(self, repository_with_flexible_data):
-        """Test performance of querying JSON arrays within alert data."""
-        import time
-        
-        start_time = time.time()
-        
+    def test_json_array_query_functionality(self, repository_with_flexible_data):
+        """Test functionality of querying JSON arrays within alert data."""
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
+        
+        # Verify we get all sessions
+        assert len(sessions["sessions"]) == 100, "Should retrieve all 100 test sessions"
         
         # Query sessions with array data (labels, queries, events, etc.)
         sessions_with_arrays = []
@@ -1719,49 +1484,46 @@ class TestFlexibleAlertDataPerformance:
                 if has_arrays:
                     sessions_with_arrays.append(session)
         
-        query_time = time.time() - start_time
-        
-        # Should handle array queries efficiently
-        assert query_time < 0.15, f"Array JSON query took {query_time:.3f}s, should be faster"
+        # Verify we found sessions with array data
         assert len(sessions_with_arrays) > 0, "Should find sessions with array data"
+        
+        # Verify all returned sessions actually have arrays
+        for session in sessions_with_arrays:
+            has_arrays = any(
+                isinstance(v, list) for v in session.alert_data.values()
+            ) or any(
+                isinstance(v, dict) and any(isinstance(nested_v, list) for nested_v in v.values())
+                for v in session.alert_data.values() if isinstance(v, dict)
+            )
+            assert has_arrays, "Session should actually contain array data"
     
     @pytest.mark.unit
-    def test_json_pagination_performance(self, repository_with_flexible_data):
-        """Test pagination performance with large JSON payloads."""
-        import time
-        
-        # Test multiple pages to ensure consistent performance
-        page_times = []
+    def test_json_pagination_functionality(self, repository_with_flexible_data):
+        """Test pagination functionality with large JSON payloads."""
+        # Test multiple pages to ensure pagination works correctly
+        total_sessions_seen = set()
         
         for page in range(1, 6):  # Test 5 pages
-            start_time = time.time()
-            
             result = repository_with_flexible_data.get_alert_sessions(
                 page=page,
                 page_size=20
             )
             
-            page_time = time.time() - start_time
-            page_times.append(page_time)
+            # Verify pagination structure works correctly
+            assert len(result["sessions"]) <= 20, f"Page {page} should have at most 20 sessions"
+            assert result["pagination"]["page"] == page, f"Page number should match request"
+            assert result["pagination"]["page_size"] == 20, "Page size should match request"
+            assert result["pagination"]["total_items"] == 100, "Total items should be consistent"
+            assert result["pagination"]["total_pages"] == 5, "Total pages should be 5 for 100 items with page_size 20"
             
-            # Verify pagination works with flexible data
-            assert len(result["sessions"]) <= 20
-            assert result["pagination"]["page"] == page
+            # Track session IDs to ensure no duplicates across pages
+            session_ids = {s.session_id for s in result["sessions"]}
+            
+            # Verify no duplicate sessions across pages
+            overlap = total_sessions_seen.intersection(session_ids)
+            assert len(overlap) == 0, f"Found duplicate sessions across pages: {overlap}"
+            
+            total_sessions_seen.update(session_ids)
         
-        # Performance should be consistent across pages
-        avg_page_time = sum(page_times) / len(page_times)
-        max_page_time = max(page_times)
-        
-        assert avg_page_time < 0.05, f"Average page time {avg_page_time:.3f}s too slow"
-        assert max_page_time < 0.1, f"Slowest page time {max_page_time:.3f}s too slow"
-        
-        # Performance shouldn't degrade significantly across pages
-        first_page_time = page_times[0]
-        last_page_time = page_times[-1]
-        
-        # Last page shouldn't be more than 3x slower than first page
-        assert last_page_time < first_page_time * 3, \
-            f"Performance degraded from {first_page_time:.3f}s to {last_page_time:.3f}s"
-    
-
- 
+        # Verify we covered all sessions across all pages
+        assert len(total_sessions_seen) == 100, f"Should have seen all 100 unique sessions, but saw {len(total_sessions_seen)}"

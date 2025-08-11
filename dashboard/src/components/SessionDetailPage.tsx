@@ -237,6 +237,31 @@ function SessionDetailPage() {
             console.error('Failed to fetch updated timeline for individual interaction:', error);
           }
         } 
+        // Handle individual LLM/MCP interactions - refresh timeline to show new interactions
+        else if (data.type === 'llm_interaction' || data.type === 'mcp_communication') {
+          console.log(`New ${data.type} detected, refreshing timeline to show latest interactions`);
+          
+          try {
+            const updatedSessionData = await apiClient.getSessionDetail(sessionId);
+            
+            // Update session with latest timeline data
+            setSession(prevSession => {
+              if (!prevSession) return updatedSessionData;
+              
+              return {
+                ...prevSession,
+                chronological_timeline: updatedSessionData.chronological_timeline,
+                llm_interactions: updatedSessionData.llm_interactions,
+                mcp_communications: updatedSessionData.mcp_communications,
+                interactions_count: updatedSessionData.interactions_count
+              };
+            });
+            
+            console.log('Timeline updated with new interaction data');
+          } catch (error) {
+            console.error('Failed to refresh timeline after interaction update:', error);
+          }
+        }
         // Handle any other session-specific updates - log and potentially ignore
         else {
           console.log('Other session-specific update type:', data.type, '- ignoring to prevent unnecessary refetch');

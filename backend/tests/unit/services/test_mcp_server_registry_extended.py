@@ -37,26 +37,34 @@ class TestMCPServerRegistryExtended:
             )
         }
 
+    @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_init_without_configured_servers(self):
         """Test MCPServerRegistry initialization without configured servers."""
         registry = MCPServerRegistry()
         
-        # Should work with built-in servers only
-        assert registry.configured_servers is None
+        # Should work with built-in servers only - verify built-in servers are loaded
+        assert len(registry.static_servers) > 0
+        assert "kubernetes-server" in registry.get_all_server_ids()
 
+    @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_init_with_configured_servers(self, sample_mcp_server_configs):
         """Test MCPServerRegistry initialization with configured servers."""
         registry = MCPServerRegistry(configured_servers=sample_mcp_server_configs)
         
-        assert registry.configured_servers == sample_mcp_server_configs
+        # Verify configured servers are available in the registry
+        for server_id in sample_mcp_server_configs.keys():
+            assert server_id in registry.get_all_server_ids()
+            assert registry.get_server_config(server_id) is not None
 
+    @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_init_with_empty_configured_servers(self):
         """Test MCPServerRegistry initialization with empty configured servers."""
         empty_configs = {}
         registry = MCPServerRegistry(configured_servers=empty_configs)
         
-        # Empty dict is treated as None (no configuration) for simplicity
-        assert registry.configured_servers is None
+        # Should still have built-in servers
+        assert len(registry.static_servers) > 0
+        assert "kubernetes-server" in registry.get_all_server_ids()
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_server_config_conversion_single_server(self):
@@ -285,10 +293,10 @@ class TestMCPServerRegistryExtended:
         """Test that server configurations cannot be modified externally."""
         registry = MCPServerRegistry(configured_servers=sample_mcp_server_configs)
         
-        original_configs = registry.configured_servers
+        original_static_servers = registry.static_servers
         
-        # Verify we get the same reference
-        assert registry.configured_servers is original_configs
+        # Verify we get the same reference for static_servers
+        assert registry.static_servers is original_static_servers
         
         # Test that the registry still works correctly
         server_config = registry.get_server_config("security-tools")

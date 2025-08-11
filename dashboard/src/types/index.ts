@@ -39,20 +39,39 @@ export interface TimelineItem {
 
 // Phase 3: LLM interaction details
 export interface LLMInteraction {
-  prompt: string;
-  response: string;
+  // New JSON-first shape coming from backend
+  request_json?: {
+    model?: string;
+    messages?: Array<{ role: string; content: any }>;
+    temperature?: number;
+    [key: string]: any;
+  };
+  response_json?: {
+    choices?: any[];
+    usage?: any;
+    [key: string]: any;
+  } | null;
+
+  // Normalized metadata
   model_name: string;
   tokens_used?: number;
   temperature?: number;
+  
+  // Success/error fields for failed interactions
+  success?: boolean;
+  error_message?: string;
 }
 
 // Phase 3: MCP interaction details
 export interface MCPInteraction {
-  tool_name: string;
+  tool_name: string | null;
   parameters: Record<string, any>;
   result: any;
+  available_tools?: Record<string, any[]>;
   server_name: string;
+  communication_type: string;
   execution_time_ms: number;
+  success: boolean;
 }
 
 // Phase 3: System event details

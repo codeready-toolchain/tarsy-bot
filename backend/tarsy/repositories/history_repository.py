@@ -6,13 +6,13 @@ supporting comprehensive audit trails, chronological timeline reconstruction,
 and advanced querying capabilities using Unix timestamps for optimal performance.
 """
 
-from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 
 from sqlmodel import Session, asc, desc, func, select, and_, or_
 
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.history import AlertSession, LLMInteraction, MCPCommunication, now_us
+from tarsy.models.history import AlertSession
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import BaseRepository
 from tarsy.utils.logger import get_logger
 
@@ -37,7 +37,7 @@ class HistoryRepository:
         self.session = session
         self.alert_session_repo = BaseRepository(session, AlertSession)
         self.llm_interaction_repo = BaseRepository(session, LLMInteraction)
-        self.mcp_communication_repo = BaseRepository(session, MCPCommunication)
+        self.mcp_communication_repo = BaseRepository(session, MCPInteraction)
         
     # AlertSession operations
     def create_alert_session(self, alert_session: AlertSession) -> Optional[AlertSession]:
@@ -261,11 +261,11 @@ class HistoryRepository:
                 
                 # Count MCP communications for each session
                 mcp_count_query = select(
-                    MCPCommunication.session_id,
-                    func.count(MCPCommunication.communication_id).label('count')
+                    MCPInteraction.session_id,
+                    func.count(MCPInteraction.communication_id).label('count')
                 ).where(
-                    MCPCommunication.session_id.in_(session_ids)
-                ).group_by(MCPCommunication.session_id)
+                    MCPInteraction.session_id.in_(session_ids)
+                ).group_by(MCPInteraction.session_id)
                 
                 mcp_results = self.session.exec(mcp_count_query).all()
                 mcp_counts = {result.session_id: result.count for result in mcp_results}
@@ -338,19 +338,19 @@ class HistoryRepository:
 
 
     # MCPCommunication operations
-    def create_mcp_communication(self, mcp_communication: MCPCommunication) -> MCPCommunication:
+    def create_mcp_communication(self, mcp_communication: MCPInteraction) -> MCPInteraction:
         """
         Create a new MCP communication record.
         
         Args:
-            mcp_communication: MCPCommunication instance to create
+            mcp_communication: MCPInteraction instance to create
             
         Returns:
-            The created MCPCommunication with database-generated fields
+            The created MCPInteraction with database-generated fields
         """
         return self.mcp_communication_repo.create(mcp_communication)
     
-    def get_mcp_communications_for_session(self, session_id: str) -> List[MCPCommunication]:
+    def get_mcp_communications_for_session(self, session_id: str) -> List[MCPInteraction]:
         """
         Get all MCP communications for a session ordered by timestamp.
         
@@ -358,12 +358,12 @@ class HistoryRepository:
             session_id: The session identifier
             
         Returns:
-            List of MCPCommunication instances ordered by timestamp
+            List of MCPInteraction instances ordered by timestamp
         """
         try:
-            statement = select(MCPCommunication).where(
-                MCPCommunication.session_id == session_id
-            ).order_by(asc(MCPCommunication.timestamp_us))
+            statement = select(MCPInteraction).where(
+                MCPInteraction.session_id == session_id
+            ).order_by(asc(MCPInteraction.timestamp_us))
             
             return self.session.exec(statement).all()
         except Exception as e:
@@ -408,11 +408,13 @@ class HistoryRepository:
                     "step_description": interaction.step_description,
                     "duration_ms": interaction.duration_ms,
                     "details": {
-                        "prompt": interaction.prompt_text or "No prompt available",
-                        "response": interaction.response_text or "No response available", 
-                        "model_name": interaction.model_used,
+                        "request_json": interaction.request_json,
+                        "response_json": interaction.response_json,
+                        "model_name": interaction.model_name,
                         "tokens_used": interaction.token_usage,
-                        "temperature": None  # Not stored in current model
+                        "temperature": interaction.request_json.get('temperature') if interaction.request_json else None,
+                        "success": interaction.success,
+                        "error_message": interaction.error_message
                     }
                 })
             
@@ -431,6 +433,7 @@ class HistoryRepository:
                         "communication_type": communication.communication_type,
                         "parameters": communication.tool_arguments or {},
                         "result": communication.tool_result or {},
+                        "available_tools": communication.available_tools or {},
                         "success": communication.success
                     }
                 })
@@ -459,7 +462,7 @@ class HistoryRepository:
                         "interaction_id": interaction.interaction_id,
                         "timestamp_us": interaction.timestamp_us,
                         "step_description": interaction.step_description,
-                        "model_used": interaction.model_used,
+                        "model_name": interaction.model_name,
                         "duration_ms": interaction.duration_ms
                     }
                     for interaction in llm_interactions
@@ -498,86 +501,6 @@ class HistoryRepository:
             return self.session.exec(statement).all()
         except Exception as e:
             logger.error(f"Failed to get active sessions: {str(e)}")
-            raise
-    
-    def get_dashboard_metrics(self) -> Dict[str, Any]:
-        """
-        Get comprehensive dashboard metrics from the database.
-        
-        Returns:
-            Dictionary containing session counts, statistics, and metrics
-        """
-        try:
-            # Get session counts by status
-            active_count = self.session.exec(
-                select(func.count(AlertSession.session_id)).where(
-                    AlertSession.status.in_(AlertSessionStatus.ACTIVE_STATUSES)
-                )
-            ).first() or 0
-            
-            completed_count = self.session.exec(
-                select(func.count(AlertSession.session_id)).where(
-                    AlertSession.status == AlertSessionStatus.COMPLETED
-                )
-            ).first() or 0
-            
-            failed_count = self.session.exec(
-                select(func.count(AlertSession.session_id)).where(
-                    AlertSession.status == AlertSessionStatus.FAILED
-                )
-            ).first() or 0
-            
-            # Get total interaction counts
-            total_llm_interactions = self.session.exec(
-                select(func.count(LLMInteraction.interaction_id))
-            ).first() or 0
-            
-            total_mcp_communications = self.session.exec(
-                select(func.count(MCPCommunication.communication_id))
-            ).first() or 0
-            
-            # Get sessions from last 24 hours
-            last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
-            last_24h_count = self.session.exec(
-                select(func.count(AlertSession.session_id)).where(
-                    AlertSession.started_at_us >= last_24h.timestamp() * 1_000_000
-                )
-            ).first() or 0
-            
-            # Calculate average session duration for completed sessions
-            completed_sessions_with_duration = self.session.exec(
-                select(AlertSession).where(
-                    and_(
-                        AlertSession.status == AlertSessionStatus.COMPLETED,
-                        AlertSession.completed_at_us.is_not(None)
-                    )
-                )
-            ).all()
-            
-            avg_duration = 0.0
-            if completed_sessions_with_duration:
-                total_duration = sum([
-                    (session.completed_at_us - session.started_at_us) / 1_000_000
-                    for session in completed_sessions_with_duration
-                ])
-                avg_duration = total_duration / len(completed_sessions_with_duration)
-            
-            # Calculate error rate
-            total_sessions = active_count + completed_count + failed_count
-            error_rate = (failed_count / total_sessions * 100) if total_sessions > 0 else 0.0
-            
-            return {
-                "active_sessions": active_count,
-                "completed_sessions": completed_count,
-                "failed_sessions": failed_count,
-                "total_interactions": total_llm_interactions + total_mcp_communications,
-                "avg_session_duration": round(avg_duration, 2),
-                "error_rate": round(error_rate, 2),
-                "last_24h_sessions": last_24h_count
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get dashboard metrics: {str(e)}")
             raise
     
     def get_filter_options(self) -> Dict[str, Any]:
@@ -620,177 +543,3 @@ class HistoryRepository:
         except Exception as e:
             logger.error(f"Failed to get filter options: {str(e)}")
             raise
-    
-    def export_session_data(self, session_id: str, format: str = 'json') -> Dict[str, Any]:
-        """
-        Export comprehensive session data including timeline.
-        
-        Args:
-            session_id: The session ID to export
-            format: Export format ('json' or 'csv')
-            
-        Returns:
-            Dictionary containing session data and export metadata
-        """
-        try:
-            # Get session details
-            session = self.get_alert_session(session_id)
-            if not session:
-                return {
-                    "error": f"Session {session_id} not found",
-                    "session_id": session_id,
-                    "format": format,
-                    "data": None
-                }
-            
-            # Get timeline data
-            timeline_data = self.get_session_timeline(session_id)
-            
-            # Prepare export data
-            export_data = {
-                "session": {
-                    "session_id": session.session_id,
-                    "alert_id": session.alert_id,
-                    "agent_type": session.agent_type,
-                    "alert_type": session.alert_type,
-                    "status": session.status,
-                    "started_at_us": session.started_at_us,
-                    "completed_at_us": session.completed_at_us if session.completed_at_us else None,
-                    "error_message": session.error_message,
-                    "alert_data": session.alert_data,
-                    "session_metadata": session.session_metadata
-                },
-                "timeline": timeline_data,
-                "export_metadata": {
-                    "exported_at": now_us(),
-                    "format": format,
-                    "total_interactions": len(timeline_data.get("chronological_timeline", [])),
-                    "session_duration_seconds": (
-                        (session.completed_at_us - session.started_at_us) / 1_000_000
-                        if session.completed_at_us else
-                        (now_us() - session.started_at_us) / 1_000_000
-                    )
-                }
-            }
-            
-            return {
-                "session_id": session_id,
-                "format": format,
-                "data": export_data,
-                "error": None
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to export session data for {session_id}: {str(e)}")
-            raise
-    
-    def search_sessions(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Search sessions by various fields using full-text search.
-        
-        Args:
-            query: Search query string
-            limit: Maximum number of results to return
-            
-        Returns:
-            List of matching session summaries
-        """
-        try:
-            # Build search query - search across multiple fields
-            search_pattern = f"%{query}%"
-            
-            statement = select(AlertSession).where(
-                or_(
-                    AlertSession.alert_id.ilike(search_pattern),
-                    AlertSession.agent_type.ilike(search_pattern),
-                    AlertSession.alert_type.ilike(search_pattern),
-                    AlertSession.error_message.ilike(search_pattern),
-                    # Search in JSON fields using SQLite JSON functions
-                    func.json_extract(AlertSession.alert_data, '$.alert_type').ilike(search_pattern),
-                    func.json_extract(AlertSession.alert_data, '$.environment').ilike(search_pattern),
-                    func.json_extract(AlertSession.alert_data, '$.cluster').ilike(search_pattern),
-                    func.json_extract(AlertSession.alert_data, '$.namespace').ilike(search_pattern),
-                    func.json_extract(AlertSession.session_metadata, '$.description').ilike(search_pattern)
-                )
-            ).order_by(desc(AlertSession.started_at_us)).limit(limit)
-            
-            sessions = self.session.exec(statement).all()
-            
-            # Convert to summary format
-            results = []
-            for session in sessions:
-                duration_seconds = (
-                    (session.completed_at_us - session.started_at_us) / 1_000_000
-                    if session.completed_at_us else
-                    (now_us() - session.started_at_us) / 1_000_000
-                )
-                
-                results.append({
-                    "session_id": session.session_id,
-                    "alert_id": session.alert_id,
-                    "agent_type": session.agent_type,
-                    "alert_type": session.alert_type,
-                    "status": session.status,
-                    "started_at_us": session.started_at_us,
-                    "completed_at_us": session.completed_at_us if session.completed_at_us else None,
-                    "error_message": session.error_message,
-                    "duration_seconds": duration_seconds
-                })
-            
-            return results
-            
-        except Exception as e:
-            logger.error(f"Failed to search sessions with query '{query}': {str(e)}")
-            raise
-    
-    def cleanup_old_sessions(self, retention_days: int) -> int:
-        """
-        Clean up sessions older than retention period.
-        
-        Args:
-            retention_days: Number of days to retain data
-            
-        Returns:
-            Number of sessions deleted
-        """
-        try:
-            cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
-            
-            # Get sessions to delete
-            statement = select(AlertSession).where(
-                and_(
-                    AlertSession.completed_at_us < cutoff_date.timestamp() * 1_000_000,
-                    AlertSession.status.in_(AlertSessionStatus.TERMINAL_STATUSES)
-                )
-            )
-            sessions_to_delete = self.session.exec(statement).all()
-            
-            # Delete related records first (foreign key constraints)
-            for session in sessions_to_delete:
-                # Delete LLM interactions
-                llm_statement = select(LLMInteraction).where(
-                    LLMInteraction.session_id == session.session_id
-                )
-                llm_interactions = self.session.exec(llm_statement).all()
-                for interaction in llm_interactions:
-                    self.session.delete(interaction)
-                
-                # Delete MCP communications
-                mcp_statement = select(MCPCommunication).where(
-                    MCPCommunication.session_id == session.session_id
-                )
-                mcp_communications = self.session.exec(mcp_statement).all()
-                for communication in mcp_communications:
-                    self.session.delete(communication)
-                
-                # Finally delete the session
-                self.session.delete(session)
-            
-            self.session.commit()
-            return len(sessions_to_delete)
-            
-        except Exception as e:
-            self.session.rollback()
-            logger.error(f"Failed to cleanup old sessions: {str(e)}")
-            return 0
-    

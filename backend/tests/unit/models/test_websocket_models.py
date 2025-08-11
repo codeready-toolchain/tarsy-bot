@@ -11,7 +11,6 @@ import pytest
 from pydantic import ValidationError
 
 from tarsy.models.websocket_models import (
-    AlertStatusUpdate,
     ChannelType,
     ConnectionEstablished,
     DashboardUpdate,
@@ -256,59 +255,6 @@ class TestSystemHealthUpdate:
             SystemHealthUpdate(status="invalid", services={})
 
 
-class TestAlertStatusUpdate:
-    """Test alert status update message."""
-    
-    @pytest.mark.unit
-    def test_basic_alert_update(self):
-        """Test basic alert status update."""
-        update = AlertStatusUpdate(
-            alert_id="alert_123",
-            status="processing",
-            progress=25,
-            current_step="Analyzing logs"
-        )
-        
-        assert update.type == "alert_status"
-        assert update.alert_id == "alert_123"
-        assert update.status == "processing"
-        assert update.progress == 25
-        assert update.current_step == "Analyzing logs"
-        assert update.current_agent is None
-    
-    @pytest.mark.unit
-    def test_complete_alert_update(self):
-        """Test complete alert status update with all fields."""
-        update = AlertStatusUpdate(
-            alert_id="alert_456",
-            status="completed",
-            progress=100,
-            current_step="Resolution complete",
-            current_agent="kubernetes_agent",
-            assigned_mcp_servers=["kubectl", "logs"],
-            result="Issue resolved successfully",
-            error=None
-        )
-        
-        assert update.current_agent == "kubernetes_agent"
-        assert update.assigned_mcp_servers == ["kubectl", "logs"]
-        assert update.result == "Issue resolved successfully"
-        assert update.error is None
-    
-    @pytest.mark.unit
-    def test_error_alert_update(self):
-        """Test alert status update with error."""
-        update = AlertStatusUpdate(
-            alert_id="alert_789",
-            status="error",
-            progress=75,
-            current_step="Failed to connect to cluster",
-            error="Connection timeout"
-        )
-        
-        assert update.status == "error"
-        assert update.error == "Connection timeout"
-
 
 class TestChannelType:
     """Test channel type utilities."""
@@ -322,8 +268,8 @@ class TestChannelType:
     @pytest.mark.unit
     def test_session_channel_generation(self):
         """Test session channel name generation."""
-        channel = ChannelType.session_channel("session_123")
-        assert channel == "session_session_123"
+        channel = ChannelType.session_channel("123")
+        assert channel == "session_123"
     
     @pytest.mark.unit
     def test_is_session_channel(self):
