@@ -299,7 +299,7 @@ class HistoryService:
     def log_llm_interaction(
         self,
         session_id: str,
-        model_used: str,
+        model_name: str,
         step_description: str,
         tool_calls: Optional[Dict] = None,
         tool_results: Optional[Dict] = None,
@@ -313,7 +313,7 @@ class HistoryService:
         
         Args:
             session_id: The session identifier
-            model_used: LLM model identifier
+            model_name: LLM model identifier
             step_description: Human-readable description of this step
             tool_calls: Tool calls made during interaction
             tool_results: Results from tool calls
@@ -336,7 +336,7 @@ class HistoryService:
                 
                 interaction = LLMInteraction(
                     session_id=session_id,
-                    model_used=model_used,
+                    model_name=model_name,
                     step_description=step_description,
                     tool_calls=tool_calls,
                     tool_results=tool_results,

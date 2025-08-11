@@ -104,73 +104,62 @@ class AlertSession(SQLModel, table=True):
     )
     
 class LLMInteraction(SQLModel, table=True):
-    """
-    Captures comprehensive LLM interaction data for audit trails.
-    
-    Records all prompts, responses, tool calls, and performance metrics
-    with microsecond-precision Unix timestamps for exact chronological ordering.
-    """
+    """Database model for LLM interactions."""
     
     __tablename__ = "llm_interactions"
     
+    # Database-specific fields
     interaction_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
         primary_key=True,
         description="Unique identifier for the LLM interaction"
     )
     
+    step_description: str = Field(
+        description="Human-readable description of this processing step"
+    )
+    
+    # Base interaction fields
+    request_id: str = Field(description="Request identifier")
     session_id: str = Field(
         foreign_key="alert_sessions.session_id",
         description="Foreign key reference to the parent alert session"
     )
-    
     timestamp_us: int = Field(
         default_factory=now_us,
-        description="Interaction timestamp (microseconds since epoch UTC) for chronological ordering",
+        description="Interaction timestamp (microseconds since epoch UTC)",
         index=True
     )
+    duration_ms: int = Field(default=0, description="Interaction duration in milliseconds")
+    success: bool = Field(default=True, description="Whether interaction succeeded")
+    error_message: Optional[str] = Field(None, description="Error message if failed")
     
+    # LLM-specific fields
+    model_name: str = Field(description="LLM model identifier")
     request_json: Optional[dict] = Field(
         default=None,
         sa_column=Column(JSON),
-        description="Full JSON request sent to LLM API (model, messages, temperature, etc.)"
+        description="Full JSON request sent to LLM API"
     )
-    
     response_json: Optional[dict] = Field(
         default=None,
         sa_column=Column(JSON),
         description="Full JSON response received from LLM API"
     )
-    
-    tool_calls: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="List of tool calls made during this interaction"
-    )
-    
-    tool_results: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="Results returned from tool calls"
-    )
-    
-    model_used: str = Field(
-        description="LLM model identifier used for this interaction"
-    )
-    
     token_usage: Optional[dict] = Field(
         default=None,
         sa_column=Column(JSON),
-        description="Token usage statistics (input/output token counts)"
+        description="Token usage statistics"
     )
-    
-    duration_ms: int = Field(
-        default=0,
-        description="Interaction duration in milliseconds"
+    tool_calls: Optional[dict] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Tool calls made during interaction"
     )
-    
-    step_description: str = Field(
-        description="Human-readable description of this processing step (e.g., 'Initial alert analysis')"
+    tool_results: Optional[dict] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Results from tool calls"
     )
     
     # Relationship back to session
@@ -178,79 +167,54 @@ class LLMInteraction(SQLModel, table=True):
 
 
 class MCPCommunication(SQLModel, table=True):
-    """
-    Tracks all MCP (Model Context Protocol) communications and tool interactions.
-    
-    Captures tool discovery, invocations, and results with microsecond-precision
-    Unix timestamps to maintain exact chronological ordering with LLM interactions.
-    """
+    """Database model for MCP communications."""
     
     __tablename__ = "mcp_communications"
     
+    # Database-specific fields
     communication_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
         primary_key=True,
         description="Unique identifier for the MCP communication"
     )
     
+    step_description: str = Field(
+        description="Human-readable description of this step"
+    )
+    
+    # Base interaction fields
+    request_id: str = Field(description="Request identifier")
     session_id: str = Field(
         foreign_key="alert_sessions.session_id",
         description="Foreign key reference to the parent alert session"
     )
-    
     timestamp_us: int = Field(
         default_factory=now_us,
-        description="Communication timestamp (microseconds since epoch UTC) for chronological ordering",
+        description="Communication timestamp (microseconds since epoch UTC)",
         index=True
     )
+    duration_ms: int = Field(default=0, description="Communication duration in milliseconds")
+    success: bool = Field(default=True, description="Whether communication succeeded")
+    error_message: Optional[str] = Field(None, description="Error message if failed")
     
-    server_name: str = Field(
-        description="MCP server identifier (e.g., 'kubernetes-mcp', 'filesystem-mcp')"
-    )
-    
-    communication_type: str = Field(
-        description="Type of communication (tool_list, tool_call, result)"
-    )
-    
-    tool_name: Optional[str] = Field(
-        default=None,
-        description="Name of the tool being called (for tool_call type)"
-    )
-    
+    # MCP-specific fields
+    server_name: str = Field(description="MCP server identifier")
+    communication_type: str = Field(description="Type of communication (tool_list, tool_call)")
+    tool_name: Optional[str] = Field(None, description="Tool name (for tool_call type)")
     tool_arguments: Optional[dict] = Field(
         default=None,
         sa_column=Column(JSON),
-        description="Arguments passed to the tool call"
+        description="Tool arguments (for tool_call type)"
     )
-    
     tool_result: Optional[dict] = Field(
         default=None,
         sa_column=Column(JSON),
-        description="Result returned from the tool call"
+        description="Tool result (for tool_call type)"
     )
-    
     available_tools: Optional[dict] = Field(
         default=None,
         sa_column=Column(JSON),
-        description="List of available tools (for tool_list type)"
-    )
-    
-    duration_ms: int = Field(
-        default=0,
-        description="Communication duration in milliseconds"
-    )
-    
-    success: bool = Field(
-        description="Whether the communication was successful"
-    )
-    
-    error_message: Optional[str] = Field(
-        default=None,
-        description="Error message if the communication failed"
-    )
-    
-    step_description: str = Field(
-        description="Human-readable description of this step (e.g., 'Kubectl pod status check')"
+        description="Available tools (for tool_list type)"
     )
     
     # Relationship back to session

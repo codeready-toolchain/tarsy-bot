@@ -409,7 +409,7 @@ class HistoryRepository:
                     "details": {
                         "request_json": interaction.request_json,
                         "response_json": interaction.response_json,
-                        "model_name": interaction.model_used,
+                        "model_name": interaction.model_name,
                         "tokens_used": interaction.token_usage,
                         "temperature": interaction.request_json.get('temperature') if interaction.request_json else None
                     }
@@ -459,7 +459,7 @@ class HistoryRepository:
                         "interaction_id": interaction.interaction_id,
                         "timestamp_us": interaction.timestamp_us,
                         "step_description": interaction.step_description,
-                        "model_used": interaction.model_used,
+                        "model_name": interaction.model_name,
                         "duration_ms": interaction.duration_ms
                     }
                     for interaction in llm_interactions

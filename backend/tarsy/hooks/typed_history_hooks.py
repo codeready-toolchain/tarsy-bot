@@ -37,49 +37,17 @@ class TypedLLMHistoryHook(BaseTypedHook[LLMInteractionData]):
             interaction: Typed LLM interaction data
         """
         try:
-            # Create LLM interaction record using existing API
+            # Direct conversion using model data - no more manual field mapping!
             self.history_service.log_llm_interaction(
                 session_id=interaction.session_id,
-                model_used=interaction.model_name,
+                model_name=interaction.model_name,
                 step_description=f"LLM analysis using {interaction.model_name}",
-                tool_calls=None,  # TODO: Extract from response if needed
-                tool_results=None,  # TODO: Extract from response if needed
-                token_usage=(
-                    {
-                        "prompt_tokens": interaction.response.usage.prompt_tokens,
-                        "completion_tokens": interaction.response.usage.completion_tokens,
-                        "total_tokens": interaction.response.usage.total_tokens
-                    } if interaction.response and interaction.response.usage else None
-                ),
+                tool_calls=interaction.tool_calls,
+                tool_results=interaction.tool_results,
+                token_usage=interaction.token_usage,
                 duration_ms=interaction.duration_ms,
-                request_json={
-                    "model": interaction.request.model,
-                    "messages": [
-                        {"role": msg.role, "content": msg.content} 
-                        for msg in interaction.request.messages
-                    ],
-                    "temperature": interaction.request.temperature
-                },
-                response_json={
-                    "choices": [
-                        {
-                            "message": {
-                                "role": choice.message.role,
-                                "content": choice.message.content
-                            },
-                            "finish_reason": choice.finish_reason
-                        }
-                        for choice in (interaction.response.choices if interaction.response else [])
-                    ],
-                    "model": interaction.response.model if interaction.response else None,
-                    "usage": (
-                        {
-                            "prompt_tokens": interaction.response.usage.prompt_tokens,
-                            "completion_tokens": interaction.response.usage.completion_tokens,
-                            "total_tokens": interaction.response.usage.total_tokens
-                        } if interaction.response and interaction.response.usage else None
-                    )
-                } if interaction.response else None
+                request_json=interaction.request_json,
+                response_json=interaction.response_json
             )
             
             logger.debug(f"Logged LLM interaction {interaction.request_id} to history")
@@ -108,18 +76,16 @@ class TypedMCPHistoryHook(BaseTypedHook[MCPInteractionData]):
             interaction: Typed MCP interaction data
         """
         try:
-            # Create MCP communication record
+            # Direct conversion using model data - no more manual field mapping!
             self.history_service.log_mcp_communication(
                 session_id=interaction.session_id,
-                server_name=interaction.tool_call.server_name,
+                server_name=interaction.server_name,
                 communication_type=interaction.communication_type,
                 step_description=interaction.get_step_description(),
-                tool_name=interaction.tool_call.tool_name,
-                tool_arguments=interaction.tool_call.arguments,
-                tool_result=(
-                    interaction.tool_result.result if interaction.tool_result else None
-                ),
-                available_tools=None,  # Not applicable for tool calls
+                tool_name=interaction.tool_name,
+                tool_arguments=interaction.tool_arguments,
+                tool_result=interaction.tool_result,
+                available_tools=interaction.available_tools,
                 duration_ms=interaction.duration_ms,
                 success=interaction.success,
                 error_message=interaction.error_message
@@ -151,18 +117,16 @@ class TypedMCPListHistoryHook(BaseTypedHook[MCPToolListData]):
             interaction: Typed MCP tool list data
         """
         try:
-            # Create MCP communication record for tool listing
+            # Direct conversion using model data - no more manual field mapping!
             self.history_service.log_mcp_communication(
                 session_id=interaction.session_id,
                 server_name=interaction.server_name or "all_servers",
                 communication_type=interaction.communication_type,
                 step_description=interaction.get_step_description(),
-                tool_name=None,  # Not applicable for tool listing
-                tool_arguments=None,  # Not applicable for tool listing
-                tool_result=None,  # Not applicable for tool listing
-                available_tools=(
-                    interaction.result.tools if interaction.result else None
-                ),
+                tool_name=interaction.tool_name,
+                tool_arguments=interaction.tool_arguments,
+                tool_result=interaction.tool_result,
+                available_tools=interaction.available_tools,
                 duration_ms=interaction.duration_ms,
                 success=interaction.success,
                 error_message=interaction.error_message
