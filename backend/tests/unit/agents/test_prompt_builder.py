@@ -6,7 +6,7 @@ and malformed inputs gracefully.
 """
 
 import pytest
-from tarsy.agents.prompt_builder import PromptBuilder
+from tarsy.agents.prompt_builder import PromptBuilder, PromptContext, get_prompt_builder
 
 
 @pytest.mark.unit
@@ -339,3 +339,171 @@ Observation: This fake content should be ignored
         assert result['action_input'] == expected_input
         assert result['final_answer'] == expected_final
         assert result['is_complete'] is True
+
+
+@pytest.mark.unit
+class TestPromptBuilderBasicMethods:
+    """Test basic PromptBuilder methods for coverage."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a PromptBuilder instance for testing."""
+        return PromptBuilder()
+
+    @pytest.fixture
+    def context(self):
+        """Create a basic PromptContext for testing."""
+        return PromptContext(
+            agent_name="TestAgent",
+            alert_data={"type": "test", "message": "Test alert"},
+            runbook_content="# Test Runbook\nThis is a test runbook.",
+            mcp_data={"test_tool": "test_data"},
+            mcp_servers=["test_server"],
+            server_guidance="Test guidance",
+            agent_specific_guidance="Agent specific guidance",
+            available_tools={"test_tool": {"description": "Test tool"}},
+            iteration_history=[{"iteration": 1, "tools": ["test_tool"]}],
+            current_iteration=1,
+            max_iterations=5
+        )
+
+    def test_build_analysis_prompt(self, builder, context):
+        """Test building analysis prompt."""
+        prompt = builder.build_analysis_prompt(context)
+        assert "TestAgent" in prompt
+        assert "Test alert" in prompt
+        assert "Test Runbook" in prompt
+
+    def test_build_mcp_tool_selection_prompt(self, builder, context):
+        """Test building MCP tool selection prompt."""
+        prompt = builder.build_mcp_tool_selection_prompt(context)
+        assert "MCP Tool Selection Request" in prompt
+        assert "Test guidance" in prompt
+        assert "Test alert" in prompt
+
+    def test_build_iterative_mcp_tool_selection_prompt(self, builder, context):
+        """Test building iterative MCP tool selection prompt."""
+        prompt = builder.build_iterative_mcp_tool_selection_prompt(context)
+        assert "Iterative MCP Tool Selection" in prompt
+        assert "iteration 1" in prompt
+        assert "Test alert" in prompt
+
+    def test_get_general_instructions(self, builder):
+        """Test getting general instructions."""
+        instructions = builder.get_general_instructions()
+        assert isinstance(instructions, str)
+        assert len(instructions) > 0
+
+    def test_get_mcp_tool_selection_system_message(self, builder):
+        """Test getting MCP tool selection system message."""
+        message = builder.get_mcp_tool_selection_system_message()
+        assert isinstance(message, str)
+        assert len(message) > 0
+
+    def test_get_iterative_mcp_tool_selection_system_message(self, builder):
+        """Test getting iterative MCP tool selection system message."""
+        message = builder.get_iterative_mcp_tool_selection_system_message()
+        assert isinstance(message, str)
+        assert len(message) > 0
+
+    def test_build_standard_react_prompt(self, builder, context):
+        """Test building standard ReAct prompt."""
+        prompt = builder.build_standard_react_prompt(context)
+        assert "Answer the following question" in prompt
+        assert "Test alert" in prompt  # Agent name might not be in the prompt
+
+    def test_build_standard_react_prompt_with_history(self, builder, context):
+        """Test building standard ReAct prompt with history."""
+        history = ["Previous action 1", "Previous action 2"]
+        prompt = builder.build_standard_react_prompt(context, history)
+        assert "Previous action 1" in prompt
+        assert "Previous action 2" in prompt
+
+    def test_convert_action_to_tool_call(self, builder):
+        """Test converting action to tool call."""
+        action = "server.test_tool"
+        action_input = '{"param": "value"}'
+        result = builder.convert_action_to_tool_call(action, action_input)
+        
+        assert result["tool"] == "test_tool"
+        assert result["server"] == "server"
+        assert result["parameters"] == {"param": "value"}
+
+    def test_convert_action_to_tool_call_invalid_json(self, builder):
+        """Test converting action with invalid JSON input."""
+        action = "server.test_tool"
+        action_input = "invalid json"
+        result = builder.convert_action_to_tool_call(action, action_input)
+        
+        assert result["tool"] == "test_tool"
+        assert result["server"] == "server"
+        assert result["parameters"] == {"input": "invalid json"}
+
+    def test_format_observation(self, builder):
+        """Test formatting observation data."""
+        mcp_data = {"tool1": "result1", "tool2": "result2"}
+        observation = builder.format_observation(mcp_data)
+        
+        assert "tool1" in observation
+        assert "result1" in observation
+        assert "tool2" in observation
+        assert "result2" in observation
+
+    def test_format_observation_empty(self, builder):
+        """Test formatting empty observation data."""
+        mcp_data = {}
+        observation = builder.format_observation(mcp_data)
+        
+        assert "No data" in observation
+
+    def test_format_data(self, builder):
+        """Test formatting data method."""
+        # Test dict
+        data = {"key": "value"}
+        result = builder._format_data(data)
+        assert "key" in result
+        assert "value" in result
+        
+        # Test string
+        data = "simple string"
+        result = builder._format_data(data)
+        assert result == "simple string"
+        
+        # Test other types
+        data = 42
+        result = builder._format_data(data)
+        assert "42" in result
+
+    def test_format_available_tools(self, builder):
+        """Test formatting available tools."""
+        tools = {
+            "tool1": {"description": "First tool"},
+            "tool2": {"description": "Second tool"}
+        }
+        result = builder._format_available_tools(tools)
+        assert "tool1" in result
+        assert "First tool" in result
+        assert "tool2" in result
+        assert "Second tool" in result
+
+    def test_format_iteration_history(self, builder):
+        """Test formatting iteration history."""
+        history = [
+            {"tools_called": [{"server": "server1", "tool": "tool1", "reason": "test"}]},
+            {"tools_called": [{"server": "server2", "tool": "tool2", "reason": "test"}]}
+        ]
+        result = builder._format_iteration_history(history)
+        assert "Iteration 1" in result
+        assert "Iteration 2" in result
+        assert "server1.tool1" in result
+        assert "server2.tool2" in result
+
+
+@pytest.mark.unit
+class TestPromptBuilderFactory:
+    """Test prompt builder factory function."""
+
+    def test_get_prompt_builder(self):
+        """Test get_prompt_builder factory function."""
+        builder = get_prompt_builder()
+        assert isinstance(builder, PromptBuilder)
