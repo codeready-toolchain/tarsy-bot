@@ -300,7 +300,7 @@ class BaseAgent(ABC):
         ]
         
         try:
-            response = await self.llm_client.generate_response(messages, session_id, **kwargs)
+            response = await self.llm_client.generate_response(messages, session_id)
             
             # Parse the JSON response
             tools_to_call = parse_llm_json_response(response, expected_type=list)
@@ -350,7 +350,7 @@ class BaseAgent(ABC):
         ]
         
         try:
-            response = await self.llm_client.generate_response(messages, session_id, **kwargs)
+            response = await self.llm_client.generate_response(messages, session_id)
             
             # Parse the JSON response
             next_action = parse_llm_json_response(response, expected_type=dict)

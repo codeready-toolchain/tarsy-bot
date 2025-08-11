@@ -11,7 +11,8 @@ from unittest.mock import Mock
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from tarsy.models.history import AlertSession, LLMInteraction, MCPCommunication
+from tarsy.models.history import AlertSession
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.history_repository import HistoryRepository
 
 
@@ -60,20 +61,18 @@ class TestHistoryRepository:
     def sample_llm_interaction(self):
         """Create sample LLMInteraction for testing."""
         return LLMInteraction(
-            interaction_id="llm-interaction-789",
             session_id="test-session-123",
-            prompt_text="Analyze the namespace termination issue",
-            response_text="The namespace is stuck due to finalizers",
-            model_used="gpt-4",
-            timestamp=datetime.now(timezone.utc),
+            model_name="gpt-4",
             step_description="Initial analysis",
+            request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "The namespace is stuck due to finalizers"}, "finish_reason": "stop"}]},
             duration_ms=1500
         )
     
     @pytest.fixture
     def sample_mcp_communication(self):
-        """Create sample MCPCommunication for testing."""
-        return MCPCommunication(
+        """Create sample MCPInteraction for testing."""
+        return MCPInteraction(
             communication_id="mcp-comm-101",
             session_id="test-session-123",
             server_name="kubernetes-server",
@@ -139,8 +138,8 @@ class TestHistoryRepository:
         # Verify interaction was saved
         interactions = repository.get_llm_interactions_for_session(sample_alert_session.session_id)
         assert len(interactions) == 1
-        assert interactions[0].prompt_text == sample_llm_interaction.prompt_text
-        assert interactions[0].response_text == sample_llm_interaction.response_text
+        assert interactions[0].model_name == sample_llm_interaction.model_name
+        assert interactions[0].step_description == sample_llm_interaction.step_description
     
     @pytest.mark.unit
     def test_create_mcp_communication_success(self, repository, sample_alert_session, sample_mcp_communication):
@@ -552,16 +551,15 @@ class TestHistoryRepository:
         base_time = datetime.now(timezone.utc)
         
         llm1 = LLMInteraction(
-            interaction_id="llm-1",
             session_id=sample_alert_session.session_id,
-            prompt_text="First prompt",
-            response_text="First response",
-            model_used="gpt-4",
-            timestamp=base_time,
-            step_description="First LLM interaction"
+            model_name="gpt-4",
+            step_description="First LLM interaction",
+            request_json={"messages": [{"role": "user", "content": "First prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "First response"}, "finish_reason": "stop"}]},
+            timestamp_us=int(base_time.timestamp() * 1_000_000)
         )
         
-        mcp1 = MCPCommunication(
+        mcp1 = MCPInteraction(
             communication_id="mcp-1",
             session_id=sample_alert_session.session_id,
             server_name="kubernetes-server",
@@ -573,13 +571,12 @@ class TestHistoryRepository:
         )
         
         llm2 = LLMInteraction(
-            interaction_id="llm-2",
             session_id=sample_alert_session.session_id,
-            prompt_text="Second prompt",
-            response_text="Second response",
-            model_used="gpt-4",
-            timestamp=base_time + timedelta(seconds=2),
-            step_description="Second LLM interaction"
+            model_name="gpt-4",
+            step_description="Second LLM interaction",
+            request_json={"messages": [{"role": "user", "content": "Second prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Second response"}, "finish_reason": "stop"}]},
+            timestamp_us=int((base_time + timedelta(seconds=2)).timestamp() * 1_000_000)
         )
         
         repository.create_llm_interaction(llm1)
@@ -617,17 +614,16 @@ class TestHistoryRepository:
         
         # Create LLM interaction with precise timestamp
         llm_interaction = LLMInteraction(
-            interaction_id="llm-precise",
             session_id=sample_alert_session.session_id,
-            prompt_text="Precise timestamp prompt",
-            response_text="Precise timestamp response",
-            model_used="gpt-4",
-            timestamp_us=base_timestamp_us,
-            step_description="LLM interaction with precise timestamp"
+            model_name="gpt-4",
+            step_description="LLM interaction with precise timestamp",
+            request_json={"messages": [{"role": "user", "content": "Precise timestamp prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Precise timestamp response"}, "finish_reason": "stop"}]},
+            timestamp_us=base_timestamp_us
         )
         
         # Create MCP communication 1 second later
-        mcp_communication = MCPCommunication(
+        mcp_communication = MCPInteraction(
             communication_id="mcp-later",
             session_id=sample_alert_session.session_id,
             server_name="kubernetes-server",
@@ -640,13 +636,12 @@ class TestHistoryRepository:
         
         # Create another LLM interaction 500ms after first
         llm_interaction_middle = LLMInteraction(
-            interaction_id="llm-middle",
             session_id=sample_alert_session.session_id,
-            prompt_text="Middle timestamp prompt",
-            response_text="Middle timestamp response",
-            model_used="gpt-4",
-            timestamp_us=base_timestamp_us + 500_000,  # 500ms later
-            step_description="LLM interaction in middle"
+            model_name="gpt-4",
+            step_description="LLM interaction in middle",
+            request_json={"messages": [{"role": "user", "content": "Middle timestamp prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Middle timestamp response"}, "finish_reason": "stop"}]},
+            timestamp_us=base_timestamp_us + 500_000  # 500ms later
         )
         
         repository.create_llm_interaction(llm_interaction)
@@ -661,9 +656,9 @@ class TestHistoryRepository:
         assert len(events) == 3
         
         # Verify chronological ordering by timestamp_us
-        assert events[0]["id"] == "llm-precise"
-        assert events[1]["id"] == "llm-middle"
-        assert events[2]["id"] == "mcp-later"
+        assert events[0]["type"] == "llm"
+        assert events[1]["type"] == "llm"
+        assert events[2]["type"] == "mcp"
         
         # Verify Unix timestamps are preserved for sorting
         assert events[0]["timestamp_us"] == base_timestamp_us
@@ -987,13 +982,12 @@ class TestHistoryRepositoryPerformance:
             # Add some interactions for every 10th session
             if i % 10 == 0:
                 interaction = LLMInteraction(
-                    interaction_id=f"perf-interaction-{i}",
                     session_id=session.session_id,
-                    prompt_text=f"Prompt {i}",
-                    response_text=f"Response {i}",
-                    model_used="gpt-4",
-                    timestamp=now - timedelta(minutes=i-1),
-                    step_description=f"Interaction {i}"
+                    model_name="gpt-4",
+                    step_description=f"Interaction {i}",
+                    request_json={"messages": [{"role": "user", "content": f"Prompt {i}"}]},
+                    response_json={"choices": [{"message": {"role": "assistant", "content": f"Response {i}"}, "finish_reason": "stop"}]},
+                    timestamp_us=int((now - timedelta(minutes=i-1)).timestamp() * 1_000_000)
                 )
                 repository.create_llm_interaction(interaction)
         

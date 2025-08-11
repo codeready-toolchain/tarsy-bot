@@ -395,13 +395,14 @@ class TestHistoryService:
             mock_repository.create_llm_interaction.assert_called_once()
     
     @pytest.mark.unit
-    def test_log_mcp_communication_success(self, history_service, mock_repository):
+    def test_log_mcp_interaction_success(self, history_service, mock_repository):
         """Test successful MCP communication logging."""
         with patch.object(history_service, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repository
             mock_get_repo.return_value.__exit__.return_value = None
             
-            result = history_service.log_mcp_communication(
+            from tarsy.models.unified_interactions import MCPInteraction
+            mcp_interaction = MCPInteraction(
                 session_id="test-session-id",
                 server_name="test-server",
                 communication_type="tool_call",
@@ -409,6 +410,7 @@ class TestHistoryService:
                 step_description="Test MCP call",
                 success=True
             )
+            result = history_service.log_mcp_interaction(mcp_interaction)
             
             assert result == True
             mock_repository.create_mcp_communication.assert_called_once()
@@ -671,7 +673,15 @@ class TestHistoryServiceErrorHandling:
             result = history_service_with_errors.log_llm_interaction(interaction)
             assert result == False
             
-            result = history_service_with_errors.log_mcp_communication("test", "server", "type", "tool", "step")
+            from tarsy.models.unified_interactions import MCPInteraction
+            mcp_interaction = MCPInteraction(
+                session_id="test",
+                server_name="server", 
+                communication_type="type",
+                tool_name="tool",
+                step_description="step"
+            )
+            result = history_service_with_errors.log_mcp_interaction(mcp_interaction)
             assert result == False
 
 

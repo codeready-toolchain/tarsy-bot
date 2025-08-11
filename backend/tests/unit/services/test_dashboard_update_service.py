@@ -149,7 +149,7 @@ class TestLLMInteractionProcessing:
         
         # Test immediate processing (no batching)
         sent_count = await update_service.process_llm_interaction(session_id, interaction_data)
-        assert sent_count == 2  # Sent to session channel only
+        assert sent_count == 5  # Sent to both session channel (2) and dashboard channel (3)
         
         # Verify session was created/updated
         assert session_id in update_service.active_sessions
@@ -186,7 +186,7 @@ class TestLLMInteractionProcessing:
         session = update_service.active_sessions[session_id]
         assert session.errors_count == 1
 
-class TestMCPCommunicationProcessing:
+class TestMCPInteractionProcessing:
     """Test MCP communication processing with correct data formats."""
     
     @pytest.fixture
@@ -680,17 +680,17 @@ class TestDualChannelBroadcasting:
         
         sent_count = await update_service._broadcast_update(batched_update)
         
-        # Batched updates no longer exist in simplified system - only returns session broadcast
-        assert sent_count == 2
+        # Dual-channel broadcast: session (2) + dashboard (3) = 5
+        assert sent_count == 5
         
-        # In simplified system, batched updates are treated as regular session updates
+        # With dual-channel behavior, both broadcasts are called
         mock_broadcaster.broadcast_session_update.assert_called_once()
-        # Dashboard broadcast no longer called for batched_session_updates type
+        mock_broadcaster.broadcast_dashboard_update.assert_called_once()
     
     @pytest.mark.asyncio
     @pytest.mark.unit 
-    async def test_llm_interaction_single_channel_broadcast(self, update_service, mock_broadcaster):
-        """Test that LLM interactions only go to session-specific channel (not dual-channel)."""
+    async def test_llm_interaction_dual_channel_broadcast(self, update_service, mock_broadcaster):
+        """Test that LLM interactions go to both session-specific and dashboard channels."""
         session_id = "single_channel_session"
         llm_data = {
             'interaction_type': 'llm',
@@ -706,12 +706,12 @@ class TestDualChannelBroadcasting:
             session_id, llm_data
         )
         
-        # Should only return session broadcast count (2)
-        assert sent_count == 2
+        # Should return both session broadcast count (2) + dashboard count (3) = 5
+        assert sent_count == 5
         
-        # Only session-specific broadcast should be called
+        # Both broadcasts should be called for dual-channel behavior
         mock_broadcaster.broadcast_session_update.assert_called_once()
-        mock_broadcaster.broadcast_dashboard_update.assert_not_called()
+        mock_broadcaster.broadcast_dashboard_update.assert_called_once()
         
         # Verify the update data structure  
         call_args = mock_broadcaster.broadcast_session_update.call_args

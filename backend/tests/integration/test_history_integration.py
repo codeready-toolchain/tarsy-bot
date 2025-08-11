@@ -15,6 +15,7 @@ from sqlmodel import SQLModel, create_engine
 
 from tarsy.main import app
 from tarsy.models.alert import Alert
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 
 # Import history models to ensure they're registered with SQLModel.metadata
 from tarsy.services.alert_service import AlertService
@@ -216,7 +217,7 @@ class TestHistoryServiceIntegration:
         time.sleep(0.01)
         
         # MCP tool call
-        history_service_with_db.log_mcp_communication(
+        mcp_interaction1 = MCPInteraction(
             session_id=session_id,
             server_name="kubernetes-server",
             communication_type="tool_call",
@@ -224,6 +225,7 @@ class TestHistoryServiceIntegration:
             step_description="Get namespace info",
             success=True
         )
+        history_service_with_db.log_mcp_interaction(mcp_interaction1)
         
         time.sleep(0.01)
         
