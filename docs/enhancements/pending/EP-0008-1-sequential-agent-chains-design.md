@@ -200,25 +200,30 @@ class StageExecution(SQLModel, table=True):
 
 **Enhanced Interaction Models (Link to stages):**
 ```python
+# Note: Existing LLMInteraction and MCPInteraction models are enhanced
+# with stage_execution_id foreign key for chain traceability
+
 class LLMInteraction(SQLModel, table=True):
     # ... existing fields ...
     
-    # NEW: Link to stage execution
+    # NEW: Link to stage execution (enables chain-aware hook processing)
     stage_execution_id: Optional[str] = Field(
         foreign_key="stage_executions.execution_id",
-        description="Link to stage execution for context"
+        description="Link to stage execution for chain context in hooks"
     )
-    stage_execution: Optional[StageExecution] = Relationship(back_populates="llm_interactions")
 
 class MCPInteraction(SQLModel, table=True):
     # ... existing fields ...
     
-    # NEW: Link to stage execution  
+    # NEW: Link to stage execution (enables chain-aware hook processing)
     stage_execution_id: Optional[str] = Field(
         foreign_key="stage_executions.execution_id",
-        description="Link to stage execution for context"
+        description="Link to stage execution for chain context in hooks"
     )
-    stage_execution: Optional[StageExecution] = Relationship(back_populates="mcp_interactions")
+
+# Hook system automatically uses stage_execution_id for enhanced progress tracking
+# TypedHistoryHooks can group interactions by stage
+# TypedDashboardHooks can show stage-specific progress
 ```
 
 ### Configuration
@@ -330,19 +335,17 @@ class ChainOrchestrator:
     def __init__(
         self, 
         agent_factory: AgentFactory, 
-        history_service: HistoryService,
-        websocket_manager: WebSocketManager
+        history_service: HistoryService
     ):
         self.agent_factory = agent_factory
         self.history_service = history_service
-        self.websocket_manager = websocket_manager
+        # WebSocket updates handled by existing hook system
     
     async def execute_chain(
         self, 
         chain_def: ChainDefinitionModel, 
         alert_processing_data: AlertProcessingData,
-        session_id: str,
-        progress_callback: Optional[Callable] = None
+        session_id: str
     ) -> Dict[str, Any]:
         """Execute stages sequentially with accumulated data flow and progress reporting."""
         
@@ -367,9 +370,8 @@ class ChainOrchestrator:
             # Update session current stage
             await self._update_session_current_stage(session_id, i, stage.name)
             
-            # Send progress update
-            if progress_callback:
-                progress_callback(i, stage.name, "processing", f"Starting stage: {stage.name}")
+            # Stage progress is automatically tracked via hook system
+            # No explicit progress updates needed - hooks handle WebSocket broadcasts
             
             # Create stage execution record
             stage_exec = StageExecution(
@@ -409,9 +411,8 @@ class ChainOrchestrator:
                 
                 successful_stages += 1
                 
-                # Send progress update
-                if progress_callback:
-                    progress_callback(i, stage.name, "completed", f"Completed stage: {stage.name}")
+                # Stage completion tracked via hook system
+                # Dashboard updates automatically via existing hooks
                 
                 logger.info(f"Stage '{stage.name}' completed successfully in {stage_exec.duration_ms}ms")
                 
@@ -441,9 +442,8 @@ class ChainOrchestrator:
                 
                 failed_stages += 1
                 
-                # Send progress update
-                if progress_callback:
-                    progress_callback(i, stage.name, "failed", f"Stage failed: {stage.name}")
+                # Stage failure tracked via hook system  
+                # Dashboard updates automatically via existing hooks
                 
                 # DECISION: Continue to next stage even if this one failed
                 # This allows data collection stages to fail while analysis stages still run
@@ -650,11 +650,10 @@ class AlertService:
             mcp_registry=None  # Set in initialize()
         )
         
-        # NEW: Initialize ChainOrchestrator
+        # NEW: Initialize ChainOrchestrator (no WebSocket dependency - uses hooks)
         self.chain_orchestrator = ChainOrchestrator(
             agent_factory=self.agent_factory,
-            history_service=self.history_service,
-            websocket_manager=self.websocket_manager
+            history_service=self.history_service
         )
     
     async def initialize(self):
@@ -698,15 +697,12 @@ class AlertService:
             # Create history session with chain info
             session_id = await self._create_chain_session(alert_processing_data, chain_def)
             
-            # Create progress callback for WebSocket updates
-            progress_callback = self._create_progress_callback(alert_id, chain_def)
-            
             # Execute through ChainOrchestrator (UNIFIED PATH)
+            # Progress tracking handled automatically via existing hook system
             result = await self.chain_orchestrator.execute_chain(
                 chain_def=chain_def,
                 alert_processing_data=alert_processing_data,
-                session_id=session_id,
-                progress_callback=progress_callback
+                session_id=session_id
             )
             
             # Update session as completed
@@ -755,21 +751,8 @@ class AlertService:
         
         return await self.history_service.create_session(session)
     
-    def _create_progress_callback(self, alert_id: str, chain_def: ChainDefinitionModel):
-        """Create progress callback for WebSocket updates."""
-        def progress_callback(stage_index: int, stage_name: str, status: str, details: str = None):
-            update = AlertStatusUpdate(
-                alert_id=alert_id,
-                status=status,
-                current_step=details or f"Executing stage: {stage_name}",
-                chain_id=chain_def.chain_id,
-                current_stage=stage_name,
-                total_stages=len(chain_def.stages),
-                completed_stages=stage_index if status == "completed" else stage_index - 1
-            )
-            self.websocket_manager.broadcast_alert_update(update)
-        
-        return progress_callback
+    # Progress tracking removed - handled by existing hook system
+    # Dashboard updates automatically via TypedDashboardHooks
     
     async def _complete_session(self, session_id: str, result: Dict[str, Any]):
         """Mark session as completed with final analysis."""
@@ -954,24 +937,36 @@ class HistoryService:
             }
 ```
 
-### Progress Reporting and Dashboard
+### Progress Reporting via Existing Hook System
 
-**Enhanced WebSocket Messages:**
+**Chain Progress Tracking:**
+The existing typed hook system automatically handles all progress reporting without requiring new progress callback mechanisms. Chain execution progress is tracked through:
+
+1. **LLM Interaction Hooks**: Every agent LLM call within a stage triggers `TypedLLMDashboardHook`
+2. **MCP Interaction Hooks**: Every MCP tool call within a stage triggers `TypedMCPDashboardHook`  
+3. **Stage Execution Records**: Database records provide stage-level progress via `StageExecution` table
+4. **Session Updates**: AlertSession current_stage tracking shows overall chain progress
+
+**Enhanced WebSocket Messages (Existing Pattern):**
 ```python
+# Existing AlertStatusUpdate gets enhanced with chain context
 class AlertStatusUpdate(WebSocketMessage):
     alert_id: str
     status: str  # "processing", "completed", "failed"
     current_step: str  # Human-readable current activity
     
-    # NEW: Chain context (replaces progress: int field)
+    # NEW: Chain context (backward compatible addition)
     chain_id: Optional[str] = None
     current_stage: Optional[str] = None  # Currently executing stage
     total_stages: Optional[int] = None
     completed_stages: Optional[int] = None
-    
-    # NEW: Stage-level progress details (for dashboard)
-    stage_progress: Optional[List[Dict[str, Any]]] = None  # All stage statuses
 ```
+
+**Hook System Integration:**
+- **No New Progress Callbacks**: Existing hooks provide all necessary WebSocket updates
+- **Automatic Dashboard Updates**: TypedDashboardHooks broadcast stage progress
+- **Database Logging**: TypedHistoryHooks log all interactions with stage_execution_id links
+- **Error Handling**: Hook error recovery ensures dashboard updates even during stage failures
 
 **Dashboard Chain Visualization:**
 ```typescript
