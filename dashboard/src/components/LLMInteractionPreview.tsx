@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { Box, Typography, Chip } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import type { LLMInteraction } from '../types';
 
 interface LLMInteractionPreviewProps {
@@ -28,30 +29,34 @@ function LLMInteractionPreview({
     let thought = '';
     let action = '';
     
-    // Find Thought section
-    const thoughtIndex = responseText.search(/(?:Thought|THOUGHT):/i);
-    if (thoughtIndex !== -1) {
+    // Find Thought section at line start only
+    const thoughtMatch = responseText.match(/^\s*(?:Thought|THOUGHT):/m);
+    if (thoughtMatch) {
+      const thoughtIndex = thoughtMatch.index!;
       // Find the start of content after "Thought:"
       const thoughtStart = responseText.indexOf(':', thoughtIndex) + 1;
       
-      // Find where Action starts (or end of text)
-      const actionIndex = responseText.search(/\n\s*(?:Action|ACTION):/i);
-      const thoughtEnd = actionIndex !== -1 ? actionIndex : responseText.length;
+      // Find where Action starts (or end of text) using anchored regex
+      const actionMatch = responseText.substring(thoughtStart).match(/^\s*(?:Action|ACTION):/m);
+      const thoughtEnd = actionMatch 
+        ? thoughtStart + actionMatch.index! 
+        : responseText.length;
       
       // Extract and clean thought content
       thought = responseText.substring(thoughtStart, thoughtEnd).trim();
     }
     
-    // Find Action section
-    const actionIndex = responseText.search(/(?:Action|ACTION):/i);
-    if (actionIndex !== -1) {
+    // Find Action section at line start only
+    const actionMatch = responseText.match(/^\s*(?:Action|ACTION):/m);
+    if (actionMatch) {
+      const actionIndex = actionMatch.index!;
       // Find the start of content after "Action:"
       const actionStart = responseText.indexOf(':', actionIndex) + 1;
       
-      // Find where next section starts (or end of text)
-      const nextSectionIndex = responseText.search(/\n\s*(?:Thought|THOUGHT):/i);
-      const actionEnd = nextSectionIndex !== -1 && nextSectionIndex > actionIndex 
-        ? nextSectionIndex 
+      // Find where next section starts (or end of text) using anchored regex
+      const nextSectionMatch = responseText.substring(actionStart).match(/^\s*(?:Thought|THOUGHT|Observation|OBSERVATION|Final Answer|FINAL ANSWER):/m);
+      const actionEnd = nextSectionMatch 
+        ? actionStart + nextSectionMatch.index! 
         : responseText.length;
       
       // Extract and clean action content
@@ -72,19 +77,18 @@ function LLMInteractionPreview({
   };
 
   const parseActionDetails = (action: string) => {
-    // Try to extract Action Input separately
-    const actionInputMatch = action.match(/Action Input:\s*(.*?)(?=\n\w+:|$)/s);
-    let actionCommand = action;
-    let actionInput = '';
+    // Use case-insensitive regex to capture both action command and input
+    // Handles variations like "Action input:", extra spaces, etc.
+    const match = action.match(/([\s\S]*?)\bAction\s*Input\s*:\s*(.*)$/i);
     
-    if (actionInputMatch) {
-      // Extract the action command (everything before Action Input)
-      const beforeActionInput = action.substring(0, action.indexOf('Action Input:'));
-      actionCommand = beforeActionInput.trim();
-      actionInput = actionInputMatch[1].trim();
+    if (match) {
+      const actionCommand = match[1].trim();
+      const actionInput = match[2].trim();
+      return { actionCommand, actionInput };
     }
     
-    return { actionCommand, actionInput };
+    // If no Action Input found, treat entire text as action command
+    return { actionCommand: action.trim(), actionInput: '' };
   };
 
   const getThoughtPreview = (thought: string): { first: string; lastTwo: string[]; hasMore: boolean } => {
@@ -166,15 +170,15 @@ function LLMInteractionPreview({
           )}
           
           {hasMore && (
-            <Box sx={{ 
+            <Box sx={(theme) => ({ 
               mt: 1, 
               mb: 0.5, 
               textAlign: 'center',
               py: 0.5,
               px: 1,
-              bgcolor: 'primary.50',
+              bgcolor: alpha(theme.palette.primary.main, 0.06),
               borderRadius: 1
-            }}>
+            })}>
               <Typography variant="body2" sx={{ 
                 color: 'primary.main',
                 fontSize: '0.8rem',
