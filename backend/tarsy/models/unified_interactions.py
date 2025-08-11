@@ -77,6 +77,7 @@ class LLMInteraction(SQLModel, table=True):
     )
     session_id: str = Field(
         foreign_key="alert_sessions.session_id",
+        index=True,
         description="Session identifier and foreign key reference to parent alert session"
     )
     timestamp_us: int = Field(
@@ -184,6 +185,7 @@ class MCPInteraction(SQLModel, table=True):
     )
     session_id: str = Field(
         foreign_key="alert_sessions.session_id",
+        index=True,
         description="Session identifier and foreign key reference to parent alert session"
     )
     timestamp_us: int = Field(

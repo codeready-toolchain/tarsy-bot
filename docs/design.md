@@ -22,6 +22,8 @@
 This design document is a living document that evolves through [Enhancement Proposals (EPs)](enhancements/README.md). All significant architectural changes are documented through the EP process, ensuring traceable evolution and AI-friendly implementation.
 
 ### Recent Changes
+- **TYPED HOOK SYSTEM (IMPLEMENTED)**: Type-Safe Interaction Capture - Complete refactoring to typed hook system with unified LLMInteraction and MCPInteraction models, eliminating data contamination and providing clean type-safe interaction capture. Comprehensive test coverage restoration with 49 new tests for hook system, LLM client, and MCP client functionality
+- **INTERACTION MODEL UNIFICATION (IMPLEMENTED)**: Unified Interaction Models - Consolidated interaction data structures into type-safe LLMInteraction and MCPInteraction models with consistent fields, JSON serialization, and proper database persistence. Dashboard integration updated for LLM interaction preview with smart text parsing
 - **ITERATION STRATEGIES (IMPLEMENTED)**: Agent Iteration Flow Strategies - Added ReAct vs Regular iteration strategy support allowing agents to use either the standard ReAct pattern (Think→Action→Observation cycles) for systematic analysis or regular iteration pattern for faster processing without reasoning overhead
 - **EP-0007 (IMPLEMENTED)**: Data Masking Service for Sensitive MCP Server Data - Added comprehensive pattern-based masking service for secrets and credentials from MCP server responses, with built-in patterns for common secrets (kubernetes_data_section, api_key, password, certificate, token) and configurable per-server masking rules with pattern groups
 - **EP-0006 (IMPLEMENTED)**: Configuration-Based Agents - Added YAML-based agent configuration system allowing deployment of new agents without code changes, supporting both traditional hardcoded agents and configuration-driven agents simultaneously via ConfigurableAgent class
@@ -33,7 +35,6 @@ This design document is a living document that evolves through [Enhancement Prop
 - Future changes will be tracked through Enhancement Proposals in `docs/enhancements/`
 
 ### Pending Enhancements
-- **EP-0009 (PENDING)**: Reasoning Capabilities - Advanced reasoning mechanisms for agent decision-making processes
 - **EP-0008 (PENDING)**: Agent Chains Pipeline Architecture - Pipeline-based agent orchestration for complex multi-step workflows
 
 For proposed architectural changes or new design patterns, see the [Enhancement Proposals directory](enhancements/README.md).
@@ -67,6 +68,7 @@ Tarsy is a **distributed, event-driven system** designed to automate incident re
 - **Agent Architecture**: Abstract BaseAgent class with inheritance-based specialization and ConfigurableAgent for YAML-driven agents
 - **LLM Integration**: LangChain framework (>=0.3.0) supporting multiple providers (OpenAI >=0.2.0, Google Gemini >=2.0.0, xAI Grok >=0.2.0)
 - **MCP Integration**: Official MCP SDK (>=1.0.0) with stdio transport, agent-specific server subsets, and integrated data masking
+- **Hook System**: Type-safe interaction capture with unified LLMInteraction and MCPInteraction models, eliminating data contamination
 - **Communication**: WebSocket (>=12.0) for real-time updates with agent context, REST API for external integration
 - **Configuration**: Environment-based configuration with centralized builtin_config.py, agent registry and MCP server registry
 - **Database**: SQLModel (>=0.0.14) with SQLAlchemy (>=2.0.41) for audit trail persistence, SQLite with PostgreSQL migration support
@@ -204,7 +206,7 @@ graph TD
     C --> HS[History Service]
     HS --> HDB[(History Database)]
     
-    IC --> HC[Hook Context]
+    IC --> HC[Typed Hook Context]
     HC --> HS
     
     subgraph "Strategy-Based Processing"
@@ -237,11 +239,14 @@ graph TD
     RL --> C
     C --> I
     
-    subgraph "History Capture"
+    subgraph "Type-Safe History Capture"
         K --> HC
         M --> HC
-        HC --> HA[History API]
+        HC --> THH[Typed History Hooks]
+        THH --> HA[History API]
         HA --> HDB
+        HC --> TDH[Typed Dashboard Hooks]
+        TDH --> I
     end
 ```
 
@@ -927,32 +932,106 @@ GET /api/v1/history/sessions?search=kubernetes
 GET /api/v1/history/sessions?search=namespace&status=completed&agent_type=KubernetesAgent
 ```
 
-### 17. Hook Context System
+### 17. Typed Hook System
 
-Automatic interaction capture system for transparent history logging:
+Type-safe interaction capture system providing clean separation between interaction data and hook execution:
 
 ```
 Interface Pattern:
-class HookContext:
-    def __init__(self, service_type: str, method_name: str, session_id: str = None, **kwargs)
-    async def __aenter__(self)
-    async def __aexit__(self, exc_type, exc_val, exc_tb)
-    async def complete_success(self, result: Any)
-    def get_request_id(self) -> str
+class BaseTypedHook[T]:
+    def __init__(self, name: str)
+    async def execute(self, interaction: T) -> None
 
-Usage Pattern:
-async with HookContext(service_type="llm", method_name="generate_response", 
-                      session_id=session_id, **context) as hook_ctx:
-    result = await llm_operation()
-    await hook_ctx.complete_success(result)
+class TypedLLMHistoryHook(BaseTypedHook[LLMInteraction]):
+    def __init__(self, history_service: HistoryService)
+    async def execute(self, interaction: LLMInteraction) -> None
+
+class TypedMCPHistoryHook(BaseTypedHook[MCPInteraction]):
+    def __init__(self, history_service: HistoryService)
+    async def execute(self, interaction: MCPInteraction) -> None
+
+class TypedLLMDashboardHook(BaseTypedHook[LLMInteraction]):
+    def __init__(self, dashboard_broadcaster: DashboardBroadcaster)
+    async def execute(self, interaction: LLMInteraction) -> None
+
+class TypedMCPDashboardHook(BaseTypedHook[MCPInteraction]):
+    def __init__(self, dashboard_broadcaster: DashboardBroadcaster)
+    async def execute(self, interaction: MCPInteraction) -> None
 ```
 
 **Core Features:**
-- **Automatic Lifecycle Management**: Context manager handles interaction timing and logging
-- **Transparent Integration**: Works with existing LLM and MCP client code
-- **Error Handling**: Graceful degradation when history service is unavailable
+- **Type Safety**: Generic base class ensures compile-time type checking for interactions
+- **Clean Separation**: Clear distinction between interaction data models and hook execution logic
+- **Elimination of Data Contamination**: No cross-contamination between LLM and MCP interaction data
+- **Specialized Hook Types**: Dedicated hooks for history logging and dashboard broadcasting
+- **Error Isolation**: Hook failures don't affect other hooks or the main processing pipeline
+- **Comprehensive Coverage**: Complete interaction capture for both LLM and MCP communications
+
+**Unified Interaction Models:**
+```python
+@dataclass
+class LLMInteraction:
+    session_id: str
+    model_name: str
+    provider: Optional[str] = None
+    request_json: Dict[str, Any] = field(default_factory=dict)
+    response_json: Dict[str, Any] = field(default_factory=dict)
+    duration_ms: Optional[int] = None
+    token_usage: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    success: bool = True
+    timestamp_us: int = field(default_factory=now_us)
+    request_id: str = field(default_factory=generate_request_id)
+    step_description: str = ""
+
+@dataclass  
+class MCPInteraction:
+    session_id: str
+    server_name: str
+    communication_type: str
+    tool_name: Optional[str] = None
+    tool_arguments: Optional[Dict[str, Any]] = None
+    tool_result: Optional[Dict[str, Any]] = None
+    available_tools: Optional[Dict[str, Any]] = None
+    duration_ms: Optional[int] = None
+    error_message: Optional[str] = None
+    success: bool = True
+    timestamp_us: int = field(default_factory=now_us)
+    request_id: str = field(default_factory=generate_request_id)
+    step_description: str = ""
+```
+
+### 18. Typed Hook Context System
+
+Context managers providing automatic interaction lifecycle management with typed hook integration:
+
+```
+Interface Pattern:
+@asynccontextmanager
+async def llm_interaction_context(session_id: str, request_data: Dict[str, Any]) -> AsyncContextManager[TypedHookContext[LLMInteraction]]
+
+@asynccontextmanager  
+async def mcp_interaction_context(session_id: str, server_name: str, tool_name: str, tool_arguments: Dict[str, Any]) -> AsyncContextManager[TypedHookContext[MCPInteraction]]
+
+@asynccontextmanager
+async def mcp_list_context(session_id: str, server_name: Optional[str] = None) -> AsyncContextManager[TypedHookContext[MCPInteraction]]
+
+Usage Pattern:
+async with llm_interaction_context(session_id, request_data) as ctx:
+    response = await llm_client.generate_response(messages)
+    ctx.set_response_data(response_data)
+    ctx.set_duration(duration_ms)
+    await ctx.complete_success({})
+```
+
+**Core Features:**
+- **Automatic Lifecycle Management**: Context managers handle interaction timing, creation, and hook execution
+- **Transparent Integration**: Works seamlessly with existing LLM and MCP client code
+- **Type-Safe Interactions**: Creates properly typed interaction objects for hook system
+- **Error Handling**: Graceful degradation when hook services are unavailable
 - **Request Tracking**: Unique request IDs for correlation and debugging
 - **Microsecond Timing**: Precise timing information for performance analysis
+- **Clean Data Flow**: Eliminates manual interaction object creation and management
 
 ---
 
@@ -1086,7 +1165,7 @@ ProcessingStatus Entity:
 - session_id: Optional[string]    # NOTE: Not currently in implementation, tracked in history separately
 ```
 
-**History Data Models:**
+**Unified Interaction Models (Type-Safe):**
 ```
 AlertSession Entity:
 - session_id: string (primary key, UUID)      # Unique identifier for alert processing session
@@ -1101,7 +1180,7 @@ AlertSession Entity:
 - final_analysis: Optional[string]            # Final formatted analysis result if completed successfully
 - session_metadata: Optional[dict] (JSON)    # Additional context and metadata
 - llm_interactions: list[LLMInteraction]      # Related LLM interactions (cascade delete)
-- mcp_communications: list[MCPCommunication]  # Related MCP communications (cascade delete)
+- mcp_interactions: list[MCPInteraction]      # Related MCP interactions (cascade delete)
 
 JSON Indexes (for efficient querying):
 - ix_alert_data_gin: GIN index on alert_data (PostgreSQL)
@@ -1109,35 +1188,45 @@ JSON Indexes (for efficient querying):
 - ix_alert_data_environment: Index on alert_data->>'environment'  
 - ix_alert_data_cluster: Index on alert_data->>'cluster'
 
-LLMInteraction Entity:
+LLMInteraction Entity (Unified Model):
 - interaction_id: string (primary key, UUID)  # Unique identifier for LLM interaction
 - session_id: string (foreign key)            # Reference to parent alert session
 - timestamp_us: int (indexed)                 # Interaction timestamp (microseconds since epoch UTC)
-- prompt_text: string                         # Full prompt text sent to LLM
-- response_text: string                       # Complete response text from LLM
-- tool_calls: Optional[dict] (JSON)           # Tool calls made during interaction
-- tool_results: Optional[dict] (JSON)         # Results returned from tool calls
-- model_used: string                          # LLM model identifier
+- model_name: string                          # LLM model identifier (unified field)
+- provider: Optional[string]                  # LLM provider name (OpenAI, Gemini, etc.)
+- request_json: dict (JSON)                   # Complete request data structure (unified field)
+- response_json: dict (JSON)                  # Complete response data structure (unified field)
+- duration_ms: Optional[int]                  # Interaction duration in milliseconds
 - token_usage: Optional[dict] (JSON)          # Token usage statistics (input/output counts)
-- duration_ms: int                            # Interaction duration in milliseconds
+- error_message: Optional[string]             # Error message if interaction failed
+- success: boolean                            # Whether interaction was successful
+- request_id: string                          # Unique request identifier for correlation
 - step_description: string                    # Human-readable step description
 - session: AlertSession                       # Relationship back to session
 
-MCPCommunication Entity:
-- communication_id: string (primary key, UUID) # Unique identifier for MCP communication
-- session_id: string (foreign key)             # Reference to parent alert session
-- timestamp_us: int (indexed)                  # Communication timestamp (microseconds since epoch UTC)
-- server_name: string                          # MCP server identifier (e.g., 'kubernetes-mcp')
-- communication_type: string                   # Type of communication (tool_list, tool_call, result)
-- tool_name: Optional[string]                  # Name of tool being called (for tool_call type)
-- tool_arguments: Optional[dict] (JSON)        # Arguments passed to tool call
-- tool_result: Optional[dict] (JSON)           # Result returned from tool call
-- available_tools: Optional[dict] (JSON)       # List of available tools (for tool_list type)
-- duration_ms: int                             # Communication duration in milliseconds
-- success: boolean                             # Whether communication was successful
-- error_message: Optional[string]              # Error message if communication failed
-- step_description: string                     # Human-readable step description
-- session: AlertSession                        # Relationship back to session
+MCPInteraction Entity (Unified Model):
+- interaction_id: string (primary key, UUID)  # Unique identifier for MCP interaction
+- session_id: string (foreign key)            # Reference to parent alert session
+- timestamp_us: int (indexed)                 # Interaction timestamp (microseconds since epoch UTC)
+- server_name: string                         # MCP server identifier (e.g., 'kubernetes-server')
+- communication_type: string                  # Type of communication (tool_list, tool_call)
+- tool_name: Optional[string]                 # Name of tool being called (for tool_call type)
+- tool_arguments: Optional[dict] (JSON)       # Arguments passed to tool call
+- tool_result: Optional[dict] (JSON)          # Result returned from tool call
+- available_tools: Optional[dict] (JSON)      # List of available tools (for tool_list type)
+- duration_ms: Optional[int]                  # Interaction duration in milliseconds
+- error_message: Optional[string]             # Error message if interaction failed
+- success: boolean                            # Whether interaction was successful
+- request_id: string                          # Unique request identifier for correlation
+- step_description: string                    # Human-readable step description
+- session: AlertSession                       # Relationship back to session
+
+Type Safety Benefits:
+- Unified field names across LLM and MCP interactions prevent confusion
+- Consistent JSON serialization through dataclass implementations
+- Proper database persistence with SQLModel integration
+- Clean separation between interaction data and hook execution logic
+- Elimination of data contamination between different interaction types
 ```
 
 **Agent Processing Context:**
@@ -1642,13 +1731,14 @@ backend/tarsy/
 │   └── history_controller.py # REST endpoints for historical data
 ├── database/              # Data persistence layer
 │   └── init_db.py         # Database initialization and schema management
-├── hooks/                 # Event system
-│   ├── base_hooks.py      # Hook system foundation
-│   ├── history_hooks.py   # Audit trail capture hooks
-│   └── dashboard_hooks.py # Real-time dashboard update hooks
+├── hooks/                 # Type-safe event system
+│   ├── typed_context.py   # Typed hook context managers and base classes
+│   ├── typed_history_hooks.py # Type-safe audit trail capture hooks
+│   └── typed_dashboard_hooks.py # Type-safe real-time dashboard update hooks
 ├── models/                # Data models and schemas
 │   ├── alert.py           # Alert data structures
 │   ├── history.py         # Audit trail data models (SQLModel)
+│   ├── unified_interactions.py # Type-safe LLM and MCP interaction models
 │   ├── api_models.py      # REST API request/response models
 │   ├── agent_config.py    # Agent configuration models
 │   ├── mcp_config.py      # MCP server configuration models

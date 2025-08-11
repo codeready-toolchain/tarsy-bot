@@ -148,8 +148,17 @@ class TestLLMInteractionProcessing:
         }
         
         # Test immediate processing (no batching)
-        sent_count = await update_service.process_llm_interaction(session_id, interaction_data)
-        assert sent_count == 5  # Sent to both session channel (2) and dashboard channel (3)
+        sent_count = await update_service.process_llm_interaction(
+            session_id, interaction_data
+        )
+        
+        # Verify both individual broadcasts were called
+        mock_broadcaster.broadcast_session_update.assert_called_once()
+        mock_broadcaster.broadcast_dashboard_update.assert_called_once()
+        
+        # Verify combined sent count from both channels
+        # (session channel: 2, dashboard channel: 3)
+        assert sent_count == 5
         
         # Verify session was created/updated
         assert session_id in update_service.active_sessions
@@ -157,11 +166,7 @@ class TestLLMInteractionProcessing:
         assert session.llm_interactions == 1
         assert session.interactions_count == 1
         assert session.errors_count == 0
-
         assert session.status == "active"
-        
-        # Verify broadcast was called
-        mock_broadcaster.broadcast_session_update.assert_called_once()
     
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -306,11 +311,17 @@ class TestSessionStatusManagement:
             "progress_percentage": 25
         }
         
-        sent_count = await update_service.process_session_status_change(session_id, status, details)
+        sent_count = await update_service.process_session_status_change(
+            session_id, status, details
+        )
         
-        assert sent_count == 5  # Broadcaster returned 3 + 2 = 5 (dual-channel broadcasting)
+        # Verify both individual broadcasts were called
         mock_broadcaster.broadcast_dashboard_update.assert_called_once()
         mock_broadcaster.broadcast_session_update.assert_called_once()
+        
+        # Verify combined sent count from dual-channel broadcasting
+        # (broadcaster returned 3 + 2 = 5)
+        assert sent_count == 5
         
         # Verify session was created
         assert session_id in update_service.active_sessions

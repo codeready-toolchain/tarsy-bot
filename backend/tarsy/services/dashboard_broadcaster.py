@@ -8,14 +8,28 @@ Key Feature: Session Message Buffering
 - With buffering: messages are queued until first subscriber, then flushed chronologically
 """
 
+import asyncio
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, Set
+from typing import Any, Dict, List, Set
 
 from tarsy.models.websocket_models import OutgoingMessage, ChannelType
 from tarsy.utils.logger import get_module_logger
 
 logger = get_module_logger(__name__)
+
+# Configuration constants for bounded session message buffer
+MAX_MESSAGES_PER_SESSION = 100  # Maximum messages to buffer per session
+MESSAGE_TTL_SECONDS = 300       # 5 minutes TTL for buffered messages
+CLEANUP_INTERVAL_SECONDS = 60   # Run cleanup every minute
+
+
+@dataclass
+class TimestampedMessage:
+    """Message with timestamp for TTL management."""
+    message: Dict[str, Any]
+    timestamp: datetime
 
 
 class DashboardBroadcaster:
@@ -33,11 +47,13 @@ class DashboardBroadcaster:
         self.throttle_limits: Dict[str, Dict[str, Any]] = {}
         self.user_message_counts: Dict[str, Dict[str, deque]] = defaultdict(lambda: defaultdict(deque))
         
-        # Session message buffer: solves timing race condition where background processing
+        # Bounded session message buffer with TTL: solves timing race condition where background processing
         # starts immediately after alert submission but UI needs time to connect and subscribe.
         # Without this buffer, early LLM/MCP interactions are lost because no one is subscribed yet.
-        # Simple dict: session_channel -> [buffered_messages] - flushed when first subscriber joins
-        self.session_message_buffer: Dict[str, list] = {}
+        # Bounded buffer: session_channel -> deque[TimestampedMessage] with max size and TTL
+        self.session_message_buffer: Dict[str, deque[TimestampedMessage]] = {}
+        self._buffer_lock = asyncio.Lock()
+        self._cleanup_task: asyncio.Task = None
     
     def _should_throttle_user(self, user_id: str, channel: str) -> bool:
         """Check if user should be throttled for this channel."""
@@ -58,6 +74,102 @@ class DashboardBroadcaster:
     def _record_user_message(self, user_id: str, channel: str):
         """Record that a message was sent to a user."""
         self.user_message_counts[user_id][channel].append(datetime.now())
+    
+    def start_cleanup_task(self):
+        """Start the periodic cleanup task for session message buffers."""
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+            logger.debug("Started session buffer cleanup task")
+    
+    def stop_cleanup_task(self):
+        """Stop the periodic cleanup task."""
+        if self._cleanup_task and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+            logger.debug("Stopped session buffer cleanup task")
+    
+    async def _periodic_cleanup(self):
+        """Periodically clean up expired messages and empty sessions."""
+        while True:
+            try:
+                await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
+                await self._cleanup_expired_messages()
+            except asyncio.CancelledError:
+                logger.debug("Session buffer cleanup task cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in session buffer cleanup: {e}")
+    
+    async def _cleanup_expired_messages(self):
+        """Remove expired messages and empty sessions from buffer."""
+        async with self._buffer_lock:
+            now = datetime.now()
+            expired_sessions = []
+            
+            for session_channel, message_buffer in self.session_message_buffer.items():
+                # Remove expired messages
+                while message_buffer and (now - message_buffer[0].timestamp).total_seconds() > MESSAGE_TTL_SECONDS:
+                    expired_msg = message_buffer.popleft()
+                    logger.debug(f"Removed expired message from {session_channel} (age: {(now - expired_msg.timestamp).total_seconds():.1f}s)")
+                
+                # Mark empty sessions for removal
+                if not message_buffer:
+                    expired_sessions.append(session_channel)
+            
+            # Remove empty sessions
+            for session_channel in expired_sessions:
+                del self.session_message_buffer[session_channel]
+                logger.debug(f"Removed empty session buffer for {session_channel}")
+            
+            if expired_sessions:
+                logger.debug(f"Cleaned up {len(expired_sessions)} empty session buffers")
+    
+    async def _add_message_to_buffer(self, channel: str, message_dict: Dict[str, Any]):
+        """Add a message to the session buffer with TTL and size limits."""
+        async with self._buffer_lock:
+            if channel not in self.session_message_buffer:
+                self.session_message_buffer[channel] = deque()
+            
+            buffer = self.session_message_buffer[channel]
+            now = datetime.now()
+            
+            # Remove expired messages first
+            while buffer and (now - buffer[0].timestamp).total_seconds() > MESSAGE_TTL_SECONDS:
+                expired_msg = buffer.popleft()
+                logger.debug(f"Removed expired message from {channel} during append (age: {(now - expired_msg.timestamp).total_seconds():.1f}s)")
+            
+            # Add new message
+            timestamped_msg = TimestampedMessage(message=message_dict, timestamp=now)
+            buffer.append(timestamped_msg)
+            
+            # Enforce size limit by removing oldest messages
+            while len(buffer) > MAX_MESSAGES_PER_SESSION:
+                oldest_msg = buffer.popleft()
+                logger.debug(f"Removed oldest message from {channel} (buffer size limit exceeded)")
+            
+            logger.debug(f"Buffered message for {channel} (buffer size: {len(buffer)}/{MAX_MESSAGES_PER_SESSION})")
+    
+    async def _get_and_clear_buffer(self, channel: str) -> List[Dict[str, Any]]:
+        """Get all valid messages from buffer and clear it."""
+        async with self._buffer_lock:
+            if channel not in self.session_message_buffer:
+                return []
+            
+            buffer = self.session_message_buffer[channel]
+            now = datetime.now()
+            valid_messages = []
+            
+            # Collect valid (non-expired) messages
+            while buffer:
+                msg = buffer.popleft()
+                if (now - msg.timestamp).total_seconds() <= MESSAGE_TTL_SECONDS:
+                    valid_messages.append(msg.message)
+                else:
+                    logger.debug(f"Skipped expired message from {channel} during flush (age: {(now - msg.timestamp).total_seconds():.1f}s)")
+            
+            # Remove the empty buffer
+            del self.session_message_buffer[channel]
+            
+            return valid_messages
     
     async def broadcast_message(
         self, 
@@ -83,10 +195,7 @@ class DashboardBroadcaster:
         # Solution: Buffer session messages until first subscriber, then flush all at once
         if not subscribers and ChannelType.is_session_channel(channel):
             message_dict = message.model_dump() if hasattr(message, 'model_dump') else message
-            if channel not in self.session_message_buffer:
-                self.session_message_buffer[channel] = []
-            self.session_message_buffer[channel].append(message_dict)
-            logger.debug(f"Buffered message for {channel} (no subscribers yet)")
+            await self._add_message_to_buffer(channel, message_dict)
             return 0
         
         if not subscribers:
@@ -96,18 +205,18 @@ class DashboardBroadcaster:
         # FLUSH BUFFER: If there are subscribers and this is a session channel, 
         # send any buffered messages first (in chronological order)
         sent_count = 0
-        if ChannelType.is_session_channel(channel) and channel in self.session_message_buffer:
-            # pop() removes buffer and returns messages - prevents memory leaks for completed sessions
-            buffered_messages = self.session_message_buffer.pop(channel)
-            logger.debug(f"First subscriber detected! Flushing {len(buffered_messages)} buffered messages for {channel}")
-            
-            # Send buffered messages directly to avoid recursion through broadcast_message
-            for buffered_msg in buffered_messages:
-                for user_id in subscribers - exclude_users:
-                    if not self._should_throttle_user(user_id, channel):
-                        if await self.connection_manager.send_to_user(user_id, buffered_msg):
-                            sent_count += 1
-                            self._record_user_message(user_id, channel)
+        if ChannelType.is_session_channel(channel):
+            buffered_messages = await self._get_and_clear_buffer(channel)
+            if buffered_messages:
+                logger.debug(f"First subscriber detected! Flushing {len(buffered_messages)} buffered messages for {channel}")
+                
+                # Send buffered messages directly to avoid recursion through broadcast_message
+                for buffered_msg in buffered_messages:
+                    for user_id in subscribers - exclude_users:
+                        if not self._should_throttle_user(user_id, channel):
+                            if await self.connection_manager.send_to_user(user_id, buffered_msg):
+                                sent_count += 1
+                                self._record_user_message(user_id, channel)
         
         # Apply user exclusions
         target_users = subscribers - exclude_users

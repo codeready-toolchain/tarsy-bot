@@ -207,6 +207,10 @@ class DashboardConnectionManager:
             self.broadcaster = DashboardBroadcaster(self)
             logger.info("Dashboard broadcaster initialized")
             
+            # Start the session buffer cleanup task
+            self.broadcaster.start_cleanup_task()
+            logger.info("Dashboard broadcaster cleanup task started")
+            
             # Initialize update service with broadcaster
             self.update_service = DashboardUpdateService(self.broadcaster)
             await self.update_service.start()
@@ -222,5 +226,8 @@ class DashboardConnectionManager:
             logger.info("Dashboard update service stopped")
             
         if self.broadcaster:
+            # Stop the cleanup task before shutting down broadcaster
+            self.broadcaster.stop_cleanup_task()
+            logger.info("Dashboard broadcaster cleanup task stopped")
             self.broadcaster = None
             logger.info("Dashboard broadcaster stopped")
