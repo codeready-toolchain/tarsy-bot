@@ -33,10 +33,6 @@ class AlertProcessingData(BaseModel):
         min_length=1
     )
     
-    def get_namespace(self) -> Optional[str]:
-        """Helper to safely get namespace from alert data."""
-        return self.alert_data.get('namespace')
-    
     def get_severity(self) -> str:
         """Helper to safely get severity from alert data."""
         return self.alert_data.get('severity', 'warning')
