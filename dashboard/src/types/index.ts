@@ -50,12 +50,16 @@ export interface LLMInteraction {
     choices?: any[];
     usage?: any;
     [key: string]: any;
-  };
+  } | null;
 
   // Normalized metadata
   model_name: string;
   tokens_used?: number;
   temperature?: number;
+  
+  // Success/error fields for failed interactions
+  success?: boolean;
+  error_message?: string;
 }
 
 // Phase 3: MCP interaction details

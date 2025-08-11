@@ -18,12 +18,21 @@ function LLMInteractionPreview({
 }: LLMInteractionPreviewProps) {
   
   const extractResponseText = (llm: LLMInteraction): string => {
+    // Handle failed interactions
+    if (llm.success === false || llm.response_json === null) {
+      return '';
+    }
+    
     const choice = llm.response_json?.choices?.[0];
     const content = choice?.message?.content;
     if (typeof content === 'string') return content;
     if (content !== undefined) return JSON.stringify(content);
     return '';
   };
+
+  // Check if this is a failed interaction
+  // Handle both explicit failure (success: false) and null response (API failure)
+  const isFailed = interaction.success === false || interaction.response_json === null;
 
   const parseThoughtAndAction = (responseText: string) => {
     let thought = '';
@@ -142,6 +151,45 @@ function LLMInteractionPreview({
     );
   }
 
+  // Handle failed interactions
+  if (isFailed) {
+    return (
+      <Box sx={{ mt: 1 }}>
+        <Typography variant="caption" sx={{ 
+          fontWeight: 600, 
+          color: 'error.main',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px'
+        }}>
+          LLM Error
+        </Typography>
+        
+        <Box sx={{ 
+          mt: 0.5,
+          p: 0.75,
+          bgcolor: 'grey.50',
+          borderRadius: 1,
+          border: 1,
+          borderColor: 'error.main'
+        }}>
+          <Typography variant="body2" sx={{ 
+            fontSize: '0.75rem',
+            color: 'error.main',
+            fontWeight: 500
+          }}>
+            {interaction.error_message ? 
+              (interaction.error_message.length > 100 ? 
+                `${interaction.error_message.substring(0, 100)}...` : 
+                interaction.error_message
+              ) : 
+              'LLM request failed - no response received'
+            }
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ mt: 1 }}>
       {/* Thought Preview */}
@@ -170,15 +218,13 @@ function LLMInteractionPreview({
           )}
           
           {hasMore && (
-            <Box sx={(theme) => ({ 
+            <Box sx={{ 
               mt: 1, 
               mb: 0.5, 
               textAlign: 'center',
               py: 0.5,
-              px: 1,
-              bgcolor: alpha(theme.palette.primary.main, 0.06),
-              borderRadius: 1
-            })}>
+              px: 1
+            }}>
               <Typography variant="body2" sx={{ 
                 color: 'primary.main',
                 fontSize: '0.8rem',

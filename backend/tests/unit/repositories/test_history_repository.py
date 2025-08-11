@@ -66,7 +66,22 @@ class TestHistoryRepository:
             step_description="Initial analysis",
             request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
             response_json={"choices": [{"message": {"role": "assistant", "content": "The namespace is stuck due to finalizers"}, "finish_reason": "stop"}]},
-            duration_ms=1500
+            duration_ms=1500,
+            success=True
+        )
+    
+    @pytest.fixture
+    def sample_failed_llm_interaction(self):
+        """Create sample failed LLMInteraction for testing."""
+        return LLMInteraction(
+            session_id="test-session-123",
+            model_name="gemini-1.5-pro",
+            step_description="Failed analysis due to rate limiting",
+            request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
+            response_json=None,  # Failed interaction has no response
+            duration_ms=500,
+            success=False,
+            error_message="Resource has been exhausted (e.g. check quota). Error 429: Quota exceeded for requests"
         )
     
     @pytest.fixture
@@ -855,6 +870,169 @@ class TestHistoryRepository:
         session_ids = [s.session_id for s in result["sessions"]]
         assert "session-1" in session_ids
         assert "session-3" in session_ids
+
+    @pytest.mark.unit
+    def test_create_successful_llm_interaction(self, repository, sample_alert_session, sample_llm_interaction):
+        """Test creating successful LLM interaction with success=True."""
+        # Create session first
+        repository.create_alert_session(sample_alert_session)
+        
+        # Create successful interaction
+        created_interaction = repository.create_llm_interaction(sample_llm_interaction)
+        
+        assert created_interaction.interaction_id == sample_llm_interaction.interaction_id
+        assert created_interaction.success == True
+        assert created_interaction.error_message is None
+        
+        # Verify interaction was saved with correct success status
+        interactions = repository.get_llm_interactions_for_session(sample_alert_session.session_id)
+        assert len(interactions) == 1
+        assert interactions[0].success == True
+        assert interactions[0].error_message is None
+        assert interactions[0].response_json is not None
+
+    @pytest.mark.unit
+    def test_create_failed_llm_interaction(self, repository, sample_alert_session, sample_failed_llm_interaction):
+        """Test creating failed LLM interaction with success=False and error_message."""
+        # Create session first
+        repository.create_alert_session(sample_alert_session)
+        
+        # Create failed interaction
+        created_interaction = repository.create_llm_interaction(sample_failed_llm_interaction)
+        
+        assert created_interaction.interaction_id == sample_failed_llm_interaction.interaction_id
+        assert created_interaction.success == False
+        assert created_interaction.error_message is not None
+        assert "429" in created_interaction.error_message
+        assert "Quota exceeded" in created_interaction.error_message
+        
+        # Verify interaction was saved with correct failure status
+        interactions = repository.get_llm_interactions_for_session(sample_alert_session.session_id)
+        assert len(interactions) == 1
+        assert interactions[0].success == False
+        assert interactions[0].error_message == sample_failed_llm_interaction.error_message
+        assert interactions[0].response_json is None
+
+    @pytest.mark.unit
+    def test_get_session_timeline_includes_success_error_fields(self, repository, sample_alert_session):
+        """Test session timeline includes success and error_message fields in LLM interactions."""
+        # Create session
+        repository.create_alert_session(sample_alert_session)
+        
+        # Create successful interaction
+        successful_interaction = LLMInteraction(
+            session_id=sample_alert_session.session_id,
+            model_name="gpt-4",
+            step_description="Successful analysis",
+            request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
+            response_json={"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]},
+            duration_ms=1000,
+            success=True
+        )
+        
+        # Create failed interaction
+        failed_interaction = LLMInteraction(
+            session_id=sample_alert_session.session_id,
+            model_name="gemini-1.5-pro",
+            step_description="Failed analysis",
+            request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
+            response_json=None,
+            duration_ms=500,
+            success=False,
+            error_message="API rate limit exceeded"
+        )
+        
+        repository.create_llm_interaction(successful_interaction)
+        repository.create_llm_interaction(failed_interaction)
+        
+        # Get timeline
+        timeline = repository.get_session_timeline(sample_alert_session.session_id)
+        
+        assert timeline is not None
+        assert "chronological_timeline" in timeline
+        
+        # Verify timeline events include success and error_message fields
+        events = timeline["chronological_timeline"]
+        assert len(events) == 2
+        
+        # Find the successful and failed interactions in timeline
+        successful_event = None
+        failed_event = None
+        
+        for event in events:
+            if event["type"] == "llm":
+                if event["details"]["success"] == True:
+                    successful_event = event
+                elif event["details"]["success"] == False:
+                    failed_event = event
+        
+        # Verify successful interaction details
+        assert successful_event is not None
+        assert successful_event["details"]["success"] == True
+        assert successful_event["details"]["error_message"] is None
+        
+        # Verify failed interaction details
+        assert failed_event is not None
+        assert failed_event["details"]["success"] == False
+        assert failed_event["details"]["error_message"] == "API rate limit exceeded"
+
+    @pytest.mark.unit
+    def test_mixed_successful_and_failed_interactions_in_session(self, repository, sample_alert_session):
+        """Test session with mix of successful and failed LLM interactions."""
+        # Create session
+        repository.create_alert_session(sample_alert_session)
+        
+        # Create multiple interactions with different success statuses
+        interactions = [
+            LLMInteraction(
+                session_id=sample_alert_session.session_id,
+                model_name="gpt-4",
+                step_description="First attempt - successful",
+                request_json={"messages": [{"role": "user", "content": "Analyze issue"}]},
+                response_json={"choices": [{"message": {"role": "assistant", "content": "Analysis complete"}, "finish_reason": "stop"}]},
+                duration_ms=1200,
+                success=True
+            ),
+            LLMInteraction(
+                session_id=sample_alert_session.session_id,
+                model_name="gemini-1.5-pro",
+                step_description="Second attempt - failed",
+                request_json={"messages": [{"role": "user", "content": "Follow up analysis"}]},
+                response_json=None,
+                duration_ms=300,
+                success=False,
+                error_message="Connection timeout"
+            ),
+            LLMInteraction(
+                session_id=sample_alert_session.session_id,
+                model_name="gpt-4",
+                step_description="Third attempt - successful",
+                request_json={"messages": [{"role": "user", "content": "Final analysis"}]},
+                response_json={"choices": [{"message": {"role": "assistant", "content": "Final conclusion"}, "finish_reason": "stop"}]},
+                duration_ms=900,
+                success=True
+            )
+        ]
+        
+        for interaction in interactions:
+            repository.create_llm_interaction(interaction)
+        
+        # Verify all interactions were saved correctly
+        saved_interactions = repository.get_llm_interactions_for_session(sample_alert_session.session_id)
+        assert len(saved_interactions) == 3
+        
+        # Verify success statuses
+        success_count = sum(1 for i in saved_interactions if i.success)
+        failure_count = sum(1 for i in saved_interactions if not i.success)
+        
+        assert success_count == 2
+        assert failure_count == 1
+        
+        # Verify error messages
+        failed_interactions = [i for i in saved_interactions if not i.success]
+        assert len(failed_interactions) == 1
+        assert failed_interactions[0].error_message == "Connection timeout"
+
 
 class TestHistoryRepositoryErrorHandling:
     """Test suite for HistoryRepository error handling scenarios."""

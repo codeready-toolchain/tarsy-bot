@@ -43,26 +43,76 @@ function InteractionDetails({
     return '';
   };
 
-  const renderLLMDetails = (llmDetails: LLMInteraction) => (
-    <Stack spacing={2}>
-      <Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-            Prompt
-          </Typography>
-          <CopyButton
-            text={(() => {
-              const { system, user } = extractSystemUserFromRequest(llmDetails);
-              if (system || user) {
-                return `System:\n${system}\n\nUser:\n${user}`;
-              }
-              return '';
-            })()}
-            variant="icon"
-            size="small"
-            tooltip="Copy prompt"
-          />
-        </Box>
+  const renderLLMDetails = (llmDetails: LLMInteraction) => {
+    // Check if this is a failed interaction
+    const isFailed = llmDetails.success === false || llmDetails.response_json === null;
+    
+    return (
+      <Stack spacing={2}>
+        {/* Show error section first for failed interactions */}
+        {isFailed && (
+          <Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{
+                  px: 1,
+                  py: 0.5,
+                  bgcolor: 'error.main',
+                  color: 'error.contrastText',
+                  borderRadius: 1,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  Error
+                </Box>
+              </Box>
+              <CopyButton
+                text={llmDetails.error_message || 'LLM request failed - no response received'}
+                variant="icon"
+                size="small"
+                tooltip="Copy error message"
+              />
+            </Box>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                p: 1.5,
+                bgcolor: 'grey.50',
+                borderRadius: 1,
+                border: 1,
+                borderColor: 'error.main',
+                color: 'error.main',
+                fontFamily: 'monospace',
+                fontSize: '0.875rem'
+              }}
+            >
+              {llmDetails.error_message || 'LLM request failed - no response received'}
+            </Typography>
+          </Box>
+        )}
+
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              Prompt
+            </Typography>
+            <CopyButton
+              text={(() => {
+                const { system, user } = extractSystemUserFromRequest(llmDetails);
+                if (system || user) {
+                  return `System:\n${system}\n\nUser:\n${user}`;
+                }
+                return '';
+              })()}
+              variant="icon"
+              size="small"
+              tooltip="Copy prompt"
+            />
+          </Box>
         {(() => {
           const { system, user } = extractSystemUserFromRequest(llmDetails);
           if (system || user) {
@@ -165,52 +215,55 @@ function InteractionDetails({
         })()}
         </Box>
         
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{
-                px: 1,
-                py: 0.5,
-                bgcolor: 'success.main',
-                color: 'success.contrastText',
-                borderRadius: 1,
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px'
-              }}>
-                Response
+        {/* Only show Response section for successful interactions */}
+        {!isFailed && (
+          <Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{
+                  px: 1,
+                  py: 0.5,
+                  bgcolor: 'success.main',
+                  color: 'success.contrastText',
+                  borderRadius: 1,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  Response
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                  {extractResponseText(llmDetails).length.toLocaleString()} chars
+                </Typography>
+                <CopyButton
+                  text={extractResponseText(llmDetails)}
+                  variant="icon"
+                  size="small"
+                  tooltip="Copy response"
+                />
               </Box>
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                {extractResponseText(llmDetails).length.toLocaleString()} chars
-              </Typography>
-              <CopyButton
-                text={extractResponseText(llmDetails)}
-                variant="icon"
-                size="small"
-                tooltip="Copy response"
-              />
-            </Box>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                p: 1.5,
+                bgcolor: 'grey.50',
+                borderRadius: 1,
+                border: 1,
+                borderColor: 'divider',
+                maxHeight: 300,
+                overflow: 'auto'
+              }}
+            >
+              {extractResponseText(llmDetails)}
+            </Typography>
           </Box>
-          <Typography 
-            variant="body2" 
-            sx={{ 
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              p: 1.5,
-              bgcolor: 'grey.50',
-              borderRadius: 1,
-              border: 1,
-              borderColor: 'divider',
-              maxHeight: 300,
-              overflow: 'auto'
-            }}
-          >
-            {extractResponseText(llmDetails)}
-          </Typography>
-      </Box>
+        )}
 
       {/* Model metadata */}
       <Box>
@@ -235,6 +288,7 @@ function InteractionDetails({
       </Box>
     </Stack>
   );
+};
 
   const renderMCPDetails = (mcpDetails: MCPInteraction) => (
     <Stack spacing={2}>

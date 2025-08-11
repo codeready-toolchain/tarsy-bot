@@ -18,10 +18,11 @@ import {
   ExpandMore, 
   ExpandLess
 } from '@mui/icons-material';
-import type { TimelineItem as TimelineItemType, LLMInteraction } from '../types';
+import type { TimelineItem as TimelineItemType, LLMInteraction, MCPInteraction } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import InteractionDetails from './InteractionDetails';
 import LLMInteractionPreview from './LLMInteractionPreview';
+import MCPInteractionPreview from './MCPInteractionPreview';
 
 import CopyButton from './CopyButton';
 
@@ -366,6 +367,14 @@ function TimelineVisualization({
                     {item.type === 'llm' && !expandedItems[itemKey] && (
                       <LLMInteractionPreview 
                         interaction={item.details as LLMInteraction}
+                        showFullPreview={true}
+                      />
+                    )}
+                    
+                    {/* Show MCP preview when not expanded */}
+                    {item.type === 'mcp' && !expandedItems[itemKey] && (
+                      <MCPInteractionPreview 
+                        interaction={item.details as MCPInteraction}
                         showFullPreview={true}
                       />
                     )}

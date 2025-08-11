@@ -412,7 +412,9 @@ class HistoryRepository:
                         "response_json": interaction.response_json,
                         "model_name": interaction.model_name,
                         "tokens_used": interaction.token_usage,
-                        "temperature": interaction.request_json.get('temperature') if interaction.request_json else None
+                        "temperature": interaction.request_json.get('temperature') if interaction.request_json else None,
+                        "success": interaction.success,
+                        "error_message": interaction.error_message
                     }
                 })
             
