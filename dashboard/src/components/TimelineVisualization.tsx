@@ -18,9 +18,10 @@ import {
   ExpandMore, 
   ExpandLess
 } from '@mui/icons-material';
-import type { TimelineItem as TimelineItemType } from '../types';
+import type { TimelineItem as TimelineItemType, LLMInteraction } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import InteractionDetails from './InteractionDetails';
+import LLMInteractionPreview from './LLMInteractionPreview';
 
 import CopyButton from './CopyButton';
 
@@ -354,26 +355,66 @@ function TimelineVisualization({
                       </Typography>
                     </Box>
                   }
-                  action={
-                    item.details && (
-                      <IconButton 
-                        onClick={() => toggleExpansion(itemKey)}
-                        size="small"
-                        sx={{ 
-                          color: `${getInteractionColor(item.type)}.main`,
-                          '&:hover': { bgcolor: `${getInteractionColor(item.type)}.light` }
-                        }}
-                      >
-                        {expandedItems[itemKey] ? <ExpandLess /> : <ExpandMore />}
-                      </IconButton>
-                    )
-                  }
+                  action={null}
                   sx={{ pb: item.details && !expandedItems[itemKey] ? 2 : 1 }}
                 />
                 
                 {/* Expandable interaction details */}
                 {item.details && (
                   <CardContent sx={{ pt: 0 }}>
+                    {/* Show LLM preview when not expanded */}
+                    {item.type === 'llm' && !expandedItems[itemKey] && (
+                      <LLMInteractionPreview 
+                        interaction={item.details as LLMInteraction}
+                        showFullPreview={true}
+                      />
+                    )}
+                    
+                    {/* Expand/Collapse button */}
+                    <Box sx={{ 
+                      display: 'flex', 
+                      justifyContent: 'center', 
+                      mt: expandedItems[itemKey] ? 0 : 2,
+                      mb: 1 
+                    }}>
+                      <Box 
+                        onClick={() => toggleExpansion(itemKey)}
+                        sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 0.5,
+                          cursor: 'pointer',
+                          py: 0.5,
+                          '&:hover': { 
+                            '& .expand-text': {
+                              textDecoration: 'underline'
+                            }
+                          },
+                          transition: 'all 0.2s ease-in-out'
+                        }}
+                      >
+                        <Typography 
+                          className="expand-text"
+                          variant="body2" 
+                          sx={{ 
+                            color: `${getInteractionColor(item.type)}.main`,
+                            fontWeight: 500,
+                            fontSize: '0.875rem'
+                          }}
+                        >
+                          {expandedItems[itemKey] ? 'Show Less' : 'Show Full Details'}
+                        </Typography>
+                        <Box sx={{ 
+                          color: `${getInteractionColor(item.type)}.main`,
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}>
+                          {expandedItems[itemKey] ? <ExpandLess /> : <ExpandMore />}
+                        </Box>
+                      </Box>
+                    </Box>
+                    
+                    {/* Full interaction details when expanded */}
                     <InteractionDetails
                       type={item.type}
                       details={item.details}
