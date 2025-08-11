@@ -1,7 +1,7 @@
 # TARSy-bot 🤖
 
 [![CI Pipeline](https://github.com/codeready-toolchain/tarsy-bot/workflows/CI%20Pipeline/badge.svg)](https://github.com/codeready-toolchain/tarsy-bot/actions)
-[![codecov](https://codecov.io/gh/codeready-toolchain/tarsy-bot/graph/badge.svg?token=VT3hVDcEMY)](https://codecov.io/gh/codeready-toolchain/tarsy-bot)
+[![codecov](https://codecov.io/gh/codeready-toolchain/tarsy-bot/branch/master/graph/badge.svg)](https://codecov.io/gh/codeready-toolchain/tarsy-bot)
 
 An intelligent Site Reliability Engineering agent that automatically processes alerts, retrieves runbooks, and uses MCP (Model Context Protocol) servers to gather system information for comprehensive incident analysis.
 
