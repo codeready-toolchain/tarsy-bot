@@ -181,6 +181,82 @@ class TestRegularIterationController:
         # Verify that no additional tools were executed (only initial ones)
         assert mock_agent.execute_mcp_tools.call_count == 1
 
+    @pytest.mark.asyncio
+    async def test_execute_analysis_loop_tool_execution_failure(self, controller, sample_context, mock_agent):
+        """Test analysis loop when tool execution fails."""
+        mock_agent.execute_mcp_tools.side_effect = Exception("Tool execution failed")
+        
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        # Should still return analysis result with error info
+        assert result == "Regular analysis complete"
+        mock_agent.analyze_alert.assert_called_once()
+        call_args = mock_agent.analyze_alert.call_args[0]
+        assert "tool_execution_error" in call_args[2]  # mcp_data parameter
+
+    @pytest.mark.asyncio
+    async def test_execute_analysis_loop_multiple_iterations(self, controller, sample_context, mock_agent):
+        """Test analysis loop with multiple iterations."""
+        call_count = 0
+        
+        def mock_determine_next_tools(*args):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {
+                    "continue": True,
+                    "tools": [{"server": "test", "tool": "additional_tool", "parameters": {}}]
+                }
+            else:
+                return {"continue": False}
+        
+        mock_agent.determine_next_mcp_tools = AsyncMock(side_effect=mock_determine_next_tools)
+        mock_agent.merge_mcp_data = Mock(return_value={"merged": "data"})
+        
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        assert result == "Regular analysis complete"
+        assert mock_agent.execute_mcp_tools.call_count == 2  # Initial + 1 iteration
+        mock_agent.merge_mcp_data.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_execute_analysis_loop_max_iterations_reached(self, controller, sample_context, mock_agent):
+        """Test analysis loop reaching max iterations."""
+        mock_agent.max_iterations = 2
+        mock_agent.determine_next_mcp_tools = AsyncMock(return_value={
+            "continue": True,
+            "tools": [{"server": "test", "tool": "tool", "parameters": {}}]
+        })
+        mock_agent.merge_mcp_data = Mock(return_value={"merged": "data"})
+        
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        assert result == "Regular analysis complete"
+        # Should stop after max_iterations (initial + 2 iterations)
+        assert mock_agent.execute_mcp_tools.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_execute_analysis_loop_iteration_failure(self, controller, sample_context, mock_agent):
+        """Test analysis loop when iteration fails."""
+        mock_agent.determine_next_mcp_tools = AsyncMock(side_effect=Exception("Iteration failed"))
+        
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        # Should continue with analysis despite iteration failure
+        assert result == "Regular analysis complete"
+        mock_agent.analyze_alert.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_execute_analysis_loop_invalid_next_action_type(self, controller, sample_context, mock_agent):
+        """Test analysis loop when determine_next_mcp_tools returns invalid type."""
+        mock_agent.determine_next_mcp_tools = AsyncMock(return_value="invalid_type")
+        
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        # Should handle invalid type gracefully
+        assert result == "Regular analysis complete"
+        mock_agent.analyze_alert.assert_called_once()
+
 
 @pytest.mark.unit
 class TestSimpleReActController:
