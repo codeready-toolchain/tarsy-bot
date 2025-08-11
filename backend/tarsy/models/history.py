@@ -98,124 +98,13 @@ class AlertSession(SQLModel, table=True):
         sa_relationship_kwargs={"lazy": "select", "cascade": "all, delete-orphan"}
     )
     
-    mcp_communications: list["MCPCommunication"] = Relationship(
+    mcp_communications: list["MCPInteraction"] = Relationship(
         back_populates="session", 
         sa_relationship_kwargs={"lazy": "select", "cascade": "all, delete-orphan"}
     )
     
-class LLMInteraction(SQLModel, table=True):
-    """Database model for LLM interactions."""
-    
-    __tablename__ = "llm_interactions"
-    
-    # Database-specific fields
-    interaction_id: str = Field(
-        default_factory=lambda: str(uuid.uuid4()),
-        primary_key=True,
-        description="Unique identifier for the LLM interaction"
-    )
-    
-    step_description: str = Field(
-        description="Human-readable description of this processing step"
-    )
-    
-    # Base interaction fields
-    request_id: str = Field(description="Request identifier")
-    session_id: str = Field(
-        foreign_key="alert_sessions.session_id",
-        description="Foreign key reference to the parent alert session"
-    )
-    timestamp_us: int = Field(
-        default_factory=now_us,
-        description="Interaction timestamp (microseconds since epoch UTC)",
-        index=True
-    )
-    duration_ms: int = Field(default=0, description="Interaction duration in milliseconds")
-    success: bool = Field(default=True, description="Whether interaction succeeded")
-    error_message: Optional[str] = Field(None, description="Error message if failed")
-    
-    # LLM-specific fields
-    model_name: str = Field(description="LLM model identifier")
-    request_json: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="Full JSON request sent to LLM API"
-    )
-    response_json: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="Full JSON response received from LLM API"
-    )
-    token_usage: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="Token usage statistics"
-    )
-    tool_calls: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="Tool calls made during interaction"
-    )
-    tool_results: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="Results from tool calls"
-    )
-    
-    # Relationship back to session
-    session: AlertSession = Relationship(back_populates="llm_interactions")
+# Import unified models that replace the old separate DB models
+from typing import TYPE_CHECKING
 
-
-class MCPCommunication(SQLModel, table=True):
-    """Database model for MCP communications."""
-    
-    __tablename__ = "mcp_communications"
-    
-    # Database-specific fields
-    communication_id: str = Field(
-        default_factory=lambda: str(uuid.uuid4()),
-        primary_key=True,
-        description="Unique identifier for the MCP communication"
-    )
-    
-    step_description: str = Field(
-        description="Human-readable description of this step"
-    )
-    
-    # Base interaction fields
-    request_id: str = Field(description="Request identifier")
-    session_id: str = Field(
-        foreign_key="alert_sessions.session_id",
-        description="Foreign key reference to the parent alert session"
-    )
-    timestamp_us: int = Field(
-        default_factory=now_us,
-        description="Communication timestamp (microseconds since epoch UTC)",
-        index=True
-    )
-    duration_ms: int = Field(default=0, description="Communication duration in milliseconds")
-    success: bool = Field(default=True, description="Whether communication succeeded")
-    error_message: Optional[str] = Field(None, description="Error message if failed")
-    
-    # MCP-specific fields
-    server_name: str = Field(description="MCP server identifier")
-    communication_type: str = Field(description="Type of communication (tool_list, tool_call)")
-    tool_name: Optional[str] = Field(None, description="Tool name (for tool_call type)")
-    tool_arguments: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="Tool arguments (for tool_call type)"
-    )
-    tool_result: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="Tool result (for tool_call type)"
-    )
-    available_tools: Optional[dict] = Field(
-        default=None,
-        sa_column=Column(JSON),
-        description="Available tools (for tool_list type)"
-    )
-    
-    # Relationship back to session
-    session: AlertSession = Relationship(back_populates="mcp_communications") 
+if TYPE_CHECKING:
+    from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction 

@@ -11,7 +11,8 @@ from typing import Any, Dict, List, Optional, Union
 from sqlmodel import Session, asc, desc, func, select, and_, or_
 
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.history import AlertSession, LLMInteraction, MCPCommunication
+from tarsy.models.history import AlertSession
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import BaseRepository
 from tarsy.utils.logger import get_logger
 
@@ -36,7 +37,7 @@ class HistoryRepository:
         self.session = session
         self.alert_session_repo = BaseRepository(session, AlertSession)
         self.llm_interaction_repo = BaseRepository(session, LLMInteraction)
-        self.mcp_communication_repo = BaseRepository(session, MCPCommunication)
+        self.mcp_communication_repo = BaseRepository(session, MCPInteraction)
         
     # AlertSession operations
     def create_alert_session(self, alert_session: AlertSession) -> Optional[AlertSession]:
@@ -260,11 +261,11 @@ class HistoryRepository:
                 
                 # Count MCP communications for each session
                 mcp_count_query = select(
-                    MCPCommunication.session_id,
-                    func.count(MCPCommunication.communication_id).label('count')
+                    MCPInteraction.session_id,
+                    func.count(MCPInteraction.communication_id).label('count')
                 ).where(
-                    MCPCommunication.session_id.in_(session_ids)
-                ).group_by(MCPCommunication.session_id)
+                    MCPInteraction.session_id.in_(session_ids)
+                ).group_by(MCPInteraction.session_id)
                 
                 mcp_results = self.session.exec(mcp_count_query).all()
                 mcp_counts = {result.session_id: result.count for result in mcp_results}
@@ -337,19 +338,19 @@ class HistoryRepository:
 
 
     # MCPCommunication operations
-    def create_mcp_communication(self, mcp_communication: MCPCommunication) -> MCPCommunication:
+    def create_mcp_communication(self, mcp_communication: MCPInteraction) -> MCPInteraction:
         """
         Create a new MCP communication record.
         
         Args:
-            mcp_communication: MCPCommunication instance to create
+            mcp_communication: MCPInteraction instance to create
             
         Returns:
-            The created MCPCommunication with database-generated fields
+            The created MCPInteraction with database-generated fields
         """
         return self.mcp_communication_repo.create(mcp_communication)
     
-    def get_mcp_communications_for_session(self, session_id: str) -> List[MCPCommunication]:
+    def get_mcp_communications_for_session(self, session_id: str) -> List[MCPInteraction]:
         """
         Get all MCP communications for a session ordered by timestamp.
         
@@ -357,12 +358,12 @@ class HistoryRepository:
             session_id: The session identifier
             
         Returns:
-            List of MCPCommunication instances ordered by timestamp
+            List of MCPInteraction instances ordered by timestamp
         """
         try:
-            statement = select(MCPCommunication).where(
-                MCPCommunication.session_id == session_id
-            ).order_by(asc(MCPCommunication.timestamp_us))
+            statement = select(MCPInteraction).where(
+                MCPInteraction.session_id == session_id
+            ).order_by(asc(MCPInteraction.timestamp_us))
             
             return self.session.exec(statement).all()
         except Exception as e:

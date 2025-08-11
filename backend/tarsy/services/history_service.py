@@ -14,7 +14,8 @@ from typing import Any, Dict, List, Optional
 
 from tarsy.config.settings import get_settings
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.history import AlertSession, LLMInteraction, MCPCommunication, now_us
+from tarsy.models.history import AlertSession, now_us
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository
 
@@ -296,36 +297,17 @@ class HistoryService:
         return result if result is not None else False
     
     # LLM Interaction Logging
-    def log_llm_interaction(
-        self,
-        session_id: str,
-        model_name: str,
-        step_description: str,
-        tool_calls: Optional[Dict] = None,
-        tool_results: Optional[Dict] = None,
-        token_usage: Optional[Dict] = None,
-        duration_ms: int = 0,
-        request_json: Optional[Dict] = None,
-        response_json: Optional[Dict] = None
-    ) -> bool:
+    def log_llm_interaction(self, interaction: LLMInteraction) -> bool:
         """
-        Log an LLM interaction with comprehensive details.
+        Log an LLM interaction using unified model.
         
         Args:
-            session_id: The session identifier
-            model_name: LLM model identifier
-            step_description: Human-readable description of this step
-            tool_calls: Tool calls made during interaction
-            tool_results: Results from tool calls
-            token_usage: Token usage statistics
-            duration_ms: Interaction duration in milliseconds
-            request_json: Full JSON request sent to LLM API
-            response_json: Full JSON response received from LLM API
+            interaction: LLMInteraction instance with all interaction details
             
         Returns:
             True if logged successfully, False otherwise
         """
-        if not self.is_enabled or not session_id:
+        if not self.is_enabled or not interaction.session_id:
             return False
             
         try:
@@ -334,61 +316,32 @@ class HistoryService:
                     logger.warning("History repository unavailable - LLM interaction not logged")
                     return False
                 
-                interaction = LLMInteraction(
-                    session_id=session_id,
-                    model_name=model_name,
-                    step_description=step_description,
-                    tool_calls=tool_calls,
-                    tool_results=tool_results,
-                    token_usage=token_usage,
-                    duration_ms=duration_ms,
-                    request_json=request_json,
-                    response_json=response_json
-                )
+                # Set step description if not already set
+                if not interaction.step_description:
+                    interaction.step_description = f"LLM analysis using {interaction.model_name}"
                 
+                # Direct storage - no conversion needed!
                 repo.create_llm_interaction(interaction)
-                logger.debug(f"Logged LLM interaction for session {session_id}: {step_description}")
+                logger.debug(f"Logged LLM interaction for session {interaction.session_id}")
                 return True
                 
         except Exception as e:
-            logger.error(f"Failed to log LLM interaction for session {session_id}: {str(e)}")
+            logger.error(f"Failed to log LLM interaction for session {interaction.session_id}: {str(e)}")
             return False
+
     
     # MCP Communication Logging
-    def log_mcp_communication(
-        self,
-        session_id: str,
-        server_name: str,
-        communication_type: str,
-        step_description: str,
-        success: bool,
-        duration_ms: int = 0,
-        tool_name: Optional[str] = None,
-        tool_arguments: Optional[Dict] = None,
-        tool_result: Optional[Dict] = None,
-        available_tools: Optional[Dict] = None,
-        error_message: Optional[str] = None
-    ) -> bool:
+    def log_mcp_interaction(self, interaction: MCPInteraction) -> bool:
         """
-        Log an MCP communication with comprehensive details.
+        Log an MCP interaction using unified model.
         
         Args:
-            session_id: The session identifier
-            server_name: MCP server identifier
-            communication_type: Type of communication (tool_list, tool_call, result)
-            step_description: Human-readable description of this step
-            success: Whether the communication was successful
-            duration_ms: Communication duration in milliseconds
-            tool_name: Name of the tool (for tool_call type)
-            tool_arguments: Arguments passed to tool call
-            tool_result: Result from tool call
-            available_tools: List of available tools (for tool_list type)
-            error_message: Error message if communication failed
+            interaction: MCPInteraction instance with all interaction details
             
         Returns:
             True if logged successfully, False otherwise
         """
-        if not self.is_enabled or not session_id:
+        if not self.is_enabled or not interaction.session_id:
             return False
             
         try:
@@ -397,27 +350,19 @@ class HistoryService:
                     logger.warning("History repository unavailable - MCP communication not logged")
                     return False
                 
-                communication = MCPCommunication(
-                    session_id=session_id,
-                    server_name=server_name,
-                    communication_type=communication_type,
-                    step_description=step_description,
-                    success=success,
-                    duration_ms=duration_ms,
-                    tool_name=tool_name,
-                    tool_arguments=tool_arguments,
-                    tool_result=tool_result,
-                    available_tools=available_tools,
-                    error_message=error_message
-                )
+                # Set step description if not already set
+                if not interaction.step_description:
+                    interaction.step_description = interaction.get_step_description()
                 
-                repo.create_mcp_communication(communication)
-                logger.debug(f"Logged MCP communication for session {session_id}: {step_description}")
+                # Direct storage - no conversion needed!
+                repo.create_mcp_communication(interaction)
+                logger.debug(f"Logged MCP communication for session {interaction.session_id}")
                 return True
                 
         except Exception as e:
-            logger.error(f"Failed to log MCP communication for session {session_id}: {str(e)}")
+            logger.error(f"Failed to log MCP communication for session {interaction.session_id}: {str(e)}")
             return False
+
     
     # Properties
     @property
