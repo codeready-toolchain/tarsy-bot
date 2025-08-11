@@ -14,6 +14,7 @@ from sqlalchemy import text
 from tarsy.utils.timestamp import now_us
 
 
+
 class LLMMessage(SQLModel):
     """Individual message in LLM conversation."""
     role: str = Field(..., description="Message role (system, user, assistant)")
@@ -120,8 +121,8 @@ class LLMInteraction(SQLModel, table=True):
     start_time_us: Optional[int] = Field(None, description="Start time in microseconds")
     end_time_us: Optional[int] = Field(None, description="End time in microseconds")
     
-    # Relationship back to session
-    session: Optional["AlertSession"] = Relationship(back_populates="llm_interactions")
+    # Note: Relationship to AlertSession removed to avoid circular import issues
+    # The session_id foreign key provides the necessary database linkage
     
     # Runtime helper methods
     def get_response_text(self) -> str:
@@ -218,8 +219,8 @@ class MCPInteraction(SQLModel, table=True):
     start_time_us: Optional[int] = Field(None, description="Start time in microseconds")
     end_time_us: Optional[int] = Field(None, description="End time in microseconds")
     
-    # Relationship back to session
-    session: Optional["AlertSession"] = Relationship(back_populates="mcp_communications")
+    # Note: Relationship to AlertSession removed to avoid circular import issues
+    # The session_id foreign key provides the necessary database linkage
     
     # Runtime helper methods
     def get_step_description(self) -> str:

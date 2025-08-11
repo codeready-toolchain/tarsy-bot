@@ -92,16 +92,8 @@ class AlertSession(SQLModel, table=True):
         description="Additional context and metadata for the session"
     )
     
-    # Relationships for chronological timeline reconstruction
-    llm_interactions: list["LLMInteraction"] = Relationship(
-        back_populates="session",
-        sa_relationship_kwargs={"lazy": "select", "cascade": "all, delete-orphan"}
-    )
-    
-    mcp_communications: list["MCPInteraction"] = Relationship(
-        back_populates="session", 
-        sa_relationship_kwargs={"lazy": "select", "cascade": "all, delete-orphan"}
-    )
+    # Note: Relationships removed to avoid circular import issues with unified models
+    # Use queries with session_id foreign key for data access instead
     
 # Import unified models that replace the old separate DB models
 from typing import TYPE_CHECKING

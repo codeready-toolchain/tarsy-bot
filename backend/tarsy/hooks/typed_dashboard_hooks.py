@@ -51,13 +51,7 @@ class TypedLLMDashboardHook(BaseTypedHook[LLMInteraction]):
                 "success": interaction.success,
                 "error_message": interaction.error_message,
                 "duration_ms": interaction.duration_ms,
-                "token_usage": (
-                    {
-                        "prompt_tokens": interaction.response.usage.prompt_tokens,
-                        "completion_tokens": interaction.response.usage.completion_tokens,
-                        "total_tokens": interaction.response.usage.total_tokens
-                    } if interaction.response and interaction.response.usage else None
-                ),
+                "token_usage": interaction.token_usage,
                 "timestamp_us": interaction.timestamp_us
             }
             
@@ -98,14 +92,12 @@ class TypedMCPDashboardHook(BaseTypedHook[MCPInteraction]):
                 "type": "mcp_interaction",
                 "session_id": interaction.session_id,
                 "request_id": interaction.request_id,
-                "server_name": interaction.tool_call.server_name,
-                "tool_name": interaction.tool_call.tool_name,
+                "server_name": interaction.server_name,
+                "tool_name": interaction.tool_name,
                 "communication_type": interaction.communication_type,
                 "step_description": interaction.get_step_description(),
-                "tool_arguments": interaction.tool_call.arguments,
-                "tool_result": (
-                    interaction.tool_result.result if interaction.tool_result else None
-                ),
+                "tool_arguments": interaction.tool_arguments,
+                "tool_result": interaction.tool_result,
                 "success": interaction.success,
                 "error_message": interaction.error_message,
                 "duration_ms": interaction.duration_ms,
@@ -152,12 +144,10 @@ class TypedMCPListDashboardHook(BaseTypedHook[MCPInteraction]):
                 "server_name": interaction.server_name or "all_servers",
                 "communication_type": interaction.communication_type,
                 "step_description": interaction.get_step_description(),
-                "available_tools": (
-                    interaction.result.tools if interaction.result else None
-                ),
+                "available_tools": interaction.available_tools,
                 "tool_count": (
-                    sum(len(tools) for tools in interaction.result.tools.values())
-                    if interaction.result else 0
+                    sum(len(tools) for tools in interaction.available_tools.values())
+                    if interaction.available_tools else 0
                 ),
                 "success": interaction.success,
                 "error_message": interaction.error_message,

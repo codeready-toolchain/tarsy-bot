@@ -105,9 +105,9 @@ class LLMClient:
         if not self.available or not self.llm_client:
             raise Exception(f"{self.provider_name} client not available")
         
-        # Prepare request data for typed context
+        # Prepare request data for typed context (ensure JSON serializable)
         request_data = {
-            'messages': messages,
+            'messages': [msg.model_dump() for msg in messages],  # Convert LLMMessage objects to dicts
             'model': self.model,
             'provider': self.provider_name,
             'temperature': self.temperature
@@ -142,8 +142,8 @@ class LLMClient:
                     usage=None  # LangChain doesn't provide usage info by default
                 )
                 
-                # Update the interaction with response data
-                ctx.interaction.response = typed_response
+                # Update the interaction with response data (ensure JSON serializable)
+                ctx.interaction.response_json = typed_response.model_dump()
                 ctx.interaction.provider = self.provider_name
                 ctx.interaction.model_name = self.model
                 

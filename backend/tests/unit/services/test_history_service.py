@@ -374,17 +374,22 @@ class TestHistoryService:
     @pytest.mark.unit
     def test_log_llm_interaction_success(self, history_service, mock_repository):
         """Test successful LLM interaction logging."""
+        from tarsy.models.unified_interactions import LLMInteraction
+        
         with patch.object(history_service, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repository
             mock_get_repo.return_value.__exit__.return_value = None
             
-            result = history_service.log_llm_interaction(
+            # Create unified interaction model
+            interaction = LLMInteraction(
                 session_id="test-session-id",
-                prompt_text="Test prompt",
-                response_text="Test response",
-                model_used="gpt-4",
-                step_description="Test LLM call"
+                model_name="gpt-4",
+                step_description="Test LLM call",
+                request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
+                response_json={"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]}
             )
+            
+            result = history_service.log_llm_interaction(interaction)
             
             assert result == True
             mock_repository.create_llm_interaction.assert_called_once()
@@ -654,7 +659,16 @@ class TestHistoryServiceErrorHandling:
             session_id = history_service_with_errors.create_session("test", {}, "agent", "alert")
             assert session_id is None
             
-            result = history_service_with_errors.log_llm_interaction("test", "prompt", "response", "model", "step")
+            # Create unified interaction model for error test
+            from tarsy.models.unified_interactions import LLMInteraction
+            interaction = LLMInteraction(
+                session_id="test",
+                model_name="model",
+                step_description="step",
+                request_json={"messages": [{"role": "user", "content": "prompt"}]},
+                response_json={"choices": [{"message": {"role": "assistant", "content": "response"}, "finish_reason": "stop"}]}
+            )
+            result = history_service_with_errors.log_llm_interaction(interaction)
             assert result == False
             
             result = history_service_with_errors.log_mcp_communication("test", "server", "type", "tool", "step")
