@@ -92,6 +92,7 @@ class TestAlertServiceAsyncInitialization:
     async def alert_service(self):
         """Create AlertService with mocked dependencies."""
         mock_settings = Mock(spec=Settings)
+        mock_settings.agent_config_path = None  # Prevent agent config loading
         
         with patch('tarsy.services.alert_service.RunbookService'), \
              patch('tarsy.services.alert_service.get_history_service'), \
@@ -127,7 +128,8 @@ class TestAlertServiceAsyncInitialization:
             mock_factory.assert_called_once_with(
                 llm_client=alert_service.llm_manager,
                 mcp_client=alert_service.mcp_client,
-                mcp_registry=alert_service.mcp_server_registry
+                mcp_registry=alert_service.mcp_server_registry,
+                agent_configs={}  # Empty dict when no config path is provided
             )
     
     @pytest.mark.asyncio

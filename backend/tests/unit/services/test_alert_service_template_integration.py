@@ -36,8 +36,11 @@ class TestAlertServiceTemplateIntegration:
             
             alert_service = AlertService(settings)
             
-            # Verify MCPServerRegistry was created with settings
-            mock_registry_class.assert_called_once_with(settings=settings)
+            # Verify MCPServerRegistry was created with settings and configured_servers
+            mock_registry_class.assert_called_once_with(
+                settings=settings,
+                configured_servers={}  # Empty dict when no config is loaded
+            )
             assert alert_service.mcp_server_registry == mock_registry
     
     def test_alert_service_template_resolution_integration(self):
