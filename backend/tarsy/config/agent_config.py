@@ -7,6 +7,7 @@ conflict detection, and MCP server reference validation.
 """
 
 import os
+from typing import Any, Dict
 import yaml
 from pydantic import ValidationError
 

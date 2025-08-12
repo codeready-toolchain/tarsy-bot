@@ -51,7 +51,7 @@ class AlertService:
         self.history_service = get_history_service()
         
         # Initialize registries first
-        config_loader = ConfigurationLoader(settings.agent_config_file) if settings.agent_config_file else None
+        config_loader = ConfigurationLoader(settings.agent_config_path) if settings.agent_config_path else None
         self.chain_registry = ChainRegistry(config_loader)
         self.mcp_server_registry = MCPServerRegistry(settings=settings)
         
@@ -173,7 +173,7 @@ class AlertService:
             self._update_session_status(session_id, AlertSessionStatus.IN_PROGRESS)
             
             # Step 3: Extract runbook from alert data and download once per chain
-            runbook = alert.get_runbook()
+            runbook = alert.get_runbook_url()
             if not runbook:
                 error_msg = "No runbook specified in alert data"
                 logger.error(error_msg)
@@ -183,7 +183,8 @@ class AlertService:
             runbook_content = await self.runbook_service.download_runbook(runbook)
             
             # Step 4: Set up alert processing data with chain context
-            alert.set_chain_context(chain_definition, runbook, runbook_content)
+            alert.set_chain_context(chain_definition.chain_id)
+            alert.set_runbook_content(runbook_content)
             
             # Step 5: Execute chain stages sequentially  
             chain_result = await self._execute_chain_stages(
@@ -525,10 +526,12 @@ class AlertService:
             if not self.history_service or not self.history_service.enabled:
                 return None
             
-            # Use provided agent class name or determine it
+            # Use provided agent class name or determine it from chain
             if agent_class_name is None:
                 try:
-                    agent_class_name = self.agent_registry.get_agent_for_alert_type(alert.alert_type)
+                    chain = self.chain_registry.get_chain_for_alert_type(alert.alert_type)
+                    # Use the first stage's agent as the representative agent type
+                    agent_class_name = chain.stages[0].agent if chain.stages else None
                 except ValueError:
                     agent_class_name = None
             agent_type = agent_class_name or 'unknown'
@@ -578,11 +581,7 @@ class AlertService:
                 alert_id=alert_id,
                 alert_data=alert.alert_data,  # Store all flexible data in JSON field
                 agent_type=f"chain:{chain_definition.chain_id}",  # Mark as chain processing
-                alert_type=alert.alert_type,  # Store in separate column for fast routing
-                chain_id=chain_definition.chain_id,
-                chain_definition=chain_definition.__dict__ if hasattr(chain_definition, '__dict__') else dict(chain_definition),
-                current_stage_index=0,
-                current_stage_id=None
+                alert_type=alert.alert_type  # Store in separate column for fast routing
             )
             
             logger.info(f"Created chain history session {session_id} for alert {alert_id} with chain {chain_definition.chain_id}")

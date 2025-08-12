@@ -743,6 +743,40 @@ Be thorough in your investigation before providing the final answer."""
         
         return parsed
 
+    def get_react_continuation_prompt(self, context_type: str = "general") -> List[str]:
+        """
+        Get ReAct continuation prompts for when LLM provides incomplete responses.
+        
+        Args:
+            context_type: Type of ReAct context ("general", "data_collection", "analysis")
+            
+        Returns:
+            List of strings to add to react_history for proper continuation
+        """
+        prompts = {
+            "general": "Observation: Please specify what Action you want to take next, or provide your Final Answer if you have enough information.",
+            "data_collection": "Observation: Please specify what Action you want to take next, or provide your Final Answer if you have collected sufficient data.",
+            "analysis": "Observation: Please specify what Action you want to take next, or provide your Final Answer with both collected data and analysis."
+        }
+        
+        continuation_message = prompts.get(context_type, prompts["general"])
+        return [continuation_message, "Thought:"]
+    
+    def get_react_error_continuation(self, error_message: str) -> List[str]:
+        """
+        Get ReAct continuation prompts for error recovery.
+        
+        Args:
+            error_message: The error message to include
+            
+        Returns:
+            List of strings to add to react_history for error recovery
+        """
+        return [
+            f"Observation: Error in reasoning: {error_message}. Please try a different approach.",
+            "Thought:"
+        ]
+
     def convert_action_to_tool_call(self, action: str, action_input: str) -> Dict[str, Any]:
         """Convert ReAct Action/Action Input to MCP tool call format."""
         if not action:

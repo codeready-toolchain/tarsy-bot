@@ -192,7 +192,7 @@ async def get_alert_types():
     (like Alert Manager) can submit any alert type. The system analyzes all
     alert types using the provided runbook and available agent-specific MCP tools.
     """
-    return alert_service.agent_registry.get_supported_alert_types()
+    return alert_service.chain_registry.list_available_alert_types()
 
 
 @app.post("/alerts", response_model=AlertResponse)

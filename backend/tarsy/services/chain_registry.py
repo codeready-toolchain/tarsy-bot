@@ -9,7 +9,7 @@ and provides chain lookup functionality for alert types.
 from typing import Dict, Optional
 from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.config.builtin_config import get_builtin_chain_definitions
-from tarsy.models.chains import ChainDefinitionModel
+from tarsy.models.chains import ChainDefinitionModel, ChainStageModel
 from tarsy.utils.logger import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -54,12 +54,13 @@ class ChainRegistry:
         
         for chain_id, chain_data in builtin_chain_data.items():
             try:
-                # Convert dictionary data to ChainDefinitionModel
+                # Convert dictionary data to ChainDefinitionModel with proper stage objects
+                from tarsy.models.chains import ChainStageModel
                 chain_def = ChainDefinitionModel(
                     chain_id=chain_id,
                     alert_types=chain_data["alert_types"],
                     stages=[
-                        {"name": stage["name"], "agent": stage["agent"], "iteration_strategy": stage.get("iteration_strategy")}
+                        ChainStageModel(name=stage["name"], agent=stage["agent"], iteration_strategy=stage.get("iteration_strategy"))
                         for stage in chain_data["stages"]
                     ],
                     description=chain_data.get("description")
@@ -82,12 +83,12 @@ class ChainRegistry:
             
             for chain_id, chain_data in chain_configs.items():
                 try:
-                    # Convert dictionary data to ChainDefinitionModel
+                    # Convert dictionary data to ChainDefinitionModel with proper stage objects
                     chain_def = ChainDefinitionModel(
                         chain_id=chain_id,
                         alert_types=chain_data["alert_types"],
                         stages=[
-                            {"name": stage["name"], "agent": stage["agent"], "iteration_strategy": stage.get("iteration_strategy")}
+                            ChainStageModel(name=stage["name"], agent=stage["agent"], iteration_strategy=stage.get("iteration_strategy"))
                             for stage in chain_data["stages"]
                         ],
                         description=chain_data.get("description")

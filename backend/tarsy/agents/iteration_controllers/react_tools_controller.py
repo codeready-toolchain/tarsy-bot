@@ -123,11 +123,11 @@ class ReactToolsController(IterationController):
                 elif not parsed['is_complete']:
                     # Same prompting logic as SimpleReActController
                     logger.warning("ReAct response missing action, adding prompt to continue")
-                    react_history.append("Observation: Please specify what Action you want to take next, or provide your Final Answer if you have collected sufficient data.")
+                    react_history.extend(self.prompt_builder.get_react_continuation_prompt("data_collection"))
                 
             except Exception as e:
                 logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
-                react_history.append(f"Observation: Error in reasoning: {str(e)}. Please try a different approach.")
+                react_history.extend(self.prompt_builder.get_react_error_continuation(str(e)))
                 continue
         
         # REUSE fallback logic from SimpleReActController

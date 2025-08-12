@@ -139,12 +139,12 @@ class SimpleReActController(IterationController):
                 elif not parsed['is_complete']:
                     # LLM didn't provide action but also didn't complete - prompt for action
                     logger.warning("ReAct response missing action, adding prompt to continue")
-                    react_history.append("Observation: Please specify what Action you want to take next, or provide your Final Answer if you have enough information.")
+                    react_history.extend(self.prompt_builder.get_react_continuation_prompt("general"))
                 
             except Exception as e:
                 logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
                 # Add error to history and try to continue
-                react_history.append(f"Observation: Error in reasoning: {str(e)}. Please try a different approach.")
+                react_history.extend(self.prompt_builder.get_react_error_continuation(str(e)))
                 continue
         
         # If we reach max iterations without completion
