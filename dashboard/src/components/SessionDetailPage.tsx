@@ -20,7 +20,7 @@ import SessionHeader from './SessionHeader';
 import OriginalAlertCard from './OriginalAlertCard';
 import FinalAnalysisCard from './FinalAnalysisCard';
 import TimelineVisualization from './TimelineVisualization';
-import ChainTimeline from './ChainTimeline';
+import NestedAccordionTimeline from './NestedAccordionTimeline';
 
 
 /**
@@ -252,9 +252,8 @@ function SessionDetailPage() {
               return {
                 ...prevSession,
                 chronological_timeline: updatedSessionData.chronological_timeline,
-                llm_interactions: updatedSessionData.llm_interactions,
-                mcp_communications: updatedSessionData.mcp_communications,
-                interactions_count: updatedSessionData.interactions_count
+                llm_interaction_count: updatedSessionData.llm_interaction_count,
+                mcp_communication_count: updatedSessionData.mcp_communication_count
               };
             });
             
@@ -480,20 +479,10 @@ function SessionDetailPage() {
 
             {/* Enhanced Processing Timeline */}
             {session.chain_execution ? (
-              <>
-                {/* Chain Overview and Stage Progress */}
-                <ChainTimeline
-                  chainExecution={session.chain_execution}
-                  timelineItems={session.chronological_timeline}
-                />
-                
-                {/* Detailed Interaction Timeline */}
-                <TimelineVisualization 
-                  timelineItems={session.chronological_timeline}
-                  isActive={session.status === 'in_progress' || session.status === 'pending'}
-                  sessionId={session.session_id}
-                />
-              </>
+              <NestedAccordionTimeline
+                chainExecution={session.chain_execution}
+                timelineItems={session.chronological_timeline}
+              />
             ) : (
               <TimelineVisualization 
                 timelineItems={session.chronological_timeline}
