@@ -310,3 +310,106 @@ class DashboardBroadcaster:
         
         logger.debug(f"Broadcasted interaction update for session {session_id}: session={session_sent}, dashboard={dashboard_sent}")
         return total_sent
+
+    async def broadcast_chain_progress_update(
+        self,
+        session_id: str,
+        chain_id: str,
+        current_stage: str = None,
+        current_stage_index: int = None,
+        total_stages: int = None,
+        completed_stages: int = None,
+        failed_stages: int = None,
+        overall_status: str = "processing",
+        stage_details: Dict[str, Any] = None,
+        exclude_users: Set[str] = None
+    ) -> int:
+        """
+        Broadcast chain execution progress update.
+        
+        Args:
+            session_id: Session identifier
+            chain_id: Chain identifier
+            current_stage: Currently executing stage name
+            current_stage_index: Current stage index (0-based)
+            total_stages: Total number of stages in chain
+            completed_stages: Number of completed stages
+            failed_stages: Number of failed stages
+            overall_status: Overall chain status
+            stage_details: Current stage execution details
+            exclude_users: Users to exclude from broadcast
+            
+        Returns:
+            Number of clients the update was sent to
+        """
+        from tarsy.models.websocket_models import ChainProgressUpdate
+        
+        message = ChainProgressUpdate(
+            session_id=session_id,
+            chain_id=chain_id,
+            current_stage=current_stage,
+            current_stage_index=current_stage_index,
+            total_stages=total_stages,
+            completed_stages=completed_stages,
+            failed_stages=failed_stages,
+            overall_status=overall_status,
+            stage_details=stage_details
+        )
+        
+        return await self.broadcast_message(ChannelType.session_channel(session_id), message, exclude_users)
+
+    async def broadcast_stage_progress_update(
+        self,
+        session_id: str,
+        chain_id: str,
+        stage_execution_id: str,
+        stage_name: str,
+        stage_index: int,
+        agent: str,
+        status: str = "pending",
+        started_at_us: int = None,
+        completed_at_us: int = None,
+        duration_ms: int = None,
+        error_message: str = None,
+        iteration_strategy: str = None,
+        exclude_users: Set[str] = None
+    ) -> int:
+        """
+        Broadcast individual stage execution progress update.
+        
+        Args:
+            session_id: Session identifier
+            chain_id: Chain identifier
+            stage_execution_id: Stage execution identifier
+            stage_name: Stage name
+            stage_index: Stage index in chain
+            agent: Agent executing the stage
+            status: Stage status (pending, active, completed, failed)
+            started_at_us: Stage start timestamp
+            completed_at_us: Stage completion timestamp
+            duration_ms: Stage execution duration
+            error_message: Error message if failed
+            iteration_strategy: Stage iteration strategy
+            exclude_users: Users to exclude from broadcast
+            
+        Returns:
+            Number of clients the update was sent to
+        """
+        from tarsy.models.websocket_models import StageProgressUpdate
+        
+        message = StageProgressUpdate(
+            session_id=session_id,
+            chain_id=chain_id,
+            stage_execution_id=stage_execution_id,
+            stage_name=stage_name,
+            stage_index=stage_index,
+            agent=agent,
+            status=status,
+            started_at_us=started_at_us,
+            completed_at_us=completed_at_us,
+            duration_ms=duration_ms,
+            error_message=error_message,
+            iteration_strategy=iteration_strategy
+        )
+        
+        return await self.broadcast_message(ChannelType.session_channel(session_id), message, exclude_users)

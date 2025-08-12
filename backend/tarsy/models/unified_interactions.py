@@ -80,6 +80,12 @@ class LLMInteraction(SQLModel, table=True):
         index=True,
         description="Session identifier and foreign key reference to parent alert session"
     )
+    stage_execution_id: Optional[str] = Field(
+        None,
+        foreign_key="stage_executions.execution_id",
+        index=True,
+        description="Link to stage execution for chain context in hooks"
+    )
     timestamp_us: int = Field(
         default_factory=now_us,
         description="Interaction timestamp (microseconds since epoch UTC)",
@@ -187,6 +193,12 @@ class MCPInteraction(SQLModel, table=True):
         foreign_key="alert_sessions.session_id",
         index=True,
         description="Session identifier and foreign key reference to parent alert session"
+    )
+    stage_execution_id: Optional[str] = Field(
+        None,
+        foreign_key="stage_executions.execution_id",
+        index=True,
+        description="Link to stage execution for chain context in hooks"
     )
     timestamp_us: int = Field(
         default_factory=now_us,

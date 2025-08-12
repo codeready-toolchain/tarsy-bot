@@ -32,6 +32,13 @@ class SessionSummary(BaseModel):
     duration_ms: Optional[int] = Field(description="Session duration in milliseconds (if completed)")
     llm_interaction_count: int = Field(description="Number of LLM interactions in this session")
     mcp_communication_count: int = Field(description="Number of MCP communications in this session")
+    
+    # Chain execution information
+    chain_id: Optional[str] = Field(None, description="Chain identifier if this is a chain execution")
+    total_stages: Optional[int] = Field(None, description="Total number of stages in the chain")
+    completed_stages: Optional[int] = Field(None, description="Number of successfully completed stages")
+    failed_stages: Optional[int] = Field(None, description="Number of failed stages")
+    current_stage_index: Optional[int] = Field(None, description="Current stage index (if still processing)")
 
 class SessionsListResponse(BaseModel):
     """Response for the sessions list endpoint."""
@@ -39,14 +46,40 @@ class SessionsListResponse(BaseModel):
     pagination: PaginationInfo = Field(description="Pagination information")
     filters_applied: Dict[str, Any] = Field(description="Applied filters for this query")
 
+class StageExecution(BaseModel):
+    """Information about a single stage execution within a chain."""
+    execution_id: str = Field(description="Unique stage execution identifier")
+    stage_id: str = Field(description="Stage identifier")
+    stage_index: int = Field(description="Stage position in chain (0-based)")
+    stage_name: str = Field(description="Human-readable stage name")
+    agent: str = Field(description="Agent used for this stage")
+    iteration_strategy: Optional[str] = Field(None, description="Iteration strategy used for this stage")
+    status: str = Field(description="Stage status (pending, active, completed, failed)")
+    started_at_us: Optional[int] = Field(None, description="Stage start timestamp")
+    completed_at_us: Optional[int] = Field(None, description="Stage completion timestamp")
+    duration_ms: Optional[int] = Field(None, description="Stage execution duration")
+    stage_output: Optional[Dict[str, Any]] = Field(None, description="Stage output data (if successful)")
+    error_message: Optional[str] = Field(None, description="Error message (if failed)")
+
+class ChainExecution(BaseModel):
+    """Information about chain execution within a session."""
+    chain_id: str = Field(description="Chain identifier")
+    chain_definition: Dict[str, Any] = Field(description="Complete chain definition snapshot")
+    current_stage_index: Optional[int] = Field(None, description="Current stage position (0-based)")
+    current_stage_id: Optional[str] = Field(None, description="Current stage identifier")
+    stages: List[StageExecution] = Field(description="List of stage executions in order")
+
 class TimelineEvent(BaseModel):
     """Single event in a session timeline."""
     event_id: str = Field(description="Unique event identifier")
-    type: str = Field(description="Event type ('llm_interaction' or 'mcp_communication')")
+    type: str = Field(description="Event type ('llm_interaction', 'mcp_communication', 'stage_execution')")
     timestamp_us: int = Field(description="When the event occurred (microseconds since epoch UTC)")
     step_description: str = Field(description="Human-readable description of this step")
     details: Dict[str, Any] = Field(description="Event-specific details")
     duration_ms: Optional[int] = Field(description="Event duration in milliseconds (if available)")
+    
+    # Chain context information
+    stage_execution_id: Optional[str] = Field(None, description="Associated stage execution ID (if part of a chain)")
 
 class SessionDetailResponse(BaseModel):
     """Response for the individual session detail endpoint."""
@@ -62,6 +95,9 @@ class SessionDetailResponse(BaseModel):
     final_analysis: Optional[str] = Field(description="Final formatted analysis result if session completed successfully")
     duration_ms: Optional[int] = Field(description="Total session duration in milliseconds (if completed)")
     session_metadata: Optional[Dict[str, Any]] = Field(description="Additional session metadata")
+    
+    # Chain execution information (if this is a chain session)
+    chain_execution: Optional[ChainExecution] = Field(None, description="Chain execution details (if this is a chain session)")
     
     # Timeline
     chronological_timeline: List[TimelineEvent] = Field(description="Chronologically ordered list of all events")

@@ -20,6 +20,8 @@ from tarsy.models.api_models import (
     SessionsListResponse,
     SessionSummary,
     TimelineEvent,
+    ChainExecution,
+    StageExecution,
 )
 from tarsy.models.history import now_us
 from tarsy.services.history_service import HistoryService, get_history_service
@@ -212,6 +214,12 @@ async def get_session_detail(
                 detail=f"Session {session_id} not found"
             )
         
+        # Get chain execution details if this is a chain session
+        chain_execution_data = None
+        session_info = session_data.get('session', {})
+        if session_info.get('chain_id'):
+            chain_execution_data = history_service.get_session_with_stages(session_id)
+        
         # Extract session information
         session_info = session_data.get('session', {})
         timeline = session_data.get('chronological_timeline', [])
@@ -225,6 +233,37 @@ async def get_session_detail(
         if completed_at_us and started_at_us:
             duration_ms = int((completed_at_us - started_at_us) / 1000)
         
+        # Process chain execution data if available
+        chain_execution = None
+        if chain_execution_data and session_info.get('chain_id'):
+            stages_data = chain_execution_data.get('stages', [])
+            stage_executions = []
+            
+            for stage_data in stages_data:
+                stage_execution = StageExecution(
+                    execution_id=stage_data.get('execution_id', ''),
+                    stage_id=stage_data.get('stage_id', ''),
+                    stage_index=stage_data.get('stage_index', 0),
+                    stage_name=stage_data.get('stage_name', ''),
+                    agent=stage_data.get('agent_identifier', ''),
+                    iteration_strategy=stage_data.get('iteration_strategy'),
+                    status=stage_data.get('status', 'unknown'),
+                    started_at_us=stage_data.get('started_at_us'),
+                    completed_at_us=stage_data.get('completed_at_us'),
+                    duration_ms=stage_data.get('duration_ms'),
+                    stage_output=stage_data.get('output_data'),
+                    error_message=stage_data.get('error_message')
+                )
+                stage_executions.append(stage_execution)
+            
+            chain_execution = ChainExecution(
+                chain_id=session_info['chain_id'],
+                chain_definition=session_info.get('chain_definition', {}),
+                current_stage_index=session_info.get('current_stage_index'),
+                current_stage_id=session_info.get('current_stage_id'),
+                stages=stage_executions
+            )
+        
         # Convert timeline to response models
         timeline_events = []
         for event in timeline:
@@ -234,7 +273,8 @@ async def get_session_detail(
                 timestamp_us=event['timestamp_us'],
                 step_description=event.get('step_description', 'No description available'),
                 details=event.get('details', {}),
-                duration_ms=event.get('duration_ms')
+                duration_ms=event.get('duration_ms'),
+                stage_execution_id=event.get('stage_execution_id')  # Add chain context
             )
             timeline_events.append(timeline_event)
         
@@ -251,6 +291,7 @@ async def get_session_detail(
             final_analysis=session_info.get('final_analysis'),
             duration_ms=duration_ms,
             session_metadata=session_info.get('session_metadata', {}),
+            chain_execution=chain_execution,  # Add chain execution data
             chronological_timeline=timeline_events,
             summary=summary
         )

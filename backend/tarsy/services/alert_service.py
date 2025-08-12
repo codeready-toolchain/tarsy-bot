@@ -70,6 +70,7 @@ class AlertService:
         # Initialize agent factory with dependencies
         self.agent_factory = None  # Will be initialized in initialize()
         
+        
         logger.info("AlertService initialized with agent delegation support")
 
     async def initialize(self):
@@ -101,6 +102,7 @@ class AlertService:
         except Exception as e:
             logger.error(f"Failed to initialize AlertService: {str(e)}")
             raise
+
 
     
     async def process_alert(
@@ -250,6 +252,7 @@ class AlertService:
             
             logger.info(f"Starting chain execution '{chain_definition.chain_id}' with {len(chain_definition.stages)} stages")
             
+            
             successful_stages = 0
             failed_stages = 0
             
@@ -262,6 +265,7 @@ class AlertService:
                 
                 # Update session current stage
                 self._update_session_current_stage(session_id, i, stage_execution_id)
+                
                 
                 try:
                     # Get agent instance with stage-specific strategy
@@ -291,6 +295,7 @@ class AlertService:
                     successful_stages += 1
                     logger.info(f"Stage '{stage.name}' completed successfully with {stage_result.get('iterations', 0)} iterations")
                     
+                    
                 except Exception as e:
                     # Log the error with full context
                     error_msg = f"Stage '{stage.name}' failed with agent '{stage.agent}': {str(e)}"
@@ -312,6 +317,7 @@ class AlertService:
                     
                     failed_stages += 1
                     
+                    
                     # DECISION: Continue to next stage even if this one failed
                     # This allows data collection stages to fail while analysis stages still run
                     logger.warning(f"Continuing chain execution despite stage failure: {error_msg}")
@@ -327,6 +333,7 @@ class AlertService:
                 overall_status = "partial"  # Some stages failed
             
             logger.info(f"Chain execution completed: {successful_stages} successful, {failed_stages} failed")
+            
             
             return {
                 "status": overall_status,

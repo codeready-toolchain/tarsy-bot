@@ -52,7 +52,9 @@ class TypedLLMDashboardHook(BaseTypedHook[LLMInteraction]):
                 "error_message": interaction.error_message,
                 "duration_ms": interaction.duration_ms,
                 "token_usage": interaction.token_usage,
-                "timestamp_us": interaction.timestamp_us
+                "timestamp_us": interaction.timestamp_us,
+                # Chain context for enhanced dashboard visualization
+                "stage_execution_id": interaction.stage_execution_id
             }
             
             # Broadcast to dashboard
@@ -101,7 +103,9 @@ class TypedMCPDashboardHook(BaseTypedHook[MCPInteraction]):
                 "success": interaction.success,
                 "error_message": interaction.error_message,
                 "duration_ms": interaction.duration_ms,
-                "timestamp_us": interaction.timestamp_us
+                "timestamp_us": interaction.timestamp_us,
+                # Chain context for enhanced dashboard visualization
+                "stage_execution_id": interaction.stage_execution_id
             }
             
             # Broadcast to dashboard
@@ -152,7 +156,9 @@ class TypedMCPListDashboardHook(BaseTypedHook[MCPInteraction]):
                 "success": interaction.success,
                 "error_message": interaction.error_message,
                 "duration_ms": interaction.duration_ms,
-                "timestamp_us": interaction.timestamp_us
+                "timestamp_us": interaction.timestamp_us,
+                # Chain context for enhanced dashboard visualization
+                "stage_execution_id": interaction.stage_execution_id
             }
             
             # Broadcast to dashboard
