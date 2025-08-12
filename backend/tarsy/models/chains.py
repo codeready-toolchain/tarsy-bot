@@ -5,8 +5,8 @@ These models define the structure for chain definitions, stages,
 and chain processing metadata.
 """
 
-from dataclasses import dataclass
-from typing import List, Optional
+from dataclasses import dataclass, asdict
+from typing import List, Optional, Dict, Any
 
 
 @dataclass
@@ -20,6 +20,10 @@ class ChainStageModel:
     agent: str                   # Agent identifier (class name or "ConfigurableAgent:agent-name")
     iteration_strategy: Optional[str] = None  # Optional iteration strategy override (uses agent's default if not specified)
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary."""
+        return asdict(self)
+
 
 @dataclass
 class ChainDefinitionModel:
@@ -32,3 +36,12 @@ class ChainDefinitionModel:
     alert_types: List[str]      # Alert types this chain handles
     stages: List[ChainStageModel]  # Sequential stages (1+ stages)
     description: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary."""
+        return {
+            'chain_id': self.chain_id,
+            'alert_types': self.alert_types,
+            'stages': [stage.to_dict() for stage in self.stages],
+            'description': self.description
+        }

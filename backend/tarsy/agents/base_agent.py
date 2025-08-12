@@ -80,6 +80,9 @@ class BaseAgent(ABC):
         self._configured_servers: Optional[List[str]] = None
         self._prompt_builder = get_prompt_builder()
         
+        # Stage execution tracking for chain processing
+        self._current_stage_execution_id: Optional[str] = None
+        
         # Create appropriate iteration controller based on configuration
         self._iteration_controller: IterationController = self._create_iteration_controller(iteration_strategy)
     
@@ -307,7 +310,7 @@ class BaseAgent(ABC):
         ]
         
         try:
-            result = await self.llm_client.generate_response(messages, session_id, **kwargs)
+            result = await self.llm_client.generate_response(messages, session_id, self._current_stage_execution_id, **kwargs)
             logger.info(f"Alert analysis completed with {self.__class__.__name__}")
             return result
         except Exception as e:
@@ -339,7 +342,7 @@ class BaseAgent(ABC):
         ]
         
         try:
-            response = await self.llm_client.generate_response(messages, session_id)
+            response = await self.llm_client.generate_response(messages, session_id, self._current_stage_execution_id)
             
             # Parse the JSON response
             tools_to_call = parse_llm_json_response(response, expected_type=list)
@@ -389,7 +392,7 @@ class BaseAgent(ABC):
         ]
         
         try:
-            response = await self.llm_client.generate_response(messages, session_id)
+            response = await self.llm_client.generate_response(messages, session_id, self._current_stage_execution_id)
             
             # Parse the JSON response
             next_action = parse_llm_json_response(response, expected_type=dict)
@@ -597,6 +600,14 @@ class BaseAgent(ABC):
         """
         return self._prompt_builder.get_general_instructions()
     
+    def set_current_stage_execution_id(self, stage_execution_id: Optional[str]):
+        """Set the current stage execution ID for chain processing context."""
+        self._current_stage_execution_id = stage_execution_id
+    
+    def get_current_stage_execution_id(self) -> Optional[str]:
+        """Get the current stage execution ID."""
+        return self._current_stage_execution_id
+    
     async def _configure_mcp_client(self):
         """Configure MCP client with agent-specific server subset."""
         mcp_server_ids = self.mcp_servers()
@@ -679,7 +690,7 @@ class BaseAgent(ABC):
                 if self._configured_servers and server_name not in self._configured_servers:
                     raise ValueError(f"Tool '{tool_name}' from server '{server_name}' not allowed for agent {self.__class__.__name__}")
                 
-                result = await self.mcp_client.call_tool(server_name, tool_name, tool_params, session_id)
+                result = await self.mcp_client.call_tool(server_name, tool_name, tool_params, session_id, self._current_stage_execution_id)
                 
                 # Organize results by server
                 if server_name not in results:

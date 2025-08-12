@@ -148,7 +148,7 @@ class MCPClient:
             
             return all_tools
     
-    async def call_tool(self, server_name: str, tool_name: str, parameters: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    async def call_tool(self, server_name: str, tool_name: str, parameters: Dict[str, Any], session_id: str, stage_execution_id: Optional[str] = None) -> Dict[str, Any]:
         """Call a specific tool on an MCP server.
         
         Args:
@@ -164,7 +164,7 @@ class MCPClient:
             raise Exception(f"MCP server not found: {server_name}")
         
         # Use typed hook context for clean data flow
-        async with mcp_interaction_context(session_id, server_name, tool_name, parameters) as ctx:
+        async with mcp_interaction_context(session_id, server_name, tool_name, parameters, stage_execution_id) as ctx:
             
             # Get request ID for logging
             request_id = ctx.get_request_id()

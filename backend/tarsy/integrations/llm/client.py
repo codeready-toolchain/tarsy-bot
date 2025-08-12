@@ -106,7 +106,7 @@ class LLMClient:
                 langchain_messages.append(AIMessage(content=msg.content))
         return langchain_messages
     
-    async def generate_response(self, messages: List[LLMMessage], session_id: str) -> str:
+    async def generate_response(self, messages: List[LLMMessage], session_id: str, stage_execution_id: Optional[str] = None) -> str:
         """
         Generate a response from the LLM using LangChain with typed interactions.
         
@@ -129,7 +129,7 @@ class LLMClient:
         }
         
         # Use typed hook context for clean data flow
-        async with llm_interaction_context(session_id, request_data) as ctx:
+        async with llm_interaction_context(session_id, request_data, stage_execution_id) as ctx:
             
             # Get request ID for logging
             request_id = ctx.get_request_id()
@@ -282,12 +282,14 @@ class LLMManager:
     async def generate_response(self, 
                               messages: List[LLMMessage],
                               session_id: str,
+                              stage_execution_id: Optional[str] = None,
                               provider: str = None) -> str:
         """Generate a response using the specified or default LLM provider.
         
         Args:
             messages: List of messages for the conversation
             session_id: Required session ID for timeline logging and tracking
+            stage_execution_id: Optional stage execution ID for tracking
             provider: Optional provider override (uses default if not specified)
         """
         client = self.get_client(provider)
@@ -295,7 +297,7 @@ class LLMManager:
             available = list(self.clients.keys())
             raise Exception(f"LLM provider not available. Available: {available}")
         
-        return await client.generate_response(messages, session_id)
+        return await client.generate_response(messages, session_id, stage_execution_id)
 
     def list_available_providers(self) -> List[str]:
         """List available LLM providers."""

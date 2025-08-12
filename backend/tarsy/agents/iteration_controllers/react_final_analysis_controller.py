@@ -68,4 +68,4 @@ class ReactFinalAnalysisController(IterationController):
             LLMMessage(role="user", content=prompt)
         ]
         
-        return await self.llm_client.generate_response(messages, context.session_id)
+        return await self.llm_client.generate_response(messages, context.session_id, context.agent.get_current_stage_execution_id())

@@ -454,7 +454,12 @@ class HistoryRepository:
                     "error_message": session.error_message,
                     "final_analysis": session.final_analysis,
                     "session_metadata": session.session_metadata,
-                    "total_interactions": len(llm_interactions) + len(mcp_communications)
+                    "total_interactions": len(llm_interactions) + len(mcp_communications),
+                    # Chain-related fields
+                    "chain_id": session.chain_id,
+                    "chain_definition": session.chain_definition,
+                    "current_stage_index": session.current_stage_index,
+                    "current_stage_id": session.current_stage_id
                 },
                 "chronological_timeline": timeline_events,
                 "llm_interactions": [
@@ -611,4 +616,14 @@ class HistoryRepository:
             }
         except Exception as e:
             logger.error(f"Failed to get session with stages: {str(e)}")
+            raise
+    
+    def get_stage_execution(self, execution_id: str) -> Optional['StageExecution']:
+        """Get a single stage execution by ID."""
+        try:
+            stmt = select(StageExecution).where(StageExecution.execution_id == execution_id)
+            stage_execution = self.session.exec(stmt).first()
+            return stage_execution
+        except Exception as e:
+            logger.error(f"Failed to get stage execution {execution_id}: {str(e)}")
             raise

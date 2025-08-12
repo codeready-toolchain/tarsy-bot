@@ -218,7 +218,7 @@ async def get_session_detail(
         chain_execution_data = None
         session_info = session_data.get('session', {})
         if session_info.get('chain_id'):
-            chain_execution_data = history_service.get_session_with_stages(session_id)
+            chain_execution_data = await history_service.get_session_with_stages(session_id)
         
         # Extract session information
         session_info = session_data.get('session', {})
@@ -244,14 +244,14 @@ async def get_session_detail(
                     execution_id=stage_data.get('execution_id', ''),
                     stage_id=stage_data.get('stage_id', ''),
                     stage_index=stage_data.get('stage_index', 0),
-                    stage_name=stage_data.get('stage_name', ''),
-                    agent=stage_data.get('agent_identifier', ''),
+                    stage_name=stage_data.get('stage_id', '').split('_')[0] if stage_data.get('stage_id') else '',  # Extract name from stage_id
+                    agent=stage_data.get('agent', ''),
                     iteration_strategy=stage_data.get('iteration_strategy'),
                     status=stage_data.get('status', 'unknown'),
                     started_at_us=stage_data.get('started_at_us'),
                     completed_at_us=stage_data.get('completed_at_us'),
                     duration_ms=stage_data.get('duration_ms'),
-                    stage_output=stage_data.get('output_data'),
+                    stage_output=stage_data.get('stage_output'),  # Changed from output_data
                     error_message=stage_data.get('error_message')
                 )
                 stage_executions.append(stage_execution)

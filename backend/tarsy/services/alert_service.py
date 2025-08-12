@@ -262,18 +262,24 @@ class AlertService:
                 logger.info(f"Executing stage {i+1}/{len(chain_definition.stages)}: '{stage.name}' with agent '{stage.agent}'")
                 
                 # Create stage execution record
-                stage_execution_id = self._create_stage_execution(session_id, stage, i)
+                stage_execution_id = await self._create_stage_execution(session_id, stage, i)
                 
                 # Update session current stage
-                self._update_session_current_stage(session_id, i, stage_execution_id)
+                await self._update_session_current_stage(session_id, i, stage_execution_id)
                 
                 
                 try:
+                    # Mark stage as started
+                    await self._update_stage_execution_started(stage_execution_id)
+                    
                     # Get agent instance with stage-specific strategy
                     agent = await self.agent_factory.get_agent(
                         agent_identifier=stage.agent,
                         iteration_strategy=stage.iteration_strategy
                     )
+                    
+                    # Set current stage execution ID for interaction tagging
+                    agent.set_current_stage_execution_id(stage_execution_id)
                     
                     # Update current stage context
                     alert_processing_data.set_chain_context(chain_definition.chain_id, stage.name)
@@ -291,7 +297,7 @@ class AlertService:
                     total_iterations += stage_result.get('iterations', 0)
                     
                     # Update stage execution as completed
-                    self._update_stage_execution_completed(stage_execution_id, stage_result)
+                    await self._update_stage_execution_completed(stage_execution_id, stage_result)
                     
                     successful_stages += 1
                     logger.info(f"Stage '{stage.name}' completed successfully with {stage_result.get('iterations', 0)} iterations")
@@ -303,7 +309,7 @@ class AlertService:
                     logger.error(error_msg, exc_info=True)
                     
                     # Update stage execution as failed
-                    self._update_stage_execution_failed(stage_execution_id, error_msg)
+                    await self._update_stage_execution_failed(stage_execution_id, error_msg)
                     
                     # Add structured error as stage output for next stages
                     error_result = {
@@ -581,7 +587,9 @@ class AlertService:
                 alert_id=alert_id,
                 alert_data=alert.alert_data,  # Store all flexible data in JSON field
                 agent_type=f"chain:{chain_definition.chain_id}",  # Mark as chain processing
-                alert_type=alert.alert_type  # Store in separate column for fast routing
+                alert_type=alert.alert_type,  # Store in separate column for fast routing
+                chain_id=chain_definition.chain_id,  # Store chain identifier
+                chain_definition=chain_definition.to_dict()  # Store complete chain definition as JSON-serializable dict
             )
             
             logger.info(f"Created chain history session {session_id} for alert {alert_id} with chain {chain_definition.chain_id}")
@@ -684,7 +692,7 @@ class AlertService:
         logger.info("Cleared alert session mapping and valid alert ID caches")
     
     # Stage execution helper methods
-    def _create_stage_execution(self, session_id: str, stage, stage_index: int) -> str:
+    async def _create_stage_execution(self, session_id: str, stage, stage_index: int) -> str:
         """
         Create a stage execution record.
         
@@ -700,20 +708,21 @@ class AlertService:
             if not self.history_service or not self.history_service.enabled:
                 return f"stage_{stage_index}_{uuid.uuid4().hex[:8]}"
             
-            return self.history_service.create_stage_execution(
+            from tarsy.models.history import StageExecution
+            stage_execution = StageExecution(
                 session_id=session_id,
                 stage_id=f"{stage.name}_{stage_index}",
                 stage_index=stage_index,
-                stage_name=stage.name,
-                agent_identifier=stage.agent,
-                iteration_strategy=stage.iteration_strategy
+                agent=stage.agent,
+                status="pending"
             )
+            return await self.history_service.create_stage_execution(stage_execution)
             
         except Exception as e:
             logger.warning(f"Failed to create stage execution: {str(e)}")
             return f"stage_{stage_index}_{uuid.uuid4().hex[:8]}"
     
-    def _update_session_current_stage(self, session_id: str, stage_index: int, stage_execution_id: str):
+    async def _update_session_current_stage(self, session_id: str, stage_index: int, stage_execution_id: str):
         """
         Update the current stage information for a session.
         
@@ -726,7 +735,7 @@ class AlertService:
             if not self.history_service or not self.history_service.enabled:
                 return
             
-            self.history_service.update_session_current_stage(
+            await self.history_service.update_session_current_stage(
                 session_id=session_id,
                 current_stage_index=stage_index,
                 current_stage_id=stage_execution_id
@@ -735,7 +744,7 @@ class AlertService:
         except Exception as e:
             logger.warning(f"Failed to update session current stage: {str(e)}")
     
-    def _update_stage_execution_completed(self, stage_execution_id: str, stage_result: dict):
+    async def _update_stage_execution_completed(self, stage_execution_id: str, stage_result: dict):
         """
         Update stage execution as completed.
         
@@ -744,20 +753,31 @@ class AlertService:
             stage_result: Stage processing result
         """
         try:
-            if not self.history_service or not self.history_service.enabled:
+            if not self.history_service:
                 return
             
-            self.history_service.update_stage_execution(
-                execution_id=stage_execution_id,
-                status='completed',
-                output_data=stage_result,
-                completed_at_us=stage_result.get('timestamp_us', now_us())
-            )
+            # Get the existing stage execution record
+            existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
+            if not existing_stage:
+                logger.warning(f"Stage execution {stage_execution_id} not found for update")
+                return
+            
+            # Update only the completion-related fields
+            existing_stage.status = "completed"
+            existing_stage.completed_at_us = stage_result.get('timestamp_us', now_us())
+            existing_stage.stage_output = stage_result
+            existing_stage.error_message = None
+            
+            # Calculate duration if we have started_at_us
+            if existing_stage.started_at_us and existing_stage.completed_at_us:
+                existing_stage.duration_ms = int((existing_stage.completed_at_us - existing_stage.started_at_us) / 1000)
+            
+            await self.history_service.update_stage_execution(existing_stage)
             
         except Exception as e:
             logger.warning(f"Failed to update stage execution as completed: {str(e)}")
     
-    def _update_stage_execution_failed(self, stage_execution_id: str, error_message: str):
+    async def _update_stage_execution_failed(self, stage_execution_id: str, error_message: str):
         """
         Update stage execution as failed.
         
@@ -766,18 +786,55 @@ class AlertService:
             error_message: Error message
         """
         try:
-            if not self.history_service or not self.history_service.enabled:
+            if not self.history_service:
                 return
             
-            self.history_service.update_stage_execution(
-                execution_id=stage_execution_id,
-                status='failed',
-                error_message=error_message,
-                completed_at_us=now_us()
-            )
+            # Get the existing stage execution record
+            existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
+            if not existing_stage:
+                logger.warning(f"Stage execution {stage_execution_id} not found for update")
+                return
+            
+            # Update only the failure-related fields
+            existing_stage.status = "failed"
+            existing_stage.completed_at_us = now_us()
+            existing_stage.stage_output = None
+            existing_stage.error_message = error_message
+            
+            # Calculate duration if we have started_at_us
+            if existing_stage.started_at_us and existing_stage.completed_at_us:
+                existing_stage.duration_ms = int((existing_stage.completed_at_us - existing_stage.started_at_us) / 1000)
+            
+            await self.history_service.update_stage_execution(existing_stage)
             
         except Exception as e:
             logger.warning(f"Failed to update stage execution as failed: {str(e)}")
+    
+    async def _update_stage_execution_started(self, stage_execution_id: str):
+        """
+        Update stage execution as started.
+        
+        Args:
+            stage_execution_id: Stage execution ID
+        """
+        try:
+            if not self.history_service:
+                return
+            
+            # Get the existing stage execution record
+            existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
+            if not existing_stage:
+                logger.warning(f"Stage execution {stage_execution_id} not found for update")
+                return
+            
+            # Update to active status and set start time
+            existing_stage.status = "active"
+            existing_stage.started_at_us = now_us()
+            
+            await self.history_service.update_stage_execution(existing_stage)
+            
+        except Exception as e:
+            logger.warning(f"Failed to update stage execution as started: {str(e)}")
     
     async def close(self):
         """

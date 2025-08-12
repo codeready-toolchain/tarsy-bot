@@ -480,10 +480,20 @@ function SessionDetailPage() {
 
             {/* Enhanced Processing Timeline */}
             {session.chain_execution ? (
-              <ChainTimeline
-                chainExecution={session.chain_execution}
-                timelineItems={session.chronological_timeline}
-              />
+              <>
+                {/* Chain Overview and Stage Progress */}
+                <ChainTimeline
+                  chainExecution={session.chain_execution}
+                  timelineItems={session.chronological_timeline}
+                />
+                
+                {/* Detailed Interaction Timeline */}
+                <TimelineVisualization 
+                  timelineItems={session.chronological_timeline}
+                  isActive={session.status === 'in_progress' || session.status === 'pending'}
+                  sessionId={session.session_id}
+                />
+              </>
             ) : (
               <TimelineVisualization 
                 timelineItems={session.chronological_timeline}

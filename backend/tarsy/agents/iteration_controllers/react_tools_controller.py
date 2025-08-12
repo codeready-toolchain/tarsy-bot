@@ -73,7 +73,7 @@ class ReactToolsController(IterationController):
                     LLMMessage(role="user", content=prompt)
                 ]
                 
-                response = await self.llm_client.generate_response(messages, context.session_id)
+                response = await self.llm_client.generate_response(messages, context.session_id, context.agent.get_current_stage_execution_id())
                 logger.info(f"LLM Response (first 500 chars): {response[:500]}")
                 
                 # REUSE EXISTING ReAct parsing - critical for consistent format handling
@@ -160,7 +160,7 @@ Please provide a final summary of the data collected, even if the collection isn
                 LLMMessage(role="user", content=final_prompt)
             ]
             
-            fallback_response = await self.llm_client.generate_response(messages, context.session_id)
+            fallback_response = await self.llm_client.generate_response(messages, context.session_id, context.agent.get_current_stage_execution_id())
             return f"Data collection completed (reached max iterations):\\n\\n{fallback_response}"
             
         except Exception as e:

@@ -270,7 +270,7 @@ def get_typed_hook_manager() -> TypedHookManager:
 
 
 @asynccontextmanager
-async def llm_interaction_context(session_id: str, request_data: Dict[str, Any]) -> AsyncContextManager[TypedHookContext[LLMInteraction]]:
+async def llm_interaction_context(session_id: str, request_data: Dict[str, Any], stage_execution_id: Optional[str] = None) -> AsyncContextManager[TypedHookContext[LLMInteraction]]:
     """
     Create a typed context for LLM interactions.
     
@@ -283,6 +283,7 @@ async def llm_interaction_context(session_id: str, request_data: Dict[str, Any])
     """
     interaction = LLMInteraction(
         session_id=session_id,
+        stage_execution_id=stage_execution_id,
         model_name=request_data.get('model', 'unknown'),
         provider=request_data.get('provider', 'unknown'),
         request_json=request_data,
@@ -296,7 +297,7 @@ async def llm_interaction_context(session_id: str, request_data: Dict[str, Any])
 
 @asynccontextmanager
 async def mcp_interaction_context(session_id: str, server_name: str, tool_name: str, 
-                                 arguments: Dict[str, Any]) -> AsyncContextManager[TypedHookContext[MCPInteraction]]:
+                                 arguments: Dict[str, Any], stage_execution_id: Optional[str] = None) -> AsyncContextManager[TypedHookContext[MCPInteraction]]:
     """
     Create a typed context for MCP tool interactions.
     
@@ -311,6 +312,7 @@ async def mcp_interaction_context(session_id: str, server_name: str, tool_name: 
     """
     interaction = MCPInteraction(
         session_id=session_id,
+        stage_execution_id=stage_execution_id,
         server_name=server_name,
         communication_type="tool_call",
         tool_name=tool_name,

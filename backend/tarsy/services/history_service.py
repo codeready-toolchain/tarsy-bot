@@ -175,7 +175,9 @@ class HistoryService:
         alert_id: str,
         alert_data: Dict[str, Any],
         agent_type: str,
-        alert_type: Optional[str] = None
+        alert_type: Optional[str] = None,
+        chain_id: Optional[str] = None,
+        chain_definition: Optional[Dict[str, Any]] = None
     ) -> Optional[str]:
         """
         Create a new alert processing session with retry logic.
@@ -185,6 +187,8 @@ class HistoryService:
             alert_data: Original alert payload
             agent_type: Processing agent type (e.g., 'kubernetes', 'base')
             alert_type: Alert type for filtering (e.g., 'pod_crash', 'high_cpu')
+            chain_id: Chain identifier for chain processing (optional)
+            chain_definition: Complete chain definition for chain processing (optional)
             
         Returns:
             Session ID if created successfully, None if failed
@@ -204,7 +208,9 @@ class HistoryService:
                     alert_data=alert_data,
                     agent_type=agent_type,
                     alert_type=alert_type,
-                    status=AlertSessionStatus.PENDING
+                    status=AlertSessionStatus.PENDING,
+                    chain_id=chain_id,
+                    chain_definition=chain_definition
                 )
                 
                 created_session = repo.create_alert_session(session)
@@ -348,6 +354,18 @@ class HistoryService:
                 return repo.get_session_with_stages(session_id)
         
         result = self._retry_database_operation("get_session_with_stages", _get_session_with_stages_operation)
+        return result
+    
+    async def get_stage_execution(self, execution_id: str) -> Optional['StageExecution']:
+        """Get a single stage execution by ID."""
+        def _get_stage_execution_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    logger.warning("History repository unavailable - stage execution not retrieved")
+                    return None
+                return repo.get_stage_execution(execution_id)
+        
+        result = self._retry_database_operation("get_stage_execution", _get_stage_execution_operation)
         return result
     
     # LLM Interaction Logging
