@@ -6,7 +6,7 @@ all iteration controller implementations.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -20,12 +20,17 @@ class IterationContext:
     
     This context contains all the data needed for iteration processing
     and provides a reference back to the agent for accessing shared methods.
+    Enhanced to support chain processing with data from previous stages.
     """
     alert_data: Dict[str, Any]
     runbook_content: str
     available_tools: List[Dict[str, Any]]
     session_id: str
     agent: Optional['BaseAgent'] = None
+    
+    # NEW: Chain support fields
+    initial_mcp_data: Dict[str, Any] = field(default_factory=dict)  # From previous stages
+    final_mcp_data: Dict[str, Any] = field(default_factory=dict)    # Collected in this stage
 
 
 class IterationController(ABC):

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from tarsy.config.settings import get_settings
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.history import AlertSession, now_us
+from tarsy.models.history import AlertSession, StageExecution, now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository

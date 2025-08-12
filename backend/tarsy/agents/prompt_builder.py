@@ -472,6 +472,29 @@ Focus on root cause analysis and sustainable solutions."""
         """Get system message for iterative MCP tool selection."""
         return "You are an expert SRE analyzing alerts through multi-step runbooks. Based on the alert, runbook, available MCP tools, and previous iteration results, determine what tools should be called next or if the analysis is complete. Return only a valid JSON object with no additional text."
     
+    def get_standard_react_system_message(self, task_focus: str = "investigation and providing recommendations") -> str:
+        """Get the standard ReAct system message with consistent formatting rules."""
+        return f"""You are an expert SRE analyzing alerts. Follow the ReAct format EXACTLY as specified.
+
+CRITICAL FORMATTING RULES:
+1. ALWAYS include colons after section headers: "Thought:", "Action:", "Action Input:"
+2. For Action Input, provide ONLY the parameter values (no YAML, no code blocks, no triple backticks)
+3. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
+4. NEVER write fake observations or continue the conversation
+
+CORRECT FORMAT:
+Thought: [your reasoning here]
+Action: [exact tool name]
+Action Input: [parameter values only]
+
+INCORRECT FORMATS TO AVOID:
+- "Thought" without colon
+- Action Input with ```yaml or code blocks
+- Adding "Observation:" section
+- Continuing with more Thought/Action pairs
+
+Focus on {task_focus} for human operators to execute."""
+    
 
     # ====================================================================
     # Standard ReAct Framework Methods 
@@ -809,6 +832,135 @@ Be thorough in your investigation before providing the final answer."""
                 observations.append(f"{server}: {json.dumps(results, indent=2)}")
         
         return '\n'.join(observations) if observations else "Action completed but no specific data returned."
+
+    # ====================================================================
+    # Chain-Specific ReAct Prompt Methods
+    # ====================================================================
+
+    def _format_react_question_for_data_collection(self, context: PromptContext) -> str:
+        """Format ReAct question specifically for data collection stages."""
+        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
+        
+        question = f"""Collect comprehensive data about this {alert_type} alert for the next analysis stage.
+
+## Alert Details
+{self._build_alert_section(context.alert_data)}
+
+{self._build_runbook_section(context.runbook_content)}
+
+## Previous Stage Data
+{self._build_mcp_data_section(context.mcp_data) if context.mcp_data else "No previous stage data available."}
+
+## Your Task: DATA COLLECTION ONLY
+Use available tools to systematically collect information about:
+1. Current system state related to this alert
+2. Historical patterns or trends
+3. Related resource status
+4. Configuration details
+
+DO NOT provide analysis or conclusions - focus purely on gathering comprehensive data.
+Your Final Answer should summarize what data was collected, not analyze it."""
+        
+        return question
+
+    def _format_react_question_for_partial_analysis(self, context: PromptContext) -> str:
+        """Format ReAct question for data collection + stage-specific analysis."""
+        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
+        
+        question = f"""Investigate this {alert_type} alert and provide stage-specific analysis.
+
+## Alert Details
+{self._build_alert_section(context.alert_data)}
+
+{self._build_runbook_section(context.runbook_content)}
+
+## Previous Stage Data
+{self._build_mcp_data_section(context.mcp_data) if context.mcp_data else "No previous stage data available."}
+
+## Your Task: COLLECTION + PARTIAL ANALYSIS
+1. First, collect additional data specific to this analysis stage
+2. Then, provide preliminary analysis of the collected information
+3. Focus on stage-specific insights, not final conclusions
+
+Your Final Answer should include both the data collected and your stage-specific analysis."""
+        
+        return question
+
+    def build_data_collection_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+        """Build ReAct prompt for data collection using existing ReAct infrastructure."""
+        # Create modified context with data collection question
+        data_collection_context = PromptContext(
+            agent_name=context.agent_name,
+            alert_data=context.alert_data,
+            runbook_content=context.runbook_content,
+            mcp_data=context.mcp_data,
+            mcp_servers=context.mcp_servers,
+            server_guidance=context.server_guidance,
+            agent_specific_guidance=context.agent_specific_guidance,
+            available_tools=context.available_tools
+        )
+        
+        # Override the question formatting temporarily
+        original_format_method = self._format_react_question
+        self._format_react_question = self._format_react_question_for_data_collection
+        
+        try:
+            # Use existing standard ReAct prompt builder
+            prompt = self.build_standard_react_prompt(data_collection_context, react_history)
+            return prompt
+        finally:
+            # Restore original method
+            self._format_react_question = original_format_method
+
+    def build_partial_analysis_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+        """Build ReAct prompt for partial analysis using existing ReAct infrastructure."""
+        # Create modified context with partial analysis question
+        partial_analysis_context = PromptContext(
+            agent_name=context.agent_name,
+            alert_data=context.alert_data,
+            runbook_content=context.runbook_content,
+            mcp_data=context.mcp_data,
+            mcp_servers=context.mcp_servers,
+            server_guidance=context.server_guidance,
+            agent_specific_guidance=context.agent_specific_guidance,
+            available_tools=context.available_tools
+        )
+        
+        # Override the question formatting temporarily
+        original_format_method = self._format_react_question
+        self._format_react_question = self._format_react_question_for_partial_analysis
+        
+        try:
+            # Use existing standard ReAct prompt builder
+            prompt = self.build_standard_react_prompt(partial_analysis_context, react_history)
+            return prompt
+        finally:
+            # Restore original method
+            self._format_react_question = original_format_method
+
+    def build_final_analysis_prompt(self, context: PromptContext) -> str:
+        """Build prompt for final analysis without ReAct format (no tools)."""
+        sections = [
+            "# Final Analysis Task",
+            self._build_context_section(context),
+            self._build_alert_section(context.alert_data),
+            self._build_runbook_section(context.runbook_content)
+        ]
+        
+        # Include all accumulated data from previous stages
+        if context.mcp_data:
+            sections.append(f"## Complete Investigation Data\\n{json.dumps(context.mcp_data, indent=2)}")
+        
+        sections.append("""## Instructions
+Provide comprehensive final analysis based on ALL collected data:
+1. Root cause analysis
+2. Impact assessment  
+3. Recommended actions
+4. Prevention strategies
+
+Do NOT call any tools - use only the provided data.""")
+        
+        return "\\n\\n".join(sections)
 
 
 # Shared instance since PromptBuilder is stateless

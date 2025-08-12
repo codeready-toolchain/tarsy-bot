@@ -96,6 +96,15 @@ class BaseAgent(ABC):
             return RegularIterationController()
         elif strategy == IterationStrategy.REACT:
             return SimpleReActController(self.llm_client, self._prompt_builder)
+        elif strategy == IterationStrategy.REACT_TOOLS:
+            from .iteration_controllers.react_tools_controller import ReactToolsController
+            return ReactToolsController(self.llm_client, self._prompt_builder)
+        elif strategy == IterationStrategy.REACT_TOOLS_PARTIAL:
+            from .iteration_controllers.react_tools_partial_controller import ReactToolsPartialController
+            return ReactToolsPartialController(self.llm_client, self._prompt_builder)
+        elif strategy == IterationStrategy.REACT_FINAL_ANALYSIS:
+            from .iteration_controllers.react_final_analysis_controller import ReactFinalAnalysisController
+            return ReactFinalAnalysisController(self.llm_client, self._prompt_builder)
         else:
             raise ValueError(f"Unknown iteration strategy: {strategy}")
     
@@ -107,7 +116,19 @@ class BaseAgent(ABC):
         elif isinstance(self._iteration_controller, SimpleReActController):
             return IterationStrategy.REACT
         else:
-            raise ValueError(f"Unknown controller type: {type(self._iteration_controller)}")
+            # For new controllers, we need to import them to check isinstance
+            from .iteration_controllers.react_tools_controller import ReactToolsController
+            from .iteration_controllers.react_tools_partial_controller import ReactToolsPartialController
+            from .iteration_controllers.react_final_analysis_controller import ReactFinalAnalysisController
+            
+            if isinstance(self._iteration_controller, ReactToolsController):
+                return IterationStrategy.REACT_TOOLS
+            elif isinstance(self._iteration_controller, ReactToolsPartialController):
+                return IterationStrategy.REACT_TOOLS_PARTIAL
+            elif isinstance(self._iteration_controller, ReactFinalAnalysisController):
+                return IterationStrategy.REACT_FINAL_ANALYSIS
+            else:
+                raise ValueError(f"Unknown controller type: {type(self._iteration_controller)}")
 
     @property
     def max_iterations(self) -> int:

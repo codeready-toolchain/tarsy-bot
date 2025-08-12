@@ -11,28 +11,37 @@ from typing import Dict, Any, Optional
 
 class AlertProcessingData(BaseModel):
     """
-    Internal alert data structure used for processing.
+    Unified alert processing model supporting both single-agent and chain processing.
     
-    This model defines the exact structure that AlertService expects,
-    preventing data structure mismatches and providing type safety.
+    This model evolves throughout the processing pipeline:
+    1. Initial creation: alert_type + alert_data + runbook URL
+    2. After runbook download: runbook_content populated
+    3. During chain execution: stage_outputs accumulated
     """
     model_config = ConfigDict(
-        extra="forbid",  # Prevent typos in field names
-        frozen=False     # Allow modification during processing
+        extra="forbid",
+        frozen=False  # Allow modification during processing pipeline
     )
     
-    alert_type: str = Field(
-        ..., 
-        description="Type of alert (kubernetes, aws, etc.)",
-        min_length=1
+    # Core alert data (immutable after creation)
+    alert_type: str = Field(..., description="Type of alert (kubernetes, aws, etc.)", min_length=1)
+    alert_data: Dict[str, Any] = Field(..., description="Original alert payload", min_length=1)
+    
+    # Runbook processing (populated during pipeline)
+    runbook_url: Optional[str] = Field(None, description="URL to runbook for this alert")
+    runbook_content: Optional[str] = Field(None, description="Downloaded runbook content")
+    
+    # Chain execution tracking (populated during chain processing)
+    stage_outputs: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict, 
+        description="Results from completed chain stages"
     )
     
-    alert_data: Dict[str, Any] = Field(
-        ..., 
-        description="Actual alert payload with all normalized data",
-        min_length=1
-    )
+    # Processing metadata
+    chain_id: Optional[str] = Field(None, description="ID of chain processing this alert")
+    current_stage_name: Optional[str] = Field(None, description="Currently executing stage")
     
+    # Helper methods for type-safe data access
     def get_severity(self) -> str:
         """Helper to safely get severity from alert data."""
         return self.alert_data.get('severity', 'warning')
@@ -41,9 +50,48 @@ class AlertProcessingData(BaseModel):
         """Helper to safely get environment from alert data."""
         return self.alert_data.get('environment', 'production')
     
-    def get_runbook(self) -> Optional[str]:
-        """Helper to safely get runbook from alert data."""
-        return self.alert_data.get('runbook')
+    def get_runbook_url(self) -> Optional[str]:
+        """Get runbook URL from either dedicated field or alert_data."""
+        return self.runbook_url or self.alert_data.get('runbook')
+    
+    def get_runbook_content(self) -> str:
+        """Get downloaded runbook content."""
+        return self.runbook_content or ""
+    
+    def get_original_alert_data(self) -> Dict[str, Any]:
+        """Get clean original alert data without processing artifacts."""
+        return self.alert_data.copy()
+    
+    def get_stage_result(self, stage_name: str) -> Optional[Dict[str, Any]]:
+        """Get results from a specific chain stage."""
+        return self.stage_outputs.get(stage_name)
+    
+    def get_all_mcp_results(self) -> Dict[str, Any]:
+        """Merge MCP results from all completed stages."""
+        merged_mcp_data = {}
+        for stage_name, stage_result in self.stage_outputs.items():
+            if isinstance(stage_result, dict) and "mcp_results" in stage_result:
+                for server_name, server_data in stage_result["mcp_results"].items():
+                    if server_name not in merged_mcp_data:
+                        merged_mcp_data[server_name] = []
+                    if isinstance(server_data, list):
+                        merged_mcp_data[server_name].extend(server_data)
+                    else:
+                        merged_mcp_data[server_name].append(server_data)
+        return merged_mcp_data
+    
+    def add_stage_result(self, stage_name: str, result: Dict[str, Any]):
+        """Add results from a completed stage."""
+        self.stage_outputs[stage_name] = result
+    
+    def set_runbook_content(self, content: str):
+        """Set the downloaded runbook content."""
+        self.runbook_content = content
+    
+    def set_chain_context(self, chain_id: str, current_stage: Optional[str] = None):
+        """Set chain processing context."""
+        self.chain_id = chain_id
+        self.current_stage_name = current_stage
 
 
 class AlertKey(BaseModel):
