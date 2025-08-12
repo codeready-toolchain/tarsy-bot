@@ -84,6 +84,54 @@ class MCPServerConfigModel(BaseModel):
     )
 
 
+class ChainStageConfigModel(BaseModel):
+    """Configuration model for a single stage in a chain."""
+    
+    model_config = ConfigDict(
+        extra='forbid',
+        str_strip_whitespace=True
+    )
+    
+    name: str = Field(
+        ...,
+        description="Human-readable stage name",
+        min_length=1
+    )
+    agent: str = Field(
+        ...,
+        description="Agent identifier (class name or 'ConfigurableAgent:agent-name')",
+        min_length=1
+    )
+    iteration_strategy: Optional[str] = Field(
+        None,
+        description="Optional iteration strategy override (uses agent's default if not specified)"
+    )
+
+
+class ChainConfigModel(BaseModel):
+    """Configuration model for a single chain."""
+    
+    model_config = ConfigDict(
+        extra='forbid',
+        str_strip_whitespace=True
+    )
+    
+    alert_types: List[str] = Field(
+        ...,
+        description="Alert types this chain handles",
+        min_length=1
+    )
+    stages: List[ChainStageConfigModel] = Field(
+        ...,
+        description="Sequential stages (1+ stages)",
+        min_length=1
+    )
+    description: Optional[str] = Field(
+        None,
+        description="Optional description of the chain"
+    )
+
+
 class CombinedConfigModel(BaseModel):
     """Root configuration model for the entire config file.
     
@@ -100,6 +148,10 @@ class CombinedConfigModel(BaseModel):
     mcp_servers: Dict[str, MCPServerConfigModel] = Field(
         default_factory=dict,
         description="MCP server configurations mapped by server ID"
+    )
+    agent_chains: Dict[str, ChainConfigModel] = Field(
+        default_factory=dict,
+        description="Chain configurations mapped by chain ID"
     )
 
     @model_validator(mode='after')

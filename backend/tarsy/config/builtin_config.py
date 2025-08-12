@@ -40,17 +40,30 @@ BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
 
 
 # ==============================================================================
-# BUILT-IN AGENT MAPPINGS  
+# BUILT-IN CHAIN DEFINITIONS (Replace BUILTIN_AGENT_MAPPINGS)
 # ==============================================================================
 
-# Central registry of alert type to agent class mappings
-# Format: "alert_type" -> "ClassName"
-BUILTIN_AGENT_MAPPINGS: Dict[str, str] = {
-    "kubernetes": "KubernetesAgent",           # Generic kubernetes alerts
-    "NamespaceTerminating": "KubernetesAgent", # Specific kubernetes alert type
-    # Future mappings will be added here:
-    # "argocd": "ArgoCDAgent",
-    # "aws-kubernetes": "KubernetesAWSAgent",
+# Built-in chain definitions as single source of truth
+# Convert existing single-agent mappings to 1-stage chains and add multi-stage examples
+BUILTIN_CHAIN_DEFINITIONS: Dict[str, Dict[str, Any]] = {
+    # Convert existing single-agent mappings to 1-stage chains
+    "kubernetes-agent-chain": {
+        "alert_types": ["kubernetes", "NamespaceTerminating"],
+        "stages": [
+            {"name": "analysis", "agent": "KubernetesAgent"}
+        ],
+        "description": "Single-stage Kubernetes analysis"
+    },
+    
+    # Example multi-agent chain (future capability)
+    #"kubernetes-troubleshooting-chain": {
+    #    "alert_types": ["KubernetesIssue", "PodFailure"],
+    #    "stages": [
+    #        {"name": "data-collection", "agent": "KubernetesAgent"},
+    #        {"name": "root-cause-analysis", "agent": "KubernetesAgent"}
+    #    ],
+    #    "description": "Multi-stage Kubernetes troubleshooting workflow"
+    #}
 }
 
 
@@ -176,3 +189,8 @@ def get_builtin_agent_config(agent_class_name: str) -> Dict[str, Any]:
 def get_builtin_agent_import_mapping() -> Dict[str, str]:
     """Get mapping of built-in agent class names to their import paths."""
     return {name: meta.get("import", "") for name, meta in BUILTIN_AGENTS.items()}
+
+
+def get_builtin_chain_definitions() -> Dict[str, Dict[str, Any]]:
+    """Get all built-in chain definitions."""
+    return BUILTIN_CHAIN_DEFINITIONS.copy()

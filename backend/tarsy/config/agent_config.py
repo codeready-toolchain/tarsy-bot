@@ -14,8 +14,7 @@ from ..models.agent_config import CombinedConfigModel
 from ..utils.logger import get_module_logger
 from .builtin_config import (
     get_builtin_agent_class_names,
-    get_builtin_mcp_server_ids, 
-    BUILTIN_AGENT_MAPPINGS
+    get_builtin_mcp_server_ids
 )
 from .exceptions import ConfigurationError
 
@@ -42,12 +41,10 @@ class ConfigurationLoader:
         # Built-in constants imported from central configuration
         self.BUILTIN_AGENT_CLASSES = get_builtin_agent_class_names()
         self.BUILTIN_MCP_SERVERS = get_builtin_mcp_server_ids()
-        self.BUILTIN_AGENT_MAPPINGS = BUILTIN_AGENT_MAPPINGS
         
         logger.info(f"Initialized ConfigurationLoader with file path: {config_file_path}")
         logger.debug(f"Built-in agent classes: {self.BUILTIN_AGENT_CLASSES}")
         logger.debug(f"Built-in MCP servers: {self.BUILTIN_MCP_SERVERS}")
-        logger.debug(f"Built-in agent mappings: {self.BUILTIN_AGENT_MAPPINGS}")
     
     def load_and_validate(self) -> CombinedConfigModel:
         """
@@ -106,8 +103,8 @@ class ConfigurationLoader:
             logger.debug("Detecting circular dependencies")
             self._detect_circular_dependencies(config)
             
-            logger.debug("Detecting naming and alert type conflicts")
-            self._detect_conflicts(config)
+            logger.debug("Detecting naming conflicts")
+            self._detect_naming_conflicts(config)
             
             logger.debug("Validating configuration completeness")
             self._validate_configuration_completeness(config)
@@ -144,6 +141,38 @@ class ConfigurationLoader:
             )
             logger.error(error_msg)
             raise ConfigurationError(error_msg)
+
+    def get_chain_configs(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get chain configurations from the loaded YAML file.
+        
+        Returns:
+            Dictionary of chain configurations mapped by chain ID
+        """
+        try:
+            config = self.load_and_validate()
+            
+            # Convert ChainConfigModel instances to dictionaries
+            chain_configs = {}
+            for chain_id, chain_config in config.agent_chains.items():
+                chain_configs[chain_id] = {
+                    "alert_types": chain_config.alert_types,
+                    "stages": [
+                        {
+                            "name": stage.name,
+                            "agent": stage.agent,
+                            "iteration_strategy": stage.iteration_strategy
+                        }
+                        for stage in chain_config.stages
+                    ],
+                    "description": chain_config.description
+                }
+            
+            return chain_configs
+            
+        except Exception as e:
+            logger.warning(f"Failed to load chain configurations: {e}")
+            return {}
     
     def _validate_mcp_server_references(self, config: CombinedConfigModel) -> None:
         """
@@ -179,30 +208,6 @@ class ConfigurationLoader:
         
         logger.debug("All MCP server references validated successfully")
     
-    def _detect_conflicts(self, config: CombinedConfigModel) -> None:
-        """
-        Detect naming and alert type conflicts between configured and built-in components.
-        
-        This method checks for:
-        1. Naming conflicts: configured names matching built-in names
-        2. Alert type conflicts: multiple agents handling the same alert type
-        
-        Args:
-            config: The parsed configuration to validate
-            
-        Raises:
-            ConfigurationError: If any conflicts are detected
-        """
-        logger.debug("Starting conflict detection")
-        
-        # Check naming conflicts
-        self._check_naming_conflicts(config)
-        
-        # Check alert type conflicts
-        self._check_alert_type_conflicts(config)
-        
-        logger.debug("Conflict detection completed successfully")
-    
     def _check_naming_conflicts(self, config: CombinedConfigModel) -> None:
         """
         Check for naming conflicts between configured and built-in components.
@@ -234,41 +239,6 @@ class ConfigurationLoader:
                 raise ConfigurationError(error_msg)
         
         logger.debug("No naming conflicts detected")
-    
-    def _check_alert_type_conflicts(self, config: CombinedConfigModel) -> None:
-        """
-        Check for alert type conflicts between configured and built-in agents.
-        
-        Args:
-            config: The parsed configuration to validate
-            
-        Raises:
-            ConfigurationError: If any alert type conflicts are detected
-        """
-        alert_type_mappings = {}
-        
-        # Add built-in mappings
-        for alert_type, agent_class in self.BUILTIN_AGENT_MAPPINGS.items():
-            alert_type_mappings[alert_type] = f"built-in:{agent_class}"
-        
-        logger.debug(f"Built-in alert type mappings: {alert_type_mappings}")
-        
-        # Check configured mappings for conflicts
-        for agent_name, agent_config in config.agents.items():
-            for alert_type in agent_config.alert_types:
-                if alert_type in alert_type_mappings:
-                    existing = alert_type_mappings[alert_type]
-                    error_msg = (
-                        f"Alert type '{alert_type}' handled by both {existing} and configured:{agent_name}. "
-                        f"Each alert type can only be handled by one agent."
-                    )
-                    logger.error(error_msg)
-                    raise ConfigurationError(error_msg)
-                
-                alert_type_mappings[alert_type] = f"configured:{agent_name}"
-                logger.debug(f"Added alert type mapping: {alert_type} -> configured:{agent_name}")
-        
-        logger.debug("No alert type conflicts detected")
     
     def _validate_config_file_path(self) -> None:
         """
