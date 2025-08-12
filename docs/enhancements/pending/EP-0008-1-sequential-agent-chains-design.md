@@ -65,6 +65,7 @@ This enhancement introduces sequential agent chains to enable multi-stage alert 
 class ChainStageModel:
     name: str                    # Human-readable stage name
     agent: str                   # Agent identifier (class name or "ConfigurableAgent:agent-name")
+    iteration_strategy: Optional[str] = None  # Optional iteration strategy override (uses agent's default if not specified)
 
 @dataclass
 class ChainDefinitionModel:
@@ -329,220 +330,10 @@ class ChainRegistry:
         return self.builtin_chains.get(chain_id) or self.yaml_chains.get(chain_id)
 ```
 
-**ChainOrchestrator (Sequential Execution Engine):**
+**Chain Execution Logic (Integrated into AlertService):**
 ```python
-class ChainOrchestrator:
-    def __init__(
-        self, 
-        agent_factory: AgentFactory, 
-        history_service: HistoryService
-    ):
-        self.agent_factory = agent_factory
-        self.history_service = history_service
-        # WebSocket updates handled by existing hook system
-    
-    async def execute_chain(
-        self, 
-        chain_def: ChainDefinitionModel, 
-        alert_processing_data: AlertProcessingData,
-        session_id: str
-    ) -> Dict[str, Any]:
-        """Execute stages sequentially with accumulated data flow and progress reporting."""
-        
-        logger.info(f"Starting chain execution '{chain_def.chain_id}' with {len(chain_def.stages)} stages")
-        
-        # Set runbook content in the unified alert model
-        alert_processing_data = AlertProcessingData(
-            alert_type=alert_data.get("alert_type", "unknown"),
-            alert_data=alert_data,
-            runbook_url=alert_data.get("runbook"),
-            runbook_content=runbook_content
-        )
-        alert_processing_data.set_chain_context(chain_def.chain_id)
-        
-        successful_stages = 0
-        failed_stages = 0
-        
-        # Execute each stage sequentially
-        for i, stage in enumerate(chain_def.stages):
-            logger.info(f"Executing stage {i+1}/{len(chain_def.stages)}: '{stage.name}' with agent '{stage.agent}'")
-            
-            # Update session current stage
-            await self._update_session_current_stage(session_id, i, stage.name)
-            
-            # Stage progress is automatically tracked via hook system
-            # No explicit progress updates needed - hooks handle WebSocket broadcasts
-            
-            # Create stage execution record
-            stage_exec = StageExecution(
-                session_id=session_id,
-                stage_id=stage.name,
-                stage_index=i,
-                agent=stage.agent,
-                status="active",
-                started_at_us=now_us()
-            )
-            execution_id = await self.history_service.create_stage_execution(stage_exec)
-            
-            try:
-                # Get agent instance (validates agent exists)
-                agent = await self.agent_factory.get_agent(stage.agent)
-                
-                # Update current stage context
-                alert_processing_data.set_chain_context(chain_def.chain_id, stage.name)
-                
-                # Execute stage with unified alert model
-                result = await agent.process_alert(alert_processing_data, session_id)
-                
-                # Validate stage result format
-                if not isinstance(result, dict) or "status" not in result:
-                    raise ValueError(f"Invalid stage result format from agent '{stage.agent}'")
-                
-                # Add stage result to unified alert model
-                alert_processing_data.add_stage_result(stage.name, result)
-                
-                # Update stage execution as completed
-                stage_exec.status = "completed"
-                stage_exec.completed_at_us = now_us()
-                stage_exec.duration_ms = (stage_exec.completed_at_us - stage_exec.started_at_us) // 1000
-                stage_exec.stage_output = result  # Success: store result in JSON
-                stage_exec.error_message = None   # Ensure error_message is None for success
-                await self.history_service.update_stage_execution(stage_exec)
-                
-                successful_stages += 1
-                
-                # Stage completion tracked via hook system
-                # Dashboard updates automatically via existing hooks
-                
-                logger.info(f"Stage '{stage.name}' completed successfully in {stage_exec.duration_ms}ms")
-                
-            except Exception as e:
-                # Log the error with full context
-                error_msg = f"Stage '{stage.name}' failed with agent '{stage.agent}': {str(e)}"
-                logger.error(error_msg, exc_info=True)
-                
-                # Mark stage as failed
-                stage_exec.status = "failed"
-                stage_exec.completed_at_us = now_us()
-                stage_exec.duration_ms = (stage_exec.completed_at_us - stage_exec.started_at_us) // 1000
-                stage_exec.stage_output = None     # Failed: no output data
-                stage_exec.error_message = str(e)  # Failed: store error message
-                await self.history_service.update_stage_execution(stage_exec)
-                
-                # Add structured error as stage output for next stages
-                error_result = {
-                    "status": "error",
-                    "error": str(e),
-                    "stage_name": stage.name,
-                    "agent": stage.agent,
-                    "timestamp_us": now_us(),
-                    "recoverable": True  # Next stages can still execute
-                }
-                alert_processing_data.add_stage_result(stage.name, error_result)
-                
-                failed_stages += 1
-                
-                # Stage failure tracked via hook system  
-                # Dashboard updates automatically via existing hooks
-                
-                # DECISION: Continue to next stage even if this one failed
-                # This allows data collection stages to fail while analysis stages still run
-                logger.warning(f"Continuing chain execution despite stage failure: {error_msg}")
-        
-        # Generate final analysis from all stage outputs
-        final_analysis = await self._generate_final_analysis(alert_processing_data, chain_def)
-        
-        # Determine overall chain status
-        overall_status = "completed"
-        if failed_stages == len(chain_def.stages):
-            overall_status = "failed"  # All stages failed
-        elif failed_stages > 0:
-            overall_status = "partial"  # Some stages failed
-        
-        logger.info(f"Chain execution completed: {successful_stages} successful, {failed_stages} failed")
-        
-        return {
-            "status": overall_status,
-            "final_analysis": final_analysis,
-            "chain_id": chain_def.chain_id,
-            "successful_stages": successful_stages,
-            "failed_stages": failed_stages,
-            "total_stages": len(chain_def.stages)
-        }
-    
-    async def _update_session_current_stage(self, session_id: str, stage_index: int, stage_name: str):
-        """Update the current stage information in the session."""
-        await self.history_service.update_session_current_stage(
-            session_id=session_id,
-            current_stage_index=stage_index,
-            current_stage_id=stage_name
-        )
-    
-    async def _generate_final_analysis(
-        self, 
-        alert_data: AlertProcessingData, 
-        chain_def: ChainDefinitionModel
-    ) -> str:
-        """
-        Generate comprehensive final analysis from all stage outputs.
-        
-        Combines successful stage results and handles failed stages gracefully.
-        """
-        analysis_parts = []
-        analysis_parts.append(f"# Chain Analysis: {chain_def.chain_id}")
-        analysis_parts.append(f"Chain Description: {chain_def.description or 'Multi-stage alert processing'}")
-        analysis_parts.append("")
-        
-        # Add original alert summary
-        original_data = alert_data.get_original_alert_data()
-        analysis_parts.append("## Original Alert")
-        analysis_parts.append(f"Alert Type: {alert_data.alert_type}")
-        if summary := original_data.get('summary'):
-            analysis_parts.append(f"Summary: {summary}")
-        analysis_parts.append("")
-        
-        # Process each stage output
-        successful_analyses = []
-        failed_stages = []
-        
-        for stage_name, stage_result in alert_data.stage_outputs.items():
-            analysis_parts.append(f"## Stage: {stage_name}")
-            
-            if stage_result.get("status") == "error":
-                failed_stages.append(stage_name)
-                analysis_parts.append(f"❌ **Status**: Failed")
-                analysis_parts.append(f"**Error**: {stage_result.get('error', 'Unknown error')}")
-            else:
-                analysis_parts.append(f"✅ **Status**: Success")
-                if analysis := stage_result.get("analysis"):
-                    successful_analyses.append(analysis)
-                    analysis_parts.append(f"**Analysis**: {analysis}")
-                if agent := stage_result.get("agent"):
-                    analysis_parts.append(f"**Agent**: {agent}")
-            
-            analysis_parts.append("")
-        
-        # Generate final recommendations
-        analysis_parts.append("## Final Analysis")
-        if successful_analyses:
-            analysis_parts.append("**Combined Analysis from Successful Stages:**")
-            for i, analysis in enumerate(successful_analyses, 1):
-                analysis_parts.append(f"{i}. {analysis}")
-        
-        if failed_stages:
-            analysis_parts.append(f"**Failed Stages**: {', '.join(failed_stages)}")
-            analysis_parts.append("**Impact**: Some analysis may be incomplete due to stage failures.")
-        
-        # Add recommendation based on success rate
-        success_rate = (len(successful_analyses) / len(alert_data.stage_outputs)) * 100
-        if success_rate == 100:
-            analysis_parts.append("**Recommendation**: All stages completed successfully. Analysis is comprehensive.")
-        elif success_rate >= 50:
-            analysis_parts.append("**Recommendation**: Majority of stages succeeded. Analysis is usable but may be incomplete.")
-        else:
-            analysis_parts.append("**Recommendation**: Many stages failed. Manual investigation recommended.")
-        
-        return "\n".join(analysis_parts)
+# ChainOrchestrator merged into AlertService as private methods
+# Eliminates unnecessary abstraction and simplifies initialization
 ```
 
 ### Updated BaseAgent Interface
@@ -552,11 +343,11 @@ class ChainOrchestrator:
 class BaseAgent(ABC):
     async def process_alert(
         self,
-        alert_data: AlertProcessingData,  # NEW: Unified alert processing model
+        alert_data: AlertProcessingData,  # Unified alert processing model
         session_id: str
     ) -> Dict[str, Any]:
         """
-        Process alert with unified alert processing model.
+        Process alert with unified alert processing model using configured iteration strategy.
         
         Args:
             alert_data: Unified alert processing model containing:
@@ -568,65 +359,175 @@ class BaseAgent(ABC):
         Returns:
             Dictionary containing analysis result and metadata
         """
-        # Extract data using type-safe helper methods
-        runbook_content = alert_data.get_runbook_content()
-        original_alert = alert_data.get_original_alert_data()
+        # Basic validation
+        if not session_id:
+            raise ValueError("session_id is required for alert processing")
         
-        # Get accumulated MCP data from all previous stages
-        mcp_data = alert_data.get_all_mcp_results()
-        
-        # Check for enriched data from previous stages
-        if previous_data := alert_data.get_stage_result("data-collection"):
-            logger.info("Using enriched data from data-collection stage")
-            # MCP results are already merged via get_all_mcp_results()
-        
-        # Continue with existing agent processing logic
-        return await self._execute_with_iteration_strategy(
-            original_alert, runbook_content, mcp_data, session_id
-        )
-        
-    async def _execute_with_iteration_strategy(
-        self,
-        alert_data: Dict[str, Any],
-        runbook_content: str, 
-        initial_mcp_data: Dict[str, Any],
-        session_id: str
-    ) -> Dict[str, Any]:
-        """
-        Execute agent processing using the configured iteration strategy.
-        This preserves all existing BaseAgent logic while working with chains.
-        """
-        # Configure MCP client with agent-specific servers
-        await self._configure_mcp_client()
-        
-        # Get available tools from assigned MCP servers
-        available_tools = await self._get_available_tools(session_id)
-        
-        # Create iteration context for controller (existing logic)
-        context = IterationContext(
-            alert_data=alert_data,
-            runbook_content=runbook_content,
-            available_tools=available_tools,
-            session_id=session_id,
-            agent=self
-        )
-        
-        # If we have initial MCP data from previous stages, add it to context
-        if initial_mcp_data:
-            context.initial_mcp_data = initial_mcp_data
-        
-        # Delegate to appropriate iteration controller (existing logic)
-        analysis_result = await self._iteration_controller.execute_analysis_loop(context)
-        
-        return {
-            "status": "success",
-            "agent": self.__class__.__name__,
-            "analysis": analysis_result,
-            "strategy": self.iteration_strategy.value,
-            "mcp_results": getattr(context, 'final_mcp_data', {}),
-            "timestamp_us": now_us()
-        }
+        try:
+            # Extract data using type-safe helper methods
+            runbook_content = alert_data.get_runbook_content()
+            original_alert = alert_data.get_original_alert_data()
+            
+            # Get accumulated MCP data from all previous stages
+            initial_mcp_data = alert_data.get_all_mcp_results()
+            
+            # Log enriched data usage from previous stages
+            if previous_data := alert_data.get_stage_result("data-collection"):
+                logger.info("Using enriched data from data-collection stage")
+                # MCP results are already merged via get_all_mcp_results()
+            
+            # Configure MCP client with agent-specific servers
+            await self._configure_mcp_client()
+            
+            # Get available tools from assigned MCP servers
+            available_tools = await self._get_available_tools(session_id)
+            
+            # Create iteration context for controller
+            context = IterationContext(
+                alert_data=original_alert,
+                runbook_content=runbook_content,
+                available_tools=available_tools,
+                session_id=session_id,
+                agent=self
+            )
+            
+            # If we have initial MCP data from previous stages, add it to context
+            if initial_mcp_data:
+                context.initial_mcp_data = initial_mcp_data
+            
+            # Delegate to appropriate iteration controller
+            analysis_result = await self._iteration_controller.execute_analysis_loop(context)
+            
+            return {
+                "status": "success",
+                "agent": self.__class__.__name__,
+                "analysis": analysis_result,
+                "strategy": self.iteration_strategy.value,
+                "mcp_results": getattr(context, 'final_mcp_data', {}),
+                "timestamp_us": now_us()
+            }
+            
+        except AgentError as e:
+            # Handle structured agent errors with recovery information
+            logger.error(f"Agent processing failed with structured error: {e.to_dict()}", exc_info=True)
+            
+            return {
+                "status": "error",
+                "agent": self.__class__.__name__,
+                "error": str(e),
+                "error_details": e.to_dict(),
+                "recoverable": e.recoverable,
+                "timestamp_us": now_us()
+            }
+        except Exception as e:
+            # Handle unexpected errors
+            error_msg = f"Agent processing failed with unexpected error: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            
+            return {
+                "status": "error",
+                "agent": self.__class__.__name__,
+                "error": error_msg,
+                "recoverable": False,
+                "timestamp_us": now_us()
+            }
 ```
+
+### Enhanced Iteration Controller Architecture
+
+**New Iteration Controller Types:**
+The chain architecture enables specialized iteration controllers for different stage purposes:
+
+```python
+class IterationStrategy(Enum):
+    # Existing strategies
+    REGULAR = "regular"
+    REACT = "react"
+    
+    # NEW: Tool-focused strategies (data collection only)
+    REACT_TOOLS = "react-tools"           # ReAct pattern, tools only, no analysis
+    
+    # NEW: Analysis-focused strategies  
+    REACT_TOOLS_PARTIAL = "react-tools-partial"     # ReAct + tools + partial analysis
+    REACT_FINAL_ANALYSIS = "react-final-analysis"   # ReAct final analysis only, no tools
+```
+
+**Strategy Behaviors:**
+
+1. **Tool-Only Strategies** (`react-tools`):
+   - Focus on ReAct-style data collection via MCP tools
+   - No analysis output - just enriched MCP results
+   - Pass accumulated data to next stage
+
+2. **Partial Analysis Strategies** (`react-tools-partial`):
+   - Collect data AND provide ReAct-style stage-specific analysis
+   - Output includes both MCP results and analysis
+   - Good for incremental insights
+
+3. **Final Analysis Strategy** (`react-final-analysis`):
+   - No tool calling - pure ReAct-style analysis
+   - Gets full context from all previous stages
+   - Produces comprehensive final analysis
+
+**Example Chain Configurations:**
+
+```yaml
+# Multi-stage data collection + final analysis
+kubernetes-deep-troubleshooting:
+  alert_types: ["KubernetesCritical", "PodCrashLoop"] 
+  stages:
+    - name: "system-data-collection"
+      agent: "ConfigurableAgent:k8s"                # K8s agent with k8s tools
+      iteration_strategy: "react-tools"             # Data collection only
+    - name: "log-analysis"  
+      agent: "ConfigurableAgent:k8s-logs"           # K8s agent with logs specific tools
+      iteration_strategy: "react-tools"             # More data collection
+    - name: "final-diagnosis"
+      agent: "ConfigurableAgent:k8s-analysis"       # Same k8s agent, analysis mode
+      iteration_strategy: "react-final-analysis"    # Analysis with full context
+
+# Mixed approach with incremental analysis
+security-incident-investigation:
+  alert_types: ["SecurityBreach"]
+  stages:
+    - name: "evidence-collection"
+      agent: "ConfigurableAgent:security"           # Single security agent
+      iteration_strategy: "react-tools-partial"     # Collect + partial analysis of collected data
+    - name: "k8s-data-collection"
+      agent: "ConfigurableAgent:k8s"                # K8s agent with k8s tools
+      iteration_strategy: "react-tools-partial"     # Collect + partial analysis of collected data
+    - name: "aws-data-collection"
+      agent: "ConfigurableAgent:aws"                # AWS agent
+      iteration_strategy: "react-tools-partial"     # More data + partial analysis of collected data
+    - name: "final-report"
+      agent: "ConfigurableAgent:security-analysis"  # Security agent, no tools, final analysis only
+      iteration_strategy: "react-final-analysis"    # Comprehensive report
+```
+
+**Example Agent Configuration for New Strategies:**
+```yaml
+# agents.yaml - Hybrid approach: agents can define default strategy, stages can override
+agents:
+  k8s:
+    mcp_servers: ["kubernetes-server"]
+    # No iteration_strategy = uses system default (react)
+    custom_instructions: "General Kubernetes expert. Adapts behavior based on stage requirements."
+
+  k8s-logs:
+    mcp_servers: ["logs-server"]
+    iteration_strategy: "react-tools"    # Default: Optimized for data collection
+    custom_instructions: "Kubernetes logs data collection expert. Focus on gathering comprehensive logs."
+
+  k8s-analysis:
+    # No mcp_servers
+    iteration_strategy: "react-final-analysis" # Default: Optimized for final analysis
+    custom_instructions: "Kubernetes analysis expert. Diagnose issues and provide recommendations."
+```
+
+**Strategy Resolution Hierarchy:**
+1. **Stage Strategy** (highest priority): `stage.iteration_strategy` if specified
+2. **Agent Default Strategy**: `agent.iteration_strategy` if defined  
+3. **System Default**: `IterationStrategy.REACT` as fallback
 
 ### Integration Points
 
@@ -650,11 +551,8 @@ class AlertService:
             mcp_registry=None  # Set in initialize()
         )
         
-        # NEW: Initialize ChainOrchestrator (no WebSocket dependency - uses hooks)
-        self.chain_orchestrator = ChainOrchestrator(
-            agent_factory=self.agent_factory,
-            history_service=self.history_service
-        )
+        # Chain execution logic integrated directly into AlertService
+        # No separate orchestrator needed - simplifies architecture
     
     async def initialize(self):
         """Initialize all services with their dependencies."""
@@ -697,9 +595,9 @@ class AlertService:
             # Create history session with chain info
             session_id = await self._create_chain_session(alert_processing_data, chain_def)
             
-            # Execute through ChainOrchestrator (UNIFIED PATH)
+            # Execute chain stages directly (UNIFIED PATH)
             # Progress tracking handled automatically via existing hook system
-            result = await self.chain_orchestrator.execute_chain(
+            result = await self._execute_chain_stages(
                 chain_def=chain_def,
                 alert_processing_data=alert_processing_data,
                 session_id=session_id
@@ -751,8 +649,148 @@ class AlertService:
         
         return await self.history_service.create_session(session)
     
-    # Progress tracking removed - handled by existing hook system
-    # Dashboard updates automatically via TypedDashboardHooks
+    async def _execute_chain_stages(
+        self, 
+        chain_def: ChainDefinitionModel, 
+        alert_processing_data: AlertProcessingData,
+        session_id: str
+    ) -> Dict[str, Any]:
+        """Execute chain stages sequentially with accumulated data flow."""
+        
+        logger.info(f"Starting chain execution '{chain_def.chain_id}' with {len(chain_def.stages)} stages")
+        
+        # Set chain context for tracking
+        alert_processing_data.set_chain_context(chain_def.chain_id)
+        
+        successful_stages = 0
+        failed_stages = 0
+        
+        # Execute each stage sequentially
+        for i, stage in enumerate(chain_def.stages):
+            logger.info(f"Executing stage {i+1}/{len(chain_def.stages)}: '{stage.name}' with agent '{stage.agent}'")
+            
+            # Update session current stage
+            await self._update_session_current_stage(session_id, i, stage.name)
+            
+            # Create stage execution record
+            stage_exec = StageExecution(
+                session_id=session_id,
+                stage_id=stage.name,
+                stage_index=i,
+                agent=stage.agent,
+                status="active",
+                started_at_us=now_us()
+            )
+            execution_id = await self.history_service.create_stage_execution(stage_exec)
+            
+            try:
+                # Get agent instance with stage-specific strategy
+                agent = await self.agent_factory.get_agent(stage.agent, iteration_strategy=stage.iteration_strategy)
+                
+                # Update current stage context
+                alert_processing_data.set_chain_context(chain_def.chain_id, stage.name)
+                
+                # Execute stage with unified alert model
+                result = await agent.process_alert(alert_processing_data, session_id)
+                
+                # Validate stage result format
+                if not isinstance(result, dict) or "status" not in result:
+                    raise ValueError(f"Invalid stage result format from agent '{stage.agent}'")
+                
+                # Add stage result to unified alert model
+                alert_processing_data.add_stage_result(stage.name, result)
+                
+                # Update stage execution as completed
+                stage_exec.status = "completed"
+                stage_exec.completed_at_us = now_us()
+                stage_exec.duration_ms = (stage_exec.completed_at_us - stage_exec.started_at_us) // 1000
+                stage_exec.stage_output = result  # Success: store result in JSON
+                stage_exec.error_message = None   # Ensure error_message is None for success
+                await self.history_service.update_stage_execution(stage_exec)
+                
+                successful_stages += 1
+                logger.info(f"Stage '{stage.name}' completed successfully in {stage_exec.duration_ms}ms")
+                
+            except Exception as e:
+                # Log the error with full context
+                error_msg = f"Stage '{stage.name}' failed with agent '{stage.agent}': {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                
+                # Mark stage as failed
+                stage_exec.status = "failed"
+                stage_exec.completed_at_us = now_us()
+                stage_exec.duration_ms = (stage_exec.completed_at_us - stage_exec.started_at_us) // 1000
+                stage_exec.stage_output = None     # Failed: no output data
+                stage_exec.error_message = str(e)  # Failed: store error message
+                await self.history_service.update_stage_execution(stage_exec)
+                
+                # Add structured error as stage output for next stages
+                error_result = {
+                    "status": "error",
+                    "error": str(e),
+                    "stage_name": stage.name,
+                    "agent": stage.agent,
+                    "timestamp_us": now_us(),
+                    "recoverable": True  # Next stages can still execute
+                }
+                alert_processing_data.add_stage_result(stage.name, error_result)
+                
+                failed_stages += 1
+                
+                # DECISION: Continue to next stage even if this one failed
+                # This allows data collection stages to fail while analysis stages still run
+                logger.warning(f"Continuing chain execution despite stage failure: {error_msg}")
+        
+        # AlertService doesn't generate analysis - that's the job of LLMs in analysis stages
+        # Final analysis comes from the last stage that produces analysis
+        final_analysis = self._extract_final_analysis_from_stages(alert_processing_data)
+        
+        # Determine overall chain status
+        overall_status = "completed"
+        if failed_stages == len(chain_def.stages):
+            overall_status = "failed"  # All stages failed
+        elif failed_stages > 0:
+            overall_status = "partial"  # Some stages failed
+        
+        logger.info(f"Chain execution completed: {successful_stages} successful, {failed_stages} failed")
+        
+        return {
+            "status": overall_status,
+            "final_analysis": final_analysis,
+            "chain_id": chain_def.chain_id,
+            "successful_stages": successful_stages,
+            "failed_stages": failed_stages,
+            "total_stages": len(chain_def.stages),
+            "accumulated_data": alert_processing_data  # Full context for downstream use
+        }
+    
+    async def _update_session_current_stage(self, session_id: str, stage_index: int, stage_name: str):
+        """Update the current stage information in the session."""
+        await self.history_service.update_session_current_stage(
+            session_id=session_id,
+            current_stage_index=stage_index,
+            current_stage_id=stage_name
+        )
+    
+    def _extract_final_analysis_from_stages(self, alert_data: AlertProcessingData) -> str:
+        """
+        Extract final analysis from stages.
+        
+        Final analysis should come from LLM-based analysis stages.
+        """
+        # Look for analysis from the last successful stage (typically a final-analysis stage)
+        for stage_name in reversed(list(alert_data.stage_outputs.keys())):
+            stage_result = alert_data.stage_outputs[stage_name]
+            if stage_result.get("status") == "success" and "analysis" in stage_result:
+                return stage_result["analysis"]
+        
+        # Fallback: look for any analysis from any successful stage
+        for stage_result in alert_data.stage_outputs.values():
+            if stage_result.get("status") == "success" and "analysis" in stage_result:
+                return stage_result["analysis"]
+        
+        # If no analysis found, return a simple summary (this should be rare)
+        return f"Chain {alert_data.chain_id} completed with {len(alert_data.stage_outputs)} stages. Use accumulated_data for detailed results."
     
     async def _complete_session(self, session_id: str, result: Dict[str, Any]):
         """Mark session as completed with final analysis."""
@@ -784,20 +822,22 @@ class AgentFactory:
         self.mcp_registry = mcp_registry
         self._agent_cache: Dict[str, BaseAgent] = {}
     
-    async def get_agent(self, agent_identifier: str) -> BaseAgent:
+    async def get_agent(self, agent_identifier: str, iteration_strategy: Optional[str] = None) -> BaseAgent:
         """
-        Get agent instance by identifier.
+        Get agent instance by identifier with optional strategy override.
         
         Args:
             agent_identifier: Either class name (e.g., "KubernetesAgent") 
                             or "ConfigurableAgent:agent-name" format
+            iteration_strategy: Strategy to use for this stage (overrides agent default)
         
         Returns:
-            Agent instance ready for use
+            Agent instance configured with appropriate strategy
         """
-        # Check cache first for performance
-        if agent_identifier in self._agent_cache:
-            return self._agent_cache[agent_identifier]
+        # Create cache key including strategy for stage-specific caching
+        cache_key = f"{agent_identifier}:{iteration_strategy or 'default'}"
+        if cache_key in self._agent_cache:
+            return self._agent_cache[cache_key]
         
         # Parse agent identifier
         if ":" in agent_identifier:
@@ -812,25 +852,29 @@ class AgentFactory:
             if not agent_config:
                 raise ValueError(f"Configurable agent '{agent_name}' not found in configuration")
             
-            # Create ConfigurableAgent with specific configuration
+            # Create ConfigurableAgent with specific configuration and strategy
+            strategy = IterationStrategy(iteration_strategy) if iteration_strategy else IterationStrategy.REACT
             agent = ConfigurableAgent(
                 agent_name=agent_name,
                 agent_config=agent_config,
                 llm_client=self.llm_client,
                 mcp_client=self.mcp_client,
-                mcp_registry=self.mcp_registry
+                mcp_registry=self.mcp_registry,
+                iteration_strategy=strategy
             )
         else:
-            # Built-in agent class name
+            # Built-in agent class name with strategy
             agent_class = self._get_builtin_agent_class(agent_identifier)
+            strategy = IterationStrategy(iteration_strategy) if iteration_strategy else IterationStrategy.REACT
             agent = agent_class(
                 llm_client=self.llm_client,
                 mcp_client=self.mcp_client,
-                mcp_registry=self.mcp_registry
+                mcp_registry=self.mcp_registry,
+                iteration_strategy=strategy
             )
         
-        # Cache the agent instance
-        self._agent_cache[agent_identifier] = agent
+        # Cache the agent instance with strategy-specific key
+        self._agent_cache[cache_key] = agent
         return agent
     
     def _get_builtin_agent_class(self, class_name: str) -> Type[BaseAgent]:
@@ -1030,28 +1074,6 @@ const ChainProgressDisplay: React.FC = ({ chainId, stageProgress }) => {
 1. **Enhanced WebSocket Messages**: Add chain context to progress updates
 2. **Dashboard Components**: Chain progress visualization with stage-by-stage cards
 3. **History API**: Enhanced session detail with stage execution data
-
----
-
-## Benefits
-
-### Immediate Value
-- **Multi-Stage Workflows**: Enable sophisticated alert processing workflows
-- **Data Accumulation**: Each stage builds upon previous stage results  
-- **Unified Architecture**: Consistent processing path for single and multi-agent scenarios
-- **Rich Observability**: Stage-level tracking and visualization
-
-### Long-Term Benefits
-- **Workflow Flexibility**: Easy to configure new multi-stage alert processing workflows
-- **Specialized Agents**: Agents can focus on specific tasks (data collection vs analysis)
-- **Extensible Design**: Framework ready for parallel execution and conditional routing
-- **Operational Insights**: Detailed stage-level performance and error analysis
-
-### Implementation Benefits
-- **Clean Architecture**: No legacy code or backward compatibility constraints
-- **Simple Configuration**: Built-in chains in code, YAML chains for customization
-- **Database-Driven State**: Reliable execution state management with full audit trail
-- **Graceful Error Handling**: Stage failures don't stop chain execution
 
 ---
 
