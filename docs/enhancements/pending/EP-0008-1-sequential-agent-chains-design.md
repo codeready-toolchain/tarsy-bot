@@ -529,6 +529,525 @@ agents:
 2. **Agent Default Strategy**: `agent.iteration_strategy` if defined  
 3. **System Default**: `IterationStrategy.REACT` as fallback
 
+### Iteration Controller Enhancement Design
+
+**Enhancing Existing Infrastructure:**
+The system already has `IterationController` and `IterationContext` in `backend/tarsy/agents/iteration_controllers/`. We enhance this existing infrastructure to support chain-specific strategies:
+
+**Enhanced IterationContext (Add Chain Support):**
+```python
+@dataclass
+class IterationContext:
+    # Existing fields
+    alert_data: Dict[str, Any]
+    runbook_content: str
+    available_tools: List[Dict[str, Any]]
+    session_id: str
+    agent: Optional['BaseAgent'] = None
+    
+    # NEW: Chain support fields
+    initial_mcp_data: Dict[str, Any] = field(default_factory=dict)  # From previous stages
+    final_mcp_data: Dict[str, Any] = field(default_factory=dict)    # Collected in this stage
+```
+
+**New Strategy-Specific Controllers (Properly Extending Existing System):**
+
+First, enhance the `PromptBuilder` to support chain-specific ReAct questions and extract common ReAct formatting:
+
+```python
+# Add to existing PromptBuilder class - extract common ReAct system message
+
+def get_standard_react_system_message(self, task_focus: str = "investigation and providing recommendations") -> str:
+    """Get the standard ReAct system message with consistent formatting rules."""
+    return f"""You are an expert SRE analyzing alerts. Follow the ReAct format EXACTLY as specified.
+
+CRITICAL FORMATTING RULES:
+1. ALWAYS include colons after section headers: "Thought:", "Action:", "Action Input:"
+2. For Action Input, provide ONLY the parameter values (no YAML, no code blocks, no triple backticks)
+3. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
+4. NEVER write fake observations or continue the conversation
+
+CORRECT FORMAT:
+Thought: [your reasoning here]
+Action: [exact tool name]
+Action Input: [parameter values only]
+
+Focus on {task_focus} for human operators to execute."""
+
+# Note: The existing SimpleReActController should also be updated to use this centralized system message
+# instead of its hardcoded version, ensuring consistency across all ReAct controllers.
+
+# Add chain-specific ReAct question formatters
+
+def _format_react_question_for_data_collection(self, context: PromptContext) -> str:
+    """Format ReAct question specifically for data collection stages."""
+    alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
+    
+    question = f"""Collect comprehensive data about this {alert_type} alert for the next analysis stage.
+
+## Alert Details
+{self._build_alert_section(context.alert_data)}
+
+{self._build_runbook_section(context.runbook_content)}
+
+## Previous Stage Data
+{self._build_mcp_data_section(context.mcp_data) if context.mcp_data else "No previous stage data available."}
+
+## Your Task: DATA COLLECTION ONLY
+Use available tools to systematically collect information about:
+1. Current system state related to this alert
+2. Historical patterns or trends
+3. Related resource status
+4. Configuration details
+
+DO NOT provide analysis or conclusions - focus purely on gathering comprehensive data.
+Your Final Answer should summarize what data was collected, not analyze it."""
+    
+    return question
+
+def _format_react_question_for_partial_analysis(self, context: PromptContext) -> str:
+    """Format ReAct question for data collection + stage-specific analysis."""
+    alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
+    
+    question = f"""Investigate this {alert_type} alert and provide stage-specific analysis.
+
+## Alert Details
+{self._build_alert_section(context.alert_data)}
+
+{self._build_runbook_section(context.runbook_content)}
+
+## Previous Stage Data
+{self._build_mcp_data_section(context.mcp_data) if context.mcp_data else "No previous stage data available."}
+
+## Your Task: COLLECTION + PARTIAL ANALYSIS
+1. First, collect additional data specific to this analysis stage
+2. Then, provide preliminary analysis of the collected information
+3. Focus on stage-specific insights, not final conclusions
+
+Your Final Answer should include both the data collected and your stage-specific analysis."""
+    
+    return question
+
+def build_data_collection_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+    """Build ReAct prompt for data collection using existing ReAct infrastructure."""
+    # Create modified context with data collection question
+    data_collection_context = PromptContext(
+        agent_name=context.agent_name,
+        alert_data=context.alert_data,
+        runbook_content=context.runbook_content,
+        mcp_data=context.mcp_data,
+        mcp_servers=context.mcp_servers,
+        server_guidance=context.server_guidance,
+        agent_specific_guidance=context.agent_specific_guidance,
+        available_tools=context.available_tools
+    )
+    
+    # Override the question formatting temporarily
+    original_format_method = self._format_react_question
+    self._format_react_question = self._format_react_question_for_data_collection
+    
+    try:
+        # Use existing standard ReAct prompt builder
+        prompt = self.build_standard_react_prompt(data_collection_context, react_history)
+        return prompt
+    finally:
+        # Restore original method
+        self._format_react_question = original_format_method
+
+def build_partial_analysis_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+    """Build ReAct prompt for partial analysis using existing ReAct infrastructure."""
+    # Create modified context with partial analysis question
+    partial_analysis_context = PromptContext(
+        agent_name=context.agent_name,
+        alert_data=context.alert_data,
+        runbook_content=context.runbook_content,
+        mcp_data=context.mcp_data,
+        mcp_servers=context.mcp_servers,
+        server_guidance=context.server_guidance,
+        agent_specific_guidance=context.agent_specific_guidance,
+        available_tools=context.available_tools
+    )
+    
+    # Override the question formatting temporarily
+    original_format_method = self._format_react_question
+    self._format_react_question = self._format_react_question_for_partial_analysis
+    
+    try:
+        # Use existing standard ReAct prompt builder
+        prompt = self.build_standard_react_prompt(partial_analysis_context, react_history)
+        return prompt
+    finally:
+        # Restore original method
+        self._format_react_question = original_format_method
+
+def build_final_analysis_prompt(self, context: PromptContext) -> str:
+    """Build prompt for final analysis without ReAct format (no tools)."""
+    sections = [
+        "# Final Analysis Task",
+        self._build_context_section(context),
+        self._build_alert_section(context.alert_data),
+        self._build_runbook_section(context.runbook_content)
+    ]
+    
+    # Include all accumulated data from previous stages
+    if context.mcp_data:
+        sections.append(f"## Complete Investigation Data\n{json.dumps(context.mcp_data, indent=2)}")
+    
+    sections.append("""## Instructions
+Provide comprehensive final analysis based on ALL collected data:
+1. Root cause analysis
+2. Impact assessment  
+3. Recommended actions
+4. Prevention strategies
+
+Do NOT call any tools - use only the provided data.""")
+    
+    return "\n\n".join(sections)
+```
+
+Now, implement the new controllers using existing infrastructure:
+
+```python
+class ReactToolsController(IterationController):
+    """Data collection focused ReAct controller - reuses existing ReAct infrastructure."""
+    
+    def __init__(self, llm_client, prompt_builder):
+        """Initialize with existing infrastructure."""
+        self.llm_client = llm_client
+        self.prompt_builder = prompt_builder
+    
+    async def execute_analysis_loop(self, context: IterationContext) -> str:
+        """Execute ReAct loop focused purely on data collection using existing ReAct format."""
+        logger.info("Starting ReAct Tools-Only analysis loop")
+        
+        agent = context.agent
+        if not agent:
+            raise ValueError("Agent reference is required in context")
+        
+        max_iterations = agent.max_iterations
+        react_history = []
+        
+        # Create prompt context with chain-specific data
+        prompt_context = agent.create_prompt_context(
+            alert_data=context.alert_data,
+            runbook_content=context.runbook_content,
+            mcp_data=context.initial_mcp_data,  # Include data from previous stages
+            available_tools={"tools": context.available_tools}
+        )
+        
+        # Execute ReAct loop using EXISTING ReAct format and parsing
+        for iteration in range(max_iterations):
+            logger.info(f"Data collection iteration {iteration + 1}/{max_iterations}")
+            
+            try:
+                # Use chain-specific data collection prompt but SAME ReAct format
+                prompt = self.prompt_builder.build_data_collection_react_prompt(prompt_context, react_history)
+                
+                # REUSE centralized ReAct system message
+                messages = [
+                    LLMMessage(
+                        role="system", 
+                        content=self.prompt_builder.get_standard_react_system_message("comprehensive data collection for this stage")
+                    ),
+                    LLMMessage(role="user", content=prompt)
+                ]
+                
+                response = await self.llm_client.generate_response(messages, context.session_id)
+                logger.info(f"LLM Response (first 500 chars): {response[:500]}")
+                
+                # REUSE EXISTING ReAct parsing - critical for consistent format handling
+                parsed = self.prompt_builder.parse_react_response(response)
+                logger.info(f"Parsed ReAct response: {parsed}")
+                
+                # Add thought to history
+                if parsed['thought']:
+                    react_history.append(f"Thought: {parsed['thought']}")
+                    logger.info(f"ReAct Thought: {parsed['thought'][:150]}...")
+                
+                # Check if complete (data collection final answer)
+                if parsed['is_complete'] and parsed['final_answer']:
+                    logger.info("Data collection completed with final answer")
+                    return parsed['final_answer']
+                
+                # Execute action if present - REUSE existing tool execution logic
+                if parsed['action'] and parsed['action_input']:
+                    try:
+                        logger.info(f"ReAct Action: {parsed['action']} with input: {parsed['action_input'][:100]}...")
+                        
+                        # REUSE existing action-to-tool conversion
+                        tool_call = self.prompt_builder.convert_action_to_tool_call(
+                            parsed['action'], parsed['action_input']
+                        )
+                        
+                        # Execute tool using agent's existing method
+                        mcp_data = await agent.execute_mcp_tools([tool_call], context.session_id)
+                        
+                        # Store accumulated data for next stage
+                        context.final_mcp_data = agent.merge_mcp_data(context.final_mcp_data, mcp_data)
+                        
+                        # REUSE existing observation formatting
+                        observation = self.prompt_builder.format_observation(mcp_data)
+                        
+                        # Add to history using EXACT format from SimpleReActController
+                        react_history.extend([
+                            f"Action: {parsed['action']}",
+                            f"Action Input: {parsed['action_input']}",
+                            f"Observation: {observation}"
+                        ])
+                        
+                        logger.info(f"ReAct Observation: {observation[:150]}...")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to execute ReAct action: {str(e)}")
+                        error_obs = f"Error executing action: {str(e)}"
+                        react_history.extend([
+                            f"Action: {parsed['action']}",
+                            f"Action Input: {parsed['action_input']}",
+                            f"Observation: {error_obs}"
+                        ])
+                
+                elif not parsed['is_complete']:
+                    # Same prompting logic as SimpleReActController
+                    logger.warning("ReAct response missing action, adding prompt to continue")
+                    react_history.append("Observation: Please specify what Action you want to take next, or provide your Final Answer if you have collected sufficient data.")
+                
+            except Exception as e:
+                logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
+                react_history.append(f"Observation: Error in reasoning: {str(e)}. Please try a different approach.")
+                continue
+        
+        # REUSE fallback logic from SimpleReActController
+        logger.warning("Data collection reached maximum iterations without final answer")
+        
+        final_prompt = f"""Based on the data collection so far, provide a summary of what information was gathered.
+
+Collection History:
+{chr(10).join(react_history)}
+
+Please provide a final summary of the data collected, even if the collection isn't complete."""
+        
+        try:
+            messages = [
+                LLMMessage(
+                    role="system", 
+                    content="Provide a summary of data collected based on the investigation."
+                ),
+                LLMMessage(role="user", content=final_prompt)
+            ]
+            
+            fallback_response = await self.llm_client.generate_response(messages, context.session_id)
+            return f"Data collection completed (reached max iterations):\n\n{fallback_response}"
+            
+        except Exception as e:
+            logger.error(f"Failed to generate fallback summary: {str(e)}")
+            return f"Data collection incomplete: reached maximum iterations ({max_iterations}) without final summary. Last collection steps:\n\n{chr(10).join(react_history[-5:])}"
+
+class ReactToolsPartialController(IterationController):
+    """ReAct controller for data collection + stage-specific analysis - reuses existing ReAct infrastructure."""
+    
+    def __init__(self, llm_client, prompt_builder):
+        self.llm_client = llm_client  
+        self.prompt_builder = prompt_builder
+    
+    async def execute_analysis_loop(self, context: IterationContext) -> str:
+        """Execute ReAct loop with data collection AND partial analysis using existing ReAct format."""
+        logger.info("Starting ReAct Tools + Partial Analysis loop")
+        
+        agent = context.agent
+        if not agent:
+            raise ValueError("Agent reference is required in context")
+        
+        max_iterations = agent.max_iterations
+        react_history = []
+        
+        # Create prompt context with chain-specific data
+        prompt_context = agent.create_prompt_context(
+            alert_data=context.alert_data,
+            runbook_content=context.runbook_content,
+            mcp_data=context.initial_mcp_data,  # Include data from previous stages
+            available_tools={"tools": context.available_tools}
+        )
+        
+        # Execute ReAct loop using EXISTING ReAct format and parsing (same as SimpleReActController)
+        for iteration in range(max_iterations):
+            logger.info(f"Partial analysis iteration {iteration + 1}/{max_iterations}")
+            
+            try:
+                # Use partial analysis prompt but SAME ReAct format
+                prompt = self.prompt_builder.build_partial_analysis_react_prompt(prompt_context, react_history)
+                
+                # REUSE centralized ReAct system message
+                messages = [
+                    LLMMessage(
+                        role="system", 
+                        content=self.prompt_builder.get_standard_react_system_message("collecting additional data and providing stage-specific analysis")
+                    ),
+                    LLMMessage(role="user", content=prompt)
+                ]
+                
+                response = await self.llm_client.generate_response(messages, context.session_id)
+                logger.info(f"LLM Response (first 500 chars): {response[:500]}")
+                
+                # REUSE EXISTING ReAct parsing - same parsing logic as SimpleReActController
+                parsed = self.prompt_builder.parse_react_response(response)
+                logger.info(f"Parsed ReAct response: {parsed}")
+                
+                # Add thought to history (same as SimpleReActController)
+                if parsed['thought']:
+                    react_history.append(f"Thought: {parsed['thought']}")
+                    logger.info(f"ReAct Thought: {parsed['thought'][:150]}...")
+                
+                # Check if complete (partial analysis final answer)
+                if parsed['is_complete'] and parsed['final_answer']:
+                    logger.info("Partial analysis completed with final answer")
+                    return parsed['final_answer']
+                
+                # Execute action if present (same tool execution as SimpleReActController)
+                if parsed['action'] and parsed['action_input']:
+                    try:
+                        logger.info(f"ReAct Action: {parsed['action']} with input: {parsed['action_input'][:100]}...")
+                        
+                        # REUSE existing action-to-tool conversion
+                        tool_call = self.prompt_builder.convert_action_to_tool_call(
+                            parsed['action'], parsed['action_input']
+                        )
+                        
+                        # Execute tool using agent's existing method
+                        mcp_data = await agent.execute_mcp_tools([tool_call], context.session_id)
+                        
+                        # Store accumulated data for next stage
+                        context.final_mcp_data = agent.merge_mcp_data(context.final_mcp_data, mcp_data)
+                        
+                        # REUSE existing observation formatting
+                        observation = self.prompt_builder.format_observation(mcp_data)
+                        
+                        # Add to history using EXACT format from SimpleReActController
+                        react_history.extend([
+                            f"Action: {parsed['action']}",
+                            f"Action Input: {parsed['action_input']}",
+                            f"Observation: {observation}"
+                        ])
+                        
+                        logger.info(f"ReAct Observation: {observation[:150]}...")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to execute ReAct action: {str(e)}")
+                        error_obs = f"Error executing action: {str(e)}"
+                        react_history.extend([
+                            f"Action: {parsed['action']}",
+                            f"Action Input: {parsed['action_input']}",
+                            f"Observation: {error_obs}"
+                        ])
+                
+                elif not parsed['is_complete']:
+                    # Same prompting logic as SimpleReActController
+                    logger.warning("ReAct response missing action, adding prompt to continue")
+                    react_history.append("Observation: Please specify what Action you want to take next, or provide your Final Answer with both collected data and analysis.")
+                
+            except Exception as e:
+                logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
+                react_history.append(f"Observation: Error in reasoning: {str(e)}. Please try a different approach.")
+                continue
+        
+        # REUSE fallback logic from SimpleReActController  
+        logger.warning("Partial analysis reached maximum iterations without final answer")
+        
+        final_prompt = f"""Based on the investigation so far, provide your stage-specific analysis.
+
+Investigation History:
+{chr(10).join(react_history)}
+
+Please provide a final analysis based on what you've discovered, even if the investigation isn't complete."""
+        
+        try:
+            messages = [
+                LLMMessage(
+                    role="system", 
+                    content="Provide stage-specific analysis based on the available information."
+                ),
+                LLMMessage(role="user", content=final_prompt)
+            ]
+            
+            fallback_response = await self.llm_client.generate_response(messages, context.session_id)
+            return f"Partial analysis completed (reached max iterations):\n\n{fallback_response}"
+            
+        except Exception as e:
+            logger.error(f"Failed to generate fallback analysis: {str(e)}")
+            return f"Partial analysis incomplete: reached maximum iterations ({max_iterations}) without final answer. Last investigation steps:\n\n{chr(10).join(react_history[-5:])}"
+
+class ReactFinalAnalysisController(IterationController):
+    """Final analysis controller - no tool calling, pure analysis."""
+    
+    def __init__(self, llm_client, prompt_builder):
+        self.llm_client = llm_client
+        self.prompt_builder = prompt_builder
+    
+    async def execute_analysis_loop(self, context: IterationContext) -> str:
+        """Execute final analysis using all accumulated data."""
+        logger.info("Starting final analysis (no tools)")
+        
+        # Build comprehensive prompt with all stage data
+        prompt_context = context.agent.create_prompt_context(
+            alert_data=context.alert_data,
+            runbook_content=context.runbook_content,
+            mcp_data=context.initial_mcp_data,  # All data from previous stages
+            available_tools=None  # No tools available
+        )
+        
+        prompt = self.prompt_builder.build_final_analysis_prompt(prompt_context)
+        
+        # Single comprehensive analysis call
+        messages = [
+            LLMMessage(
+                role="system", 
+                content="You are an expert SRE. Provide comprehensive final analysis based on all available data."
+            ),
+            LLMMessage(role="user", content=prompt)
+        ]
+        
+        return await self.llm_client.generate_response(messages, context.session_id)
+```
+
+**Enhanced Controller Factory (Extend Existing):**
+```python
+# Add to existing backend/tarsy/agents/iteration_controllers/__init__.py
+
+from .react_tools_controller import ReactToolsController
+from .react_tools_partial_controller import ReactToolsPartialController  
+from .react_final_analysis_controller import ReactFinalAnalysisController
+
+# Enhanced factory function
+def create_iteration_controller(strategy: IterationStrategy) -> IterationController:
+    """Create appropriate controller based on strategy."""
+    controller_map = {
+        IterationStrategy.REACT: SimpleReActController,         # Existing
+        IterationStrategy.REGULAR: RegularIterationController,  # Existing
+        IterationStrategy.REACT_TOOLS: ReactToolsController,             # NEW
+        IterationStrategy.REACT_TOOLS_PARTIAL: ReactToolsPartialController,   # NEW
+        IterationStrategy.REACT_FINAL_ANALYSIS: ReactFinalAnalysisController, # NEW
+    }
+    
+    controller_class = controller_map.get(strategy)
+    if not controller_class:
+        raise ValueError(f"Unknown iteration strategy: {strategy}")
+    
+    return controller_class()
+```
+
+**BaseAgent Integration (Enhance Existing):**
+```python
+# In BaseAgent.__init__() - update existing controller creation
+from tarsy.agents.iteration_controllers import create_iteration_controller
+
+self._iteration_controller = create_iteration_controller(self.iteration_strategy)
+
+# NEW: Strategy can be overridden per stage via AgentFactory
+def set_iteration_strategy(self, strategy: IterationStrategy):
+    """Update iteration strategy (used by AgentFactory for stage-specific strategies)."""
+    self.iteration_strategy = strategy
+    self._iteration_controller = create_iteration_controller(strategy)
+```
+
 ### Integration Points
 
 **Updated AlertService (Complete Integration):**
@@ -1057,21 +1576,29 @@ const ChainProgressDisplay: React.FC = ({ chainId, stageProgress }) => {
 ### Phase 1: Foundation Models and Database
 1. **Data Models**: Enhance `AlertProcessingData`, create `ChainDefinitionModel`, `StageExecution` models
 2. **Database Schema**: Add chain fields to `AlertSession`, create `StageExecution` table with migrations
-3. **Iteration Controllers**: Implement new iteration strategies (`REACT_TOOLS`, `REACT_TOOLS_PARTIAL`, `REACT_FINAL_ANALYSIS`)
+3. **IterationContext Enhancement**: Add `initial_mcp_data` and `final_mcp_data` fields for chain support
 
-### Phase 2: Agent Infrastructure Updates
+### Phase 2: PromptBuilder and Controller Infrastructure  
+1. **PromptBuilder Enhancement**: Add centralized ReAct system message (`get_standard_react_system_message()`)
+2. **PromptBuilder Chain Methods**: Add `build_data_collection_react_prompt()`, `build_partial_analysis_react_prompt()`, `build_final_analysis_prompt()`
+3. **New Iteration Controllers**: Implement `ReactToolsController`, `ReactToolsPartialController`, `ReactFinalAnalysisController`
+4. **Controller Factory**: Update `create_iteration_controller()` function to support new strategies
+5. **SimpleReActController Update**: Migrate existing controller to use centralized ReAct system message
+
+### Phase 3: Agent Infrastructure Updates
 1. **BaseAgent Interface**: Update `process_alert()` method to use `AlertProcessingData` with stage context
-2. **AgentFactory Enhancement**: Add strategy override support for stage-specific agent creation
-3. **Agent Implementations**: Update `KubernetesAgent` and configurable agents for new interface
-4. **HistoryService**: Add stage execution tracking methods
+2. **BaseAgent Strategy Support**: Add `set_iteration_strategy()` method for stage-specific strategy overrides
+3. **AgentFactory Enhancement**: Add strategy override support for stage-specific agent creation
+4. **Agent Implementations**: Update `KubernetesAgent` and configurable agents for new interface
+5. **HistoryService**: Add stage execution tracking methods (`create_stage_execution()`, `update_stage_execution()`, etc.)
 
-### Phase 3: Chain Registry and Execution
+### Phase 4: Chain Registry and Execution
 1. **ChainRegistry**: Replace `AgentRegistry` with chain-based lookup system
 2. **Built-in Chain Definitions**: Replace `BUILTIN_AGENT_MAPPINGS` with `BUILTIN_CHAIN_DEFINITIONS`
 3. **YAML Configuration**: Extend `ConfigurationLoader` for `agent_chains` section
 4. **AlertService Integration**: Implement chain execution logic with stage-by-stage processing
 
-### Phase 4: Monitoring and Dashboard
+### Phase 5: Monitoring and Dashboard
 1. **Enhanced WebSocket Messages**: Add chain context and stage progress to existing hook system
 2. **Dashboard Components**: Chain progress visualization with stage-by-stage cards
 3. **History API**: Enhanced session detail endpoints with stage execution data
