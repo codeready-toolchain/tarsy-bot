@@ -407,6 +407,7 @@ class HistoryRepository:
                     "type": "llm",
                     "step_description": interaction.step_description,
                     "duration_ms": interaction.duration_ms,
+                    "stage_execution_id": interaction.stage_execution_id,  # Chain context for stage association
                     "details": {
                         "request_json": interaction.request_json,
                         "response_json": interaction.response_json,
@@ -427,6 +428,7 @@ class HistoryRepository:
                     "type": "mcp",
                     "step_description": communication.step_description,
                     "duration_ms": communication.duration_ms,
+                    "stage_execution_id": communication.stage_execution_id,  # Chain context for stage association
                     "details": {
                         "tool_name": communication.tool_name,
                         "server_name": communication.server_name,
