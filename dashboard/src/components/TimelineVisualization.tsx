@@ -424,11 +424,13 @@ function TimelineVisualization({
                     </Box>
                     
                     {/* Full interaction details when expanded */}
-                    <InteractionDetails
-                      type={item.type}
-                      details={item.details}
-                      expanded={expandedItems[itemKey]}
-                    />
+                    {item.type !== 'stage_execution' && (
+                      <InteractionDetails
+                        type={item.type as 'llm' | 'mcp' | 'system'}
+                        details={item.details}
+                        expanded={expandedItems[itemKey]}
+                      />
+                    )}
                   </CardContent>
                 )}
               </Card>
