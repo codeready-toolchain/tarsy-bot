@@ -20,6 +20,7 @@ import SessionHeader from './SessionHeader';
 import OriginalAlertCard from './OriginalAlertCard';
 import FinalAnalysisCard from './FinalAnalysisCard';
 import TimelineVisualization from './TimelineVisualization';
+import ChainTimeline from './ChainTimeline';
 
 
 /**
@@ -478,11 +479,18 @@ function SessionDetailPage() {
             <OriginalAlertCard alertData={session.alert_data} />
 
             {/* Enhanced Processing Timeline */}
-            <TimelineVisualization 
-              timelineItems={session.chronological_timeline}
-              isActive={session.status === 'in_progress' || session.status === 'pending'}
-              sessionId={session.session_id}
-            />
+            {session.chain_execution ? (
+              <ChainTimeline
+                chainExecution={session.chain_execution}
+                timelineItems={session.chronological_timeline}
+              />
+            ) : (
+              <TimelineVisualization 
+                timelineItems={session.chronological_timeline}
+                isActive={session.status === 'in_progress' || session.status === 'pending'}
+                sessionId={session.session_id}
+              />
+            )}
 
             {/* Final AI Analysis */}
             <FinalAnalysisCard 

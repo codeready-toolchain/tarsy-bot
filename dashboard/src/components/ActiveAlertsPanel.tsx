@@ -11,8 +11,9 @@ import {
 } from '@mui/material';
 import { Refresh, WifiOff, Wifi } from '@mui/icons-material';
 import ActiveAlertCard from './ActiveAlertCard';
+import ChainProgressCard from './ChainProgressCard';
 import { webSocketService } from '../services/websocket';
-import type { ActiveAlertsPanelProps, SessionUpdate } from '../types';
+import type { ActiveAlertsPanelProps, SessionUpdate, ChainProgressUpdate, StageProgressUpdate } from '../types';
 
 /**
  * ActiveAlertsPanel component displays currently active/processing alerts
@@ -26,6 +27,8 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
   onSessionClick,
 }) => {
   const [progressData, setProgressData] = useState<Record<string, number>>({});
+  const [chainProgressData, setChainProgressData] = useState<Record<string, ChainProgressUpdate>>({});
+  const [stageProgressData, setStageProgressData] = useState<Record<string, StageProgressUpdate[]>>({});
   const [wsConnected, setWsConnected] = useState(false);
 
   // Set up WebSocket event handlers
@@ -61,12 +64,61 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
         delete newProgress[update.session_id];
         return newProgress;
       });
+      // Also clean up chain progress data
+      setChainProgressData(prev => {
+        const newData = { ...prev };
+        delete newData[update.session_id];
+        return newData;
+      });
+      setStageProgressData(prev => {
+        const newData = { ...prev };
+        delete newData[update.session_id];
+        return newData;
+      });
+    };
+
+    // Chain progress handlers
+    const handleChainProgress = (update: ChainProgressUpdate) => {
+      console.log('Chain progress update:', update);
+      setChainProgressData(prev => ({
+        ...prev,
+        [update.session_id]: update
+      }));
+    };
+
+    const handleStageProgress = (update: StageProgressUpdate) => {
+      console.log('Stage progress update:', update);
+      setStageProgressData(prev => {
+        const current = prev[update.session_id] || [];
+        const existingIndex = current.findIndex(s => s.stage_execution_id === update.stage_execution_id);
+        
+        let updated;
+        if (existingIndex >= 0) {
+          // Update existing stage
+          updated = [...current];
+          updated[existingIndex] = update;
+        } else {
+          // Add new stage
+          updated = [...current, update];
+        }
+        
+        return {
+          ...prev,
+          [update.session_id]: updated.sort((a, b) => a.stage_index - b.stage_index)
+        };
+      });
     };
 
     // Subscribe to WebSocket events
     const unsubscribeUpdate = webSocketService.onSessionUpdate(handleSessionUpdate);
     const unsubscribeCompleted = webSocketService.onSessionCompleted(handleSessionCompleted);
     const unsubscribeFailed = webSocketService.onSessionFailed(handleSessionFailed);
+    
+    // Subscribe to chain progress events (with fallback for services that don't support them yet)
+    const unsubscribeChainProgress = webSocketService.onChainProgress ? 
+      webSocketService.onChainProgress(handleChainProgress) : () => {};
+    const unsubscribeStageProgress = webSocketService.onStageProgress ? 
+      webSocketService.onStageProgress(handleStageProgress) : () => {};
 
     // Connect to WebSocket
     webSocketService.connect();
@@ -82,6 +134,8 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
       unsubscribeUpdate();
       unsubscribeCompleted();
       unsubscribeFailed();
+      unsubscribeChainProgress();
+      unsubscribeStageProgress();
       clearInterval(connectionCheck);
     };
   }, []);
@@ -168,14 +222,32 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
             </Box>
           ) : (
             <Stack spacing={2}>
-              {sessions.map((session) => (
-                <ActiveAlertCard
-                  key={session.session_id}
-                  session={session}
-                  progress={progressData[session.session_id]}
-                  onClick={handleSessionClick}
-                />
-              ))}
+              {sessions.map((session) => {
+                // Use ChainProgressCard for chain sessions, ActiveAlertCard for regular sessions
+                const isChainSession = session.chain_id !== undefined;
+                
+                if (isChainSession) {
+                  return (
+                    <ChainProgressCard
+                      key={session.session_id}
+                      session={session}
+                      chainProgress={chainProgressData[session.session_id]}
+                      stageProgress={stageProgressData[session.session_id]}
+                      onClick={handleSessionClick}
+                      compact={false}
+                    />
+                  );
+                } else {
+                  return (
+                    <ActiveAlertCard
+                      key={session.session_id}
+                      session={session}
+                      progress={progressData[session.session_id]}
+                      onClick={handleSessionClick}
+                    />
+                  );
+                }
+              })}
             </Stack>
           )}
 

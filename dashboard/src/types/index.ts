@@ -12,6 +12,38 @@ export interface Session {
   error_message: string | null;
   llm_interaction_count?: number;
   mcp_communication_count?: number;
+  
+  // Phase 5: Chain execution information
+  chain_id?: string; // Chain identifier if this is a chain execution
+  total_stages?: number; // Total number of stages in the chain
+  completed_stages?: number; // Number of successfully completed stages
+  failed_stages?: number; // Number of failed stages
+  current_stage_index?: number; // Current stage index (if still processing)
+}
+
+// Phase 5: Stage execution data
+export interface StageExecution {
+  execution_id: string;
+  stage_id: string;
+  stage_index: number;
+  stage_name: string;
+  agent: string;
+  iteration_strategy: string | null;
+  status: 'pending' | 'active' | 'completed' | 'failed';
+  started_at_us: number | null;
+  completed_at_us: number | null;
+  duration_ms: number | null;
+  stage_output: any | null;
+  error_message: string | null;
+}
+
+// Phase 5: Chain execution data
+export interface ChainExecution {
+  chain_id: string;
+  chain_definition: any;
+  current_stage_index: number | null;
+  current_stage_id: string | null;
+  stages: StageExecution[];
 }
 
 // Phase 3: Detailed session data for session detail page
@@ -19,6 +51,9 @@ export interface DetailedSession extends Session {
   alert_data: AlertData;
   final_analysis: string | null;
   chronological_timeline: TimelineItem[];
+  
+  // Phase 5: Chain execution information
+  chain_execution?: ChainExecution;
 }
 
 // Flexible alert data structure supporting any fields
@@ -30,11 +65,14 @@ export interface AlertData {
 export interface TimelineItem {
   id: string;
   event_id: string;
-  type: 'llm' | 'mcp' | 'system';
+  type: 'llm' | 'mcp' | 'system' | 'stage_execution';
   timestamp_us: number; // Unix timestamp (microseconds since epoch)
   step_description: string;
   duration_ms: number | null;
   details?: LLMInteraction | MCPInteraction | SystemEvent;
+  
+  // Phase 5: Chain context information
+  stage_execution_id?: string; // Associated stage execution ID (if part of a chain)
 }
 
 // Phase 3: LLM interaction details
@@ -101,10 +139,10 @@ export interface SessionsResponse {
   filters_applied: FiltersApplied;
 }
 
-// WebSocket message types (Phase 2)
+// WebSocket message types (Phase 2 + Phase 5)
 export interface WebSocketMessage {
-  type: 'session_update' | 'session_completed' | 'session_failed' | 'ping' | 'pong' | 'connection_established' | 'subscription_response' | 'dashboard_update' | 'message_batch' | 'session_status_change' | 'batched_session_updates';
-  data?: SessionUpdate | any; // Allow any data type for dashboard_update messages
+  type: 'session_update' | 'session_completed' | 'session_failed' | 'ping' | 'pong' | 'connection_established' | 'subscription_response' | 'dashboard_update' | 'message_batch' | 'session_status_change' | 'batched_session_updates' | 'chain_progress' | 'stage_progress';
+  data?: SessionUpdate | ChainProgressUpdate | StageProgressUpdate | any; // Allow any data type for dashboard_update messages
   timestamp_us?: number; // Unix timestamp (microseconds since epoch)
   channel?: string; // Dashboard updates include channel info
   messages?: WebSocketMessage[]; // For message_batch type
@@ -120,6 +158,37 @@ export interface SessionUpdate {
   error_message?: string | null;
   completed_at_us?: number | null; // Unix timestamp (microseconds since epoch)
   data?: any; // Additional update data containing interaction_type, etc.
+}
+
+// Phase 5: Chain progress update from WebSocket
+export interface ChainProgressUpdate {
+  session_id: string;
+  chain_id: string;
+  current_stage?: string | null;
+  current_stage_index?: number | null;
+  total_stages?: number | null;
+  completed_stages?: number | null;
+  failed_stages?: number | null;
+  overall_status: 'pending' | 'processing' | 'completed' | 'failed' | 'partial';
+  stage_details?: any | null;
+  timestamp_us: number;
+}
+
+// Phase 5: Stage progress update from WebSocket
+export interface StageProgressUpdate {
+  session_id: string;
+  chain_id: string;
+  stage_execution_id: string;
+  stage_name: string;
+  stage_index: number;
+  agent: string;
+  status: 'pending' | 'active' | 'completed' | 'failed';
+  started_at_us?: number | null;
+  completed_at_us?: number | null;
+  duration_ms?: number | null;
+  error_message?: string | null;
+  iteration_strategy?: string | null;
+  timestamp_us: number;
 }
 
 // API response wrapper format (for other endpoints)
@@ -376,4 +445,34 @@ export interface FilterChipProps {
   onDelete: () => void;
   color?: 'default' | 'primary' | 'secondary' | 'success' | 'error' | 'info' | 'warning';
   variant?: 'filled' | 'outlined';
+}
+
+// Phase 5: Chain visualization component props
+export interface ChainProgressCardProps {
+  session: Session;
+  chainProgress?: ChainProgressUpdate;
+  stageProgress?: StageProgressUpdate[];
+  onClick?: (sessionId: string) => void;
+  compact?: boolean;
+}
+
+export interface StageProgressBarProps {
+  stages: StageExecution[];
+  currentStageIndex?: number | null;
+  showLabels?: boolean;
+  size?: 'small' | 'medium' | 'large';
+}
+
+export interface ChainTimelineProps {
+  chainExecution: ChainExecution;
+  timelineItems: TimelineItem[];
+  expandedStages?: string[];
+  onStageToggle?: (stageId: string) => void;
+}
+
+export interface StageCardProps {
+  stage: StageExecution;
+  expanded?: boolean;
+  onToggle?: () => void;
+  relatedInteractions?: TimelineItem[];
 }
