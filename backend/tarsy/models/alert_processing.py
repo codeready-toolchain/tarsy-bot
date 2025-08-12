@@ -80,6 +80,16 @@ class AlertProcessingData(BaseModel):
                         merged_mcp_data[server_name].append(server_data)
         return merged_mcp_data
     
+    def get_stage_attributed_mcp_results(self) -> Dict[str, Any]:
+        """Get MCP results with stage attribution preserved."""
+        stage_attributed_data = {}
+        for stage_name, stage_result in self.stage_outputs.items():
+            if isinstance(stage_result, dict) and "mcp_results" in stage_result:
+                # Only include stages that actually have MCP results
+                if stage_result["mcp_results"]:
+                    stage_attributed_data[stage_name] = stage_result["mcp_results"]
+        return stage_attributed_data
+    
     def add_stage_result(self, stage_name: str, result: Dict[str, Any]):
         """Add results from a completed stage."""
         self.stage_outputs[stage_name] = result

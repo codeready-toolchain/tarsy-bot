@@ -24,6 +24,11 @@ class PromptContext:
     iteration_history: Optional[List[Dict]] = None
     current_iteration: Optional[int] = None
     max_iterations: Optional[int] = None
+    # Stage context for chain processing
+    stage_name: Optional[str] = None
+    is_final_stage: bool = False
+    previous_stages: Optional[List[str]] = None
+    stage_attributed_data: Optional[Dict[str, Any]] = None  # MCP data with stage attribution
 
 class PromptBuilder:
     """
@@ -922,7 +927,7 @@ Your Final Answer should include both the data collected and your stage-specific
 
     def build_data_collection_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
         """Build ReAct prompt for data collection using existing ReAct infrastructure."""
-        # Create modified context with data collection question
+        # Create modified context with data collection question (preserve all context fields)
         data_collection_context = PromptContext(
             agent_name=context.agent_name,
             alert_data=context.alert_data,
@@ -931,7 +936,14 @@ Your Final Answer should include both the data collected and your stage-specific
             mcp_servers=context.mcp_servers,
             server_guidance=context.server_guidance,
             agent_specific_guidance=context.agent_specific_guidance,
-            available_tools=context.available_tools
+            available_tools=context.available_tools,
+            iteration_history=context.iteration_history,
+            current_iteration=context.current_iteration,
+            max_iterations=context.max_iterations,
+            stage_name=context.stage_name,
+            is_final_stage=context.is_final_stage,
+            previous_stages=context.previous_stages,
+            stage_attributed_data=context.stage_attributed_data
         )
         
         # Override the question formatting temporarily
@@ -948,7 +960,7 @@ Your Final Answer should include both the data collected and your stage-specific
 
     def build_partial_analysis_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
         """Build ReAct prompt for partial analysis using existing ReAct infrastructure."""
-        # Create modified context with partial analysis question
+        # Create modified context with partial analysis question (preserve all context fields)
         partial_analysis_context = PromptContext(
             agent_name=context.agent_name,
             alert_data=context.alert_data,
@@ -957,7 +969,14 @@ Your Final Answer should include both the data collected and your stage-specific
             mcp_servers=context.mcp_servers,
             server_guidance=context.server_guidance,
             agent_specific_guidance=context.agent_specific_guidance,
-            available_tools=context.available_tools
+            available_tools=context.available_tools,
+            iteration_history=context.iteration_history,
+            current_iteration=context.current_iteration,
+            max_iterations=context.max_iterations,
+            stage_name=context.stage_name,
+            is_final_stage=context.is_final_stage,
+            previous_stages=context.previous_stages,
+            stage_attributed_data=context.stage_attributed_data
         )
         
         # Override the question formatting temporarily
@@ -975,14 +994,32 @@ Your Final Answer should include both the data collected and your stage-specific
     def build_final_analysis_prompt(self, context: PromptContext) -> str:
         """Build prompt for final analysis without ReAct format (no tools)."""
         sections = [
-            "# Final Analysis Task",
+            "# Final Analysis Task"
+        ]
+        
+        # Add stage context if available
+        if context.stage_name:
+            stage_info = f"\\n**Stage:** {context.stage_name}"
+            if context.is_final_stage:
+                stage_info += " (Final Analysis Stage)"
+            if context.previous_stages:
+                stage_info += f"\\n**Previous Stages:** {', '.join(context.previous_stages)}"
+            stage_info += "\\n"
+            sections.append(stage_info)
+        
+        sections.extend([
             self._build_context_section(context),
             self._build_alert_section(context.alert_data),
             self._build_runbook_section(context.runbook_content)
-        ]
+        ])
         
         # Include all accumulated data from previous stages
-        if context.mcp_data:
+        if context.stage_attributed_data:
+            # Use stage-attributed format for better clarity
+            formatted_data = self._format_stage_attributed_data(context.stage_attributed_data)
+            sections.append(f"## Complete Investigation Data\\n{formatted_data}")
+        elif context.mcp_data:
+            # Fallback to merged format
             sections.append(f"## Complete Investigation Data\\n{json.dumps(context.mcp_data, indent=2)}")
         
         sections.append("""## Instructions
@@ -995,6 +1032,39 @@ Provide comprehensive final analysis based on ALL collected data:
 Do NOT call any tools - use only the provided data.""")
         
         return "\\n\\n".join(sections)
+
+    def _format_stage_attributed_data(self, stage_attributed_data: Dict[str, Any]) -> str:
+        """Format stage-attributed MCP data for clear presentation."""
+        if not stage_attributed_data:
+            return "No investigation data from previous stages."
+        
+        sections = []
+        for stage_name, stage_data in stage_attributed_data.items():
+            sections.append(f"### Data from '{stage_name}' stage:")
+            
+            if not stage_data:
+                sections.append("*No MCP data collected in this stage*")
+                continue
+            
+            for server_name, server_results in stage_data.items():
+                if not server_results:
+                    continue
+                    
+                sections.append(f"**{server_name} server:**")
+                
+                # Handle both list and single result formats
+                results_list = server_results if isinstance(server_results, list) else [server_results]
+                
+                for i, result in enumerate(results_list, 1):
+                    if isinstance(result, dict):
+                        tool_name = result.get('tool', 'unknown_tool')
+                        sections.append(f"  {i}. {tool_name}:")
+                        sections.append(f"     {json.dumps(result, indent=6)}")
+                    else:
+                        sections.append(f"  {i}. {json.dumps(result, indent=4)}")
+                sections.append("")  # Add spacing between servers
+        
+        return "\\n".join(sections)
 
 
 # Shared instance since PromptBuilder is stateless

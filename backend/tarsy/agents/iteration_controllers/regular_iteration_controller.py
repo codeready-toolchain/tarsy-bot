@@ -21,6 +21,10 @@ class RegularIterationController(IterationController):
     explicit reasoning steps, focusing on tool selection and execution.
     """
     
+    def needs_mcp_tools(self) -> bool:
+        """Regular iteration requires MCP tool discovery."""
+        return True
+    
     async def execute_analysis_loop(self, context: IterationContext) -> str:
         """Execute regular analysis loop with iterative tool selection."""
         logger.info("Starting regular analysis loop")

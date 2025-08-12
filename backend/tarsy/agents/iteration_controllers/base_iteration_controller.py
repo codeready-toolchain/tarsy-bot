@@ -31,6 +31,7 @@ class IterationContext:
     # NEW: Chain support fields
     initial_mcp_data: Dict[str, Any] = field(default_factory=dict)  # From previous stages
     final_mcp_data: Dict[str, Any] = field(default_factory=dict)    # Collected in this stage
+    stage_attributed_data: Dict[str, Any] = field(default_factory=dict)  # Stage-attributed MCP data
 
 
 class IterationController(ABC):
@@ -40,6 +41,16 @@ class IterationController(ABC):
     This allows clean separation between ReAct and regular processing flows
     without conditional logic scattered throughout the BaseAgent.
     """
+    
+    @abstractmethod
+    def needs_mcp_tools(self) -> bool:
+        """
+        Determine if this iteration strategy requires MCP tool discovery.
+        
+        Returns:
+            True if MCP tools should be discovered, False otherwise
+        """
+        pass
     
     @abstractmethod
     async def execute_analysis_loop(self, context: IterationContext) -> str:

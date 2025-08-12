@@ -222,7 +222,11 @@ class BaseAgent(ABC):
                              available_tools: Optional[Dict] = None,
                              iteration_history: Optional[List[Dict]] = None,
                              current_iteration: Optional[int] = None,
-                             max_iterations: Optional[int] = None) -> PromptContext:
+                             max_iterations: Optional[int] = None,
+                             stage_name: Optional[str] = None,
+                             is_final_stage: bool = False,
+                             previous_stages: Optional[List[str]] = None,
+                             stage_attributed_data: Optional[Dict[str, Any]] = None) -> PromptContext:
         """
         Create a PromptContext object with all necessary data for prompt building.
         
@@ -234,6 +238,10 @@ class BaseAgent(ABC):
             iteration_history: History of previous iterations (optional)
             current_iteration: Current iteration number (optional)
             max_iterations: Maximum number of iterations (optional)
+            stage_name: Name of current processing stage (optional)
+            is_final_stage: Whether this is the final stage in a chain (optional)
+            previous_stages: List of previous stage names (optional)
+            stage_attributed_data: MCP data with stage attribution preserved (optional)
             
         Returns:
             PromptContext object ready for prompt building
@@ -249,7 +257,11 @@ class BaseAgent(ABC):
             available_tools=available_tools,
             iteration_history=iteration_history,
             current_iteration=current_iteration,
-            max_iterations=max_iterations or self._max_iterations
+            max_iterations=max_iterations or self._max_iterations,
+            stage_name=stage_name,
+            is_final_stage=is_final_stage,
+            previous_stages=previous_stages,
+            stage_attributed_data=stage_attributed_data
         )
 
     def _get_server_specific_tool_guidance(self) -> str:
@@ -436,17 +448,29 @@ class BaseAgent(ABC):
             
             # Get accumulated MCP data from all previous stages
             initial_mcp_data = alert_data.get_all_mcp_results()
+            stage_attributed_mcp_data = alert_data.get_stage_attributed_mcp_results()
             
             # Log enriched data usage from previous stages
             if previous_data := alert_data.get_stage_result("data-collection"):
                 logger.info("Using enriched data from data-collection stage")
                 # MCP results are already merged via get_all_mcp_results()
             
+            # Enhanced logging for stage attribution
+            if stage_attributed_mcp_data:
+                stages_with_data = list(stage_attributed_mcp_data.keys())
+                logger.info(f"Enhanced logging: Stage-attributed data available from stages: {stages_with_data}")
+            
             # Configure MCP client with agent-specific servers
             await self._configure_mcp_client()
             
-            # Get available tools from assigned MCP servers
-            available_tools = await self._get_available_tools(session_id)
+            # Get available tools only if the iteration strategy needs them
+            if self._iteration_controller.needs_mcp_tools():
+                logger.info(f"Enhanced logging: Strategy {self.iteration_strategy.value} requires MCP tool discovery")
+                available_tools = await self._get_available_tools(session_id)
+                logger.info(f"Enhanced logging: Retrieved {len(available_tools)} tools for {self.iteration_strategy.value}")
+            else:
+                logger.info(f"Enhanced logging: Strategy {self.iteration_strategy.value} skips MCP tool discovery - Final analysis stage")
+                available_tools = []
             
             # Create iteration context for controller
             context = IterationContext(
@@ -460,6 +484,10 @@ class BaseAgent(ABC):
             # If we have initial MCP data from previous stages, add it to context
             if initial_mcp_data:
                 context.initial_mcp_data = initial_mcp_data
+                
+            # Add stage-attributed data for enhanced context
+            if stage_attributed_mcp_data:
+                context.stage_attributed_data = stage_attributed_mcp_data
             
             # Delegate to appropriate iteration controller
             analysis_result = await self._iteration_controller.execute_analysis_loop(context)

@@ -30,6 +30,10 @@ class ReactToolsController(IterationController):
         self.llm_client = llm_client
         self.prompt_builder = prompt_builder
     
+    def needs_mcp_tools(self) -> bool:
+        """ReAct tools controller requires MCP tool discovery."""
+        return True
+    
     async def execute_analysis_loop(self, context: IterationContext) -> str:
         """Execute ReAct loop focused purely on data collection using existing ReAct format."""
         logger.info("Starting ReAct Tools-Only analysis loop")
@@ -46,7 +50,10 @@ class ReactToolsController(IterationController):
             alert_data=context.alert_data,
             runbook_content=context.runbook_content,
             mcp_data=context.initial_mcp_data,  # Include data from previous stages
-            available_tools={"tools": context.available_tools}
+            available_tools={"tools": context.available_tools},
+            stage_name="data-collection",
+            previous_stages=list(context.stage_attributed_data.keys()) if context.stage_attributed_data else None,
+            stage_attributed_data=context.stage_attributed_data
         )
         
         # Execute ReAct loop using EXISTING ReAct format and parsing

@@ -49,6 +49,10 @@ class SimpleReActController(IterationController):
         """
         self.llm_client = llm_client
         self.prompt_builder = prompt_builder
+    
+    def needs_mcp_tools(self) -> bool:
+        """ReAct iteration requires MCP tool discovery."""
+        return True
         
     async def execute_analysis_loop(self, context: IterationContext) -> str:
         """Execute simple ReAct loop following the standard pattern."""
