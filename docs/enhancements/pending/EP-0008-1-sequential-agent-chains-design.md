@@ -22,7 +22,7 @@ This enhancement introduces sequential agent chains to enable multi-stage alert 
 ### Existing Components (To Build Upon)
 
 **Agent Architecture:**
-- `BaseAgent` abstract class with `process_alert(alert_data, runbook_content, session_id)` interface
+- `BaseAgent` abstract class with `process_alert(alert_data: AlertProcessingData, session_id: str)` interface
 - `KubernetesAgent` and configurable agents via YAML
 - `AgentRegistry` maps alert types → agent class names
 - Agent factory creates agents dynamically
@@ -544,7 +544,7 @@ class AlertService:
         config_loader = ConfigurationLoader(settings.agent_config_file) if settings.agent_config_file else None
         self.chain_registry = ChainRegistry(config_loader)
         
-        # Initialize AgentFactory (needed by ChainOrchestrator)
+        # Initialize AgentFactory (needed for chain stage execution)
         self.agent_factory = AgentFactory(
             llm_client=None,  # Set in initialize()
             mcp_client=None,  # Set in initialize() 
@@ -1054,26 +1054,27 @@ const ChainProgressDisplay: React.FC = ({ chainId, stageProgress }) => {
 
 ## Implementation Plan
 
-### Phase 1: Core Chain Infrastructure
-1. **Data Models**: Create `AccumulatedAlertData`, `ChainDefinitionModel`, `StageExecution` models
-2. **Database Schema**: Add chain tracking to `AlertSession`, create `StageExecution` table
-3. **ChainRegistry**: Replace `AgentRegistry` with chain-based lookup (single agents = 1-stage chains)
-4. **ChainOrchestrator**: Sequential execution engine with database-driven state tracking
+### Phase 1: Foundation Models and Database
+1. **Data Models**: Enhance `AlertProcessingData`, create `ChainDefinitionModel`, `StageExecution` models
+2. **Database Schema**: Add chain fields to `AlertSession`, create `StageExecution` table with migrations
+3. **Iteration Controllers**: Implement new iteration strategies (`REACT_TOOLS`, `REACT_TOOLS_PARTIAL`, `REACT_FINAL_ANALYSIS`)
 
-### Phase 2: Agent Interface Updates
-1. **BaseAgent Interface**: Update `process_alert()` method to use `AccumulatedAlertData`
-2. **Agent Implementations**: Update `KubernetesAgent` and configurable agents for new interface  
-3. **Prompt Builder**: Update to handle accumulated data structure
+### Phase 2: Agent Infrastructure Updates
+1. **BaseAgent Interface**: Update `process_alert()` method to use `AlertProcessingData` with stage context
+2. **AgentFactory Enhancement**: Add strategy override support for stage-specific agent creation
+3. **Agent Implementations**: Update `KubernetesAgent` and configurable agents for new interface
+4. **HistoryService**: Add stage execution tracking methods
 
-### Phase 3: Configuration and Integration
-1. **Built-in Chain Definitions**: Replace `BUILTIN_AGENT_MAPPINGS` with `BUILTIN_CHAIN_DEFINITIONS`
-2. **YAML Configuration**: Extend `ConfigurationLoader` for `agent_chains` section
-3. **AlertService Integration**: Update to use `ChainRegistry` and `ChainOrchestrator`
+### Phase 3: Chain Registry and Execution
+1. **ChainRegistry**: Replace `AgentRegistry` with chain-based lookup system
+2. **Built-in Chain Definitions**: Replace `BUILTIN_AGENT_MAPPINGS` with `BUILTIN_CHAIN_DEFINITIONS`
+3. **YAML Configuration**: Extend `ConfigurationLoader` for `agent_chains` section
+4. **AlertService Integration**: Implement chain execution logic with stage-by-stage processing
 
-### Phase 4: Progress Reporting and Dashboard
-1. **Enhanced WebSocket Messages**: Add chain context to progress updates
+### Phase 4: Monitoring and Dashboard
+1. **Enhanced WebSocket Messages**: Add chain context and stage progress to existing hook system
 2. **Dashboard Components**: Chain progress visualization with stage-by-stage cards
-3. **History API**: Enhanced session detail with stage execution data
+3. **History API**: Enhanced session detail endpoints with stage execution data
 
 ---
 
