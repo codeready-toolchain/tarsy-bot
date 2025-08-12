@@ -124,6 +124,40 @@ class AgentFactory:
             # Enhance error context for debugging
             logger.error(f"Failed to create agent '{agent_class_name}': {e}")
             raise
+
+    async def get_agent(self, agent_identifier: str, iteration_strategy: Optional[str] = None) -> BaseAgent:
+        """
+        Get agent instance by identifier with optional strategy override.
+        
+        Args:
+            agent_identifier: Either class name (e.g., "KubernetesAgent") 
+                            or "ConfigurableAgent:agent-name" format
+            iteration_strategy: Strategy to use for this stage (overrides agent default)
+        
+        Returns:
+            Agent instance configured with appropriate strategy
+        """
+        # Create cache key including strategy for stage-specific caching
+        cache_key = f"{agent_identifier}:{iteration_strategy or 'default'}"
+        if hasattr(self, '_agent_cache') and cache_key in self._agent_cache:
+            return self._agent_cache[cache_key]
+        
+        # Create agent using existing create_agent method
+        agent = self.create_agent(agent_identifier)
+        
+        # Override strategy if provided
+        if iteration_strategy:
+            try:
+                strategy_enum = IterationStrategy(iteration_strategy)
+                agent.set_iteration_strategy(strategy_enum)
+            except ValueError:
+                logger.warning(f"Invalid iteration strategy '{iteration_strategy}', using agent default")
+        
+        # Cache the agent instance with strategy-specific key
+        if not hasattr(self, '_agent_cache'):
+            self._agent_cache: Dict[str, BaseAgent] = {}
+        self._agent_cache[cache_key] = agent
+        return agent
     
     def _create_traditional_agent(self, agent_class_name: str) -> BaseAgent:
         """

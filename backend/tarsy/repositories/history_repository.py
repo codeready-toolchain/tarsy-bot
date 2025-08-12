@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Union
 from sqlmodel import Session, asc, desc, func, select, and_, or_
 
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.history import AlertSession
+from tarsy.models.history import AlertSession, StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import BaseRepository
 from tarsy.utils.logger import get_logger
@@ -542,4 +542,73 @@ class HistoryRepository:
             
         except Exception as e:
             logger.error(f"Failed to get filter options: {str(e)}")
+            raise
+
+    # Stage Execution Methods for Chain Processing
+    def create_stage_execution(self, stage_execution: StageExecution) -> str:
+        """Create a new stage execution record."""
+        try:
+            self.session.add(stage_execution)
+            self.session.commit()
+            self.session.refresh(stage_execution)
+            return stage_execution.execution_id
+        except Exception as e:
+            logger.error(f"Failed to create stage execution: {str(e)}")
+            raise
+
+    def update_stage_execution(self, stage_execution: StageExecution) -> bool:
+        """Update an existing stage execution record."""
+        try:
+            self.session.merge(stage_execution)
+            self.session.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update stage execution: {str(e)}")
+            raise
+
+    def update_session_current_stage(
+        self, 
+        session_id: str, 
+        current_stage_index: int, 
+        current_stage_id: str
+    ) -> bool:
+        """Update the current stage information for a session."""
+        try:
+            statement = select(AlertSession).where(AlertSession.session_id == session_id)
+            session = self.session.exec(statement).first()
+            if session:
+                session.current_stage_index = current_stage_index
+                session.current_stage_id = current_stage_id
+                self.session.add(session)
+                self.session.commit()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to update session current stage: {str(e)}")
+            raise
+
+    def get_session_with_stages(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Get session with all stage execution details."""
+        try:
+            # Get session
+            session_stmt = select(AlertSession).where(AlertSession.session_id == session_id)
+            alert_session = self.session.exec(session_stmt).first()
+            
+            if not alert_session:
+                return None
+            
+            # Get stage executions
+            stages_stmt = (
+                select(StageExecution)
+                .where(StageExecution.session_id == session_id)
+                .order_by(StageExecution.stage_index)
+            )
+            stage_executions = self.session.exec(stages_stmt).all()
+            
+            return {
+                "session": alert_session.dict(),
+                "stages": [stage.dict() for stage in stage_executions]
+            }
+        except Exception as e:
+            logger.error(f"Failed to get session with stages: {str(e)}")
             raise

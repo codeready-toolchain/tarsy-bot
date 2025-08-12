@@ -15,6 +15,7 @@ from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 
 from tarsy.models.llm import LLMMessage
+from tarsy.models.alert_processing import AlertProcessingData
 from .iteration_controllers import (
     IterationController, RegularIterationController, SimpleReActController, 
     IterationContext
@@ -129,6 +130,11 @@ class BaseAgent(ABC):
                 return IterationStrategy.REACT_FINAL_ANALYSIS
             else:
                 raise ValueError(f"Unknown controller type: {type(self._iteration_controller)}")
+
+    # Strategy can be overridden per stage via AgentFactory
+    def set_iteration_strategy(self, strategy: IterationStrategy):
+        """Update iteration strategy (used by AgentFactory for stage-specific strategies)."""
+        self._iteration_controller = self._create_iteration_controller(strategy)
 
     @property
     def max_iterations(self) -> int:
@@ -403,26 +409,38 @@ class BaseAgent(ABC):
 
     async def process_alert(
         self,
-        alert_data: Dict[str, Any],
-        runbook_content: str,
+        alert_data: AlertProcessingData,  # Unified alert processing model
         session_id: str
     ) -> Dict[str, Any]:
         """
-        Process an alert using the appropriate iteration strategy (ReAct or Regular).
+        Process alert with unified alert processing model using configured iteration strategy.
         
         Args:
-            alert_data: Complete alert data as flexible dictionary
-            runbook_content: The downloaded runbook content  
+            alert_data: Unified alert processing model containing:
+                       - alert_type, alert_data: Original alert information
+                       - runbook_content: Downloaded runbook content
+                       - stage_outputs: Results from previous chain stages (empty for single-stage)
             session_id: Session ID for timeline logging
-            
+        
         Returns:
-            Dictionary containing the analysis result and metadata
+            Dictionary containing analysis result and metadata
         """
-        # Basic validation - data validation should happen at API layer
+        # Basic validation
         if not session_id:
             raise ValueError("session_id is required for alert processing")
-                       
+        
         try:
+            # Extract data using type-safe helper methods
+            runbook_content = alert_data.get_runbook_content()
+            original_alert = alert_data.get_original_alert_data()
+            
+            # Get accumulated MCP data from all previous stages
+            initial_mcp_data = alert_data.get_all_mcp_results()
+            
+            # Log enriched data usage from previous stages
+            if previous_data := alert_data.get_stage_result("data-collection"):
+                logger.info("Using enriched data from data-collection stage")
+                # MCP results are already merged via get_all_mcp_results()
             
             # Configure MCP client with agent-specific servers
             await self._configure_mcp_client()
@@ -432,14 +450,18 @@ class BaseAgent(ABC):
             
             # Create iteration context for controller
             context = IterationContext(
-                alert_data=alert_data,
+                alert_data=original_alert,
                 runbook_content=runbook_content,
                 available_tools=available_tools,
                 session_id=session_id,
                 agent=self
             )
             
-            # Delegate to appropriate iteration controller - no conditionals!
+            # If we have initial MCP data from previous stages, add it to context
+            if initial_mcp_data:
+                context.initial_mcp_data = initial_mcp_data
+            
+            # Delegate to appropriate iteration controller
             analysis_result = await self._iteration_controller.execute_analysis_loop(context)
             
             return {
@@ -447,6 +469,7 @@ class BaseAgent(ABC):
                 "agent": self.__class__.__name__,
                 "analysis": analysis_result,
                 "strategy": self.iteration_strategy.value,
+                "mcp_results": getattr(context, 'final_mcp_data', {}),
                 "timestamp_us": now_us()
             }
             

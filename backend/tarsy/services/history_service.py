@@ -295,6 +295,60 @@ class HistoryService:
         
         result = self._retry_database_operation("update_session_status", _update_status_operation)
         return result if result is not None else False
+
+    # Stage Execution Methods for Chain Processing
+    async def create_stage_execution(self, stage_execution: StageExecution) -> str:
+        """Create a new stage execution record."""
+        def _create_stage_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    logger.warning("History repository unavailable - stage execution not created")
+                    return None
+                return repo.create_stage_execution(stage_execution)
+        
+        result = self._retry_database_operation("create_stage_execution", _create_stage_operation)
+        return result if result is not None else stage_execution.execution_id
+    
+    async def update_stage_execution(self, stage_execution: StageExecution):
+        """Update an existing stage execution record."""
+        def _update_stage_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    logger.warning("History repository unavailable - stage execution not updated")
+                    return False
+                return repo.update_stage_execution(stage_execution)
+        
+        result = self._retry_database_operation("update_stage_execution", _update_stage_operation)
+        return result if result is not None else False
+    
+    async def update_session_current_stage(
+        self, 
+        session_id: str, 
+        current_stage_index: int, 
+        current_stage_id: str
+    ):
+        """Update the current stage information for a session."""
+        def _update_current_stage_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    logger.warning("History repository unavailable - current stage not updated")
+                    return False
+                return repo.update_session_current_stage(session_id, current_stage_index, current_stage_id)
+        
+        result = self._retry_database_operation("update_session_current_stage", _update_current_stage_operation)
+        return result if result is not None else False
+    
+    async def get_session_with_stages(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Get session with all stage execution details."""
+        def _get_session_with_stages_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    logger.warning("History repository unavailable - session with stages not retrieved")
+                    return None
+                return repo.get_session_with_stages(session_id)
+        
+        result = self._retry_database_operation("get_session_with_stages", _get_session_with_stages_operation)
+        return result
     
     # LLM Interaction Logging
     def log_llm_interaction(self, interaction: LLMInteraction) -> bool:
