@@ -38,7 +38,6 @@
 # - Masking is applied to MCP server responses before reaching the LLM or logs
 # - Set enabled: false to disable masking for specific servers
 #
-# For more information, see docs/enhancements/approved/EP-0006-configurable-agents-design.md
 
 # =============================================================================
 # MCP SERVER CONFIGURATIONS
@@ -244,6 +243,95 @@ agents:
       - Ensure proper monitoring and alerting for cloud resources
 
 # =============================================================================
+# AGENT CHAIN CONFIGURATIONS  
+# =============================================================================
+# Define sequential agent chains that process alerts through multiple stages.
+# Chains enable multi-stage workflows where agents build upon each other's work.
+#
+# CHAIN CONCEPTS:
+# - Each chain handles specific alert types through sequential stages
+# - Stages execute in order, with later stages receiving accumulated data from previous stages
+# - Agents can be reused across different stages with different iteration strategies
+# - Single agents are treated as 1-stage chains for unified processing
+#
+# STAGE ITERATION STRATEGIES:
+# - "react": Standard ReAct pattern for comprehensive analysis (default)
+# - "regular": Simple tool iteration without reasoning overhead for fast response
+# - "react-tools": Data collection focused with minimal analysis
+# - "react-tools-partial": Data collection + partial analysis of collected data  
+# - "react-final-analysis": Pure analysis using all accumulated data (no tool calls)
+
+agent_chains:
+  # Simple 2-stage security incident workflow
+  security-incident-chain:
+    alert_types: ["SecurityBreach", "AccessViolation"]
+    stages:
+      - name: "evidence-collection"        # Stage 1: Gather security evidence
+        agent: "security-agent"
+        iteration_strategy: "react-tools" # Focus on data collection
+      - name: "security-analysis"          # Stage 2: Analyze collected evidence  
+        agent: "security-agent"
+        iteration_strategy: "react"       # Full analysis with recommendations
+    description: "2-stage security incident investigation and response"
+
+  # Advanced 3-stage Kubernetes troubleshooting workflow
+  kubernetes-deep-troubleshooting:
+    alert_types: ["KubernetesCritical", "PodCrashLoop"]
+    stages:
+      - name: "system-data-collection"     # Stage 1: Collect system metrics and status
+        agent: "performance-agent"
+        iteration_strategy: "react-tools" # Focus on gathering comprehensive data
+      - name: "detailed-analysis"          # Stage 2: Deep dive analysis with tools
+        agent: "database-agent"            # Different agent for specialized analysis
+        iteration_strategy: "react-tools-partial" # Collect additional data + partial analysis
+      - name: "final-diagnosis"            # Stage 3: Comprehensive diagnosis and recommendations
+        agent: "performance-agent"         # Back to performance agent for final analysis
+        iteration_strategy: "react-final-analysis" # Pure analysis, no additional data collection
+    description: "3-stage deep Kubernetes troubleshooting with specialized analysis"
+
+  # Multi-stage performance investigation chain
+  performance-optimization-chain:
+    alert_types: ["HighLatency", "CPUSpike", "MemoryPressure"] 
+    stages:
+      - name: "metrics-collection"         # Stage 1: Gather performance metrics
+        agent: "performance-agent"
+        iteration_strategy: "react-tools" # Data collection focus
+      - name: "resource-analysis"          # Stage 2: Analyze resource utilization  
+        agent: "performance-agent"
+        iteration_strategy: "react-tools-partial" # Additional data + partial analysis
+      - name: "optimization-recommendations" # Stage 3: Provide optimization plan
+        agent: "performance-agent"
+        iteration_strategy: "react-final-analysis" # Comprehensive recommendations
+    description: "3-stage performance optimization with incremental analysis"
+
+  # Complex 4-stage multi-domain incident investigation  
+  cross-platform-incident-chain:
+    alert_types: ["SystemFailure", "MultiComponentFailure"]
+    stages:
+      - name: "kubernetes-investigation"    # Stage 1: Kubernetes cluster analysis
+        agent: "database-agent"             # Using database-agent for K8s analysis
+        iteration_strategy: "react-tools-partial" # Collect K8s data + initial analysis
+      - name: "performance-investigation"   # Stage 2: Performance metrics analysis
+        agent: "performance-agent" 
+        iteration_strategy: "react-tools-partial" # Collect perf data + analysis
+      - name: "security-assessment"         # Stage 3: Security impact assessment
+        agent: "security-agent"
+        iteration_strategy: "react-tools-partial" # Security data + assessment
+      - name: "unified-incident-report"     # Stage 4: Comprehensive incident report
+        agent: "security-agent"             # Security agent for final report (highest priority)
+        iteration_strategy: "react-final-analysis" # Synthesize all data into final report
+    description: "4-stage cross-platform incident investigation with unified reporting"
+
+  # Simple single-stage chain (equivalent to direct agent usage)
+  database-quick-fix:
+    alert_types: ["DatabaseConnectionFailure"]
+    stages:
+      - name: "database-diagnosis"          # Single stage for simple issues
+        agent: "database-agent"
+        # iteration_strategy: "react"       # Uses agent default if not specified
+    description: "Single-stage database issue resolution"
+
+# =============================================================================
 # CONFIGURATION VALIDATION NOTES
 # =============================================================================
 #
@@ -270,6 +358,13 @@ agents:
 #    - MCP servers must have server_id, server_type, and connection_params
 #    - All fields marked as required in the Pydantic models must be present
 #
+# 5. AGENT CHAIN VALIDATION:
+#    - Chain IDs must be unique across built-in and configured chains
+#    - All agents referenced in chain stages must exist (built-in or configured)
+#    - Alert types can only be handled by one chain (no conflicts allowed)
+#    - Each chain must have at least one stage
+#    - Stage names within a chain must be unique
+#
 # =============================================================================
 # DEPLOYMENT CHECKLIST
 # =============================================================================
@@ -282,10 +377,12 @@ agents:
 # 4. □ Set required environment variables in .env for template substitution
 # 5. □ Test MCP server connectivity independently
 # 6. □ Enable only the MCP servers you have properly configured
-# 7. □ Verify no alert type conflicts with existing built-in agents
-# 8. □ Set AGENT_CONFIG_PATH in .env if using a different location
-# 9. □ Test configuration validation: python -c "from tarsy.config.agent_config import ConfigurationLoader; ConfigurationLoader('./config/agents.yaml').load_and_validate()"
-# 10. □ Monitor application startup logs for configuration errors
-# 11. □ Verify agents are properly registered in the AgentRegistry
+# 7. □ Verify no alert type conflicts with existing built-in agents or chains
+# 8. □ Configure agent chains for multi-stage workflows if needed
+# 9. □ Verify all agents referenced in chains exist and are properly configured
+# 10. □ Set AGENT_CONFIG_PATH in .env if using a different location
+# 11. □ Test configuration validation: python -c "from tarsy.config.agent_config import ConfigurationLoader; ConfigurationLoader('./config/agents.yaml').load_and_validate()"
+# 12. □ Monitor application startup logs for configuration errors
+# 13. □ Verify agents and chains are properly registered in the ChainRegistry
 #
 # ============================================================================= 

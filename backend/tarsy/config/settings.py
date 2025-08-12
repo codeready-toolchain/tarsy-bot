@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(default="")
     openai_api_key: str = Field(default="")
     grok_api_key: str = Field(default="")
-    default_llm_provider: str = Field(default="gemini")
+    default_llm_provider: str = Field(default="gemini-2.5-flash")
     
     # GitHub Configuration
     github_token: Optional[str] = Field(default=None)
@@ -56,9 +56,24 @@ class Settings(BaseSettings):
             "api_key_env": "GEMINI_API_KEY",
             "type": "gemini"
         },
+        "gemini-2.5-pro": {
+            "model": "gemini-2.5-pro",
+            "api_key_env": "GEMINI_API_KEY",
+            "type": "gemini"
+        },
+        "gemini-2.5-flash": {
+            "model": "gemini-2.5-flash",
+            "api_key_env": "GEMINI_API_KEY",
+            "type": "gemini"
+        },
         "openai": {
             "model": "gpt-4-1106-preview",
             "api_key_env": "OPENAI_API_KEY", 
+            "type": "openai"
+        },
+        "gpt-4": {
+            "model": "gpt-4-1106-preview",
+            "api_key_env": "OPENAI_API_KEY",
             "type": "openai"
         },
         "grok": {
@@ -108,7 +123,7 @@ class Settings(BaseSettings):
     
     # Agent Configuration
     agent_config_path: str = Field(
-        default="./config/agents.yaml",
+        default="../config/agents.yaml",
         description="Path to agent and MCP server configuration file"
     )
     
@@ -144,11 +159,14 @@ class Settings(BaseSettings):
         config = self.llm_providers[provider].copy()
         
         # Get API key from the corresponding field
-        if provider == "gemini":
+        # Handle all Gemini variants
+        if provider.startswith("gemini"):
             config["api_key"] = self.gemini_api_key
-        elif provider == "openai":
+        # Handle all OpenAI variants (openai, gpt-4, gpt-3.5, etc.)
+        elif provider.startswith("openai") or provider.startswith("gpt"):
             config["api_key"] = self.openai_api_key
-        elif provider == "grok":
+        # Handle all Grok/xAI variants (grok, xai, etc.)
+        elif provider.startswith("grok") or provider.startswith("xai"):
             config["api_key"] = self.grok_api_key
         else:
             config["api_key"] = ""

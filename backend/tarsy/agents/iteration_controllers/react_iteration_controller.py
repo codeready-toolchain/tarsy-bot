@@ -140,6 +140,10 @@ class SimpleReActController(IterationController):
                     # LLM didn't provide action but also didn't complete - prompt for action
                     logger.warning("ReAct response missing action, adding prompt to continue")
                     react_history.extend(self.prompt_builder.get_react_continuation_prompt("general"))
+                    
+                    # Prevent context overflow by truncating history if needed
+                    if len(react_history) > 30:
+                        react_history = self.prompt_builder.truncate_conversation_history(react_history, max_entries=25)
                 
             except Exception as e:
                 logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")

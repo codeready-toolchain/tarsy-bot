@@ -6,7 +6,7 @@ to use configuration data instead of hardcoded behavior. This allows
 creating agents through YAML configuration files without writing Python code.
 """
 
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from ..integrations.llm.client import LLMClient
 from ..integrations.mcp.client import MCPClient

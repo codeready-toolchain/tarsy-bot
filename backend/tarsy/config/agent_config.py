@@ -105,7 +105,7 @@ class ConfigurationLoader:
             self._detect_circular_dependencies(config)
             
             logger.debug("Detecting naming conflicts")
-            self._detect_naming_conflicts(config)
+            self._check_naming_conflicts(config)
             
             logger.debug("Validating configuration completeness")
             self._validate_configuration_completeness(config)

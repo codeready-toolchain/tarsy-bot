@@ -116,6 +116,9 @@ htmlcov/
 *.db-shm
 *.db-wal
 
+# Configuration files (keep .example files)
+config/agents.yaml
+
 # Temporary files
 tmp/
 temp/ 
