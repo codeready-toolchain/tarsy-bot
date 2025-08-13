@@ -650,7 +650,7 @@ class BaseAgent(ABC):
             
             # Use only configured servers for this agent
             for server_name in self._configured_servers:
-                server_tools = await self.mcp_client.list_tools(session_id=session_id, server_name=server_name)
+                server_tools = await self.mcp_client.list_tools(session_id=session_id, server_name=server_name, stage_execution_id=self._current_stage_execution_id)
                 if server_name in server_tools:
                     for tool in server_tools[server_name]:
                         tool_with_server = tool.copy()

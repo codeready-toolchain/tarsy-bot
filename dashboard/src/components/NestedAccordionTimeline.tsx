@@ -409,13 +409,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                     </Typography>
                   </Box>
 
-                  <Box display="flex" gap={1} alignItems="center" onClick={(e) => e.stopPropagation()}>
-                    <CopyButton
-                      text={formatStageForCopy(stage, stageIndex, stageInteractions)}
-                      variant="icon"
-                      size="small"
-                      tooltip="Copy stage timeline to clipboard"
-                    />
+                  <Box display="flex" gap={1} alignItems="center">
                     <Chip 
                       label={stage.status} 
                       color={getStageStatusColor(stage.status)}
@@ -436,9 +430,17 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                 {/* Stage Metadata */}
                 <Card variant="outlined" sx={{ mb: 3, bgcolor: 'grey.25' }}>
                   <CardContent>
-                    <Typography variant="subtitle2" gutterBottom>
-                      Stage Information
-                    </Typography>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <Typography variant="subtitle2">
+                        Stage Information
+                      </Typography>
+                      <CopyButton
+                        text={formatStageForCopy(stage, stageIndex, stageInteractions)}
+                        variant="icon"
+                        size="small"
+                        tooltip="Copy stage timeline to clipboard"
+                      />
+                    </Box>
                     <Box display="flex" gap={3} flexWrap="wrap">
                       <Typography variant="body2">
                         <strong>Agent:</strong> {stage.agent}

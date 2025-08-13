@@ -239,7 +239,7 @@ function SessionDetailPage() {
           }
         } 
         // Handle individual LLM/MCP interactions - refresh timeline to show new interactions
-        else if (data.type === 'llm_interaction' || data.type === 'mcp_communication') {
+        else if (data.type === 'llm_interaction' || data.type === 'mcp_communication' || data.type === 'mcp_tool_list') {
           console.log(`New ${data.type} detected, refreshing timeline to show latest interactions`);
           
           try {

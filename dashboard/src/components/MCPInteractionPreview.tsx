@@ -68,8 +68,8 @@ function MCPInteractionPreview({
     return formatted.join(', ') + (hasMore ? ', ...' : '');
   };
 
-  const isToolCall = interaction.communication_type === 'tool_call' && interaction.tool_name;
-  const isToolList = interaction.communication_type === 'tool_list';
+  const isToolCall = interaction.communication_type === 'tool_call' && interaction.tool_name && interaction.tool_name !== 'list_tools';
+  const isToolList = interaction.communication_type === 'tool_list' || (interaction.communication_type === 'tool_call' && interaction.tool_name === 'list_tools');
 
   return (
     <Box sx={{ fontSize: '0.875rem' }}>

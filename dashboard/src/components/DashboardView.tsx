@@ -353,7 +353,7 @@ function DashboardView() {
         // Session status changes affect the main dashboard
         console.log('🔄 Session status change - refreshing dashboard data');
         throttledRefresh();
-      } else if (update.type === 'llm_interaction' || update.type === 'mcp_communication') {
+      } else if (update.type === 'llm_interaction' || update.type === 'mcp_communication' || update.type === 'mcp_tool_list') {
         // Session-specific updates don't require dashboard refresh - these are for detail views
         console.log('📊 Session-specific update - no dashboard refresh needed');
       } else if (update.type === 'batched_session_updates') {

@@ -326,19 +326,21 @@ async def mcp_interaction_context(session_id: str, server_name: str, tool_name: 
 
 
 @asynccontextmanager
-async def mcp_list_context(session_id: str, server_name: Optional[str] = None) -> AsyncContextManager[TypedHookContext[MCPInteraction]]:
+async def mcp_list_context(session_id: str, server_name: Optional[str] = None, stage_execution_id: Optional[str] = None) -> AsyncContextManager[TypedHookContext[MCPInteraction]]:
     """
     Create a typed context for MCP tool listing.
     
     Args:
         session_id: Session identifier
         server_name: Target server name (None for all servers)
+        stage_execution_id: Stage execution ID for chain context
         
     Yields:
         Typed hook context for MCP tool list interaction
     """
     interaction = MCPInteraction(
         session_id=session_id,
+        stage_execution_id=stage_execution_id,
         server_name=server_name or "all_servers",
         communication_type="tool_list",
         start_time_us=now_us(),

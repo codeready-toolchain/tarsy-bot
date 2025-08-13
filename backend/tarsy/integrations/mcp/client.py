@@ -75,7 +75,7 @@ class MCPClient:
         
         self._initialized = True
     
-    async def list_tools(self, session_id: str, server_name: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+    async def list_tools(self, session_id: str, server_name: Optional[str] = None, stage_execution_id: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
         """List available tools from MCP servers."""
         if not self._initialized:
             await self.initialize()
@@ -84,7 +84,7 @@ class MCPClient:
             raise ValueError("session_id is required for MCP tool listing")
         
         # Use typed hook context for clean data flow
-        async with mcp_list_context(session_id, server_name) as ctx:
+        async with mcp_list_context(session_id, server_name, stage_execution_id) as ctx:
             
             # Get request ID for logging
             request_id = ctx.get_request_id()

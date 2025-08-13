@@ -293,7 +293,7 @@ function InteractionDetails({
   const renderMCPDetails = (mcpDetails: MCPInteraction) => (
     <Stack spacing={2}>
       {/* Only show Tool Call section for actual tool calls, not tool lists */}
-      {mcpDetails.communication_type !== 'tool_list' && (
+      {mcpDetails.communication_type !== 'tool_list' && !(mcpDetails.communication_type === 'tool_call' && mcpDetails.tool_name === 'list_tools') && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
@@ -332,9 +332,9 @@ function InteractionDetails({
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              {mcpDetails.communication_type === 'tool_list' ? 'Available Tools' : 'Result'}
+              {(mcpDetails.communication_type === 'tool_list' || (mcpDetails.communication_type === 'tool_call' && mcpDetails.tool_name === 'list_tools')) ? 'Available Tools' : 'Result'}
             </Typography>
-            {mcpDetails.communication_type === 'tool_list' && mcpDetails.available_tools && (
+            {(mcpDetails.communication_type === 'tool_list' || (mcpDetails.communication_type === 'tool_call' && mcpDetails.tool_name === 'list_tools')) && mcpDetails.available_tools && (
               <Typography variant="caption" color="text.secondary" sx={{ 
                 bgcolor: 'primary.main', 
                 color: 'primary.contrastText', 
@@ -359,19 +359,19 @@ function InteractionDetails({
           </Box>
           <CopyButton
             text={JSON.stringify(
-              mcpDetails.communication_type === 'tool_list' 
+              (mcpDetails.communication_type === 'tool_list' || (mcpDetails.communication_type === 'tool_call' && mcpDetails.tool_name === 'list_tools'))
                 ? mcpDetails.available_tools 
                 : mcpDetails.result, 
               null, 2
             )}
             variant="icon"
             size="small"
-            tooltip={mcpDetails.communication_type === 'tool_list' ? 'Copy available tools' : 'Copy result'}
+            tooltip={(mcpDetails.communication_type === 'tool_list' || (mcpDetails.communication_type === 'tool_call' && mcpDetails.tool_name === 'list_tools')) ? 'Copy available tools' : 'Copy result'}
           />
         </Box>
         <JsonDisplay 
-          data={mcpDetails.communication_type === 'tool_list' ? mcpDetails.available_tools : mcpDetails.result} 
-          collapsed={mcpDetails.communication_type === 'tool_list' ? false : 1}
+          data={(mcpDetails.communication_type === 'tool_list' || (mcpDetails.communication_type === 'tool_call' && mcpDetails.tool_name === 'list_tools')) ? mcpDetails.available_tools : mcpDetails.result} 
+          collapsed={(mcpDetails.communication_type === 'tool_list' || (mcpDetails.communication_type === 'tool_call' && mcpDetails.tool_name === 'list_tools')) ? false : 1}
           maxHeight={800}
         />
       </Box>
@@ -472,11 +472,11 @@ function InteractionDetails({
       }
       case 'mcp': {
         const mcp = details as MCPInteraction;
-        let mcpFormatted = mcp.communication_type === 'tool_list' 
+        let mcpFormatted = (mcp.communication_type === 'tool_list' || (mcp.communication_type === 'tool_call' && mcp.tool_name === 'list_tools'))
           ? '=== MCP TOOL LIST ===\n\n' 
           : '=== MCP TOOL CALL ===\n\n';
         
-        if (mcp.communication_type === 'tool_list') {
+        if (mcp.communication_type === 'tool_list' || (mcp.communication_type === 'tool_call' && mcp.tool_name === 'list_tools')) {
           mcpFormatted += `SERVER: ${mcp.server_name}\n`;
           if (mcp.execution_time_ms) mcpFormatted += `EXECUTION TIME: ${mcp.execution_time_ms}ms\n`;
           mcpFormatted += `\nAVAILABLE TOOLS:\n${JSON.stringify(mcp.available_tools, null, 2)}`;
@@ -519,7 +519,7 @@ function InteractionDetails({
       }
       case 'mcp': {
         const mcp = details as MCPInteraction;
-        if (mcp.communication_type === 'tool_list') {
+        if (mcp.communication_type === 'tool_list' || (mcp.communication_type === 'tool_call' && mcp.tool_name === 'list_tools')) {
           return `Tool List from ${mcp.server_name}\n\n---\n\n${JSON.stringify(mcp.available_tools, null, 2)}`;
         } else {
           return `${mcp.tool_name}(${JSON.stringify(mcp.parameters, null, 2)})\n\n---\n\n${JSON.stringify(mcp.result, null, 2)}`;
