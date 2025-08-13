@@ -272,7 +272,7 @@ class AlertService:
                     # Mark stage as started
                     await self._update_stage_execution_started(stage_execution_id)
                     
-                    # Get agent instance with stage-specific strategy
+                    # Get agent instance with stage-specific strategy (always creates unique instance)
                     agent = await self.agent_factory.get_agent(
                         agent_identifier=stage.agent,
                         iteration_strategy=stage.iteration_strategy
@@ -716,7 +716,23 @@ class AlertService:
                 agent=stage.agent,
                 status="pending"
             )
-            return await self.history_service.create_stage_execution(stage_execution)
+            
+            # Mark this as a create operation for the history hook
+            stage_execution._db_operation = 'create'
+            
+            # Trigger stage execution hooks (history + dashboard) via context manager
+            try:
+                from tarsy.hooks.typed_context import stage_execution_context
+                async with stage_execution_context(session_id, stage_execution) as ctx:
+                    # Context automatically triggers hooks when exiting
+                    # History hook will create DB record and set execution_id on the model
+                    pass
+                logger.debug(f"Triggered stage hooks for stage creation {stage_index}: {stage.name}")
+            except Exception as e:
+                logger.warning(f"Failed to trigger stage creation hooks: {str(e)}")
+            
+            # Return the execution_id that was set by the history hook
+            return stage_execution.execution_id if hasattr(stage_execution, 'execution_id') and stage_execution.execution_id else f"stage_{stage_index}_{uuid.uuid4().hex[:8]}"
             
         except Exception as e:
             logger.warning(f"Failed to create stage execution: {str(e)}")
@@ -772,7 +788,18 @@ class AlertService:
             if existing_stage.started_at_us and existing_stage.completed_at_us:
                 existing_stage.duration_ms = int((existing_stage.completed_at_us - existing_stage.started_at_us) / 1000)
             
-            await self.history_service.update_stage_execution(existing_stage)
+            # Mark this as an update operation for the history hook
+            existing_stage._db_operation = 'update'
+            
+            # Trigger stage execution hooks (history + dashboard) via context manager
+            try:
+                from tarsy.hooks.typed_context import stage_execution_context
+                async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+                    # Context automatically triggers hooks when exiting
+                    pass
+                logger.debug(f"Triggered stage hooks for stage completion {existing_stage.stage_index}: {existing_stage.stage_id}")
+            except Exception as e:
+                logger.warning(f"Failed to trigger stage completion hooks: {str(e)}")
             
         except Exception as e:
             logger.warning(f"Failed to update stage execution as completed: {str(e)}")
@@ -805,7 +832,18 @@ class AlertService:
             if existing_stage.started_at_us and existing_stage.completed_at_us:
                 existing_stage.duration_ms = int((existing_stage.completed_at_us - existing_stage.started_at_us) / 1000)
             
-            await self.history_service.update_stage_execution(existing_stage)
+            # Mark this as an update operation for the history hook
+            existing_stage._db_operation = 'update'
+            
+            # Trigger stage execution hooks (history + dashboard) via context manager
+            try:
+                from tarsy.hooks.typed_context import stage_execution_context
+                async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+                    # Context automatically triggers hooks when exiting
+                    pass
+                logger.debug(f"Triggered stage hooks for stage failure {existing_stage.stage_index}: {existing_stage.stage_id}")
+            except Exception as e:
+                logger.warning(f"Failed to trigger stage failure hooks: {str(e)}")
             
         except Exception as e:
             logger.warning(f"Failed to update stage execution as failed: {str(e)}")
@@ -831,7 +869,19 @@ class AlertService:
             existing_stage.status = "active"
             existing_stage.started_at_us = now_us()
             
-            await self.history_service.update_stage_execution(existing_stage)
+            # Mark this as an update operation for the history hook
+            existing_stage._db_operation = 'update'
+            
+            # Trigger stage execution hooks (history + dashboard) via context manager
+            try:
+                from tarsy.hooks.typed_context import stage_execution_context
+                async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+                    # Context automatically triggers hooks when exiting
+                    # History hook will update DB record and dashboard hook will broadcast
+                    pass
+                logger.debug(f"Triggered stage hooks for stage start {existing_stage.stage_index}: {existing_stage.stage_id}")
+            except Exception as e:
+                logger.warning(f"Failed to trigger stage start hooks: {str(e)}")
             
         except Exception as e:
             logger.warning(f"Failed to update stage execution as started: {str(e)}")

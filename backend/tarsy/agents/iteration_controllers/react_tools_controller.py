@@ -144,10 +144,13 @@ class ReactToolsController(IterationController):
         # REUSE fallback logic from SimpleReActController
         logger.warning("Data collection reached maximum iterations without final answer")
         
+        # Use utility method to flatten react history
+        flattened_history = self.prompt_builder._flatten_react_history(react_history)
+        
         final_prompt = f"""Based on the data collection so far, provide a summary of what information was gathered.
 
 Collection History:
-{chr(10).join(react_history)}
+{chr(10).join(flattened_history)}
 
 Please provide a final summary of the data collected, even if the collection isn't complete."""
         

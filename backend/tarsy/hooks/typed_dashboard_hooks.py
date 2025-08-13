@@ -8,10 +8,12 @@ via WebSocket without data contamination.
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from tarsy.hooks.typed_context import BaseTypedHook
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.history import StageExecution
 from tarsy.utils.timestamp import now_us
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
 
@@ -171,4 +173,64 @@ class TypedMCPListDashboardHook(BaseTypedHook[MCPInteraction]):
             
         except Exception as e:
             logger.error(f"Failed to broadcast MCP tool list to dashboard: {e}")
+            raise
+
+
+class TypedStageExecutionDashboardHook(BaseTypedHook[StageExecution]):
+    """
+    Typed hook for broadcasting stage execution progress to dashboard.
+    
+    Receives StageExecution and broadcasts stage progress updates to WebSocket clients.
+    """
+    
+    def __init__(self, dashboard_broadcaster: DashboardBroadcaster):
+        super().__init__("typed_stage_dashboard")
+        self.dashboard_broadcaster = dashboard_broadcaster
+
+    async def execute(self, stage_execution: StageExecution) -> None:
+        """
+        Broadcast stage execution progress to dashboard.
+        
+        Args:
+            stage_execution: Stage execution data
+        """
+        try:
+            # Extract stage name from stage_id (format: "stage_name_index")
+            stage_name = stage_execution.stage_id.split('_')[0] if '_' in stage_execution.stage_id else stage_execution.stage_id
+            
+            # Get chain_id - fallback to session_id if not available in context
+            # In a proper implementation, this would be passed through context
+            chain_id = stage_execution.session_id  # Using session_id as fallback
+            
+            # Format stage progress as dashboard update - this ensures it gets wrapped properly
+            # and sent to both session and dashboard channels like other interactions
+            stage_update = {
+                "type": "stage_progress",
+                "session_id": stage_execution.session_id,
+                "chain_id": chain_id,
+                "stage_execution_id": stage_execution.execution_id,
+                "stage_name": stage_name,
+                "stage_index": stage_execution.stage_index,
+                "agent": stage_execution.agent,
+                "status": stage_execution.status,
+                "started_at_us": stage_execution.started_at_us,
+                "completed_at_us": stage_execution.completed_at_us,
+                "duration_ms": stage_execution.duration_ms,
+                "error_message": stage_execution.error_message,
+                "iteration_strategy": getattr(stage_execution, 'iteration_strategy', None),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            # Send to session-specific channel wrapped in dashboard_update format
+            session_count = await self.dashboard_broadcaster.broadcast_session_update(
+                stage_execution.session_id, stage_update
+            )
+            
+            # Also send to dashboard channel for general monitoring
+            dashboard_count = await self.dashboard_broadcaster.broadcast_dashboard_update(stage_update)
+            
+            logger.debug(f"Broadcasted stage execution {stage_execution.execution_id} progress to dashboard: session={session_count}, dashboard={dashboard_count}")
+            
+        except Exception as e:
+            logger.error(f"Failed to broadcast stage execution to dashboard: {e}")
             raise

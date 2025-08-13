@@ -505,13 +505,35 @@ Focus on {task_focus} for human operators to execute."""
     # Standard ReAct Framework Methods 
     # ====================================================================
 
+    def _flatten_react_history(self, react_history: List) -> List[str]:
+        """
+        Utility method to flatten react history and ensure all elements are strings.
+        
+        This handles cases where react_history contains nested lists from 
+        continuation prompts or error handling.
+        
+        Args:
+            react_history: List that may contain strings or nested lists
+            
+        Returns:
+            Flattened list with all elements converted to strings
+        """
+        flattened_history = []
+        for item in react_history:
+            if isinstance(item, list):
+                flattened_history.extend(str(subitem) for subitem in item)
+            else:
+                flattened_history.append(str(item))
+        return flattened_history
+
     def build_standard_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
         """Build standard ReAct prompt following the established ReAct pattern."""
         
         # Build the ReAct history from previous iterations
         history_text = ""
         if react_history:
-            history_text = "\n".join(react_history) + "\n"
+            flattened_history = self._flatten_react_history(react_history)
+            history_text = "\n".join(flattened_history) + "\n"
         
         available_actions = self._format_available_actions(context.available_tools)
         action_names = self._get_action_names(context.available_tools)

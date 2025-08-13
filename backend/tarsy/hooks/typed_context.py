@@ -7,7 +7,6 @@ from service methods to hooks without contamination or type mismatches.
 
 import asyncio
 import logging
-import uuid
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from typing import Any, AsyncContextManager, Dict, Generic, Optional, TypeVar, Union
@@ -17,8 +16,11 @@ from tarsy.utils.timestamp import now_us
 
 logger = logging.getLogger(__name__)
 
+# Import StageExecution for type support
+from tarsy.models.history import StageExecution
+
 # Type variables for generic hook context
-TInteraction = TypeVar('TInteraction', LLMInteraction, MCPInteraction)
+TInteraction = TypeVar('TInteraction', LLMInteraction, MCPInteraction, StageExecution)
 
 
 class BaseTypedHook(ABC, Generic[TInteraction]):
@@ -85,6 +87,7 @@ class TypedHookManager:
         self.llm_hooks: Dict[str, BaseTypedHook[LLMInteraction]] = {}
         self.mcp_hooks: Dict[str, BaseTypedHook[MCPInteraction]] = {}
         self.mcp_list_hooks: Dict[str, BaseTypedHook[MCPInteraction]] = {}
+        self.stage_hooks: Dict[str, BaseTypedHook[StageExecution]] = {}
 
     def register_llm_hook(self, hook: BaseTypedHook[LLMInteraction]) -> None:
         """Register an LLM interaction hook."""
@@ -101,6 +104,11 @@ class TypedHookManager:
         self.mcp_list_hooks[hook.name] = hook
         logger.info(f"Registered typed MCP list hook: {hook.name}")
 
+    def register_stage_hook(self, hook: BaseTypedHook[StageExecution]) -> None:
+        """Register a stage execution hook."""
+        self.stage_hooks[hook.name] = hook
+        logger.info(f"Registered typed stage execution hook: {hook.name}")
+
     async def trigger_llm_hooks(self, interaction: LLMInteraction) -> Dict[str, bool]:
         """Trigger all LLM hooks with typed data."""
         return await self._trigger_hooks(self.llm_hooks, interaction, "LLM")
@@ -112,6 +120,10 @@ class TypedHookManager:
     async def trigger_mcp_list_hooks(self, interaction: MCPInteraction) -> Dict[str, bool]:
         """Trigger all MCP list hooks with typed data."""
         return await self._trigger_hooks(self.mcp_list_hooks, interaction, "MCP_LIST")
+
+    async def trigger_stage_hooks(self, stage_execution: StageExecution) -> Dict[str, bool]:
+        """Trigger all stage execution hooks with typed data."""
+        return await self._trigger_hooks(self.stage_hooks, stage_execution, "STAGE_EXECUTION")
 
     async def _trigger_hooks(self, hooks: Dict[str, BaseTypedHook[TInteraction]], 
                            interaction: TInteraction, hook_type: str) -> Dict[str, bool]:
@@ -153,11 +165,15 @@ class TypedHookManager:
         return results
 
 
-class TypedHookContext(Generic[TInteraction]):
+class InteractionHookContext(Generic[TInteraction]):
     """
-    Context manager for typed hook execution during service operations.
+    Context manager for LLM/MCP interaction hook execution within stage operations.
+    
+    Designed specifically for interactions (LLM calls, MCP tool calls) that occur during stage execution.
+    For stage-level operations (create/update stage executions), use StageExecutionHookContext instead.
     
     Provides automatic typed hook triggering with proper error handling and timing.
+    Manages interaction-specific fields like start_time_us, end_time_us, duration_ms, success, etc.
     """
     
     def __init__(self, interaction_template: TInteraction, typed_hook_manager: TypedHookManager):
@@ -172,7 +188,7 @@ class TypedHookContext(Generic[TInteraction]):
         self.typed_hook_manager = typed_hook_manager
         self.start_time_us = None
 
-    async def __aenter__(self) -> 'TypedHookContext[TInteraction]':
+    async def __aenter__(self) -> 'InteractionHookContext[TInteraction]':
         """Enter async context - start timing."""
         self.start_time_us = now_us()
         self.interaction.start_time_us = self.start_time_us
@@ -270,7 +286,7 @@ def get_typed_hook_manager() -> TypedHookManager:
 
 
 @asynccontextmanager
-async def llm_interaction_context(session_id: str, request_data: Dict[str, Any], stage_execution_id: Optional[str] = None) -> AsyncContextManager[TypedHookContext[LLMInteraction]]:
+async def llm_interaction_context(session_id: str, request_data: Dict[str, Any], stage_execution_id: Optional[str] = None) -> AsyncContextManager[InteractionHookContext[LLMInteraction]]:
     """
     Create a typed context for LLM interactions.
     
@@ -291,13 +307,13 @@ async def llm_interaction_context(session_id: str, request_data: Dict[str, Any],
         step_description=""  # Will be set by history service
     )
     
-    async with TypedHookContext(interaction, get_typed_hook_manager()) as ctx:
+    async with InteractionHookContext(interaction, get_typed_hook_manager()) as ctx:
         yield ctx
 
 
 @asynccontextmanager
 async def mcp_interaction_context(session_id: str, server_name: str, tool_name: str, 
-                                 arguments: Dict[str, Any], stage_execution_id: Optional[str] = None) -> AsyncContextManager[TypedHookContext[MCPInteraction]]:
+                                 arguments: Dict[str, Any], stage_execution_id: Optional[str] = None) -> AsyncContextManager[InteractionHookContext[MCPInteraction]]:
     """
     Create a typed context for MCP tool interactions.
     
@@ -321,12 +337,12 @@ async def mcp_interaction_context(session_id: str, server_name: str, tool_name: 
         step_description=""  # Will be set by history service
     )
     
-    async with TypedHookContext(interaction, get_typed_hook_manager()) as ctx:
+    async with InteractionHookContext(interaction, get_typed_hook_manager()) as ctx:
         yield ctx
 
 
 @asynccontextmanager
-async def mcp_list_context(session_id: str, server_name: Optional[str] = None, stage_execution_id: Optional[str] = None) -> AsyncContextManager[TypedHookContext[MCPInteraction]]:
+async def mcp_list_context(session_id: str, server_name: Optional[str] = None, stage_execution_id: Optional[str] = None) -> AsyncContextManager[InteractionHookContext[MCPInteraction]]:
     """
     Create a typed context for MCP tool listing.
     
@@ -347,5 +363,48 @@ async def mcp_list_context(session_id: str, server_name: Optional[str] = None, s
         step_description=""  # Will be set by history service
     )
     
-    async with TypedHookContext(interaction, get_typed_hook_manager()) as ctx:
+    async with InteractionHookContext(interaction, get_typed_hook_manager()) as ctx:
+        yield ctx
+
+
+class StageExecutionHookContext:
+    """
+    Simple hook context for stage execution events.
+    
+    Unlike InteractionHookContext, this doesn't try to modify the StageExecution object
+    which has different field names and semantics.
+    """
+    
+    def __init__(self, stage_execution: StageExecution, typed_hook_manager: TypedHookManager):
+        self.stage_execution = stage_execution
+        self.typed_hook_manager = typed_hook_manager
+
+    async def __aenter__(self) -> 'StageExecutionHookContext':
+        """Enter async context."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context - trigger hooks."""
+        # Always trigger stage hooks - stage execution state is managed by the service
+        try:
+            await self.typed_hook_manager.trigger_stage_hooks(self.stage_execution)
+        except Exception as e:
+            logger.error(f"Failed to trigger stage execution hooks: {e}")
+        
+        return False  # Don't suppress exceptions
+
+
+@asynccontextmanager
+async def stage_execution_context(session_id: str, stage_execution: StageExecution) -> AsyncContextManager[StageExecutionHookContext]:
+    """
+    Create a simple context for stage execution events.
+    
+    Args:
+        session_id: Session identifier
+        stage_execution: Stage execution data
+        
+    Yields:
+        Simple hook context for stage execution
+    """
+    async with StageExecutionHookContext(stage_execution, get_typed_hook_manager()) as ctx:
         yield ctx

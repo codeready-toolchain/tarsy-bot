@@ -197,12 +197,34 @@ class LLMClient:
         llm_comm_logger.info(f"=== END RESPONSE [ID: {request_id}] ===")
 
     async def _execute_with_retry(self, messages: List[LLMMessage], request_id: str, max_retries: int = 3):
-        """Execute LLM call with exponential backoff for rate limiting."""
+        """Execute LLM call with exponential backoff for rate limiting and retry for empty responses."""
         langchain_messages = self._convert_messages(messages)
         
         for attempt in range(max_retries + 1):
             try:
                 response = await self.llm_client.ainvoke(langchain_messages)
+                
+                # Check for empty response content
+                if response and hasattr(response, 'content'):
+                    content = response.content
+                    if content is None or (isinstance(content, str) and content.strip() == ""):
+                        if attempt < max_retries:
+                            # Only retry empty responses once (first attempt) to avoid too many retries
+                            if attempt == 0:
+                                logger.warning(f"Empty LLM response received (attempt {attempt + 1}/{max_retries + 1}), retrying in 3s")
+                                await asyncio.sleep(3)
+                                continue
+                            else:
+                                logger.warning(f"Empty LLM response received again (attempt {attempt + 1}/{max_retries + 1}), injecting error message")
+                                # Inject descriptive error message instead of proceeding with empty response
+                                error_message = f"⚠️ **LLM Response Error**\n\nThe {self.provider_name} LLM returned empty responses after {attempt + 1} attempts. This may be due to:\n- Temporary provider issues\n- API rate limiting\n- Model overload\n\nPlease try processing this alert again in a few moments."
+                                response.content = error_message
+                        else:
+                            logger.warning(f"Empty LLM response received on final attempt, injecting error message")
+                            # Inject descriptive error message for final attempt
+                            error_message = f"⚠️ **LLM Response Error**\n\nThe {self.provider_name} LLM returned an empty response on the final attempt (attempt {attempt + 1}/{max_retries + 1}). This may be due to:\n- Temporary provider issues\n- API rate limiting\n- Model overload\n\nPlease try processing this alert again in a few moments."
+                            response.content = error_message
+                
                 return response
                 
             except Exception as e:

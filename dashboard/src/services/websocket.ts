@@ -265,6 +265,7 @@ class WebSocketService {
    */
   private handleMessage(message: WebSocketMessage): void {
     console.log('🔄 Processing WebSocket message:', message);
+    console.log('🔍 Message type:', message.type, 'Channel:', message.channel, 'Data type:', message.data?.type);
     
     // Handle message batches first
     if (message.type === 'message_batch' && message.messages) {
@@ -337,6 +338,13 @@ class WebSocketService {
         if (!message.data) {
           console.log('⚠️  dashboard_update message has no data property, skipping');
           return;
+        }
+        
+        // Check if this is actually a stage_progress message disguised as dashboard_update
+        if (message.data && message.data.type === 'stage_progress') {
+          console.log('🎯 Found stage_progress message within dashboard_update, redirecting to stage progress handlers');
+          this.eventHandlers.stageProgress.forEach(handler => handler(message.data as StageProgressUpdate));
+          // Still continue with session-specific handling below
         }
         
         // Check if this is a session-specific update (has channel property)
@@ -413,12 +421,26 @@ class WebSocketService {
         // Handle session-specific messages that might not match standard types
         if (message.channel && message.channel.startsWith('session_') && message.data) {
           console.log(`📈 Handling session-specific message for channel: ${message.channel}`);
+          
+          // Check if this is actually a stage_progress message
+          if (message.data && message.data.type === 'stage_progress') {
+            console.log('🎯 Found stage_progress message in session-specific handler, calling stage progress handlers');
+            this.eventHandlers.stageProgress.forEach(handler => handler(message.data as StageProgressUpdate));
+          }
+          
           const handlers = this.eventHandlers.sessionSpecific.get(message.channel);
           if (handlers) {
             handlers.forEach(handler => handler(message.data!));
           }
         } else {
           console.log('❓ Unknown message type:', message.type, 'Data present:', !!message.data);
+          // Log more details for debugging
+          console.log('❓ Message details:', {
+            type: message.type,
+            channel: message.channel,
+            dataType: message.data?.type,
+            dataKeys: message.data ? Object.keys(message.data) : []
+          });
         }
     }
   }

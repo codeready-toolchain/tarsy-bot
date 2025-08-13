@@ -143,10 +143,13 @@ class ReactToolsPartialController(IterationController):
         # REUSE fallback logic from SimpleReActController  
         logger.warning("Partial analysis reached maximum iterations without final answer")
         
+        # Use utility method to flatten react history
+        flattened_history = self.prompt_builder._flatten_react_history(react_history)
+        
         final_prompt = f"""Based on the investigation so far, provide your stage-specific analysis.
 
 Investigation History:
-{chr(10).join(react_history)}
+{chr(10).join(flattened_history)}
 
 Please provide a final analysis based on what you've discovered, even if the investigation isn't complete."""
         

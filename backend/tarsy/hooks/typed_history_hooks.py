@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 
 from tarsy.hooks.typed_context import BaseTypedHook
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.history import StageExecution
 from tarsy.services.history_service import HistoryService
 
 logger = logging.getLogger(__name__)
@@ -101,4 +102,45 @@ class TypedMCPListHistoryHook(BaseTypedHook[MCPInteraction]):
             
         except Exception as e:
             logger.error(f"Failed to log MCP tool list to history: {e}")
+            raise
+
+
+class TypedStageExecutionHistoryHook(BaseTypedHook[StageExecution]):
+    """
+    Typed hook for logging stage execution events to history database.
+    
+    Receives StageExecution and creates/updates it using HistoryService.
+    """
+    
+    def __init__(self, history_service: HistoryService):
+        super().__init__("typed_stage_history")
+        self.history_service = history_service
+
+    async def execute(self, stage_execution: StageExecution) -> None:
+        """
+        Create or update stage execution in history database.
+        
+        Args:
+            stage_execution: Stage execution data
+        """
+        try:
+            # Check if this is a create or update operation based on execution_id
+            if not hasattr(stage_execution, '_db_operation'):
+                # Default to create if no operation specified
+                stage_execution._db_operation = 'create'
+            
+            if stage_execution._db_operation == 'create':
+                # Create new stage execution
+                execution_id = await self.history_service.create_stage_execution(stage_execution)
+                # Store the returned ID back on the model for other hooks to use
+                stage_execution.execution_id = execution_id
+                logger.debug(f"Created stage execution {execution_id} in history")
+                
+            elif stage_execution._db_operation == 'update':
+                # Update existing stage execution
+                await self.history_service.update_stage_execution(stage_execution)
+                logger.debug(f"Updated stage execution {stage_execution.execution_id} in history")
+                
+        except Exception as e:
+            logger.error(f"Failed to log stage execution to history: {e}")
             raise

@@ -158,11 +158,14 @@ class SimpleReActController(IterationController):
         # If we reach max iterations without completion
         logger.warning("ReAct analysis reached maximum iterations without final answer")
         
+        # Use utility method to flatten react history
+        flattened_history = self.prompt_builder._flatten_react_history(react_history)
+        
         # Try to get a final analysis with available information
         final_prompt = f"""Based on the investigation so far, provide your best analysis of the alert.
 
 Investigation History:
-{chr(10).join(react_history)}
+{chr(10).join(flattened_history)}
 
 Please provide a final answer based on what you've discovered, even if the investigation isn't complete."""
         

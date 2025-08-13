@@ -9,7 +9,7 @@ and preventing contamination between hook contexts and actual results.
 from .typed_context import (
     BaseTypedHook, 
     TypedHookManager, 
-    TypedHookContext, 
+    InteractionHookContext, 
     get_typed_hook_manager,
     llm_interaction_context,
     mcp_interaction_context,
@@ -31,7 +31,7 @@ __all__ = [
     # Core typed hook system
     "BaseTypedHook",
     "TypedHookManager", 
-    "TypedHookContext",
+    "InteractionHookContext",
     "get_typed_hook_manager",
     
     # Context managers

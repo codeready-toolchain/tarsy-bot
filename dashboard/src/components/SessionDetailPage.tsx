@@ -148,6 +148,18 @@ function SessionDetailPage() {
         // Handle session status changes - update session state without refetching
         if (data.type === 'session_status_change') {
           console.log('Session status change detected, updating session state');
+          
+          // Check if this is a chain session that might have stage changes
+          const isChainSession = session?.chain_id || session?.chain_execution;
+          
+          // For chain sessions, we need to refetch to get updated stage information
+          // because stage progress updates are critical for the UI
+          if (isChainSession && (data.status === 'in_progress' || data.current_stage_index !== undefined)) {
+            console.log('Chain session stage-related status change detected, fetching updated session data');
+            fetchSessionDetail(sessionId);
+            return;
+          }
+          
           setSession(prevSession => {
             if (!prevSession) return prevSession;
             
@@ -210,6 +222,39 @@ function SessionDetailPage() {
             console.error('Failed to fetch updated timeline:', error);
             // Fallback to basic session update without timeline details
           }
+        }
+        // Handle stage progress updates - update chain execution smoothly without full refresh
+        else if (data.type === 'stage_progress') {
+          console.log('Stage progress update detected, updating chain execution smoothly');
+          
+          try {
+            // Fetch updated session data to get latest stage information
+            const updatedSessionData = await apiClient.getSessionDetail(sessionId);
+            
+            setSession(prevSession => {
+              if (!prevSession) return updatedSessionData;
+              
+              // Only update the chain execution and essential fields, preserve everything else
+              return {
+                ...prevSession,
+                chain_execution: updatedSessionData.chain_execution || prevSession.chain_execution,
+                current_stage_index: updatedSessionData.current_stage_index ?? prevSession.current_stage_index,
+                completed_stages: updatedSessionData.completed_stages ?? prevSession.completed_stages,
+                failed_stages: updatedSessionData.failed_stages ?? prevSession.failed_stages,
+                status: updatedSessionData.status || prevSession.status,
+                duration_ms: updatedSessionData.duration_ms ?? prevSession.duration_ms,
+                completed_at_us: updatedSessionData.completed_at_us ?? prevSession.completed_at_us,
+                final_analysis: updatedSessionData.final_analysis || prevSession.final_analysis,
+                error_message: updatedSessionData.error_message || prevSession.error_message
+              };
+            });
+            
+            console.log(`Stage progress updated smoothly for stage: ${data.stage_name} (${data.status})`);
+          } catch (error) {
+            console.error('Failed to fetch updated stage data:', error);
+          }
+          
+          return;
         }
         // Handle individual timeline interactions (fallback) - rarely used now
         else if (data.interaction_type === 'llm' || data.interaction_type === 'mcp') {
@@ -292,6 +337,9 @@ function SessionDetailPage() {
         }
       };
 
+      // Note: Stage progress updates are now handled smoothly in handleSessionSpecificUpdate above
+      // to avoid full page refreshes
+
       // Handle WebSocket connection changes - refresh data on reconnection
       const handleConnectionChange = (connected: boolean) => {
         if (connected) {
@@ -308,6 +356,10 @@ function SessionDetailPage() {
       const unsubscribeCompleted = webSocketService.onSessionCompleted(handleSessionCompleted);
       const unsubscribeFailed = webSocketService.onSessionFailed(handleSessionFailed);
       const unsubscribeConnection = webSocketService.onConnectionChange(handleConnectionChange);
+      
+      // Note: Stage progress events are now handled in session-specific updates
+      // No need for separate stage progress subscription
+      const unsubscribeStageProgress = () => {};
 
       // Subscribe to session-specific channel for timeline updates
       const sessionChannel = `session_${sessionId}`;
@@ -316,10 +368,10 @@ function SessionDetailPage() {
         handleSessionSpecificUpdate
       );
 
-      return { handleSessionUpdate, handleSessionSpecificUpdate, unsubscribeUpdate, unsubscribeCompleted, unsubscribeFailed, unsubscribeConnection, unsubscribeSessionSpecific };
+      return { unsubscribeUpdate, unsubscribeCompleted, unsubscribeFailed, unsubscribeConnection, unsubscribeStageProgress, unsubscribeSessionSpecific };
     };
 
-    const { unsubscribeUpdate, unsubscribeCompleted, unsubscribeFailed, unsubscribeConnection, unsubscribeSessionSpecific } = setupHandlers();
+    const { unsubscribeUpdate, unsubscribeCompleted, unsubscribeFailed, unsubscribeConnection, unsubscribeStageProgress, unsubscribeSessionSpecific } = setupHandlers();
 
     // Cleanup subscriptions
     return () => {
@@ -328,6 +380,7 @@ function SessionDetailPage() {
       unsubscribeCompleted();
       unsubscribeFailed();
       unsubscribeConnection();
+      unsubscribeStageProgress();
       unsubscribeSessionSpecific();
       
       // Unsubscribe from session-specific channel
