@@ -2,13 +2,14 @@
 
 ## Executive Summary
 
-Tarsy-bot is an intelligent Site Reliability Engineering system that automates incident response by processing alerts, analyzing runbooks, and performing iterative system diagnostics using AI-powered decision making and Model Context Protocol (MCP) servers. The system implements a multi-layer agent architecture with an orchestrator layer that delegates alert processing to specialized agents based on configurable alert type mappings.
+Tarsy-bot is an intelligent Site Reliability Engineering system that automates incident response by processing alerts through sequential agent chains, analyzing runbooks, and performing multi-stage system diagnostics using AI-powered decision making and Model Context Protocol (MCP) servers. The system implements a chain-based multi-layer agent architecture where alerts flow through specialized agents that build upon each other's work, with comprehensive stage-level tracking and flexible chain definitions supporting both built-in and configuration-driven workflows.
 
 ## Document Evolution
 
 This requirements document is a living document that evolves through [Enhancement Proposals (EPs)](enhancements/README.md). All significant changes to system requirements are documented through the EP process, ensuring traceable evolution and AI-friendly implementation.
 
 ### Recent Changes
+- **EP-0008-1 (IMPLEMENTED)**: Sequential Agent Chains - Added multi-stage alert processing workflows where alerts flow through multiple specialized agents that build upon each other's work. Key features include unified AlertProcessingData model throughout the pipeline, ChainRegistry for managing chain definitions, new iteration strategies for different chain stage purposes, enhanced database schema with stage-level tracking, and comprehensive chain execution orchestration
 - **ITERATION STRATEGIES (IMPLEMENTED)**: Agent Iteration Flow Strategies - Added ReAct vs Regular iteration strategy support allowing agents to use either the standard ReAct pattern (Think→Action→Observation cycles) for systematic analysis or regular iteration pattern for faster processing without reasoning overhead
 - **EP-0007 (IMPLEMENTED)**: Data Masking Service for Sensitive MCP Server Data - Added pattern-based masking service for secrets and credentials from MCP server responses, with built-in patterns for common secrets and configurable per-server masking rules
 - **EP-0006 (IMPLEMENTED)**: Configuration-Based Agents - Added YAML-based agent configuration system allowing deployment of new agents without code changes, supporting both traditional hardcoded agents and configuration-driven agents simultaneously
@@ -56,30 +57,38 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
 - The system shall maintain current processing step information
 - The system shall include agent identification in processing status
 
-### 1.2 Agent Orchestration and Delegation
+### 1.2 Chain Orchestration and Sequential Processing
 
-**REQ-1.2.1: Orchestrator Layer**
-- The system shall implement an orchestrator layer that receives all alerts and delegates processing to specialized agents
-- The orchestrator shall use a configurable registry to map alert types to appropriate agent classes
-- The orchestrator shall handle agent instantiation and dependency injection
-- The orchestrator shall provide unified error handling and progress reporting across all agents
+**REQ-1.2.1: Chain Orchestrator Layer**
+- The system shall implement an orchestrator layer that receives all alerts and executes sequential chain processing
+- The orchestrator shall use a ChainRegistry to map alert types to appropriate chain definitions
+- The orchestrator shall handle stage execution with data accumulation between stages
+- The orchestrator shall provide unified error handling and progress reporting across all chain stages
 
-**REQ-1.2.2: Agent Registry**
-- The system shall maintain a registry mapping alert types to specialized agent class names
-- The registry shall support static configuration-based mappings without requiring code changes
-- The registry shall provide clear error messages when no agent is available for a given alert type
-- The registry shall be extensible to support new alert types through configuration updates
+**REQ-1.2.2: ChainRegistry**
+- The system shall maintain a registry mapping alert types to chain definitions instead of individual agents
+- The registry shall support both built-in and YAML configuration-based chain definitions simultaneously
+- The registry shall provide clear error messages when no chain is available for a given alert type
+- The registry shall validate chain ID uniqueness and prevent alert type conflicts
+- The registry shall be extensible to support new chain definitions through configuration updates
 
-**REQ-1.2.3: Specialized Agent Architecture**
+**REQ-1.2.3: Sequential Agent Chains**
+- The system shall implement sequential agent chains where alerts flow through multiple specialized agents
+- Each chain shall consist of one or more stages, with each stage executed by a specialized agent
+- The system shall support data accumulation between stages using a unified AlertProcessingData model
+- Later stages shall have access to all results from previous stages for comprehensive analysis
+- The system shall support both single-stage chains (equivalent to individual agents) and multi-stage chains
+
+**REQ-1.2.4: Specialized Agent Architecture**
 - The system shall implement specialized agents inheriting from a common base agent class
 - The system shall support both traditional hardcoded agents and YAML configuration-based agents simultaneously
-- The system shall support configurable iteration strategies per agent (ReAct or Regular)
+- The system shall support configurable iteration strategies per agent and per stage
 - The system shall load agent configurations from filesystem-based YAML file without requiring code changes
 - Each agent shall specify its required MCP server subset through abstract method implementation or configuration
 - Each agent shall specify its iteration strategy through built-in configuration or YAML configuration
-- Agents shall process flexible alert data structures without preprocessing
+- Agents shall process unified AlertProcessingData with access to previous stage outputs
 - Agents shall receive complete JSON payloads for intelligent LLM interpretation
-- Agents shall support diverse monitoring sources beyond Kubernetes through flexible data handling
+- Agents shall support diverse monitoring sources through flexible data handling
 - Agents shall implement domain-specific analysis logic while sharing common infrastructure
 - Agents shall support three-tier instruction composition: general, MCP server-specific, and agent-specific
 
@@ -113,21 +122,26 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
 - The system shall return an error if no LLM provider is available or accessible
 - The system shall provide unified LLM access to all specialized agents and iteration strategies
 
-**REQ-1.4.2: Agent-Based Iterative Analysis Process**
-- The system shall perform iterative analysis through specialized agents using configurable iteration strategies:
-  1. Alert type to agent mapping and agent instantiation with specified iteration strategy
-  2. Strategy-specific analysis execution:
+**REQ-1.4.2: Chain-Based Iterative Analysis Process**
+- The system shall perform iterative analysis through sequential agent chains using configurable iteration strategies:
+  1. Alert type to chain mapping and chain definition resolution
+  2. Stage-by-stage execution with data accumulation:
+     - Each stage instantiates an agent with stage-specific iteration strategy
      - **ReAct Strategy**: Think→Action→Observation cycles with structured reasoning
      - **Regular Strategy**: Direct tool selection and execution for faster processing
+     - **REACT_TOOLS Strategy**: ReAct data collection without analysis for subsequent stages
+     - **REACT_TOOLS_PARTIAL Strategy**: ReAct data collection with stage-specific analysis
+     - **REACT_FINAL_ANALYSIS Strategy**: Comprehensive analysis using all accumulated stage data
   3. Data collection using agent's assigned MCP server subset
-  4. Strategy-appropriate analysis of collected data by specialized agent
-  5. Strategy-specific continuation logic (ReAct reasoning vs Regular tool iteration)
-  6. Final comprehensive analysis with all collected data
+  4. Progressive data enrichment through stage outputs accumulation
+  5. Strategy-appropriate analysis with access to previous stage results
+  6. Final comprehensive analysis extracted from analysis-focused stages
 
 **REQ-1.4.3: Iteration Strategy Configuration**
-- The system shall support configurable iteration strategies per agent (ReAct or Regular)
+- The system shall support configurable iteration strategies per agent and per stage
 - Built-in agents shall have default strategies defined in central configuration
 - Configuration-based agents shall support iteration_strategy specification in YAML
+- Chain stages shall support iteration strategy overrides per stage
 - The system shall default to ReAct strategy for systematic analysis when not specified
 
 **REQ-1.4.4: Analysis Constraints**
@@ -135,6 +149,7 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
 - The system shall prevent infinite loops through safety mechanisms in each iteration strategy
 - The system shall provide configurable iteration limits per agent type
 - ReAct strategy shall include structured parsing and validation of LLM reasoning responses
+- The system shall track stage-level execution duration and provide stage-level timeouts
 
 ### 1.5 System Data Collection
 
@@ -175,56 +190,64 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
 
 ### 1.7 Alert Processing History and Audit Trail
 
-**REQ-1.7.1: Comprehensive Session Tracking**
-- The system shall persistently store all alert processing sessions with complete lifecycle tracking
-- The system shall capture session metadata including alert data, agent type, processing status, and timing information
+**REQ-1.7.1: Comprehensive Session and Stage Tracking**
+- The system shall persistently store all alert processing sessions with complete chain lifecycle tracking
+- The system shall capture session metadata including alert data, chain ID, processing status, and timing information
+- The system shall track individual stage executions with detailed stage-level audit trails
 - The system shall support configurable data retention policies through HISTORY_RETENTION_DAYS setting
-- The system shall provide unique session identifiers for tracking and correlation
+- The system shall provide unique session identifiers and stage execution identifiers for tracking and correlation
 
-**REQ-1.7.2: LLM Interaction Logging**
+**REQ-1.7.2: Stage-Linked LLM Interaction Logging**
 - The system shall automatically capture all LLM interactions including prompts, responses, and tool calls
+- The system shall link each LLM interaction to its specific stage execution for chain traceability
 - The system shall record model usage information, token counts, and performance metrics
 - The system shall maintain microsecond-precision timestamps for exact chronological ordering
 - The system shall generate human-readable step descriptions for each interaction
 
-**REQ-1.7.3: MCP Communication Tracking**
+**REQ-1.7.3: Stage-Linked MCP Communication Tracking**
 - The system shall automatically log all MCP communications including tool discovery, invocations, and results
+- The system shall link each MCP communication to its specific stage execution for chain traceability
 - The system shall capture server information, success/failure status, and performance metrics
 - The system shall maintain chronological ordering with LLM interactions using microsecond timestamps
-- The system shall track tool availability and usage patterns across different MCP servers
+- The system shall track tool availability and usage patterns across different MCP servers and stages
 
-**REQ-1.7.4: Historical Data Access**
-- The system shall provide REST API endpoints for querying alert processing history
-- The system shall support filtering by status, agent type, alert type, and date ranges
+**REQ-1.7.4: Chain and Stage Historical Data Access**
+- The system shall provide REST API endpoints for querying chain processing history
+- The system shall support filtering by status, chain ID, agent type, alert type, and date ranges
+- The system shall provide stage-level detail access for comprehensive chain analysis
 - The system shall provide pagination for large datasets
 - The system shall support complex filter combinations using AND logic for precise queries
 
-**REQ-1.7.5: Chronological Timeline Reconstruction**
-- The system shall reconstruct complete chronological timelines of alert processing workflows
-- The system shall merge LLM interactions and MCP communications in precise temporal order
-- The system shall provide detailed session information with comprehensive audit trails
-- The system shall support both active session monitoring and historical session analysis
+**REQ-1.7.5: Chronological Chain Timeline Reconstruction**
+- The system shall reconstruct complete chronological timelines of chain processing workflows
+- The system shall merge LLM interactions and MCP communications in precise temporal order with stage context
+- The system shall provide detailed session information with comprehensive stage-level audit trails
+- The system shall support both active chain monitoring and historical chain analysis
+- The system shall provide stage-by-stage progress visualization and detailed stage execution summaries
 
 ## 2. User Interface Requirements
 
 ### 2.1 Dashboard UI (SRE Operational Monitoring)
 
-**REQ-2.1.1: Real-time Alert Monitoring**
+**REQ-2.1.1: Real-time Chain Monitoring**
 - The system shall provide a standalone React dashboard for SRE operational monitoring
-- The dashboard shall display active alerts with real-time progress indicators and status updates
-- The dashboard shall show historical alert processing sessions with comprehensive filtering capabilities
-- The dashboard shall support efficient analysis of 1000+ alert sessions with virtual scrolling
+- The dashboard shall display active chain executions with real-time stage-level progress indicators and status updates
+- The dashboard shall show historical chain processing sessions with comprehensive filtering capabilities
+- The dashboard shall support efficient analysis of 1000+ chain sessions with virtual scrolling
+- The dashboard shall display stage-by-stage execution progress and completion status
 
 **REQ-2.1.2: WebSocket Integration**
 - The dashboard shall use multiplexed WebSocket connections for real-time updates
 - The system shall provide subscription-based message routing for dashboard updates and session monitoring
 - The dashboard shall handle connection failures gracefully with auto-reconnection
+- The system shall provide stage-specific WebSocket updates for detailed chain progress monitoring
 
-**REQ-2.1.3: Historical Analysis Interface**
-- The dashboard shall provide timeline visualization of alert processing workflows
-- The system shall support filtering by status, agent type, alert type, and date ranges
-- The dashboard shall display chronological timelines with LLM interactions and MCP communications
-- The system shall provide session detail views with complete audit trails
+**REQ-2.1.3: Historical Chain Analysis Interface**
+- The dashboard shall provide timeline visualization of chain processing workflows with stage-level detail
+- The system shall support filtering by status, chain ID, agent type, alert type, and date ranges
+- The dashboard shall display chronological timelines with LLM interactions and MCP communications linked to specific stages
+- The system shall provide session detail views with complete stage-level audit trails
+- The dashboard shall display stage execution summaries and stage-to-stage data flow visualization
 
 **REQ-2.1.4: Dashboard Independence**
 - The dashboard shall operate as an independent React application in `dashboard/` directory
@@ -433,35 +456,37 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
 
 ## 8. Data Flow Requirements
 
-### 8.1 Multi-Layer Alert Processing Flow
+### 8.1 Multi-Layer Chain Processing Flow
 
-**REQ-8.1.1: Processing Sequence**
+**REQ-8.1.1: Chain Processing Sequence**
 1. Alert submission and validation
-2. Agent selection based on alert type registry mapping
-3. Agent instantiation with dependency injection (LLM client, agent-specific MCP servers, iteration strategy)
-4. Runbook download (raw markdown content) and distribution to selected agent
-5. Agent-specific MCP tool discovery from assigned server subset
-6. Strategy-specific iterative analysis by specialized agent:
-   - **ReAct Strategy**: Think→Action→Observation cycles with structured reasoning
-   - **Regular Strategy**: Direct tool selection and iterative analysis
-   - Data collection using agent's MCP server subset
-   - Strategy-appropriate analysis and continuation logic
-7. Final comprehensive analysis by specialized agent
-8. Result presentation with agent and strategy metadata
+2. Chain selection based on alert type to chain registry mapping
+3. Chain session creation with chain metadata and stage tracking
+4. Runbook download (raw markdown content) and distribution to chain stages
+5. Sequential stage execution loop:
+   - Stage execution record creation with database tracking
+   - Agent instantiation with stage-specific iteration strategy
+   - Stage execution with accumulated data from previous stages
+   - Stage result storage in unified AlertProcessingData model
+   - Stage execution status and duration updates
+6. Final analysis extraction from analysis-focused stages
+7. Chain completion with comprehensive stage metadata
 
-**REQ-8.1.2: Agent Specialization Flow**
-- The system shall route alerts to appropriate specialized agents based on alert type
-- Agents shall only access their configured subset of MCP servers
-- Agents shall apply domain-specific analysis logic and instructions using their configured iteration strategy
-- Agents shall provide specialized error handling and recovery within their domain
-- Agents shall use strategy-specific processing patterns (ReAct reasoning vs Regular tool iteration)
+**REQ-8.1.2: Chain Stage Specialization Flow**
+- The system shall route alerts to appropriate chain definitions based on alert type
+- Each stage shall execute a specialized agent with access to their configured subset of MCP servers
+- Agents shall apply domain-specific analysis logic using stage-specific iteration strategies
+- Agents shall have access to accumulated data from all previous stages in the chain
+- Agents shall provide specialized error handling and recovery within their domain and stage context
+- Stages shall use strategy-specific processing patterns (ReAct reasoning, Regular tool iteration, REACT_TOOLS data collection, etc.)
 
-**REQ-8.1.3: History Capture Flow**
-- The system shall automatically create history sessions at alert processing initiation
-- The system shall capture all LLM interactions and MCP communications through HookContext integration
-- The system shall update session status throughout the processing lifecycle
-- The system shall maintain chronological ordering of all interactions with microsecond precision
-- The system shall provide real-time access to processing history for active sessions
+**REQ-8.1.3: Chain History Capture Flow**
+- The system shall automatically create chain history sessions at alert processing initiation
+- The system shall create individual stage execution records for each stage in the chain
+- The system shall capture all LLM interactions and MCP communications linked to specific stage executions
+- The system shall update both session and stage execution status throughout the chain processing lifecycle
+- The system shall maintain chronological ordering of all interactions with microsecond precision and stage context
+- The system shall provide real-time access to chain processing history for active sessions with stage-level detail
 
 ## 9. Quality Attributes
 

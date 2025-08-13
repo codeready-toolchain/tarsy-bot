@@ -3,7 +3,7 @@
 [![CI Pipeline](https://github.com/codeready-toolchain/tarsy-bot/workflows/CI%20Pipeline/badge.svg)](https://github.com/codeready-toolchain/tarsy-bot/actions)
 [![codecov](https://codecov.io/gh/codeready-toolchain/tarsy-bot/branch/master/graph/badge.svg)](https://codecov.io/gh/codeready-toolchain/tarsy-bot)
 
-An intelligent Site Reliability Engineering agent that automatically processes alerts, retrieves runbooks, and uses MCP (Model Context Protocol) servers to gather system information for comprehensive incident analysis.
+An intelligent Site Reliability Engineering system that automatically processes alerts through sequential agent chains, retrieves runbooks, and uses MCP (Model Context Protocol) servers to gather system information for comprehensive multi-stage incident analysis.
 
 Inspired by the spirit of sci-fi AI, TARSy is your reliable SRE operations companion for SRE operations. 🚀
 
@@ -54,27 +54,28 @@ make dev
 
 ## Key Features
 
-- **🛠️ Configuration-Based Agents**: Deploy new agents via YAML configuration without code changes
+- **🔗 Sequential Agent Chains**: Multi-stage workflows where specialized agents build upon each other's work for comprehensive analysis
+- **🛠️ Configuration-Based Agents**: Deploy new agents and chain definitions via YAML configuration without code changes
 - **🔧 Flexible Alert Processing**: Accept arbitrary JSON payloads from any monitoring system  
-- **🧠 Multi-Layer Agent Architecture**: Specialized agents with domain-specific tools and AI reasoning
-- **📊 Comprehensive Audit Trail**: Complete visibility into alert processing workflows with timeline reconstruction
-- **🖥️ SRE Dashboard**: Real-time monitoring and historical analysis with interactive timeline visualization
+- **🧠 Chain-Based Agent Architecture**: Specialized agents with domain-specific tools and AI reasoning working in coordinated stages
+- **📊 Comprehensive Audit Trail**: Complete visibility into chain processing workflows with stage-level timeline reconstruction
+- **🖥️ SRE Dashboard**: Real-time monitoring and historical analysis with interactive chain timeline visualization
 - **🔒 Data Masking**: Automatic protection of sensitive data in logs and responses
 
 ## Architecture
 
-Tarsy uses an AI-powered multi-layer architecture where specialized agents analyze alerts using domain-specific tools and provide expert recommendations to engineers.
+Tarsy uses an AI-powered chain-based architecture where alerts flow through sequential stages of specialized agents that build upon each other's work using domain-specific tools to provide comprehensive expert recommendations to engineers.
 
 > **📖 For high-level architecture concepts**: See [Architecture Overview](docs/architecture-overview.md)
 
 ## How It Works
 
 1. **Alert arrives** from monitoring systems with flexible JSON payload
-2. **Orchestrator selects** appropriate specialized agent based on alert type  
-3. **Runbook downloaded** automatically from GitHub for agent guidance
-4. **Agent investigates** using AI to select and execute domain-specific tools
-5. **Complete analysis** provided to engineers with actionable recommendations
-6. **Full audit trail** captured for monitoring and continuous improvement
+2. **Orchestrator selects** appropriate agent chain based on alert type  
+3. **Runbook downloaded** automatically from GitHub for chain guidance
+4. **Sequential stages execute** where each agent builds upon previous stage data using AI to select and execute domain-specific tools
+5. **Comprehensive multi-stage analysis** provided to engineers with actionable recommendations
+6. **Full audit trail** captured with stage-level detail for monitoring and continuous improvement
 
 ```mermaid
 sequenceDiagram

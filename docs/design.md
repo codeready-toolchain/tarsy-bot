@@ -22,6 +22,7 @@
 This design document is a living document that evolves through [Enhancement Proposals (EPs)](enhancements/README.md). All significant architectural changes are documented through the EP process, ensuring traceable evolution and AI-friendly implementation.
 
 ### Recent Changes
+- **EP-0008-1 (IMPLEMENTED)**: Sequential Agent Chains - Added multi-stage alert processing workflows where alerts can flow through multiple specialized agents that build upon each other's work. Key features include unified AlertProcessingData model throughout the pipeline, ChainRegistry for managing chain definitions, new iteration strategies (REACT_TOOLS, REACT_TOOLS_PARTIAL, REACT_FINAL_ANALYSIS) for different chain stage purposes, enhanced database schema with StageExecution tracking, and chain execution logic integrated into AlertService
 - **TYPED HOOK SYSTEM (IMPLEMENTED)**: Type-Safe Interaction Capture - Complete refactoring to typed hook system with unified LLMInteraction and MCPInteraction models, eliminating data contamination and providing clean type-safe interaction capture. Comprehensive test coverage restoration with 49 new tests for hook system, LLM client, and MCP client functionality
 - **INTERACTION MODEL UNIFICATION (IMPLEMENTED)**: Unified Interaction Models - Consolidated interaction data structures into type-safe LLMInteraction and MCPInteraction models with consistent fields, JSON serialization, and proper database persistence. Dashboard integration updated for LLM interaction preview with smart text parsing
 - **ITERATION STRATEGIES (IMPLEMENTED)**: Agent Iteration Flow Strategies - Added ReAct vs Regular iteration strategy support allowing agents to use either the standard ReAct pattern (Think→Action→Observation cycles) for systematic analysis or regular iteration pattern for faster processing without reasoning overhead
@@ -35,7 +36,8 @@ This design document is a living document that evolves through [Enhancement Prop
 - Future changes will be tracked through Enhancement Proposals in `docs/enhancements/`
 
 ### Pending Enhancements
-- **EP-0008 (PENDING)**: Agent Chains Pipeline Architecture - Pipeline-based agent orchestration for complex multi-step workflows
+- **EP-0008-2 (PENDING)**: Parallel Agent Execution - Parallel execution within chain stages for increased processing throughput
+- **EP-0008-3 (PENDING)**: Conditional Chain Routing - Branching logic and conditional workflows between chain stages
 
 For proposed architectural changes or new design patterns, see the [Enhancement Proposals directory](enhancements/README.md).
 
@@ -43,23 +45,25 @@ For proposed architectural changes or new design patterns, see the [Enhancement 
 
 ## System Overview
 
-Tarsy is a **distributed, event-driven system** designed to automate incident response through intelligent alert processing using a **multi-layer agent architecture**. The system implements an **iterative, multi-step analysis architecture** where an orchestrator layer delegates alerts to specialized agents that use Large Language Models (LLMs) to dynamically select and orchestrate Model Context Protocol (MCP) servers for comprehensive incident analysis. The system includes comprehensive audit trail capture, real-time dashboard monitoring, and supports both hardcoded and configuration-driven agents.
+Tarsy is a **distributed, event-driven system** designed to automate incident response through intelligent alert processing using a **chain-based multi-layer agent architecture**. The system implements **sequential agent chains** where alerts flow through multiple specialized agents that build upon each other's work, using Large Language Models (LLMs) to dynamically select and orchestrate Model Context Protocol (MCP) servers for comprehensive incident analysis. The system includes comprehensive audit trail capture with stage-level tracking, real-time dashboard monitoring, and supports both hardcoded and configuration-driven agents with flexible chain definitions.
 
 > **💡 For conceptual understanding**: See [Architecture Overview](architecture-overview.md) for a high-level introduction to Tarsy's concepts and benefits.
 
 ### Core Design Principles
 
-1. **Multi-Layer Agent Architecture**: Orchestrator layer delegates processing to specialized agents based on alert type mappings
-2. **Agent Specialization**: Domain-specific agents with focused MCP server subsets and specialized instructions
-3. **Configuration-Driven Extensibility**: Support for both hardcoded agents and YAML-configured agents without code changes
-4. **Flexible Alert Data Structure**: Agent-agnostic system supporting arbitrary JSON payloads from diverse monitoring sources
-5. **LLM-First Processing**: Agents receive complete JSON payloads for intelligent interpretation without rigid field extraction
-6. **Dual Iteration Strategies**: Configurable ReAct (systematic reasoning) vs Regular (fast tool iteration) processing patterns per agent
-7. **Dynamic Tool Selection**: Agents intelligently choose appropriate MCP tools from their assigned server subsets
-8. **Extensible Architecture**: Inheritance-based agent design with composition-based iteration strategy for easy addition of new specialized agents
-9. **Real-time Communication**: Dashboard-based WebSocket updates with multiplexed subscription management
-10. **Resilient Design**: Graceful degradation and comprehensive error handling across agent layers
-11. **Comprehensive Audit Trail**: Persistent history capture of all alert processing workflows with chronological timeline reconstruction
+1. **Chain-Based Processing**: Sequential agent chains enable multi-stage workflows where agents build upon each other's work for comprehensive analysis
+2. **Unified Data Model**: Enhanced AlertProcessingData serves as the single data model throughout the entire processing pipeline, accumulating stage outputs
+3. **Agent Specialization**: Domain-specific agents with focused MCP server subsets, specialized instructions, and configurable iteration strategies per stage
+4. **Configuration-Driven Extensibility**: Support for both hardcoded agents and YAML-configured agents with chain definitions without code changes
+5. **Flexible Alert Data Structure**: Agent-agnostic system supporting arbitrary JSON payloads from diverse monitoring sources
+6. **LLM-First Processing**: Agents receive complete JSON payloads for intelligent interpretation without rigid field extraction
+7. **Multiple Iteration Strategies**: Configurable strategies including ReAct (systematic reasoning), Regular (fast tool iteration), REACT_TOOLS (data collection), REACT_TOOLS_PARTIAL (partial analysis), and REACT_FINAL_ANALYSIS (comprehensive analysis)
+8. **Progressive Data Enrichment**: Stage outputs accumulate throughout the chain, allowing later stages to access all previous stage data
+9. **Dynamic Tool Selection**: Agents intelligently choose appropriate MCP tools from their assigned server subsets based on stage requirements
+10. **Extensible Chain Architecture**: Inheritance-based agent design with composition-based iteration strategies and flexible chain definitions
+11. **Real-time Communication**: Dashboard-based WebSocket updates with multiplexed subscription management and stage-level progress tracking
+12. **Resilient Design**: Graceful degradation with stage-level error handling and comprehensive error handling across chain layers
+13. **Comprehensive Audit Trail**: Persistent history capture of all chain processing workflows with stage-level detail and chronological timeline reconstruction
 
 ### Technology Stack
 
@@ -293,60 +297,79 @@ is now tracked through the history service and dashboard WebSocket subscriptions
 
 ### 2. AlertService
 
-The core service that implements agent delegation and manages the overall processing pipeline:
+The core service that implements chain orchestration and manages the overall processing pipeline:
 
 ```
 Interface Pattern:
 class AlertService:
     def __init__(self, settings: Settings)
     async def initialize(self)
-    async def process_alert(self, alert_data: Dict[str, Any], runbook_content: str, session_id: str) -> Dict[str, Any]
+    async def process_alert(self, alert_data: Dict[str, Any]) -> Dict[str, Any]
+    async def _execute_chain_stages(self, chain_definition, alert_processing_data: AlertProcessingData, session_id: str) -> Dict[str, Any]
 ```
 
 **Core Responsibilities:**
-- **Service Initialization**: Initialize all required services (MCP client, LLM manager, agent factory, registries)
-- **Agent Selection**: Use agent registry to determine appropriate specialized agent for alert type
-- **Runbook Management**: Download runbooks using RunbookService
-- **Agent Delegation**: Use agent factory to instantiate and delegate processing to specialized agents
-- **Status Updates**: Coordinate WebSocket-based status updates and dashboard broadcasting
-- **Error Handling**: Handle agent-level errors and provide formatted error responses
-- **Result Formatting**: Format and return agent analysis results with context
+- **Service Initialization**: Initialize all required services (MCP client, LLM manager, agent factory, chain registry)
+- **Chain Selection**: Use ChainRegistry to determine appropriate chain for alert type
+- **Runbook Management**: Download runbooks using RunbookService and distribute to chain stages
+- **Chain Orchestration**: Execute sequential stages with data accumulation between stages
+- **Stage Management**: Create and track stage executions with detailed audit trails
+- **Status Updates**: Coordinate WebSocket-based status updates and dashboard broadcasting with stage-level progress
+- **Error Handling**: Handle stage-level errors and provide chain execution recovery
+- **Result Aggregation**: Aggregate and format results from all chain stages
 
-**Processing Algorithm:**
-1. **Prerequisites Validation**: Validate LLM availability and agent factory initialization
-2. **Agent Selection**: Use agent registry to determine appropriate specialized agent class
-3. **Runbook Download**: Retrieve runbook content from GitHub using RunbookService
-4. **Agent Instantiation**: Use agent factory to create specialized agent instance with dependencies
-5. **Agent Delegation**: Delegate processing to specialized agent with runbook content and session ID
-6. **Result Processing**: Format and return agent analysis results with context and metadata
-7. **Error Handling**: Handle and format any errors that occur during processing
+**Chain Processing Algorithm:**
+1. **Prerequisites Validation**: Validate LLM availability and chain registry initialization
+2. **Chain Selection**: Use ChainRegistry to determine appropriate chain definition for alert type
+3. **Chain Session Creation**: Create history session with chain metadata and stage tracking
+4. **Runbook Download**: Retrieve runbook content from GitHub using RunbookService
+5. **Stage Execution Loop**: Execute each stage sequentially:
+   - Create stage execution record with database tracking
+   - Instantiate agent with stage-specific iteration strategy
+   - Execute stage with accumulated data from previous stages
+   - Store stage results in unified AlertProcessingData model
+   - Update stage execution status and duration
+6. **Chain Completion**: Extract final analysis from last successful analysis stage
+7. **Result Processing**: Format and return chain execution results with stage metadata
+8. **Error Handling**: Handle stage-level and chain-level errors with recovery options
 
-### 3. Agent Registry
+### 3. ChainRegistry
 
-Static registry that maintains mappings between alert types and specialized agent class names:
+Registry for chain definitions with built-in and YAML chain support, replacing the previous AgentRegistry:
 
 ```
 Interface Pattern:
-class AgentRegistry:
-    def __init__(self, config: Optional[Dict[str, str]] = None)
-    def get_agent_for_alert_type(self, alert_type: str) -> Optional[str]
-    def get_supported_alert_types(self) -> List[str]
+class ChainRegistry:
+    def __init__(self, config_loader: Optional[ConfigurationLoader] = None)
+    def get_chain_for_alert_type(self, alert_type: str) -> ChainDefinitionModel
+    def list_available_alert_types(self) -> List[str]
+    def list_available_chains(self) -> List[str]
+    def get_chain_by_id(self, chain_id: str) -> Optional[ChainDefinitionModel]
 ```
 
 **Core Features:**
-- **Centralized Configuration**: Imports built-in mappings from `builtin_config.py` single source of truth
-- **Configuration Extension**: Supports both built-in and YAML-configured agent mappings simultaneously
-- **Fast Lookup**: O(1) dictionary-based agent resolution
-- **Conflict Detection**: Validates that alert types are handled by only one agent
-- **Error Handling**: Clear messages when no agent is available for alert type
+- **Chain-Based Architecture**: Maps alert types to chain definitions instead of individual agents
+- **Centralized Configuration**: Imports built-in chain definitions from `builtin_config.py` single source of truth
+- **Configuration Extension**: Supports both built-in and YAML-configured chain definitions simultaneously
+- **Fast Lookup**: O(1) dictionary-based chain resolution with comprehensive validation
+- **Conflict Detection**: Validates that chain IDs are unique and alert types map to only one chain
+- **Error Handling**: Clear messages when no chain is available for alert type
 
-**Current Mappings (from builtin_config.py):**
+**Current Built-in Chains (from builtin_config.py):**
 ```
-Alert Type Mappings:
-"kubernetes" -> "KubernetesAgent"
-"NamespaceTerminating" -> "KubernetesAgent"
-# Configuration-based agents create mappings like:
-# "SecurityBreach" -> "ConfigurableAgent:security-agent"
+Chain Definitions:
+"kubernetes-agent-chain":
+  alert_types: ["kubernetes", "NamespaceTerminating"]
+  stages: [{"name": "analysis", "agent": "KubernetesAgent"}]
+  description: "Single-stage Kubernetes analysis"
+
+# Configuration-based chains create definitions like:
+# "security-incident-chain":
+#   alert_types: ["SecurityBreach"]
+#   stages: [
+#     {"name": "data-collection", "agent": "ConfigurableAgent:security-collector"},
+#     {"name": "analysis", "agent": "ConfigurableAgent:security-analyzer"}
+#   ]
 ```
 
 ### 3a. Centralized Built-in Configuration (EP-0006)
@@ -367,14 +390,23 @@ Location: backend/tarsy/config/builtin_config.py
 **Built-in Component Definitions:**
 ```python
 # Agent class imports for dynamic loading
-BUILTIN_AGENT_CLASS_IMPORTS = {
-    "KubernetesAgent": "tarsy.agents.kubernetes_agent.KubernetesAgent"
+BUILTIN_AGENTS = {
+    "KubernetesAgent": {
+        "import": "tarsy.agents.kubernetes_agent.KubernetesAgent",
+        "iteration_strategy": "react",
+        "description": "Kubernetes-specialized agent using ReAct pattern"
+    }
 }
 
-# Alert type to agent mappings  
-BUILTIN_AGENT_MAPPINGS = {
-    "kubernetes": "KubernetesAgent",
-    "NamespaceTerminating": "KubernetesAgent"
+# Built-in chain definitions (replaces BUILTIN_AGENT_MAPPINGS)
+BUILTIN_CHAIN_DEFINITIONS = {
+    "kubernetes-agent-chain": {
+        "alert_types": ["kubernetes", "NamespaceTerminating"],
+        "stages": [
+            {"name": "analysis", "agent": "KubernetesAgent"}
+        ],
+        "description": "Single-stage Kubernetes analysis"
+    }
 }
 
 # Complete MCP server configurations
@@ -384,21 +416,25 @@ BUILTIN_MCP_SERVERS = {
         "server_type": "kubernetes", 
         "enabled": True,
         "connection_params": {...},
-        "instructions": "Kubernetes-specific LLM guidance..."
+        "instructions": "Kubernetes-specific LLM guidance...",
+        "data_masking": {
+            "enabled": True,
+            "pattern_groups": ["kubernetes"]
+        }
     }
 }
 ```
 
 **Module Integration:**
-- **AgentRegistry**: Imports `BUILTIN_AGENT_MAPPINGS` for alert type routing
-- **AgentFactory**: Imports `BUILTIN_AGENT_CLASS_IMPORTS` for dynamic class loading
+- **ChainRegistry**: Imports `BUILTIN_CHAIN_DEFINITIONS` for alert type to chain mapping
+- **AgentFactory**: Imports `BUILTIN_AGENTS` for dynamic class loading and agent metadata
 - **MCPServerRegistry**: Imports `BUILTIN_MCP_SERVERS` for server initialization
 - **ConfigurationLoader**: Imports all definitions for conflict detection with configured components
 
 **Adding New Built-in Components:**
 1. Edit only `builtin_config.py` - no changes needed elsewhere
-2. Add agent class import path to `BUILTIN_AGENT_CLASS_IMPORTS`
-3. Add alert type mapping to `BUILTIN_AGENT_MAPPINGS`
+2. Add agent class definition to `BUILTIN_AGENTS` with import path and metadata
+3. Add chain definition to `BUILTIN_CHAIN_DEFINITIONS` with alert types and stages
 4. Add MCP server configuration to `BUILTIN_MCP_SERVERS`
 5. All registries automatically inherit the new definitions
 
@@ -445,8 +481,12 @@ class BaseAgent(ABC):
     def iteration_strategy(self) -> IterationStrategy
     def _create_iteration_controller(self, strategy: IterationStrategy) -> IterationController
     
-    # Main processing method using composition pattern
-    async def process_alert(self, alert_data: Dict[str, Any], runbook_content: str, session_id: str) -> Dict[str, Any]
+    # Main processing method with unified alert processing model
+    async def process_alert(self, alert_data: AlertProcessingData, session_id: str) -> Dict[str, Any]
+    
+    # Chain processing support methods
+    def set_current_stage_execution_id(self, stage_execution_id: str)
+    def get_current_stage_execution_id(self) -> Optional[str]
     
     # Legacy methods for backward compatibility (used by Regular strategy)
     async def analyze_alert(self, alert_data: Dict, runbook_content: str, mcp_data: Dict, session_id: str) -> str
@@ -457,17 +497,22 @@ class BaseAgent(ABC):
 
 **Core Features:**
 - **Inheritance + Composition Design**: Common logic shared across all specialized agents with pluggable iteration strategies
-- **Configurable Iteration Strategies**: Each agent can use ReAct (systematic reasoning) or Regular (fast iteration) processing patterns
-- **Strategy-Based Processing**: Delegates alert processing to appropriate IterationController based on configuration
+- **Configurable Iteration Strategies**: Agents can use ReAct, Regular, REACT_TOOLS, REACT_TOOLS_PARTIAL, or REACT_FINAL_ANALYSIS processing patterns
+- **Chain Processing Support**: Processes unified AlertProcessingData with access to previous stage outputs and data accumulation
+- **Stage Execution Tracking**: Links interactions to specific chain stage executions for detailed audit trails
+- **Strategy-Based Processing**: Delegates alert processing to appropriate IterationController based on stage-specific configuration
 - **Three-Tier Instruction Composition**: General + MCP server + agent-specific instructions
 - **Agent-Specific MCP Access**: Each agent only accesses its assigned MCP server subset
-- **Status Updates**: Standardized WebSocket-based status broadcasting integration
-- **Error Handling**: Consistent error handling patterns across all agents and strategies
+- **Status Updates**: Standardized WebSocket-based status broadcasting integration with stage-level progress
+- **Error Handling**: Consistent error handling patterns across all agents, strategies, and chain stages
 
 **Iteration Strategy Support:**
 - **IterationStrategy.REACT**: Uses SimpleReActController for structured Think→Action→Observation cycles
-- **IterationStrategy.REGULAR**: Uses RegularIterationController for straightforward tool iteration
-- **Default Strategy**: REACT for systematic analysis (configurable per agent)
+- **IterationStrategy.REGULAR**: Uses RegularIterationController for straightforward tool iteration  
+- **IterationStrategy.REACT_TOOLS**: Uses ReactToolsController for data collection focused ReAct cycles without analysis
+- **IterationStrategy.REACT_TOOLS_PARTIAL**: Uses ReactToolsPartialController for data collection + stage-specific analysis
+- **IterationStrategy.REACT_FINAL_ANALYSIS**: Uses ReactFinalAnalysisController for comprehensive analysis without tool access
+- **Default Strategy**: REACT for systematic analysis (configurable per agent and stage)
 
 **Instruction Composition Pattern:**
 ```
@@ -1037,14 +1082,14 @@ async with llm_interaction_context(session_id, request_data) as ctx:
 
 ## Data Flow Architecture
 
-### 1. Multi-Layer Alert Processing Pipeline
+### 1. Multi-Layer Chain Processing Pipeline
 
 ```mermaid
 sequenceDiagram
     participant Client as Client/External System
     participant API as FastAPI Application
     participant AS as AlertService
-    participant AR as Agent Registry
+    participant CR as ChainRegistry
     participant AF as Agent Factory
     participant MSR as MCP Server Registry
     participant KA as Kubernetes Agent
@@ -1060,7 +1105,7 @@ sequenceDiagram
     Client->>API: POST /alerts
     API->>AS: process_alert()
     AS->>HS: create_session()
-    HS->>HDB: Store session
+    HS->>HDB: Store session with chain metadata
     AS->>WS: Update status (queued)
     WS->>Client: WebSocket update
     
@@ -1070,66 +1115,75 @@ sequenceDiagram
     RS-->>AS: Runbook content
     AS->>WS: Update status (processing)
     
-    AS->>AR: get_agent_for_alert_type("NamespaceTerminating")
-    alt Agent Available
-        AR-->>AS: "KubernetesAgent"
-        AS->>AF: create_agent("KubernetesAgent") with iteration strategy
-        AF-->>AS: Instantiated KubernetesAgent (ReAct strategy)
+    AS->>CR: get_chain_for_alert_type("NamespaceTerminating")
+    alt Chain Available
+        CR-->>AS: ChainDefinitionModel (kubernetes-agent-chain)
+        AS->>AS: _execute_chain_stages()
         
-        AS->>KA: process_alert(alert_data, runbook_content, session_id)
-        Note over KA: Agent creates appropriate<br/>IterationController based on strategy
-        AS->>HS: update_session_status(in_progress)
-        HS->>HDB: Update session
-        KA->>WS: Update status (processing - Kubernetes Agent - ReAct)
-        WS->>Client: Status update with agent and strategy info
-        
-        KA->>MSR: get_server_configs(["kubernetes-server"])
-        MSR-->>KA: Kubernetes server config + instructions
-        
-        KA->>MCP: list_tools(kubernetes-server)
-        MCP-->>KA: Kubernetes-specific tool inventory
-        
-        KA->>IC: execute_analysis_loop(IterationContext)
-        
-        alt ReAct Strategy
-            loop ReAct Analysis (Think→Action→Observation)
-                Note over IC,LLM: HookContext captures ReAct interaction
-                IC->>LLM: ReAct prompt (via PromptBuilder)
-                LLM-->>HS: log_llm_interaction (via HookContext)
-                HS->>HDB: Store LLM interaction
-                LLM-->>IC: Thought + Action + Action Input
-                IC->>MCP: Execute selected action
-                MCP-->>HS: log_mcp_communication (via HookContext)
-                HS->>HDB: Store MCP communication
-                MCP-->>IC: Observation data
-                IC->>WS: Progress update (ReAct iteration N)
-                WS->>Client: Status update with ReAct progress
+        loop For Each Stage in Chain
+            AS->>HS: create_stage_execution()
+            HS->>HDB: Store stage execution record
+            AS->>AF: get_agent(stage.agent, stage.iteration_strategy)
+            AF-->>AS: Instantiated Agent with stage-specific strategy
+            
+            AS->>KA: process_alert(AlertProcessingData, session_id)
+            Note over KA: Agent processes with accumulated<br/>data from previous stages
+            AS->>HS: update_stage_execution(started)
+            HS->>HDB: Update stage as started
+            KA->>WS: Update status (processing - Stage N - Agent - Strategy)
+            WS->>Client: Status update with stage and agent info
+            
+            KA->>MSR: get_server_configs(agent.mcp_servers())
+            MSR-->>KA: Agent-specific server configs + instructions
+            
+            alt Stage Needs Tools
+                KA->>MCP: list_tools(agent-specific-servers)
+                MCP-->>KA: Agent-specific tool inventory
             end
-        else Regular Strategy
-            loop Regular Analysis (Tool Iteration)
-                Note over IC,LLM: HookContext captures LLM interaction
-                IC->>LLM: Tool selection (via PromptBuilder)
-                LLM-->>HS: log_llm_interaction (via HookContext)
-                HS->>HDB: Store LLM interaction
-                LLM-->>IC: Tool selection + parameters
-                IC->>MCP: Execute selected tools
-                MCP-->>HS: log_mcp_communication (via HookContext)
-                HS->>HDB: Store MCP communication
-                MCP-->>IC: Tool results
-                IC->>WS: Progress update (Regular iteration N)
-                WS->>Client: Status update with Regular progress
+            
+            KA->>IC: execute_analysis_loop(IterationContext with stage data)
+            
+            alt REACT_TOOLS Strategy (Data Collection)
+                loop ReAct Data Collection Cycles
+                    Note over IC,LLM: HookContext captures stage-linked interaction
+                    IC->>LLM: Data collection ReAct prompt
+                    LLM-->>HS: log_llm_interaction (with stage_execution_id)
+                    HS->>HDB: Store interaction linked to stage
+                    LLM-->>IC: Thought + Action + Action Input
+                    IC->>MCP: Execute selected action
+                    MCP-->>HS: log_mcp_communication (with stage_execution_id)
+                    HS->>HDB: Store MCP communication linked to stage
+                    MCP-->>IC: Observation data
+                    IC->>WS: Progress update (Stage N data collection iteration)
+                    WS->>Client: Stage-specific progress update
+                end
+            else REACT_FINAL_ANALYSIS Strategy (No Tools)
+                Note over IC,LLM: Analysis using all accumulated stage data
+                IC->>LLM: Final analysis prompt with all stage outputs
+                LLM-->>HS: log_llm_interaction (with stage_execution_id)
+                HS->>HDB: Store interaction linked to stage
+                LLM-->>IC: Comprehensive final analysis
+            else Other Strategies
+                Note over IC: Execute appropriate strategy-specific processing
             end
+            
+            IC-->>KA: Stage result
+            KA-->>AS: Stage result with metadata
+            AS->>AS: Add stage result to AlertProcessingData
+            AS->>HS: update_stage_execution(completed)
+            HS->>HDB: Update stage as completed with results
+            AS->>WS: Update status (Stage N completed)
+            WS->>Client: Stage completion update
         end
         
-        IC-->>KA: Final analysis result
-        KA-->>AS: Analysis result with agent and strategy metadata
+        AS->>AS: Extract final analysis from chain stages
         AS->>HS: update_session_status(completed)
         HS->>HDB: Update session as completed
-        AS->>WS: Update status (completed)
-        WS->>Client: Final result with agent and strategy details
-    else No Agent Available
-        AR-->>AS: None (no mapping found)
-        AS->>WS: Update status (error - No specialized agent available)
+        AS->>WS: Update status (chain completed)
+        WS->>Client: Final result with chain metadata
+    else No Chain Available
+        CR-->>AS: ValueError (no chain found)
+        AS->>WS: Update status (error - No chain available for alert type)
         WS->>Client: Error message
     end
 ```
@@ -1139,15 +1193,31 @@ sequenceDiagram
 **Alert Data Model:**
 ```
 Alert Entity:
-- alert_type: string              # Alert type for agent selection (required)
+- alert_type: string              # Alert type for chain selection (required)
 - runbook: string                 # GitHub runbook URL (required)
 - data: object                    # Arbitrary JSON payload for monitoring data (default: {})
 - severity: Optional[string]      # Alert severity (defaults to "warning" if not provided)
 - timestamp: Optional[int]        # Alert timestamp in unix microseconds (defaults to current time)
 
-AlertProcessingData Entity:
-- alert_type: string              # Alert type for agent selection
+AlertProcessingData Entity (Enhanced for Chain Processing):
+- alert_type: string              # Alert type for chain selection
 - alert_data: dict                # Complete normalized alert data including defaults and metadata
+- runbook_url: Optional[string]   # URL to runbook for this alert
+- runbook_content: Optional[string] # Downloaded runbook content
+- stage_outputs: Dict[str, Dict[str, Any]] # Results from completed chain stages
+- chain_id: Optional[string]      # ID of chain processing this alert
+- current_stage_name: Optional[string] # Currently executing stage
+
+Chain Data Models:
+ChainStageModel:
+- name: string                    # Human-readable stage name
+- agent: string                   # Agent identifier (class name or "ConfigurableAgent:agent-name")
+
+ChainDefinitionModel:
+- chain_id: string                # Unique chain identifier
+- alert_types: List[string]       # Alert types this chain handles
+- stages: List[ChainStageModel]   # Sequential stages (1+ stages)
+- description: Optional[string]   # Chain description
 ```
 
 **Processing Status Model:**
@@ -1167,11 +1237,11 @@ ProcessingStatus Entity:
 
 **Unified Interaction Models (Type-Safe):**
 ```
-AlertSession Entity:
+AlertSession Entity (Enhanced for Chain Processing):
 - session_id: string (primary key, UUID)      # Unique identifier for alert processing session
 - alert_id: string (unique, indexed)          # External alert identifier from alert system
 - alert_data: dict (JSON column)              # Original alert payload and context data
-- agent_type: string                          # Type of processing agent (e.g., 'kubernetes', 'base')
+- agent_type: string                          # Type of processing agent (e.g., 'kubernetes', 'base', 'chain:chain-id')
 - alert_type: Optional[string]                # Alert type for filtering (e.g., 'NamespaceTerminating')
 - status: string                              # Current status (pending, in_progress, completed, failed)
 - started_at_us: int (indexed)                # Session start timestamp (microseconds since epoch UTC)
@@ -1179,8 +1249,25 @@ AlertSession Entity:
 - error_message: Optional[string]             # Error message if processing failed
 - final_analysis: Optional[string]            # Final formatted analysis result if completed successfully
 - session_metadata: Optional[dict] (JSON)    # Additional context and metadata
+- chain_id: Optional[string]                  # Chain identifier for this execution
+- chain_definition: Optional[dict] (JSON)     # Complete chain definition snapshot
+- current_stage_index: Optional[int]          # Current stage position (0-based)
+- current_stage_id: Optional[string]          # Current stage identifier
 - llm_interactions: list[LLMInteraction]      # Related LLM interactions (cascade delete)
 - mcp_interactions: list[MCPInteraction]      # Related MCP interactions (cascade delete)
+
+StageExecution Entity (New for Chain Processing):
+- execution_id: string (primary key, UUID)   # Unique identifier for stage execution
+- session_id: string (foreign key)           # Reference to parent alert session
+- stage_id: string                           # Stage identifier (e.g., 'initial-analysis')
+- stage_index: int                           # Stage position in chain (0-based)
+- agent: string                              # Agent used for this stage
+- status: string                             # pending|active|completed|failed
+- started_at_us: Optional[int]               # Stage start timestamp
+- completed_at_us: Optional[int]             # Stage completion timestamp
+- duration_ms: Optional[int]                 # Stage execution duration
+- stage_output: Optional[dict] (JSON)        # Data produced by stage (only for successful completion)
+- error_message: Optional[string]            # Error message if stage failed
 
 JSON Indexes (for efficient querying):
 - ix_alert_data_gin: GIN index on alert_data (PostgreSQL)
