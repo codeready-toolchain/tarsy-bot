@@ -11,6 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from tarsy.models.masking_config import MaskingConfig, MaskingPattern
+from tests.utils import ModelValidationTester, TestUtils
 
 
 @pytest.mark.unit
@@ -57,24 +58,16 @@ class TestMaskingPattern:
         error = exc_info.value
         assert "Invalid regex pattern" in str(error)
     
-    def test_empty_name_validation(self):
-        """Test that empty names are rejected."""
+    @pytest.mark.parametrize("invalid_name", [
+        "",  # Empty name
+        "   ",  # Whitespace only
+        "\t\n",  # Tab and newline
+    ])
+    def test_invalid_name_validation(self, invalid_name):
+        """Test that invalid names are rejected."""
         with pytest.raises(ValidationError) as exc_info:
             MaskingPattern(
-                name="",  # Empty name
-                pattern=r"valid_\d+",
-                replacement="***MASKED***",
-                description="Valid pattern"
-            )
-        
-        error = exc_info.value
-        assert "Pattern name cannot be empty" in str(error)
-    
-    def test_whitespace_name_validation(self):
-        """Test that whitespace-only names are rejected."""
-        with pytest.raises(ValidationError) as exc_info:
-            MaskingPattern(
-                name="   ",  # Whitespace only
+                name=invalid_name,
                 pattern=r"valid_\d+",
                 replacement="***MASKED***",
                 description="Valid pattern"
@@ -93,6 +86,18 @@ class TestMaskingPattern:
         )
         
         assert pattern.name == "trimmed_name"
+
+    def test_serialization_roundtrip(self, model_test_helpers):
+        """Test that masking pattern can be serialized and deserialized correctly."""
+        valid_data = {
+            "name": "test_pattern",
+            "pattern": r"secret_\d+",
+            "replacement": "***MASKED_SECRET***",
+            "description": "Test secret pattern",
+            "enabled": True
+        }
+        
+        model_test_helpers.test_serialization_roundtrip(MaskingPattern, valid_data)
     
     def test_complex_regex_patterns(self):
         """Test various complex but valid regex patterns."""
@@ -197,6 +202,24 @@ class TestMaskingConfig:
         # None for custom_patterns should work
         config2 = MaskingConfig(custom_patterns=None)
         assert config2.custom_patterns is None
+
+    def test_serialization_roundtrip(self, model_test_helpers):
+        """Test that masking config can be serialized and deserialized correctly."""
+        custom_pattern = MaskingPattern(
+            name="custom_test",
+            pattern=r"test_\d+",
+            replacement="***MASKED_TEST***",
+            description="Custom test pattern"
+        )
+        
+        valid_data = {
+            "enabled": True,
+            "pattern_groups": ["basic", "security"],
+            "patterns": ["api_key", "password"],
+            "custom_patterns": [custom_pattern]
+        }
+        
+        model_test_helpers.test_serialization_roundtrip(MaskingConfig, valid_data)
     
     def test_realistic_production_configs(self):
         """Test realistic production configuration scenarios."""

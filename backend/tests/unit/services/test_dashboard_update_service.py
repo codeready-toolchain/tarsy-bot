@@ -13,6 +13,7 @@ from tarsy.services.dashboard_update_service import (
     DashboardUpdateService,
     SessionSummary,
 )
+from tests.utils import DashboardFactory
 
 
 class TestSessionSummary:
@@ -21,7 +22,13 @@ class TestSessionSummary:
     @pytest.mark.unit
     def test_session_summary_creation(self):
         """Test SessionSummary creation with defaults."""
-        summary = SessionSummary(session_id="session_123", status="active")
+        summary = DashboardFactory.create_session_summary(
+            session_id="session_123",
+            status="active",
+            start_time=None,
+            agent_type=None,
+            last_activity=None
+        )
         
         assert summary.session_id == "session_123"
         assert summary.status == "active"
@@ -37,7 +44,7 @@ class TestSessionSummary:
     def test_session_summary_with_custom_values(self):
         """Test SessionSummary creation with custom values."""
         start_time = datetime.now()
-        summary = SessionSummary(
+        summary = DashboardFactory.create_session_summary(
             session_id="session_456",
             status="processing",
             start_time=start_time,
@@ -59,7 +66,7 @@ class TestSessionSummary:
     @pytest.mark.unit
     def test_session_summary_to_dict_conversion(self):
         """Test converting SessionSummary to dictionary."""
-        summary = SessionSummary(
+        summary = DashboardFactory.create_session_summary(
             session_id="session_789",
             status="completed",
             llm_interactions=10,
@@ -81,11 +88,7 @@ class TestDashboardUpdateService:
     @pytest.fixture
     def mock_broadcaster(self):
         """Mock dashboard broadcaster."""
-        broadcaster = AsyncMock()
-        broadcaster.broadcast_dashboard_update = AsyncMock(return_value=3)
-        broadcaster.broadcast_session_update = AsyncMock(return_value=2)
-        broadcaster.broadcast_system_health = AsyncMock(return_value=1)
-        return broadcaster
+        return DashboardFactory.create_mock_broadcaster()
     
     @pytest.fixture
     def update_service(self, mock_broadcaster):
@@ -120,10 +123,7 @@ class TestLLMInteractionProcessing:
     @pytest.fixture
     def mock_broadcaster(self):
         """Mock broadcaster."""
-        broadcaster = AsyncMock()
-        broadcaster.broadcast_dashboard_update = AsyncMock(return_value=3)
-        broadcaster.broadcast_session_update = AsyncMock(return_value=2)
-        return broadcaster
+        return DashboardFactory.create_mock_broadcaster()
     
     @pytest.fixture
     def update_service(self, mock_broadcaster):
@@ -135,17 +135,7 @@ class TestLLMInteractionProcessing:
     async def test_process_llm_interaction_success(self, update_service, mock_broadcaster):
         """Test processing successful LLM interaction with production data format."""
         session_id = "llm_session_123"
-        interaction_data = {
-            'interaction_type': 'llm',
-            'session_id': session_id,
-            'step_description': 'LLM analysis using gpt-4',
-            'model_used': 'gpt-4',
-            'success': True,
-            'duration_ms': 1500,
-            'timestamp': datetime.now().isoformat(),
-            'tool_calls_present': True,
-            'error_message': None
-        }
+        interaction_data = DashboardFactory.create_llm_interaction_data(session_id=session_id)
         
         # Test immediate processing (no batching)
         sent_count = await update_service.process_llm_interaction(
@@ -173,17 +163,7 @@ class TestLLMInteractionProcessing:
     async def test_process_llm_interaction_error(self, update_service, mock_broadcaster):
         """Test processing LLM interaction error."""
         session_id = "llm_error_session"
-        interaction_data = {
-            'interaction_type': 'llm',
-            'session_id': session_id,
-            'step_description': 'LLM analysis failed',
-            'model_used': 'gpt-4',
-            'success': False,
-            'duration_ms': 500,
-            'timestamp': datetime.now().isoformat(),
-            'tool_calls_present': False,
-            'error_message': 'Connection timeout to LLM service'
-        }
+        interaction_data = DashboardFactory.create_error_interaction_data(session_id=session_id)
         
         await update_service.process_llm_interaction(session_id, interaction_data)
         

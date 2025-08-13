@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from tarsy.models.websocket_models import (
     ChainProgressUpdate, StageProgressUpdate, ChannelType
 )
+from tests.utils import ModelValidationTester, TestUtils
 
 
 @pytest.mark.unit
@@ -57,18 +58,18 @@ class TestChainProgressUpdate:
         assert update.stage_details["agent"] == "KubernetesAgent"
         assert update.channel == "session_456"
     
-    def test_status_values(self):
+    @pytest.mark.parametrize("valid_status", [
+        "pending", "processing", "completed", "failed", "partial"
+    ])
+    def test_valid_status_values(self, valid_status):
         """Test valid overall status values."""
-        valid_statuses = ["pending", "processing", "completed", "failed", "partial"]
-        
-        for status in valid_statuses:
-            update = ChainProgressUpdate(
-                session_id="test_session",
-                chain_id="test_chain",
-                overall_status=status
-            )
-            assert update.overall_status == status
-    
+        update = ChainProgressUpdate(
+            session_id="test_session",
+            chain_id="test_chain",
+            overall_status=valid_status
+        )
+        assert update.overall_status == valid_status
+
     def test_invalid_status(self):
         """Test invalid overall status raises validation error."""
         with pytest.raises(ValidationError):
@@ -78,26 +79,19 @@ class TestChainProgressUpdate:
                 overall_status="invalid_status"
             )
     
-    def test_serialization(self):
-        """Test chain progress update serialization."""
-        update = ChainProgressUpdate(
-            session_id="session_789",
-            chain_id="multi-stage-chain",
-            current_stage="data-collection",
-            current_stage_index=0,
-            total_stages=4,
-            completed_stages=0,
-            overall_status="processing"
-        )
+    def test_serialization_roundtrip(self, model_test_helpers):
+        """Test that chain progress update can be serialized and deserialized correctly."""
+        valid_data = {
+            "session_id": "session_789",
+            "chain_id": "multi-stage-chain",
+            "current_stage": "data-collection",
+            "current_stage_index": 0,
+            "total_stages": 4,
+            "completed_stages": 0,
+            "overall_status": "processing"
+        }
         
-        serialized = update.dict()
-        
-        assert serialized["type"] == "chain_progress"
-        assert serialized["session_id"] == "session_789"
-        assert serialized["chain_id"] == "multi-stage-chain"
-        assert serialized["current_stage"] == "data-collection"
-        assert serialized["current_stage_index"] == 0
-        assert serialized["total_stages"] == 4
+        model_test_helpers.test_serialization_roundtrip(ChainProgressUpdate, valid_data)
 
 
 @pytest.mark.unit
@@ -153,22 +147,22 @@ class TestStageProgressUpdate:
         assert update.iteration_strategy == "react"
         assert update.channel == "session_789"
     
-    def test_status_values(self):
+    @pytest.mark.parametrize("valid_status", [
+        "pending", "active", "completed", "failed"
+    ])
+    def test_valid_status_values(self, valid_status):
         """Test valid stage status values."""
-        valid_statuses = ["pending", "active", "completed", "failed"]
-        
-        for status in valid_statuses:
-            update = StageProgressUpdate(
-                session_id="test_session",
-                chain_id="test_chain",
-                stage_execution_id="test_exec",
-                stage_name="test_stage",
-                stage_index=0,
-                agent="TestAgent",
-                status=status
-            )
-            assert update.status == status
-    
+        update = StageProgressUpdate(
+            session_id="test_session",
+            chain_id="test_chain",
+            stage_execution_id="test_exec",
+            stage_name="test_stage",
+            stage_index=0,
+            agent="TestAgent",
+            status=valid_status
+        )
+        assert update.status == valid_status
+
     def test_invalid_status(self):
         """Test invalid stage status raises validation error."""
         with pytest.raises(ValidationError):
@@ -213,29 +207,22 @@ class TestStageProgressUpdate:
         assert update.agent == "ConfigurableAgent:my-custom-agent"
         assert update.iteration_strategy == "regular"
     
-    def test_serialization(self):
-        """Test stage progress update serialization."""
-        update = StageProgressUpdate(
-            session_id="session_serialize",
-            chain_id="serialize-chain",
-            stage_execution_id="stage_serialize",
-            stage_name="serialization-test",
-            stage_index=1,
-            agent="SerializeAgent",
-            status="completed",
-            started_at_us=1000000,
-            completed_at_us=2000000,
-            duration_ms=1000
-        )
+    def test_serialization_roundtrip(self, model_test_helpers):
+        """Test that stage progress update can be serialized and deserialized correctly."""
+        valid_data = {
+            "session_id": "session_serialize",
+            "chain_id": "serialize-chain",
+            "stage_execution_id": "stage_serialize",
+            "stage_name": "serialization-test",
+            "stage_index": 1,
+            "agent": "SerializeAgent",
+            "status": "completed",
+            "started_at_us": 1000000,
+            "completed_at_us": 2000000,
+            "duration_ms": 1000
+        }
         
-        serialized = update.dict()
-        
-        assert serialized["type"] == "stage_progress"
-        assert serialized["session_id"] == "session_serialize"
-        assert serialized["stage_name"] == "serialization-test"
-        assert serialized["agent"] == "SerializeAgent"
-        assert serialized["status"] == "completed"
-        assert serialized["duration_ms"] == 1000
+        model_test_helpers.test_serialization_roundtrip(StageProgressUpdate, valid_data)
 
 
 @pytest.mark.unit

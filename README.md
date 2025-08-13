@@ -81,7 +81,7 @@ Tarsy uses an AI-powered chain-based architecture where alerts flow through sequ
 sequenceDiagram
     participant MonitoringSystem
     participant Orchestrator
-    participant Agent
+    participant AgentChains
     participant GitHub
     participant AI
     participant MCPServers
@@ -89,13 +89,13 @@ sequenceDiagram
     participant Engineer
 
     MonitoringSystem->>Orchestrator: Send Alert
-    Orchestrator->>Agent: Assign Alert & Context
-    Agent->>GitHub: Download Runbook
+    Orchestrator->>AgentChains: Assign Alert & Context
+    AgentChains->>GitHub: Download Runbook
     loop Investigation Loop
-        Agent->>AI: Investigate with LLM
+        AgentChains->>AI: Investigate with LLM
         AI->>MCPServers: Query/Actuate as needed
     end
-    Agent->>Dashboard: Send Analysis & Recommendations
+    AgentChains->>Dashboard: Send Analysis & Recommendations
     Engineer->>Dashboard: Review & Take Action
 ```
 

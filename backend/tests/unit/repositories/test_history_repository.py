@@ -14,6 +14,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from tarsy.models.history import AlertSession
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.history_repository import HistoryRepository
+from tests.utils import AlertFactory
 
 
 class TestHistoryRepository:
@@ -101,25 +102,27 @@ class TestHistoryRepository:
             success=True
         )
     
-    @pytest.mark.unit
-    def test_create_alert_session_success(self, repository, sample_alert_session):
-        """Test successful alert session creation."""
-        created_session = repository.create_alert_session(sample_alert_session)
-        
-        assert created_session.session_id == sample_alert_session.session_id
-        
-        # Verify session was saved to database
-        retrieved_session = repository.get_alert_session(created_session.session_id)
-        assert retrieved_session is not None
-        assert retrieved_session.alert_id == sample_alert_session.alert_id
-        assert retrieved_session.agent_type == sample_alert_session.agent_type
-        assert retrieved_session.status == sample_alert_session.status
-    
-    @pytest.mark.unit
-    def test_get_alert_session_not_found(self, repository):
-        """Test getting alert session that doesn't exist."""
-        session = repository.get_alert_session("non-existent-session")
-        assert session is None
+    @pytest.mark.parametrize("session_id,expected_result", [
+        ("test-session-123", "found"),
+        ("non-existent-session", None),
+    ])
+    def test_alert_session_retrieval(self, repository, sample_alert_session, session_id, expected_result):
+        """Test alert session creation and retrieval scenarios."""
+        if expected_result == "found":
+            # Create session first
+            created_session = repository.create_alert_session(sample_alert_session)
+            assert created_session.session_id == sample_alert_session.session_id
+            
+            # Verify session was saved to database
+            retrieved_session = repository.get_alert_session(session_id)
+            assert retrieved_session is not None
+            assert retrieved_session.alert_id == sample_alert_session.alert_id
+            assert retrieved_session.agent_type == sample_alert_session.agent_type
+            assert retrieved_session.status == sample_alert_session.status
+        else:
+            # Test getting non-existent session
+            session = repository.get_alert_session(session_id)
+            assert session is None
     
     @pytest.mark.unit
     def test_update_alert_session_success(self, repository, sample_alert_session):

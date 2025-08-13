@@ -11,6 +11,7 @@ import pytest
 
 from tarsy.models.mcp_config import MCPServerConfig
 from tarsy.services.mcp_server_registry import MCPServerRegistry
+from tests.utils import MCPServerFactory
 
 
 @pytest.mark.unit
@@ -36,20 +37,11 @@ class TestMCPServerRegistryInitialization:
     def test_initialization_with_custom_config(self):
         """Test initialization with custom server configurations."""
         custom_config = {
-            "test-server": {
-                "server_id": "test-server",
-                "server_type": "test",
-                "enabled": True,
-                "connection_params": {"command": "test", "args": ["--test"]},
-                "instructions": "Test instructions"
-            },
-            "another-server": {
-                "server_id": "another-server", 
-                "server_type": "another",
-                "enabled": False,
-                "connection_params": {"command": "another", "args": []},
-                "instructions": "Another test"
-            }
+            "test-server": MCPServerFactory.create_test_server(),
+            "another-server": MCPServerFactory.create_disabled_server(
+                server_id="another-server",
+                server_type="another"
+            )
         }
         
         registry = MCPServerRegistry(config=custom_config)
@@ -99,15 +91,8 @@ class TestMCPServerRegistryInitialization:
             mock_config_instance = Mock()
             mock_mcp_config.return_value = mock_config_instance
             
-            custom_config = {
-                "test-server": {
-                    "server_id": "test-server",
-                    "server_type": "test",
-                    "enabled": True,
-                    "connection_params": {"command": "test", "args": []},
-                    "instructions": "Test instructions"
-                }
-            }
+            test_server_config = MCPServerFactory.create_test_server()
+            custom_config = {"test-server": test_server_config}
             
             registry = MCPServerRegistry(config=custom_config)
             
@@ -116,8 +101,8 @@ class TestMCPServerRegistryInitialization:
                 server_id="test-server",
                 server_type="test", 
                 enabled=True,
-                connection_params={"command": "test", "args": []},
-                instructions="Test instructions"
+                connection_params={"command": "test", "args": ["--test"], "env": {}},
+                instructions="Test MCP server for testing"
             )
             
             assert registry.static_servers["test-server"] == mock_config_instance
@@ -131,27 +116,9 @@ class TestServerConfigRetrieval:
     def sample_registry(self):
         """Create a registry with known server configurations for testing."""
         return MCPServerRegistry(config={
-            "kubernetes-server": {
-                "server_id": "kubernetes-server",
-                "server_type": "kubernetes",
-                "enabled": True,
-                "connection_params": {"command": "kubectl", "args": []},
-                "instructions": "K8s instructions"
-            },
-            "docker-server": {
-                "server_id": "docker-server",
-                "server_type": "docker",
-                "enabled": True,
-                "connection_params": {"command": "docker", "args": []},
-                "instructions": "Docker instructions"
-            },
-            "disabled-server": {
-                "server_id": "disabled-server",
-                "server_type": "test",
-                "enabled": False,
-                "connection_params": {"command": "test", "args": []},
-                "instructions": "Disabled server"
-            }
+            "kubernetes-server": MCPServerFactory.create_kubernetes_server(),
+            "docker-server": MCPServerFactory.create_docker_server(),
+            "disabled-server": MCPServerFactory.create_disabled_server()
         })
     
     def test_get_server_config_existing_server(self, sample_registry):
@@ -352,31 +319,11 @@ class TestEdgeCases:
     def test_registry_with_special_character_server_ids(self):
         """Test registry with special characters in server IDs."""
         special_config = {
-             "server-with-dashes": {
-                 "server_id": "server-with-dashes",
-                 "server_type": "test",
-                 "enabled": True,
-                 "connection_params": {"command": "test", "args": []}
-             },
-             "server_with_underscores": {
-                 "server_id": "server_with_underscores", 
-                 "server_type": "test",
-                 "enabled": True,
-                 "connection_params": {"command": "test", "args": []}
-             },
-             "server.with.dots": {
-                 "server_id": "server.with.dots",
-                 "server_type": "test",
-                 "enabled": True,
-                 "connection_params": {"command": "test", "args": []}
-             },
-             "server/with/slashes": {
-                 "server_id": "server/with/slashes",
-                 "server_type": "test", 
-                 "enabled": True,
-                 "connection_params": {"command": "test", "args": []}
-             }
-         }
+            "server-with-dashes": MCPServerFactory.create_test_server(server_id="server-with-dashes"),
+            "server_with_underscores": MCPServerFactory.create_test_server(server_id="server_with_underscores"),
+            "server.with.dots": MCPServerFactory.create_test_server(server_id="server.with.dots"),
+            "server/with/slashes": MCPServerFactory.create_test_server(server_id="server/with/slashes")
+        }
         
         registry = MCPServerRegistry(config=special_config)
         
@@ -389,24 +336,9 @@ class TestEdgeCases:
     def test_registry_with_numeric_server_ids(self):
         """Test registry with numeric or mixed server IDs."""
         numeric_config = {
-            "server123": {
-                "server_id": "server123",
-                "server_type": "test",
-                "enabled": True,
-                 "connection_params": {"command": "test", "args": []}
-            },
-            "123server": {
-                "server_id": "123server",
-                "server_type": "test",
-                "enabled": True,
-                 "connection_params": {"command": "test", "args": []}
-            },
-            "server-2024": {
-                "server_id": "server-2024",
-                "server_type": "test",
-                "enabled": True,
-                 "connection_params": {"command": "test", "args": []}
-            }
+            "server123": MCPServerFactory.create_test_server(server_id="server123"),
+            "123server": MCPServerFactory.create_test_server(server_id="123server"),
+            "server-2024": MCPServerFactory.create_test_server(server_id="server-2024")
         }
         
         registry = MCPServerRegistry(config=numeric_config)
@@ -418,18 +350,8 @@ class TestEdgeCases:
     def test_registry_with_unicode_server_ids(self):
         """Test registry with unicode characters in server IDs."""
         unicode_config = {
-            "serverWithÜnicode": {
-                "server_id": "serverWithÜnicode",
-                "server_type": "test",
-                "enabled": True,
-                 "connection_params": {"command": "test", "args": []}
-            },
-            "server🚀space": {
-                "server_id": "server🚀space",
-                "server_type": "test",
-                "enabled": True,
-                 "connection_params": {"command": "test", "args": []}
-            }
+            "serverWithÜnicode": MCPServerFactory.create_test_server(server_id="serverWithÜnicode"),
+            "server🚀space": MCPServerFactory.create_test_server(server_id="server🚀space")
         }
         
         registry = MCPServerRegistry(config=unicode_config)

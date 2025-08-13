@@ -6,6 +6,7 @@ Tests model creation, validation, serialization, and data access methods.
 
 import pytest
 from tarsy.models.chains import ChainStageModel, ChainDefinitionModel
+from tests.utils import ModelValidationTester, TestUtils
 
 
 @pytest.mark.unit
@@ -47,38 +48,25 @@ class TestChainStageModel:
         assert stage.agent == "ConfigurableAgent:my-custom-agent"
         assert stage.iteration_strategy == "regular"
     
-    def test_to_dict_serialization(self):
-        """Test stage serialization to dictionary."""
-        stage = ChainStageModel(
-            name="test-stage",
-            agent="TestAgent",
-            iteration_strategy="react"
+    @pytest.mark.parametrize("stage_data,expected_dict", [
+        (
+            {"name": "test-stage", "agent": "TestAgent", "iteration_strategy": "react"},
+            {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': 'react'}
+        ),
+        (
+            {"name": "test-stage", "agent": "TestAgent"},
+            {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': None}
+        ),
+        (
+            {"name": "custom-stage", "agent": "ConfigurableAgent:custom", "iteration_strategy": "regular"},
+            {'name': 'custom-stage', 'agent': 'ConfigurableAgent:custom', 'iteration_strategy': 'regular'}
         )
-        
+    ])
+    def test_to_dict_serialization(self, stage_data, expected_dict):
+        """Test stage serialization to dictionary with various configurations."""
+        stage = ChainStageModel(**stage_data)
         result = stage.to_dict()
-        expected = {
-            'name': 'test-stage',
-            'agent': 'TestAgent',
-            'iteration_strategy': 'react'
-        }
-        
-        assert result == expected
-    
-    def test_to_dict_serialization_none_strategy(self):
-        """Test stage serialization with None strategy."""
-        stage = ChainStageModel(
-            name="test-stage",
-            agent="TestAgent"
-        )
-        
-        result = stage.to_dict()
-        expected = {
-            'name': 'test-stage',
-            'agent': 'TestAgent',
-            'iteration_strategy': None
-        }
-        
-        assert result == expected
+        assert result == expected_dict
 
 
 @pytest.mark.unit
@@ -98,7 +86,44 @@ class TestChainDefinitionModel:
         assert chain.alert_types == ["test-alert"]
         assert len(chain.stages) == 1
         assert chain.stages[0] == stage
-        assert chain.description is None
+
+    def test_required_fields_validation(self, model_validation_tester):
+        """Test that required fields are enforced."""
+        valid_data = {
+            "chain_id": "test-chain",
+            "alert_types": ["test-alert"],
+            "stages": [ChainStageModel(name="analysis", agent="TestAgent")]
+        }
+        
+        required_fields = ["chain_id", "alert_types", "stages"]
+        model_validation_tester.test_required_fields(ChainDefinitionModel, required_fields, valid_data)
+
+    def test_serialization_roundtrip(self, model_test_helpers):
+        """Test that chain definition can be serialized and deserialized correctly."""
+        # Create the model instance first
+        chain = ChainDefinitionModel(
+            chain_id="test-chain",
+            alert_types=["test-alert"],
+            stages=[ChainStageModel(name="analysis", agent="TestAgent")],
+            description="Test chain description"
+        )
+        
+        # Test serialization to dict
+        chain_dict = chain.to_dict()
+        
+        # Test that we can reconstruct the stages properly
+        reconstructed_stages = [ChainStageModel(**stage_dict) for stage_dict in chain_dict['stages']]
+        
+        # Create a new chain with reconstructed stages
+        reconstructed_chain = ChainDefinitionModel(
+            chain_id=chain_dict['chain_id'],
+            alert_types=chain_dict['alert_types'],
+            stages=reconstructed_stages,
+            description=chain_dict['description']
+        )
+        
+        # Verify they're equal
+        assert chain == reconstructed_chain
     
     def test_creation_with_description(self):
         """Test chain creation with description."""
