@@ -13,6 +13,7 @@ from typing import Dict, Any, Optional
 
 from cachetools import TTLCache
 from tarsy.config.settings import Settings
+from tarsy.config.agent_config import ConfigurationLoader, ConfigurationError
 from tarsy.integrations.llm.client import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert_processing import AlertProcessingData
@@ -46,14 +47,20 @@ class AlertService:
         """
         self.settings = settings
         
+        # Load agent configuration first
+        self.parsed_config = self._load_agent_configuration()
+
         # Initialize services
         self.runbook_service = RunbookService(settings)
         self.history_service = get_history_service()
         
-        # Initialize registries first
+        # Initialize registries with loaded configuration
         config_loader = ConfigurationLoader(settings.agent_config_path) if settings.agent_config_path else None
         self.chain_registry = ChainRegistry(config_loader)
-        self.mcp_server_registry = MCPServerRegistry(settings=settings)
+        self.mcp_server_registry = MCPServerRegistry(
+            settings=settings,
+            configured_servers=self.parsed_config.mcp_servers
+        )
         
         # Initialize services that depend on registries
         self.mcp_client = MCPClient(settings, self.mcp_server_registry)
@@ -70,8 +77,39 @@ class AlertService:
         # Initialize agent factory with dependencies
         self.agent_factory = None  # Will be initialized in initialize()
         
+        logger.info(f"AlertService initialized with agent delegation support "
+                   f"({len(self.parsed_config.agents)} configured agents, "
+                   f"{len(self.parsed_config.mcp_servers)} configured MCP servers)")
         
-        logger.info("AlertService initialized with agent delegation support")
+    def _load_agent_configuration(self):
+        """
+        Load agent configuration from the configured file path.
+        
+        Returns:
+            CombinedConfigModel: Parsed configuration with agents and MCP servers
+        """
+        try:
+            config_loader = ConfigurationLoader(self.settings.agent_config_path)
+            parsed_config = config_loader.load_and_validate()
+
+            logger.info(f"Successfully loaded agent configuration from {self.settings.agent_config_path}: "
+                       f"{len(parsed_config.agents)} agents, {len(parsed_config.mcp_servers)} MCP servers")
+
+            return parsed_config
+
+        except ConfigurationError as e:
+            logger.error(f"Configuration error loading {self.settings.agent_config_path}: {e}")
+            logger.warning("Continuing with built-in agents only")
+            # Return empty configuration to continue with built-in agents
+            from tarsy.models.agent_config import CombinedConfigModel
+            return CombinedConfigModel(agents={}, mcp_servers={})
+
+        except Exception as e:
+            logger.error(f"Unexpected error loading agent configuration: {e}")
+            logger.warning("Continuing with built-in agents only")
+            # Return empty configuration to continue with built-in agents
+            from tarsy.models.agent_config import CombinedConfigModel
+            return CombinedConfigModel(agents={}, mcp_servers={})
 
     async def initialize(self):
         """
@@ -94,7 +132,8 @@ class AlertService:
             self.agent_factory = AgentFactory(
                 llm_client=self.llm_manager,
                 mcp_client=self.mcp_client,
-                mcp_registry=self.mcp_server_registry
+                mcp_registry=self.mcp_server_registry,
+                agent_configs=self.parsed_config.agents
             )
             
             logger.info("AlertService initialized successfully")

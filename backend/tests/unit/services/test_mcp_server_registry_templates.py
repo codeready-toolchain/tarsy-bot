@@ -151,7 +151,8 @@ class TestMCPServerRegistryTemplateResolution:
             'SERVER_TYPE': 'production',
             'HOST': 'api.company.com', 
             'PORT': '8443',
-            'AUTH_TOKEN': 'bearer-token-123'
+            'AUTH_TOKEN': 'bearer-token-123',
+            'KUBECONFIG': '/home/.kube/config'
         }
         
         with patch.dict(os.environ, env_vars):
