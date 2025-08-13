@@ -7,36 +7,30 @@ for supporting sequential agent chains.
 
 import pytest
 from tarsy.models.alert_processing import AlertProcessingData
+from tests.utils import ModelValidationTester, TestUtils
 
 
 @pytest.mark.unit
 class TestAlertProcessingDataChainContext:
     """Test chain context management in AlertProcessingData."""
     
-    def test_set_chain_context_basic(self):
-        """Test setting basic chain context."""
+    @pytest.mark.parametrize("chain_id,stage_name,expected_chain_id,expected_stage_name", [
+        ("test-chain", "analysis", "test-chain", "analysis"),
+        ("test-chain", None, "test-chain", None),
+        ("chain1", "stage1", "chain1", "stage1"),
+    ])
+    def test_set_chain_context_scenarios(self, chain_id, stage_name, expected_chain_id, expected_stage_name):
+        """Test setting chain context for various scenarios."""
         alert_data = AlertProcessingData(
             alert_type="kubernetes",
             alert_data={"test": "data"}
         )
         
-        alert_data.set_chain_context("test-chain", "analysis")
+        alert_data.set_chain_context(chain_id, stage_name)
         
-        assert alert_data.chain_id == "test-chain"
-        assert alert_data.current_stage_name == "analysis"
-    
-    def test_set_chain_context_no_stage(self):
-        """Test setting chain context without current stage."""
-        alert_data = AlertProcessingData(
-            alert_type="kubernetes",
-            alert_data={"test": "data"}
-        )
-        
-        alert_data.set_chain_context("test-chain")
-        
-        assert alert_data.chain_id == "test-chain"
-        assert alert_data.current_stage_name is None
-    
+        assert alert_data.chain_id == expected_chain_id
+        assert alert_data.current_stage_name == expected_stage_name
+
     def test_set_chain_context_update(self):
         """Test updating chain context."""
         alert_data = AlertProcessingData(
@@ -59,24 +53,27 @@ class TestAlertProcessingDataChainContext:
 class TestAlertProcessingDataStageResults:
     """Test stage result management in AlertProcessingData."""
     
-    def test_add_stage_result_basic(self):
-        """Test adding basic stage result."""
+    @pytest.mark.parametrize("stage_name,stage_result", [
+        ("data-collection", {
+            "status": "success",
+            "analysis": "Test analysis",
+            "actions_taken": ["action1", "action2"]
+        }),
+        ("stage1", {"status": "success", "data": "stage1 data"}),
+        ("stage2", {"status": "success", "analysis": "stage2 analysis"}),
+    ])
+    def test_add_stage_result_scenarios(self, stage_name, stage_result):
+        """Test adding stage results for various scenarios."""
         alert_data = AlertProcessingData(
             alert_type="kubernetes",
             alert_data={"test": "data"}
         )
         
-        stage_result = {
-            "status": "success",
-            "analysis": "Test analysis",
-            "actions_taken": ["action1", "action2"]
-        }
+        alert_data.add_stage_result(stage_name, stage_result)
         
-        alert_data.add_stage_result("data-collection", stage_result)
-        
-        assert "data-collection" in alert_data.stage_outputs
-        assert alert_data.stage_outputs["data-collection"] == stage_result
-    
+        assert stage_name in alert_data.stage_outputs
+        assert alert_data.stage_outputs[stage_name] == stage_result
+
     def test_add_multiple_stage_results(self):
         """Test adding multiple stage results."""
         alert_data = AlertProcessingData(
@@ -96,28 +93,23 @@ class TestAlertProcessingDataStageResults:
         assert alert_data.stage_outputs["stage1"] == stage1_result
         assert alert_data.stage_outputs["stage2"] == stage2_result
     
-    def test_get_stage_result_existing(self):
-        """Test getting existing stage result."""
+    @pytest.mark.parametrize("stage_name,expected_result", [
+        ("test-stage", {"status": "success", "result": "test"}),
+        ("nonexistent-stage", None),
+    ])
+    def test_get_stage_result_scenarios(self, stage_name, expected_result):
+        """Test getting stage results for various scenarios."""
         alert_data = AlertProcessingData(
             alert_type="kubernetes",
             alert_data={"test": "data"}
         )
         
+        # Add a stage result for testing
         stage_result = {"status": "success", "result": "test"}
         alert_data.add_stage_result("test-stage", stage_result)
         
-        retrieved_result = alert_data.get_stage_result("test-stage")
-        assert retrieved_result == stage_result
-    
-    def test_get_stage_result_nonexistent(self):
-        """Test getting non-existent stage result."""
-        alert_data = AlertProcessingData(
-            alert_type="kubernetes",
-            alert_data={"test": "data"}
-        )
-        
-        result = alert_data.get_stage_result("nonexistent-stage")
-        assert result is None
+        retrieved_result = alert_data.get_stage_result(stage_name)
+        assert retrieved_result == expected_result
 
 
 @pytest.mark.unit
@@ -357,3 +349,26 @@ class TestAlertProcessingDataChainIntegration:
         # Verify chain-specific functionality
         assert alert_data.chain_id == "test-chain"
         assert len(alert_data.stage_outputs) == 1
+
+    def test_serialization_roundtrip(self, model_test_helpers):
+        """Test that alert processing data can be serialized and deserialized correctly."""
+        valid_data = {
+            "alert_type": "kubernetes",
+            "alert_data": {
+                "severity": "critical",
+                "environment": "production",
+                "message": "Pod failure detected"
+            },
+            "runbook_url": "https://example.com/runbook.md",
+            "runbook_content": "# Kubernetes Runbook\nSteps to resolve...",
+            "chain_id": "test-chain",
+            "current_stage_name": "analysis",
+            "stage_outputs": {
+                "data-collection": {
+                    "status": "success",
+                    "collected_data": ["pods", "events"]
+                }
+            }
+        }
+        
+        model_test_helpers.test_serialization_roundtrip(AlertProcessingData, valid_data)

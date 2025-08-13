@@ -11,6 +11,7 @@ import pytest
 
 from tarsy.models.mcp_config import MCPServerConfig
 from tarsy.services.mcp_server_registry import MCPServerRegistry
+from tests.utils import MCPServerMaskingFactory
 
 @pytest.mark.unit
 class TestMCPServerRegistryMaskingIntegration:
@@ -38,17 +39,7 @@ class TestMCPServerRegistryMaskingIntegration:
         """Test server config with basic masking configuration."""
         # Create server with masking config
         server_config_data = {
-            "test-server": {
-                "server_id": "test-server",
-                "server_type": "test",
-                "enabled": True,
-                "connection_params": {"command": "test", "args": []},
-                "instructions": "Test server with masking",
-                "data_masking": {
-                    "enabled": True,
-                    "pattern_groups": ["basic"]
-                }
-            }
+            "test-server": MCPServerMaskingFactory.create_test_server_config()
         }
         
         registry = MCPServerRegistry(config=server_config_data)
@@ -62,27 +53,7 @@ class TestMCPServerRegistryMaskingIntegration:
     def test_server_config_with_comprehensive_masking(self):
         """Test server config with comprehensive masking configuration."""
         server_config_data = {
-            "secure-server": {
-                "server_id": "secure-server",
-                "server_type": "secure",
-                "enabled": True,
-                "connection_params": {"command": "secure", "args": []},
-                "instructions": "Secure server with comprehensive masking",
-                "data_masking": {
-                    "enabled": True,
-                    "pattern_groups": ["security"],
-                    "patterns": ["token"],
-                    "custom_patterns": [
-                        {
-                            "name": "server_id",
-                            "pattern": r"server_id_\d{8}",
-                            "replacement": "***MASKED_SERVER_ID***",
-                            "description": "Server internal IDs",
-                            "enabled": True
-                        }
-                    ]
-                }
-            }
+            "secure-server": MCPServerMaskingFactory.create_secure_server_config()
         }
         
         registry = MCPServerRegistry(config=server_config_data)

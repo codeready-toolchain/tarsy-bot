@@ -12,6 +12,7 @@ from tarsy.models.websocket_models import (
     ChannelType
 )
 from tarsy.services.dashboard_connection_manager import DashboardConnectionManager
+from tests.utils import MockFactory, TestUtils, DashboardConnectionFactory
 
 
 @pytest.fixture
@@ -23,10 +24,7 @@ def connection_manager():
 @pytest.fixture
 def mock_websocket():
     """Create a mock WebSocket connection."""
-    ws = AsyncMock()
-    ws.accept = AsyncMock()
-    ws.send_text = AsyncMock()
-    return ws
+    return TestUtils.create_mock_websocket()
 
 
 class TestDashboardConnectionManager:
@@ -58,61 +56,58 @@ class TestDashboardConnectionManager:
         
         # Verify WebSocket was accepted
         mock_websocket.accept.assert_called_once()
-    
+
+    @pytest.mark.parametrize("user_id,has_subscriptions,expected_cleanup", [
+        ("test_user", True, True),  # User with subscriptions
+        ("nonexistent_user", False, False),  # User that doesn't exist
+    ])
     @pytest.mark.unit
-    def test_disconnect_user(self, connection_manager, mock_websocket):
-        """Test disconnecting a user."""
-        user_id = "test_user"
-        
-        # Set up connection and subscriptions
-        connection_manager.active_connections[user_id] = mock_websocket
-        connection_manager.user_subscriptions[user_id] = {"dashboard_updates", "session_123"}
-        connection_manager.channel_subscribers["dashboard_updates"] = {user_id}
-        connection_manager.channel_subscribers["session_123"] = {user_id}
+    def test_disconnect_scenarios(self, connection_manager, mock_websocket, user_id, has_subscriptions, expected_cleanup):
+        """Test disconnecting users for various scenarios."""
+        if has_subscriptions:
+            # Set up connection and subscriptions
+            subscription_data = DashboardConnectionFactory.create_subscription_data(user_id=user_id)
+            connection_manager.active_connections[user_id] = mock_websocket
+            connection_manager.user_subscriptions[user_id] = subscription_data["subscriptions"]
+            connection_manager.channel_subscribers["dashboard_updates"] = {user_id}
+            connection_manager.channel_subscribers["session_123"] = {user_id}
         
         # Disconnect user
         connection_manager.disconnect(user_id)
         
-        # Verify cleanup
-        assert user_id not in connection_manager.active_connections
-        assert user_id not in connection_manager.user_subscriptions
-        assert user_id not in connection_manager.channel_subscribers.get("dashboard_updates", set())
-        assert user_id not in connection_manager.channel_subscribers.get("session_123", set())
+        if expected_cleanup:
+            # Verify cleanup
+            assert user_id not in connection_manager.active_connections
+            assert user_id not in connection_manager.user_subscriptions
+            assert user_id not in connection_manager.channel_subscribers.get("dashboard_updates", set())
+            assert user_id not in connection_manager.channel_subscribers.get("session_123", set())
+        else:
+            # Verify no changes for nonexistent user
+            assert len(connection_manager.active_connections) == 0
+            assert len(connection_manager.user_subscriptions) == 0
     
+    @pytest.mark.parametrize("user_id,channel,is_active,expected_success", [
+        ("test_user", ChannelType.DASHBOARD_UPDATES, True, True),  # Active user subscription
+        ("inactive_user", ChannelType.DASHBOARD_UPDATES, False, False),  # Inactive user subscription
+    ])
     @pytest.mark.unit
-    def test_disconnect_nonexistent_user(self, connection_manager):
-        """Test disconnecting a user that doesn't exist."""
-        # Should not raise exception
-        connection_manager.disconnect("nonexistent_user")
-    
-    @pytest.mark.unit
-    def test_subscribe_to_channel(self, connection_manager, mock_websocket):
-        """Test subscribing user to a channel."""
-        user_id = "test_user"
-        channel = ChannelType.DASHBOARD_UPDATES
-        
-        # Set up connection
-        connection_manager.active_connections[user_id] = mock_websocket
+    def test_subscribe_scenarios(self, connection_manager, mock_websocket, user_id, channel, is_active, expected_success):
+        """Test subscribing users to channels for various scenarios."""
+        if is_active:
+            # Set up connection
+            connection_manager.active_connections[user_id] = mock_websocket
         
         success = connection_manager.subscribe_to_channel(user_id, channel)
         
-        assert success is True
-        assert channel in connection_manager.user_subscriptions[user_id]
-        assert user_id in connection_manager.channel_subscribers[channel]
-    
-    @pytest.mark.unit
-    def test_subscribe_inactive_user(self, connection_manager):
-        """Test subscribing inactive user to channel."""
-        user_id = "inactive_user"
-        channel = ChannelType.DASHBOARD_UPDATES
-        
-        success = connection_manager.subscribe_to_channel(user_id, channel)
-        
-        assert success is False
-        # User subscriptions entry is created but remains empty
-        assert user_id in connection_manager.user_subscriptions
-        assert len(connection_manager.user_subscriptions[user_id]) == 0
-    
+        assert success is expected_success
+        if expected_success:
+            assert channel in connection_manager.user_subscriptions[user_id]
+            assert user_id in connection_manager.channel_subscribers[channel]
+        else:
+            # User subscriptions entry is created but remains empty
+            assert user_id in connection_manager.user_subscriptions
+            assert len(connection_manager.user_subscriptions[user_id]) == 0
+
     @pytest.mark.unit
     def test_unsubscribe_from_channel(self, connection_manager, mock_websocket):
         """Test unsubscribing user from a channel."""
@@ -131,96 +126,64 @@ class TestDashboardConnectionManager:
         assert channel not in connection_manager.channel_subscribers  # Should be cleaned up
     
 
+    @pytest.mark.parametrize("channel,subscribers,expected_result", [
+        (ChannelType.DASHBOARD_UPDATES, DashboardConnectionFactory.create_channel_subscribers()[ChannelType.DASHBOARD_UPDATES], {"user1", "user2", "user3"}),
+        ("nonexistent_channel", None, set()),
+    ])
     @pytest.mark.unit
-    def test_get_channel_subscribers(self, connection_manager):
-        """Test getting channel subscribers."""
-        channel = ChannelType.DASHBOARD_UPDATES
-        users = {"user1", "user2", "user3"}
-        
-        connection_manager.channel_subscribers[channel] = users
+    def test_get_channel_subscribers_scenarios(self, connection_manager, channel, subscribers, expected_result):
+        """Test getting channel subscribers for various scenarios."""
+        if subscribers is not None:
+            connection_manager.channel_subscribers[channel] = subscribers
         
         result = connection_manager.get_channel_subscribers(channel)
         
-        assert result == users
-        assert result is not connection_manager.channel_subscribers[channel]  # Should be copy
-    
-    @pytest.mark.unit
-    def test_get_channel_subscribers_nonexistent(self, connection_manager):
-        """Test getting subscribers for nonexistent channel."""
-        result = connection_manager.get_channel_subscribers("nonexistent_channel")
-        assert result == set()
+        assert result == expected_result
+        if subscribers is not None:
+            assert result is not connection_manager.channel_subscribers[channel]  # Should be copy
 
 
 class TestMessageSending:
     """Test message sending functionality."""
     
+    @pytest.mark.parametrize("user_id,message,is_active,has_error,expected_success", [
+        ("test_user", DashboardConnectionFactory.create_test_message(), True, False, True),  # Successful send
+        ("test_user", DashboardConnectionFactory.create_test_message(type="test", timestamp=datetime(2023, 1, 1, 12, 0, 0)), True, False, True),  # With datetime
+        ("inactive_user", DashboardConnectionFactory.create_test_message(type="test", data=None, timestamp=None), False, False, False),  # Inactive user
+        ("test_user", DashboardConnectionFactory.create_test_message(type="test", data=None, timestamp=None), True, True, False),  # WebSocket error
+    ])
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_send_to_user_success(self, connection_manager, mock_websocket):
-        """Test successfully sending message to user."""
-        user_id = "test_user"
-        message = {"type": "test", "data": "hello"}
-        
-        connection_manager.active_connections[user_id] = mock_websocket
+    async def test_send_to_user_scenarios(self, connection_manager, mock_websocket, user_id, message, is_active, has_error, expected_success):
+        """Test sending messages to users for various scenarios."""
+        if is_active:
+            connection_manager.active_connections[user_id] = mock_websocket
+            if has_error:
+                # Mock WebSocket to raise exception
+                mock_websocket.send_text.side_effect = Exception("Connection error")
         
         success = await connection_manager.send_to_user(user_id, message)
         
-        assert success is True
-        mock_websocket.send_text.assert_called_once()
+        assert success is expected_success
         
-        # Verify message was properly serialized
-        call_args = mock_websocket.send_text.call_args[0][0]
-        sent_data = json.loads(call_args)
-        assert sent_data["type"] == "test"
-        assert sent_data["data"] == "hello"
-    
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_send_to_user_with_datetime(self, connection_manager, mock_websocket):
-        """Test sending message with datetime serialization."""
-        user_id = "test_user"
-        test_time = datetime(2023, 1, 1, 12, 0, 0)
-        message = {"type": "test", "timestamp": test_time}
-        
-        connection_manager.active_connections[user_id] = mock_websocket
-        
-        success = await connection_manager.send_to_user(user_id, message)
-        
-        assert success is True
-        mock_websocket.send_text.assert_called_once()
-        
-        # Verify datetime was serialized
-        call_args = mock_websocket.send_text.call_args[0][0]
-        sent_data = json.loads(call_args)
-        assert sent_data["timestamp"] == test_time.isoformat()
-    
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_send_to_inactive_user(self, connection_manager):
-        """Test sending message to inactive user."""
-        user_id = "inactive_user"
-        message = {"type": "test"}
-        
-        success = await connection_manager.send_to_user(user_id, message)
-        
-        assert success is False
-    
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_send_to_user_websocket_error(self, connection_manager, mock_websocket):
-        """Test handling WebSocket send error."""
-        user_id = "test_user"
-        message = {"type": "test"}
-        
-        # Mock WebSocket to raise exception
-        mock_websocket.send_text.side_effect = Exception("Connection error")
-        connection_manager.active_connections[user_id] = mock_websocket
-        
-        success = await connection_manager.send_to_user(user_id, message)
-        
-        assert success is False
-        # User should be disconnected after error
-        assert user_id not in connection_manager.active_connections
+        if expected_success:
+            mock_websocket.send_text.assert_called_once()
+            
+            # Verify message was properly serialized
+            call_args = mock_websocket.send_text.call_args[0][0]
+            sent_data = json.loads(call_args)
+            
+            # Check basic message structure
+            assert sent_data["type"] == message["type"]
+            
+            # Check for datetime serialization
+            if "timestamp" in message:
+                assert sent_data["timestamp"] == message["timestamp"].isoformat()
+            elif "data" in message:
+                assert sent_data["data"] == message["data"]
+        elif has_error:
+            # User should be disconnected after error
+            assert user_id not in connection_manager.active_connections
     
 
 

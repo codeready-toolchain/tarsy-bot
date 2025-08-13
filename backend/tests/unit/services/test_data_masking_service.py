@@ -13,31 +13,31 @@ from unittest.mock import Mock
 
 from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.models.masking_config import MaskingConfig, MaskingPattern
+from tests.utils import MockFactory, TestUtils, DataMaskingFactory
 
 
 @pytest.mark.unit
 class TestDataMaskingServiceInitialization:
     """Test service initialization and builtin pattern loading."""
     
-    def test_initialization_without_registry(self):
-        """Test initialization with no registry disables all masking."""
-        service = DataMaskingService()
+    @pytest.mark.parametrize("registry,expected_registry,expected_patterns", [
+        (None, None, ["api_key", "password"]),  # No registry
+        (Mock(), "mock", ["api_key", "password"]),  # With registry
+    ])
+    def test_initialization_scenarios(self, registry, expected_registry, expected_patterns):
+        """Test initialization for various registry scenarios."""
+        if registry == "mock":
+            registry = Mock()
         
-        assert service.mcp_registry is None
+        service = DataMaskingService(registry)
+        
+        assert service.mcp_registry == registry
         assert isinstance(service.compiled_patterns, dict)
         assert isinstance(service.custom_pattern_metadata, dict)
         # Should load builtin patterns
         assert len(service.compiled_patterns) > 0
-        assert "api_key" in service.compiled_patterns
-        assert "password" in service.compiled_patterns
-    
-    def test_initialization_with_registry(self):
-        """Test initialization with registry enables configuration lookup."""
-        mock_registry = Mock()
-        service = DataMaskingService(mock_registry)
-        
-        assert service.mcp_registry is mock_registry
-        assert len(service.compiled_patterns) > 0
+        for pattern in expected_patterns:
+            assert pattern in service.compiled_patterns
 
 
 @pytest.mark.unit 
@@ -49,70 +49,39 @@ class TestBasicPatternMatching:
         # No registry = masking disabled by default, good for controlled testing
         self.service = DataMaskingService()
     
-    def test_api_key_masking(self):
-        """Test API key pattern matching."""
-        test_data = 'api_key: "sk_test_123456789012345678901234567890"'
-        patterns = ["api_key"]
-        
-        result = self.service._apply_patterns(test_data, patterns)
-        
-        assert "sk_test_123456789012345678901234567890" not in result
-        assert "***MASKED_API_KEY***" in result
-    
-    def test_password_masking(self):
-        """Test password pattern matching."""
-        test_data = '"password": "mySecretPassword123"'
-        patterns = ["password"]
-        
-        result = self.service._apply_patterns(test_data, patterns)
-        
-        assert "mySecretPassword123" not in result
-        assert "***MASKED_PASSWORD***" in result
-    
-    def test_certificate_masking(self):
-        """Test certificate pattern matching."""
-        test_data = """-----BEGIN CERTIFICATE-----
+    @pytest.mark.parametrize("test_data,patterns,expected_masked,expected_preserved", [
+        (f'api_key: "{DataMaskingFactory.create_test_data_with_secrets()["api_key"]}"', ["api_key"], 
+         ["***MASKED_API_KEY***"], [DataMaskingFactory.create_test_data_with_secrets()["api_key"]]),
+        (f'"password": "{DataMaskingFactory.create_test_data_with_secrets()["password"]}"', ["password"], 
+         ["***MASKED_PASSWORD***"], [DataMaskingFactory.create_test_data_with_secrets()["password"]]),
+        ("""-----BEGIN CERTIFICATE-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890
------END CERTIFICATE-----"""
-        patterns = ["certificate"]
-        
+-----END CERTIFICATE-----""", ["certificate"], 
+         ["***MASKED_CERTIFICATE***"], ["MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890"]),
+        ("This is just normal text without secrets", ["api_key", "password"], 
+         [], []),  # No masking
+        (f'api_key: "{DataMaskingFactory.create_test_data_with_secrets()["api_key"]}" password: "secretpass123"', ["api_key", "password"], 
+         ["***MASKED_API_KEY***", "***MASKED_PASSWORD***"], [DataMaskingFactory.create_test_data_with_secrets()["api_key"], "secretpass123"]),
+    ])
+    def test_pattern_masking_scenarios(self, test_data, patterns, expected_masked, expected_preserved):
+        """Test pattern masking for various scenarios."""
         result = self.service._apply_patterns(test_data, patterns)
         
-        assert "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890" not in result
-        assert "***MASKED_CERTIFICATE***" in result
-    
-    def test_no_patterns_no_masking(self):
-        """Test that text without patterns remains unchanged.""" 
-        test_data = "This is just normal text without secrets"
-        patterns = ["api_key", "password"]
+        # Check that sensitive data is masked
+        for masked in expected_masked:
+            assert masked in result
         
-        result = self.service._apply_patterns(test_data, patterns)
+        # Check that sensitive data is not present
+        for preserved in expected_preserved:
+            assert preserved not in result
         
-        assert result == test_data
-    
-    def test_multiple_patterns_same_text(self):
-        """Test multiple patterns applied to same text."""
-        test_data = 'api_key: "sk_123456789012345678901234567890" password: "secretpass123"'
-        patterns = ["api_key", "password"]
-        
-        result = self.service._apply_patterns(test_data, patterns)
-        
-        assert "sk_123456789012345678901234567890" not in result
-        assert "secretpass123" not in result
-        assert "***MASKED_API_KEY***" in result
-        assert "***MASKED_PASSWORD***" in result
+        # For no-pattern case, ensure original text is unchanged
+        if not expected_masked:
+            assert result == test_data
 
     def test_kubernetes_data_section_masking_exactly_what_user_wanted(self):
         """Test Kubernetes data section masking: mask entire data: section, preserve metadata:."""
-        test_data = '''apiVersion: v1
-data:
-  username: YWRtaW4=
-  password: c3VwZXJzZWNyZXRwYXNzd29yZDEyMw==
-  somekey: xyz
-kind: Secret
-metadata:
-  name: my-secret
-  namespace: superman-dev'''
+        test_data = DataMaskingFactory.create_kubernetes_secret_data()
         
         result = self.service._apply_patterns(test_data, ["kubernetes_data_section"])
         
@@ -127,35 +96,23 @@ metadata:
         assert "superman-dev" in result
         assert "Secret" in result
 
-    def test_base64_secret_masking(self):
-        """Test base64 secret pattern matching."""
-        # Use longer base64 values that meet the 20+ character requirement
-        test_data = 'token: dGhpc2lzYWxvbmdlcmJhc2U2NGVuY29kZWR2YWx1ZQ== another_field: c3VwZXJzZWNyZXRwYXNzd29yZDEyMw=='
-        patterns = ["base64_secret"]
-        
+    @pytest.mark.parametrize("test_data,patterns,expected_masked,expected_preserved", [
+        (f'token: {DataMaskingFactory.create_base64_test_data()["token"]} another_field: {DataMaskingFactory.create_base64_test_data()["another_field"]}', ["base64_secret"], 
+         ["***MASKED_BASE64_VALUE***"], [DataMaskingFactory.create_base64_test_data()["token"], DataMaskingFactory.create_base64_test_data()["another_field"]]),
+        (f'username: {DataMaskingFactory.create_base64_test_data()["username"]} password: {DataMaskingFactory.create_base64_test_data()["password"]} token: {DataMaskingFactory.create_base64_test_data()["short_token"]}', ["base64_short"], 
+         ["***MASKED_SHORT_BASE64***"], [DataMaskingFactory.create_base64_test_data()["username"], DataMaskingFactory.create_base64_test_data()["password"], DataMaskingFactory.create_base64_test_data()["short_token"]]),
+    ])
+    def test_base64_masking_scenarios(self, test_data, patterns, expected_masked, expected_preserved):
+        """Test base64 masking for various scenarios."""
         result = self.service._apply_patterns(test_data, patterns)
         
-        # Base64 values should be masked (these are longer than 20 chars)
-        assert "dGhpc2lzYWxvbmdlcmJhc2U2NGVuY29kZWR2YWx1ZQ==" not in result
-        assert "c3VwZXJzZWNyZXRwYXNzd29yZDEyMw==" not in result
-        assert "***MASKED_BASE64_VALUE***" in result
-
-
-
-
-
-    def test_short_base64_masking(self):
-        """Test masking of short base64 values like YWRtaW4= (8 chars)."""
-        test_data = 'username: YWRtaW4= password: cGFzcw== token: dGVzdA=='
-        patterns = ["base64_short"]
+        # Check that base64 values are masked
+        for masked in expected_masked:
+            assert masked in result
         
-        result = self.service._apply_patterns(test_data, patterns)
-        
-        # Short base64 values should be masked
-        assert "YWRtaW4=" not in result  # base64 "admin" (8 chars)
-        assert "cGFzcw==" not in result  # base64 "pass" (8 chars)
-        assert "dGVzdA==" not in result  # base64 "test" (8 chars)
-        assert "***MASKED_SHORT_BASE64***" in result
+        # Check that base64 values are not present
+        for preserved in expected_preserved:
+            assert preserved not in result
 
 
 
@@ -170,52 +127,39 @@ class TestDataStructureTraversal:
         """Set up test fixtures."""
         self.service = DataMaskingService()
     
-    def test_mask_dict_structure(self):
-        """Test masking nested dictionary structures."""
-        data = {"result": {"config": "api_key: sk_123456789012345678901234567890", "normal_field": "normal_value"}}
-        
-        result = self.service._mask_data_structure(data, ["api_key"])
-        
-        assert "sk_123456789012345678901234567890" not in str(result)
-        assert result["result"]["normal_field"] == "normal_value"
-        assert "***MASKED_API_KEY***" in str(result)
-    
-    def test_mask_list_structure(self):
-        """Test masking list structures."""
-        data = ["normal item", "password: secret123", "api_key: sk_123456789012345678901234567890"]
-        
-        result = self.service._mask_data_structure(data, ["password", "api_key"])
-        
-        assert result[0] == "normal item"  # unchanged
-        result_str = str(result)
-        assert "secret123" not in result_str and "sk_123456789012345678901234567890" not in result_str
-        assert "***MASKED_PASSWORD***" in result_str and "***MASKED_API_KEY***" in result_str
-    
-    def test_mask_mixed_types(self):
-        """Test masking with mixed data types."""
-        data = {
-            "string_field": "password: secret123",
-            "number_field": 42,
-            "boolean_field": True,
-            "null_field": None,
-            "nested": {
-                "array": ["api_key: sk_123456789012345678901234567890"]
-            }
-        }
-        patterns = ["password", "api_key"]
-        
+    @pytest.mark.parametrize("data,patterns,expected_masked,expected_preserved", [
+        ({"result": {"config": f"api_key: {DataMaskingFactory.create_test_data_with_secrets()['api_key']}", "normal_field": "normal_value"}}, ["api_key"], 
+         ["***MASKED_API_KEY***"], [DataMaskingFactory.create_test_data_with_secrets()["api_key"]]),
+        (["normal item", "password: secret123", f"api_key: {DataMaskingFactory.create_test_data_with_secrets()['api_key']}"], ["password", "api_key"], 
+         ["***MASKED_PASSWORD***", "***MASKED_API_KEY***"], ["secret123", DataMaskingFactory.create_test_data_with_secrets()["api_key"]]),
+        (DataMaskingFactory.create_nested_data_structure(), ["password", "api_key"], 
+         ["***MASKED_PASSWORD***", "***MASKED_API_KEY***"], ["secret123", DataMaskingFactory.create_test_data_with_secrets()["api_key"]]),
+    ])
+    def test_data_structure_masking_scenarios(self, data, patterns, expected_masked, expected_preserved):
+        """Test masking across different data structure scenarios."""
         result = self.service._mask_data_structure(data, patterns)
         
-        # Non-string fields should be unchanged
-        assert result["number_field"] == 42
-        assert result["boolean_field"] is True
-        assert result["null_field"] is None
+        # Check that sensitive data is masked
+        result_str = str(result)
+        for masked in expected_masked:
+            assert masked in result_str
         
-        # String fields should be masked
-        assert "secret123" not in str(result)
-        assert "sk_123456789012345678901234567890" not in str(result)
-        assert "***MASKED_PASSWORD***" in str(result)
-        assert "***MASKED_API_KEY***" in str(result)
+        # Check that sensitive data is not present
+        for preserved in expected_preserved:
+            assert preserved not in result_str
+        
+        # Check that non-sensitive data is unchanged (basic checks)
+        if isinstance(data, dict):
+            # For dict, check that non-string fields are unchanged
+            if "number_field" in data:
+                assert result["number_field"] == 42
+            if "boolean_field" in data:
+                assert result["boolean_field"] is True
+            if "null_field" in data:
+                assert result["null_field"] is None
+        elif isinstance(data, list):
+            # For list, check that first item is unchanged
+            assert result[0] == "normal item"
 
 
 @pytest.mark.unit
@@ -226,50 +170,23 @@ class TestPatternGroupExpansion:
         """Set up test fixtures."""
         self.service = DataMaskingService()
     
-    def test_expand_basic_group(self):
-        """Test expanding basic pattern group."""
-        result = self.service._expand_pattern_groups(["basic"])
+    @pytest.mark.parametrize("groups,expected_patterns,expected_count", [
+        (["basic"], DataMaskingFactory.create_pattern_groups()["basic"], 2),
+        (["basic", "security"], DataMaskingFactory.create_pattern_groups()["basic"] + DataMaskingFactory.create_pattern_groups()["security"], 4),
+        (["unknown_group", "basic"], DataMaskingFactory.create_pattern_groups()["basic"], 2),  # Skip unknown group
+        ([], [], 0),  # Empty groups
+        (["kubernetes"], DataMaskingFactory.create_pattern_groups()["kubernetes"] + DataMaskingFactory.create_pattern_groups()["basic"], 4),
+    ])
+    def test_pattern_group_expansion_scenarios(self, groups, expected_patterns, expected_count):
+        """Test pattern group expansion for various scenarios."""
+        result = self.service._expand_pattern_groups(groups)
         
-        assert "api_key" in result
-        assert "password" in result
-        assert len(result) == 2
-    
-    def test_expand_multiple_groups(self):
-        """Test expanding multiple pattern groups."""
-        result = self.service._expand_pattern_groups(["basic", "security"])
+        # Check that expected patterns are present
+        for pattern in expected_patterns:
+            assert pattern in result
         
-        # Should contain all patterns from both groups (deduplicated)
-        assert "api_key" in result
-        assert "password" in result
-        assert "token" in result
-        assert "certificate" in result
-    
-    def test_expand_unknown_group(self):
-        """Test handling unknown pattern groups."""
-        result = self.service._expand_pattern_groups(["unknown_group", "basic"])
-        
-        # Should skip unknown group but process known ones
-        assert "api_key" in result
-        assert "password" in result
-        assert len(result) == 2  # Only from basic group
-    
-    def test_expand_empty_groups(self):
-        """Test expanding empty group list."""
-        result = self.service._expand_pattern_groups([])
-        
-        assert result == []
-
-    def test_expand_kubernetes_group(self):
-        """Test kubernetes pattern group contains the right patterns for secure masking."""
-        result = self.service._expand_pattern_groups(["kubernetes"])
-        
-        # Should contain kubernetes-specific patterns for comprehensive data masking
-        assert "kubernetes_data_section" in result
-        assert "kubernetes_stringdata_json" in result 
-        assert "api_key" in result
-        assert "password" in result
-        # Should have exactly 4 patterns (removed base64_short to prevent over-masking)
-        assert len(result) == 4
+        # Check the count
+        assert len(result) == expected_count
 
 
 @pytest.mark.unit

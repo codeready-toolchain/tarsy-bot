@@ -9,6 +9,7 @@ from tarsy.models.agent_config import (
     MCPServerConfigModel,
 )
 from tarsy.agents.constants import IterationStrategy
+from tests.utils import ModelValidationTester, TestUtils
 
 
 @pytest.mark.unit
@@ -43,106 +44,71 @@ class TestAgentConfigModel:
         assert config.custom_instructions == ""
         assert config.iteration_strategy == IterationStrategy.REACT  # Default value
 
-    def test_empty_alert_types_fails(self):
-        """Test that empty alert_types list fails validation."""
-        config_data = {
-            "alert_types": [],
-            "mcp_servers": ["security-tools"]
-        }
-        
-        with pytest.raises(ValidationError) as exc_info:
-            AgentConfigModel(**config_data)
-            
-        errors = exc_info.value.errors()
-        assert len(errors) == 1
-        assert errors[0]["type"] == "too_short"
-
-    def test_empty_mcp_servers_fails(self):
-        """Test that empty mcp_servers list fails validation."""
-        config_data = {
-            "alert_types": ["security"],
-            "mcp_servers": []
-        }
-        
-        with pytest.raises(ValidationError) as exc_info:
-            AgentConfigModel(**config_data)
-            
-        errors = exc_info.value.errors()
-        assert len(errors) == 1
-        assert errors[0]["type"] == "too_short"
-
-    def test_missing_required_fields_fails(self):
-        """Test that missing required fields fail validation."""
-        # Missing alert_types
-        with pytest.raises(ValidationError) as exc_info:
-            AgentConfigModel(mcp_servers=["security-tools"])
-            
-        errors = exc_info.value.errors()
-        alert_types_error = next((e for e in errors if e["loc"] == ("alert_types",)), None)
-        assert alert_types_error is not None
-        assert alert_types_error["type"] == "missing"
-
-        # Missing mcp_servers
-        with pytest.raises(ValidationError) as exc_info:
-            AgentConfigModel(alert_types=["security"])
-            
-        errors = exc_info.value.errors()
-        mcp_servers_error = next((e for e in errors if e["loc"] == ("mcp_servers",)), None)
-        assert mcp_servers_error is not None
-        assert mcp_servers_error["type"] == "missing"
-
-    def test_invalid_field_types(self):
-        """Test that invalid field types fail validation."""
-        # alert_types as string instead of list
-        with pytest.raises(ValidationError) as exc_info:
-            AgentConfigModel(
-                alert_types="security",
-                mcp_servers=["security-tools"]
-            )
-            
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("alert_types",) for e in errors)
-
-        # mcp_servers as string instead of list
-        with pytest.raises(ValidationError) as exc_info:
-            AgentConfigModel(
-                alert_types=["security"],
-                mcp_servers="security-tools"
-            )
-            
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("mcp_servers",) for e in errors)
-
-    def test_valid_iteration_strategy_react(self):
-        """Test valid agent config with REACT iteration strategy."""
-        config_data = {
-            "alert_types": ["security"],
-            "mcp_servers": ["security-tools"],
+    def test_serialization_roundtrip(self, model_test_helpers):
+        """Test that agent config can be serialized and deserialized correctly."""
+        valid_data = {
+            "alert_types": ["security", "performance"],
+            "mcp_servers": ["security-tools", "monitoring-server"],
+            "custom_instructions": "Focus on threat detection and response.",
             "iteration_strategy": "react"
         }
         
-        config = AgentConfigModel(**config_data)
-        
-        assert config.iteration_strategy == IterationStrategy.REACT
+        model_test_helpers.test_serialization_roundtrip(AgentConfigModel, valid_data)
 
-    def test_valid_iteration_strategy_regular(self):
-        """Test valid agent config with REGULAR iteration strategy."""
-        config_data = {
-            "alert_types": ["performance"],
-            "mcp_servers": ["monitoring-tools"],
-            "iteration_strategy": "regular"
+    def test_required_fields_validation(self, model_validation_tester):
+        """Test that required fields are enforced."""
+        valid_data = {
+            "alert_types": ["security"],
+            "mcp_servers": ["security-tools"]
         }
         
-        config = AgentConfigModel(**config_data)
-        
-        assert config.iteration_strategy == IterationStrategy.REGULAR
+        required_fields = ["alert_types", "mcp_servers"]
+        model_validation_tester.test_required_fields(AgentConfigModel, required_fields, valid_data)
 
-    def test_invalid_iteration_strategy_fails(self):
-        """Test that invalid iteration strategy fails validation."""
+    @pytest.mark.parametrize("invalid_data,expected_error_type", [
+        ({"alert_types": [], "mcp_servers": ["security-tools"]}, "too_short"),
+        ({"alert_types": ["security"], "mcp_servers": []}, "too_short"),
+        ({"alert_types": "security", "mcp_servers": ["security-tools"]}, "list_type"),
+        ({"alert_types": ["security"], "mcp_servers": "security-tools"}, "list_type"),
+    ])
+    def test_field_validation(self, invalid_data, expected_error_type):
+        """Test field validation for various invalid inputs."""
+        with pytest.raises(ValidationError) as exc_info:
+            AgentConfigModel(**invalid_data)
+            
+        errors = exc_info.value.errors()
+        assert len(errors) >= 1
+        assert any(error["type"] == expected_error_type for error in errors)
+
+    @pytest.mark.parametrize("strategy_value,expected_strategy", [
+        ("react", IterationStrategy.REACT),
+        ("regular", IterationStrategy.REGULAR),
+        (IterationStrategy.REACT, IterationStrategy.REACT),
+        (IterationStrategy.REGULAR, IterationStrategy.REGULAR),
+    ])
+    def test_valid_iteration_strategies(self, strategy_value, expected_strategy):
+        """Test valid iteration strategy values."""
         config_data = {
             "alert_types": ["security"],
             "mcp_servers": ["security-tools"],
-            "iteration_strategy": "invalid_strategy"
+            "iteration_strategy": strategy_value
+        }
+        
+        config = AgentConfigModel(**config_data)
+        assert config.iteration_strategy == expected_strategy
+
+    @pytest.mark.parametrize("invalid_strategy", [
+        "invalid_strategy",
+        "REACT",  # Wrong case
+        "REGULAR",  # Wrong case
+        "React",  # Wrong case
+    ])
+    def test_invalid_iteration_strategies(self, invalid_strategy):
+        """Test that invalid iteration strategies fail validation."""
+        config_data = {
+            "alert_types": ["security"],
+            "mcp_servers": ["security-tools"],
+            "iteration_strategy": invalid_strategy
         }
         
         with pytest.raises(ValidationError) as exc_info:
@@ -150,32 +116,6 @@ class TestAgentConfigModel:
             
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("iteration_strategy",) for e in errors)
-
-    def test_iteration_strategy_case_sensitive(self):
-        """Test that iteration strategy is case sensitive."""
-        config_data = {
-            "alert_types": ["security"],
-            "mcp_servers": ["security-tools"],
-            "iteration_strategy": "REACT"  # Wrong case
-        }
-        
-        with pytest.raises(ValidationError) as exc_info:
-            AgentConfigModel(**config_data)
-            
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("iteration_strategy",) for e in errors)
-
-    def test_iteration_strategy_enum_values(self):
-        """Test that iteration strategy accepts enum values directly."""
-        config_data = {
-            "alert_types": ["security"],
-            "mcp_servers": ["security-tools"],
-            "iteration_strategy": IterationStrategy.REACT
-        }
-        
-        config = AgentConfigModel(**config_data)
-        
-        assert config.iteration_strategy == IterationStrategy.REACT
 
 @pytest.mark.unit
 class TestMCPServerConfigModel:
@@ -228,25 +168,28 @@ class TestMCPServerConfigModel:
         
         assert config.enabled is False
 
-    def test_missing_required_fields_fails(self):
-        """Test that missing required fields fail validation."""
-        # Missing server_id
-        with pytest.raises(ValidationError) as exc_info:
-            MCPServerConfigModel(server_type="security")
-            
-        errors = exc_info.value.errors()
-        server_id_error = next((e for e in errors if e["loc"] == ("server_id",)), None)
-        assert server_id_error is not None
-        assert server_id_error["type"] == "missing"
+    def test_serialization_roundtrip(self, model_test_helpers):
+        """Test that MCP server config can be serialized and deserialized correctly."""
+        valid_data = {
+            "server_id": "security-tools",
+            "server_type": "security",
+            "enabled": True,
+            "connection_params": {"host": "localhost", "port": 8080},
+            "instructions": "Security analysis tools"
+        }
+        
+        model_test_helpers.test_serialization_roundtrip(MCPServerConfigModel, valid_data)
 
-        # Missing server_type
-        with pytest.raises(ValidationError) as exc_info:
-            MCPServerConfigModel(server_id="security-tools")
-            
-        errors = exc_info.value.errors()
-        server_type_error = next((e for e in errors if e["loc"] == ("server_type",)), None)
-        assert server_type_error is not None
-        assert server_type_error["type"] == "missing"
+    def test_required_fields_validation(self, model_validation_tester):
+        """Test that required fields are enforced."""
+        valid_data = {
+            "server_id": "security-tools",
+            "server_type": "security",
+            "connection_params": {}
+        }
+        
+        required_fields = ["server_id", "server_type"]
+        model_validation_tester.test_required_fields(MCPServerConfigModel, required_fields, valid_data)
 
     def test_invalid_field_types(self):
         """Test that invalid field types fail validation."""

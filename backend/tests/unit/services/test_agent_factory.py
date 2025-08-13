@@ -14,6 +14,7 @@ from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.mcp_server_registry import MCPServerRegistry
+from tests.utils import AgentServiceFactory
 
 
 @pytest.mark.unit
@@ -23,11 +24,7 @@ class TestAgentFactoryInitialization:
     @pytest.fixture
     def mock_dependencies(self):
         """Mock all AgentFactory dependencies."""
-        return {
-            'llm_client': Mock(spec=LLMClient),
-            'mcp_client': Mock(spec=MCPClient),
-            'mcp_registry': Mock(spec=MCPServerRegistry)
-        }
+        return AgentServiceFactory.create_mock_dependencies()
     
     def test_initialization_success(self, mock_dependencies):
         """Test successful AgentFactory initialization."""
@@ -46,7 +43,7 @@ class TestAgentFactoryInitialization:
     
     def test_initialization_with_agent_configs(self, mock_dependencies):
         """Test initialization with agent configs."""
-        mock_agent_configs = {'test-agent': Mock()}
+        mock_agent_configs = AgentServiceFactory.create_agent_configs()
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
@@ -99,11 +96,7 @@ class TestAgentCreation:
     @pytest.fixture
     def mock_dependencies(self):
         """Mock all AgentFactory dependencies."""
-        return {
-            'llm_client': Mock(spec=LLMClient),
-            'mcp_client': Mock(spec=MCPClient),
-            'mcp_registry': Mock(spec=MCPServerRegistry)
-        }
+        return AgentServiceFactory.create_mock_dependencies()
     
     @pytest.fixture
     def agent_factory(self, mock_dependencies):
@@ -196,8 +189,7 @@ class TestAgentCreation:
     def test_multiple_agent_creation(self, mock_dependencies):
         """Test creating multiple agent instances."""
         with patch('tarsy.agents.kubernetes_agent.KubernetesAgent') as mock_kubernetes_agent:
-            mock_agent1 = Mock()
-            mock_agent2 = Mock()
+            mock_agent1, mock_agent2 = AgentServiceFactory.create_mock_agent_instance(), AgentServiceFactory.create_mock_agent_instance()
             mock_kubernetes_agent.side_effect = [mock_agent1, mock_agent2]
             
             # Create factory after mocking

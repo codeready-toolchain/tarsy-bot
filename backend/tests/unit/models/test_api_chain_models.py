@@ -8,6 +8,7 @@ used for chain functionality.
 import pytest
 from pydantic import ValidationError
 from tarsy.models.api_models import StageExecution, ChainExecution
+from tests.utils import ModelValidationTester, TestUtils
 
 
 @pytest.mark.unit
@@ -100,26 +101,20 @@ class TestStageExecutionAPIModel:
         assert stage.agent == "ConfigurableAgent:my-custom-agent"
         assert ":" in stage.agent
     
-    def test_serialization(self):
-        """Test stage execution serialization."""
-        stage = StageExecution(
-            execution_id="exec_serialize",
-            stage_id="serialize-test",
-            stage_index=1,
-            stage_name="Serialization Test",
-            agent="TestAgent",
-            status="completed",
-            duration_ms=1500,
-            stage_output={"test": "result"}
-        )
+    def test_serialization_roundtrip(self, model_test_helpers):
+        """Test that stage execution can be serialized and deserialized correctly."""
+        valid_data = {
+            "execution_id": "exec_serialize",
+            "stage_id": "serialize-test",
+            "stage_index": 1,
+            "stage_name": "Serialization Test",
+            "agent": "TestAgent",
+            "status": "completed",
+            "duration_ms": 1500,
+            "stage_output": {"test": "result"}
+        }
         
-        data = stage.dict()
-        
-        assert data["execution_id"] == "exec_serialize"
-        assert data["stage_name"] == "Serialization Test"
-        assert data["status"] == "completed"
-        assert data["duration_ms"] == 1500
-        assert data["stage_output"]["test"] == "result"
+        model_test_helpers.test_serialization_roundtrip(StageExecution, valid_data)
 
 
 @pytest.mark.unit
@@ -235,8 +230,8 @@ class TestChainExecutionAPIModel:
         assert chain.stages[2].status == "pending"
         assert chain.stages[3].status == "pending"
     
-    def test_serialization(self):
-        """Test chain execution serialization."""
+    def test_serialization_roundtrip(self, model_test_helpers):
+        """Test that chain execution can be serialized and deserialized correctly."""
         stage = StageExecution(
             execution_id="exec_test",
             stage_id="test-stage",
@@ -247,49 +242,57 @@ class TestChainExecutionAPIModel:
             stage_output={"result": "success"}
         )
         
-        chain_definition = {
+        valid_data = {
             "chain_id": "serialization-test",
-            "description": "Test chain"
+            "chain_definition": {
+                "chain_id": "serialization-test",
+                "description": "Test chain"
+            },
+            "current_stage_index": 0,
+            "current_stage_id": "test-stage",
+            "stages": [stage]
         }
         
-        chain = ChainExecution(
-            chain_id="serialization-test",
-            chain_definition=chain_definition,
-            current_stage_index=0,
-            current_stage_id="test-stage",
-            stages=[stage]
-        )
-        
-        data = chain.dict()
-        
-        assert data["chain_id"] == "serialization-test"
-        assert data["current_stage_index"] == 0
-        assert data["current_stage_id"] == "test-stage"
-        assert len(data["stages"]) == 1
-        assert data["stages"][0]["stage_name"] == "Test Stage"
-        assert data["chain_definition"]["description"] == "Test chain"
+        model_test_helpers.test_serialization_roundtrip(ChainExecution, valid_data)
 
 
 @pytest.mark.unit
 class TestAPIModelValidation:
     """Test validation and edge cases for API models."""
     
-    def test_stage_execution_required_fields(self):
+    def test_stage_execution_required_fields(self, model_validation_tester):
         """Test that required fields are validated."""
-        # Missing required fields should raise ValidationError
-        with pytest.raises(ValidationError):
-            StageExecution()  # Missing all required fields
+        valid_data = {
+            "execution_id": "exec_123",
+            "stage_id": "data-collection",
+            "stage_index": 0,
+            "stage_name": "Data Collection",
+            "agent": "KubernetesAgent",
+            "status": "pending"
+        }
         
-        with pytest.raises(ValidationError):
-            StageExecution(execution_id="test")  # Missing other required fields
+        required_fields = ["execution_id", "stage_id", "stage_index", "stage_name", "agent", "status"]
+        model_validation_tester.test_required_fields(StageExecution, required_fields, valid_data)
     
-    def test_chain_execution_required_fields(self):
+    def test_chain_execution_required_fields(self, model_validation_tester):
         """Test that chain execution requires necessary fields."""
-        with pytest.raises(ValidationError):
-            ChainExecution()  # Missing required fields
+        stage = StageExecution(
+            execution_id="exec_1",
+            stage_id="stage1",
+            stage_index=0,
+            stage_name="Stage 1",
+            agent="Agent1",
+            status="completed"
+        )
         
-        with pytest.raises(ValidationError):
-            ChainExecution(chain_id="test")  # Missing chain_definition and stages
+        valid_data = {
+            "chain_id": "test-chain",
+            "chain_definition": {"chain_id": "test-chain", "stages": []},
+            "stages": [stage]
+        }
+        
+        required_fields = ["chain_id", "chain_definition", "stages"]
+        model_validation_tester.test_required_fields(ChainExecution, required_fields, valid_data)
     
     def test_empty_stages_list(self):
         """Test chain execution with empty stages list."""

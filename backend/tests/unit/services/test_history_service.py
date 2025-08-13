@@ -15,6 +15,7 @@ from tarsy.config.settings import Settings
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.history import AlertSession
 from tarsy.services.history_service import HistoryService, get_history_service
+from tests.utils import MockFactory, TestUtils, SessionFactory
 
 
 class TestHistoryService:
@@ -26,31 +27,6 @@ class TestHistoryService:
         return isolated_test_settings
     
     @pytest.fixture
-    def mock_db_manager(self):
-        """Create mock database manager."""
-        db_manager = Mock()
-        db_manager.create_tables.return_value = True
-        db_manager.get_session.return_value.__enter__ = Mock()
-        db_manager.get_session.return_value.__exit__ = Mock()
-        return db_manager
-    
-    @pytest.fixture
-    def mock_repository(self):
-        """Create mock history repository."""
-        repo = Mock()
-        # Create a mock session object with session_id attribute
-        mock_session = Mock()
-        mock_session.session_id = "test-session-id"
-        repo.create_alert_session.return_value = mock_session
-        repo.get_alert_session.return_value = Mock(spec=AlertSession)
-        repo.update_alert_session.return_value = True
-        repo.get_alert_sessions.return_value = {
-            "sessions": [],
-            "pagination": {"page": 1, "page_size": 20, "total_pages": 0, "total_items": 0}
-        }
-        return repo
-    
-    @pytest.fixture
     def history_service(self, mock_settings):
         """Create HistoryService instance with mocked dependencies."""
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
@@ -59,120 +35,105 @@ class TestHistoryService:
             service._is_healthy = True
             return service
     
+    @pytest.mark.parametrize("history_enabled,expected_enabled,expected_url", [
+        (True, True, "sqlite:///:memory:"),  # History enabled
+        (False, False, None),  # History disabled
+    ])
     @pytest.mark.unit
-    def test_initialization_enabled(self, history_service, mock_settings):
-        """Test service initialization when history is enabled."""
-        assert history_service.is_enabled == True
-        assert history_service.settings.history_enabled == True
-        assert history_service.settings.history_database_url == "sqlite:///:memory:"
-    
-    @pytest.mark.unit
-    def test_initialization_disabled(self):
-        """Test service initialization when history is disabled."""
-        mock_settings = Mock(spec=Settings)
-        mock_settings.history_enabled = False
+    def test_initialization_scenarios(self, history_enabled, expected_enabled, expected_url):
+        """Test service initialization for various scenarios."""
+        mock_settings = MockFactory.create_mock_settings(
+            history_enabled=history_enabled,
+            history_database_url=expected_url
+        )
         
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
             service = HistoryService()
-            assert service.is_enabled == False
+            assert service.is_enabled == expected_enabled
+            assert service.enabled == expected_enabled  # Test enabled property
+            if history_enabled:
+                assert service.settings.history_enabled == True
+                assert service.settings.history_database_url == expected_url
     
-    @pytest.mark.unit
-    def test_enabled_property(self, history_service):
-        """Test the enabled property."""
-        assert history_service.enabled == True
-        
-        history_service.is_enabled = False
-        assert history_service.enabled == False
-    
+    @pytest.mark.parametrize("failure_type,expected_result,expected_attempted,expected_healthy", [
+        ("success", True, True, True),  # Successful initialization
+        ("database_failure", False, True, False),  # Database connection failure
+        ("schema_failure", False, True, False),  # Schema creation failure
+        ("disabled", False, False, False),  # Service disabled
+    ])
     @pytest.mark.unit
     @patch('tarsy.services.history_service.DatabaseManager')
-    def test_initialize_success(self, mock_db_manager_class, mock_settings):
-        """Test successful service initialization."""
-        mock_db_instance = Mock()
-        mock_db_manager_class.return_value = mock_db_instance
+    def test_initialize_scenarios(self, mock_db_manager_class, failure_type, expected_result, expected_attempted, expected_healthy):
+        """Test service initialization for various failure scenarios."""
+        # Create mock settings based on scenario
+        mock_settings = MockFactory.create_mock_settings(
+            history_enabled=failure_type != "disabled",
+            history_database_url="sqlite:///test.db" if failure_type != "disabled" else None
+        )
+        
+        # Set up database manager based on scenario
+        if failure_type == "success":
+            mock_db_instance = Mock()
+            mock_db_manager_class.return_value = mock_db_instance
+        elif failure_type == "database_failure":
+            mock_db_manager_class.side_effect = Exception("Database connection failed")
+        elif failure_type == "schema_failure":
+            mock_db_instance = Mock()
+            mock_db_instance.initialize.return_value = None
+            mock_db_instance.create_tables.side_effect = Exception("Schema creation failed")
+            mock_db_manager_class.return_value = mock_db_instance
         
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
             service = HistoryService()
             result = service.initialize()
             
-            assert result == True
-            assert service._initialization_attempted == True
-            assert service._is_healthy == True
-            mock_db_instance.initialize.assert_called_once()
-            mock_db_instance.create_tables.assert_called_once()
-    
-    @pytest.mark.unit
-    @patch('tarsy.services.history_service.DatabaseManager')
-    def test_initialize_database_failure(self, mock_db_manager_class, mock_settings):
-        """Test initialization with database connection failure."""
-        mock_db_manager_class.side_effect = Exception("Database connection failed")
-        
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
-            service = HistoryService()
-            result = service.initialize()
+            assert result == expected_result
+            assert service._initialization_attempted == expected_attempted
+            assert service._is_healthy == expected_healthy
             
-            assert result == False
-            assert service._initialization_attempted == True
-            assert service._is_healthy == False
+            if failure_type == "success":
+                mock_db_instance.initialize.assert_called_once()
+                mock_db_instance.create_tables.assert_called_once()
     
-    @pytest.mark.unit
-    @patch('tarsy.services.history_service.DatabaseManager')
-    def test_initialize_schema_creation_failure(self, mock_db_manager_class, mock_settings):
-        """Test initialization with schema creation failure."""
-        mock_db_instance = Mock()
-        mock_db_instance.initialize.return_value = None
-        mock_db_instance.create_tables.side_effect = Exception("Schema creation failed")
-        mock_db_manager_class.return_value = mock_db_instance
-        
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
-            service = HistoryService()
-            result = service.initialize()
-            
-            assert result == False
-            assert service._initialization_attempted == True
-            assert service._is_healthy == False
-    
-    @pytest.mark.unit
-    def test_initialize_disabled_service(self):
-        """Test initialization when history service is disabled."""
-        mock_settings = Mock(spec=Settings)
-        mock_settings.history_enabled = False
-        
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
-            service = HistoryService()
-            result = service.initialize()
-            
-            assert result == False
-            assert service._initialization_attempted == False  # Should not attempt when disabled
-            assert service._is_healthy == False
-    
+    @pytest.mark.parametrize("service_enabled,expected_repo", [
+        (True, "mock_repo"),  # Service enabled
+        (False, None),  # Service disabled
+    ])
     @pytest.mark.unit
     @patch('tarsy.services.history_service.HistoryRepository')
-    def test_get_repository_context_manager(self, mock_repo_class, history_service, mock_db_manager):
-        """Test the repository context manager."""
-        history_service.db_manager = mock_db_manager
-        mock_repo_instance = Mock()
-        mock_repo_class.return_value = mock_repo_instance
+    def test_get_repository_scenarios(self, mock_repo_class, history_service, service_enabled, expected_repo):
+        """Test repository access for various scenarios."""
+        dependencies = MockFactory.create_mock_history_service_dependencies()
         
-        # Test successful context manager usage
-        with history_service.get_repository() as repo:
-            assert repo == mock_repo_instance
-    
-    @pytest.mark.unit
-    @patch('tarsy.services.history_service.HistoryRepository')
-    def test_get_repository_disabled_service(self, mock_repo_class, history_service):
-        """Test repository access when service is disabled."""
-        history_service.is_enabled = False
+        history_service.is_enabled = service_enabled
+        if service_enabled:
+            history_service.db_manager = dependencies['db_manager']
+            mock_repo_class.return_value = dependencies['repository']
         
         with history_service.get_repository() as repo:
-            assert repo is None
+            if expected_repo == "mock_repo":
+                assert repo == dependencies['repository']
+            else:
+                assert repo is None
     
+    @pytest.mark.parametrize("scenario,service_enabled,repo_side_effect,expected_session_id", [
+        ("success", True, None, "test-session-id"),  # Successful creation
+        ("disabled", False, None, None),  # Service disabled
+        ("exception", True, Exception("Database error"), None),  # Database error
+    ])
     @pytest.mark.unit
-    def test_create_session_success(self, history_service, mock_repository):
-        """Test successful session creation."""
+    def test_create_session_scenarios(self, history_service, scenario, service_enabled, repo_side_effect, expected_session_id):
+        """Test session creation for various scenarios."""
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        
+        history_service.is_enabled = service_enabled
+        
         with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
-            mock_get_repo.return_value.__exit__.return_value = None
+            if repo_side_effect:
+                mock_get_repo.side_effect = repo_side_effect
+            else:
+                mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+                mock_get_repo.return_value.__exit__.return_value = None
             
             session_id = history_service.create_session(
                 alert_id="test-alert-123",
@@ -181,138 +142,58 @@ class TestHistoryService:
                 alert_type="test_alert"
             )
             
-            assert session_id == "test-session-id"
-            mock_repository.create_alert_session.assert_called_once()
+            assert session_id == expected_session_id
+            if scenario == "success":
+                dependencies['repository'].create_alert_session.assert_called_once()
     
+    @pytest.mark.parametrize("status,error_message,final_analysis,existing_analysis,expected_status,expected_analysis,expected_completion", [
+        ("completed", None, None, None, "completed", None, True),  # Basic completion
+        ("completed", None, "# Alert Analysis\n\nSuccessfully resolved the Kubernetes issue.", None, 
+         "completed", "# Alert Analysis\n\nSuccessfully resolved the Kubernetes issue.", True),  # With final analysis
+        ("in_progress", None, None, "Existing analysis", "in_progress", "Existing analysis", False),  # Preserve existing analysis
+    ])
     @pytest.mark.unit
-    def test_create_session_disabled_service(self, history_service):
-        """Test session creation when service is disabled."""
-        history_service.is_enabled = False
-        
-        session_id = history_service.create_session(
-            alert_id="test-alert-123",
-            alert_data={},
-            agent_type="TestAgent",
-            alert_type="test_alert"
+    def test_update_session_status_scenarios(self, history_service, status, error_message, final_analysis, existing_analysis, expected_status, expected_analysis, expected_completion):
+        """Test session status update for various scenarios."""
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        mock_session = SessionFactory.create_test_session(
+            status=status,
+            final_analysis=existing_analysis
         )
-        
-        assert session_id is None
-    
-    @pytest.mark.unit
-    def test_create_session_exception_handling(self, history_service):
-        """Test session creation with exception handling."""
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.side_effect = Exception("Database error")
-            
-            session_id = history_service.create_session(
-                alert_id="test-alert-123",
-                alert_data={},
-                agent_type="TestAgent",
-                alert_type="test_alert"
-            )
-            
-            assert session_id is None
-    
-    @pytest.mark.unit
-    def test_update_session_status_success(self, history_service, mock_repository):
-        """Test successful session status update."""
-        mock_session = Mock(spec=AlertSession)
-        mock_repository.get_alert_session.return_value = mock_session
+        dependencies['repository'].get_alert_session.return_value = mock_session
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
             result = history_service.update_session_status(
                 session_id="test-session-id",
-                status="completed",
-                error_message=None
+                status=status,
+                error_message=error_message,
+                final_analysis=final_analysis
             )
             
             assert result == True
-            assert mock_session.status == "completed"
-            mock_repository.update_alert_session.assert_called_once_with(mock_session)
-    
-    @pytest.mark.unit
-    def test_update_session_status_with_completion(self, history_service, mock_repository):
-        """Test session status update with completion timestamp."""
-        mock_session = Mock(spec=AlertSession)
-        mock_repository.get_alert_session.return_value = mock_session
-        
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
-            mock_get_repo.return_value.__exit__.return_value = None
-            
-            result = history_service.update_session_status(
-                session_id="test-session-id",
-                status="completed"
-            )
-            
-            assert result == True
-            assert mock_session.status == "completed"
-            assert mock_session.completed_at_us is not None
-    
-    @pytest.mark.unit
-    def test_update_session_status_with_final_analysis(self, history_service, mock_repository):
-        """Test session status update with final analysis."""
-        mock_session = Mock(spec=AlertSession)
-        mock_repository.get_alert_session.return_value = mock_session
-        analysis = "# Alert Analysis\n\nSuccessfully resolved the Kubernetes issue."
-        
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
-            mock_get_repo.return_value.__exit__.return_value = None
-            
-            result = history_service.update_session_status(
-                session_id="test-session-id",
-                status="completed",
-                final_analysis=analysis
-            )
-            
-            assert result == True
-            assert mock_session.status == "completed"
-            assert mock_session.final_analysis == analysis
-            assert mock_session.completed_at_us is not None
-            mock_repository.update_alert_session.assert_called_once_with(mock_session)
-    
-    @pytest.mark.unit
-    def test_update_session_status_without_final_analysis(self, history_service, mock_repository):
-        """Test session status update without final analysis doesn't overwrite existing value."""
-        mock_session = Mock(spec=AlertSession)
-        existing_analysis = "Existing analysis"
-        mock_session.final_analysis = existing_analysis
-        mock_repository.get_alert_session.return_value = mock_session
-        
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
-            mock_get_repo.return_value.__exit__.return_value = None
-            
-            result = history_service.update_session_status(
-                session_id="test-session-id",
-                status="in_progress"
-            )
-            
-            assert result == True
-            assert mock_session.status == "in_progress"
-            # final_analysis should remain unchanged when not provided
-            assert mock_session.final_analysis == existing_analysis
-            mock_repository.update_alert_session.assert_called_once_with(mock_session)
+            assert mock_session.status == expected_status
+            if expected_analysis:
+                assert mock_session.final_analysis == expected_analysis
+            if expected_completion:
+                assert mock_session.completed_at_us is not None
+            dependencies['repository'].update_alert_session.assert_called_once_with(mock_session)
     
     @pytest.mark.unit 
     @patch('tarsy.main.dashboard_manager')
     @patch('asyncio.run')
     @patch('asyncio.get_event_loop')
-    def test_update_session_status_calls_dashboard_service(self, mock_get_loop, mock_asyncio_run, mock_dashboard_manager, history_service, mock_repository):
+    def test_update_session_status_calls_dashboard_service(self, mock_get_loop, mock_asyncio_run, mock_dashboard_manager, history_service):
         """Test that session status update actually calls dashboard service."""
-        # Setup mock session
-        mock_session = Mock(spec=AlertSession)
-        mock_repository.get_alert_session.return_value = mock_session
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        mock_session = SessionFactory.create_test_session(status="pending")
+        dependencies['repository'].get_alert_session.return_value = mock_session
         
         # Setup mock dashboard update service
         mock_update_service = Mock()
-        mock_dashboard_manager = Mock()
-        mock_dashboard_manager.update_service = mock_update_service  
-        mock_dashboard_manager = mock_dashboard_manager
+        mock_dashboard_manager.update_service = mock_update_service
         
         # Mock asyncio to simulate non-async context (so it uses asyncio.run)
         mock_loop = Mock()
@@ -320,7 +201,7 @@ class TestHistoryService:
         mock_get_loop.return_value = mock_loop
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
             # Call update_session_status
@@ -334,29 +215,24 @@ class TestHistoryService:
             # Verify basic functionality
             assert result == True
             assert mock_session.status == "completed" 
-            mock_repository.update_alert_session.assert_called_once_with(mock_session)
+            dependencies['repository'].update_alert_session.assert_called_once_with(mock_session)
             
-            # THE CORE FIX: Verify dashboard service is called via asyncio.run
+            # Verify dashboard service is called via asyncio.run
             mock_asyncio_run.assert_called_once()
-            # Verify the call was made to process_session_status_change with correct parameters
             called_coro = mock_asyncio_run.call_args[0][0]
-            # This verifies the dashboard integration is working - the method gets called
-            
-            # Additional verification: Check that the coroutine is calling the right method
-            # The coroutine should be calling process_session_status_change with session details
             assert str(called_coro).find('process_session_status_change') != -1, \
                 f"Expected process_session_status_change call, got: {called_coro}"
     
     @pytest.mark.unit 
     @patch('tarsy.main.dashboard_manager', None)  # Simulate dashboard_manager not available
-    def test_update_session_status_without_dashboard_service(self, history_service, mock_repository):
+    def test_update_session_status_without_dashboard_service(self, history_service):
         """Test that session status update works gracefully without dashboard service."""
-        # Setup mock session
-        mock_session = Mock(spec=AlertSession)
-        mock_repository.get_alert_session.return_value = mock_session
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        mock_session = SessionFactory.create_test_session(status="pending")
+        dependencies['repository'].get_alert_session.return_value = mock_session
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
             # Call update_session_status - should work even without dashboard service
@@ -368,89 +244,91 @@ class TestHistoryService:
             # Verify the basic functionality still works
             assert result == True
             assert mock_session.status == "completed"
-            mock_repository.update_alert_session.assert_called_once_with(mock_session)
-            # The test passes if no exceptions are raised (graceful degradation)
+            dependencies['repository'].update_alert_session.assert_called_once_with(mock_session)
     
+    @pytest.mark.parametrize("interaction_type,interaction_data", [
+        ("llm", {
+            "session_id": "test-session-id",
+            "model_name": "gpt-4",
+            "step_description": "Test LLM call",
+            "request_json": {"messages": [{"role": "user", "content": "Test prompt"}]},
+            "response_json": {"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]}
+        }),
+        ("mcp", {
+            "session_id": "test-session-id",
+            "server_name": "test-server",
+            "communication_type": "tool_call",
+            "tool_name": "test_tool",
+            "step_description": "Test MCP call",
+            "success": True
+        })
+    ])
     @pytest.mark.unit
-    def test_log_llm_interaction_success(self, history_service, mock_repository):
-        """Test successful LLM interaction logging."""
-        from tarsy.models.unified_interactions import LLMInteraction
+    def test_log_interaction_success(self, history_service, interaction_type, interaction_data):
+        """Test successful interaction logging for both LLM and MCP."""
+        dependencies = MockFactory.create_mock_history_service_dependencies()
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
-            # Create unified interaction model
-            interaction = LLMInteraction(
-                session_id="test-session-id",
-                model_name="gpt-4",
-                step_description="Test LLM call",
-                request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
-                response_json={"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]}
-            )
-            
-            result = history_service.log_llm_interaction(interaction)
-            
-            assert result == True
-            mock_repository.create_llm_interaction.assert_called_once()
-    
-    @pytest.mark.unit
-    def test_log_mcp_interaction_success(self, history_service, mock_repository):
-        """Test successful MCP communication logging."""
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
-            mock_get_repo.return_value.__exit__.return_value = None
-            
-            from tarsy.models.unified_interactions import MCPInteraction
-            mcp_interaction = MCPInteraction(
-                session_id="test-session-id",
-                server_name="test-server",
-                communication_type="tool_call",
-                tool_name="test_tool",
-                step_description="Test MCP call",
-                success=True
-            )
-            result = history_service.log_mcp_interaction(mcp_interaction)
+            if interaction_type == "llm":
+                from tarsy.models.unified_interactions import LLMInteraction
+                interaction = LLMInteraction(**interaction_data)
+                result = history_service.log_llm_interaction(interaction)
+                dependencies['repository'].create_llm_interaction.assert_called_once()
+            else:
+                from tarsy.models.unified_interactions import MCPInteraction
+                interaction = MCPInteraction(**interaction_data)
+                result = history_service.log_mcp_interaction(interaction)
+                dependencies['repository'].create_mcp_communication.assert_called_once()
             
             assert result == True
-            mock_repository.create_mcp_communication.assert_called_once()
     
+    @pytest.mark.parametrize("service_enabled,expected_sessions,expected_count", [
+        (True, 3, 3),  # Service enabled with sessions
+        (False, 0, 0),  # Service disabled
+    ])
     @pytest.mark.unit
-    def test_get_sessions_list_success(self, history_service, mock_repository):
-        """Test successful sessions list retrieval."""
-        mock_sessions = [Mock(spec=AlertSession) for _ in range(3)]
-        mock_repository.get_alert_sessions.return_value = {
-            "sessions": mock_sessions,
-            "pagination": {"page": 1, "page_size": 20, "total_pages": 1, "total_items": 3}
-        }
+    def test_get_sessions_list_scenarios(self, history_service, service_enabled, expected_sessions, expected_count):
+        """Test sessions list retrieval for various scenarios."""
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        
+        if service_enabled:
+            mock_sessions = [SessionFactory.create_test_session() for _ in range(expected_sessions)]
+            dependencies['repository'].get_alert_sessions.return_value = {
+                "sessions": mock_sessions,
+                "pagination": {"page": 1, "page_size": 20, "total_pages": 1, "total_items": expected_count}
+            }
+        else:
+            # When service is disabled, get_repository returns None
+            dependencies = None
+        
+        history_service.is_enabled = service_enabled
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
-            mock_get_repo.return_value.__exit__.return_value = None
+            if service_enabled:
+                mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+                mock_get_repo.return_value.__exit__.return_value = None
+            else:
+                mock_get_repo.return_value.__enter__.return_value = None
+                mock_get_repo.return_value.__exit__.return_value = None
             
             sessions, total_count = history_service.get_sessions_list(
-                filters={"status": "completed"},
+                filters={"status": "completed"} if service_enabled else None,
                 page=1,
                 page_size=20
             )
             
-            assert len(sessions) == 3
-            assert total_count == 3
-            mock_repository.get_alert_sessions.assert_called_once()
+            assert len(sessions) == expected_sessions
+            assert total_count == expected_count
+            if service_enabled:
+                dependencies['repository'].get_alert_sessions.assert_called_once()
     
     @pytest.mark.unit
-    def test_get_sessions_list_disabled_service(self, history_service):
-        """Test sessions list retrieval when service is disabled."""
-        history_service.is_enabled = False
-        
-        sessions, total_count = history_service.get_sessions_list()
-        
-        assert sessions == []
-        assert total_count == 0
-    
-    @pytest.mark.unit
-    def test_get_session_timeline_success(self, history_service, mock_repository):
+    def test_get_session_timeline_success(self, history_service):
         """Test successful session timeline retrieval."""
+        dependencies = MockFactory.create_mock_history_service_dependencies()
         mock_timeline_data = {
             "session_info": {"session_id": "test-session-id", "status": "completed"},
             "chronological_timeline": [
@@ -459,10 +337,10 @@ class TestHistoryService:
             ],
             "summary": {"total_interactions": 2}
         }
-        mock_repository.get_session_timeline.return_value = mock_timeline_data
+        dependencies['repository'].get_session_timeline.return_value = mock_timeline_data
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
             timeline = history_service.get_session_timeline("test-session-id")
@@ -471,107 +349,100 @@ class TestHistoryService:
             assert timeline["session_info"]["session_id"] == "test-session-id"
             assert len(timeline["chronological_timeline"]) == 2
     
+    @pytest.mark.parametrize("connection_success,expected_result", [
+        (True, True),  # Connection successful
+        (False, False),  # Connection failed
+    ])
     @pytest.mark.unit
-    def test_test_database_connection_success(self, history_service, mock_repository):
-        """Test successful database connection test."""
+    def test_database_connection_scenarios(self, history_service, connection_success, expected_result):
+        """Test database connection for various scenarios."""
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        
         with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
-            mock_get_repo.return_value.__exit__.return_value = None
+            if connection_success:
+                mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+                mock_get_repo.return_value.__exit__.return_value = None
+            else:
+                mock_get_repo.side_effect = Exception("Connection failed")
             
             result = history_service.test_database_connection()
             
-            assert result == True
-            mock_repository.get_alert_sessions.assert_called_once_with(page=1, page_size=1)
-    
-    @pytest.mark.unit
-    def test_test_database_connection_failure(self, history_service):
-        """Test database connection test failure."""
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.side_effect = Exception("Connection failed")
-            
-            result = history_service.test_database_connection()
-            
-            assert result == False
+            assert result == expected_result
+            if connection_success:
+                dependencies['repository'].get_alert_sessions.assert_called_once_with(page=1, page_size=1)
     
 
     @pytest.mark.unit
-    def test_get_active_sessions(self, history_service, mock_repository):
+    def test_get_active_sessions(self, history_service):
         """Test active sessions retrieval."""
-        mock_active_sessions = [Mock(spec=AlertSession) for _ in range(2)]
-        mock_repository.get_active_sessions.return_value = mock_active_sessions
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        mock_active_sessions = [SessionFactory.create_in_progress_session() for _ in range(2)]
+        dependencies['repository'].get_active_sessions.return_value = mock_active_sessions
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
             active_sessions = history_service.get_active_sessions()
             
             assert len(active_sessions) == 2
-            mock_repository.get_active_sessions.assert_called_once()
+            dependencies['repository'].get_active_sessions.assert_called_once()
     
 
+    @pytest.mark.parametrize("operation_type,error_type,expected_result,expected_calls", [
+        ("success_after_retry", "database is locked", "success", 2),  # Succeeds after retry
+        ("exhausts_retries", "database is locked", None, 4),  # Fails after max retries
+        ("non_retryable", "syntax error", None, 1),  # Fails immediately
+    ])
     @pytest.mark.unit
     @patch('time.sleep')
-    def test_retry_database_operation_success_after_retry(self, mock_sleep, history_service):
-        """Test operation succeeds after transient failure."""
+    def test_retry_database_operation_scenarios(self, mock_sleep, history_service, operation_type, error_type, expected_result, expected_calls):
+        """Test retry database operation for various scenarios."""
         call_count = 0
         
         def mock_operation():
             nonlocal call_count
             call_count += 1
-            if call_count == 1:
-                raise Exception("database is locked")
+            if operation_type == "success_after_retry" and call_count == 1:
+                raise Exception(error_type)
+            elif operation_type == "exhausts_retries":
+                raise Exception(error_type)
+            elif operation_type == "non_retryable":
+                raise Exception(error_type)
             return "success"
         
         result = history_service._retry_database_operation("test_operation", mock_operation)
         
-        assert result == "success"
-        assert call_count == 2
-        mock_sleep.assert_called_once()  # Should have slept once for retry
+        assert result == expected_result
+        assert call_count == expected_calls
+        
+        if operation_type == "success_after_retry":
+            mock_sleep.assert_called_once()  # Should have slept once for retry
+        elif operation_type == "exhausts_retries":
+            assert mock_sleep.call_count == history_service.max_retries  # Should retry max_retries times
+        else:  # non_retryable
+            mock_sleep.assert_not_called()  # Should not retry for non-retryable errors
     
     @pytest.mark.unit
-    @patch('time.sleep')
-    def test_retry_database_operation_exhausts_retries(self, mock_sleep, history_service):
-        """Test operation fails after max retries."""
-        def mock_operation():
-            raise Exception("database is locked")
-        
-        result = history_service._retry_database_operation("test_operation", mock_operation)
-        
-        assert result is None
-        assert mock_sleep.call_count == history_service.max_retries  # Should retry max_retries times
-    
-    @pytest.mark.unit
-    @patch('time.sleep')
-    def test_retry_database_operation_non_retryable_error(self, mock_sleep, history_service):
-        """Test operation fails immediately on non-retryable error."""
-        def mock_operation():
-            raise Exception("syntax error")  # Non-retryable error
-        
-        result = history_service._retry_database_operation("test_operation", mock_operation)
-        
-        assert result is None
-        mock_sleep.assert_not_called()  # Should not retry for non-retryable errors
-    
-    @pytest.mark.unit
-    def test_get_sessions_dict_format(self, history_service, mock_repository):
+    def test_get_sessions_dict_format(self, history_service):
         """Test get_sessions method returns dict format (different from get_sessions_list)."""
-        mock_sessions = [Mock(spec=AlertSession) for _ in range(2)]
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        mock_sessions = [SessionFactory.create_test_session() for _ in range(2)]
         expected_result = {
             "sessions": mock_sessions,
             "pagination": {"page": 1, "page_size": 20, "total_pages": 1, "total_items": 2}
         }
-        mock_repository.get_alert_sessions.return_value = expected_result
+        dependencies['repository'].get_alert_sessions.return_value = expected_result
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
             result = history_service.get_sessions(status="completed", page=1, page_size=20)
             
             assert result == expected_result
             assert isinstance(result, dict)  # Different from get_sessions_list which returns tuple
-            mock_repository.get_alert_sessions.assert_called_once_with(
+            dependencies['repository'].get_alert_sessions.assert_called_once_with(
                 status="completed",
                 agent_type=None,
                 alert_type=None,
@@ -688,89 +559,57 @@ class TestHistoryServiceErrorHandling:
 class TestDashboardMethods:
     """Test suite for new dashboard-specific methods in HistoryService."""
     
-    @pytest.fixture
-    def mock_repository(self):
-        """Create mock repository for dashboard methods."""
-        repo = Mock()
-
-        repo.get_filter_options.return_value = {
-            "agent_types": ["kubernetes", "network"],
-            "alert_types": ["PodCrashLooping"],
-            "status_options": ["pending", "in_progress", "completed", "failed"],
-            "time_ranges": [
-                {"label": "Last Hour", "value": "1h"},
-                {"label": "Today", "value": "today"}
-            ]
-        }
-        return repo
-    
-    @pytest.fixture
-    def history_service_with_mock_repo(self, mock_repository):
-        """Create HistoryService with mocked repository."""
-        service = HistoryService()
-        service.is_enabled = True
-        service._is_healthy = True
-        
-        # Mock the get_repository context manager
-        with patch.object(service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = mock_repository
-            mock_get_repo.return_value.__exit__.return_value = None
-            yield service, mock_repository
-    
 
     
+    @pytest.mark.parametrize("scenario,expected_agent_types,expected_alert_types", [
+        ("success", 2, 1),  # Repository available
+        ("no_repository", 0, 0),  # Repository unavailable
+        ("exception", 0, 0),  # Repository exception
+    ])
     @pytest.mark.unit
-    def test_get_filter_options_success(self, history_service_with_mock_repo):
-        """Test successful filter options retrieval."""
-        service, mock_repo = history_service_with_mock_repo
-        
-        result = service.get_filter_options()
-        
-        # Verify the result
-        assert "agent_types" in result
-        assert "alert_types" in result
-        assert "status_options" in result
-        assert "time_ranges" in result
-        assert len(result["agent_types"]) == 2
-        assert "kubernetes" in result["agent_types"]
-        assert len(result["time_ranges"]) == 2
-        
-        # Verify repository was called
-        mock_repo.get_filter_options.assert_called_once()
-    
-    @pytest.mark.unit
-    def test_get_filter_options_no_repository(self):
-        """Test filter options when repository is unavailable."""
-        service = HistoryService()
-        service.is_enabled = True
-        service._is_healthy = False
-        
-        with patch.object(service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = None
-            
-            result = service.get_filter_options()
-            
-            # Should return default values
-            assert result["agent_types"] == []
-            assert result["alert_types"] == []
-            assert len(result["status_options"]) == 4
-            assert len(result["time_ranges"]) == 4
-    
-    @pytest.mark.unit
-    def test_get_filter_options_exception(self):
-        """Test filter options with repository exception."""
+    def test_get_filter_options_scenarios(self, scenario, expected_agent_types, expected_alert_types):
+        """Test filter options retrieval for various scenarios."""
         service = HistoryService()
         service.is_enabled = True
         
-        with patch.object(service, 'get_repository') as mock_get_repo:
-            mock_get_repo.side_effect = Exception("Database error")
+        if scenario == "success":
+            service._is_healthy = True
+            dependencies = MockFactory.create_mock_history_service_dependencies()
             
-            result = service.get_filter_options()
+            with patch.object(service, 'get_repository') as mock_get_repo:
+                mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+                mock_get_repo.return_value.__exit__.return_value = None
+                
+                result = service.get_filter_options()
+                
+                assert len(result["agent_types"]) == expected_agent_types
+                assert len(result["alert_types"]) == expected_alert_types
+                assert len(result["status_options"]) == 4
+                assert len(result["time_ranges"]) == 2
+                dependencies['repository'].get_filter_options.assert_called_once()
+        
+        elif scenario == "no_repository":
+            service._is_healthy = False
             
-            # Should return default values on exception
-            assert result["agent_types"] == []
-            assert result["alert_types"] == []
-            assert len(result["status_options"]) == 4
+            with patch.object(service, 'get_repository') as mock_get_repo:
+                mock_get_repo.return_value.__enter__.return_value = None
+                
+                result = service.get_filter_options()
+                
+                assert result["agent_types"] == []
+                assert result["alert_types"] == []
+                assert len(result["status_options"]) == 4
+                assert len(result["time_ranges"]) == 4
+        
+        else:  # exception
+            with patch.object(service, 'get_repository') as mock_get_repo:
+                mock_get_repo.side_effect = Exception("Database error")
+                
+                result = service.get_filter_options()
+                
+                assert result["agent_types"] == []
+                assert result["alert_types"] == []
+                assert len(result["status_options"]) == 4
 
 @pytest.mark.unit
 class TestHistoryServiceRetryLogicDuplicatePrevention:

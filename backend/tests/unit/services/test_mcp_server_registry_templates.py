@@ -13,6 +13,7 @@ from unittest.mock import patch, MagicMock
 from tarsy.config.settings import Settings
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.models.agent_config import MCPServerConfigModel
+from tests.utils import MCPServerMaskingFactory
 
 
 @pytest.mark.unit
@@ -48,18 +49,11 @@ class TestMCPServerRegistryTemplateResolution:
     def test_configured_server_template_resolution(self):
         """Test template resolution in configured MCP servers."""
         configured_servers = {
-            "template-server": MCPServerConfigModel(
-                server_id="template-server",
-                server_type="test",
-                enabled=True,
-                connection_params={
-                    "command": "test-server",
-                    "args": ["--token", "${TEST_TOKEN}", "--url", "${TEST_URL}"]
-                }
-            )
+            "template-server": MCPServerConfigModel(**MCPServerMaskingFactory.create_template_server_config())
         }
         
-        with patch.dict(os.environ, {'TEST_TOKEN': 'secret123', 'TEST_URL': 'http://test.com'}):
+        env_vars = MCPServerMaskingFactory.create_template_environment_vars()
+        with patch.dict(os.environ, env_vars):
             settings = Settings()
             registry = MCPServerRegistry(configured_servers=configured_servers, settings=settings)
             
@@ -100,14 +94,7 @@ class TestMCPServerRegistryTemplateResolution:
         """Test that registry falls back to original config when template resolution fails."""
         # Create a server config with template that will fail
         config_with_template = {
-            "failing-server": {
-                "server_id": "failing-server",
-                "server_type": "test",
-                "enabled": True,
-                "connection_params": {
-                    "args": ["--missing", "${DEFINITELY_MISSING_VAR}"]
-                }
-            }
+            "failing-server": MCPServerMaskingFactory.create_failing_template_server_config()
         }
         
         with patch.dict(os.environ, {}, clear=True):
@@ -132,29 +119,10 @@ class TestMCPServerRegistryTemplateResolution:
     def test_complex_template_resolution(self):
         """Test complex template resolution scenarios."""
         configured_servers = {
-            "complex-server": MCPServerConfigModel(
-                server_id="complex-server",
-                server_type="test",
-                enabled=True,
-                connection_params={
-                    "command": "complex-${SERVER_TYPE}",
-                    "args": ["--endpoint", "https://${HOST}:${PORT}/api"],
-                    "env": {
-                        "CONFIG_PATH": "${KUBECONFIG}",  # Will use default
-                        "AUTH_TOKEN": "${AUTH_TOKEN}"    # Must be in env
-                    }
-                }
-            )
+            "complex-server": MCPServerConfigModel(**MCPServerMaskingFactory.create_complex_template_server_config())
         }
         
-        env_vars = {
-            'SERVER_TYPE': 'production',
-            'HOST': 'api.company.com', 
-            'PORT': '8443',
-            'AUTH_TOKEN': 'bearer-token-123',
-            'KUBECONFIG': '/home/.kube/config'
-        }
-        
+        env_vars = MCPServerMaskingFactory.create_template_environment_vars()
         with patch.dict(os.environ, env_vars):
             settings = Settings()
             registry = MCPServerRegistry(configured_servers=configured_servers, settings=settings)

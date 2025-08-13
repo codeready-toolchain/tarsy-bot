@@ -12,6 +12,7 @@ import pytest
 
 from tarsy.config.settings import Settings
 from tarsy.services.runbook_service import RunbookService
+from tests.utils import MockFactory, TestUtils, RunbookFactory
 
 
 @pytest.mark.unit
@@ -21,62 +22,21 @@ class TestRunbookServiceInitialization:
     @pytest.fixture
     def mock_settings_no_token(self):
         """Create mock settings without GitHub token."""
-        settings = Mock(spec=Settings)
-        settings.github_token = None
-        return settings
+        return RunbookFactory.create_mock_settings()
     
     @pytest.fixture
     def mock_settings_with_token(self):
         """Create mock settings with GitHub token."""
-        settings = Mock(spec=Settings)
-        settings.github_token = "ghp_test_token_123"
-        return settings
+        return RunbookFactory.create_mock_settings(github_token="ghp_test_token_123")
     
-    def test_initialization_without_github_token(self, mock_settings_no_token):
-        """Test initialization without GitHub authentication token."""
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client_instance = AsyncMock()
-            mock_client.return_value = mock_client_instance
-            
-            service = RunbookService(mock_settings_no_token)
-            
-            # Should store settings and create client
-            assert service.settings == mock_settings_no_token
-            assert service.client == mock_client_instance
-            mock_client.assert_called_once()
-            
-            # Should set basic headers without authorization
-            expected_headers = {
-                "Accept": "application/vnd.github.v3.raw",
-                "User-Agent": "Tarsy-bot/1.0"
-            }
-            assert service.headers == expected_headers
-            assert "Authorization" not in service.headers
-    
-    def test_initialization_with_github_token(self, mock_settings_with_token):
-        """Test initialization with GitHub authentication token."""
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client_instance = AsyncMock()
-            mock_client.return_value = mock_client_instance
-            
-            service = RunbookService(mock_settings_with_token)
-            
-            # Should store settings and create client
-            assert service.settings == mock_settings_with_token
-            assert service.client == mock_client_instance
-            
-            # Should set headers with authorization
-            expected_headers = {
-                "Accept": "application/vnd.github.v3.raw",
-                "User-Agent": "Tarsy-bot/1.0",
-                "Authorization": "token ghp_test_token_123"
-            }
-            assert service.headers == expected_headers
-    
-    def test_initialization_with_empty_github_token(self):
-        """Test initialization with empty GitHub token."""
-        settings = Mock(spec=Settings)
-        settings.github_token = ""
+    @pytest.mark.parametrize("github_token,expected_authorization", [
+        (None, False),  # No token
+        ("ghp_test_token_123", True),  # Valid token
+        ("", False),  # Empty token
+    ])
+    def test_initialization_scenarios(self, github_token, expected_authorization):
+        """Test initialization for various GitHub token scenarios."""
+        settings = RunbookFactory.create_mock_settings(github_token=github_token)
         
         with patch('httpx.AsyncClient') as mock_client:
             mock_client_instance = AsyncMock()
@@ -84,19 +44,23 @@ class TestRunbookServiceInitialization:
             
             service = RunbookService(settings)
             
-            # Empty token should be treated as no token
-            assert "Authorization" not in service.headers
-    
-    def test_initialization_headers_structure(self, mock_settings_no_token):
-        """Test that initialization creates proper headers structure."""
-        with patch('httpx.AsyncClient'):
-            service = RunbookService(mock_settings_no_token)
+            # Should store settings and create client
+            assert service.settings == settings
+            assert service.client == mock_client_instance
+            mock_client.assert_called_once()
             
             # Should have required GitHub API headers
             assert "Accept" in service.headers
             assert "User-Agent" in service.headers
             assert service.headers["Accept"] == "application/vnd.github.v3.raw"
             assert service.headers["User-Agent"] == "Tarsy-bot/1.0"
+            
+            # Check authorization header
+            if expected_authorization:
+                assert "Authorization" in service.headers
+                assert service.headers["Authorization"] == f"token {github_token}"
+            else:
+                assert "Authorization" not in service.headers
 
 
 @pytest.mark.unit
@@ -106,90 +70,53 @@ class TestURLConversion:
     @pytest.fixture
     def service(self):
         """Create RunbookService instance for testing."""
-        settings = Mock(spec=Settings)
-        settings.github_token = None
+        settings = RunbookFactory.create_mock_settings()
         with patch('httpx.AsyncClient'):
             return RunbookService(settings)
     
-    def test_convert_github_blob_url_to_raw(self, service):
-        """Test converting GitHub blob URL to raw URL."""
-        github_url = "https://github.com/user/repo/blob/master/docs/runbook.md"
-        expected_raw_url = "https://raw.githubusercontent.com/user/repo/master/docs/runbook.md"
+    @pytest.mark.parametrize("input_url,expected_url", [
+        ("https://github.com/user/repo/blob/master/docs/runbook.md", 
+         "https://raw.githubusercontent.com/user/repo/master/docs/runbook.md"),
+        ("https://github.com/org/project/blob/develop/scripts/setup.sh",
+         "https://raw.githubusercontent.com/org/project/develop/scripts/setup.sh"),
+        ("https://github.com/company/repo/blob/main/docs/ops/troubleshooting/k8s.md",
+         "https://raw.githubusercontent.com/company/repo/main/docs/ops/troubleshooting/k8s.md"),
+        ("https://raw.githubusercontent.com/user/repo/master/file.md",
+         "https://raw.githubusercontent.com/user/repo/master/file.md"),  # Already raw
+        ("https://example.com/docs/runbook.md",
+         "https://example.com/docs/runbook.md"),  # Non-GitHub URL
+    ])
+    def test_convert_url_scenarios(self, service, input_url, expected_url):
+        """Test URL conversion for various scenarios."""
+        result = service._convert_to_raw_url(input_url)
+        assert result == expected_url
+    
+    @pytest.mark.parametrize("input_url,expected_url,should_raise", [
+        # Malformed URLs that should return original
+        ("https://github.com/user", "https://github.com/user", False),  # Missing repo
+        ("https://github.com/user/repo", "https://github.com/user/repo", False),  # Missing blob
+        ("https://github.com/user/repo/blob", "https://github.com/user/repo/blob", False),  # Missing branch
+        ("https://github.com/user/repo/blob/master", "https://github.com/user/repo/blob/master", False),  # Missing file
+        ("https://github.com/user/repo/tree/master/file.md", "https://github.com/user/repo/tree/master/file.md", False),  # Tree instead of blob
         
-        result = service._convert_to_raw_url(github_url)
-        assert result == expected_raw_url
-    
-    def test_convert_github_blob_url_with_branch(self, service):
-        """Test converting GitHub blob URL with different branch."""
-        github_url = "https://github.com/org/project/blob/develop/scripts/setup.sh"
-        expected_raw_url = "https://raw.githubusercontent.com/org/project/develop/scripts/setup.sh"
+        # Special character URLs
+        ("https://github.com/user/repo/blob/feature/fix-bug/docs/run%20book.md",
+         "https://raw.githubusercontent.com/user/repo/feature/fix-bug/docs/run%20book.md", False),
+        ("https://github.com/user/repo/blob/feature#123/file.md",
+         "https://raw.githubusercontent.com/user/repo/feature#123/file.md", False),
         
-        result = service._convert_to_raw_url(github_url)
-        assert result == expected_raw_url
-    
-    def test_convert_github_blob_url_nested_path(self, service):
-        """Test converting GitHub blob URL with nested file path."""
-        github_url = "https://github.com/company/repo/blob/main/docs/ops/troubleshooting/k8s.md"
-        expected_raw_url = "https://raw.githubusercontent.com/company/repo/main/docs/ops/troubleshooting/k8s.md"
-        
-        result = service._convert_to_raw_url(github_url)
-        assert result == expected_raw_url
-    
-    def test_convert_already_raw_url(self, service):
-        """Test that raw URLs are returned unchanged."""
-        raw_url = "https://raw.githubusercontent.com/user/repo/master/file.md"
-        
-        result = service._convert_to_raw_url(raw_url)
-        assert result == raw_url
-    
-    def test_convert_non_github_url(self, service):
-        """Test that non-GitHub URLs are returned unchanged."""
-        non_github_url = "https://example.com/docs/runbook.md"
-        
-        result = service._convert_to_raw_url(non_github_url)
-        assert result == non_github_url
-    
-    def test_convert_malformed_github_url(self, service):
-        """Test handling of malformed GitHub URLs."""
-        malformed_urls = [
-            "https://github.com/user",  # Missing repo
-            "https://github.com/user/repo",  # Missing blob
-            "https://github.com/user/repo/blob",  # Missing branch
-            "https://github.com/user/repo/blob/master",  # Missing file
-            "https://github.com/user/repo/tree/master/file.md",  # Tree instead of blob
-        ]
-        
-        for url in malformed_urls:
-            result = service._convert_to_raw_url(url)
-            # Should return original URL when conversion fails
-            assert result == url
-    
-    def test_convert_github_url_with_special_characters(self, service):
-        """Test converting GitHub URLs with special characters in paths."""
-        github_url = "https://github.com/user/repo/blob/feature/fix-bug/docs/run%20book.md"
-        expected_raw_url = "https://raw.githubusercontent.com/user/repo/feature/fix-bug/docs/run%20book.md"
-        
-        result = service._convert_to_raw_url(github_url)
-        assert result == expected_raw_url
-    
-    def test_convert_github_url_with_hash_branch(self, service):
-        """Test converting GitHub URL with branch name containing hash."""
-        github_url = "https://github.com/user/repo/blob/feature#123/file.md"
-        expected_raw_url = "https://raw.githubusercontent.com/user/repo/feature#123/file.md"
-        
-        result = service._convert_to_raw_url(github_url)
-        assert result == expected_raw_url
-    
-    def test_convert_empty_url(self, service):
-        """Test handling of empty URL."""
-        result = service._convert_to_raw_url("")
-        assert result == ""
-    
-    def test_convert_none_url(self, service):
-        """Test handling of None URL."""
-        # Production code doesn't handle None input gracefully
-        with pytest.raises(TypeError):
-            service._convert_to_raw_url(None)
+        # Edge cases
+        ("", "", False),  # Empty URL
+        (None, None, True),  # None URL should raise TypeError
+    ])
+    def test_convert_url_edge_cases(self, service, input_url, expected_url, should_raise):
+        """Test URL conversion for edge cases and malformed URLs."""
+        if should_raise:
+            with pytest.raises(TypeError):
+                service._convert_to_raw_url(input_url)
+        else:
+            result = service._convert_to_raw_url(input_url)
+            assert result == expected_url
 
 
 @pytest.mark.unit
@@ -199,8 +126,7 @@ class TestRunbookDownload:
     @pytest.fixture
     def service(self):
         """Create RunbookService instance with mocked client."""
-        settings = Mock(spec=Settings)
-        settings.github_token = "test_token"
+        settings = RunbookFactory.create_mock_settings(github_token="test_token")
         
         with patch('httpx.AsyncClient') as mock_client:
             mock_client_instance = AsyncMock()
@@ -211,10 +137,7 @@ class TestRunbookDownload:
     @pytest.fixture
     def mock_response(self):
         """Create mock HTTP response."""
-        response = Mock()
-        response.text = "# Runbook Content\n\nThis is a test runbook."
-        response.raise_for_status = Mock()
-        return response
+        return RunbookFactory.create_mock_response()
     
     async def test_download_runbook_success(self, service, mock_response):
         """Test successful runbook download."""
@@ -242,55 +165,34 @@ class TestRunbookDownload:
         service.client.get.assert_called_once_with(raw_url, headers=service.headers)
         assert result == "# Runbook Content\n\nThis is a test runbook."
     
-    async def test_download_runbook_http_error(self, service):
-        """Test download with HTTP error."""
-        github_url = "https://github.com/user/repo/blob/master/nonexistent.md"
-        
-        http_error = httpx.HTTPStatusError(
-            "404 Client Error: Not Found",
-            request=Mock(),
-            response=Mock()
-        )
-        service.client.get.side_effect = http_error
-        
-        with pytest.raises(Exception, match="Failed to download runbook"):
-            await service.download_runbook(github_url)
-    
-    async def test_download_runbook_network_error(self, service):
-        """Test download with network error."""
+    @pytest.mark.parametrize("error_type,error_instance", [
+        ("http_error", "http_404"),
+        ("network_error", "network_error"),
+        ("timeout_error", "timeout_error"),
+        ("response_status_error", "mock_response"),  # Special case for response status error
+    ])
+    async def test_download_runbook_errors(self, service, error_type, error_instance):
+        """Test download with various error scenarios."""
         github_url = "https://github.com/user/repo/blob/master/runbook.md"
+        error_responses = RunbookFactory.create_error_responses()
         
-        network_error = httpx.NetworkError("Network connection failed")
-        service.client.get.side_effect = network_error
-        
-        with pytest.raises(Exception, match="Failed to download runbook"):
-            await service.download_runbook(github_url)
-    
-    async def test_download_runbook_timeout_error(self, service):
-        """Test download with timeout error."""
-        github_url = "https://github.com/user/repo/blob/master/runbook.md"
-        
-        timeout_error = httpx.TimeoutException("Request timed out")
-        service.client.get.side_effect = timeout_error
-        
-        with pytest.raises(Exception, match="Failed to download runbook"):
-            await service.download_runbook(github_url)
-    
-    async def test_download_runbook_response_status_error(self, service):
-        """Test download when response indicates HTTP error status."""
-        github_url = "https://github.com/user/repo/blob/master/runbook.md"
-        
-        mock_response = Mock()
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "404 Not Found", request=Mock(), response=Mock()
-        )
-        service.client.get.return_value = mock_response
+        if error_type == "response_status_error":
+            # Special case: mock response with status error
+            mock_response = Mock()
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "404 Not Found", request=Mock(), response=Mock()
+            )
+            service.client.get.return_value = mock_response
+        else:
+            # Direct error from client.get
+            service.client.get.side_effect = error_responses[error_instance]
         
         with pytest.raises(Exception, match="Failed to download runbook"):
             await service.download_runbook(github_url)
         
-        # Should still call raise_for_status
-        mock_response.raise_for_status.assert_called_once()
+        if error_type == "response_status_error":
+            # Should still call raise_for_status
+            mock_response.raise_for_status.assert_called_once()
     
     async def test_download_runbook_headers_included(self, service, mock_response):
         """Test that proper headers are included in download request."""

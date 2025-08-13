@@ -11,163 +11,101 @@ from unittest.mock import Mock, patch
 from tarsy.services.chain_registry import ChainRegistry
 from tarsy.models.chains import ChainDefinitionModel, ChainStageModel
 from tarsy.config.agent_config import ConfigurationLoader
+from tests.utils import MockFactory, TestUtils, ChainFactory
 
 
 @pytest.mark.unit
 class TestChainRegistryInitialization:
     """Test ChainRegistry initialization and configuration loading."""
     
-    def test_initialization_builtin_only(self):
-        """Test initialization with only built-in chains."""
+    @pytest.mark.parametrize("scenario,config_loader_config,expected_builtin,expected_yaml,expected_mappings", [
+        ("default_only", None, 1, 0, {'kubernetes': 'kubernetes-chain', 'NamespaceTerminating': 'kubernetes-chain'}),
+        ("with_custom_config", {
+            'custom-chain': ChainFactory.create_custom_chain()
+        }, 1, 1, {'kubernetes': 'kubernetes-chain', 'NamespaceTerminating': 'kubernetes-chain', 'custom': 'custom-chain'}),
+        ("config_error", Exception("Config error"), 1, 0, {'kubernetes': 'kubernetes-chain', 'NamespaceTerminating': 'kubernetes-chain'}),
+    ])
+    def test_initialization_scenarios(self, scenario, config_loader_config, expected_builtin, expected_yaml, expected_mappings):
+        """Test initialization for various configuration scenarios."""
         with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
             mock_builtin.return_value = {
-                'kubernetes-chain': {
-                    'alert_types': ['kubernetes'],
-                    'stages': [{'name': 'analysis', 'agent': 'KubernetesAgent'}],
-                    'description': 'Kubernetes chain'
-                }
+                'kubernetes-chain': ChainFactory.create_kubernetes_chain(chain_id='kubernetes-chain')
             }
             
-            registry = ChainRegistry()
+            config_loader = None
+            if config_loader_config is not None and not isinstance(config_loader_config, Exception):
+                config_loader = Mock(spec=ConfigurationLoader)
+                config_loader.get_chain_configs.return_value = config_loader_config
+            elif isinstance(config_loader_config, Exception):
+                config_loader = Mock(spec=ConfigurationLoader)
+                config_loader.get_chain_configs.side_effect = config_loader_config
             
-            assert len(registry.builtin_chains) == 1
-            assert 'kubernetes-chain' in registry.builtin_chains
-            assert len(registry.yaml_chains) == 0
-            assert len(registry.alert_type_mappings) == 1
-            assert registry.alert_type_mappings['kubernetes'] == 'kubernetes-chain'
-    
-    def test_initialization_with_yaml_config(self):
-        """Test initialization with YAML configuration loader."""
-        mock_config_loader = Mock(spec=ConfigurationLoader)
-        mock_config_loader.get_chain_configs.return_value = {
-            'custom-chain': {
-                'alert_types': ['custom'],
-                'stages': [{'name': 'stage1', 'agent': 'CustomAgent'}],
-                'description': 'Custom chain'
-            }
-        }
-        
-        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
-            mock_builtin.return_value = {
-                'kubernetes-chain': {
-                    'alert_types': ['kubernetes'], 
-                    'stages': [{'name': 'analysis', 'agent': 'KubernetesAgent'}]
-                }
-            }
+            if config_loader:
+                registry = ChainRegistry(config_loader)
+            else:
+                registry = ChainRegistry()
             
-            registry = ChainRegistry(mock_config_loader)
+            assert len(registry.builtin_chains) == expected_builtin
+            assert len(registry.yaml_chains) == expected_yaml
+            assert len(registry.alert_type_mappings) == len(expected_mappings)
             
-            assert len(registry.builtin_chains) == 1
-            assert len(registry.yaml_chains) == 1
-            assert 'custom-chain' in registry.yaml_chains
-            assert len(registry.alert_type_mappings) == 2
-            assert registry.alert_type_mappings['custom'] == 'custom-chain'
-    
-    def test_initialization_yaml_config_failure(self):
-        """Test initialization when YAML config loading fails."""
-        mock_config_loader = Mock(spec=ConfigurationLoader)
-        mock_config_loader.get_chain_configs.side_effect = Exception("Config error")
-        
-        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
-            mock_builtin.return_value = {
-                'kubernetes-chain': {
-                    'alert_types': ['kubernetes'],
-                    'stages': [{'name': 'analysis', 'agent': 'KubernetesAgent'}]
-                }
-            }
-            
-            # Should not raise, just log warning and continue with built-in chains
-            registry = ChainRegistry(mock_config_loader)
-            
-            assert len(registry.builtin_chains) == 1
-            assert len(registry.yaml_chains) == 0
+            for alert_type, chain_id in expected_mappings.items():
+                assert registry.alert_type_mappings[alert_type] == chain_id
 
 
 @pytest.mark.unit
 class TestChainRegistryValidation:
     """Test ChainRegistry validation logic."""
     
-    def test_chain_id_uniqueness_validation_pass(self):
-        """Test validation passes when chain IDs are unique."""
-        mock_config_loader = Mock(spec=ConfigurationLoader)
-        mock_config_loader.get_chain_configs.return_value = {
-            'yaml-chain': {
-                'alert_types': ['yaml-alert'],
-                'stages': [{'name': 'stage1', 'agent': 'YamlAgent'}]
-            }
-        }
+    @pytest.mark.parametrize("scenario,builtin_chains,yaml_chains,should_raise,expected_error", [
+        ("valid_unique_ids", {
+            'builtin-chain': ChainFactory.create_custom_chain(chain_id='builtin-chain', alert_types=['builtin-alert'])
+        }, {
+            'yaml-chain': ChainFactory.create_custom_chain(chain_id='yaml-chain', alert_types=['yaml-alert'])
+        }, False, None),
         
-        with patch('tarsy.config.builtin_config.get_builtin_chain_definitions') as mock_builtin:
-            mock_builtin.return_value = {
-                'builtin-chain': {
-                    'alert_types': ['builtin-alert'],
-                    'stages': [{'name': 'analysis', 'agent': 'BuiltinAgent'}]
-                }
-            }
-            
-            # Should not raise
-            registry = ChainRegistry(mock_config_loader)
-            assert len(registry.builtin_chains) == 1
-            assert len(registry.yaml_chains) == 1
-    
-    def test_chain_id_uniqueness_validation_fail(self):
-        """Test validation fails when chain IDs conflict."""
-        mock_config_loader = Mock(spec=ConfigurationLoader)
-        mock_config_loader.get_chain_configs.return_value = {
-            'duplicate-chain': {
-                'alert_types': ['yaml-alert'],
-                'stages': [{'name': 'stage1', 'agent': 'YamlAgent'}]
-            }
-        }
+        ("duplicate_chain_ids", {
+            'duplicate-chain': ChainFactory.create_custom_chain(chain_id='duplicate-chain', alert_types=['builtin-alert'])
+        }, {
+            'duplicate-chain': ChainFactory.create_custom_chain(chain_id='duplicate-chain', alert_types=['yaml-alert'])
+        }, True, "Chain ID conflicts detected.*duplicate-chain"),
+        
+        ("alert_type_conflicts_builtin", {
+            'chain1': ChainFactory.create_custom_chain(chain_id='chain1', alert_types=['kubernetes', 'shared-alert']),
+            'chain2': ChainFactory.create_custom_chain(chain_id='chain2', alert_types=['shared-alert'])
+        }, {}, True, "Alert type 'shared-alert' conflicts.*chain1.*chain2"),
+        
+        ("alert_type_conflicts_builtin_yaml", {
+            'builtin-chain': ChainFactory.create_custom_chain(chain_id='builtin-chain', alert_types=['kubernetes'])
+        }, {
+            'yaml-chain': ChainFactory.create_custom_chain(chain_id='yaml-chain', alert_types=['kubernetes'])
+        }, True, "Alert type 'kubernetes' conflicts.*built-in.*YAML"),
+    ])
+    def test_validation_scenarios(self, scenario, builtin_chains, yaml_chains, should_raise, expected_error):
+        """Test validation for various conflict scenarios."""
+        mock_config_loader = None
+        if yaml_chains:
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = yaml_chains
         
         with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
-            mock_builtin.return_value = {
-                'duplicate-chain': {
-                    'alert_types': ['builtin-alert'],
-                    'stages': [{'name': 'analysis', 'agent': 'BuiltinAgent'}]
-                }
-            }
+            mock_builtin.return_value = builtin_chains
             
-            with pytest.raises(ValueError, match="Chain ID conflicts detected.*duplicate-chain"):
-                ChainRegistry(mock_config_loader)
-    
-    def test_alert_type_conflicts_builtin_vs_builtin(self):
-        """Test validation fails when built-in chains have alert type conflicts."""
-        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
-            mock_builtin.return_value = {
-                'chain1': {
-                    'alert_types': ['kubernetes', 'shared-alert'],
-                    'stages': [{'name': 'stage1', 'agent': 'Agent1'}]
-                },
-                'chain2': {
-                    'alert_types': ['shared-alert'],
-                    'stages': [{'name': 'stage2', 'agent': 'Agent2'}]
-                }
-            }
-            
-            with pytest.raises(ValueError, match="Alert type 'shared-alert' conflicts.*chain1.*chain2"):
-                ChainRegistry()
-    
-    def test_alert_type_conflicts_yaml_vs_builtin(self):
-        """Test validation fails when YAML and built-in chains have alert type conflicts."""
-        mock_config_loader = Mock(spec=ConfigurationLoader)
-        mock_config_loader.get_chain_configs.return_value = {
-            'yaml-chain': {
-                'alert_types': ['kubernetes'],  # Conflicts with built-in
-                'stages': [{'name': 'yaml-stage', 'agent': 'YamlAgent'}]
-            }
-        }
-        
-        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
-            mock_builtin.return_value = {
-                'builtin-chain': {
-                    'alert_types': ['kubernetes'],
-                    'stages': [{'name': 'builtin-stage', 'agent': 'BuiltinAgent'}]
-                }
-            }
-            
-            with pytest.raises(ValueError, match="Alert type 'kubernetes' conflicts.*built-in.*YAML"):
-                ChainRegistry(mock_config_loader)
+            if should_raise:
+                with pytest.raises(ValueError, match=expected_error):
+                    if mock_config_loader:
+                        ChainRegistry(mock_config_loader)
+                    else:
+                        ChainRegistry()
+            else:
+                if mock_config_loader:
+                    registry = ChainRegistry(mock_config_loader)
+                else:
+                    registry = ChainRegistry()
+                
+                # Verify successful initialization
+                assert len(registry.builtin_chains) == len(builtin_chains)
+                assert len(registry.yaml_chains) == len(yaml_chains)
 
 
 @pytest.mark.unit
@@ -179,58 +117,50 @@ class TestChainRegistryLookup:
         """Create registry with sample chains."""
         with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
             mock_builtin.return_value = {
-                'kubernetes-chain': {
-                    'alert_types': ['kubernetes', 'NamespaceTerminating'],
-                    'stages': [
-                        {'name': 'data-collection', 'agent': 'KubernetesAgent'},
-                        {'name': 'analysis', 'agent': 'KubernetesAgent', 'iteration_strategy': 'react'}
-                    ],
-                    'description': 'Kubernetes troubleshooting chain'
-                },
-                'single-stage-chain': {
-                    'alert_types': ['simple'],
-                    'stages': [{'name': 'analysis', 'agent': 'SimpleAgent'}]
-                }
+                'kubernetes-chain': ChainFactory.create_kubernetes_chain(),
+                'single-stage-chain': ChainFactory.create_simple_chain(chain_id='single-stage-chain')
             }
             
             return ChainRegistry()
     
-    def test_get_chain_for_alert_type_success(self, sample_registry):
-        """Test successful chain lookup by alert type."""
-        chain = sample_registry.get_chain_for_alert_type('kubernetes')
+    @pytest.mark.parametrize("alert_type,expected_chain_id,expected_stages,should_raise", [
+        ('kubernetes', 'kubernetes-chain', 2, False),
+        ('NamespaceTerminating', 'kubernetes-chain', 2, False),
+        ('simple', 'single-stage-chain', 1, False),
+        ('unknown', None, None, True),
+    ])
+    def test_get_chain_for_alert_type_scenarios(self, sample_registry, alert_type, expected_chain_id, expected_stages, should_raise):
+        """Test chain lookup by alert type for various scenarios."""
+        if should_raise:
+            with pytest.raises(ValueError, match=f"No chain found for alert type '{alert_type}'.*Available:"):
+                sample_registry.get_chain_for_alert_type(alert_type)
+        else:
+            chain = sample_registry.get_chain_for_alert_type(alert_type)
+            assert chain.chain_id == expected_chain_id
+            assert len(chain.stages) == expected_stages
+            
+            # Verify specific chain properties
+            if expected_chain_id == 'kubernetes-chain':
+                assert 'kubernetes' in chain.alert_types
+                assert chain.stages[0].name == 'data-collection'
+                assert chain.stages[0].agent == 'KubernetesAgent'
+                assert chain.stages[1].iteration_strategy == 'react'
+
+    @pytest.mark.parametrize("chain_id,expected_result", [
+        ('kubernetes-chain', True),  # Should find the chain
+        ('single-stage-chain', True),  # Should find the chain
+        ('unknown-chain', False),  # Should return None
+    ])
+    def test_get_chain_by_id_scenarios(self, sample_registry, chain_id, expected_result):
+        """Test chain lookup by ID for various scenarios."""
+        chain = sample_registry.get_chain_by_id(chain_id)
         
-        assert chain.chain_id == 'kubernetes-chain'
-        assert 'kubernetes' in chain.alert_types
-        assert len(chain.stages) == 2
-        assert chain.stages[0].name == 'data-collection'
-        assert chain.stages[0].agent == 'KubernetesAgent'
-        assert chain.stages[1].iteration_strategy == 'react'
-    
-    def test_get_chain_for_alert_type_multiple_mappings(self, sample_registry):
-        """Test that different alert types can map to same chain."""
-        chain1 = sample_registry.get_chain_for_alert_type('kubernetes')
-        chain2 = sample_registry.get_chain_for_alert_type('NamespaceTerminating')
-        
-        assert chain1.chain_id == chain2.chain_id == 'kubernetes-chain'
-    
-    def test_get_chain_for_alert_type_not_found(self, sample_registry):
-        """Test error when no chain found for alert type."""
-        with pytest.raises(ValueError, match="No chain found for alert type 'unknown'.*Available:"):
-            sample_registry.get_chain_for_alert_type('unknown')
-    
-    def test_get_chain_by_id_success(self, sample_registry):
-        """Test successful chain lookup by ID."""
-        chain = sample_registry.get_chain_by_id('kubernetes-chain')
-        
-        assert chain is not None
-        assert chain.chain_id == 'kubernetes-chain'
-        assert len(chain.stages) == 2
-    
-    def test_get_chain_by_id_not_found(self, sample_registry):
-        """Test chain lookup by ID returns None for unknown ID."""
-        chain = sample_registry.get_chain_by_id('unknown-chain')
-        
-        assert chain is None
+        if expected_result:
+            assert chain is not None
+            assert chain.chain_id == chain_id
+            assert len(chain.stages) >= 1
+        else:
+            assert chain is None
     
     def test_list_available_alert_types(self, sample_registry):
         """Test listing available alert types."""
@@ -251,52 +181,54 @@ class TestChainRegistryLookup:
 class TestChainRegistryErrorHandling:
     """Test error handling in chain loading."""
     
-    def test_invalid_builtin_chain_skipped(self):
-        """Test that invalid built-in chains are skipped with logging."""
-        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
-            mock_builtin.return_value = {
-                'valid-chain': {
-                    'alert_types': ['valid'],
-                    'stages': [{'name': 'stage1', 'agent': 'ValidAgent'}]
-                },
-                'invalid-chain': {
-                    'alert_types': ['invalid'],
-                    'stages': [{'invalid': 'missing required fields'}]  # Missing 'name' and 'agent'
-                }
-            }
-            
-            registry = ChainRegistry()
-            
-            # Only valid chain should be loaded
-            assert len(registry.builtin_chains) == 1
-            assert 'valid-chain' in registry.builtin_chains
-            assert 'invalid-chain' not in registry.builtin_chains
-            assert registry.alert_type_mappings['valid'] == 'valid-chain'
-    
-    def test_invalid_yaml_chain_skipped(self):
-        """Test that invalid YAML chains are skipped with logging."""
-        mock_config_loader = Mock(spec=ConfigurationLoader)
-        mock_config_loader.get_chain_configs.return_value = {
-            'valid-yaml-chain': {
-                'alert_types': ['valid-yaml'],
-                'stages': [{'name': 'yaml-stage', 'agent': 'YamlAgent'}]
-            },
-            'invalid-yaml-chain': {
-                'alert_types': ['invalid-yaml'],
-                'stages': [{'missing': 'required fields'}]  # Missing 'name' and 'agent'
-            }
-        }
+    @pytest.mark.parametrize("chain_type,valid_chains,invalid_chains,expected_valid_count", [
+        ('builtin', {
+            'valid-chain': ChainFactory.create_custom_chain(chain_id='valid-chain', alert_types=['valid'])
+        }, {
+            'invalid-chain': ChainFactory.create_invalid_chain(chain_id='invalid-chain')
+        }, 1),
+        ('yaml', {
+            'valid-yaml-chain': ChainFactory.create_custom_chain(chain_id='valid-yaml-chain', alert_types=['valid-yaml'])
+        }, {
+            'invalid-yaml-chain': ChainFactory.create_invalid_chain(chain_id='invalid-yaml-chain')
+        }, 1),
+    ])
+    def test_invalid_chain_skipping(self, chain_type, valid_chains, invalid_chains, expected_valid_count):
+        """Test that invalid chains are skipped with logging."""
+        mock_config_loader = None
+        if chain_type == 'yaml':
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {**valid_chains, **invalid_chains}
         
         with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
-            mock_builtin.return_value = {}
+            if chain_type == 'builtin':
+                mock_builtin.return_value = {**valid_chains, **invalid_chains}
+            else:
+                mock_builtin.return_value = {}
             
-            registry = ChainRegistry(mock_config_loader)
+            if mock_config_loader:
+                registry = ChainRegistry(mock_config_loader)
+            else:
+                registry = ChainRegistry()
             
-            # Only valid YAML chain should be loaded
-            assert len(registry.yaml_chains) == 1
-            assert 'valid-yaml-chain' in registry.yaml_chains
-            assert 'invalid-yaml-chain' not in registry.yaml_chains
-            assert registry.alert_type_mappings['valid-yaml'] == 'valid-yaml-chain'
+            # Only valid chains should be loaded
+            if chain_type == 'builtin':
+                assert len(registry.builtin_chains) == expected_valid_count
+                for chain_id in valid_chains:
+                    assert chain_id in registry.builtin_chains
+                for chain_id in invalid_chains:
+                    assert chain_id not in registry.builtin_chains
+            else:
+                assert len(registry.yaml_chains) == expected_valid_count
+                for chain_id in valid_chains:
+                    assert chain_id in registry.yaml_chains
+                for chain_id in invalid_chains:
+                    assert chain_id not in registry.yaml_chains
+            
+            # Verify alert type mappings
+            for chain_id, chain_config in valid_chains.items():
+                for alert_type in chain_config['alert_types']:
+                    assert registry.alert_type_mappings[alert_type] == chain_id
 
 
 @pytest.mark.unit 
@@ -322,16 +254,12 @@ class TestChainRegistryIntegration:
     def test_chain_definition_models_creation(self):
         """Test that ChainDefinitionModel objects are created correctly."""
         with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
-            mock_builtin.return_value = {
-                'test-chain': {
-                    'alert_types': ['test1', 'test2'],
-                    'stages': [
-                        {'name': 'stage1', 'agent': 'Agent1'},
-                        {'name': 'stage2', 'agent': 'Agent2', 'iteration_strategy': 'react'}
-                    ],
-                    'description': 'Test chain description'
-                }
-            }
+            test_chain = ChainFactory.create_kubernetes_chain(
+                chain_id='test-chain',
+                alert_types=['test1', 'test2'],
+                description='Test chain description'
+            )
+            mock_builtin.return_value = {'test-chain': test_chain}
             
             registry = ChainRegistry()
             chain = registry.get_chain_for_alert_type('test1')
@@ -345,10 +273,10 @@ class TestChainRegistryIntegration:
             # Verify ChainStageModel structure
             assert len(chain.stages) == 2
             assert isinstance(chain.stages[0], ChainStageModel)
-            assert chain.stages[0].name == 'stage1'
-            assert chain.stages[0].agent == 'Agent1'
-            assert chain.stages[0].iteration_strategy is None
+            assert chain.stages[0].name == 'data-collection'
+            assert chain.stages[0].agent == 'KubernetesAgent'
+            assert chain.stages[0].iteration_strategy == 'regular'
             
-            assert chain.stages[1].name == 'stage2'
-            assert chain.stages[1].agent == 'Agent2'
+            assert chain.stages[1].name == 'analysis'
+            assert chain.stages[1].agent == 'KubernetesAgent'
             assert chain.stages[1].iteration_strategy == 'react'
