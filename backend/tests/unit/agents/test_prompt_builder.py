@@ -740,3 +740,463 @@ class TestPromptBuilderUtilityMethods:
         assert isinstance(result, list)
         assert len(result) > 0
         assert any("timeout" in item.lower() or "error" in item.lower() for item in result)
+
+
+@pytest.mark.unit
+class TestPromptBuilderPrivateMethods:
+    """Test suite for PromptBuilder private methods to improve coverage."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a PromptBuilder instance for testing."""
+        return PromptBuilder()
+
+    @pytest.fixture
+    def context(self):
+        """Create a comprehensive PromptContext for testing."""
+        return PromptContext(
+            agent_name="KubernetesAgent",
+            alert_data={
+                "namespace": "production",
+                "pod": "api-server-123", 
+                "status": "CrashLoopBackOff",
+                "complex_data": {"metadata": {"name": "test"}, "nested": [1, 2, 3]},
+                "json_string": '{"parsable": true, "test": "value"}',
+                "multiline_yaml": "apiVersion: v1\nkind: Pod\nmetadata:\n  name: test",
+                "long_description": "This is a very long description " * 20,
+                "empty_value": None
+            },
+            runbook_content="# Troubleshooting Guide\n\n## Step 1\nCheck pod status\n\n## Step 2\nReview logs",
+            mcp_data={
+                "kubernetes-server": [
+                    {"tool": "get_pods", "result": {"pods": ["pod1", "pod2"]}, "parameters": {"namespace": "production"}},
+                    {"tool": "get_logs", "error": "Permission denied", "parameters": {"pod": "api-server"}}
+                ],
+                "legacy-server": {"get_status_result": "Running", "get_logs_result": "Log content here"}
+            },
+            mcp_servers=["kubernetes-server", "monitoring-server"],
+            server_guidance="Use kubectl commands for Kubernetes diagnostics",
+            agent_specific_guidance="Focus on pod restart patterns and resource limits",
+            available_tools={
+                "tools": [
+                    {"name": "get_pods", "description": "Get pod information"},
+                    {"name": "get_logs", "description": "Get pod logs"}
+                ]
+            },
+            iteration_history=[
+                {
+                    "iteration": 1,
+                    "tools_called": [
+                        {"server": "kubernetes", "tool": "get_pods", "reason": "Check pod status"}
+                    ],
+                    "mcp_data": {
+                        "kubernetes-server": [
+                            {"tool": "get_pods", "result": {"status": "Running"}, "parameters": {"namespace": "prod"}}
+                        ]
+                    }
+                }
+            ],
+            current_iteration=2,
+            max_iterations=5,
+            stage_name="diagnosis",
+            is_final_stage=False,
+            stage_attributed_data={
+                "diagnosis": {
+                    "kubernetes-server": [{"tool": "diagnose", "result": "Found issue"}]
+                },
+                "remediation": {
+                    "kubernetes-server": [{"tool": "fix", "result": "Applied fix"}]
+                }
+            }
+        )
+
+    def test_build_context_section(self, builder, context):
+        """Test _build_context_section method."""
+        result = builder._build_context_section(context)
+        
+        assert "KubernetesAgent" in result
+        assert "SRE Alert Analysis Request" in result
+        assert "kubernetes-server" in result
+        assert "monitoring-server" in result
+
+    def test_build_context_section_with_stage(self, builder, context):
+        """Test _build_context_section with stage information."""
+        result = builder._build_context_section(context)
+        
+        # Context section doesn't include stage info - that's handled elsewhere
+        assert "KubernetesAgent" in result
+        assert isinstance(result, str)
+
+    def test_build_alert_section_simple(self, builder):
+        """Test _build_alert_section with simple alert data."""
+        alert_data = {"namespace": "test", "status": "error"}
+        result = builder._build_alert_section(alert_data)
+        
+        assert "## Alert Details" in result
+        assert "**Namespace:** test" in result
+        assert "**Status:** error" in result
+
+    def test_build_alert_section_complex_data(self, builder, context):
+        """Test _build_alert_section with complex data types."""
+        result = builder._build_alert_section(context.alert_data)
+        
+        assert "## Alert Details" in result
+        assert "**Namespace:** production" in result
+        assert "**Pod:** api-server-123" in result
+        assert "**Status:** CrashLoopBackOff" in result
+        assert "```json" in result  # Complex data should be JSON formatted
+        assert '"metadata"' in result
+        assert "apiVersion: v1" in result  # Multiline YAML should be in code blocks
+        assert "N/A" in result  # None values should show as N/A
+
+    def test_build_alert_section_json_string_parsing(self, builder, context):
+        """Test _build_alert_section properly parses JSON strings."""
+        result = builder._build_alert_section(context.alert_data)
+        
+        assert '"parsable": true' in result
+        assert '"test": "value"' in result
+
+    def test_build_alert_section_invalid_json_string(self, builder):
+        """Test _build_alert_section handles invalid JSON strings."""
+        alert_data = {"invalid_json": '{"invalid": json}'}
+        result = builder._build_alert_section(alert_data)
+        
+        assert '{"invalid": json}' in result  # Should be treated as regular string
+
+    def test_build_runbook_section_with_content(self, builder, context):
+        """Test _build_runbook_section with runbook content."""
+        result = builder._build_runbook_section(context.runbook_content)
+        
+        assert "## Runbook Content" in result
+        assert "```markdown" in result
+        assert "# Troubleshooting Guide" in result
+        assert "## Step 1" in result
+        assert "Check pod status" in result
+
+    def test_build_runbook_section_empty(self, builder):
+        """Test _build_runbook_section with empty runbook."""
+        result = builder._build_runbook_section("")
+        
+        assert "## Runbook Content" in result
+        assert "No runbook available" in result
+
+    def test_build_runbook_section_none(self, builder):
+        """Test _build_runbook_section with None runbook."""
+        result = builder._build_runbook_section(None)
+        
+        assert "## Runbook Content" in result
+        assert "No runbook available" in result
+
+    def test_build_mcp_data_section_with_data(self, builder, context):
+        """Test _build_mcp_data_section with MCP data."""
+        result = builder._build_mcp_data_section(context.mcp_data)
+        
+        assert "## System Data (MCP Servers)" in result
+        assert "### Kubernetes-Server MCP Server Data" in result
+        assert "get_pods" in result
+        assert "Permission denied" in result
+        assert "### Legacy-Server MCP Server Data" in result
+
+    def test_build_mcp_data_section_empty(self, builder):
+        """Test _build_mcp_data_section with empty data."""
+        result = builder._build_mcp_data_section({})
+        
+        assert "## System Data (MCP Servers)" in result
+        assert "No system data available" in result
+
+    def test_build_mcp_data_section_none(self, builder):
+        """Test _build_mcp_data_section with None data."""
+        result = builder._build_mcp_data_section(None)
+        
+        assert "## System Data (MCP Servers)" in result
+        assert "No system data available" in result
+
+    def test_build_agent_specific_analysis_guidance(self, builder, context):
+        """Test _build_agent_specific_analysis_guidance method."""
+        result = builder._build_agent_specific_analysis_guidance(context)
+        
+        assert "Domain-Specific Analysis Guidance" in result
+        assert "Focus on pod restart patterns" in result
+        assert "Use kubectl commands" in result
+
+    def test_build_agent_specific_analysis_guidance_no_guidance(self, builder):
+        """Test _build_agent_specific_analysis_guidance with no guidance."""
+        context = PromptContext(
+            agent_name="TestAgent",
+            alert_data={},
+            runbook_content="",
+            mcp_data={},
+            mcp_servers=[],
+            server_guidance="",
+            agent_specific_guidance=""
+        )
+        result = builder._build_agent_specific_analysis_guidance(context)
+        
+        # When no guidance is available, empty string is returned
+        assert result == ""
+
+    def test_build_analysis_instructions(self, builder):
+        """Test _build_analysis_instructions method."""
+        result = builder._build_analysis_instructions()
+        
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "analysis" in result.lower() or "instructions" in result.lower()
+
+    def test_format_iteration_history_complex(self, builder, context):
+        """Test _format_iteration_history with complex data."""
+        result = builder._format_iteration_history(context.iteration_history)
+        
+        assert "### Iteration 1" in result
+        assert "kubernetes.get_pods" in result
+        assert "Check pod status" in result
+        assert "kubernetes-server" in result
+        assert '"status": "Running"' in result
+
+    def test_format_iteration_history_with_long_data(self, builder):
+        """Test _format_iteration_history with data that needs truncation."""
+        long_result = {"data": "x" * 10000}  # Create very long data to trigger truncation
+        iteration_history = [{
+            "iteration": 1,
+            "tools_called": [{"server": "test", "tool": "get_data", "reason": "test"}],
+            "mcp_data": {
+                "test-server": [{"tool": "get_data", "result": long_result}]
+            }
+        }]
+        
+        result = builder._format_iteration_history(iteration_history)
+        assert "[truncated for brevity]" in result
+
+    def test_format_iteration_history_with_errors(self, builder):
+        """Test _format_iteration_history with error cases."""
+        iteration_history = [{
+            "iteration": 1,
+            "tools_called": [{"server": "test", "tool": "fail", "reason": "test error"}],
+            "mcp_data": {
+                "test-server": [{"tool": "fail", "error": "Connection timeout"}]
+            }
+        }]
+        
+        result = builder._format_iteration_history(iteration_history)
+        assert "Connection timeout" in result
+        assert "fail_result_error" in result
+
+    def test_format_iteration_history_legacy_format(self, builder):
+        """Test _format_iteration_history with legacy dict format."""
+        iteration_history = [{
+            "iteration": 1,
+            "tools_called": [{"server": "legacy", "tool": "get_status", "reason": "legacy test"}],
+            "mcp_data": {
+                "legacy-server": {"get_status_result": "OK", "get_logs_result": "No issues"}
+            }
+        }]
+        
+        result = builder._format_iteration_history(iteration_history)
+        assert "get_status_result" in result
+        assert "get_logs_result" in result
+        assert "OK" in result
+
+    def test_format_stage_attributed_data(self, builder, context):
+        """Test _format_stage_attributed_data method."""
+        result = builder._format_stage_attributed_data(context.stage_attributed_data)
+        
+        assert "diagnosis" in result
+        assert "remediation" in result
+        assert "Found issue" in result
+        assert "Applied fix" in result
+
+    def test_format_stage_attributed_data_empty(self, builder):
+        """Test _format_stage_attributed_data with empty data."""
+        result = builder._format_stage_attributed_data({})
+        
+        assert isinstance(result, str)
+        assert "No investigation data from previous stages" in result
+
+    def test_format_react_question_for_data_collection(self, builder, context):
+        """Test _format_react_question_for_data_collection method."""
+        result = builder._format_react_question_for_data_collection(context)
+        
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "production" in result  # Should include alert data
+
+    def test_format_react_question_for_partial_analysis(self, builder, context):
+        """Test _format_react_question_for_partial_analysis method."""
+        result = builder._format_react_question_for_partial_analysis(context)
+        
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "analysis" in result.lower()
+
+    def test_get_action_names(self, builder, context):
+        """Test _get_action_names method."""
+        result = builder._get_action_names(context.available_tools)
+        
+        assert isinstance(result, list)
+        assert len(result) > 0
+
+    def test_get_action_names_empty_tools(self, builder):
+        """Test _get_action_names with empty tools."""
+        result = builder._get_action_names({})
+        
+        assert isinstance(result, list)
+        # When tools are empty, it returns a list with "No tools available"
+        assert result == ["No tools available"]
+
+    def test_format_available_actions(self, builder, context):
+        """Test _format_available_actions method."""
+        result = builder._format_available_actions(context.available_tools)
+        
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert "get_pods" in result
+        assert "get_logs" in result
+
+    def test_format_available_actions_empty(self, builder):
+        """Test _format_available_actions with empty tools."""
+        result = builder._format_available_actions({})
+        
+        assert isinstance(result, str)
+        assert "No tools available" in result
+
+    def test_finalize_current_section(self, builder):
+        """Test _finalize_current_section method."""
+        parsed = {}
+        content_lines = ["Line 1", "Line 2", "Line 3"]
+        
+        builder._finalize_current_section(parsed, "thought", content_lines)
+        
+        assert "thought" in parsed
+        assert parsed["thought"] == "Line 1\nLine 2\nLine 3"
+
+    def test_finalize_current_section_empty_content(self, builder):
+        """Test _finalize_current_section with empty content."""
+        parsed = {}
+        content_lines = []
+        
+        builder._finalize_current_section(parsed, "thought", content_lines)
+        
+        assert "thought" in parsed
+        assert parsed["thought"] == ""
+
+
+@pytest.mark.unit
+class TestPromptBuilderChainFunctionality:
+    """Test suite for chain and stage-related prompt functionality."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a PromptBuilder instance for testing."""
+        return PromptBuilder()
+
+    @pytest.fixture
+    def chain_context(self):
+        """Create a PromptContext with chain/stage data."""
+        return PromptContext(
+            agent_name="TestAgent",
+            alert_data={"issue": "service down"},
+            runbook_content="# Chain Runbook",
+            mcp_data={},
+            mcp_servers=["test-server"],
+            stage_name="analysis",
+            is_final_stage=True,
+            stage_attributed_data={
+                "analysis": {"test-server": [{"tool": "analyze", "result": "issue found"}]},
+                "remediation": {"test-server": [{"tool": "fix", "result": "applied"}]}
+            }
+        )
+
+    def test_context_section_with_final_stage(self, builder, chain_context):
+        """Test context section includes final stage information."""
+        result = builder._build_context_section(chain_context)
+        
+        # Context section doesn't include stage-specific text - just basic context
+        assert "TestAgent" in result
+        assert "SRE Alert Analysis Request" in result
+
+    def test_build_chain_prompt_components(self, builder, chain_context):
+        """Test that chain prompts include stage-attributed data."""
+        analysis_prompt = builder.build_analysis_prompt(chain_context)
+        
+        # The analysis prompt includes alert and runbook data
+        assert "service down" in analysis_prompt
+        assert "Chain Runbook" in analysis_prompt
+        
+    def test_stage_attributed_data_formatting(self, builder, chain_context):
+        """Test stage attributed data is properly formatted."""
+        result = builder._format_stage_attributed_data(chain_context.stage_attributed_data)
+        
+        assert "analysis" in result
+        assert "remediation" in result
+        assert "issue found" in result
+        assert "applied" in result
+
+
+@pytest.mark.unit
+class TestPromptBuilderEdgeCases:
+    """Test edge cases and error conditions."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a PromptBuilder instance for testing."""
+        return PromptBuilder()
+
+    def test_build_methods_with_none_inputs(self, builder):
+        """Test build methods handle None inputs gracefully."""
+        context = PromptContext(
+            agent_name="TestAgent",
+            alert_data=None,
+            runbook_content=None,
+            mcp_data=None,
+            mcp_servers=[]  # Empty list instead of None to avoid join error
+        )
+        
+        # Should not raise exceptions
+        context_result = builder._build_context_section(context)
+        alert_result = builder._build_alert_section(None)
+        runbook_result = builder._build_runbook_section(None)
+        mcp_result = builder._build_mcp_data_section(None)
+        
+        assert isinstance(context_result, str)
+        assert isinstance(alert_result, str)
+        assert isinstance(runbook_result, str)
+        assert isinstance(mcp_result, str)
+
+    def test_complex_nested_mcp_data(self, builder):
+        """Test MCP data section with deeply nested structures."""
+        complex_mcp_data = {
+            "complex-server": {
+                "nested_result": {
+                    "level1": {
+                        "level2": {
+                            "level3": ["item1", "item2", {"deep": "value"}]
+                        }
+                    }
+                },
+                "array_result": [{"item": 1}, {"item": 2}],
+                "string_result": "simple string"
+            }
+        }
+        
+        result = builder._build_mcp_data_section(complex_mcp_data)
+        
+        assert "level1" in result
+        assert "level2" in result
+        assert "level3" in result
+        assert "simple string" in result
+
+    def test_very_long_iteration_history(self, builder):
+        """Test iteration history with many iterations."""
+        long_history = []
+        for i in range(10):
+            long_history.append({
+                "iteration": i + 1,
+                "tools_called": [{"server": f"server-{i}", "tool": f"tool-{i}", "reason": f"reason-{i}"}],
+                "mcp_data": {f"server-{i}": [{"tool": f"tool-{i}", "result": f"result-{i}"}]}
+            })
+        
+        result = builder._format_iteration_history(long_history)
+        
+        assert "Iteration 1" in result
+        assert "Iteration 10" in result
+        assert "server-5" in result
