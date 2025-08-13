@@ -803,3 +803,4 @@ class TestInputSanitization:
                 response = client.post("/alerts", json=long_string_data)
         
         assert response.status_code == 200
+

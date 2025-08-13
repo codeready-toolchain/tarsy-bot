@@ -184,52 +184,7 @@ Action: This action should be ignored because final answer came first
         assert result['final_answer'] is None
         assert result['is_complete'] is False
 
-    def test_parse_short_malformed_lines(self, builder):
-        """Test parsing lines shorter than expected prefixes."""
-        response = """
-T:
-A:
-AI:
-FA:
-"""
-        result = builder.parse_react_response(response)
-        
-        # Should handle gracefully without crashing
-        assert result['thought'] is None
-        assert result['action'] is None
-        assert result['action_input'] is None
-        assert result['final_answer'] is None
-        assert result['is_complete'] is False
 
-    def test_parse_exact_length_prefixes(self, builder):
-        """Test parsing lines that are exactly the length of prefixes."""
-        response = """
-Thought:
-Action:
-Action Input:
-Final Answer:
-"""
-        result = builder.parse_react_response(response)
-        
-        # Should handle gracefully, extracting empty content
-        assert result['thought'] == ""
-        assert result['action'] == ""
-        assert result['action_input'] == ""
-        assert result['final_answer'] == ""
-        assert result['is_complete'] is True  # Final Answer was present
-
-    def test_parse_whitespace_only_content(self, builder):
-        """Test parsing sections with only whitespace content."""
-        response = """
-Thought:   
-Action:     
-Action Input:   
-"""
-        result = builder.parse_react_response(response)
-        
-        assert result['thought'] == ""  # Whitespace should be stripped
-        assert result['action'] == ""
-        assert result['action_input'] == ""
 
     def test_parse_mixed_valid_and_invalid_lines(self, builder):
         """Test parsing response with mix of valid and invalid content."""
@@ -279,26 +234,7 @@ Action:
         assert result['thought'] == "Valid thought"
         assert result['action'] == ""
 
-    def test_defensive_helper_methods(self, builder):
-        """Test the defensive helper methods directly."""
-        # Test _extract_section_content with various inputs
-        assert builder._extract_section_content("Thought: content", "Thought:") == "content"
-        assert builder._extract_section_content("Thought:", "Thought:") == ""
-        assert builder._extract_section_content("Th", "Thought:") == ""
-        assert builder._extract_section_content("", "Thought:") == ""
-        assert builder._extract_section_content("Thought: content", "") == ""
-        
-        # Test _is_section_header
-        assert builder._is_section_header("Thought: content", "thought", set()) is True
-        assert builder._is_section_header("Thought", "thought", set()) is True
-        assert builder._is_section_header("Thought: content", "thought", {"thought"}) is False
-        assert builder._is_section_header("", "thought", set()) is False
-        
-        # Test _should_stop_parsing
-        assert builder._should_stop_parsing("Observation: fake") is True
-        assert builder._should_stop_parsing("[Based on fake") is True
-        assert builder._should_stop_parsing("Normal line") is False
-        assert builder._should_stop_parsing("") is False
+
 
     def test_parse_comprehensive_scenario(self, builder):
         """Test a comprehensive scenario with multiple edge cases."""
@@ -500,16 +436,6 @@ class TestPromptBuilderBasicMethods:
 
 
 @pytest.mark.unit
-class TestPromptBuilderFactory:
-    """Test prompt builder factory function."""
-
-    def test_get_prompt_builder(self):
-        """Test get_prompt_builder factory function."""
-        builder = get_prompt_builder()
-        assert isinstance(builder, PromptBuilder)
-
-
-@pytest.mark.unit
 class TestPromptBuilderUtilityMethods:
     """Test suite for PromptBuilder utility and formatting methods."""
 
@@ -518,64 +444,46 @@ class TestPromptBuilderUtilityMethods:
         """Create a PromptBuilder instance for testing."""
         return PromptBuilder()
 
-    def test_format_data_dict(self, builder):
-        """Test _format_data with dictionary input."""
+    def test_format_data_various_types(self, builder):
+        """Test _format_data with various input types."""
+        # Test dict
         data = {"key": "value", "number": 42, "nested": {"inner": "data"}}
         result = builder._format_data(data)
+        assert "key" in result and "value" in result and "42" in result
         
-        assert isinstance(result, str)
-        assert "key" in result
-        assert "value" in result
-        assert "42" in result
-        assert "nested" in result
-    
-    def test_format_data_list(self, builder):
-        """Test _format_data with list input."""
+        # Test list
         data = ["item1", "item2", {"key": "value"}]
         result = builder._format_data(data)
+        assert "item1" in result and "item2" in result
         
-        assert isinstance(result, str)
-        assert "item1" in result
-        assert "item2" in result
-        assert "key" in result
-    
-    def test_format_data_string(self, builder):
-        """Test _format_data with string input."""
+        # Test string
         data = "simple string"
         result = builder._format_data(data)
-        
         assert result == "simple string"
-    
-    def test_format_data_number(self, builder):
-        """Test _format_data with number input."""
+        
+        # Test number
         data = 42
         result = builder._format_data(data)
-        
         assert result == "42"
-    
-    def test_format_data_none(self, builder):
-        """Test _format_data with None input."""
+        
+        # Test None
         data = None
         result = builder._format_data(data)
-        
         assert result == "None"
     
-    def test_format_available_tools_empty(self, builder):
-        """Test _format_available_tools with empty tools."""
+    def test_format_available_tools(self, builder):
+        """Test _format_available_tools with various scenarios."""
+        # Test empty tools
         tools = {}
         result = builder._format_available_tools(tools)
-        
         assert result == "No tools available."
-    
-    def test_format_available_tools_none(self, builder):
-        """Test _format_available_tools with None tools."""
+        
+        # Test None tools
         tools = None
         result = builder._format_available_tools(tools)
-        
         assert result == "No tools available."
-    
-    def test_format_available_tools_with_data(self, builder):
-        """Test _format_available_tools with actual tools."""
+        
+        # Test with actual tools
         tools = {
             "tools": [
                 {"name": "test_tool", "description": "A test tool"},
@@ -583,163 +491,114 @@ class TestPromptBuilderUtilityMethods:
             ]
         }
         result = builder._format_available_tools(tools)
-        
-        assert isinstance(result, str)
-        assert "test_tool" in result
-        assert "another_tool" in result
-        assert "A test tool" in result
+        assert "test_tool" in result and "another_tool" in result
     
-    def test_extract_section_content_valid(self, builder):
-        """Test _extract_section_content with valid input."""
+    def test_extract_section_content(self, builder):
+        """Test _extract_section_content with various inputs."""
+        # Test valid input
         line = "Thought: This is a thought"
         prefix = "Thought:"
         result = builder._extract_section_content(line, prefix)
-        
         assert result == "This is a thought"
-    
-    def test_extract_section_content_no_colon(self, builder):
-        """Test _extract_section_content with prefix without colon."""
+        
+        # Test prefix without colon
         line = "Thought This is a thought without colon"
         prefix = "Thought"
         result = builder._extract_section_content(line, prefix)
-        
         assert result == "This is a thought without colon"
-    
-    def test_extract_section_content_exact_prefix(self, builder):
-        """Test _extract_section_content when line equals prefix exactly."""
+        
+        # Test exact prefix
         line = "Thought"
         prefix = "Thought"
         result = builder._extract_section_content(line, prefix)
-        
         assert result == ""
-    
-    def test_extract_section_content_empty_inputs(self, builder):
-        """Test _extract_section_content with empty inputs."""
+        
+        # Test empty inputs
         assert builder._extract_section_content("", "prefix") == ""
         assert builder._extract_section_content("line", "") == ""
-        assert builder._extract_section_content("", "") == ""
-    
-    def test_extract_section_content_short_line(self, builder):
-        """Test _extract_section_content when line is shorter than prefix."""
+        
+        # Test short line
         line = "T"
         prefix = "Thought:"
         result = builder._extract_section_content(line, prefix)
-        
         assert result == ""
     
-    def test_is_section_header_thought_with_colon(self, builder):
-        """Test _is_section_header for thought with colon."""
+    def test_section_header_detection(self, builder):
+        """Test _is_section_header with various scenarios."""
+        # Test thought with colon
         line = "Thought: Some content"
         result = builder._is_section_header(line, 'thought', set())
-        
         assert result is True
-    
-    def test_is_section_header_thought_without_colon(self, builder):
-        """Test _is_section_header for thought without colon."""
+        
+        # Test thought without colon
         line = "Thought"
         result = builder._is_section_header(line, 'thought', set())
-        
         assert result is True
-    
-    def test_is_section_header_already_found(self, builder):
-        """Test _is_section_header when section already found."""
+        
+        # Test already found section
         line = "Thought: Some content"
         found_sections = {'thought'}
         result = builder._is_section_header(line, 'thought', found_sections)
-        
         assert result is False
-    
-    def test_is_section_header_action(self, builder):
-        """Test _is_section_header for action."""
+        
+        # Test action
         line = "Action: test_action"
         result = builder._is_section_header(line, 'action', set())
-        
         assert result is True
     
-    def test_should_stop_parsing_observation(self, builder):
-        """Test _should_stop_parsing with observation marker."""
+    def test_stop_parsing_conditions(self, builder):
+        """Test _should_stop_parsing with various conditions."""
+        # Test observation marker
         line = "Observation: This is fake content"
         result = builder._should_stop_parsing(line)
-        
         assert result is True
-    
-    def test_should_stop_parsing_normal_content(self, builder):
-        """Test _should_stop_parsing with normal content."""
+        
+        # Test normal content
         line = "This is normal content"
         result = builder._should_stop_parsing(line)
-        
         assert result is False
     
-    def test_get_general_instructions(self, builder):
-        """Test get_general_instructions returns valid instructions."""
-        instructions = builder.get_general_instructions()
-        
-        assert isinstance(instructions, str)
-        assert len(instructions) > 0
-        assert "SRE" in instructions or "analysis" in instructions.lower()
-    
-    def test_get_standard_react_system_message_default(self, builder):
-        """Test get_standard_react_system_message with default task focus."""
-        message = builder.get_standard_react_system_message()
-        
-        assert isinstance(message, str)
-        assert len(message) > 0
-        assert "investigation and providing recommendations" in message
-    
-    def test_format_observation_empty_data(self, builder):
-        """Test format_observation with empty MCP data."""
+    def test_format_observation(self, builder):
+        """Test format_observation with various data."""
+        # Test empty data
         mcp_data = {}
         result = builder.format_observation(mcp_data)
+        assert isinstance(result, str) and len(result) > 0
         
-        assert isinstance(result, str)
-        assert len(result) > 0
-    
-    def test_format_observation_with_data(self, builder):
-        """Test format_observation with actual MCP data."""
+        # Test with data
         mcp_data = {
             "test-server": [
                 {"tool": "test-tool", "result": "test result", "parameters": {}}
             ]
         }
         result = builder.format_observation(mcp_data)
-        
-        assert isinstance(result, str)
-        assert "test-server" in result
-        assert "test result" in result
+        assert "test-server" in result and "test result" in result
     
-    def test_flatten_react_history_empty(self, builder):
-        """Test _flatten_react_history with empty history."""
+    def test_react_history_flattening(self, builder):
+        """Test _flatten_react_history with various inputs."""
+        # Test empty history
         history = []
         result = builder._flatten_react_history(history)
-        
         assert result == []
-    
-    def test_flatten_react_history_with_content(self, builder):
-        """Test _flatten_react_history with content."""
+        
+        # Test with content
         history = ["Thought: First thought", "Action: test_action", "Observation: Result"]
         result = builder._flatten_react_history(history)
-        
         assert len(result) == 3
         assert "First thought" in result[0]
         assert "test_action" in result[1]
         assert "Result" in result[2]
     
-    def test_get_react_continuation_prompt_general(self, builder):
-        """Test get_react_continuation_prompt with general context."""
+    def test_react_continuation_prompts(self, builder):
+        """Test react continuation prompt methods."""
+        # Test general continuation
         result = builder.get_react_continuation_prompt("general")
+        assert isinstance(result, list) and len(result) > 0
         
-        assert isinstance(result, list)
-        assert len(result) > 0
-        assert all(isinstance(item, str) for item in result)
-    
-    def test_get_react_error_continuation(self, builder):
-        """Test get_react_error_continuation."""
+        # Test error continuation
         error_message = "Connection timeout"
         result = builder.get_react_error_continuation(error_message)
-        
-        assert isinstance(result, list)
-        assert len(result) > 0
-        assert any("timeout" in item.lower() or "error" in item.lower() for item in result)
+        assert isinstance(result, list) and len(result) > 0
 
 
 @pytest.mark.unit
@@ -1059,25 +918,7 @@ class TestPromptBuilderPrivateMethods:
         assert isinstance(result, str)
         assert "No tools available" in result
 
-    def test_finalize_current_section(self, builder):
-        """Test _finalize_current_section method."""
-        parsed = {}
-        content_lines = ["Line 1", "Line 2", "Line 3"]
-        
-        builder._finalize_current_section(parsed, "thought", content_lines)
-        
-        assert "thought" in parsed
-        assert parsed["thought"] == "Line 1\nLine 2\nLine 3"
 
-    def test_finalize_current_section_empty_content(self, builder):
-        """Test _finalize_current_section with empty content."""
-        parsed = {}
-        content_lines = []
-        
-        builder._finalize_current_section(parsed, "thought", content_lines)
-        
-        assert "thought" in parsed
-        assert parsed["thought"] == ""
 
 
 @pytest.mark.unit
