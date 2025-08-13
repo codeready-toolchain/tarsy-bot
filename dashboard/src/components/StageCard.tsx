@@ -19,7 +19,7 @@ import {
   ExpandMore,
   ExpandLess,
   CheckCircle,
-  Error,
+  Error as ErrorIcon,
   Schedule,
   PlayArrow,
   Psychology,
@@ -43,7 +43,7 @@ const getStageStatusConfig = (status: string) => {
     case 'failed':
       return {
         color: 'error' as const,
-        icon: <Error />,
+        icon: <ErrorIcon />,
         label: 'Failed',
         bgColor: 'error.light',
       };

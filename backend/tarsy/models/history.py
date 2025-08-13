@@ -7,12 +7,13 @@ precision for optimal performance and consistency.
 """
 
 import uuid
+from enum import Enum
 from typing import Optional
 
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel, Index
-from sqlalchemy import text
+from sqlalchemy import text, Enum as SQLEnum
 
-from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.utils.timestamp import now_us
 
 class AlertSession(SQLModel, table=True):
@@ -62,7 +63,7 @@ class AlertSession(SQLModel, table=True):
     )
     
     status: str = Field(
-        description=f"Current processing status ({', '.join(AlertSessionStatus.ALL_STATUSES)})"
+        description=f"Current processing status ({', '.join(AlertSessionStatus.values())})"
     )
     
     started_at_us: int = Field(
@@ -127,10 +128,14 @@ class StageExecution(SQLModel, table=True):
     # Stage identification
     stage_id: str = Field(description="Stage identifier (e.g., 'initial-analysis')")
     stage_index: int = Field(description="Stage position in chain (0-based)")
+    stage_name: str = Field(description="Human-readable stage name from configuration")
     agent: str = Field(description="Agent used for this stage")
     
     # Execution tracking
-    status: str = Field(description="pending|active|completed|failed")
+    status: StageStatus = Field(
+        sa_column=Column(SQLEnum(StageStatus)),
+        description="Stage execution status"
+    )
     started_at_us: Optional[int] = Field(default=None, description="Stage start timestamp")
     completed_at_us: Optional[int] = Field(default=None, description="Stage completion timestamp")
     duration_ms: Optional[int] = Field(default=None, description="Stage execution duration")

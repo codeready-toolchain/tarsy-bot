@@ -40,8 +40,25 @@ def _extract_alert_type_mappings_from_chains() -> Dict[str, str]:
             first_stage_agent = stages[0].get("agent")
             if first_stage_agent:
                 for alert_type in alert_types:
-                    mappings[alert_type] = first_stage_agent
-                    logger.debug(f"Mapped alert type '{alert_type}' to agent '{first_stage_agent}' from chain '{chain_id}'")
+                    # Check for existing mapping to avoid silent overwrites
+                    if alert_type in mappings:
+                        existing_agent = mappings[alert_type]
+                        if existing_agent != first_stage_agent:
+                            logger.warning(
+                                f"Alert type '{alert_type}' mapping conflict detected! "
+                                f"Existing agent: '{existing_agent}', "
+                                f"New agent: '{first_stage_agent}' from chain '{chain_id}'. "
+                                f"Keeping existing mapping (skipping overwrite)."
+                            )
+                            continue  # Skip overwrite, keep existing mapping
+                        else:
+                            logger.debug(
+                                f"Alert type '{alert_type}' already mapped to same agent '{first_stage_agent}' "
+                                f"from chain '{chain_id}' (duplicate but consistent)"
+                            )
+                    else:
+                        mappings[alert_type] = first_stage_agent
+                        logger.debug(f"Mapped alert type '{alert_type}' to agent '{first_stage_agent}' from chain '{chain_id}'")
     
     return mappings
 
@@ -104,9 +121,28 @@ class AgentRegistry:
         
         for agent_name, agent_config in agent_configs.items():
             for alert_type in agent_config.alert_types:
-                # Map alert type to configured agent identifier
-                mappings[alert_type] = f"ConfigurableAgent:{agent_name}"
-                logger.debug(f"Mapped alert type '{alert_type}' to ConfigurableAgent:{agent_name}")
+                configured_agent_identifier = f"ConfigurableAgent:{agent_name}"
+                
+                # Check for existing mapping to avoid silent overwrites
+                if alert_type in mappings:
+                    existing_agent = mappings[alert_type]
+                    if existing_agent != configured_agent_identifier:
+                        logger.warning(
+                            f"Alert type '{alert_type}' mapping conflict detected! "
+                            f"Existing agent: '{existing_agent}', "
+                            f"New agent: '{configured_agent_identifier}'. "
+                            f"Keeping existing mapping (skipping overwrite)."
+                        )
+                        continue  # Skip overwrite, keep existing mapping
+                    else:
+                        logger.debug(
+                            f"Alert type '{alert_type}' already mapped to same agent '{configured_agent_identifier}' "
+                            f"(duplicate but consistent)"
+                        )
+                else:
+                    # Map alert type to configured agent identifier
+                    mappings[alert_type] = configured_agent_identifier
+                    logger.debug(f"Mapped alert type '{alert_type}' to ConfigurableAgent:{agent_name}")
                 
         return mappings
     

@@ -6,9 +6,8 @@ used for chain functionality.
 """
 
 import pytest
-from pydantic import ValidationError
 from tarsy.models.api_models import StageExecution, ChainExecution
-from tests.utils import ModelValidationTester, TestUtils
+from tarsy.models.constants import StageStatus
 
 
 @pytest.mark.unit
@@ -23,7 +22,7 @@ class TestStageExecutionAPIModel:
             stage_index=0,
             stage_name="Data Collection",
             agent="KubernetesAgent",
-            status="pending"
+            status=StageStatus.PENDING.value
         )
         
         assert stage.execution_id == "exec_123"
@@ -31,7 +30,7 @@ class TestStageExecutionAPIModel:
         assert stage.stage_index == 0
         assert stage.stage_name == "Data Collection"
         assert stage.agent == "KubernetesAgent"
-        assert stage.status == "pending"
+        assert stage.status == StageStatus.PENDING
         assert stage.iteration_strategy is None
         assert stage.started_at_us is None
         assert stage.completed_at_us is None
@@ -46,7 +45,7 @@ class TestStageExecutionAPIModel:
             stage_name="Root Cause Analysis",
             agent="ConfigurableAgent:analyzer",
             iteration_strategy="react",
-            status="completed",
+            status=StageStatus.COMPLETED.value,
             started_at_us=1234567890000000,
             completed_at_us=1234567895000000,
             duration_ms=5000,
@@ -58,7 +57,7 @@ class TestStageExecutionAPIModel:
         assert stage.stage_name == "Root Cause Analysis"
         assert stage.agent == "ConfigurableAgent:analyzer"
         assert stage.iteration_strategy == "react"
-        assert stage.status == "completed"
+        assert stage.status == StageStatus.COMPLETED
         assert stage.started_at_us == 1234567890000000
         assert stage.completed_at_us == 1234567895000000
         assert stage.duration_ms == 5000
@@ -74,7 +73,7 @@ class TestStageExecutionAPIModel:
             stage_index=2,
             stage_name="Failed Analysis",
             agent="UnreliableAgent",
-            status="failed",
+            status=StageStatus.FAILED.value,
             started_at_us=1234567890000000,
             completed_at_us=1234567892000000,
             duration_ms=2000,
@@ -82,7 +81,7 @@ class TestStageExecutionAPIModel:
             error_message="Agent execution timeout"
         )
         
-        assert stage.status == "failed"
+        assert stage.status == StageStatus.FAILED
         assert stage.stage_output is None
         assert stage.error_message == "Agent execution timeout"
         assert stage.duration_ms == 2000
@@ -95,11 +94,42 @@ class TestStageExecutionAPIModel:
             stage_index=0,
             stage_name="Custom Analysis",
             agent="ConfigurableAgent:my-custom-agent",
-            status="active"
+            status=StageStatus.ACTIVE.value
         )
         
         assert stage.agent == "ConfigurableAgent:my-custom-agent"
         assert ":" in stage.agent
+    
+    def test_stage_name_with_underscores_preserved(self):
+        """Test that stage names with underscores are preserved correctly."""
+        # This test verifies the fix for the issue where stage names like 
+        # "system_data_collection" would be truncated to just "system"
+        stage = StageExecution(
+            execution_id="exec_underscore_test",
+            stage_id="system_data_collection_0",  # This includes index suffix
+            stage_index=0,
+            stage_name="system_data_collection",  # This should be preserved exactly
+            agent="DataCollectionAgent",
+            status=StageStatus.PENDING.value
+        )
+        
+        # Verify that the full stage name is preserved, not truncated at underscores
+        assert stage.stage_name == "system_data_collection"
+        assert stage.stage_id == "system_data_collection_0"
+        assert stage.stage_index == 0
+        
+        # Test with hyphen-based names too (common format)
+        stage_hyphen = StageExecution(
+            execution_id="exec_hyphen_test",
+            stage_id="system-data-collection_1",
+            stage_index=1,
+            stage_name="system-data-collection",
+            agent="DataCollectionAgent",
+            status=StageStatus.ACTIVE.value
+        )
+        
+        assert stage_hyphen.stage_name == "system-data-collection"
+        assert stage_hyphen.stage_id == "system-data-collection_1"
     
     def test_serialization_roundtrip(self, model_test_helpers):
         """Test that stage execution can be serialized and deserialized correctly."""
@@ -129,7 +159,7 @@ class TestChainExecutionAPIModel:
             stage_index=0,
             stage_name="Stage 1",
             agent="Agent1",
-            status="completed"
+            status=StageStatus.COMPLETED.value
         )
         
         stage2 = StageExecution(
@@ -138,7 +168,7 @@ class TestChainExecutionAPIModel:
             stage_index=1,
             stage_name="Stage 2",
             agent="Agent2",
-            status="active"
+            status=StageStatus.ACTIVE.value
         )
         
         chain = ChainExecution(
@@ -161,7 +191,7 @@ class TestChainExecutionAPIModel:
             stage_index=0,
             stage_name="Data Collection",
             agent="KubernetesAgent",
-            status="completed"
+            status=StageStatus.COMPLETED.value
         )
         
         stage2 = StageExecution(
@@ -170,7 +200,7 @@ class TestChainExecutionAPIModel:
             stage_index=1,
             stage_name="Analysis",
             agent="KubernetesAgent",
-            status="active"
+            status=StageStatus.ACTIVE.value
         )
         
         chain_definition = {
@@ -193,7 +223,7 @@ class TestChainExecutionAPIModel:
         assert chain.current_stage_index == 1
         assert chain.current_stage_id == "analysis"
         assert len(chain.stages) == 2
-        assert chain.stages[1].status == "active"
+        assert chain.stages[1].status == StageStatus.ACTIVE
     
     def test_multi_stage_chain(self):
         """Test chain execution with multiple stages."""
@@ -205,7 +235,7 @@ class TestChainExecutionAPIModel:
                 stage_index=i,
                 stage_name=f"Stage {i+1}",
                 agent=f"Agent{i+1}",
-                status="pending" if i > 1 else "completed"
+                status=StageStatus.PENDING.value if i > 1 else StageStatus.COMPLETED.value
             )
             stages.append(stage)
         
@@ -225,10 +255,10 @@ class TestChainExecutionAPIModel:
         
         assert len(chain.stages) == 4
         assert chain.current_stage_index == 2
-        assert chain.stages[0].status == "completed"
-        assert chain.stages[1].status == "completed"  
-        assert chain.stages[2].status == "pending"
-        assert chain.stages[3].status == "pending"
+        assert chain.stages[0].status == StageStatus.COMPLETED
+        assert chain.stages[1].status == StageStatus.COMPLETED  
+        assert chain.stages[2].status == StageStatus.PENDING
+        assert chain.stages[3].status == StageStatus.PENDING
     
     def test_serialization_roundtrip(self, model_test_helpers):
         """Test that chain execution can be serialized and deserialized correctly."""
@@ -238,7 +268,7 @@ class TestChainExecutionAPIModel:
             stage_index=0,
             stage_name="Test Stage",
             agent="TestAgent",
-            status="completed",
+            status=StageStatus.COMPLETED.value,
             stage_output={"result": "success"}
         )
         
@@ -282,7 +312,7 @@ class TestAPIModelValidation:
             stage_index=0,
             stage_name="Stage 1",
             agent="Agent1",
-            status="completed"
+            status=StageStatus.COMPLETED.value
         )
         
         valid_data = {
@@ -314,7 +344,7 @@ class TestAPIModelValidation:
             stage_index=-1,  # Negative index
             stage_name="Test",
             agent="TestAgent",
-            status="pending"
+            status=StageStatus.PENDING.value
         )
         
         assert stage.stage_index == -1
@@ -334,7 +364,7 @@ class TestAPIModelIntegration:
             stage_name="Data Collection",
             agent="KubernetesAgent",
             iteration_strategy="regular",
-            status="completed",
+            status=StageStatus.COMPLETED.value,
             started_at_us=1000000000,
             completed_at_us=1000005000,
             duration_ms=5000,
@@ -352,7 +382,7 @@ class TestAPIModelIntegration:
             stage_name="Root Cause Analysis",
             agent="KubernetesAgent",
             iteration_strategy="react",
-            status="completed",
+            status=StageStatus.COMPLETED.value,
             started_at_us=1000005000,
             completed_at_us=1000015000,
             duration_ms=10000,
@@ -369,7 +399,7 @@ class TestAPIModelIntegration:
             stage_index=2,
             stage_name="Remediation Planning",
             agent="ConfigurableAgent:remediation-planner",
-            status="active",
+            status=StageStatus.ACTIVE.value,
             started_at_us=1000015000,
             completed_at_us=None,
             duration_ms=None
@@ -420,7 +450,7 @@ class TestAPIModelIntegration:
             stage_index=0,
             stage_name="Successful Stage",
             agent="ReliableAgent",
-            status="completed",
+            status=StageStatus.COMPLETED.value,
             duration_ms=2000,
             stage_output={"result": "success"}
         )
@@ -431,7 +461,7 @@ class TestAPIModelIntegration:
             stage_index=1,
             stage_name="Failed Stage",
             agent="UnreliableAgent",
-            status="failed",
+            status=StageStatus.FAILED.value,
             duration_ms=1000,
             stage_output=None,
             error_message="Agent execution timeout after 30 seconds"
@@ -446,8 +476,8 @@ class TestAPIModelIntegration:
         )
         
         # Verify mixed success/failure handling
-        assert chain.stages[0].status == "completed"
+        assert chain.stages[0].status == StageStatus.COMPLETED
         assert chain.stages[0].stage_output is not None
-        assert chain.stages[1].status == "failed"
+        assert chain.stages[1].status == StageStatus.FAILED
         assert chain.stages[1].stage_output is None
         assert chain.stages[1].error_message is not None

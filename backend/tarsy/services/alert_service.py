@@ -17,11 +17,10 @@ from tarsy.config.agent_config import ConfigurationLoader, ConfigurationError
 from tarsy.integrations.llm.client import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert_processing import AlertProcessingData
-from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.history import now_us
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.chain_registry import ChainRegistry
-from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.services.history_service import get_history_service
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.runbook_service import RunbookService
@@ -209,7 +208,7 @@ class AlertService:
                 self.store_alert_session_mapping(api_alert_id, session_id)
             
             # Update history session with processing start
-            self._update_session_status(session_id, AlertSessionStatus.IN_PROGRESS)
+            self._update_session_status(session_id, AlertSessionStatus.IN_PROGRESS.value)
             
             # Step 3: Extract runbook from alert data and download once per chain
             runbook = alert.get_runbook_url()
@@ -247,7 +246,7 @@ class AlertService:
                 )
                 
                 # Mark history session as completed successfully
-                self._update_session_completed(session_id, AlertSessionStatus.COMPLETED, final_analysis=final_result)
+                self._update_session_completed(session_id, AlertSessionStatus.COMPLETED.value, final_analysis=final_result)
                 
                 return final_result
             else:
@@ -752,12 +751,10 @@ class AlertService:
                 session_id=session_id,
                 stage_id=f"{stage.name}_{stage_index}",
                 stage_index=stage_index,
+                stage_name=stage.name,
                 agent=stage.agent,
-                status="pending"
+                status=StageStatus.PENDING.value
             )
-            
-            # Mark this as a create operation for the history hook
-            stage_execution._db_operation = 'create'
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
@@ -818,7 +815,7 @@ class AlertService:
                 return
             
             # Update only the completion-related fields
-            existing_stage.status = "completed"
+            existing_stage.status = StageStatus.COMPLETED.value
             existing_stage.completed_at_us = stage_result.get('timestamp_us', now_us())
             existing_stage.stage_output = stage_result
             existing_stage.error_message = None
@@ -826,9 +823,6 @@ class AlertService:
             # Calculate duration if we have started_at_us
             if existing_stage.started_at_us and existing_stage.completed_at_us:
                 existing_stage.duration_ms = int((existing_stage.completed_at_us - existing_stage.started_at_us) / 1000)
-            
-            # Mark this as an update operation for the history hook
-            existing_stage._db_operation = 'update'
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
@@ -862,7 +856,7 @@ class AlertService:
                 return
             
             # Update only the failure-related fields
-            existing_stage.status = "failed"
+            existing_stage.status = StageStatus.FAILED.value
             existing_stage.completed_at_us = now_us()
             existing_stage.stage_output = None
             existing_stage.error_message = error_message
@@ -870,9 +864,6 @@ class AlertService:
             # Calculate duration if we have started_at_us
             if existing_stage.started_at_us and existing_stage.completed_at_us:
                 existing_stage.duration_ms = int((existing_stage.completed_at_us - existing_stage.started_at_us) / 1000)
-            
-            # Mark this as an update operation for the history hook
-            existing_stage._db_operation = 'update'
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
@@ -905,11 +896,8 @@ class AlertService:
                 return
             
             # Update to active status and set start time
-            existing_stage.status = "active"
+            existing_stage.status = StageStatus.ACTIVE.value
             existing_stage.started_at_us = now_us()
-            
-            # Mark this as an update operation for the history hook
-            existing_stage._db_operation = 'update'
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:

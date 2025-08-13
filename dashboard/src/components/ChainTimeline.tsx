@@ -18,16 +18,15 @@ import {
 import {
   ExpandMore,
   CheckCircle,
-  Error,
+  Error as ErrorIcon,
   Schedule,
   PlayArrow,
   Psychology,
   Build,
   Timeline as TimelineIcon,
 } from '@mui/icons-material';
-import type { ChainTimelineProps, TimelineItem } from '../types';
+import type { ChainTimelineProps, TimelineItem, StageExecution } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
-import InteractionDetails from './InteractionDetails';
 
 // Helper function to get stage status icon
 const getStageStatusIcon = (status: string) => {
@@ -35,7 +34,7 @@ const getStageStatusIcon = (status: string) => {
     case 'completed':
       return <CheckCircle color="success" />;
     case 'failed':
-      return <Error color="error" />;
+      return <ErrorIcon color="error" />;
     case 'active':
       return <PlayArrow color="primary" />;
     case 'pending':
@@ -74,8 +73,8 @@ const getInteractionIcon = (type: string) => {
 };
 
 // Group timeline items by stage
-const groupTimelineByStage = (timelineItems: TimelineItem[], stages: any[]) => {
-  const stageMap = new Map();
+const groupTimelineByStage = (timelineItems: TimelineItem[], stages: StageExecution[]) => {
+  const stageMap = new Map<string, { stage: StageExecution; interactions: TimelineItem[] }>();
   
   // Initialize stages
   stages.forEach(stage => {
@@ -88,7 +87,7 @@ const groupTimelineByStage = (timelineItems: TimelineItem[], stages: any[]) => {
   // Group interactions by stage
   timelineItems.forEach(item => {
     if (item.stage_execution_id && stageMap.has(item.stage_execution_id)) {
-      stageMap.get(item.stage_execution_id).interactions.push(item);
+      stageMap.get(item.stage_execution_id)!.interactions.push(item);
     }
   });
   

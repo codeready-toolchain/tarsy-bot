@@ -195,8 +195,8 @@ class TypedStageExecutionDashboardHook(BaseTypedHook[StageExecution]):
             stage_execution: Stage execution data
         """
         try:
-            # Extract stage name from stage_id (format: "stage_name_index")
-            stage_name = stage_execution.stage_id.split('_')[0] if '_' in stage_execution.stage_id else stage_execution.stage_id
+            # Use stage_name field directly
+            stage_name = stage_execution.stage_name
             
             # Get chain_id - fallback to session_id if not available in context
             # In a proper implementation, this would be passed through context
@@ -209,6 +209,7 @@ class TypedStageExecutionDashboardHook(BaseTypedHook[StageExecution]):
                 "session_id": stage_execution.session_id,
                 "chain_id": chain_id,
                 "stage_execution_id": stage_execution.execution_id,
+                "stage_id": stage_execution.stage_id,
                 "stage_name": stage_name,
                 "stage_index": stage_execution.stage_index,
                 "agent": stage_execution.agent,

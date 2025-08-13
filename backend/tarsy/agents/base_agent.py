@@ -454,7 +454,7 @@ class BaseAgent(ABC):
             stage_attributed_mcp_data = alert_data.get_stage_attributed_mcp_results()
             
             # Log enriched data usage from previous stages
-            if previous_data := alert_data.get_stage_result("data-collection"):
+            if alert_data.get_stage_result("data-collection"):
                 logger.info("Using enriched data from data-collection stage")
                 # MCP results are already merged via get_all_mcp_results()
             

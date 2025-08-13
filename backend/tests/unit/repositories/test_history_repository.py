@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from tarsy.models.history import AlertSession
+from tarsy.models.history import AlertSession, StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.history_repository import HistoryRepository
 from tests.utils import AlertFactory
@@ -1035,6 +1035,69 @@ class TestHistoryRepository:
         failed_interactions = [i for i in saved_interactions if not i.success]
         assert len(failed_interactions) == 1
         assert failed_interactions[0].error_message == "Connection timeout"
+
+    @pytest.mark.unit
+    def test_update_stage_execution_success(self, repository, sample_alert_session):
+        """Test successful stage execution update."""
+        from tarsy.models.history import now_us
+        from tarsy.models.constants import StageStatus
+        
+        # Create session first
+        repository.create_alert_session(sample_alert_session)
+        
+        # Create a stage execution
+        stage_execution = StageExecution(
+            execution_id="test-stage-123",
+            session_id=sample_alert_session.session_id,
+            stage_id="initial-analysis",
+            stage_index=0,
+            stage_name="Initial Analysis",
+            agent="KubernetesAgent",
+            status=StageStatus.ACTIVE,
+            started_at_us=now_us()
+        )
+        
+        # First create the stage execution
+        repository.session.add(stage_execution)
+        repository.session.commit()
+        repository.session.refresh(stage_execution)
+        
+        # Now update it to completed
+        stage_execution.status = StageStatus.COMPLETED
+        stage_execution.completed_at_us = now_us()
+        stage_execution.duration_ms = 5000
+        stage_execution.stage_output = {"result": "analysis complete"}
+        
+        # Update the stage execution
+        result = repository.update_stage_execution(stage_execution)
+        assert result == True
+        
+        # Verify the update was applied
+        updated_execution = repository.session.get(StageExecution, stage_execution.execution_id)
+        assert updated_execution.status == StageStatus.COMPLETED
+        assert updated_execution.completed_at_us is not None
+        assert updated_execution.duration_ms == 5000
+        assert updated_execution.stage_output == {"result": "analysis complete"}
+
+    @pytest.mark.unit
+    def test_update_stage_execution_not_found(self, repository):
+        """Test updating a non-existent stage execution raises ValueError."""
+        from tarsy.models.constants import StageStatus
+        
+        # Create a stage execution with non-existent ID
+        stage_execution = StageExecution(
+            execution_id="non-existent-id",
+            session_id="some-session",
+            stage_id="test-stage",
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="TestAgent",
+            status=StageStatus.COMPLETED
+        )
+        
+        # Attempt to update should raise ValueError
+        with pytest.raises(ValueError, match="Stage execution with id non-existent-id not found"):
+            repository.update_stage_execution(stage_execution)
 
 
 class TestHistoryRepositoryErrorHandling:

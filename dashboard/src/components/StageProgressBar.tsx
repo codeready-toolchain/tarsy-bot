@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Box,
   Typography,
-  Tooltip,
   Step,
   StepLabel,
   Stepper,
@@ -11,7 +10,7 @@ import {
 } from '@mui/material';
 import {
   CheckCircle,
-  Error,
+  Error as ErrorIcon,
   Schedule,
   PlayArrow,
   Timer,
@@ -25,7 +24,7 @@ const getStepIcon = (status: string, isActive: boolean = false) => {
     case 'completed':
       return <CheckCircle color="success" />;
     case 'failed':
-      return <Error color="error" />;
+      return <ErrorIcon color="error" />;
     case 'active':
       return <PlayArrow color="primary" />;
     case 'pending':
@@ -93,9 +92,8 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
         }}
       >
         {sortedStages.map((stage, index) => {
-          const isActive = currentStageIndex !== null && index === currentStageIndex;
+          const isActive = typeof currentStageIndex === 'number' && index === currentStageIndex;
           const isCompleted = stage.status === 'completed';
-          const isFailed = stage.status === 'failed';
           const isRunning = stage.status === 'active';
 
           return (
@@ -206,7 +204,7 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
       </Stepper>
       
       {/* Overall progress summary */}
-      <Box mt={2} p={1} backgroundColor="grey.50" borderRadius={1}>
+      <Box sx={{ mt: 2, p: 1, backgroundColor: 'grey.50', borderRadius: 1 }}>
         <Typography variant="caption" color="text.secondary" align="center" display="block">
           {stages.filter(s => s.status === 'completed').length} completed, {' '}
           {stages.filter(s => s.status === 'failed').length} failed, {' '}

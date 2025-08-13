@@ -25,18 +25,26 @@ class TestCreateDatabaseTables:
         """Test successful database table creation."""
         with patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
              patch('tarsy.database.init_db.SQLModel') as mock_sqlmodel, \
-             patch('tarsy.database.init_db.Session') as mock_session:
+             patch('tarsy.database.init_db.Session') as mock_session, \
+             patch('tarsy.database.init_db.logger') as mock_logger, \
+             patch('tarsy.database.init_db.text') as mock_text:
             
             # Mock engine and session
             mock_engine = Mock()
             mock_create_engine.return_value = mock_engine
             mock_session_instance = Mock()
             mock_session.return_value.__enter__.return_value = mock_session_instance
-            mock_session_instance.exec.return_value.first.return_value = 1
+            mock_exec_result = Mock()
+            mock_session_instance.exec.return_value = mock_exec_result
+            mock_exec_result.first.return_value = 1
             
             # Mock SQLModel metadata
             mock_metadata = Mock()
             mock_sqlmodel.metadata = mock_metadata
+            
+            # Mock text() function
+            mock_select_query = Mock()
+            mock_text.return_value = mock_select_query
             
             result = create_database_tables("sqlite:///test.db")
             
@@ -44,6 +52,14 @@ class TestCreateDatabaseTables:
             mock_create_engine.assert_called_once_with("sqlite:///test.db", echo=False)
             mock_metadata.create_all.assert_called_once_with(mock_engine)
             mock_session.assert_called_once_with(mock_engine)
+            
+            # Assert connection test was performed
+            mock_text.assert_called_once_with("SELECT 1")
+            mock_session_instance.exec.assert_called_once_with(mock_select_query)
+            mock_exec_result.first.assert_called_once()
+            
+            # Assert success logging was called
+            mock_logger.info.assert_called_once_with("Database tables created successfully for: test.db")
     
     def test_create_database_tables_errors(self):
         """Test database table creation with various error conditions."""
@@ -321,9 +337,7 @@ class TestDatabaseInitIntegration:
             mock_session.assert_called_once_with(mock_engine)
             
             # Verify success logging
-            info_calls = [str(call) for call in mock_logger.info.call_args_list]
-            assert any("initialization completed successfully" in call for call in info_calls)
-            assert any("Database: test_history.db" in call for call in info_calls)
-            assert any("Retention policy: 60 days" in call for call in info_calls)
-    
-
+            call_args_list = mock_logger.info.call_args_list
+            assert any(call.args and "initialization completed successfully" in call.args[0] for call in call_args_list)
+            assert any(call.args and "Database: test_history.db" in call.args[0] for call in call_args_list)
+            assert any(call.args and "Retention policy: 60 days" in call.args[0] for call in call_args_list)

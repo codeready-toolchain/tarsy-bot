@@ -905,7 +905,8 @@ async def test_cleanup_orphaned_sessions():
         mock_all_sessions.append(mock_session)
         
         # Only pending and in_progress should be returned by the active query
-        if session_data["status"] in AlertSessionStatus.ACTIVE_STATUSES:
+        status_value = session_data["status"].value if hasattr(session_data["status"], 'value') else session_data["status"]
+        if status_value in AlertSessionStatus.active_values():
             mock_active_sessions.append(mock_session)
     
     # Mock repository responses
@@ -926,7 +927,7 @@ async def test_cleanup_orphaned_sessions():
     
     # Verify get_alert_sessions was called with correct parameters
     mock_repo.get_alert_sessions.assert_called_once_with(
-        status=AlertSessionStatus.ACTIVE_STATUSES,
+        status=AlertSessionStatus.active_values(),
         page_size=1000
     )
     
@@ -935,7 +936,7 @@ async def test_cleanup_orphaned_sessions():
     
     # Check that orphaned sessions had their status updated
     for session in mock_active_sessions:
-        assert session.status == AlertSessionStatus.FAILED
+        assert session.status == AlertSessionStatus.FAILED.value
         assert session.error_message == "Backend was restarted - session terminated unexpectedly"
         assert hasattr(session, 'completed_at_us')
 

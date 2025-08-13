@@ -124,22 +124,18 @@ class TypedStageExecutionHistoryHook(BaseTypedHook[StageExecution]):
             stage_execution: Stage execution data
         """
         try:
-            # Check if this is a create or update operation based on execution_id
-            if not hasattr(stage_execution, '_db_operation'):
-                # Default to create if no operation specified
-                stage_execution._db_operation = 'create'
-            
-            if stage_execution._db_operation == 'create':
+            # Determine if this is a create or update operation based on whether execution_id is set
+            # If execution_id exists, it's an update; otherwise it's a create
+            if hasattr(stage_execution, 'execution_id') and stage_execution.execution_id:
+                # Update existing stage execution
+                await self.history_service.update_stage_execution(stage_execution)
+                logger.debug(f"Updated stage execution {stage_execution.execution_id} in history")
+            else:
                 # Create new stage execution
                 execution_id = await self.history_service.create_stage_execution(stage_execution)
                 # Store the returned ID back on the model for other hooks to use
                 stage_execution.execution_id = execution_id
                 logger.debug(f"Created stage execution {execution_id} in history")
-                
-            elif stage_execution._db_operation == 'update':
-                # Update existing stage execution
-                await self.history_service.update_stage_execution(stage_execution)
-                logger.debug(f"Updated stage execution {stage_execution.execution_id} in history")
                 
         except Exception as e:
             logger.error(f"Failed to log stage execution to history: {e}")

@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from tarsy.models.constants import StageStatus
+
 
 # Response Models
 class PaginationInfo(BaseModel):
@@ -54,7 +56,7 @@ class StageExecution(BaseModel):
     stage_name: str = Field(description="Human-readable stage name")
     agent: str = Field(description="Agent used for this stage")
     iteration_strategy: Optional[str] = Field(None, description="Iteration strategy used for this stage")
-    status: str = Field(description="Stage status (pending, active, completed, failed)")
+    status: StageStatus = Field(description="Stage execution status")
     started_at_us: Optional[int] = Field(None, description="Stage start timestamp")
     completed_at_us: Optional[int] = Field(None, description="Stage completion timestamp")
     duration_ms: Optional[int] = Field(None, description="Stage execution duration")

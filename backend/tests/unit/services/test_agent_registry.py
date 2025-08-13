@@ -7,8 +7,9 @@ lookups, supported types, and edge case handling.
 
 
 import pytest
+from unittest.mock import patch
 
-from tarsy.services.agent_registry import AgentRegistry
+from tarsy.services.agent_registry import AgentRegistry, _extract_alert_type_mappings_from_chains
 from tests.utils import MockFactory, TestUtils, AgentFactory
 
 
@@ -340,4 +341,278 @@ class TestRegistryLogging:
         assert len(registry_logs) > 0
         
         registry_log = registry_logs[0]
-        assert str(len(registry.static_mappings)) + " total mappings" in registry_log 
+        assert str(len(registry.static_mappings)) + " total mappings" in registry_log
+
+
+@pytest.mark.unit
+class TestDuplicateDetectionInChainMappings:
+    """Test duplicate detection functionality in chain-based mappings."""
+    
+    @pytest.fixture
+    def mock_chain_definitions_with_duplicates(self):
+        """Mock chain definitions that contain duplicate alert type mappings."""
+        return {
+            "chain1": {
+                "alert_types": ["AlertA", "AlertB"],
+                "stages": [{"agent": "AgentX"}]
+            },
+            "chain2": {
+                "alert_types": ["AlertB", "AlertC"],  # AlertB is duplicate
+                "stages": [{"agent": "AgentY"}]  # Different agent
+            },
+            "chain3": {
+                "alert_types": ["AlertC"],  # AlertC is duplicate
+                "stages": [{"agent": "AgentY"}]  # Same agent as chain2
+            }
+        }
+    
+    @pytest.fixture
+    def mock_chain_definitions_no_duplicates(self):
+        """Mock chain definitions without any duplicates."""
+        return {
+            "chain1": {
+                "alert_types": ["AlertA", "AlertB"],
+                "stages": [{"agent": "AgentX"}]
+            },
+            "chain2": {
+                "alert_types": ["AlertC", "AlertD"],
+                "stages": [{"agent": "AgentY"}]
+            }
+        }
+    
+    @patch("tarsy.services.agent_registry.BUILTIN_CHAIN_DEFINITIONS")
+    def test_extract_mappings_with_duplicate_conflicts(self, mock_chain_defs, mock_chain_definitions_with_duplicates, caplog):
+        """Test that duplicate mappings with different agents are detected and logged."""
+        mock_chain_defs.items.return_value = mock_chain_definitions_with_duplicates.items()
+        
+        with caplog.at_level("WARNING"):
+            mappings = _extract_alert_type_mappings_from_chains()
+        
+        # Should have first-wins behavior
+        assert mappings["AlertA"] == "AgentX"
+        assert mappings["AlertB"] == "AgentX"  # First definition wins
+        assert mappings["AlertC"] == "AgentY"  # First definition wins
+        
+        # Check warning logs
+        warning_logs = [record for record in caplog.records if record.levelname == "WARNING"]
+        assert len(warning_logs) >= 1
+        
+        # Should warn about AlertB conflict
+        alertb_warnings = [log for log in warning_logs if "AlertB" in log.message]
+        assert len(alertb_warnings) == 1
+        
+        warning_msg = alertb_warnings[0].message
+        assert "Alert type 'AlertB' mapping conflict detected!" in warning_msg
+        assert "Existing agent: 'AgentX'" in warning_msg
+        assert "New agent: 'AgentY'" in warning_msg
+        assert "from chain 'chain2'" in warning_msg
+        assert "Keeping existing mapping" in warning_msg
+    
+    @patch("tarsy.services.agent_registry.BUILTIN_CHAIN_DEFINITIONS")
+    def test_extract_mappings_with_consistent_duplicates(self, mock_chain_defs, mock_chain_definitions_with_duplicates, caplog):
+        """Test that duplicate mappings with same agent are logged as debug."""
+        mock_chain_defs.items.return_value = mock_chain_definitions_with_duplicates.items()
+        
+        with caplog.at_level("DEBUG"):
+            mappings = _extract_alert_type_mappings_from_chains()
+        
+        # Check debug logs for consistent duplicates (AlertC appears in both chain2 and chain3 with same agent)
+        debug_logs = [record for record in caplog.records if record.levelname == "DEBUG"]
+        alertc_debug_logs = [log for log in debug_logs if "AlertC" in log.message and "duplicate but consistent" in log.message]
+        assert len(alertc_debug_logs) == 1
+        
+        debug_msg = alertc_debug_logs[0].message
+        assert "already mapped to same agent 'AgentY'" in debug_msg
+        assert "from chain 'chain3'" in debug_msg
+    
+    @patch("tarsy.services.agent_registry.BUILTIN_CHAIN_DEFINITIONS")
+    def test_extract_mappings_without_duplicates_no_warnings(self, mock_chain_defs, mock_chain_definitions_no_duplicates, caplog):
+        """Test that no warnings are logged when there are no duplicates."""
+        mock_chain_defs.items.return_value = mock_chain_definitions_no_duplicates.items()
+        
+        with caplog.at_level("WARNING"):
+            mappings = _extract_alert_type_mappings_from_chains()
+        
+        # Should map all alerts correctly
+        assert mappings["AlertA"] == "AgentX"
+        assert mappings["AlertB"] == "AgentX"
+        assert mappings["AlertC"] == "AgentY"
+        assert mappings["AlertD"] == "AgentY"
+        
+        # No warnings should be logged
+        warning_logs = [record for record in caplog.records if record.levelname == "WARNING"]
+        assert len(warning_logs) == 0
+    
+    @patch("tarsy.services.agent_registry.BUILTIN_CHAIN_DEFINITIONS")
+    def test_extract_mappings_handles_edge_cases(self, mock_chain_defs, caplog):
+        """Test edge cases in chain definitions."""
+        edge_case_chains = {
+            "empty_alert_types": {
+                "alert_types": [],
+                "stages": [{"agent": "AgentX"}]
+            },
+            "no_stages": {
+                "alert_types": ["AlertA"],
+                "stages": []
+            },
+            "no_agent_in_stage": {
+                "alert_types": ["AlertB"],
+                "stages": [{}]
+            },
+            "missing_agent_key": {
+                "alert_types": ["AlertC"],
+                "stages": [{"other_key": "value"}]
+            }
+        }
+        mock_chain_defs.items.return_value = edge_case_chains.items()
+        
+        with caplog.at_level("DEBUG"):
+            mappings = _extract_alert_type_mappings_from_chains()
+        
+        # Should result in empty mappings due to edge cases
+        assert len(mappings) == 0
+
+
+@pytest.mark.unit
+class TestDuplicateDetectionInConfiguredAgents:
+    """Test duplicate detection in configured agent mappings."""
+    
+    @pytest.fixture
+    def mock_agent_configs_with_duplicates(self):
+        """Mock agent configurations with overlapping alert types."""
+        from types import SimpleNamespace
+        
+        agent1 = SimpleNamespace()
+        agent1.alert_types = ["AlertA", "AlertB"]
+        
+        agent2 = SimpleNamespace()
+        agent2.alert_types = ["AlertB", "AlertC"]  # AlertB is duplicate
+        
+        agent3 = SimpleNamespace()
+        agent3.alert_types = ["AlertC"]  # AlertC is duplicate
+        
+        return {
+            "security-agent": agent1,
+            "monitoring-agent": agent2,
+            "backup-agent": agent3
+        }
+    
+    def test_configured_mappings_duplicate_detection(self, mock_agent_configs_with_duplicates, caplog):
+        """Test duplicate detection in configured agent mappings."""
+        registry = AgentRegistry()
+        
+        with caplog.at_level("WARNING"):
+            configured_mappings = registry._create_configured_mappings(mock_agent_configs_with_duplicates)
+        
+        # Should use first-wins behavior
+        assert configured_mappings["AlertA"] == "ConfigurableAgent:security-agent"
+        assert configured_mappings["AlertB"] == "ConfigurableAgent:security-agent"  # First wins
+        assert configured_mappings["AlertC"] == "ConfigurableAgent:monitoring-agent"  # First wins
+        
+        # Check warning logs
+        warning_logs = [record for record in caplog.records if record.levelname == "WARNING"]
+        assert len(warning_logs) >= 1
+        
+        # Should warn about AlertB conflict
+        alertb_warnings = [log for log in warning_logs if "AlertB" in log.message]
+        assert len(alertb_warnings) == 1
+        
+        warning_msg = alertb_warnings[0].message
+        assert "Alert type 'AlertB' mapping conflict detected!" in warning_msg
+        assert "Existing agent: 'ConfigurableAgent:security-agent'" in warning_msg
+        assert "New agent: 'ConfigurableAgent:monitoring-agent'" in warning_msg
+    
+    def test_configured_mappings_shows_conflicts(self, caplog):
+        """Test that configured agent mappings properly detect and log conflicts."""
+        from types import SimpleNamespace
+        
+        agent1 = SimpleNamespace()
+        agent1.alert_types = ["AlertA", "AlertB"]
+        
+        agent2 = SimpleNamespace()
+        agent2.alert_types = ["AlertB", "AlertC"]  # AlertB conflicts with agent1
+        
+        agent_configs = {
+            "security-agent": agent1,
+            "monitoring-agent": agent2  # Different agent name, so conflict expected for AlertB
+        }
+        
+        registry = AgentRegistry()
+        
+        with caplog.at_level("WARNING"):
+            configured_mappings = registry._create_configured_mappings(agent_configs)
+        
+        # Should show conflict warning for AlertB
+        warning_logs = [record for record in caplog.records if record.levelname == "WARNING"]
+        alertb_warnings = [log for log in warning_logs if "AlertB" in log.message and "conflict detected" in log.message]
+        assert len(alertb_warnings) == 1
+        
+        # Final mapping should use first-wins behavior
+        assert configured_mappings["AlertA"] == "ConfigurableAgent:security-agent"
+        assert configured_mappings["AlertB"] == "ConfigurableAgent:security-agent"  # First wins
+        assert configured_mappings["AlertC"] == "ConfigurableAgent:monitoring-agent"
+
+
+@pytest.mark.unit
+class TestRegistryDuplicateDetectionIntegration:
+    """Test duplicate detection across different mapping sources."""
+    
+    def test_configured_agents_override_behavior(self, caplog):
+        """Test interaction between default mappings and configured agents."""
+        # Create configured agents with overlapping alert types
+        from types import SimpleNamespace
+        agent_config = SimpleNamespace()
+        # Use an alert type that might overlap with built-in mappings
+        agent_config.alert_types = ["NamespaceTerminating", "CustomAlert"]  
+        
+        agent_configs = {
+            "custom-agent": agent_config
+        }
+        
+        with caplog.at_level("INFO"):
+            registry = AgentRegistry(agent_configs=agent_configs)
+        
+        # The registry should contain both default mappings and configured agent mappings
+        # Configured agents should override default mappings via .update() call
+        assert "NamespaceTerminating" in registry.static_mappings
+        assert "CustomAlert" in registry.static_mappings
+        assert registry.static_mappings["NamespaceTerminating"] == "ConfigurableAgent:custom-agent"  # Override happens
+        assert registry.static_mappings["CustomAlert"] == "ConfigurableAgent:custom-agent"
+        
+        # The registry should show appropriate logging
+        info_logs = [record for record in caplog.records if record.levelname == "INFO"]
+        configured_agent_logs = [log for log in info_logs if "configured agent mappings" in log.message]
+        assert len(configured_agent_logs) >= 1
+    
+    def test_first_wins_behavior_consistency(self, caplog):
+        """Test that first-wins behavior is consistent across all mapping sources."""
+        from types import SimpleNamespace
+        
+        # Mock multiple agent configs with same alert type
+        agent1 = SimpleNamespace()
+        agent1.alert_types = ["DuplicateAlert"]
+        
+        agent2 = SimpleNamespace() 
+        agent2.alert_types = ["DuplicateAlert"]
+        
+        agent3 = SimpleNamespace()
+        agent3.alert_types = ["DuplicateAlert"]
+        
+        agent_configs = {
+            "first-agent": agent1,
+            "second-agent": agent2,
+            "third-agent": agent3
+        }
+        
+        registry = AgentRegistry(agent_configs=agent_configs)
+        
+        with caplog.at_level("WARNING"):
+            configured_mappings = registry._create_configured_mappings(agent_configs)
+        
+        # Should consistently use first agent encountered
+        assert configured_mappings["DuplicateAlert"] == "ConfigurableAgent:first-agent"
+        
+        # Should have logged warnings for the conflicts
+        warning_logs = [record for record in caplog.records if record.levelname == "WARNING"]
+        duplicate_warnings = [log for log in warning_logs if "DuplicateAlert" in log.message]
+        assert len(duplicate_warnings) >= 2  # At least 2 conflicts should be detected 

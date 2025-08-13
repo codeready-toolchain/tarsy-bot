@@ -22,7 +22,7 @@ import {
   ExpandLess,
   Link as LinkIcon,
 } from '@mui/icons-material';
-import type { ChainProgressCardProps } from '../types';
+import type { ChainProgressCardProps, Session } from '../types';
 import { formatTimestamp, formatDuration, getCurrentTimestampUs, formatDurationMs } from '../utils/timestamp';
 import ProgressIndicator from './ProgressIndicator';
 import StageProgressBar from './StageProgressBar';
@@ -77,7 +77,10 @@ const calculateChainProgress = (completed: number = 0, failed: number = 0, total
 };
 
 // Helper function to get current stage name
-const getCurrentStageName = (session: any, chainProgress: any): string => {
+const getCurrentStageName = (
+  session: Session, 
+  chainProgress: { current_stage?: string } | null
+): string => {
   if (chainProgress?.current_stage) {
     return chainProgress.current_stage;
   }
@@ -291,17 +294,17 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
             <StageProgressBar
               stages={stageProgress?.map(sp => ({
                 execution_id: sp.stage_execution_id,
-                stage_id: sp.stage_execution_id,
+                stage_id: sp.stage_id,
                 stage_index: sp.stage_index,
                 stage_name: sp.stage_name,
                 agent: sp.agent,
-                iteration_strategy: sp.iteration_strategy,
+                iteration_strategy: sp.iteration_strategy || null,
                 status: sp.status,
-                started_at_us: sp.started_at_us,
-                completed_at_us: sp.completed_at_us,
-                duration_ms: sp.duration_ms,
+                started_at_us: sp.started_at_us || null,
+                completed_at_us: sp.completed_at_us || null,
+                duration_ms: sp.duration_ms || null,
                 stage_output: null,
-                error_message: sp.error_message,
+                error_message: sp.error_message || null,
               })) || []}
               currentStageIndex={currentStageIndex}
               showLabels={true}

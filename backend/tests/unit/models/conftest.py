@@ -195,10 +195,10 @@ class ModelTestHelpers:
         model_instance = model_class(**valid_data)
         
         # Serialize to JSON
-        model_json = model_instance.json()
+        model_json = model_instance.model_dump_json()
         
         # Deserialize from JSON
-        reconstructed_model = model_class.parse_raw(model_json)
+        reconstructed_model = model_class.model_validate_json(model_json)
         
         # Verify they're equal
         assert model_instance == reconstructed_model

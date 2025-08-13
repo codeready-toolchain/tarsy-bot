@@ -9,6 +9,7 @@ from typing import Any, Dict, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
 from tarsy.models.history import now_us
+from tarsy.models.constants import StageStatus, ChainStatus, SystemHealthStatus
 
 
 class WebSocketMessage(BaseModel):
@@ -70,7 +71,7 @@ class ChainProgressUpdate(WebSocketMessage):
     total_stages: Optional[int] = None
     completed_stages: Optional[int] = None
     failed_stages: Optional[int] = None
-    overall_status: Literal["pending", "processing", "completed", "failed", "partial"] = "processing"
+    overall_status: ChainStatus = ChainStatus.PROCESSING
     stage_details: Optional[Dict[str, Any]] = None  # Current stage execution details
     channel: Optional[str] = None  # Will be set to session_{session_id}
 
@@ -81,10 +82,11 @@ class StageProgressUpdate(WebSocketMessage):
     session_id: str
     chain_id: str
     stage_execution_id: str
+    stage_id: str  # Logical stage identifier (e.g., 'initial-analysis')
     stage_name: str
     stage_index: int
     agent: str
-    status: Literal["pending", "active", "completed", "failed"] = "pending"
+    status: StageStatus = StageStatus.PENDING
     started_at_us: Optional[int] = None
     completed_at_us: Optional[int] = None
     duration_ms: Optional[int] = None
@@ -96,7 +98,7 @@ class StageProgressUpdate(WebSocketMessage):
 class SystemHealthUpdate(WebSocketMessage):
     """System health status update."""
     type: Literal["system_health"] = "system_health"
-    status: Literal["healthy", "degraded", "unhealthy"]
+    status: SystemHealthStatus
     services: Dict[str, Any]
     channel: str = "system_health"
 

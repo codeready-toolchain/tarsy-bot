@@ -609,7 +609,6 @@ class TestBackgroundProcessing:
                 await process_alert_background("alert-123", mock_alert_data)
         
         # Verify the alert key was cleaned up (dict should be empty now)
-        from tarsy.main import processing_alert_keys
         assert "test-key" not in processing_alert_keys
 
     @patch('tarsy.main.alert_service')
@@ -673,20 +672,11 @@ class TestGlobalState:
 
     def test_processing_alert_keys_initialization(self):
         """Test processing alert keys dictionary is properly initialized."""
-        from tarsy.main import processing_alert_keys
         assert isinstance(processing_alert_keys, dict)
 
     def test_alert_keys_lock_initialization(self):
         """Test alert keys lock is properly initialized."""
-        from tarsy.main import alert_keys_lock
         assert isinstance(alert_keys_lock, asyncio.Lock)
-
-    def test_global_services_initialization(self):
-        """Test global services are initialized as None."""
-        from tarsy.main import alert_service, dashboard_manager, alert_processing_semaphore
-        # These will be None initially before lifespan runs
-        # The actual initialization happens in the lifespan context manager
-
 
 @pytest.mark.unit 
 class TestInputSanitization:

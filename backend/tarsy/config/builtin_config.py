@@ -14,6 +14,7 @@ Note: This module contains only data structures to avoid circular imports.
 Agent classes are imported dynamically by AgentFactory when needed.
 """
 
+import copy
 from typing import Dict, Any
 
 
@@ -193,4 +194,4 @@ def get_builtin_agent_import_mapping() -> Dict[str, str]:
 
 def get_builtin_chain_definitions() -> Dict[str, Dict[str, Any]]:
     """Get all built-in chain definitions."""
-    return BUILTIN_CHAIN_DEFINITIONS.copy()
+    return copy.deepcopy(BUILTIN_CHAIN_DEFINITIONS)

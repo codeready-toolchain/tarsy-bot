@@ -502,7 +502,7 @@ class HistoryRepository:
         """
         try:
             statement = select(AlertSession).where(
-                AlertSession.status.in_(AlertSessionStatus.ACTIVE_STATUSES)
+                AlertSession.status.in_(AlertSessionStatus.active_values())
             ).order_by(desc(AlertSession.started_at_us))
             
             return self.session.exec(statement).all()
@@ -537,7 +537,7 @@ class HistoryRepository:
             return {
                 "agent_types": sorted(list(agent_types)) if agent_types else [],
                 "alert_types": sorted(list(alert_types)) if alert_types else [],
-                "status_options": AlertSessionStatus.ALL_STATUSES,
+                "status_options": AlertSessionStatus.values(),
                 "time_ranges": [
                     {"label": "Last Hour", "value": "1h"},
                     {"label": "Last 4 Hours", "value": "4h"},
@@ -566,7 +566,20 @@ class HistoryRepository:
     def update_stage_execution(self, stage_execution: StageExecution) -> bool:
         """Update an existing stage execution record."""
         try:
-            self.session.merge(stage_execution)
+            # Fetch the existing record by primary key
+            existing_execution = self.session.get(StageExecution, stage_execution.execution_id)
+            if existing_execution is None:
+                logger.error(f"Stage execution with id {stage_execution.execution_id} not found")
+                raise ValueError(f"Stage execution with id {stage_execution.execution_id} not found")
+            
+            # Update only the fields that can change during execution
+            existing_execution.status = stage_execution.status
+            existing_execution.started_at_us = stage_execution.started_at_us
+            existing_execution.completed_at_us = stage_execution.completed_at_us
+            existing_execution.duration_ms = stage_execution.duration_ms
+            existing_execution.stage_output = stage_execution.stage_output
+            existing_execution.error_message = stage_execution.error_message
+            
             self.session.commit()
             return True
         except Exception as e:
@@ -613,8 +626,8 @@ class HistoryRepository:
             stage_executions = self.session.exec(stages_stmt).all()
             
             return {
-                "session": alert_session.dict(),
-                "stages": [stage.dict() for stage in stage_executions]
+                "session": alert_session.model_dump(),
+                "stages": [stage.model_dump() for stage in stage_executions]
             }
         except Exception as e:
             logger.error(f"Failed to get session with stages: {str(e)}")

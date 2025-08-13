@@ -155,6 +155,19 @@ class CombinedConfigModel(BaseModel):
     )
 
     @model_validator(mode='after')
+    def validate_configurable_agent_references(self) -> 'CombinedConfigModel':
+        """Validate that ConfigurableAgent references in chain stages exist in agents config."""
+        for chain_id, chain_config in self.agent_chains.items():
+            for stage in chain_config.stages:
+                if stage.agent.startswith("ConfigurableAgent:"):
+                    agent_name = stage.agent[len("ConfigurableAgent:"):]
+                    if agent_name not in self.agents:
+                        raise ValueError(
+                            f"Chain '{chain_id}' stage '{stage.name}' references missing configurable agent '{agent_name}'"
+                        )
+        return self
+
+    @model_validator(mode='after')
     def validate_server_ids(self) -> 'CombinedConfigModel':
         """Validate that MCP server IDs in configs match their dictionary keys."""
         for server_id, server_config in self.mcp_servers.items():

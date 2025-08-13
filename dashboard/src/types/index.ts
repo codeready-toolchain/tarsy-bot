@@ -179,6 +179,7 @@ export interface StageProgressUpdate {
   session_id: string;
   chain_id: string;
   stage_execution_id: string;
+  stage_id: string; // Logical stage identifier (e.g., 'initial-analysis')
   stage_name: string;
   stage_index: number;
   agent: string;

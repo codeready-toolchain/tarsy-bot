@@ -371,4 +371,168 @@ class TestCombinedConfigModel:
         errors = exc_info.value.errors()
         # Should have error for missing server_type
         server_error = next((e for e in errors if "mcp_servers" in e["loc"] and "server_type" in e["loc"]), None)
-        assert server_error is not None 
+        assert server_error is not None
+
+    def test_valid_configurable_agent_references(self):
+        """Test valid configurable agent references in chain stages."""
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        
+        config_data = {
+            "agents": {
+                "my-security-agent": {
+                    "alert_types": ["security"],
+                    "mcp_servers": ["security-tools"]
+                },
+                "performance-agent": {
+                    "alert_types": ["performance"],
+                    "mcp_servers": ["monitoring-server"]
+                }
+            },
+            "mcp_servers": {
+                "security-tools": {
+                    "server_id": "security-tools",
+                    "server_type": "security",
+                    "connection_params": {}
+                }
+            },
+            "agent_chains": {
+                "security-chain": {
+                    "alert_types": ["security"],
+                    "stages": [
+                        {
+                            "name": "analysis",
+                            "agent": "ConfigurableAgent:my-security-agent"
+                        },
+                        {
+                            "name": "response",
+                            "agent": "KubernetesAgent"  # Non-configurable agent should be ignored
+                        },
+                        {
+                            "name": "final",
+                            "agent": "ConfigurableAgent:performance-agent"
+                        }
+                    ]
+                }
+            }
+        }
+        
+        # Should not raise any validation errors
+        config = CombinedConfigModel(**config_data)
+        assert len(config.agent_chains) == 1
+        assert "security-chain" in config.agent_chains
+
+    def test_missing_configurable_agent_reference_fails(self):
+        """Test that missing configurable agent references fail validation."""
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        
+        config_data = {
+            "agents": {
+                "existing-agent": {
+                    "alert_types": ["security"],
+                    "mcp_servers": ["security-tools"]
+                }
+            },
+            "mcp_servers": {
+                "security-tools": {
+                    "server_id": "security-tools",
+                    "server_type": "security",
+                    "connection_params": {}
+                }
+            },
+            "agent_chains": {
+                "test-chain": {
+                    "alert_types": ["security"],
+                    "stages": [
+                        {
+                            "name": "analysis",
+                            "agent": "ConfigurableAgent:nonexistent-agent"
+                        }
+                    ]
+                }
+            }
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            CombinedConfigModel(**config_data)
+            
+        errors = exc_info.value.errors()
+        assert len(errors) == 1
+        error_msg = str(errors[0]["msg"])
+        assert "Chain 'test-chain' stage 'analysis' references missing configurable agent 'nonexistent-agent'" in error_msg
+
+    def test_non_configurable_agent_references_ignored(self):
+        """Test that non-configurable agent references are ignored by validator."""
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        
+        config_data = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "builtin-chain": {
+                    "alert_types": ["kubernetes"],
+                    "stages": [
+                        {
+                            "name": "k8s-analysis",
+                            "agent": "KubernetesAgent"  # Non-configurable, should be ignored
+                        },
+                        {
+                            "name": "custom-analysis", 
+                            "agent": "SomeCustomAgent"  # Non-configurable, should be ignored
+                        }
+                    ]
+                }
+            }
+        }
+        
+        # Should not raise any validation errors since these are not ConfigurableAgent references
+        config = CombinedConfigModel(**config_data)
+        assert len(config.agent_chains) == 1
+        assert "builtin-chain" in config.agent_chains
+
+    def test_multiple_chain_validation_errors(self):
+        """Test validation errors across multiple chains and stages."""
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        
+        config_data = {
+            "agents": {
+                "valid-agent": {
+                    "alert_types": ["security"],
+                    "mcp_servers": ["security-tools"]
+                }
+            },
+            "mcp_servers": {},
+            "agent_chains": {
+                "chain1": {
+                    "alert_types": ["security"],
+                    "stages": [
+                        {
+                            "name": "stage1",
+                            "agent": "ConfigurableAgent:missing-agent-1"
+                        }
+                    ]
+                },
+                "chain2": {
+                    "alert_types": ["performance"],
+                    "stages": [
+                        {
+                            "name": "stage2",
+                            "agent": "ConfigurableAgent:valid-agent"  # This one exists
+                        },
+                        {
+                            "name": "stage3",
+                            "agent": "ConfigurableAgent:missing-agent-2"  # This one doesn't
+                        }
+                    ]
+                }
+            }
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            CombinedConfigModel(**config_data)
+            
+        errors = exc_info.value.errors()
+        assert len(errors) == 1  # Should fail fast on first missing agent
+        error_msg = str(errors[0]["msg"])
+        # Should reference the first missing agent found
+        assert "missing configurable agent" in error_msg
+        assert ("missing-agent-1" in error_msg or "missing-agent-2" in error_msg) 

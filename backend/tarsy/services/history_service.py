@@ -208,7 +208,7 @@ class HistoryService:
                     alert_data=alert_data,
                     agent_type=agent_type,
                     alert_type=alert_type,
-                    status=AlertSessionStatus.PENDING,
+                    status=AlertSessionStatus.PENDING.value,
                     chain_id=chain_id,
                     chain_definition=chain_definition
                 )
@@ -259,7 +259,7 @@ class HistoryService:
                     session.error_message = error_message
                 if final_analysis:
                     session.final_analysis = final_analysis
-                if status in AlertSessionStatus.TERMINAL_STATUSES:
+                if status in AlertSessionStatus.terminal_values():
                     session.completed_at_us = now_us()
                 
                 success = repo.update_alert_session(session)
@@ -356,7 +356,7 @@ class HistoryService:
         result = self._retry_database_operation("get_session_with_stages", _get_session_with_stages_operation)
         return result
     
-    async def get_stage_execution(self, execution_id: str) -> Optional['StageExecution']:
+    async def get_stage_execution(self, execution_id: str) -> Optional[StageExecution]:
         """Get a single stage execution by ID."""
         def _get_stage_execution_operation():
             with self.get_repository() as repo:
@@ -614,7 +614,7 @@ class HistoryService:
                     return {
                         "agent_types": [],
                         "alert_types": [],
-                        "status_options": AlertSessionStatus.ALL_STATUSES,
+                        "status_options": AlertSessionStatus.values(),
                         "time_ranges": [
                             {"label": "Last Hour", "value": "1h"},
                             {"label": "Last 4 Hours", "value": "4h"},
@@ -630,7 +630,7 @@ class HistoryService:
             return {
                 "agent_types": [],
                 "alert_types": [],
-                "status_options": AlertSessionStatus.ALL_STATUSES,
+                "status_options": AlertSessionStatus.values(),
                 "time_ranges": [
                     {"label": "Last Hour", "value": "1h"},
                     {"label": "Last 4 Hours", "value": "4h"},
@@ -664,7 +664,7 @@ class HistoryService:
                 
                 # Find all sessions in active states (pending or in_progress)
                 active_sessions_result = repo.get_alert_sessions(
-                    status=AlertSessionStatus.ACTIVE_STATUSES,
+                    status=AlertSessionStatus.active_values(),
                     page_size=1000  # Get a large batch to handle all orphaned sessions
                 )
                 
@@ -678,7 +678,7 @@ class HistoryService:
                 for session in active_sessions:
                     try:
                         # Mark session as failed with appropriate error message
-                        session.status = AlertSessionStatus.FAILED
+                        session.status = AlertSessionStatus.FAILED.value
                         session.error_message = "Backend was restarted - session terminated unexpectedly"
                         session.completed_at_us = now_us()
                         

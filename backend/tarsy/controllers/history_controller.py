@@ -244,7 +244,7 @@ async def get_session_detail(
                     execution_id=stage_data.get('execution_id', ''),
                     stage_id=stage_data.get('stage_id', ''),
                     stage_index=stage_data.get('stage_index', 0),
-                    stage_name=stage_data.get('stage_id', '').split('_')[0] if stage_data.get('stage_id') else '',  # Extract name from stage_id
+                    stage_name=stage_data.get('stage_name', ''),
                     agent=stage_data.get('agent', ''),
                     iteration_strategy=stage_data.get('iteration_strategy'),
                     status=stage_data.get('status', 'unknown'),

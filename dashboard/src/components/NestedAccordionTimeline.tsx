@@ -19,7 +19,7 @@ import {
   ExpandMore,
   ExpandLess,
   CheckCircle,
-  Error,
+  Error as ErrorIcon,
   Schedule,
   PlayArrow,
   Psychology,
@@ -47,7 +47,7 @@ const getStageStatusIcon = (status: string) => {
     case 'completed':
       return <CheckCircle fontSize="small" />;
     case 'failed':
-      return <Error fontSize="small" />;
+      return <ErrorIcon fontSize="small" />;
     case 'active':
       return <PlayArrow fontSize="small" />;
     case 'pending':
@@ -210,7 +210,13 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
   timelineItems,
 }) => {
   const [expandedStages, setExpandedStages] = useState<Set<string>>(
-    new Set([chainExecution.current_stage_index !== null ? chainExecution.stages[chainExecution.current_stage_index]?.execution_id : ''])
+    new Set(
+      chainExecution.current_stage_index !== null && 
+      chainExecution.current_stage_index < chainExecution.stages.length &&
+      chainExecution.stages[chainExecution.current_stage_index]?.execution_id
+        ? [chainExecution.stages[chainExecution.current_stage_index].execution_id]
+        : []
+    )
   );
   const [currentStageIndex, setCurrentStageIndex] = useState<number>(
     chainExecution.current_stage_index ?? 0

@@ -1021,12 +1021,12 @@ Your Final Answer should include both the data collected and your stage-specific
         
         # Add stage context if available
         if context.stage_name:
-            stage_info = f"\\n**Stage:** {context.stage_name}"
+            stage_info = f"\n**Stage:** {context.stage_name}"
             if context.is_final_stage:
                 stage_info += " (Final Analysis Stage)"
             if context.previous_stages:
-                stage_info += f"\\n**Previous Stages:** {', '.join(context.previous_stages)}"
-            stage_info += "\\n"
+                stage_info += f"\n**Previous Stages:** {', '.join(context.previous_stages)}"
+            stage_info += "\n"
             sections.append(stage_info)
         
         sections.extend([
@@ -1039,10 +1039,10 @@ Your Final Answer should include both the data collected and your stage-specific
         if context.stage_attributed_data:
             # Use stage-attributed format for better clarity
             formatted_data = self._format_stage_attributed_data(context.stage_attributed_data)
-            sections.append(f"## Complete Investigation Data\\n{formatted_data}")
+            sections.append(f"## Complete Investigation Data\n{formatted_data}")
         elif context.mcp_data:
             # Fallback to merged format
-            sections.append(f"## Complete Investigation Data\\n{json.dumps(context.mcp_data, indent=2)}")
+            sections.append(f"## Complete Investigation Data\n{json.dumps(context.mcp_data, indent=2)}")
         
         sections.append("""## Instructions
 Provide comprehensive final analysis based on ALL collected data:
@@ -1053,7 +1053,7 @@ Provide comprehensive final analysis based on ALL collected data:
 
 Do NOT call any tools - use only the provided data.""")
         
-        return "\\n\\n".join(sections)
+        return "\n\n".join(sections)
 
     def _format_stage_attributed_data(self, stage_attributed_data: Dict[str, Any]) -> str:
         """Format stage-attributed MCP data for clear presentation."""
@@ -1086,7 +1086,7 @@ Do NOT call any tools - use only the provided data.""")
                         sections.append(f"  {i}. {json.dumps(result, indent=4)}")
                 sections.append("")  # Add spacing between servers
         
-        return "\\n".join(sections)
+        return "\n".join(sections)
 
 
 # Shared instance since PromptBuilder is stateless

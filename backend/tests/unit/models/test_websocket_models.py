@@ -21,7 +21,7 @@ from tarsy.models.websocket_models import (
     SystemHealthUpdate,
     WebSocketMessage,
 )
-from tests.utils import ModelValidationTester, TestUtils
+from tarsy.models.constants import SystemHealthStatus
 
 
 class TestWebSocketMessage:
@@ -227,10 +227,10 @@ class TestSystemHealthUpdate:
     def test_healthy_status(self):
         """Test healthy system status."""
         services = {"database": "healthy", "llm": "healthy"}
-        update = SystemHealthUpdate(status="healthy", services=services)
+        update = SystemHealthUpdate(status=SystemHealthStatus.HEALTHY, services=services)
         
         assert update.type == "system_health"
-        assert update.status == "healthy"
+        assert update.status == SystemHealthStatus.HEALTHY
         assert update.services == services
         assert update.channel == "system_health"
     
@@ -238,16 +238,14 @@ class TestSystemHealthUpdate:
     def test_degraded_status(self):
         """Test degraded system status."""
         services = {"database": "healthy", "llm": "degraded"}
-        update = SystemHealthUpdate(status="degraded", services=services)
-        assert update.status == "degraded"
+        update = SystemHealthUpdate(status=SystemHealthStatus.DEGRADED, services=services)
+        assert update.status == SystemHealthStatus.DEGRADED
     
     @pytest.mark.unit
     def test_invalid_status(self):
         """Test invalid system status."""
         with pytest.raises(ValidationError):
             SystemHealthUpdate(status="invalid", services={})
-
-
 
 class TestChannelType:
     """Test channel type utilities."""

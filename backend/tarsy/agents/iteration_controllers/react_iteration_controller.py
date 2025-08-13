@@ -89,7 +89,7 @@ class SimpleReActController(IterationController):
                     LLMMessage(role="user", content=prompt)
                 ]
                 
-                response = await self.llm_client.generate_response(messages, context.session_id, context.agent.get_current_stage_execution_id())
+                response = await self.llm_client.generate_response(messages, context.session_id, agent.get_current_stage_execution_id())
                 logger.info(f"LLM Response (first 500 chars): {response[:500]}")
                 
                 # Parse ReAct response
@@ -178,7 +178,7 @@ Please provide a final answer based on what you've discovered, even if the inves
                 LLMMessage(role="user", content=final_prompt)
             ]
             
-            fallback_response = await self.llm_client.generate_response(messages, context.session_id, context.agent.get_current_stage_execution_id())
+            fallback_response = await self.llm_client.generate_response(messages, context.session_id, agent.get_current_stage_execution_id())
             return f"Analysis completed (reached max iterations):\n\n{fallback_response}"
             
         except Exception as e:

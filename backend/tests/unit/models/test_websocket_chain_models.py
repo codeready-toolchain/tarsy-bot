@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from tarsy.models.websocket_models import (
     ChainProgressUpdate, StageProgressUpdate, ChannelType
 )
-from tests.utils import ModelValidationTester, TestUtils
+from tarsy.models.constants import StageStatus, ChainStatus
 
 
 @pytest.mark.unit
@@ -27,7 +27,7 @@ class TestChainProgressUpdate:
         assert update.type == "chain_progress"
         assert update.session_id == "session_123"
         assert update.chain_id == "kubernetes-chain"
-        assert update.overall_status == "processing"  # Default value
+        assert update.overall_status == ChainStatus.PROCESSING  # Default value
         assert update.current_stage is None
         assert update.current_stage_index is None
         assert update.total_stages is None
@@ -42,7 +42,7 @@ class TestChainProgressUpdate:
             total_stages=3,
             completed_stages=1,
             failed_stages=0,
-            overall_status="processing",
+            overall_status=ChainStatus.PROCESSING,
             stage_details={"agent": "KubernetesAgent", "started_at": 1234567890},
             channel="session_456"
         )
@@ -54,7 +54,7 @@ class TestChainProgressUpdate:
         assert update.total_stages == 3
         assert update.completed_stages == 1
         assert update.failed_stages == 0
-        assert update.overall_status == "processing"
+        assert update.overall_status == ChainStatus.PROCESSING
         assert update.stage_details["agent"] == "KubernetesAgent"
         assert update.channel == "session_456"
     
@@ -68,7 +68,7 @@ class TestChainProgressUpdate:
             chain_id="test_chain",
             overall_status=valid_status
         )
-        assert update.overall_status == valid_status
+        assert update.overall_status == ChainStatus(valid_status)
 
     def test_invalid_status(self):
         """Test invalid overall status raises validation error."""
@@ -104,6 +104,7 @@ class TestStageProgressUpdate:
             session_id="session_123",
             chain_id="kubernetes-chain",
             stage_execution_id="stage_exec_456",
+            stage_id="data-collection",
             stage_name="data-collection",
             stage_index=0,
             agent="KubernetesAgent"
@@ -113,10 +114,11 @@ class TestStageProgressUpdate:
         assert update.session_id == "session_123"
         assert update.chain_id == "kubernetes-chain"
         assert update.stage_execution_id == "stage_exec_456"
+        assert update.stage_id == "data-collection"
         assert update.stage_name == "data-collection"
         assert update.stage_index == 0
         assert update.agent == "KubernetesAgent"
-        assert update.status == "pending"  # Default value
+        assert update.status == StageStatus.PENDING  # Default value
     
     def test_creation_with_all_fields(self):
         """Test stage progress update with all fields."""
@@ -124,10 +126,11 @@ class TestStageProgressUpdate:
             session_id="session_789",
             chain_id="troubleshooting-chain",
             stage_execution_id="stage_exec_999",
+            stage_id="root-cause-analysis",
             stage_name="root-cause-analysis",
             stage_index=2,
             agent="ConfigurableAgent:analyzer",
-            status="active",
+            status=StageStatus.ACTIVE,
             started_at_us=1234567890000000,
             completed_at_us=1234567890500000,
             duration_ms=500,
@@ -139,7 +142,7 @@ class TestStageProgressUpdate:
         assert update.stage_name == "root-cause-analysis"
         assert update.stage_index == 2
         assert update.agent == "ConfigurableAgent:analyzer"
-        assert update.status == "active"
+        assert update.status == StageStatus.ACTIVE
         assert update.started_at_us == 1234567890000000
         assert update.completed_at_us == 1234567890500000
         assert update.duration_ms == 500
@@ -156,12 +159,13 @@ class TestStageProgressUpdate:
             session_id="test_session",
             chain_id="test_chain",
             stage_execution_id="test_exec",
+            stage_id="test_stage",
             stage_name="test_stage",
             stage_index=0,
             agent="TestAgent",
             status=valid_status
         )
-        assert update.status == valid_status
+        assert update.status == StageStatus(valid_status)
 
     def test_invalid_status(self):
         """Test invalid stage status raises validation error."""
@@ -170,6 +174,7 @@ class TestStageProgressUpdate:
                 session_id="test_session",
                 chain_id="test_chain",
                 stage_execution_id="test_exec",
+                stage_id="test_stage",
                 stage_name="test_stage",
                 stage_index=0,
                 agent="TestAgent",
@@ -182,14 +187,15 @@ class TestStageProgressUpdate:
             session_id="session_error",
             chain_id="failed-chain",
             stage_execution_id="stage_failed",
+            stage_id="failed-stage",
             stage_name="failed-stage",
             stage_index=1,
             agent="FailingAgent",
-            status="failed",
+            status=StageStatus.FAILED,
             error_message="Agent execution failed: timeout"
         )
         
-        assert update.status == "failed"
+        assert update.status == StageStatus.FAILED
         assert update.error_message == "Agent execution failed: timeout"
     
     def test_configurable_agent_identifier(self):
@@ -198,6 +204,7 @@ class TestStageProgressUpdate:
             session_id="session_config",
             chain_id="configurable-chain",
             stage_execution_id="stage_config",
+            stage_id="custom-analysis",
             stage_name="custom-analysis",
             stage_index=0,
             agent="ConfigurableAgent:my-custom-agent",
@@ -213,6 +220,7 @@ class TestStageProgressUpdate:
             "session_id": "session_serialize",
             "chain_id": "serialize-chain",
             "stage_execution_id": "stage_serialize",
+            "stage_id": "serialization-test",
             "stage_name": "serialization-test",
             "stage_index": 1,
             "agent": "SerializeAgent",
@@ -231,8 +239,8 @@ class TestChannelTypeChainSupport:
     
     def test_session_channel_generation(self):
         """Test session channel name generation."""
-        channel = ChannelType.session_channel("session_123")
-        assert channel == "session_session_123"
+        channel = ChannelType.session_channel("123")
+        assert channel == "session_123"
         
         channel2 = ChannelType.session_channel("abc-def-456")
         assert channel2 == "session_abc-def-456"
@@ -276,7 +284,7 @@ class TestChainWebSocketIntegration:
             current_stage_index=0,
             total_stages=3,
             completed_stages=0,
-            overall_status="processing"
+            overall_status=ChainStatus.PROCESSING
         )
         
         # 2. First stage starts
@@ -284,10 +292,11 @@ class TestChainWebSocketIntegration:
             session_id=session_id,
             chain_id=chain_id,
             stage_execution_id="exec_001",
+            stage_id="data-collection",
             stage_name="data-collection",
             stage_index=0,
             agent="KubernetesAgent",
-            status="active"
+            status=StageStatus.ACTIVE
         )
         
         # 3. First stage completes
@@ -295,10 +304,11 @@ class TestChainWebSocketIntegration:
             session_id=session_id,
             chain_id=chain_id,
             stage_execution_id="exec_001",
+            stage_id="data-collection",
             stage_name="data-collection",
             stage_index=0,
             agent="KubernetesAgent",
-            status="completed",
+            status=StageStatus.COMPLETED,
             duration_ms=5000
         )
         
@@ -310,7 +320,7 @@ class TestChainWebSocketIntegration:
             current_stage_index=1,
             total_stages=3,
             completed_stages=1,
-            overall_status="processing"
+            overall_status=ChainStatus.PROCESSING
         )
         
         # Verify all messages are valid and consistent
@@ -338,10 +348,11 @@ class TestChainWebSocketIntegration:
                 session_id=session_id,
                 chain_id=chain_id,
                 stage_execution_id=f"exec_{i:03d}",
+                stage_id=f"stage-{i}",
                 stage_name=stage_name,
                 stage_index=i,
                 agent=agent,
-                status="pending"
+                status=StageStatus.PENDING
             )
             
             assert stage_update.stage_index == i
@@ -362,12 +373,12 @@ class TestChainWebSocketIntegration:
             total_stages=len(stages),
             completed_stages=len(stages),
             failed_stages=0,
-            overall_status="completed"
+            overall_status=ChainStatus.COMPLETED
         )
         
         assert final_progress.total_stages == 4
         assert final_progress.completed_stages == 4
-        assert final_progress.overall_status == "completed"
+        assert final_progress.overall_status == ChainStatus.COMPLETED
     
     def test_error_handling_in_chain_messages(self):
         """Test error scenarios in chain WebSocket messages."""
@@ -379,10 +390,11 @@ class TestChainWebSocketIntegration:
             session_id=session_id,
             chain_id=chain_id,
             stage_execution_id="exec_error",
+            stage_id="failing-stage",
             stage_name="failing-stage",
             stage_index=1,
             agent="UnreliableAgent",
-            status="failed",
+            status=StageStatus.FAILED,
             error_message="Agent execution timeout after 30 seconds"
         )
         
@@ -395,10 +407,10 @@ class TestChainWebSocketIntegration:
             total_stages=3,
             completed_stages=1,
             failed_stages=1,
-            overall_status="partial"
+            overall_status=ChainStatus.PARTIAL
         )
         
-        assert failed_stage.status == "failed"
+        assert failed_stage.status == StageStatus.FAILED
         assert failed_stage.error_message is not None
         assert chain_failure.failed_stages == 1
-        assert chain_failure.overall_status == "partial"
+        assert chain_failure.overall_status == ChainStatus.PARTIAL

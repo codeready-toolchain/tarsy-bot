@@ -251,8 +251,8 @@ class SessionFactory:
             "alert_data": {"alert_type": "kubernetes", "environment": "production"},
             "agent_type": "KubernetesAgent",
             "alert_type": "kubernetes",
-            "status": AlertSessionStatus.PENDING,
-            "started_at": 1640995200000000,  # 2022-01-01T00:00:00Z
+            "status": AlertSessionStatus.PENDING.value,
+            "started_at_us": 1640995200000000,  # 2022-01-01T00:00:00Z
             "completed_at_us": None,
             "error_message": None,
             "final_analysis": None

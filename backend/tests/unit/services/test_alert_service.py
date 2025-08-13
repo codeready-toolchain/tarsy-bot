@@ -35,8 +35,7 @@ class TestAlertServiceInitialization:
     @pytest.fixture
     def mock_dependencies(self):
         """Mock all AlertService dependencies."""
-        for deps in MockFactory.create_mock_alert_service_dependencies():
-            return deps
+        return MockFactory.create_mock_alert_service_dependencies()
     
     def test_initialization_success(self, mock_settings):
         """Test successful AlertService initialization."""
