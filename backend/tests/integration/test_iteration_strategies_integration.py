@@ -119,12 +119,19 @@ class TestIterationStrategiesIntegration:
             agent.analyze_alert = AsyncMock(return_value="Strategy-specific analysis")
         
         # Process alert with both strategies
+        from tarsy.models.alert_processing import AlertProcessingData
+        alert_processing_data = AlertProcessingData(
+            alert_type="kubernetes",  # sample_alert_data is dict, not Alert object
+            alert_data=sample_alert_data,
+            runbook_content=sample_runbook
+        )
+        
         regular_result = await regular_agent.process_alert(
-            sample_alert_data, sample_runbook, "test-session-regular"
+            alert_processing_data, "test-session-regular"
         )
         
         react_result = await react_agent.process_alert(
-            sample_alert_data, sample_runbook, "test-session-react"
+            alert_processing_data, "test-session-react"
         )
         
         # Both should succeed but potentially use different processing paths
@@ -187,12 +194,19 @@ class TestIterationStrategiesIntegration:
             agent.analyze_alert = AsyncMock(return_value="Configurable agent analysis")
         
         # Process alerts
+        from tarsy.models.alert_processing import AlertProcessingData
+        alert_processing_data = AlertProcessingData(
+            alert_type="kubernetes",  # sample_alert_data is dict, not Alert object
+            alert_data=sample_alert_data,
+            runbook_content=sample_runbook
+        )
+        
         regular_result = await regular_agent.process_alert(
-            sample_alert_data, sample_runbook, "test-config-regular"
+            alert_processing_data, "test-config-regular"
         )
         
         react_result = await react_agent.process_alert(
-            sample_alert_data, sample_runbook, "test-config-react"
+            alert_processing_data, "test-config-react"
         )
         
         # Verify results
@@ -375,12 +389,19 @@ mcp_servers:
                 agent.analyze_alert = AsyncMock(return_value="YAML test analysis")
             
             # Process alerts with both agents
+            from tarsy.models.alert_processing import AlertProcessingData
+            alert_processing_data = AlertProcessingData(
+                alert_type="kubernetes",  # sample_alert_data is dict, not Alert object
+                alert_data=sample_alert_data,
+                runbook_content=sample_runbook
+            )
+            
             regular_result = await regular_agent.process_alert(
-                sample_alert_data, sample_runbook, "yaml-regular-test"
+                alert_processing_data, "yaml-regular-test"
             )
             
             react_result = await react_agent.process_alert(
-                sample_alert_data, sample_runbook, "yaml-react-test"
+                alert_processing_data, "yaml-react-test"
             )
             
             # Verify both processed successfully

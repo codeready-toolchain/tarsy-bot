@@ -346,7 +346,7 @@ class TestKubernetesAgentInheritedFunctionality:
             assert "name" in tool
             assert "description" in tool
         
-        kubernetes_agent.mcp_client.list_tools.assert_called_once_with(session_id="test_session", server_name="kubernetes-server")
+        kubernetes_agent.mcp_client.list_tools.assert_called_once_with(session_id="test_session", server_name="kubernetes-server", stage_execution_id=None)
     
     async def test_get_available_tools_not_configured(self, kubernetes_agent):
         """Test that unconfigured agent returns empty tools list."""
@@ -524,7 +524,8 @@ class TestKubernetesAgentMCPIntegration:
             "kubernetes-server",
             "get_pod_status",
             {"namespace": "production", "pod": "app-pod"},
-            "test-session-123"
+            "test-session-123",
+            None
         )
     
     async def test_execute_mcp_tools_server_validation(self, kubernetes_agent_with_mocks):
@@ -721,10 +722,15 @@ class TestKubernetesAgentIntegrationScenarios:
         
         runbook_content = "# Kubernetes Pod Troubleshooting\\n..."
         
-        # Convert Alert to dict for new interface
-        alert_dict = pod_crash_alert.model_dump()
+        # Create AlertProcessingData for new interface
+        from tarsy.models.alert_processing import AlertProcessingData
+        alert_processing_data = AlertProcessingData(
+            alert_type=pod_crash_alert.alert_type,
+            alert_data=pod_crash_alert.data,
+            runbook_content=runbook_content
+        )
         
-        result = await agent.process_alert(alert_dict, runbook_content, session_id="test-session-123")
+        result = await agent.process_alert(alert_processing_data, "test-session-123")
         
         assert result["status"] == "success"
         assert "analysis" in result  # Analysis result may vary based on iteration strategy
@@ -793,8 +799,13 @@ class TestKubernetesAgentIntegrationScenarios:
             }
         )
         
-        alert_dict = pod_crash_alert.model_dump()
-        result = await agent.process_alert(alert_dict, "runbook", session_id="test-session-123")
+        from tarsy.models.alert_processing import AlertProcessingData
+        alert_processing_data = AlertProcessingData(
+            alert_type=pod_crash_alert.alert_type,
+            alert_data=pod_crash_alert.data,
+            runbook_content="runbook"
+        )
+        result = await agent.process_alert(alert_processing_data, "test-session-123")
         
         assert result["status"] == "success"
         assert "analysis" in result  # Analysis result may vary based on iteration strategy
@@ -836,8 +847,13 @@ class TestKubernetesAgentIntegrationScenarios:
             }
         )
         
-        alert_dict = pod_crash_alert.model_dump()
-        result = await agent.process_alert(alert_dict, "runbook", session_id="test-session-123")
+        from tarsy.models.alert_processing import AlertProcessingData
+        alert_processing_data = AlertProcessingData(
+            alert_type=pod_crash_alert.alert_type,
+            alert_data=pod_crash_alert.data,
+            runbook_content="runbook"
+        )
+        result = await agent.process_alert(alert_processing_data, "test-session-123")
         
         assert result["status"] == "success"
         assert "analysis" in result  # Analysis result may vary based on iteration strategy 

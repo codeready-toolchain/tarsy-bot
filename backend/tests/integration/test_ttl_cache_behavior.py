@@ -27,6 +27,7 @@ class TestTTLCacheBehavior:
         settings = Mock(spec=Settings)
         settings.github_token = "test_token"
         settings.history_enabled = True
+        settings.agent_config_path = None  # No agent config for unit tests
         return settings
 
     @pytest.fixture
@@ -34,7 +35,7 @@ class TestTTLCacheBehavior:
         """Mock all AlertService dependencies."""
         with patch('tarsy.services.alert_service.RunbookService') as mock_runbook, \
              patch('tarsy.services.alert_service.get_history_service') as mock_history, \
-             patch('tarsy.services.alert_service.AgentRegistry') as mock_registry, \
+             patch('tarsy.services.alert_service.ChainRegistry') as mock_chain_registry, \
              patch('tarsy.services.alert_service.MCPServerRegistry') as mock_mcp_registry, \
              patch('tarsy.services.alert_service.MCPClient') as mock_mcp_client, \
              patch('tarsy.services.alert_service.LLMManager') as mock_llm_manager:
@@ -42,7 +43,7 @@ class TestTTLCacheBehavior:
             yield {
                 'runbook': mock_runbook.return_value,
                 'history': mock_history.return_value,
-                'registry': mock_registry.return_value,
+                'chain_registry': mock_chain_registry.return_value,
                 'mcp_registry': mock_mcp_registry.return_value,
                 'mcp_client': mock_mcp_client.return_value,
                 'llm_manager': mock_llm_manager.return_value

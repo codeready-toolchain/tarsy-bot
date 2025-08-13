@@ -972,9 +972,10 @@ class TestHistoryControllerResponseFormat:
             "session_id", "alert_id", "alert_type", "agent_type", 
             "status", "started_at_us", "completed_at_us", "error_message"
         }
-        # Allow additional fields that are actually returned
+        # Allow additional fields that are actually returned (including chain-based fields)
         optional_fields = {
-            "duration_ms", "llm_interaction_count", "mcp_communication_count"
+            "duration_ms", "llm_interaction_count", "mcp_communication_count",
+            "current_stage_index", "failed_stages", "total_stages", "chain_id", "completed_stages"
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)

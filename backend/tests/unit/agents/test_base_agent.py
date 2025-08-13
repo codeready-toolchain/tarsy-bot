@@ -14,6 +14,7 @@ from tarsy.agents.exceptions import ConfigurationError
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert import Alert
+from tarsy.models.alert_processing import AlertProcessingData
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.timestamp import now_us
 
@@ -363,7 +364,7 @@ class TestBaseAgentMCPIntegration:
         assert len(tools) == 1
         assert tools[0]["name"] == "kubectl-get"
         assert tools[0]["server"] == "test-server"
-        mock_mcp_client.list_tools.assert_called_once_with(session_id="test_session", server_name="test-server")
+        mock_mcp_client.list_tools.assert_called_once_with(session_id="test_session", server_name="test-server", stage_execution_id=None)
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -409,7 +410,7 @@ class TestBaseAgentMCPIntegration:
         assert results["test-server"][0]["result"] == {"result": "success"}
         
         mock_mcp_client.call_tool.assert_called_once_with(
-            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-123"
+            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-123", None
         )
 
     @pytest.mark.unit
@@ -711,11 +712,14 @@ class TestBaseAgentErrorHandling:
         return Alert(
             alert_type="TestAlert",
             severity="high",
-            environment="test",
-            cluster="test-cluster",
-            namespace="test-namespace",
-            message="Test error scenarios",
-            runbook="test-runbook.md"
+            runbook="test-runbook.md",
+            timestamp=now_us(),
+            data={
+                "environment": "test",
+                "cluster": "test-cluster",
+                "namespace": "test-namespace",
+                "message": "Test error scenarios"
+            }
         )
 
     @pytest.mark.asyncio
@@ -723,8 +727,13 @@ class TestBaseAgentErrorHandling:
         """Test process_alert with MCP configuration error."""
         base_agent.mcp_registry.get_server_configs.side_effect = Exception("MCP config error")
         
-        alert_dict = sample_alert.model_dump()
-        result = await base_agent.process_alert(alert_dict, "runbook content", "test-session-123")
+        from tarsy.models.alert_processing import AlertProcessingData
+        alert_processing_data = AlertProcessingData(
+            alert_type=sample_alert.alert_type,
+            alert_data=sample_alert.data,
+            runbook_content="runbook content"
+        )
+        result = await base_agent.process_alert(alert_processing_data, "test-session-123")
         
         assert result["status"] == "error"
         assert "MCP config error" in result["error"]
@@ -750,10 +759,15 @@ class TestBaseAgentErrorHandling:
         base_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
         base_agent.analyze_alert = AsyncMock(return_value="Success analysis")
         
-        # Convert Alert to dict for new interface
-        alert_dict = sample_alert.model_dump()
+        # Create AlertProcessingData for new interface
+        from tarsy.models.alert_processing import AlertProcessingData
+        alert_processing_data = AlertProcessingData(
+            alert_type=sample_alert.alert_type,
+            alert_data=sample_alert.data,
+            runbook_content="runbook content"
+        )
         
-        result = await base_agent.process_alert(alert_dict, "runbook content", "test-session-success")
+        result = await base_agent.process_alert(alert_processing_data, "test-session-success")
         
         assert result["status"] == "success"
         assert "Analysis complete" in result["analysis"]
@@ -821,12 +835,16 @@ class TestBaseAgent:
         base_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
         base_agent.analyze_alert = AsyncMock(return_value="Test analysis")
         
-        # Convert Alert to dict for new interface
-        alert_dict = sample_alert.model_dump()
+        # Convert Alert to AlertProcessingData for new interface
+        alert_processing_data = AlertProcessingData(
+            alert_type=sample_alert.alert_type,
+            alert_data=sample_alert.model_dump(),
+            runbook_url=sample_alert.runbook,
+            runbook_content="test runbook content"
+        )
         
         result = await base_agent.process_alert(
-            alert_data=alert_dict,
-            runbook_content="runbook content",
+            alert_data=alert_processing_data,
             session_id="test-session-123"
         )
         
@@ -850,12 +868,16 @@ class TestBaseAgent:
         base_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
         base_agent.analyze_alert = AsyncMock(return_value="Test analysis")
         
-        # Convert Alert to dict for new interface
-        alert_dict = sample_alert.model_dump()
+        # Convert Alert to AlertProcessingData for new interface
+        alert_processing_data = AlertProcessingData(
+            alert_type=sample_alert.alert_type,
+            alert_data=sample_alert.model_dump(),
+            runbook_url=sample_alert.runbook,
+            runbook_content="test runbook content"
+        )
         
         result = await base_agent.process_alert(
-            alert_data=alert_dict,
-            runbook_content="runbook content", 
+            alert_data=alert_processing_data,
             session_id="test-session"
         )
         
@@ -867,13 +889,17 @@ class TestBaseAgent:
         self, base_agent, mock_mcp_client, mock_llm_client, sample_alert
     ):
         """Test that process_alert raises ValueError with None session_id."""
-        # Convert Alert to dict for new interface
-        alert_dict = sample_alert.model_dump()
+        # Convert Alert to AlertProcessingData for new interface
+        alert_processing_data = AlertProcessingData(
+            alert_type=sample_alert.alert_type,
+            alert_data=sample_alert.model_dump(),
+            runbook_url=sample_alert.runbook,
+            runbook_content="test runbook content"
+        )
         
         with pytest.raises(ValueError, match="session_id is required"):
             await base_agent.process_alert(
-                alert_data=alert_dict,
-                runbook_content="runbook content",
+                alert_data=alert_processing_data,
                 session_id=None
             )
 
@@ -894,12 +920,16 @@ class TestBaseAgent:
         base_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
         base_agent.analyze_alert = AsyncMock(return_value="Test analysis")
         
-        # Convert Alert to dict for new interface
-        alert_dict = sample_alert.model_dump()
+        # Convert Alert to AlertProcessingData for new interface  
+        alert_processing_data = AlertProcessingData(
+            alert_type=sample_alert.alert_type,
+            alert_data=sample_alert.model_dump(),
+            runbook_url=sample_alert.runbook,
+            runbook_content="test runbook content"
+        )
         
         result = await base_agent.process_alert(
-            runbook_content="runbook content",
-            alert_data=alert_dict, 
+            alert_data=alert_processing_data, 
             session_id="test-session"
         )
         
@@ -914,12 +944,16 @@ class TestBaseAgent:
         # Mock MCP registry to cause an error
         base_agent.mcp_registry.get_server_configs.side_effect = Exception("MCP error")
         
-        # Convert Alert to dict for new interface
-        alert_dict = sample_alert.model_dump()
+        # Convert Alert to AlertProcessingData for new interface
+        alert_processing_data = AlertProcessingData(
+            alert_type=sample_alert.alert_type,
+            alert_data=sample_alert.model_dump(),
+            runbook_url=sample_alert.runbook,
+            runbook_content="test runbook content"
+        )
         
         result = await base_agent.process_alert(
-            alert_data=alert_dict,
-            runbook_content="runbook content",
+            alert_data=alert_processing_data,
             session_id="test-session-error"
         )
         

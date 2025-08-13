@@ -247,8 +247,8 @@ class TestLLMClientResponseGeneration:
             # Check that context was called with proper data structure
             context_call_args = mock_context.call_args[0]  # positional args
             
-            # Verify arguments: session_id, request_data
-            assert len(context_call_args) == 2
+            # Verify arguments: session_id, request_data, stage_execution_id (optional)
+            assert len(context_call_args) >= 2
             session_id = context_call_args[0]
             request_data = context_call_args[1]
             

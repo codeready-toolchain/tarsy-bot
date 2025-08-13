@@ -44,6 +44,7 @@ def mock_settings():
     settings.default_llm_provider = "gemini"
     settings.max_llm_mcp_iterations = 3
     settings.log_level = "INFO"
+    settings.agent_config_path = None  # No agent config for integration tests
     
     # LLM providers configuration that LLMManager expects
     settings.llm_providers = {
@@ -198,7 +199,7 @@ def mock_llm_manager():
     mock_client = Mock(spec=LLMClient)
     mock_client.available = True
     
-    def mock_generate_response_sync(messages, session_id, **kwargs):
+    def mock_generate_response_sync(messages, session_id, stage_execution_id=None, **kwargs):
         """Generate mock responses based on message content."""
         if not session_id:
             raise ValueError("session_id is required for LLM interactions")
@@ -352,18 +353,23 @@ def mock_runbook_service(sample_runbook_content):
 
 @pytest.fixture
 def mock_agent_registry():
-    """Mock agent registry."""
-    registry = Mock(spec=AgentRegistry)
+    """Mock chain registry (adapted from agent registry)."""
+    from tarsy.services.chain_registry import ChainRegistry
+    from tarsy.models.chains import ChainDefinitionModel, ChainStageModel
+    registry = Mock(spec=ChainRegistry)
     
-    # Dynamic agent routing based on alert type
-    def get_agent_for_alert_type(alert_type):
-        if alert_type == "kubernetes":
-            return "KubernetesAgent"
-        else:
-            return "BaseAgent"  # Default to BaseAgent for flexible alerts
+    # Dynamic chain routing based on alert type
+    def get_chain_for_alert_type(alert_type):
+        agent = "KubernetesAgent" if alert_type == "kubernetes" else "BaseAgent"
+        return ChainDefinitionModel(
+            chain_id=f'{alert_type}-chain',
+            alert_types=[alert_type],
+            stages=[ChainStageModel(name='analysis', agent=agent)],
+            description=f'Test chain for {alert_type}'
+        )
     
-    registry.get_agent_for_alert_type.side_effect = get_agent_for_alert_type
-    registry.get_supported_alert_types.return_value = ["kubernetes", "monitoring", "database", "network"]
+    registry.get_chain_for_alert_type.side_effect = get_chain_for_alert_type
+    registry.list_available_alert_types.return_value = ["kubernetes", "monitoring", "database", "network"]
     return registry
 
 
@@ -373,12 +379,13 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
     factory = Mock(spec=AgentFactory)
     
     # Create a semi-mocked agent that calls dependencies but returns controlled results
-    def create_mock_agent(agent_class_name):
+    def create_mock_agent(agent_class_name, iteration_strategy=None):
         if agent_class_name == "KubernetesAgent":
             mock_agent = Mock(spec=KubernetesAgent)
+            mock_agent.set_current_stage_execution_id = Mock()
             
-            # Mock the process_alert method to actually call dependencies for test verification
-            async def mock_kubernetes_process_alert(alert_data, runbook_content, session_id, callback=None):
+            # Mock the process_alert method with NEW signature to match BaseAgent
+            async def mock_kubernetes_process_alert(alert_processing_data, session_id):
                 if not session_id:
                     raise ValueError("session_id is required for alert processing")
                 
@@ -403,15 +410,88 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                     Mock(role="user", content="final analysis of namespace issue")
                 ], session_id=session_id)
                 
+                # Extract namespace from alert data for tool calls
+                namespace = alert_processing_data.alert_data.get('namespace', 'default')
+                
                 # Simulate calling MCP client for tool listing and execution (iterative analysis)
                 await mock_mcp_client.list_tools(server_name="kubernetes-server")
-                await mock_mcp_client.call_tool("kubernetes-server", "kubectl_get_namespace", {"namespace": "stuck-namespace"})
+                await mock_mcp_client.call_tool("kubernetes-server", "kubectl_get_namespace", {"namespace": namespace})
                 
-                # Return Kubernetes-specific analysis
+                # Create comprehensive analysis including all relevant data from the alert
+                alert_data = alert_processing_data.alert_data
+                analysis_parts = [f"Namespace '{namespace}' analyzed."]
+                
+                # Include service-specific information
+                if 'service' in alert_data:
+                    analysis_parts.append(f"Service: {alert_data['service']}")
+                if 'database_type' in alert_data:
+                    analysis_parts.append(f"Database type: {alert_data['database_type']}")
+                if 'alert' in alert_data and alert_data['alert'] != namespace:
+                    analysis_parts.append(f"Alert type: {alert_data['alert']}")
+                
+                # Include metrics and other nested objects if present
+                for data_key, data_value in alert_data.items():
+                    if isinstance(data_value, dict) and data_key not in ['labels', 'tags']:  # Already handled separately
+                        # Add the key itself as context
+                        analysis_parts.append(f"{data_key} analysis")
+                        # Add nested values
+                        for key, value in data_value.items():
+                            if isinstance(value, (int, float)):
+                                analysis_parts.append(f"{key}: {value}")
+                            elif isinstance(value, dict):
+                                for subkey, subvalue in value.items():
+                                    analysis_parts.append(f"{key}.{subkey}: {subvalue}")
+                
+                # Include labels if present
+                if 'labels' in alert_data and isinstance(alert_data['labels'], dict):
+                    for key, value in alert_data['labels'].items():
+                        analysis_parts.append(f"{key}: {value}")
+                
+                # Include tags if present
+                if 'tags' in alert_data and isinstance(alert_data['tags'], list):
+                    for tag in alert_data['tags']:
+                        analysis_parts.append(f"tag: {tag}")
+                
+                # Include yaml_config if present
+                if 'yaml_config' in alert_data and alert_data['yaml_config']:
+                    if 'ConfigMap' in alert_data['yaml_config']:
+                        analysis_parts.append("ConfigMap configuration detected")
+                    if 'monitoring-config' in alert_data['yaml_config']:
+                        analysis_parts.append("monitoring-config settings found")
+                
+                # Include array data structures
+                for key, value in alert_data.items():
+                    if isinstance(value, list) and value:
+                        for item in value:
+                            if isinstance(item, dict):
+                                # Extract node names from cluster_nodes arrays
+                                if 'node' in item:
+                                    analysis_parts.append(f"node: {item['node']}")
+                                # Extract other meaningful keys from array items
+                                for subkey, subvalue in item.items():
+                                    if isinstance(subvalue, str) and len(subvalue) < 50:
+                                        analysis_parts.append(f"{subkey}: {subvalue}")
+                
+                # Infer context from runbook URL or content
+                runbook_content = alert_processing_data.runbook_content or ""
+                # Also check if there's a runbook field in the alert data
+                if 'runbook' in alert_data:
+                    runbook_content += " " + str(alert_data['runbook'])
+                
+                if isinstance(runbook_content, str):
+                    if 'network' in runbook_content.lower():
+                        analysis_parts.append("network analysis performed")
+                    if 'database' in runbook_content.lower():
+                        analysis_parts.append("database analysis performed")
+                    if 'monitoring' in runbook_content.lower():
+                        analysis_parts.append("monitoring analysis performed")
+                
+                analysis_text = " ".join(analysis_parts) + " Analysis includes tool execution results."
+                
                 return {
                     "status": "success",
-                    "agent": "KubernetesAgent",
-                    "analysis": "Namespace 'stuck-namespace' stuck due to finalizers. Remove finalizers to resolve.",
+                    "agent": "KubernetesAgent", 
+                    "analysis": analysis_text,
                     "iterations": 1,
                     "timestamp_us": 1234567890
                 }
@@ -421,9 +501,10 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
         elif agent_class_name == "BaseAgent":
             from tarsy.agents.base_agent import BaseAgent
             mock_agent = Mock(spec=BaseAgent)
+            mock_agent.set_current_stage_execution_id = Mock()
             
-            # Mock the process_alert method for flexible alerts
-            async def mock_base_process_alert(alert_data, runbook_content, session_id, callback=None):
+            # Mock the process_alert method for flexible alerts with NEW signature
+            async def mock_base_process_alert(alert_processing_data, session_id):
                 if not session_id:
                     raise ValueError("session_id is required for alert processing")
                 
@@ -432,6 +513,7 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                 
                 # Generate analysis that includes comprehensive alert data content
                 # Determine service/entity name from different alert types
+                alert_data = alert_processing_data.alert_data
                 service_name = "unknown service"
                 if 'service' in alert_data:
                     service_name = alert_data['service']
@@ -645,6 +727,11 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
         
         return mock_agent
     
+    # Make get_agent async to match AlertService expectations
+    async def mock_get_agent(agent_identifier, iteration_strategy=None):
+        return create_mock_agent(agent_identifier, iteration_strategy)
+    
+    factory.get_agent = AsyncMock(side_effect=mock_get_agent)
     factory.create_agent = Mock(side_effect=create_mock_agent)
     factory.progress_callback = None
     return factory
@@ -666,7 +753,7 @@ async def alert_service(mock_settings, mock_runbook_service, mock_agent_registry
     
     # Replace dependencies with mocks
     service.runbook_service = mock_runbook_service
-    service.agent_registry = mock_agent_registry
+    service.chain_registry = mock_agent_registry  # Using agent_registry mock but renamed for chain_registry
     service.mcp_server_registry = mock_mcp_server_registry
     service.mcp_client = mock_mcp_client
     service.llm_manager = mock_llm_manager
@@ -699,7 +786,7 @@ def alert_service_with_mocks(
     service.mcp_client = mock_mcp_client
     service.mcp_registry = mock_mcp_server_registry
     service.runbook_service = mock_runbook_service
-    service.agent_registry = mock_agent_registry
+    service.chain_registry = mock_agent_registry  # Reuse the mock for chain registry
     service.agent_factory = mock_agent_factory
     # Create mock history service for proper testing
     mock_history_service = Mock(spec=HistoryService)

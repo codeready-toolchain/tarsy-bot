@@ -456,7 +456,13 @@ class TestErrorPropagationBetweenComponents:
         )
         
         # Act
-        result = await agent.process_alert(sample_alert, sample_runbook_content, "test-session-integration")
+        from tarsy.models.alert_processing import AlertProcessingData
+        alert_processing_data = AlertProcessingData(
+            alert_type=sample_alert.alert_type,
+            alert_data=sample_alert.data,
+            runbook_content=sample_runbook_content
+        )
+        result = await agent.process_alert(alert_processing_data, "test-session-integration")
         
         # Assert - Agent should handle MCP errors gracefully
         assert result is not None
@@ -481,8 +487,13 @@ class TestErrorPropagationBetweenComponents:
         )
         
         # Act
-        alert_dict = sample_alert.model_dump()
-        result = await agent.process_alert(alert_dict, sample_runbook_content, "test-session-integration")
+        from tarsy.models.alert_processing import AlertProcessingData
+        alert_processing_data = AlertProcessingData(
+            alert_type=sample_alert.alert_type,
+            alert_data=sample_alert.data,
+            runbook_content=sample_runbook_content
+        )
+        result = await agent.process_alert(alert_processing_data, "test-session-integration")
         
         # Assert - Agent should handle LLM errors gracefully
         assert result is not None

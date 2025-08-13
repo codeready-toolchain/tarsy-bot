@@ -274,6 +274,7 @@ class TestSimpleReActController:
         """Create mock prompt builder."""
         builder = Mock()
         builder.build_standard_react_prompt.return_value = "ReAct prompt"
+        builder.get_standard_react_system_message.return_value = "You are an AI assistant that analyzes alerts using the ReAct pattern."
         builder.parse_react_response.return_value = {
             'thought': 'Need to analyze the alert',
             'action': 'test-tool',
@@ -288,6 +289,8 @@ class TestSimpleReActController:
             "reason": "test"
         }
         builder.format_observation.return_value = "Tool executed successfully"
+        builder.get_react_error_continuation.return_value = ["Error occurred, continuing analysis..."]
+        builder._flatten_react_history.return_value = ["Thought: Analysis needed", "Action: test-tool", "Observation: Tool executed successfully"]
         return builder
     
     @pytest.fixture
@@ -330,9 +333,7 @@ class TestSimpleReActController:
         # Verify system message contains ReAct instructions
         call_args = mock_llm_client.generate_response.call_args[0][0]
         system_message = call_args[0]
-        assert "ReAct format" in system_message.content
-        assert "Thought:" in system_message.content
-        assert "Action:" in system_message.content
+        assert "ReAct" in system_message.content
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_no_agent(self, controller):

@@ -23,6 +23,7 @@ class TestMCPClientInitialization:
     def mock_settings(self):
         """Mock settings."""
         settings = Mock(spec=Settings)
+        settings.agent_config_path = None  # No agent config for unit tests
         return settings
     
     @pytest.fixture

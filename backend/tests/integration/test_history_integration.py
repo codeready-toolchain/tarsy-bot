@@ -447,11 +447,12 @@ class TestAlertServiceHistoryIntegration:
             "recommendations": ["Test recommendation"]
         }
         
-        # Mock the agent_registry (not agent_factory) - this is where get_agent_for_alert_type lives
-        service.agent_registry.get_agent_for_alert_type = Mock(return_value="KubernetesAgent")
+        # Mock the chain_registry - this is where get_chain_for_alert_type lives  
+        service.chain_registry.get_chain_for_alert_type = Mock(return_value=Mock(chain_id="kubernetes-chain", stages=[Mock(name="analysis", agent="KubernetesAgent")]))
         
-        # Mock agent_factory to return our mock agent
+        # Mock agent_factory to return our mock agent (async methods needed)
         service.agent_factory = Mock()
+        service.agent_factory.get_agent = AsyncMock(return_value=mock_agent)
         service.agent_factory.create_agent = Mock(return_value=mock_agent)
         
         # Use real history service with mocked database
@@ -495,7 +496,7 @@ class TestAlertServiceHistoryIntegration:
         # Should have created session
         history_service.create_session.assert_called_once()
         create_call = history_service.create_session.call_args
-        assert create_call[1]["agent_type"] == "KubernetesAgent"
+        assert create_call[1]["agent_type"] == "chain:kubernetes-chain"  # Chain architecture format
         assert create_call[1]["alert_type"] == sample_alert.alert_type
         
         # Should have updated session status multiple times
@@ -516,7 +517,7 @@ class TestAlertServiceHistoryIntegration:
         # Make agent processing fail by setting up the mock to fail
         mock_agent = AsyncMock()
         mock_agent.process_alert.side_effect = Exception("Agent processing failed")
-        alert_service_with_history.agent_factory.create_agent.return_value = mock_agent
+        alert_service_with_history.agent_factory.get_agent = AsyncMock(return_value=mock_agent)
         
         # Process alert (should handle error gracefully)
         result = await alert_service_with_history.process_alert(
@@ -526,7 +527,7 @@ class TestAlertServiceHistoryIntegration:
         # Verify error was handled
         assert result is not None
         # The result is a formatted string from _format_error_response, not a dict  
-        assert "Agent processing failed" in result
+        assert "Chain processing failed" in result  # Chain architecture error format
         
         # Verify history service tracked the error
         history_service = alert_service_with_history.history_service
@@ -542,7 +543,7 @@ class TestAlertServiceHistoryIntegration:
         # Should have recorded error message
         error_calls = [call for call in status_calls if call[1].get("error_message")]
         assert len(error_calls) > 0
-        assert "Agent processing failed" in error_calls[0][1]["error_message"]
+        assert "Chain processing failed" in error_calls[0][1]["error_message"]  # Chain architecture error format
 
 
 class TestHistoryAPIIntegration:

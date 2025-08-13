@@ -12,7 +12,7 @@ import asyncio
 from tarsy.hooks.typed_context import (
     BaseTypedHook,
     TypedHookManager,
-    TypedHookContext,
+    InteractionHookContext,
     get_typed_hook_manager,
     llm_interaction_context,
     mcp_interaction_context
@@ -194,7 +194,7 @@ class TestFactoryFunctions:
         request_data = {"prompt": "test"}
         
         async with llm_interaction_context(session_id, request_data) as ctx:
-            assert isinstance(ctx, TypedHookContext)
+            assert isinstance(ctx, InteractionHookContext)
             assert ctx.get_request_id() is not None
     
     @pytest.mark.asyncio
@@ -206,5 +206,5 @@ class TestFactoryFunctions:
         arguments = {"param": "value"}
         
         async with mcp_interaction_context(session_id, server_name, tool_name, arguments) as ctx:
-            assert isinstance(ctx, TypedHookContext)
+            assert isinstance(ctx, InteractionHookContext)
             assert ctx.get_request_id() is not None

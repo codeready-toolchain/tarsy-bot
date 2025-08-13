@@ -9,7 +9,7 @@ startup with predefined mappings and optional configured agents.
 from typing import Dict, Optional
 
 from tarsy.utils.logger import get_module_logger
-from tarsy.config.builtin_config import BUILTIN_AGENT_MAPPINGS
+from tarsy.config.builtin_config import BUILTIN_CHAIN_DEFINITIONS
 
 # Import for type hints only (avoid circular imports)
 from typing import TYPE_CHECKING
@@ -17,6 +17,33 @@ if TYPE_CHECKING:
     from ..models.agent_config import AgentConfigModel
 
 logger = get_module_logger(__name__)
+
+
+def _extract_alert_type_mappings_from_chains() -> Dict[str, str]:
+    """
+    Extract alert type to agent mappings from built-in chain definitions.
+    
+    For single-stage chains, maps alert types to the agent in that stage.
+    For multi-stage chains, maps alert types to the agent in the first stage.
+    
+    Returns:
+        Dictionary mapping alert types to agent class names
+    """
+    mappings = {}
+    
+    for chain_id, chain_config in BUILTIN_CHAIN_DEFINITIONS.items():
+        alert_types = chain_config.get("alert_types", [])
+        stages = chain_config.get("stages", [])
+        
+        if alert_types and stages:
+            # Use the agent from the first stage
+            first_stage_agent = stages[0].get("agent")
+            if first_stage_agent:
+                for alert_type in alert_types:
+                    mappings[alert_type] = first_stage_agent
+                    logger.debug(f"Mapped alert type '{alert_type}' to agent '{first_stage_agent}' from chain '{chain_id}'")
+    
+    return mappings
 
 
 class AgentRegistry:
@@ -31,8 +58,8 @@ class AgentRegistry:
     configured agents (e.g., "ConfigurableAgent:security-agent").
     """
     
-    # Built-in mappings imported from central configuration
-    _DEFAULT_MAPPINGS = BUILTIN_AGENT_MAPPINGS
+    # Built-in mappings extracted from chain definitions
+    _DEFAULT_MAPPINGS = _extract_alert_type_mappings_from_chains()
     
     def __init__(
         self, 
