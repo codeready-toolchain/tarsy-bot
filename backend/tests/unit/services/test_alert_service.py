@@ -185,6 +185,16 @@ class TestAlertProcessing:
         service.agent_factory = Mock()
         service.agent_factory.get_agent = AsyncMock()
         
+        # Create mock history service for proper testing
+        from tarsy.services.history_service import HistoryService
+        mock_history_service = Mock(spec=HistoryService)
+        mock_history_service.enabled = True
+        mock_history_service.create_session.return_value = "test-session-id"
+        mock_history_service.update_session_status = Mock()
+        mock_history_service.log_llm_interaction = Mock()
+        mock_history_service.log_mcp_interaction = Mock()
+        service.history_service = mock_history_service
+        
         yield service, dependencies
     
     @pytest.mark.asyncio
