@@ -69,22 +69,28 @@ jobs:
     
     - name: Run unit tests
       working-directory: ./backend
+      env:
+        GEMINI_API_KEY: fake-test-key-for-ci
       run: make test-unit
     
     - name: Run integration tests
       working-directory: ./backend
+      env:
+        GEMINI_API_KEY: fake-test-key-for-ci
       run: make test-integration
     
     - name: Run E2E tests
       working-directory: ./backend
       env:
         KUBECONFIG: /home/runner/.kube/config
+        GEMINI_API_KEY: fake-test-key-for-ci
       run: make test-e2e
     
     - name: Run tests with coverage
       working-directory: ./backend
       env:
         KUBECONFIG: /home/runner/.kube/config
+        GEMINI_API_KEY: fake-test-key-for-ci
       run: |
         TESTING=true uv run python -m pytest tests/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing
     
