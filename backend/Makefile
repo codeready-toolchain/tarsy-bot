@@ -42,9 +42,13 @@ install-dev: ## Install development dependencies (includes test)
 
 # Testing
 .PHONY: test
-test: install ## Run all tests (unit + integration + e2e)
-	@echo "$(GREEN)Running all tests...$(NC)"
-	$(PYTEST) $(TEST_DIR)/ -v --tb=short
+test: install ## Run all tests (unit + integration + e2e) with proper isolation
+	@echo "$(GREEN)Running all tests with proper isolation...$(NC)"
+	@echo "$(YELLOW)Running unit and integration tests...$(NC)"
+	@$(PYTEST) $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ -v --tb=short
+	@echo "$(YELLOW)Running e2e tests in isolated session...$(NC)"  
+	@$(PYTEST) $(TEST_DIR)/e2e/ -v --tb=short -m e2e
+	@echo "$(GREEN)All tests completed with proper isolation!$(NC)"
 
 .PHONY: test-unit
 test-unit: install ## Run unit tests only

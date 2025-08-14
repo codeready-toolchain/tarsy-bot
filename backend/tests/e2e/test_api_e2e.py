@@ -3,33 +3,17 @@ Focused End-to-End Integration Test for HTTP API Endpoints.
 
 This test validates the complete alert processing pipeline with real LLM/MCP interactions,
 database persistence, and comprehensive API data structures.
+
+Uses isolated e2e test fixtures to prevent interference with unit/integration tests.
 """
 
-import os
+import asyncio
 import time
-import uuid
-from contextlib import contextmanager
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 
 from tarsy.main import app
-
-
-@contextmanager
-def safe_kubeconfig_override(fake_path: str):
-    """Context manager to safely override KUBECONFIG environment variable."""
-    original = os.environ.get("KUBECONFIG")
-    try:
-        os.environ["KUBECONFIG"] = fake_path
-        yield original
-    finally:
-        # Always restore the original value, even if test fails
-        if original:
-            os.environ["KUBECONFIG"] = original
-        elif "KUBECONFIG" in os.environ:
-            del os.environ["KUBECONFIG"]
 
 
 @pytest.mark.asyncio
@@ -42,62 +26,8 @@ class TestMegaAPIEndpointsE2E:
     LLM/MCP interactions, database persistence, and API validation.
     """
 
-    @pytest.fixture
-    def realistic_namespace_alert(self):
-        """Realistic Kubernetes namespace alert data."""
-        return {
-            "alert_type": "test-kubernetes",
-            "runbook": "https://runbooks.example.com/k8s-namespace-stuck",
-            "alert_data": {
-                "namespace": "test-namespace",
-                "severity": "warning",
-                "description": "Namespace stuck in Terminating state",
-                "cluster": "test-cluster",
-                "labels": {
-                    "env": "test",
-                    "team": "platform"
-                },
-                "annotations": {
-                    "finalizers": "kubernetes.io/pv-protection"
-                },
-                "timestamp": "2024-01-15T10:30:00Z"
-            }
-        }
-
-    @pytest.fixture
-    def test_client(self):
-        """FastAPI test client with lifespan events."""
-        # Ensure the lifespan events are triggered to initialize the semaphore
-        with TestClient(app) as client:
-            yield client
-
-    def _setup_fake_kubeconfig(self, fake_path: str):
-        """Create a minimal fake kubeconfig file for testing."""
-        fake_config = {
-            "apiVersion": "v1",
-            "kind": "Config",
-            "clusters": [
-                {
-                    "name": "test-cluster",
-                    "cluster": {
-                        "server": "https://test-k8s-api.example.com"
-                    }
-                }
-            ],
-            "contexts": [
-                {
-                    "name": "test-context",
-                    "context": {
-                        "cluster": "test-cluster"
-                    }
-                }
-            ],
-            "current-context": "test-context"
-        }
-        
-        import yaml
-        with open(fake_path, 'w') as f:
-            yaml.safe_dump(fake_config, f)
+    # Note: realistic_namespace_alert and test_client fixtures are now provided 
+    # by the isolated e2e conftest.py as e2e_realistic_kubernetes_alert and e2e_test_client
 
     def _get_react_conversation_steps(self, stage_name=None):
         """Get the ReAct conversation steps for namespace termination scenario by stage."""
@@ -407,45 +337,7 @@ Action Input: {step['action_input']}"""
         print("✅ Realistic mocks created")
         return llm_mock, mcp_mock
 
-    def _create_test_settings_for_real_processing(self, test_db_url: str):
-        """Create test settings for real processing with test database."""
-        # Create a REAL Settings object, not a Mock, to avoid validation issues
-        from tarsy.config.settings import Settings
-        import os
-        
-        # Temporarily set environment variables for the Settings object
-        test_env = {
-            "HISTORY_DATABASE_URL": test_db_url,
-            "HISTORY_ENABLED": "true",
-            "AGENT_CONFIG_PATH": "tests/e2e/test_agents.yaml",
-            "GEMINI_API_KEY": "test-key-123",
-            "DEFAULT_LLM_PROVIDER": "gemini"
-        }
-        
-        # Store original env vars
-        original_env = {}
-        for key, value in test_env.items():
-            original_env[key] = os.environ.get(key)
-            os.environ[key] = value
-        
-        try:
-            # Create real Settings object
-            test_settings = Settings()
-            # Override specific test values after creation  
-            test_settings.history_database_url = test_db_url
-            test_settings.history_enabled = True
-            test_settings.agent_config_path = "tests/e2e/test_agents.yaml"
-            test_settings.gemini_api_key = "test-key-123"
-            test_settings.default_llm_provider = "gemini"
-        finally:
-            # Restore original env vars
-            for key, original_value in original_env.items():
-                if original_value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = original_value
-        
-        return test_settings
+    # Note: Test settings are now handled by the isolated_e2e_settings fixture
 
     async def _validate_comprehensive_api_data(self, test_client, alert_id: str, session_id: str):
         """Validate API data structures and processing results."""
@@ -725,264 +617,244 @@ Action Input: {step['action_input']}"""
 
     async def test_comprehensive_alert_processing_and_api_validation(
         self,
-        test_client,
-        realistic_namespace_alert
+        e2e_test_client,
+        e2e_realistic_kubernetes_alert,
+        isolated_e2e_settings,
+        isolated_test_database
     ):
         """
         Comprehensive test: Process alert once, then validate multiple API endpoints.
         
         This unified test covers:
-        1. Real alert processing with single-stage chain execution
+        1. Real alert processing with multi-stage chain execution
         2. Sessions API validation (list + detail endpoints)
         3. Comprehensive API data validation
         4. Data consistency across all endpoints
         
         Benefits:
+        - Complete isolation: Uses isolated fixtures to prevent test interference
         - No duplication: Process alert only once
         - Complete coverage: All API endpoints tested
         - Efficient: Single test run covers everything
-        - Simple: Uses minimal single-stage chain for easier debugging
+        - Clean: All temporary resources automatically cleaned up
         """
         print("🚀 Starting comprehensive alert processing and API validation...")
+        print(f"   📊 Using isolated database: {isolated_test_database}")
+        print(f"   ⚙️  Using isolated settings with proper isolation")
         
-        fake_kubeconfig_path = "/tmp/fake-kubeconfig-simple"
+        # Create realistic mocks using the isolated environment
+        llm_mock, mcp_mock = await self._create_simple_fast_mocks()
         
-        # Setup environment safely
-        with safe_kubeconfig_override(fake_kubeconfig_path):
-            self._setup_fake_kubeconfig(fake_kubeconfig_path)
+        # All settings and environment isolation is handled by fixtures
+        # Database is already initialized by the isolated_test_database fixture
+        
+        # Mock dependencies but keep real alert service
+        with patch('tarsy.services.history_service.get_settings') as mock_history_settings, \
+             patch('tarsy.services.alert_service.LLMManager') as mock_llm_manager_class, \
+             patch('tarsy.services.alert_service.MCPClient') as mock_mcp_client_class, \
+             patch('tarsy.services.alert_service.MCPServerRegistry') as mock_mcp_server_registry, \
+             patch('tarsy.services.alert_service.RunbookService') as mock_runbook_service, \
+             patch('tarsy.main.alert_processing_semaphore') as mock_semaphore:
             
-            # Create temporary database for this test
-            test_db_name = f"test_db_{uuid.uuid4().hex[:8]}.db"
-            test_db_path = f"/tmp/{test_db_name}"
-            test_db_url = f"sqlite:///{test_db_path}"
+            print("🔧 Setting up real AlertService with mocked dependencies...")
+        
+            # Setup history service settings (use isolated settings)
+            mock_history_settings.return_value = isolated_e2e_settings
             
-            try:
-                # Create test settings for real AlertService
-                test_settings = self._create_test_settings_for_real_processing(test_db_url)
-                llm_mock, mcp_mock = await self._create_simple_fast_mocks()
+            # Setup semaphore mock to allow async context management
+            import asyncio
+            real_semaphore = asyncio.Semaphore()
+            
+            # Patch the semaphore directly in the main module, not just the return value
+            import tarsy.main
+            tarsy.main.alert_processing_semaphore = real_semaphore
+            
+            # CRITICAL: Also patch the mock to return the real semaphore when needed
+            mock_semaphore.return_value = real_semaphore
+            
+            # Database is already initialized by the isolated_test_database fixture
+            print(f"✅ Using isolated database: {isolated_test_database}")
+        
+            # Setup LLM Manager mock - CRITICAL: this needs to return our async llm_mock
+            mock_llm_manager_instance = Mock()
+            mock_llm_manager_instance.is_available.return_value = True
+            mock_llm_manager_instance.get_client.return_value = llm_mock  # This goes to AgentFactory and then to agents
+            mock_llm_manager_instance.initialize.return_value = True
+            mock_llm_manager_instance.list_available_providers.return_value = ["gemini"]
+            mock_llm_manager_instance.get_availability_status.return_value = {"gemini": "available"}
+            # CRITICAL: The LLM manager itself should also be async-compatible since agents may call it directly
+            mock_llm_manager_instance.__call__ = AsyncMock(return_value=llm_mock)
+            mock_llm_manager_class.return_value = mock_llm_manager_instance
+            
+            # Setup MCP Client mock with realistic methods
+            mock_mcp_client_instance = Mock()
+            mock_mcp_client_instance.initialize = AsyncMock()
+            mock_mcp_client_instance.call_tool = mcp_mock.call_tool  # Use our realistic async mock
+            mock_mcp_client_instance.list_servers = AsyncMock(return_value=["kubernetes-server"])
+            mock_mcp_client_instance.get_available_tools = AsyncMock(return_value=["get_namespace", "patch_namespace", "check_status"])
+            
+            # CRITICAL: This is the method that was failing at line 639 in base_agent.py
+            mock_mcp_client_instance.list_tools = AsyncMock(return_value={
+                "kubernetes-server": [
+                    {"name": "get_namespace", "description": "Get namespace information"},
+                    {"name": "patch_namespace", "description": "Patch namespace configuration"},
+                    {"name": "check_status", "description": "Check resource status"},
+                ]
+            })
+            mock_mcp_client_class.return_value = mock_mcp_client_instance
+            
+            # Setup MCP Server Registry mock with realistic tool discovery
+            mock_mcp_registry_instance = Mock()
+            mock_mcp_registry_instance.initialize_servers = AsyncMock()
+            mock_mcp_registry_instance.get_server_client = AsyncMock(return_value=mcp_mock)
+            mock_mcp_registry_instance.list_available_servers = Mock(return_value=["kubernetes-server"])
+            mock_mcp_registry_instance.cleanup_all_servers = AsyncMock()
+            
+            # Add tool discovery methods that return proper iterables
+            mock_mcp_registry_instance.get_available_tools = AsyncMock(return_value=[
+                {"name": "get_namespace", "description": "Get namespace information"},
+                {"name": "patch_namespace", "description": "Patch namespace configuration"},
+                {"name": "check_status", "description": "Check resource status"},
+                {"name": "kubectl_get", "description": "Get Kubernetes resources"},
+                {"name": "kubectl_patch", "description": "Patch Kubernetes resources"}
+            ])
+            mock_mcp_registry_instance.discover_tools = AsyncMock(return_value={
+                "kubernetes-server": [
+                    {"name": "get_namespace", "description": "Get namespace information"},
+                    {"name": "patch_namespace", "description": "Patch namespace configuration"},
+                    {"name": "check_status", "description": "Check resource status"}
+                ]
+            })
+            
+            # CRITICAL: Add the missing get_server_configs method that agents iterate over
+            from types import SimpleNamespace
+            
+            def mock_get_server_configs(server_ids):
+                """Return mock server config objects that can be iterated over."""
+                configs = []
+                for server_id in server_ids:
+                    config = SimpleNamespace(
+                        server_id=server_id,
+                        instructions="Mock instructions for " + server_id,
+                        description=f"Mock {server_id} server for testing",
+                        name=server_id,
+                        server_type="mock",
+                        connection_params={}
+                    )
+                    configs.append(config)
+                return configs
+            
+            def mock_get_single_server_config(server_id):
+                """Return a single mock server config object."""
+                return SimpleNamespace(
+                    server_id=server_id,
+                    instructions="Mock instructions for " + server_id,
+                    description=f"Mock {server_id} server for testing",
+                    name=server_id,
+                    server_type="mock",
+                    connection_params={}
+                )
+            
+            mock_mcp_registry_instance.get_server_configs = Mock(side_effect=mock_get_server_configs)
+            mock_mcp_registry_instance.get_server_config = Mock(side_effect=mock_get_single_server_config)
+            
+            mock_mcp_server_registry.return_value = mock_mcp_registry_instance
+            
+            # Setup Runbook Service mock
+            mock_runbook_instance = Mock()
+            mock_runbook_instance.download_runbook = AsyncMock(return_value="Mock runbook content for kubernetes namespace terminating")
+            mock_runbook_service.return_value = mock_runbook_instance
+            
+            # Create real AlertService and use it for processing
+            from tarsy.services.alert_service import AlertService
+            real_alert_service = AlertService(isolated_e2e_settings)
+            
+            # CRITICAL: Replace AlertService's dependencies with our mocks BEFORE initialize()
+            # This ensures the AgentFactory gets our mocks when AlertService.initialize() creates it
+            real_alert_service.mcp_client = mock_mcp_client_instance
+            # IMPORTANT: The AgentFactory expects llm_client to be the actual client, not a manager
+            # So we pass our llm_mock directly as the llm_manager
+            real_alert_service.llm_manager = llm_mock
+            # CRITICAL: Replace the runbook service with our mock to prevent real HTTP requests
+            real_alert_service.runbook_service = mock_runbook_instance
+            
+            await real_alert_service.initialize()
+            print("✅ Real AlertService initialized with mocked dependencies")
+            
+            # DEBUG: Check what chains are available
+            available_alert_types = real_alert_service.chain_registry.list_available_alert_types()
+            available_chains = real_alert_service.chain_registry.list_available_chains()
+            print(f"🔍 Available alert types: {available_alert_types}")
+            print(f"🔍 Available chains: {available_chains}")
+            
+            # Replace the main alert service with our real instance
+            with patch('tarsy.main.alert_service', real_alert_service):
+                # STEP 1: Submit Alert 
+                print("\n📝 STEP 1: Submitting alert...")
+                response = e2e_test_client.post("/alerts", json=e2e_realistic_kubernetes_alert)
+                if response.status_code != 200:
+                    print(f"❌ Alert submission failed: {response.status_code} - {response.text}")
+                    assert False, f"Alert submission failed: {response.status_code}"
+                    
+                response_data = response.json()
+                assert response_data["status"] == "queued"
+                alert_id = response_data["alert_id"]
+                print(f"✅ Alert submitted: {alert_id}")
                 
-                # CRITICAL: Override the cached global settings to ensure ALL parts of the system use our test database
-                # This prevents the issue where some services use the in-memory test database while others use our file database
-                with patch('tarsy.config.settings.get_settings', return_value=test_settings):
+                # STEP 2: Wait for processing completion
+                print("\n⏳ STEP 2: Waiting for processing completion...")
+                session_id = None
+                for i in range(60):  # Increased timeout for real processing
+                    await asyncio.sleep(0.5)  # Longer sleep for real processing
+                    session_id = real_alert_service.get_session_id_for_alert(alert_id)
+                    if session_id:
+                        print(f"   📋 Session found: {session_id[:8]}...")
+                        break
+                                        
+                if not session_id:
+                    assert False, "Session was not created within timeout"
+                    
+                print(f"✅ Processing completed with session: {session_id}")
                 
-                    # Mock settings and dependencies but keep real alert service
-                    with patch('tarsy.services.history_service.get_settings') as mock_history_settings, \
-                     patch('tarsy.services.alert_service.LLMManager') as mock_llm_manager_class, \
-                     patch('tarsy.services.alert_service.MCPClient') as mock_mcp_client_class, \
-                     patch('tarsy.services.alert_service.MCPServerRegistry') as mock_mcp_server_registry, \
-                     patch('tarsy.services.alert_service.RunbookService') as mock_runbook_service, \
-                     patch('tarsy.main.alert_processing_semaphore') as mock_semaphore:
-                        
-                        print("🔧 Setting up real AlertService with mocked dependencies...")
+                # Step 3: Validate Sessions API endpoints
+                print("\n🔍 STEP 3: Validating Sessions API endpoints...")
+                session_data, stage_interaction_counts = await self._validate_sessions_api(e2e_test_client, session_id, e2e_realistic_kubernetes_alert)
+                
+                # Step 4: Validate comprehensive API data structures  
+                print("\n🔍 STEP 4: Validating comprehensive API data...")
+                await self._validate_comprehensive_api_data(e2e_test_client, alert_id, session_id)
+                
+                # Step 5: Enhanced Summary
+                print("\n🎉 All API validations completed successfully!")
+                print(f"   ✅ Alert processing: {session_data.get('status')}")
+                print(f"   ✅ Session uniqueness: 1 session confirmed")
+                print(f"   ✅ Alert data consistency: Verified")
+                print(f"   ✅ Sessions list API validated")  
+                print(f"   ✅ Session detail API validated")
+                print(f"   ✅ Comprehensive data validated")
+                print(f"   ✅ Processing took: {session_data.get('duration_ms', 'unknown')}ms")
+                print(f"   ✅ Complete isolation: All resources automatically cleaned up")
+                
+                # STRICT VALIDATION: We MUST have stage interaction data
+                assert stage_interaction_counts, "STRICT VALIDATION FAILED: No stage interaction counts available. Stage processing failed."
+                
+                # STRICT VALIDATION: Final verification of exact stage interaction counts
+                final_stage_exact_counts = {
+                    "stage_0": {"llm": 4, "mcp": 3, "total": 7},  # data-collection
+                    "stage_1": {"llm": 3, "mcp": 2, "total": 5},  # verification  
+                    "stage_2": {"llm": 1, "mcp": 0, "total": 1}   # analysis (final-analysis strategy)
+                }
+                
+                print(f"   📊 Stage breakdown:")
+                for stage_name, counts in stage_interaction_counts.items():
+                    expected = final_stage_exact_counts.get(stage_name, {"llm": 1, "mcp": 1, "total": 2})
                     
-                        # Setup history service settings
-                        mock_history_settings.return_value = test_settings
-                        
-                        # Setup semaphore mock to allow async context management
-                        import asyncio
-                        real_semaphore = asyncio.Semaphore()
-                        
-                        # Patch the semaphore directly in the main module, not just the return value
-                        import tarsy.main
-                        tarsy.main.alert_processing_semaphore = real_semaphore
-                        
-                        # CRITICAL: Also patch the mock to return the real semaphore when needed
-                        mock_semaphore.return_value = real_semaphore
-                        
-                        # Initialize database
-                        from tarsy.database.init_db import initialize_database
-                        db_success = initialize_database()
-                        if not db_success:
-                            assert False, "Database initialization failed"
-                        print(f"✅ Database initialized: {test_db_name}")
+                    # STRICT FINAL ASSERTIONS - EXACT NUMBERS ONLY
+                    assert counts["llm"] == expected["llm"], f"FINAL STRICT VALIDATION FAILED: {stage_name} has {counts['llm']} LLM interactions, expected exactly {expected['llm']}"
+                    assert counts["mcp"] == expected["mcp"], f"FINAL STRICT VALIDATION FAILED: {stage_name} has {counts['mcp']} MCP interactions, expected exactly {expected['mcp']}"
+                    assert counts["total"] == expected["total"], f"FINAL STRICT VALIDATION FAILED: {stage_name} has {counts['total']} total interactions, expected exactly {expected['total']}"
                     
-                    # Setup LLM Manager mock - CRITICAL: this needs to return our async llm_mock
-                    mock_llm_manager_instance = Mock()
-                    mock_llm_manager_instance.is_available.return_value = True
-                    mock_llm_manager_instance.get_client.return_value = llm_mock  # This goes to AgentFactory and then to agents
-                    mock_llm_manager_instance.initialize.return_value = True
-                    mock_llm_manager_instance.list_available_providers.return_value = ["gemini"]
-                    mock_llm_manager_instance.get_availability_status.return_value = {"gemini": "available"}
-                    # CRITICAL: The LLM manager itself should also be async-compatible since agents may call it directly
-                    mock_llm_manager_instance.__call__ = AsyncMock(return_value=llm_mock)
-                    mock_llm_manager_class.return_value = mock_llm_manager_instance
-                    
-                    # Setup MCP Client mock with realistic methods
-                    mock_mcp_client_instance = Mock()
-                    mock_mcp_client_instance.initialize = AsyncMock()
-                    mock_mcp_client_instance.call_tool = mcp_mock.call_tool  # Use our realistic async mock
-                    mock_mcp_client_instance.list_servers = AsyncMock(return_value=["kubernetes-server"])
-                    mock_mcp_client_instance.get_available_tools = AsyncMock(return_value=["get_namespace", "patch_namespace", "check_status"])
-                    
-                    # CRITICAL: This is the method that was failing at line 639 in base_agent.py
-                    mock_mcp_client_instance.list_tools = AsyncMock(return_value={
-                        "kubernetes-server": [
-                            {"name": "get_namespace", "description": "Get namespace information"},
-                            {"name": "patch_namespace", "description": "Patch namespace configuration"},
-                            {"name": "check_status", "description": "Check resource status"},
-                        ]
-                    })
-                    mock_mcp_client_class.return_value = mock_mcp_client_instance
-                    
-                    # Setup MCP Server Registry mock with realistic tool discovery
-                    mock_mcp_registry_instance = Mock()
-                    mock_mcp_registry_instance.initialize_servers = AsyncMock()
-                    mock_mcp_registry_instance.get_server_client = AsyncMock(return_value=mcp_mock)
-                    mock_mcp_registry_instance.list_available_servers = Mock(return_value=["kubernetes-server"])
-                    mock_mcp_registry_instance.cleanup_all_servers = AsyncMock()
-                    
-                    # Add tool discovery methods that return proper iterables
-                    mock_mcp_registry_instance.get_available_tools = AsyncMock(return_value=[
-                        {"name": "get_namespace", "description": "Get namespace information"},
-                        {"name": "patch_namespace", "description": "Patch namespace configuration"},
-                        {"name": "check_status", "description": "Check resource status"},
-                        {"name": "kubectl_get", "description": "Get Kubernetes resources"},
-                        {"name": "kubectl_patch", "description": "Patch Kubernetes resources"}
-                    ])
-                    mock_mcp_registry_instance.discover_tools = AsyncMock(return_value={
-                        "kubernetes-server": [
-                            {"name": "get_namespace", "description": "Get namespace information"},
-                            {"name": "patch_namespace", "description": "Patch namespace configuration"},
-                            {"name": "check_status", "description": "Check resource status"}
-                        ]
-                    })
-                    
-                    # CRITICAL: Add the missing get_server_configs method that agents iterate over
-                    from types import SimpleNamespace
-                    
-                    def mock_get_server_configs(server_ids):
-                        """Return mock server config objects that can be iterated over."""
-                        configs = []
-                        for server_id in server_ids:
-                            config = SimpleNamespace(
-                                server_id=server_id,
-                                instructions="Mock instructions for " + server_id,
-                                description=f"Mock {server_id} server for testing",
-                                name=server_id,
-                                server_type="mock",
-                                connection_params={}
-                            )
-                            configs.append(config)
-                        return configs
-                    
-                    def mock_get_single_server_config(server_id):
-                        """Return a single mock server config object."""
-                        return SimpleNamespace(
-                            server_id=server_id,
-                            instructions="Mock instructions for " + server_id,
-                            description=f"Mock {server_id} server for testing",
-                            name=server_id,
-                            server_type="mock",
-                            connection_params={}
-                        )
-                    
-                    mock_mcp_registry_instance.get_server_configs = Mock(side_effect=mock_get_server_configs)
-                    mock_mcp_registry_instance.get_server_config = Mock(side_effect=mock_get_single_server_config)
-                    
-                    mock_mcp_server_registry.return_value = mock_mcp_registry_instance
-                    
-                    # Setup Runbook Service mock
-                    mock_runbook_instance = Mock()
-                    mock_runbook_instance.download_runbook = AsyncMock(return_value="Mock runbook content for kubernetes namespace terminating")
-                    mock_runbook_service.return_value = mock_runbook_instance
-                    
-                    # Create real AlertService and use it for processing
-                    from tarsy.services.alert_service import AlertService
-                    real_alert_service = AlertService(test_settings)
-                    
-                    # CRITICAL: Replace AlertService's dependencies with our mocks BEFORE initialize()
-                    # This ensures the AgentFactory gets our mocks when AlertService.initialize() creates it
-                    real_alert_service.mcp_client = mock_mcp_client_instance
-                    # IMPORTANT: The AgentFactory expects llm_client to be the actual client, not a manager
-                    # So we pass our llm_mock directly as the llm_manager
-                    real_alert_service.llm_manager = llm_mock
-                    # CRITICAL: Replace the runbook service with our mock to prevent real HTTP requests
-                    real_alert_service.runbook_service = mock_runbook_instance
-                    
-                    await real_alert_service.initialize()
-                    print("✅ Real AlertService initialized with mocked MCP client")
-                    
-                    # DEBUG: Check what chains are available
-                    available_alert_types = real_alert_service.chain_registry.list_available_alert_types()
-                    available_chains = real_alert_service.chain_registry.list_available_chains()
-                    print(f"🔍 Available alert types: {available_alert_types}")
-                    print(f"🔍 Available chains: {available_chains}")
-                    
-                    # Replace the main alert service with our real instance
-                    with patch('tarsy.main.alert_service', real_alert_service):
-                        # STEP 1: Submit Alert 
-                        print("\n📝 STEP 1: Submitting alert...")
-                        response = test_client.post("/alerts", json=realistic_namespace_alert)
-                        if response.status_code != 200:
-                            print(f"❌ Alert submission failed: {response.status_code} - {response.text}")
-                            assert False, f"Alert submission failed: {response.status_code}"
-                            
-                        response_data = response.json()
-                        assert response_data["status"] == "queued"
-                        alert_id = response_data["alert_id"]
-                        print(f"✅ Alert submitted: {alert_id}")
-                        
-                        # STEP 2: Wait for processing completion
-                        print("\n⏳ STEP 2: Waiting for processing completion...")
-                        session_id = None
-                        for i in range(60):  # Increased timeout for real processing
-                            await asyncio.sleep(0.5)  # Longer sleep for real processing
-                            session_id = real_alert_service.get_session_id_for_alert(alert_id)
-                            if session_id:
-                                print(f"   📋 Session found: {session_id[:8]}...")
-                                break
-                                                
-                        if not session_id:
-                            assert False, "Session was not created within timeout"
-                            
-                        print(f"✅ Processing completed with session: {session_id}")
-                        
-                        # Step 3: Validate Sessions API endpoints
-                        print("\n🔍 STEP 3: Validating Sessions API endpoints...")
-                        session_data, stage_interaction_counts = await self._validate_sessions_api(test_client, session_id, realistic_namespace_alert)
-                        
-                        # Step 4: Validate comprehensive API data structures  
-                        print("\n🔍 STEP 4: Validating comprehensive API data...")
-                        await self._validate_comprehensive_api_data(test_client, alert_id, session_id)
-                        
-                        # Step 5: Enhanced Summary
-                        print("\n🎉 All API validations completed successfully!")
-                        print(f"   ✅ Alert processing: {session_data.get('status')}")
-                        print(f"   ✅ Session uniqueness: 1 session confirmed")
-                        print(f"   ✅ Alert data consistency: Verified")
-                        print(f"   ✅ Sessions list API validated")  
-                        print(f"   ✅ Session detail API validated")
-                        print(f"   ✅ Comprehensive data validated")
-                        print(f"   ✅ Processing took: {session_data.get('duration_ms', 'unknown')}ms")
-                        
-                        # STRICT VALIDATION: We MUST have stage interaction data
-                        assert stage_interaction_counts, "STRICT VALIDATION FAILED: No stage interaction counts available. Stage processing failed."
-                        
-                        # STRICT VALIDATION: Final verification of exact stage interaction counts
-                        final_stage_exact_counts = {
-                            "stage_0": {"llm": 4, "mcp": 3, "total": 7},  # data-collection
-                            "stage_1": {"llm": 3, "mcp": 2, "total": 5},  # verification  
-                            "stage_2": {"llm": 1, "mcp": 0, "total": 1}   # analysis (final-analysis strategy)
-                        }
-                        
-                        print(f"   📊 Stage breakdown:")
-                        for stage_name, counts in stage_interaction_counts.items():
-                            expected = final_stage_exact_counts.get(stage_name, {"llm": 1, "mcp": 1, "total": 2})
-                            
-                            # STRICT FINAL ASSERTIONS - EXACT NUMBERS ONLY
-                            assert counts["llm"] == expected["llm"], f"FINAL STRICT VALIDATION FAILED: {stage_name} has {counts['llm']} LLM interactions, expected exactly {expected['llm']}"
-                            assert counts["mcp"] == expected["mcp"], f"FINAL STRICT VALIDATION FAILED: {stage_name} has {counts['mcp']} MCP interactions, expected exactly {expected['mcp']}"
-                            assert counts["total"] == expected["total"], f"FINAL STRICT VALIDATION FAILED: {stage_name} has {counts['total']} total interactions, expected exactly {expected['total']}"
-                            
-                            print(f"      • {stage_name}: {counts['llm']} LLM + {counts['mcp']} MCP = {counts['total']} total interactions ✅")
-                    
-            finally:
-                # Cleanup files
-                try:
-                    if os.path.exists(fake_kubeconfig_path):
-                        os.remove(fake_kubeconfig_path)
-                    if os.path.exists(test_db_path):
-                        os.remove(test_db_path)
-                        print(f"✅ Cleaned up database: {test_db_name}")
-                except Exception as e:
-                    print(f"⚠️ Failed to cleanup: {e}")
+                    print(f"      • {stage_name}: {counts['llm']} LLM + {counts['mcp']} MCP = {counts['total']} total interactions ✅")
+        
+        # Note: All cleanup is handled automatically by the isolated e2e fixtures
+        print("🧹 All temporary resources automatically cleaned up by isolation fixtures")

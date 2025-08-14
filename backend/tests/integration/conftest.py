@@ -46,6 +46,10 @@ def mock_settings():
     settings.log_level = "INFO"
     settings.agent_config_path = None  # No agent config for integration tests
     
+    # History/Database settings - use in-memory database for integration tests
+    settings.history_enabled = True
+    settings.history_database_url = "sqlite:///:memory:"
+    
     # LLM providers configuration that LLMManager expects
     settings.llm_providers = {
         "gemini": {
@@ -73,6 +77,27 @@ def mock_settings():
     
     settings.get_llm_config = mock_get_llm_config
     return settings
+
+
+@pytest.fixture(autouse=True, scope="function")  
+def ensure_integration_test_isolation(mock_settings, monkeypatch):
+    """Ensure integration tests use mock settings and don't get contaminated by e2e tests."""
+    # CRITICAL: Reset the global history service singleton to prevent e2e contamination
+    import tarsy.services.history_service
+    original_history_service = getattr(tarsy.services.history_service, '_history_service', None)
+    tarsy.services.history_service._history_service = None
+    
+    # Force patch the settings globally for every integration test
+    monkeypatch.setattr("tarsy.config.settings.get_settings", lambda: mock_settings)
+    
+    # Also ensure environment variables don't leak from e2e tests
+    monkeypatch.delenv("HISTORY_DATABASE_URL", raising=False)
+    monkeypatch.setenv("TESTING", "true")
+    
+    yield
+    
+    # Restore the original history service state (if any)
+    tarsy.services.history_service._history_service = original_history_service
 
 
 @pytest.fixture
