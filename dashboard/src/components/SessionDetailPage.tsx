@@ -19,7 +19,6 @@ import type { DetailedSession, SessionUpdate } from '../types';
 import SessionHeader from './SessionHeader';
 import OriginalAlertCard from './OriginalAlertCard';
 import FinalAnalysisCard from './FinalAnalysisCard';
-import TimelineVisualization from './TimelineVisualization';
 import NestedAccordionTimeline from './NestedAccordionTimeline';
 
 
@@ -537,11 +536,23 @@ function SessionDetailPage() {
                 timelineItems={session.chronological_timeline}
               />
             ) : (
-              <TimelineVisualization 
-                timelineItems={session.chronological_timeline}
-                isActive={session.status === 'in_progress' || session.status === 'pending'}
-                sessionId={session.session_id}
-              />
+              <Alert severity="error" sx={{ mb: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Backend Chain Execution Error
+                </Typography>
+                <Typography variant="body2">
+                  This session is missing chain execution data. All sessions should be processed as chains.
+                  This indicates a backend bug where stage execution records were not created properly.
+                </Typography>
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Session ID: {session.session_id}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Agent Type: {session.agent_type}
+                  </Typography>
+                </Box>
+              </Alert>
             )}
 
             {/* Final AI Analysis */}

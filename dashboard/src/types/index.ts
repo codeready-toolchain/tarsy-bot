@@ -365,11 +365,6 @@ export interface EnhancedHistoricalAlertsListProps extends HistoricalAlertsListP
 }
 
 // Phase 5: Enhanced timeline and interaction components
-export interface TimelineVisualizationProps {
-  timelineItems: TimelineItem[];
-  isActive?: boolean;
-}
-
 export interface InteractionDetailsProps {
   type: 'llm' | 'mcp' | 'system';
   details: LLMInteraction | MCPInteraction | SystemEvent;

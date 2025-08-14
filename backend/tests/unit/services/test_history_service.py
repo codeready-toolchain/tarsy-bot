@@ -487,6 +487,60 @@ class TestHistoryServiceGlobalInstance:
             mock_instance.initialize.assert_called_once()
 
 
+@pytest.mark.unit
+class TestHistoryServiceStageExecution:
+    """Test suite for HistoryService stage execution methods - covers bug fixes."""
+    
+    @pytest.fixture
+    def sample_stage_execution(self):
+        """Sample stage execution for testing."""
+        from tarsy.models.history import StageExecution
+        from tarsy.models.constants import StageStatus
+        return StageExecution(
+            session_id="test-session",
+            stage_id="test-stage-0",
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="KubernetesAgent", 
+            status=StageStatus.PENDING.value
+        )
+    
+    @pytest.mark.asyncio
+    async def test_create_stage_execution_no_repository_raises_error(self, sample_stage_execution):
+        """Test that RuntimeError is raised when repository is unavailable - covers bug fix."""
+        service = HistoryService()
+        
+        # Mock get_repository to return None (repository unavailable)
+        with patch.object(service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = None
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Should raise RuntimeError instead of returning fallback ID
+            with pytest.raises(RuntimeError, match="Failed to create stage execution record"):
+                await service.create_stage_execution(sample_stage_execution)
+    
+    @pytest.mark.asyncio
+    async def test_create_stage_execution_database_failure_raises_error(self, sample_stage_execution):
+        """Test that database failures cause RuntimeError instead of fallback - covers bug fix."""
+        service = HistoryService()
+        
+        # Mock the retry mechanism to return None (simulating all retries failed)
+        with patch.object(service, '_retry_database_operation', return_value=None):
+            # Should raise RuntimeError instead of returning fallback ID  
+            with pytest.raises(RuntimeError, match="Failed to create stage execution record"):
+                await service.create_stage_execution(sample_stage_execution)
+    
+    @pytest.mark.asyncio
+    async def test_create_stage_execution_success_returns_id(self, sample_stage_execution):
+        """Test successful stage execution creation returns the ID."""
+        service = HistoryService()
+        
+        # Mock successful repository operation
+        with patch.object(service, '_retry_database_operation', return_value="stage-exec-123"):
+            result = await service.create_stage_execution(sample_stage_execution)
+            assert result == "stage-exec-123"
+
+
 class TestHistoryServiceErrorHandling:
     """Test suite for HistoryService error handling scenarios."""
     

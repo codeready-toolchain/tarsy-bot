@@ -308,12 +308,13 @@ class HistoryService:
         def _create_stage_operation():
             with self.get_repository() as repo:
                 if not repo:
-                    logger.warning("History repository unavailable - stage execution not created")
-                    return None
+                    raise RuntimeError("History repository unavailable - cannot create stage execution record")
                 return repo.create_stage_execution(stage_execution)
         
         result = self._retry_database_operation("create_stage_execution", _create_stage_operation)
-        return result if result is not None else stage_execution.execution_id
+        if result is None:
+            raise RuntimeError(f"Failed to create stage execution record for stage '{stage_execution.stage_name}'. Chain processing cannot continue without proper stage tracking.")
+        return result
     
     async def update_stage_execution(self, stage_execution: StageExecution):
         """Update an existing stage execution record."""

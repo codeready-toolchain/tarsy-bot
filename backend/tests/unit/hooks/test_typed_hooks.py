@@ -9,10 +9,12 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime
 
-from tarsy.hooks.typed_history_hooks import TypedLLMHistoryHook, TypedMCPHistoryHook
+from tarsy.hooks.typed_history_hooks import TypedLLMHistoryHook, TypedMCPHistoryHook, TypedStageExecutionHistoryHook
 from tarsy.hooks.typed_dashboard_hooks import TypedLLMDashboardHook, TypedMCPDashboardHook
 from tarsy.hooks.typed_context import BaseTypedHook
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.history import StageExecution
+from tarsy.models.constants import StageStatus
 from tarsy.services.history_service import HistoryService
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
 
@@ -128,6 +130,90 @@ class TestTypedMCPHistoryHook:
         await mcp_hook.execute(sample_mcp_interaction)
         
         mock_history_service.log_mcp_interaction.assert_called_once_with(sample_mcp_interaction)
+
+
+@pytest.mark.unit
+class TestTypedStageExecutionHistoryHook:
+    """Test typed stage execution history hook - covers the bug fix for stage creation."""
+    
+    @pytest.fixture
+    def mock_history_service(self):
+        """Mock history service."""
+        service = Mock(spec=HistoryService)
+        service.create_stage_execution = AsyncMock(return_value="stage-exec-123")
+        service.update_stage_execution = AsyncMock(return_value=True)
+        return service
+    
+    @pytest.fixture
+    def stage_hook(self, mock_history_service):
+        """Create stage execution history hook."""
+        return TypedStageExecutionHistoryHook(mock_history_service)
+    
+    @pytest.fixture
+    def new_stage_execution(self):
+        """Create new stage execution (started_at_us=None)."""
+        return StageExecution(
+            session_id="test-session",
+            stage_id="test-stage-0",
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="KubernetesAgent",
+            status=StageStatus.PENDING.value
+            # started_at_us=None (default) - indicates new creation
+        )
+    
+    @pytest.fixture
+    def existing_stage_execution(self):
+        """Create existing stage execution (has started_at_us)."""
+        return StageExecution(
+            session_id="test-session",
+            stage_id="test-stage-0", 
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="KubernetesAgent",
+            status=StageStatus.ACTIVE.value,
+            started_at_us=1640995200000000  # Has start time - indicates existing record
+        )
+    
+    def test_hook_initialization(self, mock_history_service):
+        """Test hook initializes correctly."""
+        hook = TypedStageExecutionHistoryHook(mock_history_service)
+        assert hook.name == "typed_stage_history"
+        assert hook.history_service == mock_history_service
+    
+    @pytest.mark.asyncio
+    async def test_execute_creates_new_stage(self, stage_hook, mock_history_service, new_stage_execution):
+        """Test that new stage execution (started_at_us=None) calls create."""
+        await stage_hook.execute(new_stage_execution)
+        
+        # Should call create, not update
+        mock_history_service.create_stage_execution.assert_called_once_with(new_stage_execution)
+        mock_history_service.update_stage_execution.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_execute_updates_existing_stage(self, stage_hook, mock_history_service, existing_stage_execution):
+        """Test that existing stage execution (has started_at_us) calls update."""
+        await stage_hook.execute(existing_stage_execution)
+        
+        # Should call update, not create
+        mock_history_service.update_stage_execution.assert_called_once_with(existing_stage_execution)
+        mock_history_service.create_stage_execution.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_execute_handles_create_error(self, stage_hook, mock_history_service, new_stage_execution):
+        """Test that create errors are properly propagated."""
+        mock_history_service.create_stage_execution.side_effect = RuntimeError("Failed to create stage")
+        
+        with pytest.raises(RuntimeError, match="Failed to create stage"):
+            await stage_hook.execute(new_stage_execution)
+    
+    @pytest.mark.asyncio
+    async def test_execute_handles_update_error(self, stage_hook, mock_history_service, existing_stage_execution):
+        """Test that update errors are properly propagated."""
+        mock_history_service.update_stage_execution.side_effect = RuntimeError("Failed to update stage")
+        
+        with pytest.raises(RuntimeError, match="Failed to update stage"):
+            await stage_hook.execute(existing_stage_execution)
 
 
 @pytest.mark.unit
@@ -274,3 +360,41 @@ class TestTypedHooksIntegration:
         # Verify both executed
         mock_history_service.log_llm_interaction.assert_called_once_with(interaction)
         mock_broadcaster.broadcast_interaction_update.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_stage_execution_integration(self):
+        """Integration test for stage execution hook - verifies the bug fix."""
+        # This test ensures stage execution records are properly created
+        # and covers the specific bug we fixed
+        
+        mock_history_service = Mock(spec=HistoryService)
+        mock_history_service.create_stage_execution = AsyncMock(return_value="stage-exec-integration")
+        
+        mock_broadcaster = AsyncMock(spec=DashboardBroadcaster)
+        mock_broadcaster.broadcast_session_update = AsyncMock(return_value=2)
+        
+        # Create hooks
+        from tarsy.hooks.typed_history_hooks import TypedStageExecutionHistoryHook
+        from tarsy.hooks.typed_dashboard_hooks import TypedStageExecutionDashboardHook
+        
+        history_hook = TypedStageExecutionHistoryHook(mock_history_service)
+        dashboard_hook = TypedStageExecutionDashboardHook(mock_broadcaster)
+        
+        # Create new stage execution (the key is started_at_us=None)
+        stage_execution = StageExecution(
+            session_id="integration-test-session",
+            stage_id="integration-stage-0", 
+            stage_index=0,
+            stage_name="Integration Test Stage",
+            agent="KubernetesAgent",
+            status=StageStatus.PENDING.value
+            # started_at_us=None (default) - this was the key bug!
+        )
+        
+        # Execute both hooks
+        await history_hook.execute(stage_execution)
+        await dashboard_hook.execute(stage_execution)
+        
+        # Verify stage was created (not updated) - this is the bug fix
+        mock_history_service.create_stage_execution.assert_called_once_with(stage_execution)
+        mock_broadcaster.broadcast_session_update.assert_called_once()

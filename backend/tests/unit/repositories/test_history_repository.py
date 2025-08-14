@@ -1053,7 +1053,7 @@ class TestHistoryRepository:
             stage_index=0,
             stage_name="Initial Analysis",
             agent="KubernetesAgent",
-            status=StageStatus.ACTIVE,
+            status=StageStatus.ACTIVE.value,
             started_at_us=now_us()
         )
         
@@ -1063,7 +1063,7 @@ class TestHistoryRepository:
         repository.session.refresh(stage_execution)
         
         # Now update it to completed
-        stage_execution.status = StageStatus.COMPLETED
+        stage_execution.status = StageStatus.COMPLETED.value
         stage_execution.completed_at_us = now_us()
         stage_execution.duration_ms = 5000
         stage_execution.stage_output = {"result": "analysis complete"}
@@ -1074,7 +1074,7 @@ class TestHistoryRepository:
         
         # Verify the update was applied
         updated_execution = repository.session.get(StageExecution, stage_execution.execution_id)
-        assert updated_execution.status == StageStatus.COMPLETED
+        assert updated_execution.status == StageStatus.COMPLETED.value
         assert updated_execution.completed_at_us is not None
         assert updated_execution.duration_ms == 5000
         assert updated_execution.stage_output == {"result": "analysis complete"}
@@ -1092,7 +1092,7 @@ class TestHistoryRepository:
             stage_index=0,
             stage_name="Test Stage",
             agent="TestAgent",
-            status=StageStatus.COMPLETED
+            status=StageStatus.COMPLETED.value
         )
         
         # Attempt to update should raise ValueError

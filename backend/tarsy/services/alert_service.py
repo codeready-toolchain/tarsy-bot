@@ -741,38 +741,49 @@ class AlertService:
             
         Returns:
             Stage execution ID
+            
+        Raises:
+            RuntimeError: If stage execution record cannot be created
         """
-        try:
-            if not self.history_service or not self.history_service.enabled:
-                return f"stage_{stage_index}_{uuid.uuid4().hex[:8]}"
-            
-            from tarsy.models.history import StageExecution
-            stage_execution = StageExecution(
-                session_id=session_id,
-                stage_id=f"{stage.name}_{stage_index}",
-                stage_index=stage_index,
-                stage_name=stage.name,
-                agent=stage.agent,
-                status=StageStatus.PENDING.value
+        if not self.history_service or not self.history_service.enabled:
+            raise RuntimeError(
+                f"Cannot create stage execution for '{stage.name}': History service is disabled. "
+                "All alert processing must be done as chains with proper stage tracking."
             )
-            
-            # Trigger stage execution hooks (history + dashboard) via context manager
-            try:
-                from tarsy.hooks.typed_context import stage_execution_context
-                async with stage_execution_context(session_id, stage_execution) as ctx:
-                    # Context automatically triggers hooks when exiting
-                    # History hook will create DB record and set execution_id on the model
-                    pass
-                logger.debug(f"Triggered stage hooks for stage creation {stage_index}: {stage.name}")
-            except Exception as e:
-                logger.warning(f"Failed to trigger stage creation hooks: {str(e)}")
-            
-            # Return the execution_id that was set by the history hook
-            return stage_execution.execution_id if hasattr(stage_execution, 'execution_id') and stage_execution.execution_id else f"stage_{stage_index}_{uuid.uuid4().hex[:8]}"
-            
+        
+        from tarsy.models.history import StageExecution
+        stage_execution = StageExecution(
+            session_id=session_id,
+            stage_id=f"{stage.name}_{stage_index}",
+            stage_index=stage_index,
+            stage_name=stage.name,
+            agent=stage.agent,
+            status=StageStatus.PENDING.value
+        )
+        
+        # Trigger stage execution hooks (history + dashboard) via context manager
+        try:
+            from tarsy.hooks.typed_context import stage_execution_context
+            async with stage_execution_context(session_id, stage_execution) as ctx:
+                # Context automatically triggers hooks when exiting
+                # History hook will create DB record and set execution_id on the model
+                pass
+            logger.debug(f"Successfully created stage execution {stage_index}: {stage.name}")
         except Exception as e:
-            logger.warning(f"Failed to create stage execution: {str(e)}")
-            return f"stage_{stage_index}_{uuid.uuid4().hex[:8]}"
+            logger.error(f"Critical failure creating stage execution for '{stage.name}': {str(e)}")
+            raise RuntimeError(
+                f"Failed to create stage execution record for stage '{stage.name}' (index {stage_index}). "
+                f"Chain processing cannot continue without proper stage tracking. Error: {str(e)}"
+            ) from e
+        
+        # Verify the execution_id was properly set by the history hook
+        if not hasattr(stage_execution, 'execution_id') or not stage_execution.execution_id:
+            raise RuntimeError(
+                f"Stage execution record for '{stage.name}' was created but execution_id is missing. "
+                "This indicates a critical bug in the history service or database layer."
+            )
+        
+        return stage_execution.execution_id
     
     async def _update_session_current_stage(self, session_id: str, stage_index: int, stage_execution_id: str):
         """

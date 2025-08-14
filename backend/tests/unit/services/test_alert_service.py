@@ -1024,4 +1024,4 @@ class TestAlertServiceValidationAndCaching:
         long_alert_id = "a" * 1000
         assert not alert_service.alert_exists(long_alert_id)
         alert_service.register_alert_id(long_alert_id)
-        assert alert_service.alert_exists(long_alert_id) 
+        assert alert_service.alert_exists(long_alert_id)
