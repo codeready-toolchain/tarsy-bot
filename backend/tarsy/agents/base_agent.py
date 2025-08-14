@@ -85,6 +85,8 @@ class BaseAgent(ABC):
         
         # Create appropriate iteration controller based on configuration
         self._iteration_controller: IterationController = self._create_iteration_controller(iteration_strategy)
+        # Cache the iteration strategy to avoid redundant imports in property getter
+        self._iteration_strategy: IterationStrategy = iteration_strategy
     
     def _create_iteration_controller(self, strategy: IterationStrategy) -> IterationController:
         """
@@ -115,29 +117,13 @@ class BaseAgent(ABC):
     @property
     def iteration_strategy(self) -> IterationStrategy:
         """Get the current iteration strategy for this agent."""
-        if isinstance(self._iteration_controller, RegularIterationController):
-            return IterationStrategy.REGULAR
-        elif isinstance(self._iteration_controller, SimpleReActController):
-            return IterationStrategy.REACT
-        else:
-            # For new controllers, we need to import them to check isinstance
-            from .iteration_controllers.react_tools_controller import ReactToolsController
-            from .iteration_controllers.react_tools_partial_controller import ReactToolsPartialController
-            from .iteration_controllers.react_final_analysis_controller import ReactFinalAnalysisController
-            
-            if isinstance(self._iteration_controller, ReactToolsController):
-                return IterationStrategy.REACT_TOOLS
-            elif isinstance(self._iteration_controller, ReactToolsPartialController):
-                return IterationStrategy.REACT_TOOLS_PARTIAL
-            elif isinstance(self._iteration_controller, ReactFinalAnalysisController):
-                return IterationStrategy.REACT_FINAL_ANALYSIS
-            else:
-                raise ValueError(f"Unknown controller type: {type(self._iteration_controller)}")
+        return self._iteration_strategy
 
     # Strategy can be overridden per stage via AgentFactory
     def set_iteration_strategy(self, strategy: IterationStrategy):
         """Update iteration strategy (used by AgentFactory for stage-specific strategies)."""
         self._iteration_controller = self._create_iteration_controller(strategy)
+        self._iteration_strategy = strategy
 
     @property
     def max_iterations(self) -> int:

@@ -163,8 +163,8 @@ Please provide a final analysis based on what you've discovered, even if the inv
             ]
             
             fallback_response = await self.llm_client.generate_response(messages, context.session_id, agent.get_current_stage_execution_id())
-            return f"Partial analysis completed (reached max iterations):\\n\\n{fallback_response}"
+            return f"Partial analysis completed (reached max iterations):\n\n{fallback_response}"
             
         except Exception as e:
             logger.error(f"Failed to generate fallback analysis: {str(e)}")
-            return f"Partial analysis incomplete: reached maximum iterations ({max_iterations}) without final answer. Last investigation steps:\\n\\n{chr(10).join(react_history[-5:])}"
+            return f"Partial analysis incomplete: reached maximum iterations ({max_iterations}) without final answer. Last investigation steps:\n\n{chr(10).join(react_history[-5:])}"

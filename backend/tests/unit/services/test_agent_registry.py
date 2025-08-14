@@ -504,10 +504,10 @@ class TestDuplicateDetectionInConfiguredAgents:
         with caplog.at_level("WARNING"):
             configured_mappings = registry._create_configured_mappings(mock_agent_configs_with_duplicates)
         
-        # Should use first-wins behavior
-        assert configured_mappings["AlertA"] == "ConfigurableAgent:security-agent"
-        assert configured_mappings["AlertB"] == "ConfigurableAgent:security-agent"  # First wins
-        assert configured_mappings["AlertC"] == "ConfigurableAgent:monitoring-agent"  # First wins
+        # Should use first-wins behavior (without ConfigurableAgent prefix)
+        assert configured_mappings["AlertA"] == "security-agent"
+        assert configured_mappings["AlertB"] == "security-agent"  # First wins
+        assert configured_mappings["AlertC"] == "monitoring-agent"  # First wins
         
         # Check warning logs
         warning_logs = [record for record in caplog.records if record.levelname == "WARNING"]
@@ -519,8 +519,8 @@ class TestDuplicateDetectionInConfiguredAgents:
         
         warning_msg = alertb_warnings[0].message
         assert "Alert type 'AlertB' mapping conflict detected!" in warning_msg
-        assert "Existing agent: 'ConfigurableAgent:security-agent'" in warning_msg
-        assert "New agent: 'ConfigurableAgent:monitoring-agent'" in warning_msg
+        assert "Existing agent: 'security-agent'" in warning_msg
+        assert "New agent: 'monitoring-agent'" in warning_msg
     
     def test_configured_mappings_shows_conflicts(self, caplog):
         """Test that configured agent mappings properly detect and log conflicts."""
@@ -547,10 +547,10 @@ class TestDuplicateDetectionInConfiguredAgents:
         alertb_warnings = [log for log in warning_logs if "AlertB" in log.message and "conflict detected" in log.message]
         assert len(alertb_warnings) == 1
         
-        # Final mapping should use first-wins behavior
-        assert configured_mappings["AlertA"] == "ConfigurableAgent:security-agent"
-        assert configured_mappings["AlertB"] == "ConfigurableAgent:security-agent"  # First wins
-        assert configured_mappings["AlertC"] == "ConfigurableAgent:monitoring-agent"
+        # Final mapping should use first-wins behavior (without ConfigurableAgent prefix)
+        assert configured_mappings["AlertA"] == "security-agent"
+        assert configured_mappings["AlertB"] == "security-agent"  # First wins
+        assert configured_mappings["AlertC"] == "monitoring-agent"
 
 
 @pytest.mark.unit
@@ -576,8 +576,8 @@ class TestRegistryDuplicateDetectionIntegration:
         # Configured agents should override default mappings via .update() call
         assert "NamespaceTerminating" in registry.static_mappings
         assert "CustomAlert" in registry.static_mappings
-        assert registry.static_mappings["NamespaceTerminating"] == "ConfigurableAgent:custom-agent"  # Override happens
-        assert registry.static_mappings["CustomAlert"] == "ConfigurableAgent:custom-agent"
+        assert registry.static_mappings["NamespaceTerminating"] == "custom-agent"  # Override happens (without prefix)
+        assert registry.static_mappings["CustomAlert"] == "custom-agent"
         
         # The registry should show appropriate logging
         info_logs = [record for record in caplog.records if record.levelname == "INFO"]
@@ -609,8 +609,8 @@ class TestRegistryDuplicateDetectionIntegration:
         with caplog.at_level("WARNING"):
             configured_mappings = registry._create_configured_mappings(agent_configs)
         
-        # Should consistently use first agent encountered
-        assert configured_mappings["DuplicateAlert"] == "ConfigurableAgent:first-agent"
+        # Should consistently use first agent encountered (without ConfigurableAgent prefix)
+        assert configured_mappings["DuplicateAlert"] == "first-agent"
         
         # Should have logged warnings for the conflicts
         warning_logs = [record for record in caplog.records if record.levelname == "WARNING"]

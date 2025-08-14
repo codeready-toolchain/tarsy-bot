@@ -108,41 +108,41 @@ class AgentRegistry:
         """
         Convert agent configurations to alert type mappings.
         
-        This method creates mappings from alert types to configured agent identifiers
-        in the format "ConfigurableAgent:agent-name".
+        This method creates direct mappings from alert types to configured agent names
+        (no prefix required since agent names are guaranteed to be unique).
         
         Args:
             agent_configs: Dictionary of agent configurations
             
         Returns:
-            Dictionary mapping alert types to configured agent identifiers
+            Dictionary mapping alert types to configured agent names
         """
         mappings = {}
         
         for agent_name, agent_config in agent_configs.items():
             for alert_type in agent_config.alert_types:
-                configured_agent_identifier = f"ConfigurableAgent:{agent_name}"
+                # Use simple agent name - no prefix needed since names are unique
                 
                 # Check for existing mapping to avoid silent overwrites
                 if alert_type in mappings:
                     existing_agent = mappings[alert_type]
-                    if existing_agent != configured_agent_identifier:
+                    if existing_agent != agent_name:
                         logger.warning(
                             f"Alert type '{alert_type}' mapping conflict detected! "
                             f"Existing agent: '{existing_agent}', "
-                            f"New agent: '{configured_agent_identifier}'. "
+                            f"New agent: '{agent_name}'. "
                             f"Keeping existing mapping (skipping overwrite)."
                         )
                         continue  # Skip overwrite, keep existing mapping
                     else:
                         logger.debug(
-                            f"Alert type '{alert_type}' already mapped to same agent '{configured_agent_identifier}' "
+                            f"Alert type '{alert_type}' already mapped to same agent '{agent_name}' "
                             f"(duplicate but consistent)"
                         )
                 else:
-                    # Map alert type to configured agent identifier
-                    mappings[alert_type] = configured_agent_identifier
-                    logger.debug(f"Mapped alert type '{alert_type}' to ConfigurableAgent:{agent_name}")
+                    # Map alert type directly to agent name
+                    mappings[alert_type] = agent_name
+                    logger.debug(f"Mapped alert type '{alert_type}' to configured agent '{agent_name}'")
                 
         return mappings
     

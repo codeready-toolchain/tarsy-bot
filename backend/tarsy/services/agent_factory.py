@@ -90,39 +90,49 @@ class AgentFactory:
                 raise ValueError(f"Built-in agent '{class_name}' could not be loaded: {e}")
     
 
-    def create_agent(self, agent_class_name: str) -> BaseAgent:
+    def create_agent(self, agent_name: str) -> BaseAgent:
         """
         Create an agent instance with dependency injection.
         
         Supports both traditional BaseAgent subclasses and configured agents.
-        Configured agents are identified by the format "ConfigurableAgent:agent-name".
+        Configured agents are checked first since they're more specific.
         
         Args:
-            agent_class_name: Name of the agent class or configured agent identifier
+            agent_name: Name of the agent (configured agents take precedence over built-in)
             
         Returns:
             Instantiated agent with injected dependencies
             
         Raises:
-            ValueError: If the agent class is not registered or configured
+            ValueError: If the agent is not found in configured or built-in agents
         """
         try:
-            # Handle traditional BaseAgent subclasses
-            if agent_class_name in self.static_agent_classes:
-                return self._create_traditional_agent(agent_class_name)
+            # Check configured agents first (they're more specific and can override built-ins)
+            if self.agent_configs and agent_name in self.agent_configs:
+                return self._create_configured_agent(agent_name)
             
-            # Handle configured agents (format: "ConfigurableAgent:agent-name")
-            if agent_class_name.startswith("ConfigurableAgent:"):
-                return self._create_configured_agent(agent_class_name)
+            # Check built-in agents second
+            if agent_name in self.static_agent_classes:
+                return self._create_traditional_agent(agent_name)
             
-            # Simple technical error message
-            configurable_agents = [f"ConfigurableAgent:{name}" for name in self.agent_configs.keys()] if self.agent_configs else []
-            all_available = list(self.static_agent_classes.keys()) + configurable_agents
-            raise ValueError(f"Unknown agent '{agent_class_name}'. Available: {all_available}")
+            # Handle legacy format for backwards compatibility
+            if agent_name.startswith("ConfigurableAgent:"):
+                legacy_agent_name = agent_name.split(":", 1)[1]
+                if self.agent_configs and legacy_agent_name in self.agent_configs:
+                    logger.warning(f"Using legacy format '{agent_name}'. Consider updating to just '{legacy_agent_name}'")
+                    return self._create_configured_agent(legacy_agent_name)
+            
+            # Generate helpful error message
+            available_agents = []
+            if self.agent_configs:
+                available_agents.extend(self.agent_configs.keys())
+            available_agents.extend(self.static_agent_classes.keys())
+            
+            raise ValueError(f"Unknown agent '{agent_name}'. Available: {available_agents}")
             
         except Exception as e:
             # Enhance error context for debugging
-            logger.error(f"Failed to create agent '{agent_class_name}': {e}")
+            logger.error(f"Failed to create agent '{agent_name}': {e}")
             raise
 
     async def get_agent(self, agent_identifier: str, iteration_strategy: Optional[str] = None) -> BaseAgent:
@@ -200,12 +210,12 @@ class AgentFactory:
         except Exception as e:
             raise ValueError(f"Failed to create '{agent_class_name}': {e}")
     
-    def _create_configured_agent(self, agent_class_name: str) -> BaseAgent:
+    def _create_configured_agent(self, agent_name: str) -> BaseAgent:
         """
         Create a ConfigurableAgent instance.
         
         Args:
-            agent_class_name: Configured agent identifier (format: "ConfigurableAgent:agent-name")
+            agent_name: Name of the configured agent (no prefix required)
             
         Returns:
             Instantiated configured agent
@@ -214,8 +224,6 @@ class AgentFactory:
             ValueError: If agent creation fails
         """
         try:
-            agent_name = agent_class_name.split(":", 1)[1]
-            
             if not self.agent_configs or agent_name not in self.agent_configs:
                 available_configs = list(self.agent_configs.keys()) if self.agent_configs else []
                 raise ValueError(f"Unknown configured agent '{agent_name}'. Available: {available_configs}")

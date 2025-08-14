@@ -164,8 +164,8 @@ Please provide a final summary of the data collected, even if the collection isn
             ]
             
             fallback_response = await self.llm_client.generate_response(messages, context.session_id, agent.get_current_stage_execution_id())
-            return f"Data collection completed (reached max iterations):\\n\\n{fallback_response}"
+            return f"Data collection completed (reached max iterations):\n\n{fallback_response}"
             
         except Exception as e:
             logger.error(f"Failed to generate fallback summary: {str(e)}")
-            return f"Data collection incomplete: reached maximum iterations ({max_iterations}) without final summary. Last collection steps:\\n\\n{chr(10).join(react_history[-5:])}"
+            return f"Data collection incomplete: reached maximum iterations ({max_iterations}) without final summary. Last collection steps:\n\n{chr(10).join(react_history[-5:])}"
