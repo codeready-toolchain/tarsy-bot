@@ -357,6 +357,90 @@ class HistoryService:
         result = self._retry_database_operation("get_session_with_stages", _get_session_with_stages_operation)
         return result
     
+    def calculate_session_summary(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Calculate summary statistics from session data.
+        
+        Extracts and calculates:
+        - Total interactions, LLM calls, MCP communications, system events
+        - Error counts and total duration
+        - Chain-specific statistics if applicable
+        
+        Args:
+            session_data: Raw session data from get_session_with_stages
+            
+        Returns:
+            Dictionary with calculated summary statistics
+        """
+        if not session_data:
+            return {}
+            
+        # Extract timeline for calculations
+        timeline = session_data.get('chronological_timeline', [])
+        
+        # Calculate basic interaction statistics
+        summary = {
+            'total_interactions': len(timeline),
+            'llm_interactions': len([event for event in timeline if event.get('type') == 'llm']),
+            'mcp_communications': len([event for event in timeline if event.get('type') == 'mcp']),
+            'system_events': len([event for event in timeline if event.get('type') == 'system']),
+            'errors_count': len([event for event in timeline if event.get('status') == 'failed']),
+            'total_duration_ms': sum(event.get('duration_ms') or 0 for event in timeline)
+        }
+        
+        # Add chain-specific statistics if it's a chain execution
+        session_info = session_data.get('session', {})
+        if session_info.get('chain_id'):
+            stage_executions = session_data.get('stages', [])
+            if stage_executions:
+                from tarsy.models.constants import StageStatus
+                # Note: stage_executions are dictionaries here, not model objects
+                completed_stages = [stage for stage in stage_executions if stage.get('status') == StageStatus.COMPLETED.value]
+                failed_stages = [stage for stage in stage_executions if stage.get('status') == StageStatus.FAILED.value]
+                
+                # Calculate stages by agent
+                stages_by_agent = {}
+                for stage in stage_executions:
+                    agent = stage.get('agent')
+                    if agent:
+                        stages_by_agent[agent] = stages_by_agent.get(agent, 0) + 1
+                
+                summary.update({
+                    'chain_statistics': {
+                        'total_stages': len(stage_executions),
+                        'completed_stages': len(completed_stages),
+                        'failed_stages': len(failed_stages),
+                        'stages_by_agent': stages_by_agent
+                    }
+                })
+        
+        return summary
+    
+    async def get_session_summary(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get just the summary statistics for a session (lightweight operation).
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Dictionary with summary statistics or None if session not found
+        """
+        # Use same data retrieval method as detail endpoint for consistency
+        session_data = self.get_session_timeline(session_id)
+        if not session_data:
+            return None
+        
+        # For chain sessions, also get stage data for chain statistics
+        session_info = session_data.get('session', {})
+        if session_info.get('chain_id'):
+            stage_data = await self.get_session_with_stages(session_id)
+            if stage_data:
+                # Merge stage information into session_data
+                session_data['stages'] = stage_data.get('stages', [])
+            
+        return self.calculate_session_summary(session_data)
+    
     async def get_stage_execution(self, execution_id: str) -> Optional[StageExecution]:
         """Get a single stage execution by ID."""
         def _get_stage_execution_operation():

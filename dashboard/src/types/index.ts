@@ -287,6 +287,7 @@ export interface SessionDetailPageProps {
 // Phase 3: Session header props
 export interface SessionHeaderProps {
   session: DetailedSession;
+  onRefresh?: () => void;
 }
 
 // Phase 3: Original alert card props

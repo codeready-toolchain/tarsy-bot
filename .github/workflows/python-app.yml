@@ -33,7 +33,7 @@ jobs:
     - name: Set up Node.js for MCP servers
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '22'
         cache: 'npm'
     
     - name: Install kubernetes MCP server
@@ -41,8 +41,8 @@ jobs:
     
     - name: Create mock kubeconfig for testing
       run: |
-        mkdir -p /home/runner/.kube
-        cat > /home/runner/.kube/config << 'EOF'
+        mkdir -p $HOME/.kube
+        cat > $HOME/.kube/config << 'EOF'
         apiVersion: v1
         kind: Config
         clusters:
@@ -61,7 +61,7 @@ jobs:
           user:
             token: test-token
         EOF
-        chmod 600 /home/runner/.kube/config
+        chmod 600 $HOME/.kube/config
         
     - name: Install dependencies
       working-directory: ./backend
@@ -82,14 +82,15 @@ jobs:
     - name: Run E2E tests
       working-directory: ./backend
       env:
-        KUBECONFIG: /home/runner/.kube/config
+        KUBECONFIG: $HOME/.kube/config
         GEMINI_API_KEY: fake-test-key-for-ci
+      timeout-minutes: 10
       run: make test-e2e
     
     - name: Run tests with coverage
       working-directory: ./backend
       env:
-        KUBECONFIG: /home/runner/.kube/config
+        KUBECONFIG: $HOME/.kube/config
         GEMINI_API_KEY: fake-test-key-for-ci
       run: |
         TESTING=true uv run python -m pytest tests/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing
@@ -112,7 +113,7 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '22'
         cache: 'npm'
     
     - name: Install dashboard dependencies

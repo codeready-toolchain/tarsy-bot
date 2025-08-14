@@ -27,7 +27,7 @@ import {
   Timeline as TimelineIcon,
   Info,
 } from '@mui/icons-material';
-import type { StageCardProps } from '../types';
+import type { StageCardProps, TimelineItem } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 
 // Helper function to get stage status configuration
@@ -260,9 +260,9 @@ const StageCard: React.FC<StageCardProps> = ({
                 Related Interactions ({stageInteractions.length})
               </Typography>
               <List dense sx={{ pt: 0 }}>
-                {stageInteractions
-                  .sort((a: any, b: any) => a.timestamp_us - b.timestamp_us)
-                  .map((interaction: any, index: number) => (
+                {[...stageInteractions]
+                  .sort((a: TimelineItem, b: TimelineItem) => a.timestamp_us - b.timestamp_us)
+                  .map((interaction: TimelineItem, index: number) => (
                     <ListItem 
                       key={interaction.event_id || index}
                       sx={{ 

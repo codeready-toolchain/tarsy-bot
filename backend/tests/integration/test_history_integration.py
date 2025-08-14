@@ -613,6 +613,22 @@ class TestHistoryAPIIntegration:
         service.settings = Mock()
         service.settings.history_database_url = "sqlite:///test.db"
         
+        # Add calculate_session_summary mock with default return value
+        service.calculate_session_summary.return_value = {
+            "total_interactions": 2,
+            "llm_interactions": 1,
+            "mcp_communications": 1,
+            "total_duration_ms": 150000,
+            "errors_count": 0,
+            "system_events": 0,
+            "chain_statistics": {
+                "total_stages": 1,
+                "completed_stages": 1,
+                "failed_stages": 0,
+                "stages_by_agent": {"analysis": 1}
+            }
+        }
+        
         return service
     
     @pytest.mark.integration
@@ -667,6 +683,7 @@ class TestHistoryAPIIntegration:
             "chronological_timeline": [
                 {
                     "interaction_id": "int-1",
+                    "event_id": "int-1",  # Add required event_id
                     "type": "llm",  # Changed from llm_interaction to llm to match controller logic
                     "timestamp_us": current_time_us - 240000000,  # 4 minutes ago
                     "step_description": "Analysis",
@@ -679,6 +696,7 @@ class TestHistoryAPIIntegration:
                 },
                 {
                     "interaction_id": "int-2",
+                    "event_id": "int-2",  # Add required event_id
                     "type": "mcp",  # Add an MCP interaction
                     "timestamp_us": current_time_us - 180000000,  # 3 minutes ago 
                     "step_description": "Tool execution",
@@ -720,9 +738,12 @@ class TestHistoryAPIIntegration:
                         "timeline": [
                             {
                                 "interaction_id": "int-1",
-                                "type": "llm_interaction",
+                                "event_id": "int-1",  # Add required event_id
+                                "type": "llm",  # Use normalized type
                                 "timestamp_us": current_time_us - 240000000,
                                 "step_description": "Analysis",
+                                "stage_execution_id": "integration-exec-1",  # Add required stage_execution_id
+                                "duration_ms": 120000,  # Add duration
                                 "details": {
                                     "prompt_text": "Analyze issue",
                                     "response_text": "Found solution"

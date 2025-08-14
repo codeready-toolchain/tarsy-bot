@@ -35,6 +35,29 @@ function SessionDetailPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch just session summary statistics (lightweight)
+  const refreshSessionSummary = async (id: string) => {
+    try {
+      console.log('🔄 Refreshing session summary statistics for:', id);
+      const summaryData = await apiClient.getSessionSummary(id);
+      
+      // Update only the summary part of the session
+      setSession(prevSession => {
+        if (!prevSession) return prevSession;
+        
+        console.log('📊 Updating session summary with fresh data:', summaryData);
+        return {
+          ...prevSession,
+          summary: summaryData
+        };
+      });
+      
+    } catch (error) {
+      console.error('Failed to refresh session summary:', error);
+      // Don't show error UI for summary refresh failures, just log them
+    }
+  };
+
   // Fetch session detail data
   const fetchSessionDetail = async (id: string) => {
     try {
@@ -537,7 +560,7 @@ function SessionDetailPage() {
         {session && !loading && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {/* Session Header */}
-            <SessionHeader session={session} />
+            <SessionHeader session={session} onRefresh={() => refreshSessionSummary(sessionId)} />
 
             {/* Original Alert Data */}
             <OriginalAlertCard alertData={session.alert_data} />

@@ -8,9 +8,14 @@ Uses Unix timestamps (microseconds since epoch) throughout for optimal
 performance and consistency with the rest of the system.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+
+from tarsy.utils.logger import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 from tarsy.models.api_models import (
     ErrorResponse,
@@ -26,12 +31,8 @@ from tarsy.models.api_models import (
 from tarsy.models.history import now_us
 from tarsy.services.history_service import HistoryService, get_history_service
 
-# Event type normalization mapping - converts legacy types to expected frontend types
-EVENT_TYPE_NORMALIZATION = {
-    'llm_interaction': 'llm',
-    'mcp_communication': 'mcp',
-    'stage_execution': 'system'
-}
+# Valid event types expected from the repository
+VALID_EVENT_TYPES = {'llm', 'mcp', 'system'}
 
 router = APIRouter(prefix="/api/v1/history", tags=["history"])
 
@@ -230,8 +231,13 @@ async def get_session_detail(
         # Extract session information
         session_info = session_data.get('session', {})
         timeline = session_data.get('chronological_timeline', [])
-        # No summary in repository response - create empty dict for now
-        summary = {}
+        
+        # Calculate session summary statistics using service method (reuse logic)
+        # Merge chain execution data for chain statistics if available
+        if chain_execution_data:
+            session_data['stages'] = chain_execution_data.get('stages', [])
+        
+        summary = history_service.calculate_session_summary(session_data)
         
         # Calculate total duration if completed
         duration_ms = None
@@ -258,15 +264,14 @@ async def get_session_detail(
                         if not event_id:
                             raise ValueError(f"Missing required event_id for event: {event}")
                         
-                        # Normalize event type - fail fast on unknown types
-                        raw_type = event.get('type')
-                        normalized_type = EVENT_TYPE_NORMALIZATION.get(raw_type)
-                        if normalized_type is None:
-                            raise ValueError(f"Unknown event type: {raw_type}")
+                        # Validate event type - fail fast on unknown types
+                        event_type = event.get('type')
+                        if event_type not in VALID_EVENT_TYPES:
+                            raise ValueError(f"Unknown event type: {event_type}. Expected one of: {VALID_EVENT_TYPES}")
                         
                         stage_timeline.append({
                             'event_id': event_id,
-                            'type': normalized_type,  # Use normalized type
+                            'type': event_type,  # Already normalized from repository
                             'timestamp_us': event.get('timestamp_us'),
                             'step_description': event.get('step_description'),
                             'duration_ms': event.get('duration_ms'),
@@ -315,6 +320,8 @@ async def get_session_detail(
                 current_stage_id=session_info.get('current_stage_id'),
                 stages=stage_executions
             )
+            
+            # Chain statistics are now calculated in the service layer
         
         return SessionDetailResponse(
             session_id=session_info['session_id'],
@@ -339,6 +346,51 @@ async def get_session_detail(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve session details: {str(e)}"
+        )
+
+@router.get(
+    "/sessions/{session_id}/summary",
+    response_model=Dict[str, Any],
+    responses={
+        404: {"model": ErrorResponse, "description": "Session not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    },
+    summary="Get Session Summary Statistics",
+    description="""
+    Retrieve just the summary statistics for a session (lightweight).
+    
+    Returns updated counts for LLM interactions, MCP communications, 
+    total interactions, errors, and chain progress without fetching 
+    the full session timeline.
+    """
+)
+async def get_session_summary(
+    session_id: str = Path(..., description="Unique session identifier"),
+    history_service: HistoryService = Depends(get_history_service)
+) -> Dict[str, Any]:
+    """Get summary statistics for a specific session (lightweight)."""
+    try:
+        logger.info(f"Fetching summary statistics for session {session_id}")
+        
+        # Use service method to get summary (reuses same logic as main endpoint)
+        summary = await history_service.get_session_summary(session_id)
+        
+        if summary is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session {session_id} not found"
+            )
+        
+        logger.info(f"Summary statistics calculated for session {session_id}: {summary}")
+        return summary
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get session summary for {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve session summary: {str(e)}"
         )
 
 @router.get(

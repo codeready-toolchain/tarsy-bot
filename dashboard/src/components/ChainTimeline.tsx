@@ -74,7 +74,7 @@ const getInteractionIcon = (type: string) => {
 
 // Simplified: Stages now contain their own timelines
 const prepareStagesWithTimelines = (stages: StageExecution[]) => {
-  return stages
+  return [...stages]
     .sort((a, b) => a.stage_index - b.stage_index)
     .map(stage => ({
       stage,

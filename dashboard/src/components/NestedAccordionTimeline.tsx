@@ -189,7 +189,7 @@ const formatEntireFlowForCopy = (chainExecution: ChainExecution): string => {
   content += `Current Stage: ${chainExecution.current_stage_index !== null ? chainExecution.current_stage_index + 1 : 'None'}\n\n`;
   
   chainExecution.stages.forEach((stage, stageIndex) => {
-    const stageInteractions = (stage.timeline || [])
+    const stageInteractions = [...(stage.timeline || [])]
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
     
     content += `\n${'='.repeat(80)}\n`;
@@ -251,7 +251,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
 
   const getStageInteractions = (stageId: string) => {
     const stage = chainExecution.stages.find(s => s.execution_id === stageId);
-    return (stage?.timeline || [])
+    return [...(stage?.timeline || [])]
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
   };
 

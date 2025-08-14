@@ -49,6 +49,16 @@ class TestHistoryControllerEndpoints:
         mock_settings.history_retention_days = 90
         service.settings = mock_settings
         
+        # Add calculate_session_summary mock with default return value
+        service.calculate_session_summary.return_value = {
+            "total_interactions": 2,
+            "llm_interactions": 1,
+            "mcp_communications": 1,
+            "total_duration_ms": 2000,
+            "errors_count": 0,
+            "system_events": 0
+        }
+        
         return service
     
     @pytest.mark.unit
@@ -997,6 +1007,35 @@ class TestHistoryControllerResponseFormat:
         """Create test client."""
         return TestClient(app)
     
+    @pytest.fixture
+    def mock_history_service(self):
+        """Create mock history service."""
+        service = Mock(spec=HistoryService)
+        service.enabled = True
+        service.is_enabled = True
+        service.get_sessions_list.return_value = ([], 0)
+        service.get_session_timeline.return_value = None
+        service.test_database_connection.return_value = True
+        
+        # Add settings mock
+        mock_settings = Mock()
+        mock_settings.history_database_url = "sqlite:///test_history.db"
+        mock_settings.history_enabled = True
+        mock_settings.history_retention_days = 90
+        service.settings = mock_settings
+        
+        # Add calculate_session_summary mock with default return value
+        service.calculate_session_summary.return_value = {
+            "total_interactions": 2,
+            "llm_interactions": 1,
+            "mcp_communications": 1,
+            "total_duration_ms": 2000,
+            "errors_count": 0,
+            "system_events": 0
+        }
+        
+        return service
+    
     @pytest.mark.unit
     def test_sessions_list_response_format(self, app, client):
         """Test that sessions list response matches expected format."""
@@ -1069,10 +1108,8 @@ class TestHistoryControllerResponseFormat:
         assert isinstance(pagination["total_items"], int)
     
     @pytest.mark.unit
-    def test_session_detail_response_format(self, app, client):
+    def test_session_detail_response_format(self, app, client, mock_history_service):
         """Test that session detail response matches expected format."""
-        mock_service = Mock(spec=HistoryService)
-        mock_service.enabled = True
         
         # Mock timeline with correct structure (session instead of session_info) using Unix timestamps
         mock_timeline = {
@@ -1118,7 +1155,7 @@ class TestHistoryControllerResponseFormat:
                 ]
             }
         }
-        mock_service.get_session_timeline.return_value = mock_timeline
+        mock_history_service.get_session_timeline.return_value = mock_timeline
         
         # Mock the get_session_with_stages call for chain execution data
         mock_chain_data = {
@@ -1147,10 +1184,10 @@ class TestHistoryControllerResponseFormat:
                 },
                 "stages": mock_chain_data["stages"]
             }
-        mock_service.get_session_with_stages = mock_get_session_with_stages
+        mock_history_service.get_session_with_stages = mock_get_session_with_stages
         
         # Override FastAPI dependency
-        app.dependency_overrides[get_history_service] = lambda: mock_service
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         response = client.get("/api/v1/history/sessions/test-session")
         
@@ -1210,19 +1247,10 @@ class TestHistoryControllerResponseFormat:
         assert isinstance(summary, dict)
     
     @pytest.mark.unit
-    def test_health_check_response_format(self, app, client):
+    def test_health_check_response_format(self, app, client, mock_history_service):
         """Test that health check response matches expected format."""
-        mock_service = Mock(spec=HistoryService)
-        mock_service.enabled = True
-        mock_service.test_database_connection.return_value = True
-        
-        # Add settings mock
-        mock_settings = Mock()
-        mock_settings.history_database_url = "sqlite:///test.db"
-        mock_service.settings = mock_settings
-        
         # Override FastAPI dependency
-        app.dependency_overrides[get_history_service] = lambda: mock_service
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         response = client.get("/api/v1/history/health")
         
@@ -1537,6 +1565,240 @@ class TestDashboardEndpoints:
         # Assert error response
         assert response.status_code == 500
         assert "Failed to get filter options" in response.json()["detail"]
+
+    @pytest.mark.unit
+    def test_get_session_summary_success(self, app, client, mock_history_service):
+        """Test successful session summary retrieval."""
+        session_id = "test-session-123"
+        
+        # Mock service response
+        mock_summary = {
+            'total_interactions': 13,
+            'llm_interactions': 8,
+            'mcp_communications': 5,
+            'system_events': 0,
+            'errors_count': 0,
+            'total_duration_ms': 15000,
+            'chain_statistics': {
+                'total_stages': 3,
+                'completed_stages': 3,
+                'failed_stages': 0,
+                'stages_by_agent': {'KubernetesAgent': 2, 'AnalysisAgent': 1}
+            }
+        }
+        mock_history_service.get_session_summary.return_value = mock_summary
+        
+        # Dependency override
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        # Make request
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        # Verify response
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify basic statistics
+        assert data['total_interactions'] == 13
+        assert data['llm_interactions'] == 8
+        assert data['mcp_communications'] == 5
+        assert data['system_events'] == 0
+        assert data['errors_count'] == 0
+        assert data['total_duration_ms'] == 15000
+        
+        # Verify chain statistics
+        assert 'chain_statistics' in data
+        assert data['chain_statistics']['total_stages'] == 3
+        assert data['chain_statistics']['completed_stages'] == 3
+        assert data['chain_statistics']['failed_stages'] == 0
+        assert data['chain_statistics']['stages_by_agent']['KubernetesAgent'] == 2
+        
+        # Verify service was called correctly
+        mock_history_service.get_session_summary.assert_called_once_with(session_id)
+
+    @pytest.mark.unit
+    def test_get_session_summary_not_found(self, app, client, mock_history_service):
+        """Test session summary when session doesn't exist."""
+        session_id = "non-existent-session"
+        
+        # Mock service to return None (session not found)
+        mock_history_service.get_session_summary.return_value = None
+        
+        # Dependency override
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        # Make request
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        # Verify 404 response
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+        
+        # Verify service was called
+        mock_history_service.get_session_summary.assert_called_once_with(session_id)
+
+    @pytest.mark.unit
+    def test_get_session_summary_service_error(self, app, client, mock_history_service):
+        """Test session summary when service throws an error."""
+        session_id = "error-session-123"
+        
+        # Mock service to raise an exception
+        mock_history_service.get_session_summary.side_effect = Exception("Database connection failed")
+        
+        # Dependency override
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        # Make request
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        # Verify 500 response
+        assert response.status_code == 500
+        assert "Failed to retrieve session summary" in response.json()["detail"]
+        
+        # Verify service was called
+        mock_history_service.get_session_summary.assert_called_once_with(session_id)
+
+    @pytest.mark.unit
+    def test_get_session_summary_minimal_data(self, app, client, mock_history_service):
+        """Test session summary with minimal data (no chain)."""
+        session_id = "minimal-session-123"
+        
+        # Mock service response with minimal data (no chain statistics)
+        mock_summary = {
+            'total_interactions': 2,
+            'llm_interactions': 1,
+            'mcp_communications': 1,
+            'system_events': 0,
+            'errors_count': 0,
+            'total_duration_ms': 1500
+        }
+        mock_history_service.get_session_summary.return_value = mock_summary
+        
+        # Dependency override
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        # Make request
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        # Verify response
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify basic statistics
+        assert data['total_interactions'] == 2
+        assert data['llm_interactions'] == 1
+        assert data['mcp_communications'] == 1
+        assert data['system_events'] == 0
+        assert data['errors_count'] == 0
+        assert data['total_duration_ms'] == 1500
+        
+        # Verify no chain statistics (since it's not a chain session)
+        assert 'chain_statistics' not in data
+        
+        # Verify service was called correctly
+        mock_history_service.get_session_summary.assert_called_once_with(session_id)
+
+    @pytest.mark.unit
+    def test_get_session_summary_with_errors(self, app, client, mock_history_service):
+        """Test session summary with error statistics."""
+        session_id = "error-session-123"
+        
+        # Mock service response with errors
+        mock_summary = {
+            'total_interactions': 10,
+            'llm_interactions': 6,
+            'mcp_communications': 3,
+            'system_events': 1,
+            'errors_count': 2,  # Some errors occurred
+            'total_duration_ms': 25000,
+            'chain_statistics': {
+                'total_stages': 3,
+                'completed_stages': 2,
+                'failed_stages': 1,  # One stage failed
+                'stages_by_agent': {'KubernetesAgent': 3}
+            }
+        }
+        mock_history_service.get_session_summary.return_value = mock_summary
+        
+        # Dependency override
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        # Make request
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        # Verify response
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify error statistics
+        assert data['errors_count'] == 2
+        assert data['chain_statistics']['failed_stages'] == 1
+        assert data['chain_statistics']['completed_stages'] == 2
+        
+        # Verify service was called correctly
+        mock_history_service.get_session_summary.assert_called_once_with(session_id)
+
+    @pytest.mark.unit
+    def test_get_session_summary_response_format(self, app, client, mock_history_service):
+        """Test session summary endpoint response format validation."""
+        session_id = "format-test-session"
+        
+        # Mock service response 
+        mock_summary = {
+            'total_interactions': 5,
+            'llm_interactions': 3,
+            'mcp_communications': 2,
+            'system_events': 0,
+            'errors_count': 0,
+            'total_duration_ms': 8000
+        }
+        mock_history_service.get_session_summary.return_value = mock_summary
+        
+        # Dependency override
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        # Make request
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        # Verify response format
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/json"
+        
+        data = response.json()
+        
+        # Verify all required fields are present and have correct types
+        required_fields = [
+            'total_interactions', 'llm_interactions', 'mcp_communications',
+            'system_events', 'errors_count', 'total_duration_ms'
+        ]
+        
+        for field in required_fields:
+            assert field in data, f"Required field '{field}' missing from response"
+            assert isinstance(data[field], int), f"Field '{field}' should be an integer"
+            assert data[field] >= 0, f"Field '{field}' should be non-negative"
+        
+        # Verify consistency (total should equal sum of interaction types)
+        expected_total = data['llm_interactions'] + data['mcp_communications'] + data['system_events']
+        assert data['total_interactions'] == expected_total, \
+            f"Total interactions ({data['total_interactions']}) should equal sum of interaction types ({expected_total})"
 
 
 def create_mock_session(session_id: str, status: str) -> Mock:

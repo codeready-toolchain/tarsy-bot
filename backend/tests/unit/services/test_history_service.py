@@ -1095,3 +1095,256 @@ class TestHistoryAPIResponseStructure:
         assert 'error_message' in mock_response_data
         assert 'final_analysis' in mock_response_data  
         assert 'session_metadata' in mock_response_data 
+
+
+class TestHistoryServiceSummaryMethods:
+    """Test suite for new summary calculation methods."""
+    
+    @pytest.fixture
+    def history_service(self, isolated_test_settings):
+        """Create HistoryService instance for testing."""
+        with patch('tarsy.services.history_service.get_settings', return_value=isolated_test_settings):
+            service = HistoryService()
+            service._initialization_attempted = True
+            service._is_healthy = True
+            return service
+    
+    @pytest.mark.unit
+    def test_calculate_session_summary_with_chain_data(self, history_service):
+        """Test calculate_session_summary with complete chain data."""
+        from tarsy.models.constants import StageStatus
+        
+        # Create mock session data with timeline and chain information
+        session_data = {
+            'chronological_timeline': [
+                {'type': 'llm', 'status': 'completed', 'duration_ms': 1500},
+                {'type': 'llm', 'status': 'completed', 'duration_ms': 2000},
+                {'type': 'mcp', 'status': 'completed', 'duration_ms': 500},
+                {'type': 'mcp', 'status': 'failed', 'duration_ms': 300},
+                {'type': 'system', 'status': 'completed', 'duration_ms': 100}
+            ],
+            'session': {
+                'chain_id': 'test-chain-123'
+            },
+            'stages': [
+                {'status': StageStatus.COMPLETED.value, 'agent': 'AgentA'},
+                {'status': StageStatus.COMPLETED.value, 'agent': 'AgentB'},
+                {'status': StageStatus.FAILED.value, 'agent': 'AgentA'}
+            ]
+        }
+        
+        # Calculate summary
+        summary = history_service.calculate_session_summary(session_data)
+        
+        # Verify basic statistics
+        assert summary['total_interactions'] == 5
+        assert summary['llm_interactions'] == 2
+        assert summary['mcp_communications'] == 2
+        assert summary['system_events'] == 1
+        assert summary['errors_count'] == 1  # One failed interaction
+        assert summary['total_duration_ms'] == 4400  # Sum of all durations
+        
+        # Verify chain statistics
+        assert 'chain_statistics' in summary
+        assert summary['chain_statistics']['total_stages'] == 3
+        assert summary['chain_statistics']['completed_stages'] == 2
+        assert summary['chain_statistics']['failed_stages'] == 1
+        assert summary['chain_statistics']['stages_by_agent'] == {'AgentA': 2, 'AgentB': 1}
+
+    @pytest.mark.unit 
+    def test_calculate_session_summary_no_chain_data(self, history_service):
+        """Test calculate_session_summary without chain data."""
+        # Create mock session data without chain information
+        session_data = {
+            'chronological_timeline': [
+                {'type': 'llm', 'status': 'completed', 'duration_ms': 1000},
+                {'type': 'mcp', 'status': 'completed', 'duration_ms': 500}
+            ],
+            'session': {}  # No chain_id
+        }
+        
+        # Calculate summary
+        summary = history_service.calculate_session_summary(session_data)
+        
+        # Verify basic statistics
+        assert summary['total_interactions'] == 2
+        assert summary['llm_interactions'] == 1
+        assert summary['mcp_communications'] == 1
+        assert summary['system_events'] == 0
+        assert summary['errors_count'] == 0
+        assert summary['total_duration_ms'] == 1500
+        
+        # Verify no chain statistics
+        assert 'chain_statistics' not in summary
+
+    @pytest.mark.unit
+    def test_calculate_session_summary_empty_data(self, history_service):
+        """Test calculate_session_summary with empty data."""
+        # Empty session data
+        session_data = {
+            'chronological_timeline': [],
+            'session': {}
+        }
+        
+        # Calculate summary
+        summary = history_service.calculate_session_summary(session_data)
+        
+        # Verify all counts are zero
+        assert summary['total_interactions'] == 0
+        assert summary['llm_interactions'] == 0
+        assert summary['mcp_communications'] == 0
+        assert summary['system_events'] == 0
+        assert summary['errors_count'] == 0
+        assert summary['total_duration_ms'] == 0
+        
+        # Verify no chain statistics
+        assert 'chain_statistics' not in summary
+
+    @pytest.mark.unit
+    def test_calculate_session_summary_none_data(self, history_service):
+        """Test calculate_session_summary with None input."""
+        # Calculate summary with None input
+        summary = history_service.calculate_session_summary(None)
+        
+        # Should return empty dict
+        assert summary == {}
+
+    @pytest.mark.unit
+    def test_calculate_session_summary_missing_duration(self, history_service):
+        """Test calculate_session_summary handles missing duration gracefully."""
+        # Session data with some events missing duration_ms
+        session_data = {
+            'chronological_timeline': [
+                {'type': 'llm', 'status': 'completed', 'duration_ms': 1000},
+                {'type': 'mcp', 'status': 'completed'},  # Missing duration_ms
+                {'type': 'system', 'status': 'failed', 'duration_ms': None}  # None duration
+            ],
+            'session': {}
+        }
+        
+        # Calculate summary
+        summary = history_service.calculate_session_summary(session_data)
+        
+        # Should handle missing durations gracefully
+        assert summary['total_interactions'] == 3
+        assert summary['total_duration_ms'] == 1000  # Only count non-None durations
+        assert summary['errors_count'] == 1
+
+    @pytest.mark.unit
+    async def test_get_session_summary_success(self, history_service):
+        """Test get_session_summary with successful data retrieval."""
+        session_id = "test-session-123"
+        
+        # Mock session timeline data
+        mock_timeline_data = {
+            'chronological_timeline': [
+                {'type': 'llm', 'status': 'completed', 'duration_ms': 1000}
+            ],
+            'session': {'chain_id': 'test-chain'}
+        }
+        
+        # Mock stage data  
+        mock_stage_data = {
+            'stages': [
+                {'status': 'completed', 'agent': 'TestAgent'}
+            ]
+        }
+        
+        # Mock the service methods
+        history_service.get_session_timeline = Mock(return_value=mock_timeline_data)
+        
+        # Mock async method using AsyncMock
+        from unittest.mock import AsyncMock
+        history_service.get_session_with_stages = AsyncMock(return_value=mock_stage_data)
+        
+        # Get summary
+        summary = await history_service.get_session_summary(session_id)
+        
+        # Verify calls were made
+        history_service.get_session_timeline.assert_called_once_with(session_id)
+        history_service.get_session_with_stages.assert_called_once_with(session_id)
+        
+        # Verify summary structure
+        assert summary is not None
+        assert 'total_interactions' in summary
+        assert 'llm_interactions' in summary
+        assert summary['total_interactions'] == 1
+        assert summary['llm_interactions'] == 1
+
+    @pytest.mark.unit
+    async def test_get_session_summary_not_found(self, history_service):
+        """Test get_session_summary when session doesn't exist."""
+        session_id = "non-existent-session"
+        
+        # Mock service to return None (session not found)
+        history_service.get_session_timeline = Mock(return_value=None)
+        
+        # Get summary
+        summary = await history_service.get_session_summary(session_id)
+        
+        # Should return None
+        assert summary is None
+        
+        # Verify timeline method was called
+        history_service.get_session_timeline.assert_called_once_with(session_id)
+
+    @pytest.mark.unit
+    async def test_get_session_summary_non_chain_session(self, history_service):
+        """Test get_session_summary for non-chain session."""
+        session_id = "non-chain-session"
+        
+        # Mock session data without chain_id
+        mock_timeline_data = {
+            'chronological_timeline': [
+                {'type': 'llm', 'status': 'completed', 'duration_ms': 1000},
+                {'type': 'mcp', 'status': 'completed', 'duration_ms': 500}
+            ],
+            'session': {}  # No chain_id
+        }
+        
+        # Mock the service methods
+        history_service.get_session_timeline = Mock(return_value=mock_timeline_data)
+        from unittest.mock import AsyncMock
+        history_service.get_session_with_stages = AsyncMock()
+        
+        # Get summary
+        summary = await history_service.get_session_summary(session_id)
+        
+        # Verify only timeline method was called (no need for stage data)
+        history_service.get_session_timeline.assert_called_once_with(session_id)
+        history_service.get_session_with_stages.assert_not_called()
+        
+        # Verify summary doesn't have chain statistics
+        assert summary is not None
+        assert summary['total_interactions'] == 2
+        assert 'chain_statistics' not in summary
+
+    @pytest.mark.unit
+    async def test_get_session_summary_chain_session_without_stages(self, history_service):
+        """Test get_session_summary for chain session when stage data is unavailable."""
+        session_id = "chain-session-no-stages"
+        
+        # Mock session data with chain_id
+        mock_timeline_data = {
+            'chronological_timeline': [
+                {'type': 'llm', 'status': 'completed', 'duration_ms': 1000}
+            ],
+            'session': {'chain_id': 'test-chain'}
+        }
+        
+        # Mock the service methods
+        history_service.get_session_timeline = Mock(return_value=mock_timeline_data)
+        from unittest.mock import AsyncMock
+        history_service.get_session_with_stages = AsyncMock(return_value=None)  # No stage data
+        
+        # Get summary
+        summary = await history_service.get_session_summary(session_id)
+        
+        # Verify both methods were called
+        history_service.get_session_timeline.assert_called_once_with(session_id)
+        history_service.get_session_with_stages.assert_called_once_with(session_id)
+        
+        # Verify summary still calculated but without chain statistics
+        assert summary is not None
+        assert summary['total_interactions'] == 1
+        assert 'chain_statistics' not in summary
