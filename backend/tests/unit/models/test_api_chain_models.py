@@ -6,7 +6,7 @@ used for chain functionality.
 """
 
 import pytest
-from tarsy.models.api_models import StageExecution, ChainExecution
+from tarsy.models.api_models import StageExecution, ChainExecution, InteractionSummary
 from tarsy.models.constants import StageStatus
 
 
@@ -22,7 +22,12 @@ class TestStageExecutionAPIModel:
             stage_index=0,
             stage_name="Data Collection",
             agent="KubernetesAgent",
-            status=StageStatus.PENDING.value
+            status=StageStatus.PENDING.value,
+            interaction_summary=InteractionSummary(
+                llm_count=0,
+                mcp_count=0,
+                total_count=0
+            )
         )
         
         assert stage.execution_id == "exec_123"
@@ -50,7 +55,13 @@ class TestStageExecutionAPIModel:
             completed_at_us=1234567895000000,
             duration_ms=5000,
             stage_output={"analysis": "Found root cause", "confidence": 0.95},
-            error_message=None
+            error_message=None,
+            interaction_summary=InteractionSummary(
+                llm_count=3,
+                mcp_count=2,
+                total_count=5,
+                duration_ms=5000
+            )
         )
         
         assert stage.execution_id == "exec_456"
@@ -78,7 +89,13 @@ class TestStageExecutionAPIModel:
             completed_at_us=1234567892000000,
             duration_ms=2000,
             stage_output=None,
-            error_message="Agent execution timeout"
+            error_message="Agent execution timeout",
+            interaction_summary=InteractionSummary(
+                llm_count=1,
+                mcp_count=0,
+                total_count=1,
+                duration_ms=2000
+            )
         )
         
         assert stage.status == StageStatus.FAILED
@@ -94,7 +111,12 @@ class TestStageExecutionAPIModel:
             stage_index=0,
             stage_name="Custom Analysis",
             agent="ConfigurableAgent:my-custom-agent",
-            status=StageStatus.ACTIVE.value
+            status=StageStatus.ACTIVE.value,
+            interaction_summary=InteractionSummary(
+                llm_count=1,
+                mcp_count=1,
+                total_count=2
+            )
         )
         
         assert stage.agent == "ConfigurableAgent:my-custom-agent"
@@ -110,7 +132,12 @@ class TestStageExecutionAPIModel:
             stage_index=0,
             stage_name="system_data_collection",  # This should be preserved exactly
             agent="DataCollectionAgent",
-            status=StageStatus.PENDING.value
+            status=StageStatus.PENDING.value,
+            interaction_summary=InteractionSummary(
+                llm_count=0,
+                mcp_count=0,
+                total_count=0
+            )
         )
         
         # Verify that the full stage name is preserved, not truncated at underscores
@@ -125,7 +152,12 @@ class TestStageExecutionAPIModel:
             stage_index=1,
             stage_name="system-data-collection",
             agent="DataCollectionAgent",
-            status=StageStatus.ACTIVE.value
+            status=StageStatus.ACTIVE.value,
+            interaction_summary=InteractionSummary(
+                llm_count=0,
+                mcp_count=0,
+                total_count=0
+            )
         )
         
         assert stage_hyphen.stage_name == "system-data-collection"
@@ -141,7 +173,13 @@ class TestStageExecutionAPIModel:
             "agent": "TestAgent",
             "status": "completed",
             "duration_ms": 1500,
-            "stage_output": {"test": "result"}
+            "stage_output": {"test": "result"},
+            "interaction_summary": {
+                "llm_count": 2,
+                "mcp_count": 1,
+                "total_count": 3,
+                "duration_ms": 1500
+            }
         }
         
         model_test_helpers.test_serialization_roundtrip(StageExecution, valid_data)
@@ -159,7 +197,12 @@ class TestChainExecutionAPIModel:
             stage_index=0,
             stage_name="Stage 1",
             agent="Agent1",
-            status=StageStatus.COMPLETED.value
+            status=StageStatus.COMPLETED.value,
+            interaction_summary=InteractionSummary(
+                llm_count=2,
+                mcp_count=1,
+                total_count=3
+            )
         )
         
         stage2 = StageExecution(
@@ -168,7 +211,12 @@ class TestChainExecutionAPIModel:
             stage_index=1,
             stage_name="Stage 2",
             agent="Agent2",
-            status=StageStatus.ACTIVE.value
+            status=StageStatus.ACTIVE.value,
+            interaction_summary=InteractionSummary(
+                llm_count=1,
+                mcp_count=0,
+                total_count=1
+            )
         )
         
         chain = ChainExecution(
@@ -191,7 +239,12 @@ class TestChainExecutionAPIModel:
             stage_index=0,
             stage_name="Data Collection",
             agent="KubernetesAgent",
-            status=StageStatus.COMPLETED.value
+            status=StageStatus.COMPLETED.value,
+            interaction_summary=InteractionSummary(
+                llm_count=2,
+                mcp_count=3,
+                total_count=5
+            )
         )
         
         stage2 = StageExecution(
@@ -200,7 +253,12 @@ class TestChainExecutionAPIModel:
             stage_index=1,
             stage_name="Analysis",
             agent="KubernetesAgent",
-            status=StageStatus.ACTIVE.value
+            status=StageStatus.ACTIVE.value,
+            interaction_summary=InteractionSummary(
+                llm_count=1,
+                mcp_count=1,
+                total_count=2
+            )
         )
         
         chain_definition = {
@@ -235,7 +293,12 @@ class TestChainExecutionAPIModel:
                 stage_index=i,
                 stage_name=f"Stage {i+1}",
                 agent=f"Agent{i+1}",
-                status=StageStatus.PENDING.value if i > 1 else StageStatus.COMPLETED.value
+                status=StageStatus.PENDING.value if i > 1 else StageStatus.COMPLETED.value,
+                interaction_summary=InteractionSummary(
+                    llm_count=1,
+                    mcp_count=1,
+                    total_count=2
+                )
             )
             stages.append(stage)
         
@@ -269,7 +332,12 @@ class TestChainExecutionAPIModel:
             stage_name="Test Stage",
             agent="TestAgent",
             status=StageStatus.COMPLETED.value,
-            stage_output={"result": "success"}
+            stage_output={"result": "success"},
+            interaction_summary=InteractionSummary(
+                llm_count=2,
+                mcp_count=1,
+                total_count=3
+            )
         )
         
         valid_data = {
@@ -298,7 +366,12 @@ class TestAPIModelValidation:
             "stage_index": 0,
             "stage_name": "Data Collection",
             "agent": "KubernetesAgent",
-            "status": "pending"
+            "status": "pending",
+            "interaction_summary": {
+                "llm_count": 0,
+                "mcp_count": 0,
+                "total_count": 0
+            }
         }
         
         required_fields = ["execution_id", "stage_id", "stage_index", "stage_name", "agent", "status"]
@@ -312,7 +385,12 @@ class TestAPIModelValidation:
             stage_index=0,
             stage_name="Stage 1",
             agent="Agent1",
-            status=StageStatus.COMPLETED.value
+            status=StageStatus.COMPLETED.value,
+            interaction_summary=InteractionSummary(
+                llm_count=1,
+                mcp_count=1,
+                total_count=2
+            )
         )
         
         valid_data = {
@@ -344,7 +422,12 @@ class TestAPIModelValidation:
             stage_index=-1,  # Negative index
             stage_name="Test",
             agent="TestAgent",
-            status=StageStatus.PENDING.value
+            status=StageStatus.PENDING.value,
+            interaction_summary=InteractionSummary(
+                llm_count=0,
+                mcp_count=0,
+                total_count=0
+            )
         )
         
         assert stage.stage_index == -1
@@ -372,7 +455,13 @@ class TestAPIModelIntegration:
                 "pods_collected": 5,
                 "events_collected": 12,
                 "logs_collected": 3
-            }
+            },
+            interaction_summary=InteractionSummary(
+                llm_count=2,
+                mcp_count=5,
+                total_count=7,
+                duration_ms=5000
+            )
         )
         
         analysis = StageExecution(
@@ -390,7 +479,13 @@ class TestAPIModelIntegration:
                 "root_cause": "Resource exhaustion",
                 "confidence": 0.92,
                 "evidence": ["High CPU usage", "Memory pressure"]
-            }
+            },
+            interaction_summary=InteractionSummary(
+                llm_count=4,
+                mcp_count=3,
+                total_count=7,
+                duration_ms=10000
+            )
         )
         
         remediation = StageExecution(
@@ -402,7 +497,12 @@ class TestAPIModelIntegration:
             status=StageStatus.ACTIVE.value,
             started_at_us=1000015000,
             completed_at_us=None,
-            duration_ms=None
+            duration_ms=None,
+            interaction_summary=InteractionSummary(
+                llm_count=1,
+                mcp_count=0,
+                total_count=1
+            )
         )
         
         chain_definition = {
@@ -452,7 +552,13 @@ class TestAPIModelIntegration:
             agent="ReliableAgent",
             status=StageStatus.COMPLETED.value,
             duration_ms=2000,
-            stage_output={"result": "success"}
+            stage_output={"result": "success"},
+            interaction_summary=InteractionSummary(
+                llm_count=2,
+                mcp_count=1,
+                total_count=3,
+                duration_ms=2000
+            )
         )
         
         failed_stage = StageExecution(
@@ -464,7 +570,13 @@ class TestAPIModelIntegration:
             status=StageStatus.FAILED.value,
             duration_ms=1000,
             stage_output=None,
-            error_message="Agent execution timeout after 30 seconds"
+            error_message="Agent execution timeout after 30 seconds",
+            interaction_summary=InteractionSummary(
+                llm_count=1,
+                mcp_count=0,
+                total_count=1,
+                duration_ms=1000
+            )
         )
         
         chain = ChainExecution(

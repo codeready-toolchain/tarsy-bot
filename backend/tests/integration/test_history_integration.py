@@ -661,21 +661,78 @@ class TestHistoryAPIIntegration:
                 "status": "completed",
                 "started_at_us": current_time_us - 300000000,  # Started 5 minutes ago
                 "completed_at_us": current_time_us,  # Completed now
-                "error_message": None
+                "error_message": None,
+                "chain_id": "integration-chain-123"  # Add chain_id so endpoint processes chain execution
             },
             "chronological_timeline": [
                 {
                     "interaction_id": "int-1",
-                    "type": "llm_interaction",
+                    "type": "llm",  # Changed from llm_interaction to llm to match controller logic
                     "timestamp_us": current_time_us - 240000000,  # 4 minutes ago
                     "step_description": "Analysis",
+                    "duration_ms": 120000,  # Add duration for calculation
+                    "stage_execution_id": "integration-exec-1",  # Map to our stage
                     "details": {
                         "prompt_text": "Analyze issue",
                         "response_text": "Found solution"
                     }
+                },
+                {
+                    "interaction_id": "int-2",
+                    "type": "mcp",  # Add an MCP interaction
+                    "timestamp_us": current_time_us - 180000000,  # 3 minutes ago 
+                    "step_description": "Tool execution",
+                    "duration_ms": 30000,  # Add duration
+                    "stage_execution_id": "integration-exec-1",  # Map to our stage
+                    "details": {
+                        "tool_name": "kubectl_get",
+                        "result": "namespace info retrieved"
+                    }
                 }
             ]
         }
+        
+        # Mock the get_session_with_stages method to return chain execution data
+        async def mock_get_session_with_stages(session_id):
+            return {
+                "session": {
+                    "session_id": expected_session_id,
+                    "chain_id": "integration-chain-123",
+                    "alert_type": "NamespaceTerminating",
+                    "status": "completed"
+                },
+                "stages": [
+                    {
+                        "execution_id": "integration-exec-1",
+                        "stage_id": "analysis-stage",
+                        "stage_name": "Root Cause Analysis",
+                        "stage_index": 0,
+                        "status": "completed",
+                        "started_at_us": current_time_us - 250000000,  # Started 4.2 minutes ago
+                        "completed_at_us": current_time_us - 60000000,  # Completed 1 minute ago
+                        "duration_ms": 190000,
+                        "interaction_summary": {
+                            "llm_count": 1,
+                            "mcp_count": 1,
+                            "total_count": 2,
+                            "duration_ms": 190000
+                        },
+                        "timeline": [
+                            {
+                                "interaction_id": "int-1",
+                                "type": "llm_interaction",
+                                "timestamp_us": current_time_us - 240000000,
+                                "step_description": "Analysis",
+                                "details": {
+                                    "prompt_text": "Analyze issue",
+                                    "response_text": "Found solution"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        mock_history_service_for_api.get_session_with_stages = mock_get_session_with_stages
         
         # Use FastAPI's dependency override system instead of mock patching
         from tarsy.controllers.history_controller import get_history_service
@@ -689,7 +746,7 @@ class TestHistoryAPIIntegration:
             
             # Check the actual SessionDetailResponse structure (not nested session_info)
             assert "session_id" in data
-            assert "chronological_timeline" in data
+            assert "chain_execution" in data
             assert "summary" in data
             
             # Verify session details
@@ -697,9 +754,49 @@ class TestHistoryAPIIntegration:
             assert data["alert_type"] == "NamespaceTerminating"
             assert data["status"] == "completed"
             
+            # All sessions should have chain execution data since we support chains only
+            chain_execution = data["chain_execution"]
+            assert chain_execution is not None, "All sessions should have chain execution data"
+            
+            # Verify comprehensive chain execution structure
+            assert "chain_id" in chain_execution
+            assert chain_execution["chain_id"] == "integration-chain-123"
+            assert "stages" in chain_execution
+            assert isinstance(chain_execution["stages"], list)
+            assert len(chain_execution["stages"]) == 1
+            
+            # Verify stage structure and timeline
+            stage = chain_execution["stages"][0]
+            assert "execution_id" in stage
+            assert "stage_id" in stage  
+            assert "stage_name" in stage
+            assert "status" in stage
+            assert "interaction_summary" in stage
+            assert "timeline" in stage
+            
+            # Verify interaction summary
+            summary = stage["interaction_summary"]
+            assert summary["llm_count"] == 1  # 1 LLM interaction
+            assert summary["mcp_count"] == 1  # 1 MCP interaction 
+            assert summary["total_count"] == 2  # Total of 2 interactions
+            assert summary["duration_ms"] == 150000  # 120000 + 30000
+            
             # Verify timeline structure
-            assert len(data["chronological_timeline"]) == 1
-            assert data["chronological_timeline"][0]["type"] == "llm_interaction"
+            timeline = stage["timeline"]
+            assert isinstance(timeline, list)
+            assert len(timeline) == 2  # Now we have 2 interactions (1 LLM + 1 MCP)
+            
+            # Verify first interaction (LLM)
+            llm_interaction = timeline[0]
+            assert llm_interaction["type"] == "llm"
+            assert llm_interaction["step_description"] == "Analysis"
+            assert "details" in llm_interaction
+            
+            # Verify second interaction (MCP)
+            mcp_interaction = timeline[1] 
+            assert mcp_interaction["type"] == "mcp"
+            assert mcp_interaction["step_description"] == "Tool execution"
+            assert "details" in mcp_interaction
             
         finally:
             # Clean up the dependency override

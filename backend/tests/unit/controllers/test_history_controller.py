@@ -590,32 +590,49 @@ class TestHistoryControllerEndpoints:
                 "status": "completed",
                 "started_at_us": 1705314000000000,  # 2024-01-15T10:00:00Z in microseconds
                 "completed_at_us": 1705314300000000,  # 2024-01-15T10:05:00Z in microseconds
-                "error_message": None
+                "error_message": None,
+                "chain_id": "chain-123"  # Add chain_id so endpoint processes chain execution
             },
-            "chronological_timeline": [
-                {
-                    "interaction_id": "int-1",
-                    "type": "llm_interaction",
-                    "timestamp_us": 1705314000000000,  # 2024-01-15T10:00:00Z in microseconds
-                    "step_description": "Initial analysis",
-                    "details": {
-                        "prompt_text": "Analyze the issue",
-                        "response_text": "Found the problem",
-                        "model_used": "gpt-4"
+            "chain_execution": {
+                "chain_id": "chain-789",
+                "stages": [
+                    {
+                        "execution_id": "exec-3",
+                        "stage_id": "initial-analysis",
+                        "stage_name": "Initial Analysis",
+                        "status": "completed",
+                        "interaction_summary": {
+                            "llm_count": 1,
+                            "mcp_count": 1,
+                            "total_count": 2
+                        },
+                        "timeline": [
+                            {
+                                "interaction_id": "int-1",
+                                "type": "llm_interaction",
+                                "timestamp_us": 1705314000000000,
+                                "step_description": "Initial analysis",
+                                "details": {
+                                    "prompt_text": "Analyze the issue",
+                                    "response_text": "Found the problem",
+                                    "model_used": "gpt-4"
+                                }
+                            },
+                            {
+                                "communication_id": "comm-1",
+                                "type": "mcp_communication",
+                                "timestamp_us": 1705314001000000,
+                                "step_description": "Check namespace status",
+                                "details": {
+                                    "server_name": "kubernetes-server",
+                                    "tool_name": "kubectl_get_namespace",
+                                    "success": True
+                                }
+                            }
+                        ]
                     }
-                },
-                {
-                    "communication_id": "comm-1",
-                    "type": "mcp_communication",
-                    "timestamp_us": 1705314001000000,  # 2024-01-15T10:00:01Z in microseconds
-                    "step_description": "Check namespace status",
-                    "details": {
-                        "server_name": "kubernetes-server",
-                        "tool_name": "kubectl_get_namespace",
-                        "success": True
-                    }
-                }
-            ],
+                ]
+            },
             "summary": {
                 "total_interactions": 2,
                 "llm_interactions": 1,
@@ -624,6 +641,31 @@ class TestHistoryControllerEndpoints:
             }
         }
         mock_history_service.get_session_timeline.return_value = mock_timeline
+        
+        # Mock the get_session_with_stages async method
+        async def mock_get_session_with_stages_first(session_id):
+            return {
+                "session": {
+                    "session_id": "test-session-123",
+                    "chain_id": "chain-123",
+                    "alert_type": "NamespaceTerminating",
+                    "status": "completed"
+                },
+                "stages": [
+                    {
+                        "execution_id": "exec-3",
+                        "stage_id": "initial-analysis",
+                        "stage_name": "Initial Analysis",
+                        "status": "completed",
+                        "interaction_summary": {
+                            "llm_count": 1,
+                            "mcp_count": 1,
+                            "total_count": 2
+                        }
+                    }
+                ]
+            }
+        mock_history_service.get_session_with_stages = mock_get_session_with_stages_first
         
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
@@ -639,18 +681,54 @@ class TestHistoryControllerEndpoints:
         # The response should have these fields based on the SessionDetailResponse model
         assert "session_id" in data
         assert "alert_id" in data
-        assert "chronological_timeline" in data
+        assert "chain_execution" in data
         
         # Verify session details
         assert data["session_id"] == "test-session-123"
         assert data["alert_type"] == "NamespaceTerminating"
         assert data["status"] == "completed"
         
-        # Verify timeline structure
-        timeline = data["chronological_timeline"]
-        assert len(timeline) == 2
-        assert timeline[0]["type"] == "llm_interaction"
-        assert timeline[1]["type"] == "mcp_communication"
+        # All sessions should have chain execution data since we support chains only
+        chain_execution = data["chain_execution"]
+        
+        # Chain execution should never be None since we support chains only
+            
+        assert chain_execution is not None, f"All sessions should have chain execution data. Got: {chain_execution}"
+        
+        # Verify chain execution structure
+        assert "chain_id" in chain_execution
+        assert "stages" in chain_execution
+        assert isinstance(chain_execution["stages"], list)
+        
+        # Verify stage structure and timeline if stages exist
+        if chain_execution["stages"]:
+            for stage in chain_execution["stages"]:
+                # Verify required stage fields
+                assert "execution_id" in stage
+                assert "stage_id" in stage
+                assert "stage_name" in stage
+                assert "status" in stage
+                assert "timeline" in stage
+                assert "interaction_summary" in stage
+                
+                # Verify interaction summary structure
+                summary = stage["interaction_summary"]
+                assert "llm_count" in summary
+                assert "mcp_count" in summary
+                assert "total_count" in summary
+                assert isinstance(summary["llm_count"], int)
+                assert isinstance(summary["mcp_count"], int)
+                assert isinstance(summary["total_count"], int)
+                
+                # Verify timeline events structure if present
+                if stage["timeline"]:
+                    for event in stage["timeline"]:
+                        assert "type" in event
+                        assert "timestamp_us" in event
+                        assert "step_description" in event
+                        assert "details" in event
+                        assert isinstance(event["timestamp_us"], int)
+                        assert event["type"] in ["llm_interaction", "mcp_communication", "stage_execution"]
         
         # Verify other expected fields
         assert "duration_ms" in data
@@ -1006,23 +1084,70 @@ class TestHistoryControllerResponseFormat:
                 "status": "completed",
                 "started_at_us": 1705314000000000,  # 2024-01-15T10:00:00Z in microseconds
                 "completed_at_us": 1705314300000000,  # 2024-01-15T10:05:00Z in microseconds
-                "error_message": None
+                "error_message": None,
+                "chain_id": "chain-123"  # Add chain_id so endpoint processes chain execution
             },
-            "chronological_timeline": [
+            "chronological_timeline": [],  # Add empty timeline for compatibility
+            "chain_execution": {
+                "chain_id": "chain-123",
+                "stages": [
+                    {
+                        "execution_id": "exec-1",
+                        "stage_id": "data-collection",
+                        "stage_name": "Data Collection",
+                        "status": "completed",
+                        "interaction_summary": {
+                            "llm_count": 1,
+                            "mcp_count": 1,
+                            "total_count": 2
+                        },
+                        "timeline": [
+                            {
+                                "interaction_id": "int-1",
+                                "type": "llm_interaction",
+                                "timestamp_us": 1705314000000000,
+                                "step_description": "Test step",
+                                "details": {
+                                    "prompt_text": "Test prompt",
+                                    "response_text": "Test response",
+                                    "model_used": "gpt-4"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        mock_service.get_session_timeline.return_value = mock_timeline
+        
+        # Mock the get_session_with_stages call for chain execution data
+        mock_chain_data = {
+            "stages": [
                 {
-                    "interaction_id": "int-1",
-                    "type": "llm_interaction",
-                    "timestamp_us": 1705314000000000,  # 2024-01-15T10:00:00Z in microseconds
-                    "step_description": "Test step",
-                    "details": {
-                        "prompt_text": "Test prompt",
-                        "response_text": "Test response",
-                        "model_used": "gpt-4"
+                    "execution_id": "exec-1",
+                    "stage_id": "data-collection", 
+                    "stage_name": "Data Collection",
+                    "status": "completed",
+                    "interaction_summary": {
+                        "llm_count": 1,
+                        "mcp_count": 1,
+                        "total_count": 2
                     }
                 }
             ]
         }
-        mock_service.get_session_timeline.return_value = mock_timeline
+        # Mock async method for get_session_with_stages  
+        async def mock_get_session_with_stages(session_id):
+            return {
+                "session": {
+                    "session_id": "test-session",
+                    "chain_id": "chain-789",
+                    "alert_type": "TestAlert", 
+                    "status": "completed"
+                },
+                "stages": mock_chain_data["stages"]
+            }
+        mock_service.get_session_with_stages = mock_get_session_with_stages
         
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_service
@@ -1039,7 +1164,7 @@ class TestHistoryControllerResponseFormat:
         expected_fields = {
             "session_id", "alert_id", "alert_type", "agent_type",
             "status", "started_at_us", "completed_at_us", "error_message",
-            "chronological_timeline", "summary", "duration_ms", "session_metadata", "alert_data"
+            "chain_execution", "summary", "duration_ms", "session_metadata", "alert_data"
         }
         assert expected_fields.issubset(set(data.keys()))
         
@@ -1048,15 +1173,37 @@ class TestHistoryControllerResponseFormat:
         assert data["alert_type"] == "TestAlert"
         assert data["status"] == "completed"
         
-        # Validate timeline structure
-        timeline = data["chronological_timeline"]
-        assert isinstance(timeline, list)
-        assert len(timeline) == 1
+        # Validate chain execution structure (all sessions should be chain-based)
+        chain_execution = data["chain_execution"]
+        assert chain_execution is not None, "All sessions should have chain execution data"
+        assert isinstance(chain_execution, dict)
+        assert "chain_id" in chain_execution
+        assert "stages" in chain_execution
+        assert isinstance(chain_execution["stages"], list)
         
-        event = timeline[0]
-        assert "type" in event
-        assert "timestamp_us" in event
-        assert "step_description" in event
+        # Verify stage timeline structure if stages exist
+        if chain_execution["stages"]:
+            first_stage = chain_execution["stages"][0]
+            assert "timeline" in first_stage
+            assert "interaction_summary" in first_stage
+            assert "execution_id" in first_stage
+            assert "stage_id" in first_stage
+            assert "stage_name" in first_stage
+            assert "status" in first_stage
+            
+            # Validate interaction summary structure
+            interaction_summary = first_stage["interaction_summary"]
+            assert "llm_count" in interaction_summary
+            assert "mcp_count" in interaction_summary
+            assert "total_count" in interaction_summary
+            
+            # Validate timeline events if present
+            if first_stage["timeline"]:
+                event = first_stage["timeline"][0]
+                assert "type" in event
+                assert "timestamp_us" in event
+                assert "step_description" in event
+                assert "details" in event
         
         # Validate summary exists
         summary = data["summary"]
