@@ -48,6 +48,13 @@ class SessionsListResponse(BaseModel):
     pagination: PaginationInfo = Field(description="Pagination information")
     filters_applied: Dict[str, Any] = Field(description="Applied filters for this query")
 
+class InteractionSummary(BaseModel):
+    """Summary statistics for stage interactions."""
+    llm_count: int = Field(description="Number of LLM interactions in this stage")
+    mcp_count: int = Field(description="Number of MCP communications in this stage") 
+    total_count: int = Field(description="Total number of interactions in this stage")
+    duration_ms: Optional[int] = Field(None, description="Total interaction time for this stage")
+
 class StageExecution(BaseModel):
     """Information about a single stage execution within a chain."""
     execution_id: str = Field(description="Unique stage execution identifier")
@@ -62,6 +69,10 @@ class StageExecution(BaseModel):
     duration_ms: Optional[int] = Field(None, description="Stage execution duration")
     stage_output: Optional[Dict[str, Any]] = Field(None, description="Stage output data (if successful)")
     error_message: Optional[str] = Field(None, description="Error message (if failed)")
+    
+    # Modern timeline structure
+    timeline: List[Dict[str, Any]] = Field(default_factory=list, description="Chronological timeline of interactions for this stage only")
+    interaction_summary: InteractionSummary = Field(description="Summary statistics for stage interactions")
 
 class ChainExecution(BaseModel):
     """Information about chain execution within a session."""
@@ -99,10 +110,9 @@ class SessionDetailResponse(BaseModel):
     session_metadata: Optional[Dict[str, Any]] = Field(description="Additional session metadata")
     
     # Chain execution information (if this is a chain session)
-    chain_execution: Optional[ChainExecution] = Field(None, description="Chain execution details (if this is a chain session)")
+    chain_execution: Optional[ChainExecution] = Field(None, description="Chain execution details with stage-specific timelines")
     
-    # Timeline
-    chronological_timeline: List[TimelineEvent] = Field(description="Chronologically ordered list of all events")
+    # Session-level summary
     summary: Dict[str, Any] = Field(description="Session summary statistics")
 
 class HealthCheckResponse(BaseModel):

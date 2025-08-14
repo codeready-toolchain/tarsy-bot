@@ -141,7 +141,9 @@ class APIClient {
         sessionId,
         hasAlertData: !!response.data?.alert_data,
         hasFinalAnalysis: !!response.data?.final_analysis,
-        timelineItems: response.data?.chronological_timeline?.length || 0,
+        timelineItems: response.data?.chain_execution?.stages?.reduce(
+          (total, stage) => total + (stage.timeline?.length || 0), 0
+        ) || 0,
         status: response.data?.status
       });
       

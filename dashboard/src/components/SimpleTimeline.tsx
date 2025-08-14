@@ -70,7 +70,7 @@ function SimpleTimeline({ timelineItems }: SimpleTimelineProps) {
       <List sx={{ pt: 1 }}>
         {timelineItems.map((item, index) => (
           <ListItem 
-            key={item.id || index} 
+            key={item.event_id || index} 
             sx={{ 
               alignItems: 'flex-start',
               pl: 0,

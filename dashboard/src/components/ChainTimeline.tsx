@@ -25,7 +25,7 @@ import {
   Build,
   Timeline as TimelineIcon,
 } from '@mui/icons-material';
-import type { ChainTimelineProps, TimelineItem, StageExecution } from '../types';
+import type { ChainTimelineProps, StageExecution } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 
 // Helper function to get stage status icon
@@ -72,34 +72,18 @@ const getInteractionIcon = (type: string) => {
   }
 };
 
-// Group timeline items by stage
-const groupTimelineByStage = (timelineItems: TimelineItem[], stages: StageExecution[]) => {
-  const stageMap = new Map<string, { stage: StageExecution; interactions: TimelineItem[] }>();
-  
-  // Initialize stages
-  stages.forEach(stage => {
-    stageMap.set(stage.execution_id, {
+// Simplified: Stages now contain their own timelines
+const prepareStagesWithTimelines = (stages: StageExecution[]) => {
+  return stages
+    .sort((a, b) => a.stage_index - b.stage_index)
+    .map(stage => ({
       stage,
-      interactions: [],
-    });
-  });
-  
-  // Group interactions by stage
-  timelineItems.forEach(item => {
-    if (item.stage_execution_id && stageMap.has(item.stage_execution_id)) {
-      stageMap.get(item.stage_execution_id)!.interactions.push(item);
-    }
-  });
-  
-  // Sort stages by stage_index
-  return Array.from(stageMap.values()).sort((a, b) => 
-    a.stage.stage_index - b.stage.stage_index
-  );
+      interactions: stage.timeline || [] // Direct access to stage timeline
+    }));
 };
 
 const ChainTimeline: React.FC<ChainTimelineProps> = ({
   chainExecution,
-  timelineItems,
   expandedStages = [],
   onStageToggle,
 }) => {
@@ -127,8 +111,7 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
       : localExpandedStages.has(stageId);
   };
 
-  const groupedTimeline = groupTimelineByStage(timelineItems, chainExecution.stages);
-  const ungroupedItems = timelineItems.filter(item => !item.stage_execution_id);
+  const groupedTimeline = prepareStagesWithTimelines(chainExecution.stages);
 
   return (
     <Box>
@@ -314,47 +297,7 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
           </AccordionDetails>
         </Accordion>
       ))}
-      
-      {/* Ungrouped interactions (if any) */}
-      {ungroupedItems.length > 0 && (
-        <Card sx={{ mt: 3 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Other Interactions
-            </Typography>
-            <List dense>
-              {ungroupedItems
-                .sort((a, b) => a.timestamp_us - b.timestamp_us)
-                .map((item, index) => (
-                  <ListItem key={item.event_id || index} sx={{ pl: 0 }}>
-                    <ListItemIcon sx={{ minWidth: 36 }}>
-                      {getInteractionIcon(item.type)}
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={
-                        <Box display="flex" justifyContent="space-between" alignItems="center">
-                          <Typography variant="body2">
-                            {item.step_description}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {formatTimestamp(item.timestamp_us)}
-                          </Typography>
-                        </Box>
-                      }
-                      secondary={
-                        item.duration_ms && (
-                          <Typography variant="caption" color="text.secondary">
-                            Duration: {formatDurationMs(item.duration_ms)}
-                          </Typography>
-                        )
-                      }
-                    />
-                  </ListItem>
-                ))}
-            </List>
-          </CardContent>
-        </Card>
-      )}
+
     </Box>
   );
 };

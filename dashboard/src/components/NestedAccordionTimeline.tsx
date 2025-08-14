@@ -38,7 +38,6 @@ import CopyButton from './CopyButton';
 
 interface NestedAccordionTimelineProps {
   chainExecution: ChainExecution;
-  timelineItems: TimelineItem[];
 }
 
 // Helper function to get stage status icon
@@ -182,7 +181,7 @@ const formatStageForCopy = (stage: any, stageIndex: number, interactions: Timeli
 };
 
 // Helper function to format entire flow for copying
-const formatEntireFlowForCopy = (chainExecution: ChainExecution, timelineItems: TimelineItem[]): string => {
+const formatEntireFlowForCopy = (chainExecution: ChainExecution): string => {
   let content = `====== CHAIN EXECUTION: ${chainExecution.chain_id} ======\n`;
   content += `Total Stages: ${chainExecution.stages.length}\n`;
   content += `Completed: ${chainExecution.stages.filter(s => s.status === 'completed').length}\n`;
@@ -190,8 +189,7 @@ const formatEntireFlowForCopy = (chainExecution: ChainExecution, timelineItems: 
   content += `Current Stage: ${chainExecution.current_stage_index !== null ? chainExecution.current_stage_index + 1 : 'None'}\n\n`;
   
   chainExecution.stages.forEach((stage, stageIndex) => {
-    const stageInteractions = timelineItems
-      .filter(item => item.stage_execution_id === stage.execution_id)
+    const stageInteractions = (stage.timeline || [])
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
     
     content += `\n${'='.repeat(80)}\n`;
@@ -207,7 +205,6 @@ const formatEntireFlowForCopy = (chainExecution: ChainExecution, timelineItems: 
 
 const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
   chainExecution,
-  timelineItems,
 }) => {
   const [expandedStages, setExpandedStages] = useState<Set<string>>(
     new Set(
@@ -252,10 +249,11 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
     }));
   };
 
-  const getStageInteractions = (stageId: string) =>
-    timelineItems
-      .filter(item => item.stage_execution_id === stageId)
+  const getStageInteractions = (stageId: string) => {
+    const stage = chainExecution.stages.find(s => s.execution_id === stageId);
+    return (stage?.timeline || [])
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
+  };
 
   return (
     <Card>
@@ -267,7 +265,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
           </Typography>
           <Box display="flex" alignItems="center" gap={1}>
             <CopyButton
-              text={formatEntireFlowForCopy(chainExecution, timelineItems)}
+              text={formatEntireFlowForCopy(chainExecution)}
               variant="button"
               buttonVariant="outlined"
               size="small"
@@ -479,7 +477,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
 
                 {stageInteractions.length > 0 ? (
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {stageInteractions.map((interaction, interactionIndex) => {
+                    {stageInteractions.map((interaction: TimelineItem, interactionIndex: number) => {
                       const itemKey = interaction.event_id || `interaction-${interactionIndex}`;
                       const isDetailsExpanded = expandedInteractionDetails[itemKey];
                       
@@ -656,13 +654,11 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                               </Box>
                               
                               {/* Full interaction details when expanded */}
-                              {interaction.type !== 'stage_execution' && (
-                                <InteractionDetails
-                                  type={interaction.type as 'llm' | 'mcp' | 'system'}
-                                  details={interaction.details}
-                                  expanded={isDetailsExpanded}
-                                />
-                              )}
+                              <InteractionDetails
+                                type={interaction.type as 'llm' | 'mcp' | 'system'}
+                                details={interaction.details}
+                                expanded={isDetailsExpanded}
+                              />
                             </CardContent>
                           )}
                         </Card>

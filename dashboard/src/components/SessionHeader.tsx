@@ -57,9 +57,9 @@ function SessionHeader({ session }: SessionHeaderProps) {
           <Typography variant="body2" color="text.secondary">
             {session.alert_type} • {session.agent_type} agent • Started at {formatTimestamp(session.started_at_us, 'absolute')}
           </Typography>
-          {session.summary && typeof session.summary === 'string' && session.summary.trim() && (
+          {session.summary && typeof session.summary === 'object' && (
             <Typography variant="body2" sx={{ mt: 1 }}>
-              {session.summary}
+              {JSON.stringify(session.summary, null, 2)}
             </Typography>
           )}
         </Box>

@@ -311,6 +311,14 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
                 duration_ms: sp.duration_ms ?? null,
                 stage_output: null,
                 error_message: sp.error_message ?? null,
+                // Add required fields for new API structure
+                timeline: [],
+                interaction_summary: {
+                  llm_count: 0,
+                  mcp_count: 0,
+                  total_count: 0,
+                  duration_ms: sp.duration_ms ?? null
+                }
               })) ?? []}
               currentStageIndex={currentStageIndex}
               showLabels={true}

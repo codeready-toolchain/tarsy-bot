@@ -21,7 +21,15 @@ export interface Session {
   current_stage_index?: number; // Current stage index (if still processing)
 }
 
-// Phase 5: Stage execution data
+// Phase 5: Interaction summary for stages
+export interface InteractionSummary {
+  llm_count: number;
+  mcp_count: number;
+  total_count: number;
+  duration_ms: number | null;
+}
+
+// Phase 5: Stage execution data (updated for new API)
 export interface StageExecution {
   execution_id: string;
   stage_id: string;
@@ -35,6 +43,10 @@ export interface StageExecution {
   duration_ms: number | null;
   stage_output: any | null;
   error_message: string | null;
+  
+  // New API structure - timeline embedded in stage
+  timeline: TimelineItem[];
+  interaction_summary: InteractionSummary;
 }
 
 // Phase 5: Chain execution data
@@ -46,13 +58,13 @@ export interface ChainExecution {
   stages: StageExecution[];
 }
 
-// Phase 3: Detailed session data for session detail page
+// Phase 3: Detailed session data for session detail page (updated for new API)
 export interface DetailedSession extends Session {
   alert_data: AlertData;
   final_analysis: string | null;
-  chronological_timeline: TimelineItem[];
+  summary: { [key: string]: any };
   
-  // Phase 5: Chain execution information
+  // Phase 5: Chain execution information (contains stage-specific timelines)
   chain_execution?: ChainExecution;
 }
 
@@ -61,18 +73,14 @@ export interface AlertData {
   [key: string]: any; // Can contain any fields
 }
 
-// Phase 3: Timeline item structure
+// Phase 3: Timeline item structure (updated for new API)
 export interface TimelineItem {
-  id: string;
   event_id: string;
-  type: 'llm' | 'mcp' | 'system' | 'stage_execution';
+  type: 'llm' | 'mcp' | 'system';
   timestamp_us: number; // Unix timestamp (microseconds since epoch)
   step_description: string;
   duration_ms: number | null;
   details?: LLMInteraction | MCPInteraction | SystemEvent;
-  
-  // Phase 5: Chain context information
-  stage_execution_id?: string; // Associated stage execution ID (if part of a chain)
 }
 
 // Phase 3: LLM interaction details
@@ -461,7 +469,6 @@ export interface StageProgressBarProps {
 
 export interface ChainTimelineProps {
   chainExecution: ChainExecution;
-  timelineItems: TimelineItem[];
   expandedStages?: string[];
   onStageToggle?: (stageId: string) => void;
 }
@@ -470,5 +477,4 @@ export interface StageCardProps {
   stage: StageExecution;
   expanded?: boolean;
   onToggle?: () => void;
-  relatedInteractions?: TimelineItem[];
 }

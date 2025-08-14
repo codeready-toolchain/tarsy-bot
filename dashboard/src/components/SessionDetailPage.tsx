@@ -188,23 +188,29 @@ function SessionDetailPage() {
         else if (data.type === 'batched_session_updates' && data.updates) {
           console.log('Timeline batch update detected, fetching new timeline items smoothly');
           
-          // Get the current timeline length to detect new items
-          const currentTimelineLength = session?.chronological_timeline?.length || 0;
+          // Get the current timeline length to detect new items (from all stages)
+          const currentTimelineLength = session?.chain_execution?.stages?.reduce(
+            (total, stage) => total + (stage.timeline?.length || 0), 0
+          ) || 0;
           
           // WebSocket updates only contain previews, so we need to refetch for complete details
           // But we'll do it smartly to avoid full screen refresh
           try {
             const updatedSessionData = await apiClient.getSessionDetail(sessionId);
             
-            // Only update if we actually have new timeline items
-            if (updatedSessionData.chronological_timeline.length > currentTimelineLength) {
+            // Only update if we actually have new timeline items (calculate from all stages)
+            const newTimelineLength = updatedSessionData.chain_execution?.stages?.reduce(
+              (total, stage) => total + (stage.timeline?.length || 0), 0
+            ) || 0;
+            
+            if (newTimelineLength > currentTimelineLength) {
               setSession(prevSession => {
                 if (!prevSession) return updatedSessionData;
                 
-                // Merge with existing session data, only updating timeline and essential fields
+                // Merge with existing session data, only updating chain execution and essential fields
                 return {
                   ...prevSession,
-                  chronological_timeline: updatedSessionData.chronological_timeline,
+                  chain_execution: updatedSessionData.chain_execution,
                   status: updatedSessionData.status,
                   duration_ms: updatedSessionData.duration_ms,
                   completed_at_us: updatedSessionData.completed_at_us,
@@ -213,7 +219,7 @@ function SessionDetailPage() {
                 };
               });
               
-              console.log(`Timeline updated smoothly: ${updatedSessionData.chronological_timeline.length - currentTimelineLength} new items added`);
+              console.log(`Timeline updated smoothly: ${newTimelineLength - currentTimelineLength} new items added`);
             } else {
               console.log('No new timeline items detected, skipping update');
             }
@@ -261,15 +267,22 @@ function SessionDetailPage() {
           // Use the same smooth update approach as batched updates
           try {
             const updatedSessionData = await apiClient.getSessionDetail(sessionId);
-            const currentTimelineLength = session?.chronological_timeline?.length || 0;
+            // Calculate current timeline length from all stages
+            const currentTimelineLength = session?.chain_execution?.stages?.reduce(
+              (total, stage) => total + (stage.timeline?.length || 0), 0
+            ) || 0;
             
-            if (updatedSessionData.chronological_timeline.length > currentTimelineLength) {
+            const newTimelineLength = updatedSessionData.chain_execution?.stages?.reduce(
+              (total, stage) => total + (stage.timeline?.length || 0), 0
+            ) || 0;
+            
+            if (newTimelineLength > currentTimelineLength) {
               setSession(prevSession => {
                 if (!prevSession) return updatedSessionData;
                 
                 return {
                   ...prevSession,
-                  chronological_timeline: updatedSessionData.chronological_timeline,
+                  chain_execution: updatedSessionData.chain_execution,
                   status: updatedSessionData.status,
                   duration_ms: updatedSessionData.duration_ms,
                   completed_at_us: updatedSessionData.completed_at_us,
@@ -295,7 +308,7 @@ function SessionDetailPage() {
               
               return {
                 ...prevSession,
-                chronological_timeline: updatedSessionData.chronological_timeline,
+                chain_execution: updatedSessionData.chain_execution,
                 llm_interaction_count: updatedSessionData.llm_interaction_count,
                 mcp_communication_count: updatedSessionData.mcp_communication_count
               };
@@ -533,7 +546,6 @@ function SessionDetailPage() {
             {session.chain_execution ? (
               <NestedAccordionTimeline
                 chainExecution={session.chain_execution}
-                timelineItems={session.chronological_timeline}
               />
             ) : (
               <Alert severity="error" sx={{ mb: 2 }}>

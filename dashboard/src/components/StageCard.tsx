@@ -83,11 +83,11 @@ const StageCard: React.FC<StageCardProps> = ({
   stage,
   expanded = false,
   onToggle,
-  relatedInteractions = [],
 }) => {
   const statusConfig = getStageStatusConfig(stage.status);
-
-  const hasInteractions = relatedInteractions.length > 0;
+  
+  const stageInteractions = stage.timeline || [];
+  const hasInteractions = stageInteractions.length > 0;
   const hasOutput = stage.stage_output !== null && stage.stage_output !== undefined;
   const hasError = stage.error_message !== null;
 
@@ -160,12 +160,14 @@ const StageCard: React.FC<StageCardProps> = ({
         {/* Error message (always visible if present) */}
         {hasError && (
           <Box
-            mt={1}
-            p={1}
-            backgroundColor="error.light"
-            borderRadius={1}
-            border="1px solid"
-            borderColor="error.main"
+            sx={{
+              mt: 1,
+              p: 1,
+              backgroundColor: "error.light",
+              borderRadius: 1,
+              border: "1px solid",
+              borderColor: "error.main"
+            }}
           >
             <Typography variant="body2" color="error.dark">
               <strong>Error:</strong> {stage.error_message}
@@ -176,12 +178,14 @@ const StageCard: React.FC<StageCardProps> = ({
         {/* Success indicator */}
         {stage.status === 'completed' && !hasError && (
           <Box
-            mt={1}
-            p={1}
-            backgroundColor="success.light"
-            borderRadius={1}
-            border="1px solid"
-            borderColor="success.main"
+            sx={{
+              mt: 1,
+              p: 1,
+              backgroundColor: "success.light",
+              borderRadius: 1,
+              border: "1px solid",
+              borderColor: "success.main"
+            }}
           >
             <Typography variant="body2" color="success.dark">
               <CheckCircle sx={{ fontSize: 16, mr: 0.5, verticalAlign: 'middle' }} />
@@ -196,7 +200,7 @@ const StageCard: React.FC<StageCardProps> = ({
             {hasInteractions && (
               <Chip
                 icon={<TimelineIcon />}
-                label={`${relatedInteractions.length} interactions`}
+                label={`${stageInteractions.length} interactions`}
                 size="small"
                 variant="outlined"
               />
@@ -225,10 +229,13 @@ const StageCard: React.FC<StageCardProps> = ({
                 Stage Output
               </Typography>
               <Box
-                p={1}
-                backgroundColor="grey.50"
-                borderRadius={1}
-                sx={{ maxHeight: 200, overflow: 'auto' }}
+                sx={{ 
+                  p: 1,
+                  backgroundColor: "grey.50",
+                  borderRadius: 1,
+                  maxHeight: 200, 
+                  overflow: 'auto' 
+                }}
               >
                 <pre style={{ 
                   margin: 0, 
@@ -250,12 +257,12 @@ const StageCard: React.FC<StageCardProps> = ({
           {hasInteractions && (
             <Box>
               <Typography variant="subtitle2" gutterBottom>
-                Related Interactions ({relatedInteractions.length})
+                Related Interactions ({stageInteractions.length})
               </Typography>
               <List dense sx={{ pt: 0 }}>
-                {relatedInteractions
-                  .sort((a, b) => a.timestamp_us - b.timestamp_us)
-                  .map((interaction, index) => (
+                {stageInteractions
+                  .sort((a: any, b: any) => a.timestamp_us - b.timestamp_us)
+                  .map((interaction: any, index: number) => (
                     <ListItem 
                       key={interaction.event_id || index}
                       sx={{ 

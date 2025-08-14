@@ -15,11 +15,11 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from tarsy.models.api_models import (
     ErrorResponse,
     HealthCheckResponse,
+    InteractionSummary,
     PaginationInfo,
     SessionDetailResponse,
     SessionsListResponse,
     SessionSummary,
-    TimelineEvent,
     ChainExecution,
     StageExecution,
 )
@@ -240,8 +240,38 @@ async def get_session_detail(
             stage_executions = []
             
             for stage_data in stages_data:
+                execution_id = stage_data.get('execution_id', '')
+                
+                # Build chronological timeline for this stage only
+                stage_timeline = []
+                for event in timeline:
+                    if event.get('stage_execution_id') == execution_id:
+                        stage_timeline.append({
+                            'event_id': event.get('event_id'),
+                            'type': event.get('type'),
+                            'timestamp_us': event.get('timestamp_us'),
+                            'step_description': event.get('step_description'),
+                            'duration_ms': event.get('duration_ms'),
+                            'details': event.get('details', {})
+                        })
+                
+                # Sort chronologically
+                stage_timeline.sort(key=lambda x: x['timestamp_us'])
+                
+                # Calculate interaction summary
+                llm_count = len([e for e in stage_timeline if e.get('type') == 'llm'])
+                mcp_count = len([e for e in stage_timeline if e.get('type') == 'mcp'])
+                total_duration = sum(e.get('duration_ms', 0) for e in stage_timeline if e.get('duration_ms'))
+                
+                interaction_summary = InteractionSummary(
+                    llm_count=llm_count,
+                    mcp_count=mcp_count,
+                    total_count=len(stage_timeline),
+                    duration_ms=total_duration if total_duration > 0 else None
+                )
+                
                 stage_execution = StageExecution(
-                    execution_id=stage_data.get('execution_id', ''),
+                    execution_id=execution_id,
                     stage_id=stage_data.get('stage_id', ''),
                     stage_index=stage_data.get('stage_index', 0),
                     stage_name=stage_data.get('stage_name', ''),
@@ -251,8 +281,10 @@ async def get_session_detail(
                     started_at_us=stage_data.get('started_at_us'),
                     completed_at_us=stage_data.get('completed_at_us'),
                     duration_ms=stage_data.get('duration_ms'),
-                    stage_output=stage_data.get('stage_output'),  # Changed from output_data
-                    error_message=stage_data.get('error_message')
+                    stage_output=stage_data.get('stage_output'),
+                    error_message=stage_data.get('error_message'),
+                    timeline=stage_timeline,
+                    interaction_summary=interaction_summary
                 )
                 stage_executions.append(stage_execution)
             
@@ -263,20 +295,6 @@ async def get_session_detail(
                 current_stage_id=session_info.get('current_stage_id'),
                 stages=stage_executions
             )
-        
-        # Convert timeline to response models
-        timeline_events = []
-        for event in timeline:
-            timeline_event = TimelineEvent(
-                event_id=event.get('event_id', event.get('interaction_id', event.get('communication_id', 'unknown'))),
-                type=event.get('type', 'unknown'),
-                timestamp_us=event['timestamp_us'],
-                step_description=event.get('step_description', 'No description available'),
-                details=event.get('details', {}),
-                duration_ms=event.get('duration_ms'),
-                stage_execution_id=event.get('stage_execution_id')  # Add chain context
-            )
-            timeline_events.append(timeline_event)
         
         return SessionDetailResponse(
             session_id=session_info['session_id'],
@@ -291,8 +309,7 @@ async def get_session_detail(
             final_analysis=session_info.get('final_analysis'),
             duration_ms=duration_ms,
             session_metadata=session_info.get('session_metadata', {}),
-            chain_execution=chain_execution,  # Add chain execution data
-            chronological_timeline=timeline_events,
+            chain_execution=chain_execution,  # Chain execution now contains stage-specific timelines
             summary=summary
         )
         
