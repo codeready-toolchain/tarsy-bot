@@ -76,11 +76,11 @@ class TestURLConversion:
     
     @pytest.mark.parametrize("input_url,expected_url", [
         ("https://github.com/user/repo/blob/master/docs/runbook.md", 
-         "https://raw.githubusercontent.com/user/repo/master/docs/runbook.md"),
+         "https://raw.githubusercontent.com/user/repo/refs/heads/master/docs/runbook.md"),
         ("https://github.com/org/project/blob/develop/scripts/setup.sh",
-         "https://raw.githubusercontent.com/org/project/develop/scripts/setup.sh"),
+         "https://raw.githubusercontent.com/org/project/refs/heads/develop/scripts/setup.sh"),
         ("https://github.com/company/repo/blob/main/docs/ops/troubleshooting/k8s.md",
-         "https://raw.githubusercontent.com/company/repo/main/docs/ops/troubleshooting/k8s.md"),
+         "https://raw.githubusercontent.com/company/repo/refs/heads/main/docs/ops/troubleshooting/k8s.md"),
         ("https://raw.githubusercontent.com/user/repo/master/file.md",
          "https://raw.githubusercontent.com/user/repo/master/file.md"),  # Already raw
         ("https://example.com/docs/runbook.md",
@@ -101,9 +101,9 @@ class TestURLConversion:
         
         # Special character URLs
         ("https://github.com/user/repo/blob/feature/fix-bug/docs/run%20book.md",
-         "https://raw.githubusercontent.com/user/repo/feature/fix-bug/docs/run%20book.md", False),
+         "https://raw.githubusercontent.com/user/repo/refs/heads/feature/fix-bug/docs/run%20book.md", False),
         ("https://github.com/user/repo/blob/feature#123/file.md",
-         "https://raw.githubusercontent.com/user/repo/feature#123/file.md", False),
+         "https://raw.githubusercontent.com/user/repo/refs/heads/feature#123/file.md", False),
         
         # Edge cases
         ("", "", False),  # Empty URL
@@ -142,7 +142,7 @@ class TestRunbookDownload:
     async def test_download_runbook_success(self, service, mock_response):
         """Test successful runbook download."""
         github_url = "https://github.com/user/repo/blob/master/runbook.md"
-        expected_raw_url = "https://raw.githubusercontent.com/user/repo/master/runbook.md"
+        expected_raw_url = "https://raw.githubusercontent.com/user/repo/refs/heads/master/runbook.md"
         
         service.client.get.return_value = mock_response
         
@@ -439,11 +439,11 @@ class TestErrorScenariosAndEdgeCases:
     async def test_url_conversion_with_edge_cases(self, service):
         """Test URL conversion with various edge cases."""
         edge_cases = [
-            ("https://github.com/user/repo/blob/master/", "https://raw.githubusercontent.com/user/repo/master/"),
+            ("https://github.com/user/repo/blob/master/", "https://raw.githubusercontent.com/user/repo/refs/heads/master/"),
             ("https://github.com/user/repo/blob/feature-branch/deep/nested/path/file.md", 
-             "https://raw.githubusercontent.com/user/repo/feature-branch/deep/nested/path/file.md"),
+             "https://raw.githubusercontent.com/user/repo/refs/heads/feature-branch/deep/nested/path/file.md"),
             ("https://github.com/user-name/repo-name/blob/branch-name/file-name.md",
-             "https://raw.githubusercontent.com/user-name/repo-name/branch-name/file-name.md")
+             "https://raw.githubusercontent.com/user-name/repo-name/refs/heads/branch-name/file-name.md")
         ]
         
         for input_url, expected_output in edge_cases:
@@ -528,7 +528,7 @@ class TestIntegrationScenarios:
         assert "Diagnosis Steps" in result
         
         # Should convert URL and use proper headers
-        expected_raw_url = "https://raw.githubusercontent.com/company/runbooks/master/k8s/pod-restart.md"
+        expected_raw_url = "https://raw.githubusercontent.com/company/runbooks/refs/heads/master/k8s/pod-restart.md"
         service.client.get.assert_called_once_with(expected_raw_url, headers=service.headers)
     
     async def test_download_with_service_lifecycle(self, service):

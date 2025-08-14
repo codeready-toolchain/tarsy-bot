@@ -149,7 +149,7 @@ function SessionDetailPage() {
           console.log('Session status change detected, updating session state');
           
           // Check if this is a chain session that might have stage changes
-          const isChainSession = session?.chain_id || session?.chain_execution;
+          const isChainSession = session?.chain_id && session?.chain_execution;
           
           // For chain sessions, we need to refetch to get updated stage information
           // because stage progress updates are critical for the UI

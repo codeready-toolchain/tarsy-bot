@@ -20,7 +20,9 @@ class RunbookService:
             "User-Agent": "Tarsy-bot/1.0"
         }
         
-        if self.settings.github_token:
+        # Only add Authorization header if we have a valid (non-placeholder) token
+        if (self.settings.github_token and 
+            self.settings.github_token not in ["your_github_token_here", "your_token", "placeholder"]):
             self.headers["Authorization"] = f"token {self.settings.github_token}"
     
     async def download_runbook(self, url: str) -> str:
@@ -41,7 +43,7 @@ class RunbookService:
     def _convert_to_raw_url(self, github_url: str) -> str:
         """Convert GitHub URL to raw content URL."""
         # Example: https://github.com/user/repo/blob/master/file.md
-        # Should become: https://raw.githubusercontent.com/user/repo/master/file.md
+        # Should become: https://raw.githubusercontent.com/user/repo/refs/heads/master/file.md
         
         if "raw.githubusercontent.com" in github_url:
             return github_url
@@ -55,7 +57,7 @@ class RunbookService:
                 branch = parts[3]
                 file_path = "/".join(parts[4:])
                 
-                return f"https://raw.githubusercontent.com/{user}/{repo}/{branch}/{file_path}"
+                return f"https://raw.githubusercontent.com/{user}/{repo}/refs/heads/{branch}/{file_path}"
         
         # If we can't convert, return as-is and let the request fail
         return github_url

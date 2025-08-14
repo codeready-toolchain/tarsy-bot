@@ -931,9 +931,9 @@ class TestCriticalCoverage:
              patch('tarsy.main.alert_keys_lock', asyncio.Lock()), \
              patch('tarsy.main.AlertKey') as mock_alert_key:
             
-            # Mock AlertKey to return a unique key for each call
+            # Mock AlertKey to return a unique key matching production format: <alert_type>_<12-char hex hash>
             mock_key = Mock()
-            mock_key.__str__ = Mock(return_value=f"unique-key-{uuid.uuid4()}")
+            mock_key.__str__ = Mock(return_value=f"test_alert_{uuid.uuid4().hex[:12]}")
             mock_alert_key.from_alert_data.return_value = mock_key
             
             mock_alert_service.register_alert_id = Mock()

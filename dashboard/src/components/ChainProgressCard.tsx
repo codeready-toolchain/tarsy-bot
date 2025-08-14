@@ -12,7 +12,7 @@ import {
   Divider,
 } from '@mui/material';
 import {
-  Error,
+  Error as ErrorIcon,
   Warning,
   Refresh,
   Schedule,
@@ -46,7 +46,7 @@ const getStatusChipConfig = (status: string) => {
     case 'failed':
       return {
         color: 'error' as const,
-        icon: <Error sx={{ fontSize: 16 }} />,
+        icon: <ErrorIcon sx={{ fontSize: 16 }} />,
         label: 'Failed',
       };
     case 'completed':
@@ -131,7 +131,9 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
   const failedStages = chainProgress?.failed_stages || session.failed_stages || 0;
   const currentStageIndex = chainProgress?.current_stage_index ?? session.current_stage_index;
   const chainProgressPercent = calculateChainProgress(completedStages, failedStages, totalStages);
-  const currentStageName = getCurrentStageName(session, chainProgress);
+  const currentStageName = getCurrentStageName(session, chainProgress ? {
+    current_stage: chainProgress.current_stage || undefined
+  } : null);
 
   return (
     <Card 
@@ -182,7 +184,11 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
             <Tooltip title="View Details">
               <IconButton 
                 size="small" 
-                onClick={handleCardClick}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCardClick();
+                }}
+                aria-label="View details"
                 sx={{ p: 0.5 }}
               >
                 <OpenInNew fontSize="small" />
@@ -298,14 +304,14 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
                 stage_index: sp.stage_index,
                 stage_name: sp.stage_name,
                 agent: sp.agent,
-                iteration_strategy: sp.iteration_strategy || null,
+                iteration_strategy: sp.iteration_strategy ?? null,
                 status: sp.status,
-                started_at_us: sp.started_at_us || null,
-                completed_at_us: sp.completed_at_us || null,
-                duration_ms: sp.duration_ms || null,
+                started_at_us: sp.started_at_us ?? null,
+                completed_at_us: sp.completed_at_us ?? null,
+                duration_ms: sp.duration_ms ?? null,
                 stage_output: null,
-                error_message: sp.error_message || null,
-              })) || []}
+                error_message: sp.error_message ?? null,
+              })) ?? []}
               currentStageIndex={currentStageIndex}
               showLabels={true}
               size="medium"

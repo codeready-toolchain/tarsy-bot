@@ -135,7 +135,7 @@ class AgentFactory:
             logger.error(f"Failed to create agent '{agent_name}': {e}")
             raise
 
-    async def get_agent(self, agent_identifier: str, iteration_strategy: Optional[str] = None) -> BaseAgent:
+    def get_agent(self, agent_identifier: str, iteration_strategy: Optional[str] = None) -> BaseAgent:
         """
         Get agent instance by identifier with optional strategy override.
         

@@ -7,7 +7,7 @@ to final analysis, testing integration between all components.
 
 import asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -785,8 +785,8 @@ data:
         mock_agent = AsyncMock()
         mock_agent.process_alert.side_effect = capture_agent_data
         
-        # Override the factory's get_agent method directly (async method used by AlertService)
-        alert_service.agent_factory.get_agent = AsyncMock(return_value=mock_agent)
+        # Override the factory's get_agent method directly (synchronous method used by AlertService)
+        alert_service.agent_factory.get_agent = Mock(return_value=mock_agent)
         
         # Convert to API format
         alert_dict = flexible_alert_to_api_format(monitoring_alert_with_nested_data)

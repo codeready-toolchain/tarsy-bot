@@ -450,9 +450,9 @@ class TestAlertServiceHistoryIntegration:
         # Mock the chain_registry - this is where get_chain_for_alert_type lives  
         service.chain_registry.get_chain_for_alert_type = Mock(return_value=Mock(chain_id="kubernetes-chain", stages=[Mock(name="analysis", agent="KubernetesAgent")]))
         
-        # Mock agent_factory to return our mock agent (async methods needed)
+        # Mock agent_factory to return our mock agent
         service.agent_factory = Mock()
-        service.agent_factory.get_agent = AsyncMock(return_value=mock_agent)
+        service.agent_factory.get_agent = Mock(return_value=mock_agent)
         service.agent_factory.create_agent = Mock(return_value=mock_agent)
         
         # Use real history service with mocked database
@@ -517,7 +517,7 @@ class TestAlertServiceHistoryIntegration:
         # Make agent processing fail by setting up the mock to fail
         mock_agent = AsyncMock()
         mock_agent.process_alert.side_effect = Exception("Agent processing failed")
-        alert_service_with_history.agent_factory.get_agent = AsyncMock(return_value=mock_agent)
+        alert_service_with_history.agent_factory.get_agent = Mock(return_value=mock_agent)
         
         # Process alert (should handle error gracefully)
         result = await alert_service_with_history.process_alert(

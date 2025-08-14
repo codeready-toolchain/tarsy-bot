@@ -311,7 +311,7 @@ class AlertService:
                     await self._update_stage_execution_started(stage_execution_id)
                     
                     # Get agent instance with stage-specific strategy (always creates unique instance)
-                    agent = await self.agent_factory.get_agent(
+                    agent = self.agent_factory.get_agent(
                         agent_identifier=stage.agent,
                         iteration_strategy=stage.iteration_strategy
                     )

@@ -727,11 +727,11 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
         
         return mock_agent
     
-    # Make get_agent async to match AlertService expectations
-    async def mock_get_agent(agent_identifier, iteration_strategy=None):
+    # Make get_agent synchronous to match AlertService expectations
+    def mock_get_agent(agent_identifier, iteration_strategy=None):
         return create_mock_agent(agent_identifier, iteration_strategy)
     
-    factory.get_agent = AsyncMock(side_effect=mock_get_agent)
+    factory.get_agent = Mock(side_effect=mock_get_agent)
     factory.create_agent = Mock(side_effect=create_mock_agent)
     factory.progress_callback = None
     return factory

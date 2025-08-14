@@ -180,9 +180,9 @@ class TestAlertProcessing:
         # Create service
         service = AlertService(mock_settings)
         
-        # Initialize agent factory with async get_agent method
+        # Initialize agent factory with get_agent method
         service.agent_factory = Mock()
-        service.agent_factory.get_agent = AsyncMock()
+        service.agent_factory.get_agent = Mock()
         
         # Create mock history service for proper testing
         from tarsy.services.history_service import HistoryService
