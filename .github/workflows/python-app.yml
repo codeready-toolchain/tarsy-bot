@@ -30,6 +30,39 @@ jobs:
       with:
         enable-cache: true
     
+    - name: Set up Node.js for MCP servers
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install kubernetes MCP server
+      run: npm install -g kubernetes-mcp-server@latest
+    
+    - name: Create mock kubeconfig for testing
+      run: |
+        mkdir -p /home/runner/.kube
+        cat > /home/runner/.kube/config << 'EOF'
+        apiVersion: v1
+        kind: Config
+        clusters:
+        - name: test-cluster
+          cluster:
+            server: https://127.0.0.1:6443
+            insecure-skip-tls-verify: true
+        contexts:
+        - name: test-context
+          context:
+            cluster: test-cluster
+            user: test-user
+        current-context: test-context
+        users:
+        - name: test-user
+          user:
+            token: test-token
+        EOF
+        chmod 600 /home/runner/.kube/config
+        
     - name: Install dependencies
       working-directory: ./backend
       run: uv sync --extra dev --extra test
@@ -44,10 +77,14 @@ jobs:
     
     - name: Run E2E tests
       working-directory: ./backend
+      env:
+        KUBECONFIG: /home/runner/.kube/config
       run: make test-e2e
     
     - name: Run tests with coverage
       working-directory: ./backend
+      env:
+        KUBECONFIG: /home/runner/.kube/config
       run: |
         TESTING=true uv run python -m pytest tests/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing
     
