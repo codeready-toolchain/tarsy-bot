@@ -26,6 +26,13 @@ from tarsy.models.api_models import (
 from tarsy.models.history import now_us
 from tarsy.services.history_service import HistoryService, get_history_service
 
+# Event type normalization mapping - converts legacy types to expected frontend types
+EVENT_TYPE_NORMALIZATION = {
+    'llm_interaction': 'llm',
+    'mcp_communication': 'mcp',
+    'stage_execution': 'system'
+}
+
 router = APIRouter(prefix="/api/v1/history", tags=["history"])
 
 @router.get(
@@ -246,9 +253,20 @@ async def get_session_detail(
                 stage_timeline = []
                 for event in timeline:
                     if event.get('stage_execution_id') == execution_id:
+                        # Validate event_id is present - no fallbacks
+                        event_id = event.get('event_id')
+                        if not event_id:
+                            raise ValueError(f"Missing required event_id for event: {event}")
+                        
+                        # Normalize event type - fail fast on unknown types
+                        raw_type = event.get('type')
+                        normalized_type = EVENT_TYPE_NORMALIZATION.get(raw_type)
+                        if normalized_type is None:
+                            raise ValueError(f"Unknown event type: {raw_type}")
+                        
                         stage_timeline.append({
-                            'event_id': event.get('event_id'),
-                            'type': event.get('type'),
+                            'event_id': event_id,
+                            'type': normalized_type,  # Use normalized type
                             'timestamp_us': event.get('timestamp_us'),
                             'step_description': event.get('step_description'),
                             'duration_ms': event.get('duration_ms'),
@@ -261,13 +279,15 @@ async def get_session_detail(
                 # Calculate interaction summary
                 llm_count = len([e for e in stage_timeline if e.get('type') == 'llm'])
                 mcp_count = len([e for e in stage_timeline if e.get('type') == 'mcp'])
-                total_duration = sum(e.get('duration_ms', 0) for e in stage_timeline if e.get('duration_ms'))
+                
+                # Sum all durations, defaulting to 0 for None values, keep None only if total is 0
+                total_duration_ms = sum(e.get('duration_ms') or 0 for e in stage_timeline)
                 
                 interaction_summary = InteractionSummary(
                     llm_count=llm_count,
                     mcp_count=mcp_count,
                     total_count=len(stage_timeline),
-                    duration_ms=total_duration if total_duration > 0 else None
+                    duration_ms=total_duration_ms if total_duration_ms > 0 else None
                 )
                 
                 stage_execution = StageExecution(

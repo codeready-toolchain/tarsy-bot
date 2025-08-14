@@ -79,13 +79,19 @@ def mock_settings():
     return settings
 
 
-@pytest.fixture(autouse=True, scope="function")  
+@pytest.fixture(scope="function")
 def ensure_integration_test_isolation(mock_settings, monkeypatch):
-    """Ensure integration tests use mock settings and don't get contaminated by e2e tests."""
+    """Ensure integration tests use mock settings and don't get contaminated by e2e tests.
+    
+    This fixture is now opt-in - tests that need this isolation must explicitly use it.
+    """
     # CRITICAL: Reset the global history service singleton to prevent e2e contamination
     import tarsy.services.history_service
     original_history_service = getattr(tarsy.services.history_service, '_history_service', None)
-    tarsy.services.history_service._history_service = None
+    
+    # Only reset if it exists and is initialized
+    if original_history_service is not None:
+        tarsy.services.history_service._history_service = None
     
     # Force patch the settings globally for every integration test
     monkeypatch.setattr("tarsy.config.settings.get_settings", lambda: mock_settings)
@@ -96,8 +102,9 @@ def ensure_integration_test_isolation(mock_settings, monkeypatch):
     
     yield
     
-    # Restore the original history service state (if any)
-    tarsy.services.history_service._history_service = original_history_service
+    # Restore the original history service state only if we modified it
+    if original_history_service is not None:
+        tarsy.services.history_service._history_service = original_history_service
 
 
 @pytest.fixture
@@ -770,7 +777,7 @@ def progress_callback_mock():
 
 
 @pytest.fixture
-async def alert_service(mock_settings, mock_runbook_service, mock_agent_registry, 
+async def alert_service(ensure_integration_test_isolation, mock_settings, mock_runbook_service, mock_agent_registry, 
                        mock_mcp_server_registry, mock_mcp_client, mock_llm_manager,
                        mock_agent_factory):
     """Create AlertService with mocked dependencies."""
@@ -794,6 +801,7 @@ async def alert_service(mock_settings, mock_runbook_service, mock_agent_registry
 
 @pytest.fixture
 def alert_service_with_mocks(
+    ensure_integration_test_isolation,
     mock_settings,
     mock_llm_manager,
     mock_mcp_client,

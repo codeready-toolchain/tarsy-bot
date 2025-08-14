@@ -11,10 +11,9 @@ import tempfile
 import uuid
 import logging
 import sys
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Generator
-from unittest.mock import patch, _patch
+from unittest.mock import patch
 import shutil
 
 import pytest
@@ -30,7 +29,6 @@ class E2ETestIsolation:
         self.patches = []
         self.original_logging_state = {}
         self.original_sys_modules = {}
-        self.active_patches = []
     
     def __enter__(self):
         # Create isolated temporary directory for this test
@@ -49,24 +47,17 @@ class E2ETestIsolation:
         # Capture logging state before e2e test modifications
         self._capture_logging_state()
         
-        # Capture active patches before e2e test
-        self._capture_active_patches()
-        
         # Set isolated testing environment
         os.environ["TESTING"] = "true"
         
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # First, clean up any patches that were started during the test
-        self._cleanup_test_patches()
         
         # CRITICAL: Reset global history service singleton to prevent contamination
-        try:
+        with suppress(Exception):
             import tarsy.services.history_service
             tarsy.services.history_service._history_service = None
-        except Exception:
-            pass  # Don't fail on cleanup
         
         # Restore logging state
         self._restore_logging_state()
@@ -80,25 +71,19 @@ class E2ETestIsolation:
         
         # Clean up all temporary files
         for temp_file in self.temp_files:
-            try:
+            with suppress(OSError, IOError):
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
-            except (OSError, IOError):
-                pass  # Ignore cleanup errors
         
         # Clean up temporary directory
         if self.temp_dir and self.temp_dir.exists():
-            try:
+            with suppress(OSError, IOError):
                 shutil.rmtree(self.temp_dir)
-            except (OSError, IOError):
-                pass  # Ignore cleanup errors
         
         # Clean up patches
         for patcher in reversed(self.patches):
-            try:
+            with suppress(RuntimeError):
                 patcher.stop()
-            except RuntimeError:
-                pass  # Patch may already be stopped
     
     def create_temp_database(self) -> str:
         """Create an isolated temporary database file."""
@@ -137,7 +122,7 @@ class E2ETestIsolation:
     
     def _capture_logging_state(self):
         """Capture current logging configuration."""
-        try:
+        with suppress(Exception):
             # Store root logger state
             root_logger = logging.getLogger()
             self.original_logging_state['root_level'] = root_logger.level
@@ -151,12 +136,10 @@ class E2ETestIsolation:
                     'handlers': logger.handlers.copy(),
                     'propagate': logger.propagate
                 }
-        except Exception:
-            pass  # Don't fail if logging capture fails
     
     def _restore_logging_state(self):
         """Restore original logging configuration."""
-        try:
+        with suppress(Exception):
             # Restore root logger
             root_logger = logging.getLogger()
             if 'root_level' in self.original_logging_state:
@@ -173,34 +156,10 @@ class E2ETestIsolation:
                     logger.setLevel(state['level'])
                     logger.handlers = state['handlers']
                     logger.propagate = state['propagate']
-        except Exception:
-            pass  # Don't fail if logging restoration fails
     
-    def _capture_active_patches(self):
-        """Capture currently active patches."""
-        try:
-            # Store references to active patches before test
-            self.active_patches = list(_patch._patch.started.values()) if hasattr(_patch._patch, 'started') else []
-        except Exception:
-            pass  # Don't fail if patch capture fails
+
     
-    def _cleanup_test_patches(self):
-        """Clean up patches that were created during the test."""
-        try:
-            # Get current active patches
-            if hasattr(_patch._patch, 'started'):
-                current_patches = set(_patch._patch.started.values())
-                original_patches = set(self.active_patches)
-                
-                # Stop patches that were created during the test
-                new_patches = current_patches - original_patches
-                for patcher in new_patches:
-                    try:
-                        patcher.stop()
-                    except RuntimeError:
-                        pass  # Already stopped
-        except Exception:
-            pass  # Don't fail if patch cleanup fails
+
 
 
 @pytest.fixture
@@ -268,7 +227,7 @@ def isolated_database_cleanup():
     finally:
         # Clean up any database files that were created
         for file_path in created_files:
-            try:
+            with suppress(OSError, IOError):
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 # Also clean up SQLite journal files
@@ -276,8 +235,6 @@ def isolated_database_cleanup():
                     journal_file = file_path + suffix
                     if os.path.exists(journal_file):
                         os.remove(journal_file)
-            except (OSError, IOError):
-                pass  # Ignore cleanup errors
 
 
 @pytest.fixture
@@ -302,7 +259,7 @@ def isolated_test_database(e2e_isolation):
     temp_settings.history_enabled = True
     
     # Patch the database manager to use our isolated database
-    isolated_db_manager = DatabaseManager(temp_settings)
+    isolated_db_manager = DatabaseManager(db_url)
     isolated_db_manager.engine = engine
     isolated_db_manager.SessionLocal = lambda: Session(engine)
     
@@ -366,10 +323,8 @@ def ensure_e2e_isolation(request):
     import glob
     for pattern in cleanup_patterns:
         for file_path in glob.glob(pattern):
-            try:
+            with suppress(OSError, IOError):
                 os.remove(file_path)
-            except (OSError, IOError):
-                pass  # Ignore cleanup errors
 
 
 # E2E specific fixtures that don't interfere with other tests
@@ -408,20 +363,11 @@ def e2e_realistic_kubernetes_alert():
 
 
 # Module-level cleanup for any global state that might leak
-def pytest_runtest_teardown(item, nextitem):
+def pytest_runtest_teardown(item):
     """Clean up after each e2e test to prevent state leakage.""" 
     if "e2e" in item.nodeid:
-        # Aggressive cleanup of any remaining patches
-        try:
-            if hasattr(_patch._patch, 'started'):
-                active_patches = list(_patch._patch.started.values())
-                for patcher in active_patches:
-                    try:
-                        patcher.stop()
-                    except RuntimeError:
-                        pass  # Already stopped
-        except Exception:
-            pass  # Don't fail on cleanup errors
+        # Note: Patch cleanup is now handled by the individual E2ETestIsolation instances
+        # through their self.patches list, so no global cleanup is needed here
         
         # Clean up environment variables that might have been modified
         test_env_vars = [
@@ -436,11 +382,9 @@ def pytest_runtest_teardown(item, nextitem):
                 os.environ.pop(var, None)
         
         # CRITICAL: Reset global history service singleton to prevent contamination of other tests
-        try:
+        with suppress(Exception):
             import tarsy.services.history_service
             tarsy.services.history_service._history_service = None
-        except Exception:
-            pass  # Don't fail on cleanup
             
         # Force clear any cached modules that might have been modified
         modules_to_clear = [
@@ -452,15 +396,13 @@ def pytest_runtest_teardown(item, nextitem):
         for module_name in modules_to_clear:
             if module_name in sys.modules:
                 # Don't actually remove the module, but clear any cached data
-                try:
+                with suppress(Exception):
                     module = sys.modules[module_name]
                     # Clear module-level caches if they exist
                     if hasattr(module, '_cached_settings'):
                         delattr(module, '_cached_settings')
                     if hasattr(module, '_db_manager'):
                         delattr(module, '_db_manager')
-                except Exception:
-                    pass  # Don't fail on cleanup
 
 
 def pytest_configure(config):

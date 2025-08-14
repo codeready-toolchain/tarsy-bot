@@ -61,8 +61,7 @@ test-integration: install ## Run integration tests only
 	$(PYTEST) $(TEST_DIR)/integration/ -v --tb=short
 
 .PHONY: test-e2e
-test-e2e: ## Run end-to-end tests only
-	@$(MAKE) install
+test-e2e: install ## Run end-to-end tests only
 	@echo "$(GREEN)Running end-to-end tests...$(NC)"
 	$(PYTEST) $(TEST_DIR)/e2e/ -v --tb=short -m e2e
 

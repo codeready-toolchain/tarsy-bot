@@ -7,14 +7,10 @@ database persistence, and comprehensive API data structures.
 Uses isolated e2e test fixtures to prevent interference with unit/integration tests.
 """
 
-import asyncio
-import time
 from unittest.mock import AsyncMock, Mock, patch
 
+import asyncio
 import pytest
-
-from tarsy.main import app
-
 
 @pytest.mark.asyncio
 @pytest.mark.e2e
@@ -587,7 +583,7 @@ Action Input: {step['action_input']}"""
         else:
             # STRICT VALIDATION: We MUST have stages data
             available_keys = list(chain_execution.keys())
-            assert False, f"STRICT VALIDATION FAILED: No 'stages' field found in chain_execution. Available keys: {available_keys}. Chain execution is broken."
+            pytest.fail(f"STRICT VALIDATION FAILED: No 'stages' field found in chain_execution. Available keys: {available_keys}. Chain execution is broken.")
         
         # Validate stage-embedded timelines (new structure)
         total_timeline_events = 0
@@ -662,7 +658,6 @@ Action Input: {step['action_input']}"""
             mock_history_settings.return_value = isolated_e2e_settings
             
             # Setup semaphore mock to allow async context management
-            import asyncio
             real_semaphore = asyncio.Semaphore()
             
             # Patch the semaphore directly in the main module, not just the return value
@@ -794,7 +789,7 @@ Action Input: {step['action_input']}"""
                 response = e2e_test_client.post("/alerts", json=e2e_realistic_kubernetes_alert)
                 if response.status_code != 200:
                     print(f"❌ Alert submission failed: {response.status_code} - {response.text}")
-                    assert False, f"Alert submission failed: {response.status_code}"
+                    pytest.fail(f"Alert submission failed: {response.status_code}")
                     
                 response_data = response.json()
                 assert response_data["status"] == "queued"
@@ -812,7 +807,7 @@ Action Input: {step['action_input']}"""
                         break
                                         
                 if not session_id:
-                    assert False, "Session was not created within timeout"
+                    pytest.fail("Session was not created within timeout")
                     
                 print(f"✅ Processing completed with session: {session_id}")
                 
