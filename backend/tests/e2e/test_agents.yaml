@@ -1,0 +1,64 @@
+# Test agent configuration for mega integration test
+# This file defines a realistic test scenario with multi-stage chain processing
+
+agents:
+  # Data Collection Agent for gathering kubernetes information
+  DataCollectionAgent:
+    alert_types:
+      - "test-kubernetes-data-collection"
+    iteration_strategy: "react-tools"
+    custom_instructions: |
+      You are a Kubernetes data collection specialist. Your role is to gather comprehensive 
+      information about problematic resources using available kubectl tools.
+      
+      Focus on:
+      - Namespace status and finalizers
+      - Pod states and termination details  
+      - Events showing errors and warnings
+      - Resource dependencies that might block cleanup
+      
+      Be thorough but efficient. Collect all relevant data before stopping.
+    mcp_servers:
+      - "kubernetes-server"  # Use built-in kubernetes server for simplicity
+
+  # Analysis Agent for root cause analysis
+  AnalysisAgent:
+    alert_types:
+      - "test-kubernetes-analysis"
+    iteration_strategy: "react-final-analysis"
+    custom_instructions: |
+      You are a Senior Site Reliability Engineer specializing in Kubernetes troubleshooting.
+      Analyze the collected data from previous stages to identify root causes.
+      
+      Your analysis should:
+      - Synthesize information from all data collection activities
+      - Identify the specific root cause of the problem
+      - Assess the impact and urgency level
+      - Provide confidence levels for your conclusions
+      
+      Be precise and actionable in your analysis.
+    mcp_servers:
+      - "kubernetes-server"  # Use built-in kubernetes server
+    
+# MCP servers configuration for test environment
+# We use the built-in kubernetes-server for simplicity in testing
+mcp_servers: {}
+
+# Agent chains configuration - this is the key part for our test
+agent_chains:
+  # Test chain for namespace terminating scenario
+  kubernetes-namespace-terminating-chain:
+    alert_types:
+      - "test-kubernetes"
+      - "test-NamespaceTerminating"
+    stages:
+      - name: "data-collection"
+        agent: "DataCollectionAgent"
+        iteration_strategy: "react-tools"
+      - name: "verification"
+        agent: "KubernetesAgent"     # This is a built-in agent that should to be available
+        iteration_strategy: "react-tools"
+      - name: "analysis"  
+        agent: "AnalysisAgent"
+        iteration_strategy: "react-final-analysis"
+    description: "Multi-stage chain: data collection → built-in agent verification → final analysis"

@@ -42,6 +42,10 @@ jobs:
       working-directory: ./backend
       run: make test-integration
     
+    - name: Run E2E tests
+      working-directory: ./backend
+      run: make test-e2e
+    
     - name: Run tests with coverage
       working-directory: ./backend
       run: |

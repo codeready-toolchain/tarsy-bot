@@ -21,7 +21,7 @@ NC := \033[0m # No Color
 help: ## Show this help message
 	@echo "$(GREEN)Tarsy Backend - Available Commands$(NC)"
 	@echo "==================================="
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
 
 # Setup and Installation
 .PHONY: install
@@ -42,7 +42,7 @@ install-dev: ## Install development dependencies (includes test)
 
 # Testing
 .PHONY: test
-test: install ## Run all tests (unit + integration)
+test: install ## Run all tests (unit + integration + e2e)
 	@echo "$(GREEN)Running all tests...$(NC)"
 	$(PYTEST) $(TEST_DIR)/ -v --tb=short
 
@@ -55,6 +55,12 @@ test-unit: install ## Run unit tests only
 test-integration: install ## Run integration tests only
 	@echo "$(GREEN)Running integration tests...$(NC)"
 	$(PYTEST) $(TEST_DIR)/integration/ -v --tb=short
+
+.PHONY: test-e2e
+test-e2e: ## Run end-to-end tests only
+	@$(MAKE) install
+	@echo "$(GREEN)Running end-to-end tests...$(NC)"
+	$(PYTEST) $(TEST_DIR)/e2e/ -v --tb=short -m e2e
 
 .PHONY: test-verbose
 test-verbose: ## Run all tests with verbose output

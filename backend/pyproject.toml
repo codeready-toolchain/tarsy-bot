@@ -97,6 +97,7 @@ addopts = [
 markers = [
     "integration: Integration tests",
     "unit: Unit tests", 
+    "e2e: End-to-end tests",
     "slow: Slow-running tests",
     "external: Tests requiring external services",
 ]

@@ -95,7 +95,7 @@ stop: ## Stop all running services
 
 # Testing targets (leverage backend Makefile)
 .PHONY: test
-test: ## Run all tests
+test: ## Run all tests (backend: unit+integration+e2e, dashboard)
 	@echo "$(GREEN)Running backend tests...$(NC)"
 	$(MAKE) -C backend test
 	@echo "$(GREEN)Running dashboard tests...$(NC)"
