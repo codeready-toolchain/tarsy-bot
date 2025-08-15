@@ -155,7 +155,9 @@ class LLMEventDetails(BaseModel):
     temperature: Optional[float] = None  # From LLMRequest
     success: bool
     error_message: Optional[str] = None
-    token_usage: Optional[dict] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
     tool_calls: Optional[dict] = None
     tool_results: Optional[dict] = None
 
@@ -164,9 +166,9 @@ class MCPEventDetails(BaseModel):
     tool_name: Optional[str] = None
     server_name: str
     communication_type: str
-    parameters: dict = Field(default_factory=dict)  # tool_arguments (structured parameters, not serialized JSON)
-    result: dict = Field(default_factory=dict)      # tool_result (structured result, not serialized JSON)
-    available_tools: dict = Field(default_factory=dict)  # structured tools data, not serialized JSON
+    parameters: Dict[str, Any] = Field(default_factory=dict)  # tool_arguments (structured parameters, not serialized JSON)
+    result: Dict[str, Any] = Field(default_factory=dict)      # tool_result (structured result, not serialized JSON)
+    available_tools: Dict[str, Any] = Field(default_factory=dict)  # structured tools data, not serialized JSON
     success: bool
 
 class BaseInteraction(BaseModel):
