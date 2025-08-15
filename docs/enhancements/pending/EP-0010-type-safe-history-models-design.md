@@ -163,7 +163,7 @@ class LLMEventDetails(BaseModel):
 
 class MCPEventDetails(BaseModel):
     """MCP-specific event details with structured objects"""
-    tool_name: Optional[str] = None
+    tool_name: str
     server_name: str
     communication_type: str
     parameters: Dict[str, Any] = Field(default_factory=dict)  # tool_arguments (structured parameters, not serialized JSON)
@@ -177,8 +177,8 @@ class BaseInteraction(BaseModel):
     event_id: str
     timestamp_us: int
     step_description: str
-    duration_ms: Optional[int]
-    stage_execution_id: Optional[str]
+    duration_ms: Optional[int] = None
+    stage_execution_id: str
 
 class LLMInteraction(BaseInteraction):
     """LLM interaction with type-specific details"""
@@ -213,7 +213,7 @@ class LLMInteractionSummary(BaseModel):
     timestamp_us: int
     step_description: str
     model_name: str
-    duration_ms: Optional[int]
+    duration_ms: Optional[int] = None
 
 class MCPCommunicationSummary(BaseModel):
     """Simplified MCP communication for summary lists"""
@@ -221,9 +221,9 @@ class MCPCommunicationSummary(BaseModel):
     timestamp_us: int
     step_description: str
     server_name: str
-    tool_name: Optional[str]
+    tool_name: str
     success: bool
-    duration_ms: Optional[int]
+    duration_ms: Optional[int] = None
 
 # =============================================================================
 # PERFECT UNIFIED MODEL STRUCTURE
@@ -235,16 +235,16 @@ class SessionOverview(BaseModel):
     # Core identification
     session_id: str
     alert_id: str
-    alert_type: Optional[str]
+    alert_type: Optional[str] = None
     agent_type: str
     status: AlertSessionStatus
     
     # Timing info
     started_at_us: int
-    completed_at_us: Optional[int]
+    completed_at_us: Optional[int] = None
     
     # Basic status info
-    error_message: Optional[str]
+    error_message: Optional[str] = None
     
     # Summary counts (for dashboard display)
     llm_interaction_count: int = 0
@@ -279,11 +279,11 @@ class DetailedStage(BaseModel):
     
     # Stage execution info
     status: StageStatus
-    started_at_us: Optional[int]
-    completed_at_us: Optional[int]
-    duration_ms: Optional[int]
-    stage_output: Optional[dict]  # Structured results produced by this stage (e.g. analysis findings, collected data) - used by subsequent stages in chain. None if stage failed/incomplete.
-    error_message: Optional[str]
+    started_at_us: Optional[int] = None
+    completed_at_us: Optional[int] = None
+    duration_ms: Optional[int] = None
+    stage_output: Optional[dict] = None  # Structured results produced by this stage (e.g. analysis findings, collected data) - used by subsequent stages in chain. None if stage failed/incomplete.
+    error_message: Optional[str] = None
     
     # ALL interactions that happened during this stage (FULL objects with complete details)
     llm_interactions: List[LLMInteraction] = Field(default_factory=list)  # Complete LLM interactions with full details
@@ -309,17 +309,17 @@ class DetailedSession(BaseModel):
     # Core session data (everything from SessionOverview)
     session_id: str
     alert_id: str
-    alert_type: Optional[str]
+    alert_type: Optional[str] = None
     agent_type: str
     status: AlertSessionStatus
     started_at_us: int
-    completed_at_us: Optional[int]
-    error_message: Optional[str]
+    completed_at_us: Optional[int] = None
+    error_message: Optional[str] = None
     
     # Full session details
     alert_data: dict  # Complete alert information
-    final_analysis: Optional[str]
-    session_metadata: Optional[dict]
+    final_analysis: Optional[str] = None
+    session_metadata: Optional[dict] = None
     
     # Chain execution details
     chain_id: str
