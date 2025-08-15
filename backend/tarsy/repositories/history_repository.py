@@ -13,6 +13,16 @@ from sqlmodel import Session, asc, desc, func, select, and_, or_
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.history import AlertSession, StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.domain_models import (
+    InteractionData,
+    SessionData,
+    SessionTimelineData,
+    StageData,
+    PaginatedSessionsData,
+    SessionSummaryData,
+    StageInteractionCounts
+)
+from tarsy.models.api_models import InteractionSummary
 from tarsy.repositories.base_repository import BaseRepository
 from tarsy.utils.logger import get_logger
 
@@ -696,3 +706,193 @@ class HistoryRepository:
         except Exception as e:
             logger.error(f"Failed to get stage execution {execution_id}: {str(e)}")
             raise
+    
+    # NEW TYPED METHODS - Replacing Dict[str, Any] with proper domain models
+    
+    def get_session_data(self, session_id: str) -> Optional[SessionData]:
+        """
+        Get complete session data with type safety.
+        
+        Args:
+            session_id: The session identifier
+            
+        Returns:
+            SessionData instance with complete session information, or None if not found
+        """
+        try:
+            # Get the session
+            session = self.get_alert_session(session_id)
+            if not session:
+                return None
+            
+            # Get interaction counts
+            llm_interactions = self.get_llm_interactions_for_session(session_id)
+            mcp_communications = self.get_mcp_communications_for_session(session_id)
+            
+            # Get stages if this is a chain execution
+            stages = []
+            if session.chain_id:
+                stage_data = self.get_session_with_stages(session_id)
+                if stage_data:
+                    stage_executions = [StageExecution(**stage) for stage in stage_data.get('stages', [])]
+                    for stage_exec in stage_executions:
+                        stage_interactions = self._get_interactions_for_stage(stage_exec.execution_id)
+                        interaction_summary = self._calculate_stage_interaction_summary(stage_interactions)
+                        stages.append(StageData(
+                            stage_execution=stage_exec,
+                            interactions=stage_interactions,
+                            interaction_summary=interaction_summary
+                        ))
+            
+            return SessionData(
+                session=session,
+                llm_interaction_count=len(llm_interactions),
+                mcp_communication_count=len(mcp_communications),
+                total_interaction_count=len(llm_interactions) + len(mcp_communications),
+                stages=stages
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to get session data for {session_id}: {str(e)}")
+            raise
+    
+    def get_session_timeline_data(self, session_id: str) -> Optional[SessionTimelineData]:
+        """
+        Get complete session timeline with type safety.
+        
+        Args:
+            session_id: The session identifier
+            
+        Returns:
+            SessionTimelineData instance with chronological timeline, or None if not found
+        """
+        try:
+            # Get session data
+            session_data = self.get_session_data(session_id)
+            if not session_data:
+                return None
+            
+            # Get all interactions and convert to InteractionData
+            llm_interactions = self.get_llm_interactions_for_session(session_id)
+            mcp_communications = self.get_mcp_communications_for_session(session_id)
+            
+            # Convert to unified InteractionData and sort chronologically
+            chronological_timeline = []
+            
+            for llm in llm_interactions:
+                chronological_timeline.append(InteractionData.from_llm_interaction(llm))
+            
+            for mcp in mcp_communications:
+                chronological_timeline.append(InteractionData.from_mcp_interaction(mcp))
+            
+            # Sort by timestamp
+            chronological_timeline.sort(key=lambda x: x.timestamp_us)
+            
+            return SessionTimelineData(
+                session_data=session_data,
+                chronological_timeline=chronological_timeline
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to get session timeline data for {session_id}: {str(e)}")
+            raise
+    
+    def get_sessions_paginated(
+        self,
+        status: Optional[Union[str, List[str]]] = None,
+        agent_type: Optional[str] = None,
+        alert_type: Optional[str] = None,
+        search: Optional[str] = None,
+        start_date_us: Optional[int] = None,
+        end_date_us: Optional[int] = None,
+        page: int = 1,
+        page_size: int = 20
+    ) -> PaginatedSessionsData:
+        """
+        Get paginated sessions with type safety.
+        
+        Returns:
+            PaginatedSessionsData with sessions and interaction counts
+        """
+        try:
+            # Use existing method to get data
+            result = self.get_alert_sessions(
+                status=status,
+                agent_type=agent_type,
+                alert_type=alert_type,
+                search=search,
+                start_date_us=start_date_us,
+                end_date_us=end_date_us,
+                page=page,
+                page_size=page_size
+            )
+            
+            return PaginatedSessionsData(
+                sessions=result.get('sessions', []),
+                interaction_counts=result.get('interaction_counts', {}),
+                total_items=result.get('pagination', {}).get('total_items', 0)
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to get paginated sessions: {str(e)}")
+            raise
+    
+    def _get_interactions_for_stage(self, execution_id: str) -> List[InteractionData]:
+        """
+        Get all interactions for a specific stage execution.
+        
+        Args:
+            execution_id: Stage execution identifier
+            
+        Returns:
+            List of InteractionData for the stage
+        """
+        try:
+            interactions = []
+            
+            # Get LLM interactions for this stage
+            llm_stmt = select(LLMInteraction).where(
+                LLMInteraction.stage_execution_id == execution_id
+            ).order_by(LLMInteraction.timestamp_us)
+            llm_interactions = self.session.exec(llm_stmt).all()
+            
+            for llm in llm_interactions:
+                interactions.append(InteractionData.from_llm_interaction(llm))
+            
+            # Get MCP interactions for this stage
+            mcp_stmt = select(MCPInteraction).where(
+                MCPInteraction.stage_execution_id == execution_id
+            ).order_by(MCPInteraction.timestamp_us)
+            mcp_communications = self.session.exec(mcp_stmt).all()
+            
+            for mcp in mcp_communications:
+                interactions.append(InteractionData.from_mcp_interaction(mcp))
+            
+            # Sort chronologically
+            interactions.sort(key=lambda x: x.timestamp_us)
+            return interactions
+            
+        except Exception as e:
+            logger.error(f"Failed to get interactions for stage {execution_id}: {str(e)}")
+            raise
+    
+    def _calculate_stage_interaction_summary(self, interactions: List[InteractionData]) -> InteractionSummary:
+        """
+        Calculate interaction summary for a stage.
+        
+        Args:
+            interactions: List of interactions for the stage
+            
+        Returns:
+            InteractionSummary with counts and duration
+        """
+        llm_count = len([i for i in interactions if i.interaction_type == 'llm'])
+        mcp_count = len([i for i in interactions if i.interaction_type == 'mcp'])
+        total_duration_ms = sum(i.duration_ms or 0 for i in interactions)
+        
+        return InteractionSummary(
+            llm_count=llm_count,
+            mcp_count=mcp_count,
+            total_count=llm_count + mcp_count,
+            duration_ms=total_duration_ms if total_duration_ms > 0 else None
+        )

@@ -16,6 +16,12 @@ from tarsy.config.settings import get_settings
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.history import AlertSession, StageExecution, now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.domain_models import (
+    SessionData,
+    SessionTimelineData,
+    PaginatedSessionsData,
+    SessionSummaryData
+)
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository
 
@@ -819,6 +825,179 @@ class HistoryService:
         except Exception as e:
             logger.error(f"Failed to cleanup orphaned sessions: {str(e)}")
             return 0
+
+    # NEW TYPED METHODS - Replacing Dict[str, Any] with proper domain models
+    
+    def get_session_data_typed(self, session_id: str) -> Optional[SessionData]:
+        """
+        Get complete session data with type safety.
+        
+        Args:
+            session_id: The session identifier
+            
+        Returns:
+            SessionData instance with complete session information, or None if not found
+        """
+        def _get_session_data_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    logger.warning("History repository unavailable - session data not retrieved")
+                    return None
+                return repo.get_session_data(session_id)
+        
+        result = self._retry_database_operation("get_session_data_typed", _get_session_data_operation)
+        return result
+    
+    def get_session_timeline_typed(self, session_id: str) -> Optional[SessionTimelineData]:
+        """
+        Get complete session timeline with type safety.
+        
+        Args:
+            session_id: The session identifier
+            
+        Returns:
+            SessionTimelineData instance with chronological timeline, or None if not found
+        """
+        def _get_session_timeline_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    logger.warning("History repository unavailable - session timeline not retrieved")
+                    return None
+                return repo.get_session_timeline_data(session_id)
+        
+        result = self._retry_database_operation("get_session_timeline_typed", _get_session_timeline_operation)
+        return result
+    
+    def get_sessions_list_typed(
+        self,
+        filters: Optional[Dict[str, Any]] = None,
+        page: int = 1,
+        page_size: int = 20
+    ) -> PaginatedSessionsData:
+        """
+        Retrieve alert sessions with filtering and pagination using type safety.
+        
+        Args:
+            filters: Dictionary of filters (status, agent_type, alert_type, start_date_us, end_date_us)
+            page: Page number for pagination
+            page_size: Number of results per page
+            
+        Returns:
+            PaginatedSessionsData with sessions and interaction counts
+        """
+        def _get_sessions_list_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    logger.warning("History repository unavailable - returning empty sessions list")
+                    return PaginatedSessionsData(
+                        sessions=[], 
+                        interaction_counts={}, 
+                        total_items=0
+                    )
+                
+                # Extract filters or use defaults
+                filters_dict = filters or {}
+                
+                return repo.get_sessions_paginated(
+                    status=filters_dict.get('status'),
+                    agent_type=filters_dict.get('agent_type'),
+                    alert_type=filters_dict.get('alert_type'),
+                    search=filters_dict.get('search'),
+                    start_date_us=filters_dict.get('start_date_us'),
+                    end_date_us=filters_dict.get('end_date_us'),
+                    page=page,
+                    page_size=page_size
+                )
+        
+        result = self._retry_database_operation("get_sessions_list_typed", _get_sessions_list_operation)
+        return result if result is not None else PaginatedSessionsData(
+            sessions=[], 
+            interaction_counts={}, 
+            total_items=0
+        )
+    
+    def calculate_session_summary_typed(self, session_timeline_data: SessionTimelineData) -> SessionSummaryData:
+        """
+        Calculate summary statistics from typed session timeline data.
+        
+        Args:
+            session_timeline_data: SessionTimelineData instance
+            
+        Returns:
+            SessionSummaryData with calculated summary statistics
+        """
+        if not session_timeline_data:
+            return SessionSummaryData(
+                total_interactions=0,
+                llm_interactions=0,
+                mcp_communications=0,
+                system_events=0,
+                errors_count=0,
+                total_duration_ms=0
+            )
+            
+        # Extract timeline and session info for calculations
+        timeline = session_timeline_data.chronological_timeline
+        session_data = session_timeline_data.session_data
+        
+        # Calculate basic interaction statistics
+        llm_count = len([event for event in timeline if event.interaction_type == 'llm'])
+        mcp_count = len([event for event in timeline if event.interaction_type == 'mcp'])
+        system_events = 0  # System events not in current timeline structure
+        errors_count = len([event for event in timeline if not event.success])
+        total_duration_ms = sum(event.duration_ms or 0 for event in timeline)
+        
+        # Build summary
+        summary_data = SessionSummaryData(
+            total_interactions=len(timeline),
+            llm_interactions=llm_count,
+            mcp_communications=mcp_count,
+            system_events=system_events,
+            errors_count=errors_count,
+            total_duration_ms=total_duration_ms
+        )
+        
+        # Add chain-specific statistics if it's a chain execution
+        if session_data.is_chain_execution and session_data.stages:
+            from tarsy.models.constants import StageStatus
+            
+            completed_stages = [stage for stage in session_data.stages 
+                              if stage.stage_execution.status == StageStatus.COMPLETED.value]
+            failed_stages = [stage for stage in session_data.stages 
+                           if stage.stage_execution.status == StageStatus.FAILED.value]
+            
+            # Calculate stages by agent
+            stages_by_agent = {}
+            for stage in session_data.stages:
+                agent = stage.stage_execution.agent
+                if agent:
+                    stages_by_agent[agent] = stages_by_agent.get(agent, 0) + 1
+            
+            summary_data.chain_statistics = {
+                'total_stages': len(session_data.stages),
+                'completed_stages': len(completed_stages),
+                'failed_stages': len(failed_stages),
+                'stages_by_agent': stages_by_agent
+            }
+        
+        return summary_data
+    
+    async def get_session_summary_typed(self, session_id: str) -> Optional[SessionSummaryData]:
+        """
+        Get just the summary statistics for a session using type safety (lightweight operation).
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            SessionSummaryData with summary statistics or None if session not found
+        """
+        # Get session timeline data
+        session_timeline_data = self.get_session_timeline_typed(session_id)
+        if not session_timeline_data:
+            return None
+        
+        return self.calculate_session_summary_typed(session_timeline_data)
 
 
 # Global history service instance
