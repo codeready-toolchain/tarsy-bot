@@ -118,8 +118,10 @@ Dict[str, Any]  # Direct dictionary response to API (same structure as service c
 ### Core Domain Models
 
 ```python
+from __future__ import annotations  # Deferred evaluation for forward references
+
 from typing import List, Dict, Optional, Union, Literal, Any
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 from tarsy.models.history import AlertSession
 from tarsy.models.unified_interactions import LLMMessage  # Core message model used throughout
 # Note: We keep the SQLModel StageExecution for DB operations
@@ -148,7 +150,7 @@ class FilterOptions(BaseModel):
 
 class LLMEventDetails(BaseModel):
     """LLM-specific event details with structured objects (absorbs useful parts of unused LLMRequest)"""
-    messages: List[LLMMessage] = []  # Structured message objects (from LLMRequest design)
+    messages: List[LLMMessage] = Field(default_factory=list)  # Structured message objects (from LLMRequest design)
     model_name: str  # Renamed from LLMRequest.model for clarity
     temperature: Optional[float] = None  # From LLMRequest
     success: bool
@@ -162,9 +164,9 @@ class MCPEventDetails(BaseModel):
     tool_name: Optional[str] = None
     server_name: str
     communication_type: str
-    parameters: dict = {}  # tool_arguments (structured parameters, not serialized JSON)
-    result: dict = {}      # tool_result (structured result, not serialized JSON)
-    available_tools: dict = {}  # structured tools data, not serialized JSON
+    parameters: dict = Field(default_factory=dict)  # tool_arguments (structured parameters, not serialized JSON)
+    result: dict = Field(default_factory=dict)      # tool_result (structured result, not serialized JSON)
+    available_tools: dict = Field(default_factory=dict)  # structured tools data, not serialized JSON
     success: bool
 
 class BaseInteraction(BaseModel):
@@ -282,8 +284,8 @@ class DetailedStage(BaseModel):
     error_message: Optional[str]
     
     # ALL interactions that happened during this stage (FULL objects with complete details)
-    llm_interactions: List[LLMInteraction] = []  # Complete LLM interactions with full details
-    mcp_communications: List[MCPInteraction] = []  # Complete MCP interactions with full details
+    llm_interactions: List[LLMInteraction] = Field(default_factory=list)  # Complete LLM interactions with full details
+    mcp_communications: List[MCPInteraction] = Field(default_factory=list)  # Complete MCP interactions with full details
     
     # Summary counts for this stage (replaces InteractionSummary)
     llm_interaction_count: int = 0
@@ -329,7 +331,7 @@ class DetailedSession(BaseModel):
     mcp_communication_count: int = 0
     
     # Complete stage executions with all their interactions
-    stages: List[DetailedStage] = []  # Each stage contains its full interaction timeline
+    stages: List[DetailedStage] = Field(default_factory=list)  # Each stage contains its full interaction timeline
     
     # Calculated properties
     @property
@@ -356,7 +358,7 @@ class PaginatedSessions(BaseModel):
     """Paginated session results for dashboard list view (replaces api_models.SessionsListResponse)"""
     sessions: List[SessionOverview]  # Session overviews for list display
     pagination: PaginationInfo
-    filters_applied: Dict[str, Any] = {}  # Applied filters for this query
+    filters_applied: Dict[str, Any] = Field(default_factory=dict)  # Applied filters for this query
 
 class ChainStatistics(BaseModel):
     """Chain execution statistics"""
