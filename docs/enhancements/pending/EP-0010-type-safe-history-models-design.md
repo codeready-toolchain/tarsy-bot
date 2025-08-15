@@ -452,3 +452,155 @@ This section provides a comprehensive overview of all existing models in the cod
 #### **Chain Definition Models** (`backend/tarsy/models/chains.py`)
 - `ChainStageModel` - Single stage in processing chain (dataclass) → **MOVE** (relocate to `agent_config.py` for consolidated configuration)
 - `ChainDefinitionModel` - Complete chain definition (dataclass) → **MOVE** (relocate to `agent_config.py` for consolidated configuration)
+
+## Migration Implementation Plan
+
+### Overview
+
+This migration follows a **pragmatic, incremental approach** that structures existing dict-based data flows into type-safe models without changing database schemas or fundamental system architecture. The goal is to replace dict structures with validated Pydantic models while maintaining backward compatibility throughout the process.
+
+**Key Principles:**
+- No database schema changes required
+- Minimal conversion overhead - only create converters where format differences actually exist
+- Layer-by-layer migration starting from repository (data) layer up to API layer
+- Maintain backward compatibility until final cleanup phase
+- Focus on type safety and code maintainability over complex optimizations
+
+### Phase 1: Foundation
+**Goal**: Create new type-safe models and minimal conversion infrastructure
+
+**Tasks:**
+- **1.1**: Create new models in `backend/tarsy/models/history_models.py`
+  - All models from Target Model Hierarchy section
+  - Use `core_models.py` approach to avoid circular imports if needed
+  - Import existing enums from `constants.py`
+  - Import and integrate `LLMMessage` from `unified_interactions.py`
+
+- **1.2**: Create conversion utilities (only where needed)
+  - Audit existing dict structures vs new model fields
+  - Create converters ONLY where format differences exist (don't assume - verify first!)
+  - Focus on bidirectional conversion: `new_model ↔ existing_dict`
+  - Place in `backend/tarsy/models/converters/` if needed
+
+- **1.3**: Basic model validation tests
+  - Unit tests for all new models
+  - Validation tests for required fields and constraints
+  - Conversion accuracy tests (if converters created in 1.2)
+
+**Deliverables:**
+- ✅ New type-safe models ready for use
+- ✅ Minimal conversion infrastructure
+- ✅ Model validation test suite
+
+### Phase 2: Repository Layer Migration
+**Goal**: Repository methods return new models internally while maintaining dict APIs externally
+
+**Tasks:**
+- **2.1**: Refactor repository to use new models internally
+  - Update `HistoryRepository` methods to build and return new model instances
+  - Keep existing method signatures unchanged initially
+  - Repository logic works with typed models instead of assembling dicts
+
+- **2.2**: Add conversion wrappers to maintain current APIs
+  - Wrap repository methods to convert new models back to expected dict formats
+  - Existing service/controller code continues to receive dicts unchanged
+  - Create `_internal` versions of methods that return new models for future use
+
+- **2.3**: Repository integration testing
+  - Verify all repository methods return expected dict structures
+  - Sanity check: ensure database query patterns remain efficient
+
+**Deliverables:**
+- ✅ Repository internally uses type-safe models
+- ✅ External repository API unchanged (still returns dicts)
+- ✅ Repository integration tests pass
+
+### Phase 3: Service Layer Migration  
+**Goal**: Services work with new models internally while maintaining dict APIs
+
+**Tasks:**
+- **3.1**: Update services to use new models internally
+  - Modify `HistoryService` to work with typed models from repository
+  - Service business logic operates on structured models instead of dicts
+  - Access to repository `_internal` methods that return models directly
+
+- **3.2**: Maintain dict APIs at service boundaries
+  - Service methods still return dicts to controllers
+  - Convert models to dicts at service method boundaries
+  - Controllers continue to receive expected dict structures
+
+- **3.3**: Service integration testing
+  - Verify all service methods return expected dict structures
+  - Confirm business logic correctness unchanged
+  - Test service-to-service interactions if applicable
+
+**Deliverables:**
+- ✅ Services internally use type-safe models
+- ✅ External service API unchanged (still returns dicts)
+- ✅ Business logic validation tests pass
+
+### Phase 4: Controller/API Migration
+**Goal**: Controllers use new models and evaluate API contract changes
+
+**Tasks:**
+- **4.1**: Update controllers to use new models
+  - Modify `HistoryController` endpoints to work with typed models from services  
+  - Access to service `_internal` methods that return models directly
+  - Controller logic operates on structured models
+
+- **4.2**: Evaluate API contract migration
+  - Check if existing API responses match new model structures
+  - **Only create conversions if actual format differences exist** 
+  - Verify WebSocket messages don't need conversion (likely they won't!)
+  - Consider gradual API migration vs maintaining current response format
+
+- **4.3**: API integration testing
+  - End-to-end API tests with new model pipeline
+  - Verify API contracts maintained or properly versioned
+  - Test WebSocket real-time updates still work correctly
+
+**Deliverables:**
+- ✅ Controllers use type-safe models internally
+- ✅ API responses validated and consistent
+- ✅ End-to-end API tests pass
+
+### Phase 5: Cleanup and Consolidation
+**Goal**: Remove temporary code and reorganize models per migration plan
+
+**Tasks:**
+- **5.1**: Remove conversion layers bottom-up
+  - Remove dict conversion wrappers from controllers first
+  - Remove dict conversion wrappers from services  
+  - Remove dict conversion wrappers from repositories
+  - Delete unused converter utilities
+
+- **5.2**: Delete unused models per migration plan
+  - Remove models marked for deletion in "Existing Models Inventory"
+  - Update imports throughout codebase
+  - Verify no dead code remains
+
+- **5.3**: Move and consolidate models per migration plan  
+  - Move models marked for relocation to appropriate files
+  - Consolidate configuration models in `agent_config.py`
+  - Update all import statements throughout codebase
+  - Clean up `models/__init__.py` exports
+
+**Deliverables:**
+- ✅ Clean, type-safe codebase with no temporary conversion code
+- ✅ Proper model organization per architectural plan
+- ✅ All tests passing with new model structure
+
+### Success Criteria
+
+**After Phase 1**: New models validated and ready for integration
+**After Phase 2**: Repository layer type-safe but externally compatible  
+**After Phase 3**: Service layer type-safe but externally compatible
+**After Phase 4**: Full pipeline type-safe with validated API contracts
+**After Phase 5**: Clean, maintainable codebase with proper model organization
+
+**Final State**: 
+- All history-related data flows use validated Pydantic models
+- No dict-based data structures in history system
+- Type safety from database to API response  
+- Improved code maintainability and developer experience
+- No performance degradation or functional changes

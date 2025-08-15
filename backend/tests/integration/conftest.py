@@ -894,7 +894,8 @@ def sample_alert_session():
         alert_type="NamespaceTerminating",
         status="in_progress",
         started_at=pytest.lazy_fixture('datetime_now_utc'),
-        session_metadata={"test": "metadata"}
+        session_metadata={"test": "metadata"},
+        chain_id="test-integration-chain"
     )
 
 

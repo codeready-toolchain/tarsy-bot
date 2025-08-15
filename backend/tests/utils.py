@@ -255,7 +255,8 @@ class SessionFactory:
             "started_at_us": 1640995200000000,  # 2022-01-01T00:00:00Z
             "completed_at_us": None,
             "error_message": None,
-            "final_analysis": None
+            "final_analysis": None,
+            "chain_id": "test-chain-123"
         }
         base_data.update(overrides)
         return AlertSession(**base_data)
@@ -287,6 +288,118 @@ class SessionFactory:
             status="in_progress",
             **overrides
         )
+
+
+class StageExecutionFactory:
+    """
+    Factory for creating test stage execution data.
+    
+    Use when: You need stage executions for chain processing and timeline tests
+    
+    Examples:
+        # Create basic stage execution
+        stage_execution = StageExecutionFactory.create_test_stage_execution(
+            session_id="test-session-123"
+        )
+        
+        # Create stage execution with custom properties
+        custom_stage = StageExecutionFactory.create_test_stage_execution(
+            session_id="test-session-456",
+            stage_id="custom-analysis",
+            stage_name="Custom Analysis",
+            agent="CustomAgent"
+        )
+        
+        # Create completed stage execution
+        completed_stage = StageExecutionFactory.create_completed_stage_execution(
+            session_id="test-session-789"
+        )
+        
+        # Create failed stage execution
+        failed_stage = StageExecutionFactory.create_failed_stage_execution(
+            session_id="test-session-101"
+        )
+    
+    Best practices:
+        - Always provide session_id to link to parent session
+        - Use specific stage types when they match your test scenario
+        - Override only the fields you need to customize
+        - Use create_and_save_stage_execution for integration tests
+    """
+    
+    @staticmethod
+    def create_test_stage_execution(session_id: str, **overrides):
+        """Create a basic test stage execution."""
+        from tarsy.models.history import StageExecution
+        from tarsy.models.constants import StageStatus
+        
+        base_data = {
+            "session_id": session_id,
+            "stage_id": "test-analysis",
+            "stage_index": 0,
+            "stage_name": "Test Analysis",
+            "agent": "KubernetesAgent",
+            "status": StageStatus.ACTIVE.value
+        }
+        base_data.update(overrides)
+        return StageExecution(**base_data)
+    
+    @staticmethod
+    def create_completed_stage_execution(session_id: str, **overrides):
+        """Create a completed test stage execution."""
+        from tarsy.models.constants import StageStatus
+        import time
+        
+        now_ms = int(time.time() * 1000000)  # microseconds
+        return StageExecutionFactory.create_test_stage_execution(
+            session_id=session_id,
+            status=StageStatus.COMPLETED.value,
+            started_at_us=now_ms - 5000000,  # 5 seconds ago
+            completed_at_us=now_ms,
+            duration_ms=5000,
+            stage_output={"analysis": "Stage completed successfully"},
+            **overrides
+        )
+    
+    @staticmethod
+    def create_failed_stage_execution(session_id: str, **overrides):
+        """Create a failed test stage execution."""
+        from tarsy.models.constants import StageStatus
+        import time
+        
+        now_ms = int(time.time() * 1000000)  # microseconds
+        return StageExecutionFactory.create_test_stage_execution(
+            session_id=session_id,
+            status=StageStatus.FAILED.value,
+            started_at_us=now_ms - 2000000,  # 2 seconds ago
+            completed_at_us=now_ms,
+            duration_ms=2000,
+            error_message="Stage execution failed during processing",
+            **overrides
+        )
+    
+    @staticmethod
+    async def create_and_save_stage_execution(history_service, session_id: str, **overrides):
+        """
+        Create and save a stage execution using the history service.
+        
+        Use this in integration tests where you need the stage execution 
+        to be persisted to the database.
+        
+        Args:
+            history_service: The history service instance
+            session_id: Session ID to link to
+            **overrides: Any field overrides
+            
+        Returns:
+            str: The execution_id of the created stage execution
+        """
+        stage_execution = StageExecutionFactory.create_test_stage_execution(
+            session_id=session_id, 
+            **overrides
+        )
+        execution_id = await history_service.create_stage_execution(stage_execution)
+        return execution_id
 
 
 class ChainFactory:

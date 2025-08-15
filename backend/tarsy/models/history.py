@@ -94,7 +94,7 @@ class AlertSession(SQLModel, table=True):
     )
     
     # NEW: Chain execution tracking
-    chain_id: Optional[str] = Field(default=None, description="Chain identifier for this execution")
+    chain_id: str = Field(description="Chain identifier for this execution")
     chain_definition: Optional[dict] = Field(default=None, sa_column=Column(JSON), description="Complete chain definition snapshot")
     current_stage_index: Optional[int] = Field(default=None, description="Current stage position (0-based)")
     current_stage_id: Optional[str] = Field(default=None, description="Current stage identifier")

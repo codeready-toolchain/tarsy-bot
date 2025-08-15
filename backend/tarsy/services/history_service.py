@@ -559,50 +559,6 @@ class HistoryService:
         return self.is_enabled
 
     # Query Operations
-    def get_sessions(
-        self,
-        status: Optional[str] = None,
-        agent_type: Optional[str] = None,
-        alert_type: Optional[str] = None,
-        start_date_us: Optional[int] = None,
-        end_date_us: Optional[int] = None,
-        page: int = 1,
-        page_size: int = 20
-    ) -> Dict[str, Any]:
-        """
-        Retrieve alert sessions with filtering and pagination.
-        
-        Args:
-            status: Filter by processing status
-            agent_type: Filter by agent type
-            alert_type: Filter by alert type
-            start_date_us: Filter sessions started after this Unix timestamp (microseconds)
-            end_date_us: Filter sessions started before this Unix timestamp (microseconds)
-            page: Page number for pagination
-            page_size: Number of results per page
-            
-        Returns:
-            Dictionary containing sessions and pagination info, empty if unavailable
-        """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    return {"sessions": [], "pagination": {"page": 1, "page_size": 0, "total_pages": 0, "total_items": 0}}
-                
-                return repo.get_alert_sessions(
-                    status=status,
-                    agent_type=agent_type,
-                    alert_type=alert_type,
-                    start_date_us=start_date_us,
-                    end_date_us=end_date_us,
-                    page=page,
-                    page_size=page_size
-                )
-                
-        except Exception as e:
-            logger.error(f"Failed to get sessions: {str(e)}")
-            return {"sessions": [], "pagination": {"page": 1, "page_size": 0, "total_pages": 0, "total_items": 0}}
-
     def get_sessions_list(
         self,
         filters: Optional[Dict[str, Any]] = None,
@@ -643,14 +599,23 @@ class HistoryService:
                 interaction_counts = result.get('interaction_counts', {})
                 total_items = result.get('pagination', {}).get('total_items', 0)
                 
-                # Add interaction counts as dynamic attributes to session objects
-                for session in sessions:
-                    counts = interaction_counts.get(session.session_id, {})
-                    # Use object.__setattr__ to bypass SQLModel validation
-                    object.__setattr__(session, 'llm_interaction_count', counts.get('llm_interactions', 0))
-                    object.__setattr__(session, 'mcp_communication_count', counts.get('mcp_communications', 0))
+                # Handle sessions as dicts (repository now returns dicts for backward compatibility)
+                # Convert dict sessions back to AlertSession objects for service layer
+                alert_sessions = []
+                for session_dict in sessions:
+                    try:
+                        # Create AlertSession object from dict
+                        session = AlertSession(**session_dict)
+                        counts = interaction_counts.get(session.session_id, {})
+                        # Use object.__setattr__ to bypass SQLModel validation
+                        object.__setattr__(session, 'llm_interaction_count', counts.get('llm_interactions', 0))
+                        object.__setattr__(session, 'mcp_communication_count', counts.get('mcp_communications', 0))
+                        alert_sessions.append(session)
+                    except Exception as e:
+                        logger.warning(f"Failed to convert session dict to AlertSession: {e}")
+                        continue
                 
-                return sessions, total_items
+                return alert_sessions, total_items
                 
         except Exception as e:
             logger.error(f"Failed to get sessions list: {str(e)}")
@@ -788,11 +753,14 @@ class HistoryService:
                     logger.info("No orphaned sessions found during startup cleanup")
                     return 0
                 
-                active_sessions = active_sessions_result["sessions"]
+                active_sessions_dicts = active_sessions_result["sessions"]
                 cleanup_count = 0
                 
-                for session in active_sessions:
+                for session_dict in active_sessions_dicts:
                     try:
+                        # Convert dict to AlertSession object (repository now returns dicts)
+                        session = AlertSession(**session_dict)
+                        
                         # Mark session as failed with appropriate error message
                         session.status = AlertSessionStatus.FAILED.value
                         session.error_message = "Backend was restarted - session terminated unexpectedly"
@@ -806,7 +774,8 @@ class HistoryService:
                             logger.warning(f"Failed to update orphaned session {session.session_id}")
                             
                     except Exception as session_error:
-                        logger.error(f"Error cleaning up session {session.session_id}: {str(session_error)}")
+                        session_id = session_dict.get('session_id', 'unknown') if isinstance(session_dict, dict) else 'unknown'
+                        logger.error(f"Error cleaning up session {session_id}: {str(session_error)}")
                         continue
                 
                 if cleanup_count > 0:

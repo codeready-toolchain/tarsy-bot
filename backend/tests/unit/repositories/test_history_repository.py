@@ -55,7 +55,8 @@ class TestHistoryRepository:
             alert_type="NamespaceTerminating",
             status="in_progress",
             started_at_us=now_us(),
-            session_metadata={"test": "metadata"}
+            session_metadata={"test": "metadata"},
+            chain_id="test-chain-123"
         )
     
     @pytest.fixture
@@ -96,7 +97,7 @@ class TestHistoryRepository:
             tool_name="kubectl_get_namespace",
             tool_arguments={"namespace": "stuck-namespace"},
             tool_result={"status": "Terminating", "finalizers": ["test-finalizer"]},
-            timestamp=datetime.now(timezone.utc),
+            timestamp_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
             step_description="Check namespace status",
             duration_ms=800,
             success=True
@@ -191,14 +192,15 @@ class TestHistoryRepository:
             alert_type="HighCPU",
             status="completed",
             started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc)
+            completed_at=datetime.now(timezone.utc),
+            chain_id="test-chain-456"
         )
         repository.create_alert_session(session2)
         
         # Test status filter
         result = repository.get_alert_sessions(status="completed")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session2.session_id
+        assert result["sessions"][0]["session_id"] == session2.session_id
         
         # Test agent_type filter
         result = repository.get_alert_sessions(agent_type="KubernetesAgent")
@@ -207,7 +209,7 @@ class TestHistoryRepository:
         # Test alert_type filter
         result = repository.get_alert_sessions(alert_type="NamespaceTerminating")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session1.session_id
+        assert result["sessions"][0]["session_id"] == session1.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_date_filters(self, repository):
@@ -226,7 +228,8 @@ class TestHistoryRepository:
             alert_type="test",
             status="completed",
             started_at_us=five_days_ago_us,
-            completed_at_us=five_days_ago_us
+            completed_at_us=five_days_ago_us,
+            chain_id="test-chain-old"
         )
         
         new_session = AlertSession(
@@ -237,7 +240,8 @@ class TestHistoryRepository:
             alert_type="test",
             status="completed",
             started_at_us=one_hour_ago_us,
-            completed_at_us=one_hour_ago_us
+            completed_at_us=one_hour_ago_us,
+            chain_id="test-chain-new"
         )
         
         repository.create_alert_session(old_session)
@@ -247,12 +251,12 @@ class TestHistoryRepository:
         two_days_ago_us = now_us_time - (2 * 24 * 60 * 60 * 1000000)  # 2 days in microseconds
         result = repository.get_alert_sessions(start_date_us=two_days_ago_us)
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == new_session.session_id
+        assert result["sessions"][0]["session_id"] == new_session.session_id
         
         # Test end_date_us filter
         result = repository.get_alert_sessions(end_date_us=two_days_ago_us)
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == old_session.session_id
+        assert result["sessions"][0]["session_id"] == old_session.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_pagination(self, repository):
@@ -266,7 +270,8 @@ class TestHistoryRepository:
                 agent_type="TestAgent",
                 alert_type="test",
                 status="completed",
-                started_at=datetime.now(timezone.utc) - timedelta(minutes=i)
+                started_at=datetime.now(timezone.utc) - timedelta(minutes=i),
+                chain_id=f"test-chain-{i}"
             )
             repository.create_alert_session(session)
         
@@ -302,7 +307,8 @@ class TestHistoryRepository:
             alert_type="NetworkError",
             status="failed",
             started_at_us=now_us(),
-            error_message="Connection refused by kubernetes API server"
+            error_message="Connection refused by kubernetes API server",
+            chain_id="test-chain-search-1"
         )
         repository.create_alert_session(session1)
         
@@ -314,22 +320,23 @@ class TestHistoryRepository:
             alert_type="DatabaseError",
             status="failed",
             started_at_us=now_us(),
-            error_message="Timeout occurred while querying database"
+            error_message="Timeout occurred while querying database",
+            chain_id="test-chain-search-2"
         )
         repository.create_alert_session(session2)
         
         # Test search in error messages
         result = repository.get_alert_sessions(search="kubernetes")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session1.session_id
+        assert result["sessions"][0]["session_id"] == session1.session_id
         
         result = repository.get_alert_sessions(search="timeout")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session2.session_id
+        assert result["sessions"][0]["session_id"] == session2.session_id
         
         result = repository.get_alert_sessions(search="connection")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session1.session_id
+        assert result["sessions"][0]["session_id"] == session1.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_final_analysis(self, repository):
@@ -345,7 +352,8 @@ class TestHistoryRepository:
             alert_type="NamespaceTerminating",
             status="completed",
             started_at_us=now_us(),
-            final_analysis="The namespace is stuck because of finalizer blocking deletion. Use kubectl patch to remove finalizer."
+            final_analysis="The namespace is stuck because of finalizer blocking deletion. Use kubectl patch to remove finalizer.",
+            chain_id="test-chain-analysis-1"
         )
         repository.create_alert_session(session1)
         
@@ -357,22 +365,23 @@ class TestHistoryRepository:
             alert_type="PodCrashLoop",
             status="completed",
             started_at_us=now_us(),
-            final_analysis="Pod is crashing due to memory limits. Increase resource requests and limits in deployment."
+            final_analysis="Pod is crashing due to memory limits. Increase resource requests and limits in deployment.",
+            chain_id="test-chain-analysis-2"
         )
         repository.create_alert_session(session2)
         
         # Test search in final analysis
         result = repository.get_alert_sessions(search="finalizer")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session1.session_id
+        assert result["sessions"][0]["session_id"] == session1.session_id
         
         result = repository.get_alert_sessions(search="memory")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session2.session_id
+        assert result["sessions"][0]["session_id"] == session2.session_id
         
         result = repository.get_alert_sessions(search="kubectl")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session1.session_id
+        assert result["sessions"][0]["session_id"] == session1.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_alert_data_fields(self, repository):
@@ -395,7 +404,8 @@ class TestHistoryRepository:
             agent_type="KubernetesAgent",
             alert_type="NamespaceTerminating", 
             status="completed",
-            started_at_us=now_us()
+            started_at_us=now_us(),
+            chain_id="test-chain-json-1"
         )
         repository.create_alert_session(session1)
         
@@ -414,34 +424,35 @@ class TestHistoryRepository:
             agent_type="KubernetesAgent",
             alert_type="UnidledPods",
             status="completed", 
-            started_at_us=now_us()
+            started_at_us=now_us(),
+            chain_id="test-chain-json-2"
         )
         repository.create_alert_session(session2)
         
         # Test search in different JSON fields
         result = repository.get_alert_sessions(search="superman")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session1.session_id
+        assert result["sessions"][0]["session_id"] == session1.session_id
         
         result = repository.get_alert_sessions(search="finalizers")  
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session1.session_id
+        assert result["sessions"][0]["session_id"] == session1.session_id
         
         result = repository.get_alert_sessions(search="cpu")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session2.session_id
+        assert result["sessions"][0]["session_id"] == session2.session_id
         
         result = repository.get_alert_sessions(search="production")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session1.session_id
+        assert result["sessions"][0]["session_id"] == session1.session_id
         
         result = repository.get_alert_sessions(search="critical")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session1.session_id
+        assert result["sessions"][0]["session_id"] == session1.session_id
         
         result = repository.get_alert_sessions(search="staging")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session2.session_id
+        assert result["sessions"][0]["session_id"] == session2.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_case_insensitive(self, repository):
@@ -459,7 +470,8 @@ class TestHistoryRepository:
             alert_type="NamespaceTerminating",
             status="completed",
             started_at_us=now_us(),
-            error_message="Connection failed to API Server"
+            error_message="Connection failed to API Server",
+            chain_id="test-chain-case-1"
         )
         repository.create_alert_session(session)
         
@@ -491,7 +503,8 @@ class TestHistoryRepository:
             agent_type="KubernetesAgent",
             alert_type="NamespaceTerminating",
             status="completed",
-            started_at_us=now_us()
+            started_at_us=now_us(),
+            chain_id="test-chain-combined-1"
         )
         repository.create_alert_session(session1)
         
@@ -502,7 +515,8 @@ class TestHistoryRepository:
             agent_type="KubernetesAgent",
             alert_type="UnidledPods",
             status="failed",
-            started_at_us=now_us()
+            started_at_us=now_us(),
+            chain_id="test-chain-combined-2"
         )
         repository.create_alert_session(session2)
         
@@ -513,26 +527,27 @@ class TestHistoryRepository:
             agent_type="DatabaseAgent",
             alert_type="ConnectionTimeout",
             status="completed",
-            started_at_us=now_us()
+            started_at_us=now_us(),
+            chain_id="test-chain-combined-3"
         )
         repository.create_alert_session(session3)
         
         # Test search + status filter
         result = repository.get_alert_sessions(search="kubernetes", status="completed")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session1.session_id
+        assert result["sessions"][0]["session_id"] == session1.session_id
         
         # Test search + agent_type filter
         result = repository.get_alert_sessions(search="issue", agent_type="KubernetesAgent")
         assert len(result["sessions"]) == 2
-        session_ids = [s.session_id for s in result["sessions"]]
+        session_ids = [s["session_id"] for s in result["sessions"]]
         assert session1.session_id in session_ids
         assert session2.session_id in session_ids
         
         # Test search + alert_type filter
         result = repository.get_alert_sessions(search="kubernetes", alert_type="UnidledPods")
         assert len(result["sessions"]) == 1
-        assert result["sessions"][0].session_id == session2.session_id
+        assert result["sessions"][0]["session_id"] == session2.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_no_matches(self, repository):
@@ -546,7 +561,8 @@ class TestHistoryRepository:
             agent_type="SimpleAgent",
             alert_type="SimpleAlert",
             status="completed",
-            started_at_us=now_us()
+            started_at_us=now_us(),
+            chain_id="test-chain-nomatch-1"
         )
         repository.create_alert_session(session)
         
@@ -562,8 +578,25 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_session_timeline_chronological_order(self, repository, sample_alert_session):
         """Test session timeline reconstruction with chronological ordering."""
+        from tarsy.models.history import StageExecution
+        from tarsy.models.history import now_us
+        
         # Create session
         repository.create_alert_session(sample_alert_session)
+        
+        # Create a stage execution first (interactions must belong to a stage)
+        stage_execution = StageExecution(
+            session_id=sample_alert_session.session_id,
+            stage_id="initial-analysis",
+            stage_index=0,
+            stage_name="Initial Analysis",
+            agent="KubernetesAgent",
+            status="completed",
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 5000000,  # 5 seconds later
+            duration_ms=5000
+        )
+        stage_execution_id = repository.create_stage_execution(stage_execution)
         
         # Create interactions and communications with specific timestamps
         base_time = datetime.now(timezone.utc)
@@ -574,7 +607,8 @@ class TestHistoryRepository:
             step_description="First LLM interaction",
             request_json={"messages": [{"role": "user", "content": "First prompt"}]},
             response_json={"choices": [{"message": {"role": "assistant", "content": "First response"}, "finish_reason": "stop"}]},
-            timestamp_us=int(base_time.timestamp() * 1_000_000)
+            timestamp_us=int(base_time.timestamp() * 1_000_000),
+            stage_execution_id=stage_execution_id
         )
         
         mcp1 = MCPInteraction(
@@ -583,9 +617,10 @@ class TestHistoryRepository:
             server_name="kubernetes-server",
             communication_type="tool_call",
             tool_name="kubectl_get",
-            timestamp=base_time + timedelta(seconds=1),
+            timestamp_us=int((base_time + timedelta(seconds=1)).timestamp() * 1_000_000),
             step_description="First MCP call",
-            success=True
+            success=True,
+            stage_execution_id=stage_execution_id
         )
         
         llm2 = LLMInteraction(
@@ -594,7 +629,8 @@ class TestHistoryRepository:
             step_description="Second LLM interaction",
             request_json={"messages": [{"role": "user", "content": "Second prompt"}]},
             response_json={"choices": [{"message": {"role": "assistant", "content": "Second response"}, "finish_reason": "stop"}]},
-            timestamp_us=int((base_time + timedelta(seconds=2)).timestamp() * 1_000_000)
+            timestamp_us=int((base_time + timedelta(seconds=2)).timestamp() * 1_000_000),
+            stage_execution_id=stage_execution_id
         )
         
         repository.create_llm_interaction(llm1)
@@ -624,8 +660,25 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_session_timeline_unix_timestamp_precision(self, repository, sample_alert_session):
         """Test session timeline with Unix timestamp precision and chronological ordering."""
+        from tarsy.models.history import StageExecution
+        from tarsy.models.history import now_us
+        
         # Create session
         repository.create_alert_session(sample_alert_session)
+        
+        # Create stage execution first (interactions must belong to a stage)
+        stage_execution = StageExecution(
+            session_id=sample_alert_session.session_id,
+            stage_id="timestamp-precision-test",
+            stage_index=0,
+            stage_name="Timestamp Precision Test",
+            agent="TestAgent",
+            status="completed",
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 10000000,  # 10 seconds later
+            duration_ms=10000
+        )
+        stage_execution_id = repository.create_stage_execution(stage_execution)
         
         # Create interactions with specific Unix timestamps (microseconds since epoch)
         base_timestamp_us = 1705314645123456  # 2024-01-15T10:30:45.123456Z UTC
@@ -637,7 +690,8 @@ class TestHistoryRepository:
             step_description="LLM interaction with precise timestamp",
             request_json={"messages": [{"role": "user", "content": "Precise timestamp prompt"}]},
             response_json={"choices": [{"message": {"role": "assistant", "content": "Precise timestamp response"}, "finish_reason": "stop"}]},
-            timestamp_us=base_timestamp_us
+            timestamp_us=base_timestamp_us,
+            stage_execution_id=stage_execution_id
         )
         
         # Create MCP communication 1 second later
@@ -649,7 +703,8 @@ class TestHistoryRepository:
             tool_name="kubectl_get",
             timestamp_us=base_timestamp_us + 1_000_000,  # 1 second later
             step_description="MCP call 1 second later",
-            success=True
+            success=True,
+            stage_execution_id=stage_execution_id
         )
         
         # Create another LLM interaction 500ms after first
@@ -659,7 +714,8 @@ class TestHistoryRepository:
             step_description="LLM interaction in middle",
             request_json={"messages": [{"role": "user", "content": "Middle timestamp prompt"}]},
             response_json={"choices": [{"message": {"role": "assistant", "content": "Middle timestamp response"}, "finish_reason": "stop"}]},
-            timestamp_us=base_timestamp_us + 500_000  # 500ms later
+            timestamp_us=base_timestamp_us + 500_000,  # 500ms later
+            stage_execution_id=stage_execution_id
         )
         
         repository.create_llm_interaction(llm_interaction)
@@ -707,7 +763,8 @@ class TestHistoryRepository:
             agent_type="TestAgent",
             alert_type="test",
             status="in_progress",
-            started_at=datetime.now(timezone.utc)
+            started_at=datetime.now(timezone.utc),
+            chain_id="test-chain-active"
         )
         
         completed_session = AlertSession(
@@ -718,7 +775,8 @@ class TestHistoryRepository:
             alert_type="test",
             status="completed",
             started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc)
+            completed_at=datetime.now(timezone.utc),
+            chain_id="test-chain-completed"
         )
         
         repository.create_alert_session(active_session)
@@ -765,7 +823,8 @@ class TestHistoryRepository:
             agent_type=sample_alert_session.agent_type,
             alert_type=sample_alert_session.alert_type,
             status=sample_alert_session.status,
-            started_at_us=sample_alert_session.started_at_us
+            started_at_us=sample_alert_session.started_at_us,
+            chain_id="test-chain-duplicate"
         )
         
         # Should return the existing session, not create a new one
@@ -808,14 +867,15 @@ class TestHistoryRepository:
                 agent_type="TestAgent",
                 alert_type="TestAlert",
                 status=status,
-                started_at=datetime.now(timezone.utc) - timedelta(minutes=i)
+                started_at=datetime.now(timezone.utc) - timedelta(minutes=i),
+                chain_id=f"test-chain-multi-{i}"
             )
             repository.create_alert_session(session)
 
         # Test filtering by multiple statuses
         result = repository.get_alert_sessions(status=["pending", "in_progress"])
         assert len(result["sessions"]) == 2
-        session_statuses = [s.status for s in result["sessions"]]
+        session_statuses = [s['status'] for s in result["sessions"]]
         assert "pending" in session_statuses
         assert "in_progress" in session_statuses
         assert "completed" not in session_statuses
@@ -843,7 +903,8 @@ class TestHistoryRepository:
                 alert_type=alert_type,
                 status=status,
                 started_at=started_at,
-                completed_at=started_at + timedelta(minutes=10) if status == "completed" else None
+                completed_at=started_at + timedelta(minutes=10) if status == "completed" else None,
+                chain_id=f"test-chain-{session_id}"
             )
             repository.create_alert_session(session)
         
@@ -861,7 +922,7 @@ class TestHistoryRepository:
             agent_type="KubernetesAgent"
         )
         assert len(result["sessions"]) == 1  # only session-1
-        assert result["sessions"][0].session_id == "session-1"
+        assert result["sessions"][0]["session_id"] == "session-1"
         
         # Test agent_type + status + time_range combination
         result = repository.get_alert_sessions(
@@ -870,7 +931,7 @@ class TestHistoryRepository:
             start_date_us=int((now - timedelta(hours=3.5)).timestamp() * 1_000_000)  # Should get session-1 and session-3
         )
         assert len(result["sessions"]) == 2
-        session_ids = [s.session_id for s in result["sessions"]]
+        session_ids = [s['session_id'] for s in result["sessions"]]
         assert "session-1" in session_ids
         assert "session-3" in session_ids
 
@@ -919,8 +980,25 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_session_timeline_includes_success_error_fields(self, repository, sample_alert_session):
         """Test session timeline includes success and error_message fields in LLM interactions."""
+        from tarsy.models.history import StageExecution
+        from tarsy.models.history import now_us
+        
         # Create session
         repository.create_alert_session(sample_alert_session)
+        
+        # Create stage execution first (interactions must belong to a stage)
+        stage_execution = StageExecution(
+            session_id=sample_alert_session.session_id,
+            stage_id="success-error-test",
+            stage_index=0,
+            stage_name="Success/Error Test Stage",
+            agent="TestAgent",
+            status="completed",
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 5000000,  # 5 seconds later
+            duration_ms=5000
+        )
+        stage_execution_id = repository.create_stage_execution(stage_execution)
         
         # Create successful interaction
         successful_interaction = LLMInteraction(
@@ -930,7 +1008,8 @@ class TestHistoryRepository:
             request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
             response_json={"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]},
             duration_ms=1000,
-            success=True
+            success=True,
+            stage_execution_id=stage_execution_id
         )
         
         # Create failed interaction
@@ -942,7 +1021,8 @@ class TestHistoryRepository:
             response_json=None,
             duration_ms=500,
             success=False,
-            error_message="API rate limit exceeded"
+            error_message="API rate limit exceeded",
+            stage_execution_id=stage_execution_id
         )
         
         repository.create_llm_interaction(successful_interaction)
@@ -1151,7 +1231,7 @@ class TestHistoryRepositoryErrorHandling:
     def test_get_session_timeline_database_error(self, repository_with_session_error):
         """Test getting session timeline with database error."""
         result = repository_with_session_error.get_session_timeline("test-session")
-        assert result is None
+        assert result == {}
 
     @pytest.mark.unit
     def test_update_alert_session_database_error(self, repository_with_session_error, sample_alert_session):
@@ -1180,8 +1260,12 @@ class TestHistoryRepositoryErrorHandling:
     @pytest.mark.unit
     def test_get_filter_options_database_error(self, repository_with_session_error):
         """Test getting filter options with database error."""
-        with pytest.raises(Exception):
-            repository_with_session_error.get_filter_options()
+        result = repository_with_session_error.get_filter_options()
+        # Should return default structure with empty lists on error
+        assert result["agent_types"] == []
+        assert result["alert_types"] == []
+        assert result["status_options"] == ["pending", "in_progress", "completed", "failed"]
+        assert len(result["time_ranges"]) == 5
 
 class TestHistoryRepositoryPerformance:
     """Test suite for HistoryRepository performance scenarios."""
@@ -1219,7 +1303,8 @@ class TestHistoryRepositoryPerformance:
                 alert_type=f"TestAlert{i % 5}",
                 status="completed" if i % 2 == 0 else "in_progress",
                 started_at=now - timedelta(minutes=i),
-                completed_at=now - timedelta(minutes=i-5) if i % 2 == 0 else None
+                completed_at=now - timedelta(minutes=i-5) if i % 2 == 0 else None,
+                chain_id=f"test-chain-perf-{i}"
             )
             repository.create_alert_session(session)
             
@@ -1276,9 +1361,9 @@ class TestHistoryRepositoryPerformance:
         
         # Create test data with different types
         sessions = [
-            AlertSession(session_id="1", alert_id="a1", agent_type="kubernetes", alert_type="PodCrashLooping", status="in_progress", alert_data={}),
-            AlertSession(session_id="2", alert_id="a2", agent_type="network", alert_type="ServiceDown", status="completed", alert_data={}),
-            AlertSession(session_id="3", alert_id="a3", agent_type="database", alert_type="ConnectionTimeout", status="failed", alert_data={})
+            AlertSession(session_id="1", alert_id="a1", agent_type="kubernetes", alert_type="PodCrashLooping", status="in_progress", alert_data={}, chain_id="test-chain-1"),
+            AlertSession(session_id="2", alert_id="a2", agent_type="network", alert_type="ServiceDown", status="completed", alert_data={}, chain_id="test-chain-2"),
+            AlertSession(session_id="3", alert_id="a3", agent_type="database", alert_type="ConnectionTimeout", status="failed", alert_data={}, chain_id="test-chain-3")
         ]
         
         for session in sessions:
@@ -1337,9 +1422,9 @@ class TestHistoryRepositoryPerformance:
         
         # Create test data in non-alphabetical order
         sessions = [
-            AlertSession(session_id="1", alert_id="a1", agent_type="zebra", alert_type="ZAlert", status="pending", alert_data={}),
-            AlertSession(session_id="2", alert_id="a2", agent_type="alpha", alert_type="AAlert", status="completed", alert_data={}),
-            AlertSession(session_id="3", alert_id="a3", agent_type="beta", alert_type="BAlert", status="in_progress", alert_data={})
+            AlertSession(session_id="1", alert_id="a1", agent_type="zebra", alert_type="ZAlert", status="pending", alert_data={}, chain_id="test-chain-sort-1"),
+            AlertSession(session_id="2", alert_id="a2", agent_type="alpha", alert_type="AAlert", status="completed", alert_data={}, chain_id="test-chain-sort-2"),
+            AlertSession(session_id="3", alert_id="a3", agent_type="beta", alert_type="BAlert", status="in_progress", alert_data={}, chain_id="test-chain-sort-3")
         ]
         
         for session in sessions:
@@ -1473,7 +1558,8 @@ class TestFlexibleAlertDataPerformance:
                 status="completed",
                 started_at_us=int((datetime.now(timezone.utc).timestamp() - i * 60) * 1_000_000),
                 completed_at_us=int((datetime.now(timezone.utc).timestamp() - i * 60 + 30) * 1_000_000),
-                alert_data=alert_data
+                alert_data=alert_data,
+                chain_id=f"test-chain-flex-{i}"
             )
             repository.session.add(session)
         
@@ -1483,53 +1569,63 @@ class TestFlexibleAlertDataPerformance:
     @pytest.mark.unit
     def test_json_field_query_functionality(self, repository_with_flexible_data):
         """Test functionality of JSON field queries with complex data structures."""
-        # Test querying and filtering works correctly without strict timing requirements
+        # Get session list (Phase 2: returns session overviews without alert_data)
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
         
         # Verify we get the expected number of sessions
         assert len(sessions["sessions"]) == 100, "Should retrieve all 100 test sessions"
         
-        # Filter in Python to simulate JSON query (since SQLite doesn't have JSON indexes)
-        critical_sessions = [
-            s for s in sessions["sessions"]
-            if s.alert_data and s.alert_data.get("severity") == "critical"
-        ]
+        # Test JSON queries by getting full session details for each session
+        critical_sessions = []
+        for session_overview in sessions["sessions"]:
+            session_id = session_overview['session_id']
+            # Get full session details (includes alert_data)
+            full_session = repository_with_flexible_data.get_session_timeline(session_id)
+            if full_session and full_session.get('session', {}).get('alert_data'):
+                alert_data = full_session['session']['alert_data']
+                if alert_data.get("severity") == "critical":
+                    critical_sessions.append(full_session)
         
         # Verify filtering works and we get expected results
         assert len(critical_sessions) > 0, "Should find some critical alerts"
         
         # Verify all returned sessions actually have critical severity
         for session in critical_sessions:
-            assert session.alert_data.get("severity") == "critical"
+            assert session['session']['alert_data'].get("severity") == "critical"
     
     @pytest.mark.unit  
     def test_complex_json_structure_functionality(self, repository_with_flexible_data):
         """Test functionality with complex nested JSON structures."""
-        # Test querying nested data structures works correctly
+        # Get session list (Phase 2: returns session overviews without alert_data)
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
         
         # Verify we get all sessions
         assert len(sessions["sessions"]) == 100, "Should retrieve all 100 test sessions"
         
-        # Test complex nested JSON queries
+        # Test complex nested JSON queries by getting full session details
         monitoring_with_high_cpu = []
-        for session in sessions["sessions"]:
-            if (session.alert_data and 
-                session.alert_data.get("metrics") and
-                isinstance(session.alert_data["metrics"], dict) and
-                session.alert_data["metrics"].get("cpu_usage", 0) > 80):
-                monitoring_with_high_cpu.append(session)
+        for session_overview in sessions["sessions"]:
+            session_id = session_overview['session_id']
+            # Get full session details (includes alert_data)
+            full_session = repository_with_flexible_data.get_session_timeline(session_id)
+            if full_session and full_session.get('session', {}).get('alert_data'):
+                alert_data = full_session['session']['alert_data']
+                if (alert_data.get("metrics") and
+                    isinstance(alert_data["metrics"], dict) and
+                    alert_data["metrics"].get("cpu_usage", 0) > 80):
+                    monitoring_with_high_cpu.append(full_session)
         
         # Verify query completed successfully and found expected data
         assert len(monitoring_with_high_cpu) >= 0, "Query should complete successfully"
         
         # Verify all returned sessions actually have high CPU usage
         for session in monitoring_with_high_cpu:
-            assert session.alert_data.get("metrics", {}).get("cpu_usage", 0) > 80
+            assert session['session']['alert_data'].get("metrics", {}).get("cpu_usage", 0) > 80
     
     @pytest.mark.unit
     def test_json_array_query_functionality(self, repository_with_flexible_data):
         """Test functionality of querying JSON arrays within alert data."""
+        # Get session list (Phase 2: returns session overviews without alert_data)
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
         
         # Verify we get all sessions
@@ -1537,29 +1633,34 @@ class TestFlexibleAlertDataPerformance:
         
         # Query sessions with array data (labels, queries, events, etc.)
         sessions_with_arrays = []
-        for session in sessions["sessions"]:
-            if session.alert_data:
+        for session_overview in sessions["sessions"]:
+            session_id = session_overview['session_id']
+            # Get full session details (includes alert_data)
+            full_session = repository_with_flexible_data.get_session_timeline(session_id)
+            if full_session and full_session.get('session', {}).get('alert_data'):
+                alert_data = full_session['session']['alert_data']
                 # Check for any array fields
                 has_arrays = any(
-                    isinstance(v, list) for v in session.alert_data.values()
+                    isinstance(v, list) for v in alert_data.values()
                 ) or any(
                     isinstance(v, dict) and any(isinstance(nested_v, list) for nested_v in v.values())
-                    for v in session.alert_data.values() if isinstance(v, dict)
+                    for v in alert_data.values() if isinstance(v, dict)
                 )
                 
                 if has_arrays:
-                    sessions_with_arrays.append(session)
+                    sessions_with_arrays.append(full_session)
         
         # Verify we found sessions with array data
         assert len(sessions_with_arrays) > 0, "Should find sessions with array data"
         
         # Verify all returned sessions actually have arrays
         for session in sessions_with_arrays:
+            alert_data = session['session']['alert_data']
             has_arrays = any(
-                isinstance(v, list) for v in session.alert_data.values()
+                isinstance(v, list) for v in alert_data.values()
             ) or any(
                 isinstance(v, dict) and any(isinstance(nested_v, list) for nested_v in v.values())
-                for v in session.alert_data.values() if isinstance(v, dict)
+                for v in alert_data.values() if isinstance(v, dict)
             )
             assert has_arrays, "Session should actually contain array data"
     
@@ -1583,7 +1684,7 @@ class TestFlexibleAlertDataPerformance:
             assert result["pagination"]["total_pages"] == 5, "Total pages should be 5 for 100 items with page_size 20"
             
             # Track session IDs to ensure no duplicates across pages
-            session_ids = {s.session_id for s in result["sessions"]}
+            session_ids = {s['session_id'] for s in result["sessions"]}
             
             # Verify no duplicate sessions across pages
             overlap = total_sessions_seen.intersection(session_ids)

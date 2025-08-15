@@ -295,7 +295,8 @@ class TestHistoryService:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
         if service_enabled:
-            mock_sessions = [SessionFactory.create_test_session() for _ in range(expected_sessions)]
+            # Create dictionaries that match repository return format, not AlertSession objects
+            mock_sessions = [SessionFactory.create_test_session().model_dump() for _ in range(expected_sessions)]
             dependencies['repository'].get_alert_sessions.return_value = {
                 "sessions": mock_sessions,
                 "pagination": {"page": 1, "page_size": 20, "total_pages": 1, "total_items": expected_count}
@@ -422,36 +423,6 @@ class TestHistoryService:
             assert mock_sleep.call_count == history_service.max_retries  # Should retry max_retries times
         else:  # non_retryable
             mock_sleep.assert_not_called()  # Should not retry for non-retryable errors
-    
-    @pytest.mark.unit
-    def test_get_sessions_dict_format(self, history_service):
-        """Test get_sessions method returns dict format (different from get_sessions_list)."""
-        dependencies = MockFactory.create_mock_history_service_dependencies()
-        mock_sessions = [SessionFactory.create_test_session() for _ in range(2)]
-        expected_result = {
-            "sessions": mock_sessions,
-            "pagination": {"page": 1, "page_size": 20, "total_pages": 1, "total_items": 2}
-        }
-        dependencies['repository'].get_alert_sessions.return_value = expected_result
-        
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
-            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
-            mock_get_repo.return_value.__exit__.return_value = None
-            
-            result = history_service.get_sessions(status="completed", page=1, page_size=20)
-            
-            assert result == expected_result
-            assert isinstance(result, dict)  # Different from get_sessions_list which returns tuple
-            dependencies['repository'].get_alert_sessions.assert_called_once_with(
-                status="completed",
-                agent_type=None,
-                alert_type=None,
-                start_date_us=None,
-                end_date_us=None,
-                page=1,
-                page_size=20
-            )
-
 
 class TestHistoryServiceGlobalInstance:
     """Test suite for global history service instance management."""
@@ -948,20 +919,31 @@ async def test_cleanup_orphaned_sessions():
     # Mock the repository
     mock_repo = Mock()
     
-    # Create mock sessions
+    # Create session dictionaries (not Mock objects)
     mock_active_sessions = []
     mock_all_sessions = []
     
     for session_data in test_sessions:
-        mock_session = Mock()
+        # Convert to dictionary format that matches repository return
+        session_dict = {}
         for key, value in session_data.items():
-            setattr(mock_session, key, value)
-        mock_all_sessions.append(mock_session)
+            # Convert enum values to strings
+            if hasattr(value, 'value'):
+                session_dict[key] = value.value
+            else:
+                session_dict[key] = value
+        
+        # Add required fields that the service expects
+        session_dict.setdefault('alert_data', {})
+        session_dict.setdefault('chain_id', 'test-chain')
+        session_dict.setdefault('started_at_us', 1640995200000000)
+        
+        mock_all_sessions.append(session_dict)
         
         # Only pending and in_progress should be returned by the active query
         status_value = session_data["status"].value if hasattr(session_data["status"], 'value') else session_data["status"]
         if status_value in AlertSessionStatus.active_values():
-            mock_active_sessions.append(mock_session)
+            mock_active_sessions.append(session_dict)
     
     # Mock repository responses
     mock_repo.get_alert_sessions.return_value = {
@@ -988,11 +970,16 @@ async def test_cleanup_orphaned_sessions():
     # Verify each orphaned session was updated correctly
     assert mock_repo.update_alert_session.call_count == 2
     
-    # Check that orphaned sessions had their status updated
-    for session in mock_active_sessions:
-        assert session.status == AlertSessionStatus.FAILED.value
-        assert session.error_message == "Backend was restarted - session terminated unexpectedly"
-        assert hasattr(session, 'completed_at_us')
+    # Check that orphaned sessions were updated via repository calls
+    update_calls = mock_repo.update_alert_session.call_args_list
+    assert len(update_calls) == 2, f"Expected 2 update calls, got {len(update_calls)}"
+    
+    # Verify each call had correct status and error message
+    for call in update_calls:
+        updated_session = call[0][0]  # First argument of the call
+        assert updated_session.status == AlertSessionStatus.FAILED.value
+        assert updated_session.error_message == "Backend was restarted - session terminated unexpectedly"
+        assert updated_session.completed_at_us is not None
 
 
 @pytest.mark.asyncio

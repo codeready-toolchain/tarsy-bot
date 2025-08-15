@@ -140,8 +140,6 @@ class AlertService:
         except Exception as e:
             logger.error(f"Failed to initialize AlertService: {str(e)}")
             raise
-
-
     
     async def process_alert(
         self, 
@@ -291,7 +289,6 @@ class AlertService:
             
             logger.info(f"Starting chain execution '{chain_definition.chain_id}' with {len(chain_definition.stages)} stages")
             
-            
             successful_stages = 0
             failed_stages = 0
             
@@ -304,7 +301,6 @@ class AlertService:
                 
                 # Update session current stage
                 await self._update_session_current_stage(session_id, i, stage_execution_id)
-                
                 
                 try:
                     # Mark stage as started
@@ -340,7 +336,6 @@ class AlertService:
                     successful_stages += 1
                     logger.info(f"Stage '{stage.name}' completed successfully with {stage_result.get('iterations', 0)} iterations")
                     
-                    
                 except Exception as e:
                     # Log the error with full context
                     error_msg = f"Stage '{stage.name}' failed with agent '{stage.agent}': {str(e)}"
@@ -362,7 +357,6 @@ class AlertService:
                     
                     failed_stages += 1
                     
-                    
                     # DECISION: Continue to next stage even if this one failed
                     # This allows data collection stages to fail while analysis stages still run
                     logger.warning(f"Continuing chain execution despite stage failure: {error_msg}")
@@ -378,7 +372,6 @@ class AlertService:
                 overall_status = "partial"  # Some stages failed
             
             logger.info(f"Chain execution completed: {successful_stages} successful, {failed_stages} failed")
-            
             
             return {
                 "status": overall_status,
@@ -555,51 +548,7 @@ class AlertService:
         return "\n".join(response_parts)
 
     # History Session Management Methods
-    def _create_history_session(self, alert: AlertProcessingData, agent_class_name: Optional[str] = None) -> Optional[str]:
-        """
-        Create a history session for alert processing.
-        
-        Args:
-            alert: Alert processing data with validated structure
-            agent_class_name: Agent class name for the session
-            
-        Returns:
-            Session ID if created successfully, None if history service unavailable
-        """
-        try:
-            if not self.history_service or not self.history_service.enabled:
-                return None
-            
-            # Use provided agent class name or determine it from chain
-            if agent_class_name is None:
-                try:
-                    chain = self.chain_registry.get_chain_for_alert_type(alert.alert_type)
-                    # Use the first stage's agent as the representative agent type
-                    agent_class_name = chain.stages[0].agent if chain.stages else None
-                except ValueError:
-                    agent_class_name = None
-            agent_type = agent_class_name or 'unknown'
-            
-            # Generate unique alert ID for this processing session
-            timestamp_us = now_us()
-            unique_id = uuid.uuid4().hex[:12]  # Use 12 chars for uniqueness
-            alert_id = f"{alert.alert_type}_{unique_id}_{timestamp_us}"
-            
-            # Store alert_type separately and all flexible data in alert_data JSON field 
-            session_id = self.history_service.create_session(
-                alert_id=alert_id,
-                alert_data=alert.alert_data,  # Store all flexible data in JSON field
-                agent_type=agent_type,
-                alert_type=alert.alert_type  # Store in separate column for fast routing
-            )
-            
-            logger.info(f"Created history session {session_id} for alert {alert_id}")
-            return session_id
-            
-        except Exception as e:
-            logger.warning(f"Failed to create history session: {str(e)}")
-            return None
-    
+
     def _create_chain_history_session(self, alert: AlertProcessingData, chain_definition) -> Optional[str]:
         """
         Create a history session for chain processing.

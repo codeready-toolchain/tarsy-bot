@@ -438,65 +438,7 @@ class TestHistorySessionManagement:
             }
         )
     
-    def test_create_history_session_success(self, alert_service_with_history, sample_alert):
-        """Test successful history session creation."""
-        service = alert_service_with_history
-        service.chain_registry.get_chain_for_alert_type.return_value = ChainDefinitionModel(
-            chain_id='kubernetes-agent-chain',
-            alert_types=['kubernetes'],
-            stages=[ChainStageModel(name='analysis', agent='KubernetesAgent')],
-            description='Test chain'
-        )
-        service.history_service.create_session.return_value = "session_123"
-        
-        # Convert Alert to dict for the new interface
-        alert_dict = alert_to_api_format(sample_alert)
-        session_id = service._create_history_session(alert_dict, "KubernetesAgent")
-        
-        assert session_id == "session_123"
-        
-        # Verify history service was called with correct parameters
-        service.history_service.create_session.assert_called_once()
-        call_args = service.history_service.create_session.call_args[1]
-        
-        # Verify alert data is passed correctly
-        assert call_args['alert_data'] == alert_dict.alert_data
-        assert call_args['agent_type'] == "KubernetesAgent"
-    
-    def test_create_history_session_disabled(self, alert_service_with_history, sample_alert):
-        """Test history session creation when service is disabled."""
-        service = alert_service_with_history
-        service.history_service.enabled = False
-        
-        alert_dict = alert_to_api_format(sample_alert)
-        session_id = service._create_history_session(alert_dict)
-        
-        assert session_id is None
-        service.history_service.create_session.assert_not_called()
-    
-    def test_create_history_session_no_service(self, alert_service_with_history, sample_alert):
-        """Test history session creation when service is None."""
-        service = alert_service_with_history
-        service.history_service = None
-        
-        alert_dict = alert_to_api_format(sample_alert)
-        session_id = service._create_history_session(alert_dict)
-        
-        assert session_id is None
-    
-    def test_create_history_session_with_exception(self, alert_service_with_history, sample_alert):
-        """Test history session creation with exception handling."""
-        service = alert_service_with_history
-        service.history_service.create_session.side_effect = Exception("Database error")
-        
-        # Convert Alert to dict for the new interface
-        alert_dict = alert_to_api_format(sample_alert)
-        
-        # Should not raise exception, but return None
-        session_id = service._create_history_session(alert_dict)
-        
-        assert session_id is None
-    
+
     def test_update_session_status_success(self, alert_service_with_history):
         """Test successful session status update."""
         service = alert_service_with_history
@@ -754,65 +696,7 @@ class TestAlertServiceDuplicatePrevention:
         
         return service, mock_dependencies
     
-    def test_alert_id_generation_uniqueness(self, alert_service_with_dependencies, sample_alert):
-        """Test that generated alert IDs are unique and properly stored."""
-        service, mock_dependencies = alert_service_with_dependencies
-        
-        # Mock successful processing setup
-        mock_dependencies['llm_manager'].is_available.return_value = True
-        mock_dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainDefinitionModel(
-            chain_id='kubernetes-agent-chain',
-            alert_types=['kubernetes'],
-            stages=[ChainStageModel(name='analysis', agent='KubernetesAgent')],
-            description='Test chain'
-        )
-        mock_dependencies['history'].create_session.return_value = "session_123"
-        
-        alert_dict = alert_to_api_format(sample_alert)
-        
-        # This should call _create_history_session which calls create_session
-        session_id = service._create_history_session(alert_dict, "KubernetesAgent")
-        
-        # Verify session was created
-        assert session_id == "session_123"
-        mock_dependencies['history'].create_session.assert_called_once()
-        
-        # Verify the call arguments contain alert data
-        call_args = mock_dependencies['history'].create_session.call_args[1]
-        assert call_args['alert_data'] == alert_dict.alert_data
-    
-    def test_alert_id_generation_with_existing_id(self, alert_service_with_dependencies, sample_alert):
-        """Test alert processing with existing alert data."""
-        service, mock_dependencies = alert_service_with_dependencies
-        
-        # Setup mocks
-        mock_dependencies['llm_manager'].is_available.return_value = True
-        mock_dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainDefinitionModel(
-            chain_id='kubernetes-agent-chain',
-            alert_types=['kubernetes'],
-            stages=[ChainStageModel(name='analysis', agent='KubernetesAgent')],
-            description='Test chain'
-        )
-        mock_dependencies['history'].create_session.return_value = "session_456"
-        
-        # Add existing_id to alert data
-        alert_dict = alert_to_api_format(sample_alert)
-        # Since AlertProcessingData is immutable, create new instance with modified data
-        modified_alert_data = alert_dict.alert_data.copy()
-        modified_alert_data['existing_id'] = "existing_alert_123"
-        alert_dict = AlertProcessingData(
-            alert_type=alert_dict.alert_type,
-            alert_data=modified_alert_data
-        )
-        
-        session_id = service._create_history_session(alert_dict, "KubernetesAgent")
-        
-        assert session_id == "session_456"
-        mock_dependencies['history'].create_session.assert_called_once()
-        
-        # Verify the existing_id is preserved in alert data
-        call_args = mock_dependencies['history'].create_session.call_args[1]
-        assert call_args['alert_data']['existing_id'] == "existing_alert_123"
+
 
 
 

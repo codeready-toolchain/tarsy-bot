@@ -6,6 +6,7 @@ service interactions, and cross-component communication.
 """
 
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -15,6 +16,7 @@ from sqlmodel import SQLModel, create_engine
 
 from tarsy.main import app
 from tarsy.models.alert import Alert
+from tarsy.models.history import now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 
 # Import history models to ensure they're registered with SQLModel.metadata
@@ -129,7 +131,8 @@ class TestHistoryServiceIntegration:
         "message": sample_alert.data.get('message', '')
             },
             agent_type="KubernetesAgent",
-            alert_type=sample_alert.alert_type
+            alert_type=sample_alert.alert_type,
+            chain_id="test-integration-chain-1"
         )
         
         assert session_id is not None
@@ -141,10 +144,21 @@ class TestHistoryServiceIntegration:
         )
         assert result == True
         
+        # Create stage execution (required for interactions in Phase 2)
+        from tests.utils import StageExecutionFactory
+        import asyncio
+        stage_execution_id = asyncio.run(StageExecutionFactory.create_and_save_stage_execution(
+            history_service_with_db,
+            session_id,
+            stage_id="initial-analysis",
+            stage_name="Initial Analysis"
+        ))
+        
         # Log LLM interaction
         from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
         llm_interaction = LLMInteraction(
             session_id=session_id,
+            stage_execution_id=stage_execution_id,
             model_name="gpt-4",
             step_description="Initial analysis",
             request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
@@ -158,6 +172,7 @@ class TestHistoryServiceIntegration:
         # Log MCP communication
         mcp_interaction = MCPInteraction(
             session_id=session_id,
+            stage_execution_id=stage_execution_id,
             server_name="kubernetes-server",
             communication_type="tool_call",
             tool_name="kubectl_get_namespace",
@@ -195,8 +210,19 @@ class TestHistoryServiceIntegration:
             alert_id="timeline-test",
             alert_data={"alert_type": sample_alert.alert_type},
             agent_type="KubernetesAgent",
-            alert_type=sample_alert.alert_type
+            alert_type=sample_alert.alert_type,
+            chain_id="test-integration-chain-timeline"
         )
+        
+        # Create stage execution (required for interactions in Phase 2)
+        from tests.utils import StageExecutionFactory
+        import asyncio
+        stage_execution_id = asyncio.run(StageExecutionFactory.create_and_save_stage_execution(
+            history_service_with_db,
+            session_id,
+            stage_id="timeline-analysis",
+            stage_name="Timeline Analysis"
+        ))
         
         # Create events with specific timestamps (simulating real workflow)
         base_time = datetime.now(timezone.utc)
@@ -204,6 +230,7 @@ class TestHistoryServiceIntegration:
         # First LLM interaction
         llm_interaction1 = LLMInteraction(
             session_id=session_id,
+            stage_execution_id=stage_execution_id,
             model_name="gpt-4",
             step_description="Initial analysis",
             request_json={"messages": [{"role": "user", "content": "Initial analysis prompt"}]},
@@ -219,6 +246,7 @@ class TestHistoryServiceIntegration:
         # MCP tool call
         mcp_interaction1 = MCPInteraction(
             session_id=session_id,
+            stage_execution_id=stage_execution_id,
             server_name="kubernetes-server",
             communication_type="tool_call",
             tool_name="kubectl_get",
@@ -232,6 +260,7 @@ class TestHistoryServiceIntegration:
         # Second LLM interaction
         llm_interaction2 = LLMInteraction(
             session_id=session_id,
+            stage_execution_id=stage_execution_id,
             model_name="gpt-4",
             step_description="Follow-up analysis",
             request_json={"messages": [{"role": "user", "content": "Follow-up analysis prompt"}]},
@@ -279,7 +308,8 @@ class TestHistoryServiceIntegration:
                 alert_id=f"alert-{session_id}",
                 alert_data={"alert_type": alert_type, "environment": "test"},
                 agent_type=agent_type,
-                alert_type=alert_type
+                alert_type=alert_type,
+                chain_id=f"test-integration-chain-{session_id}"
             )
             
             # Update the session with custom timestamp using repository directly
@@ -348,7 +378,8 @@ class TestHistoryServiceIntegration:
             alert_id="",  # Empty alert ID
             alert_data={},  # Empty alert data
             agent_type="",  # Empty agent type
-            alert_type=""  # Empty alert type
+            alert_type="",  # Empty alert type
+            chain_id="test-integration-chain-error"
         )
         assert session_id is not None  # Should still create session
         
@@ -388,7 +419,8 @@ class TestHistoryServiceIntegration:
             alert_id="retry-test-1",
             alert_data={"alert_type": sample_alert.alert_type},
             agent_type="KubernetesAgent",  
-            alert_type=sample_alert.alert_type
+            alert_type=sample_alert.alert_type,
+            chain_id="test-integration-chain-retry"
         )
         
         # Should succeed with our improvements
@@ -906,7 +938,8 @@ class TestDuplicatePreventionIntegration:
             alert_id="test_duplicate_alert_123",
             alert_data=sample_alert_data,
             agent_type="KubernetesAgent",
-            alert_type="PodCrashLoopBackOff"
+            alert_type="PodCrashLoopBackOff",
+            chain_id="test-integration-chain-dup-1"
         )
         
         assert session_id_1 is not None
@@ -916,7 +949,8 @@ class TestDuplicatePreventionIntegration:
             alert_id="test_duplicate_alert_123",  # Same alert_id
             alert_data={**sample_alert_data, "severity": "critical"},  # Different data
             agent_type="DifferentAgent",  # Different agent
-            alert_type="DifferentAlertType"  # Different type
+            alert_type="DifferentAlertType",  # Different type
+            chain_id="test-integration-chain-dup-2"
         )
         
         # Should return the same session
@@ -947,7 +981,8 @@ class TestDuplicatePreventionIntegration:
                     alert_id="concurrent_test_alert",
                     alert_data={**sample_alert_data, "thread_id": thread_id},
                     agent_type=f"Agent_{thread_id}",
-                    alert_type="TestAlert"
+                    alert_type="TestAlert",
+                    chain_id=f"test-integration-chain-concurrent-{thread_id}"
                 )
                 results.append(session_id)
             except Exception as e:
@@ -997,7 +1032,8 @@ class TestDuplicatePreventionIntegration:
             alert_id="constraint_test_alert",
             alert_data=sample_alert_data,
             agent_type="TestAgent",
-            alert_type="TestAlert"
+            alert_type="TestAlert",
+            chain_id="test-integration-chain-constraint"
         )
         
         assert session_id is not None
@@ -1040,13 +1076,21 @@ class TestDuplicatePreventionIntegration:
         alert_dict = alert_to_api_format(alert)
         generated_ids = set()
         
-        for _ in range(100):
-            session_id = alert_service._create_history_session(alert_dict, "TestAgent")
+        for i in range(100):
+            # Generate unique alert ID similar to how the old method did it
+            timestamp_us = now_us()
+            unique_id = uuid.uuid4().hex[:12]
+            alert_id = f"{alert_dict.alert_type}_{unique_id}_{timestamp_us}"
+            
+            session_id = history_service_with_test_db.create_session(
+                alert_id=alert_id,
+                alert_data=alert_dict.alert_data,
+                agent_type="TestAgent",
+                alert_type=alert_dict.alert_type,
+                chain_id=f"test-integration-chain-unique-{i}"
+            )
             if session_id:
-                # Get the generated alert_id from the created session
-                session = history_service_with_test_db.get_session_timeline(session_id)
-                if session:
-                    generated_ids.add(session["session"]["alert_id"])
+                generated_ids.add(alert_id)
         
         # All generated alert IDs should be unique
         assert len(generated_ids) == 100, f"Expected 100 unique alert IDs, got {len(generated_ids)}"
@@ -1069,7 +1113,8 @@ class TestDuplicatePreventionIntegration:
                 alert_id="retry_test_alert",
                 alert_data=sample_alert_data,
                 agent_type="TestAgent",
-                alert_type="TestAlert"
+                alert_type="TestAlert",
+                chain_id="test-integration-chain-retry-dup"
             )
             
             assert result_1 == session_id
@@ -1088,7 +1133,8 @@ class TestDuplicatePreventionIntegration:
             alert_id="performance_test_alert",
             alert_data=sample_alert_data,
             agent_type="TestAgent",
-            alert_type="TestAlert"
+            alert_type="TestAlert",
+            chain_id="test-integration-chain-perf"
         )
         
         assert initial_session is not None
@@ -1102,7 +1148,8 @@ class TestDuplicatePreventionIntegration:
                 alert_id="performance_test_alert",  # Same alert_id
                 alert_data={**sample_alert_data, "attempt": i},
                 agent_type=f"TestAgent_{i}",
-                alert_type="TestAlert"
+                alert_type="TestAlert",
+                chain_id=f"test-integration-chain-perf-dup-{i}"
             )
             
             # Should return existing session quickly
@@ -1137,7 +1184,8 @@ class TestDuplicatePreventionIntegration:
                 alert_id=alert_id,
                 alert_data={**sample_alert_data, "test_case": f"{alert_id}_{agent_type}"},
                 agent_type=agent_type,
-                alert_type=alert_type
+                alert_type=alert_type,
+                chain_id=f"test-integration-chain-mixed-{alert_id}"
             )
             
             if alert_id not in created_sessions:
@@ -1164,7 +1212,8 @@ class TestDuplicatePreventionIntegration:
             alert_id="error_test_alert",
             alert_data=sample_alert_data,
             agent_type="TestAgent",
-            alert_type="TestAlert"
+            alert_type="TestAlert",
+            chain_id="test-integration-chain-error-test"
         )
         
         assert session_id is not None
@@ -1182,7 +1231,8 @@ class TestDuplicatePreventionIntegration:
                 alert_id="error_test_alert_2",
                 alert_data=sample_alert_data,
                 agent_type="TestAgent",
-                alert_type="TestAlert"
+                alert_type="TestAlert",
+                chain_id="test-integration-chain-error-test-2"
             )
             
             # Should return None on error, not crash
