@@ -155,9 +155,6 @@ class LLMEventDetails(BaseModel):
     temperature: Optional[float] = None  # From LLMRequest
     success: bool
     error_message: Optional[str] = None
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    total_tokens: Optional[int] = None
     tool_calls: Optional[dict] = None
     tool_results: Optional[dict] = None
 
@@ -202,6 +199,8 @@ class MCPInteraction(BaseInteraction):
         """Validate MCP-specific details"""
         if not self.details.server_name:
             raise ValueError("MCP interactions require server_name in details")
+        if not self.details.tool_name:
+            raise ValueError("MCP interactions require tool_name in details")
         return self
 
 # Union type for timeline events
