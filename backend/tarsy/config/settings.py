@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Dict, List, Optional
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def is_testing() -> bool:
@@ -145,11 +145,12 @@ class Settings(BaseSettings):
                 # Use file database for dev/production
                 self.history_database_url = "sqlite:///history.db"
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
         # Allow extra fields to be ignored for backward compatibility
-        extra = "ignore"
+        extra="ignore"
+    )
         
     def get_llm_config(self, provider: str) -> Dict:
         """Get LLM configuration for a specific provider."""

@@ -7,7 +7,7 @@ used in the multi-layer agent architecture.
 
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from tarsy.models.masking_config import MaskingConfig
 
@@ -50,12 +50,11 @@ class MCPServerConfig(BaseModel):
         description="Optional data masking configuration for sensitive server data"
     )
     
-    class Config:
-        """Pydantic model configuration."""
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "server_id": "kubernetes-server",
-                "server_type": "kubernetes",
+                "server_type": "kubernetes", 
                 "enabled": True,
                 "connection_params": {
                     "command": "npx",
@@ -63,4 +62,5 @@ class MCPServerConfig(BaseModel):
                 },
                 "instructions": "For Kubernetes operations:\n- Be careful with cluster-scoped listings..."
             }
-        } 
+        }
+    ) 
