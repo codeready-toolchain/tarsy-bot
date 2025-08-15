@@ -356,6 +356,26 @@ class HistoryService:
         
         result = self._retry_database_operation("get_session_with_stages", _get_session_with_stages_operation)
         return result
+
+    def get_stage_interaction_counts(self, execution_ids: List[str]) -> Dict[str, Dict[str, int]]:
+        """
+        Get interaction counts for stages using SQL aggregation.
+        
+        Args:
+            execution_ids: List of stage execution IDs to get counts for
+            
+        Returns:
+            Dictionary mapping execution_id to {'llm_interactions': count, 'mcp_communications': count}
+        """
+        def _get_stage_interaction_counts_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    logger.warning("History repository unavailable - stage interaction counts not retrieved")
+                    return {}
+                return repo.get_stage_interaction_counts(execution_ids)
+        
+        result = self._retry_database_operation("get_stage_interaction_counts", _get_stage_interaction_counts_operation)
+        return result if result is not None else {}
     
     def calculate_session_summary(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -375,14 +395,25 @@ class HistoryService:
         if not session_data:
             return {}
             
-        # Extract timeline for calculations
+        # Extract timeline and session info for calculations
         timeline = session_data.get('chronological_timeline', [])
+        session_info = session_data.get('session', {})
+        
+        # Use pre-calculated counts from repository when available (more efficient)
+        # Fall back to timeline-based calculation for backward compatibility
+        llm_count = session_info.get('llm_interaction_count')
+        if llm_count is None:
+            llm_count = len([event for event in timeline if event.get('type') == 'llm'])
+            
+        mcp_count = session_info.get('mcp_communication_count') 
+        if mcp_count is None:
+            mcp_count = len([event for event in timeline if event.get('type') == 'mcp'])
         
         # Calculate basic interaction statistics
         summary = {
             'total_interactions': len(timeline),
-            'llm_interactions': len([event for event in timeline if event.get('type') == 'llm']),
-            'mcp_communications': len([event for event in timeline if event.get('type') == 'mcp']),
+            'llm_interactions': llm_count,
+            'mcp_communications': mcp_count,
             'system_events': len([event for event in timeline if event.get('type') == 'system']),
             'errors_count': len([event for event in timeline if event.get('status') == 'failed']),
             'total_duration_ms': sum(event.get('duration_ms') or 0 for event in timeline)

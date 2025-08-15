@@ -252,6 +252,10 @@ async def get_session_detail(
             stages_data = chain_execution_data.get('stages', [])
             stage_executions = []
             
+            # Get all execution IDs and fetch interaction counts using SQL aggregation
+            execution_ids = [stage_data.get('execution_id', '') for stage_data in stages_data if stage_data.get('execution_id')]
+            stage_interaction_counts = history_service.get_stage_interaction_counts(execution_ids)
+            
             for stage_data in stages_data:
                 execution_id = stage_data.get('execution_id', '')
                 
@@ -271,7 +275,7 @@ async def get_session_detail(
                         
                         stage_timeline.append({
                             'event_id': event_id,
-                            'type': event_type,  # Already normalized from repository
+                            'type': event_type,
                             'timestamp_us': event.get('timestamp_us'),
                             'step_description': event.get('step_description'),
                             'duration_ms': event.get('duration_ms'),
@@ -281,9 +285,10 @@ async def get_session_detail(
                 # Sort chronologically
                 stage_timeline.sort(key=lambda x: x['timestamp_us'])
                 
-                # Calculate interaction summary
-                llm_count = len([e for e in stage_timeline if e.get('type') == 'llm'])
-                mcp_count = len([e for e in stage_timeline if e.get('type') == 'mcp'])
+                # Get interaction counts from SQL aggregation instead of in-memory filtering
+                counts = stage_interaction_counts.get(execution_id, {'llm_interactions': 0, 'mcp_communications': 0})
+                llm_count = counts['llm_interactions']
+                mcp_count = counts['mcp_communications']
                 
                 # Sum all durations, defaulting to 0 for None values, keep None only if total is 0
                 total_duration_ms = sum(e.get('duration_ms') or 0 for e in stage_timeline)
@@ -291,7 +296,7 @@ async def get_session_detail(
                 interaction_summary = InteractionSummary(
                     llm_count=llm_count,
                     mcp_count=mcp_count,
-                    total_count=len(stage_timeline),
+                    total_count=llm_count + mcp_count,
                     duration_ms=total_duration_ms if total_duration_ms > 0 else None
                 )
                 

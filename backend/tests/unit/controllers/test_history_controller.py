@@ -603,52 +603,32 @@ class TestHistoryControllerEndpoints:
                 "error_message": None,
                 "chain_id": "chain-123"  # Add chain_id so endpoint processes chain execution
             },
-            "chain_execution": {
-                "chain_id": "chain-789",
-                "stages": [
-                    {
-                        "execution_id": "exec-3",
-                        "stage_id": "initial-analysis",
-                        "stage_name": "Initial Analysis",
-                        "status": "completed",
-                        "interaction_summary": {
-                            "llm_count": 1,
-                            "mcp_count": 1,
-                            "total_count": 2
-                        },
-                        "timeline": [
-                            {
-                                "interaction_id": "int-1",
-                                "type": "llm_interaction",
-                                "timestamp_us": 1705314000000000,
-                                "step_description": "Initial analysis",
-                                "details": {
-                                    "prompt_text": "Analyze the issue",
-                                    "response_text": "Found the problem",
-                                    "model_used": "gpt-4"
-                                }
-                            },
-                            {
-                                "communication_id": "comm-1",
-                                "type": "mcp_communication",
-                                "timestamp_us": 1705314001000000,
-                                "step_description": "Check namespace status",
-                                "details": {
-                                    "server_name": "kubernetes-server",
-                                    "tool_name": "kubectl_get_namespace",
-                                    "success": True
-                                }
-                            }
-                        ]
+            "chronological_timeline": [
+                {
+                    "event_id": "int-1",
+                    "type": "llm",
+                    "timestamp_us": 1705314000000000,
+                    "step_description": "Initial analysis",
+                    "stage_execution_id": "exec-3",
+                    "details": {
+                        "prompt_text": "Analyze the issue",
+                        "response_text": "Found the problem",
+                        "model_used": "gpt-4"
                     }
-                ]
-            },
-            "summary": {
-                "total_interactions": 2,
-                "llm_interactions": 1,
-                "mcp_communications": 1,
-                "total_duration_ms": 2000
-            }
+                },
+                {
+                    "event_id": "comm-1",
+                    "type": "mcp",
+                    "timestamp_us": 1705314001000000,
+                    "step_description": "Check namespace status",
+                    "stage_execution_id": "exec-3",
+                    "details": {
+                        "server_name": "kubernetes-server",
+                        "tool_name": "kubectl_get_namespace",
+                        "success": True
+                    }
+                }
+            ]
         }
         mock_history_service.get_session_timeline.return_value = mock_timeline
         
@@ -676,6 +656,19 @@ class TestHistoryControllerEndpoints:
                 ]
             }
         mock_history_service.get_session_with_stages = mock_get_session_with_stages_first
+        
+        # Mock the new get_stage_interaction_counts method
+        mock_history_service.get_stage_interaction_counts.return_value = {
+            "exec-3": {"llm_interactions": 1, "mcp_communications": 1}
+        }
+        
+        # Mock calculate_session_summary method
+        mock_history_service.calculate_session_summary.return_value = {
+            "total_interactions": 2,
+            "llm_interactions": 1, 
+            "mcp_communications": 1,
+            "total_duration_ms": 2000
+        }
         
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
@@ -738,7 +731,7 @@ class TestHistoryControllerEndpoints:
                         assert "step_description" in event
                         assert "details" in event
                         assert isinstance(event["timestamp_us"], int)
-                        assert event["type"] in ["llm_interaction", "mcp_communication", "stage_execution"]
+                        assert event["type"] in ["llm", "mcp", "system"]
         
         # Verify other expected fields
         assert "duration_ms" in data
@@ -1124,7 +1117,20 @@ class TestHistoryControllerResponseFormat:
                 "error_message": None,
                 "chain_id": "chain-123"  # Add chain_id so endpoint processes chain execution
             },
-            "chronological_timeline": [],  # Add empty timeline for compatibility
+            "chronological_timeline": [
+                {
+                    "event_id": "int-1",
+                    "type": "llm",
+                    "timestamp_us": 1705314000000000,
+                    "step_description": "Test step",
+                    "stage_execution_id": "exec-1",
+                    "details": {
+                        "prompt_text": "Test prompt",
+                        "response_text": "Test response",
+                        "model_used": "gpt-4"
+                    }
+                }
+            ],
             "chain_execution": {
                 "chain_id": "chain-123",
                 "stages": [
@@ -1185,6 +1191,19 @@ class TestHistoryControllerResponseFormat:
                 "stages": mock_chain_data["stages"]
             }
         mock_history_service.get_session_with_stages = mock_get_session_with_stages
+        
+        # Mock the new get_stage_interaction_counts method
+        mock_history_service.get_stage_interaction_counts.return_value = {
+            "exec-1": {"llm_interactions": 1, "mcp_communications": 1}
+        }
+        
+        # Mock calculate_session_summary method
+        mock_history_service.calculate_session_summary.return_value = {
+            "total_interactions": 2,
+            "llm_interactions": 1, 
+            "mcp_communications": 1,
+            "total_duration_ms": 2000
+        }
         
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service

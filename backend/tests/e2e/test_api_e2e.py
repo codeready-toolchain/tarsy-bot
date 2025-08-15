@@ -369,7 +369,15 @@ Action Input: {step['action_input']}"""
         assert status in ["completed", "failed", "processing"], f"Invalid status: {status}"
         assert chain_execution.get("chain_id"), "Missing chain execution data"
         
-        print(f"✅ Validation complete: {status} with {llm_count} LLM + {mcp_count} MCP interactions")
+        print(f"✅ Session-level counts extracted: {status} with {llm_count} LLM + {mcp_count} MCP interactions")
+        
+        # Return the session-level counts for cross-validation
+        return {
+            "status": status,
+            "session_llm_count": llm_count,
+            "session_mcp_count": mcp_count,
+            "session_total_count": llm_count + mcp_count
+        }
 
     async def _validate_sessions_api(self, test_client, session_id, expected_alert_data):
         """
@@ -818,6 +826,51 @@ Action Input: {step['action_input']}"""
         
         return our_session, stage_interaction_counts if 'stages' in chain_execution else {}
 
+    def _validate_session_vs_stage_counts(self, session_level_counts: dict, stage_level_totals: dict):
+        """
+        Cross-validate that session-level interaction counts match stage-level totals.
+        
+        This ensures our unified counting approach works correctly - both SQL aggregation
+        at session level and stage level should produce consistent results.
+        
+        Args:
+            session_level_counts: Counts from sessions list API
+            stage_level_totals: Calculated totals from summing stage counts
+        """
+        print("🔍 Cross-validating session-level vs stage-level interaction counts...")
+        
+        # Extract session-level counts (from sessions list API)
+        session_llm = session_level_counts.get("session_llm_count", 0)
+        session_mcp = session_level_counts.get("session_mcp_count", 0) 
+        session_total = session_level_counts.get("session_total_count", 0)
+        
+        # Extract stage-level totals (calculated from stage sums)
+        stage_llm = stage_level_totals.get("stage_total_llm", 0)
+        stage_mcp = stage_level_totals.get("stage_total_mcp", 0)
+        stage_total = stage_level_totals.get("stage_total_interactions", 0)
+        
+        print(f"   📊 Session-level counts (from sessions list API): {session_llm} LLM + {session_mcp} MCP = {session_total} total")
+        print(f"   📊 Stage-level totals (calculated from stages): {stage_llm} LLM + {stage_mcp} MCP = {stage_total} total")
+        
+        # CRITICAL VALIDATION: Session counts must match stage totals
+        # This validates that our unified SQL aggregation approach works correctly
+        assert session_llm == stage_llm, f"CROSS-VALIDATION FAILED: Session LLM count ({session_llm}) != Stage LLM total ({stage_llm})"
+        assert session_mcp == stage_mcp, f"CROSS-VALIDATION FAILED: Session MCP count ({session_mcp}) != Stage MCP total ({stage_mcp})"
+        assert session_total == stage_total, f"CROSS-VALIDATION FAILED: Session total count ({session_total}) != Stage total count ({stage_total})"
+        
+        # EXPECTED VALUES VALIDATION: Ensure they match our known test scenario
+        expected_llm = 8    # 4 + 3 + 1 from all stages
+        expected_mcp = 5    # 3 + 2 + 0 from all stages
+        expected_total = 13 # 8 + 5
+        
+        assert session_llm == expected_llm, f"EXPECTED VALUES FAILED: Session LLM count ({session_llm}) != Expected ({expected_llm})"
+        assert session_mcp == expected_mcp, f"EXPECTED VALUES FAILED: Session MCP count ({session_mcp}) != Expected ({expected_mcp})"
+        assert session_total == expected_total, f"EXPECTED VALUES FAILED: Session total count ({session_total}) != Expected ({expected_total})"
+        
+        print(f"   ✅ CROSS-VALIDATION PASSED: Session and stage counts are consistent")
+        print(f"   ✅ EXPECTED VALUES PASSED: Counts match known test scenario ({expected_llm} LLM + {expected_mcp} MCP = {expected_total} total)")
+        print(f"   ✅ UNIFIED COUNTING VERIFIED: SQL aggregation works correctly at both session and stage levels")
+
     async def test_comprehensive_alert_processing_and_api_validation(
         self,
         e2e_test_client,
@@ -1024,7 +1077,25 @@ Action Input: {step['action_input']}"""
                 
                 # Step 4: Validate comprehensive API data structures  
                 print("\n🔍 STEP 4: Validating comprehensive API data...")
-                await self._validate_comprehensive_api_data(e2e_test_client, alert_id, session_id)
+                session_level_counts = await self._validate_comprehensive_api_data(e2e_test_client, alert_id, session_id)
+                
+                # Calculate stage totals from stage_interaction_counts for cross-validation
+                assert stage_interaction_counts, "Stage interaction counts should always be present in E2E tests"
+                total_llm = sum(counts.get("llm", 0) for counts in stage_interaction_counts.values())
+                total_mcp = sum(counts.get("mcp", 0) for counts in stage_interaction_counts.values())
+                total_interactions = total_llm + total_mcp
+                stage_level_totals = {
+                    "stage_total_llm": total_llm,
+                    "stage_total_mcp": total_mcp,
+                    "stage_total_interactions": total_interactions,
+                    "stage_interaction_counts": stage_interaction_counts
+                }
+                
+                # Step 4.1: CROSS-VALIDATION - Ensure session-level and stage-level counts match
+                print("\n🔍 STEP 4.1: Cross-validating session vs stage interaction counts...")
+                assert session_level_counts, "Session-level counts should always be present in E2E tests"
+                assert stage_level_totals, "Stage-level totals should always be present in E2E tests"
+                self._validate_session_vs_stage_counts(session_level_counts, stage_level_totals)
                 
                 # Step 5: Enhanced Summary
                 print("\n🎉 All API validations completed successfully!")
@@ -1034,6 +1105,8 @@ Action Input: {step['action_input']}"""
                 print(f"   ✅ Sessions list API validated")  
                 print(f"   ✅ Session detail API validated")
                 print(f"   ✅ Comprehensive data validated")
+                print(f"   ✅ Session vs Stage count cross-validation passed")
+                print(f"   ✅ Unified SQL aggregation counting verified")
                 print(f"   ✅ Processing took: {session_data.get('duration_ms', 'unknown')}ms")
                 print(f"   ✅ Complete isolation: All resources automatically cleaned up")
                 

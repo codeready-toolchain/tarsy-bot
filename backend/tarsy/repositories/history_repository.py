@@ -302,6 +302,57 @@ class HistoryRepository:
                     "total_items": 0
                 }
             }
+
+    def get_stage_interaction_counts(self, execution_ids: List[str]) -> Dict[str, Dict[str, int]]:
+        """
+        Get interaction counts grouped by stage execution ID using SQL aggregation.
+        
+        Args:
+            execution_ids: List of stage execution IDs to get counts for
+            
+        Returns:
+            Dictionary mapping execution_id to {'llm_interactions': count, 'mcp_communications': count}
+        """
+        if not execution_ids:
+            return {}
+            
+        try:
+            interaction_counts = {}
+            
+            # Count LLM interactions for each stage
+            llm_count_query = select(
+                LLMInteraction.stage_execution_id,
+                func.count(LLMInteraction.interaction_id).label('count')
+            ).where(
+                LLMInteraction.stage_execution_id.in_(execution_ids)
+            ).group_by(LLMInteraction.stage_execution_id)
+            
+            llm_results = self.session.exec(llm_count_query).all()
+            llm_counts = {result.stage_execution_id: result.count for result in llm_results}
+            
+            # Count MCP communications for each stage
+            mcp_count_query = select(
+                MCPInteraction.stage_execution_id,
+                func.count(MCPInteraction.communication_id).label('count')
+            ).where(
+                MCPInteraction.stage_execution_id.in_(execution_ids)
+            ).group_by(MCPInteraction.stage_execution_id)
+            
+            mcp_results = self.session.exec(mcp_count_query).all()
+            mcp_counts = {result.stage_execution_id: result.count for result in mcp_results}
+            
+            # Combine counts for each stage
+            for execution_id in execution_ids:
+                interaction_counts[execution_id] = {
+                    'llm_interactions': llm_counts.get(execution_id, 0),
+                    'mcp_communications': mcp_counts.get(execution_id, 0)
+                }
+                
+            return interaction_counts
+            
+        except Exception as e:
+            logger.error(f"Error retrieving stage interaction counts: {str(e)}")
+            raise
     
     # LLMInteraction operations
     def create_llm_interaction(self, llm_interaction: LLMInteraction) -> LLMInteraction:
@@ -457,6 +508,9 @@ class HistoryRepository:
                     "final_analysis": session.final_analysis,
                     "session_metadata": session.session_metadata,
                     "total_interactions": len(llm_interactions) + len(mcp_communications),
+                    # Pre-calculated interaction counts (consistent with session list)
+                    "llm_interaction_count": len(llm_interactions),
+                    "mcp_communication_count": len(mcp_communications),
                     # Chain-related fields
                     "chain_id": session.chain_id,
                     "chain_definition": session.chain_definition,

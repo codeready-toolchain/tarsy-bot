@@ -755,6 +755,19 @@ class TestHistoryAPIIntegration:
             }
         mock_history_service_for_api.get_session_with_stages = mock_get_session_with_stages
         
+        # Mock the new get_stage_interaction_counts method
+        mock_history_service_for_api.get_stage_interaction_counts.return_value = {
+            "integration-exec-1": {"llm_interactions": 1, "mcp_communications": 1}
+        }
+        
+        # Mock calculate_session_summary method
+        mock_history_service_for_api.calculate_session_summary.return_value = {
+            "total_interactions": 2,
+            "llm_interactions": 1, 
+            "mcp_communications": 1,
+            "total_duration_ms": 150000
+        }
+        
         # Use FastAPI's dependency override system instead of mock patching
         from tarsy.controllers.history_controller import get_history_service
         app.dependency_overrides[get_history_service] = lambda: mock_history_service_for_api
