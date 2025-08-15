@@ -13,6 +13,7 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
+  Badge,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -173,7 +174,7 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
               
               <Box flex={1} />
               
-              <Box display="flex" gap={1} alignItems="center" flexWrap="wrap">
+              <Box display="flex" gap={1} alignItems="center">
                 <Chip
                   label={stage.status}
                   color={getStageStatusColor(stage.status)}
@@ -184,74 +185,10 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
                   variant="outlined"
                   size="small"
                 />
-                
-                {/* Interaction count badges similar to session summary */}
-                {stage.interaction_summary && stage.interaction_summary.total_count > 0 && (
-                  <Box display="flex" gap={0.5} alignItems="center">
-                    {/* Total interactions badge */}
-                    <Box sx={{ 
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.25,
-                      px: 0.75,
-                      py: 0.25,
-                      backgroundColor: 'grey.100',
-                      borderRadius: '12px',
-                      border: '1px solid',
-                      borderColor: 'grey.300'
-                    }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>
-                        {stage.interaction_summary.total_count}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                        total
-                      </Typography>
-                    </Box>
-                    
-                    {/* LLM interactions badge */}
-                    {stage.interaction_summary.llm_count > 0 && (
-                      <Box sx={{ 
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 0.25,
-                        px: 0.75,
-                        py: 0.25,
-                        backgroundColor: 'primary.50',
-                        borderRadius: '12px',
-                        border: '1px solid',
-                        borderColor: 'primary.200'
-                      }}>
-                        <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.7rem' }}>
-                          🧠 {stage.interaction_summary.llm_count}
-                        </Typography>
-                        <Typography variant="caption" color="primary.main" sx={{ fontSize: '0.65rem' }}>
-                          LLM
-                        </Typography>
-                      </Box>
-                    )}
-                    
-                    {/* MCP interactions badge */}
-                    {stage.interaction_summary.mcp_count > 0 && (
-                      <Box sx={{ 
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 0.25,
-                        px: 0.75,
-                        py: 0.25,
-                        backgroundColor: 'secondary.50',
-                        borderRadius: '12px',
-                        border: '1px solid',
-                        borderColor: 'secondary.200'
-                      }}>
-                        <Typography variant="caption" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.7rem' }}>
-                          🔧 {stage.interaction_summary.mcp_count}
-                        </Typography>
-                        <Typography variant="caption" color="secondary.main" sx={{ fontSize: '0.65rem' }}>
-                          MCP
-                        </Typography>
-                      </Box>
-                    )}
-                  </Box>
+                {interactions.length > 0 && (
+                  <Badge badgeContent={interactions.length} color="primary">
+                    <TimelineIcon fontSize="small" />
+                  </Badge>
                 )}
               </Box>
             </Box>

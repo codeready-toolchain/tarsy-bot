@@ -407,86 +407,10 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                     <Typography variant="h6" fontWeight={600}>
                       Stage {stageIndex + 1}: {stage.stage_name}
                     </Typography>
-                    <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
-                      <Typography variant="body2" color="text.secondary">
-                        {stage.agent}
-                      </Typography>
-                      
-                      {/* Interaction count badges similar to session summary */}
-                      {stage.interaction_summary && stage.interaction_summary.total_count > 0 && (
-                        <Box display="flex" gap={0.5} alignItems="center">
-                          {/* Total interactions badge */}
-                          <Box sx={{ 
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 0.25,
-                            px: 0.75,
-                            py: 0.25,
-                            backgroundColor: 'grey.100',
-                            borderRadius: '12px',
-                            border: '1px solid',
-                            borderColor: 'grey.300'
-                          }}>
-                            <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>
-                              {stage.interaction_summary.total_count}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                              total
-                            </Typography>
-                          </Box>
-                          
-                          {/* LLM interactions badge */}
-                          {stage.interaction_summary.llm_count > 0 && (
-                            <Box sx={{ 
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 0.25,
-                              px: 0.75,
-                              py: 0.25,
-                              backgroundColor: 'primary.50',
-                              borderRadius: '12px',
-                              border: '1px solid',
-                              borderColor: 'primary.200'
-                            }}>
-                              <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.7rem' }}>
-                                🧠 {stage.interaction_summary.llm_count}
-                              </Typography>
-                              <Typography variant="caption" color="primary.main" sx={{ fontSize: '0.65rem' }}>
-                                LLM
-                              </Typography>
-                            </Box>
-                          )}
-                          
-                          {/* MCP interactions badge */}
-                          {stage.interaction_summary.mcp_count > 0 && (
-                            <Box sx={{ 
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 0.25,
-                              px: 0.75,
-                              py: 0.25,
-                              backgroundColor: 'secondary.50',
-                              borderRadius: '12px',
-                              border: '1px solid',
-                              borderColor: 'secondary.200'
-                            }}>
-                              <Typography variant="caption" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.7rem' }}>
-                                🔧 {stage.interaction_summary.mcp_count}
-                              </Typography>
-                              <Typography variant="caption" color="secondary.main" sx={{ fontSize: '0.65rem' }}>
-                                MCP
-                              </Typography>
-                            </Box>
-                          )}
-                        </Box>
-                      )}
-                      
-                      {stage.started_at_us && (
-                        <Typography variant="body2" color="text.secondary">
-                          • Started: {formatTimestamp(stage.started_at_us, 'short')}
-                        </Typography>
-                      )}
-                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {stage.agent} • {stageInteractions.length} interactions
+                      {stage.started_at_us && ` • Started: ${formatTimestamp(stage.started_at_us, 'short')}`}
+                    </Typography>
                   </Box>
 
                   <Box display="flex" gap={1} alignItems="center">
