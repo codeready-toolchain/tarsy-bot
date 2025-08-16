@@ -814,7 +814,7 @@ class MockFactory:
         
         # Add mocks for other repository methods that may be called
         mock_repository.get_session_timeline.return_value = None
-        mock_repository.get_session_with_stages.return_value = None
+        mock_repository.get_session_overview.return_value = None
         
         return {
             'db_manager': mock_db_manager,
@@ -888,6 +888,43 @@ class MockFactory:
         }
         base_data.update(overrides)
         return DetailedSession(**base_data)
+    
+    @staticmethod
+    def create_mock_session_overview(session_id="test-session", **overrides):
+        """
+        Create a mock SessionOverview with sensible defaults for testing.
+        
+        Args:
+            session_id: Session identifier (default: "test-session")
+            **overrides: Override any default values
+            
+        Returns:
+            SessionOverview: Configured SessionOverview for testing
+        """
+        from tarsy.models.history_models import SessionOverview
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.utils.timestamp import now_us
+        
+        base_data = {
+            "session_id": session_id,
+            "alert_id": f"alert-{session_id}",
+            "alert_type": "TestAlert",
+            "agent_type": "TestAgent",
+            "status": AlertSessionStatus.COMPLETED,
+            "started_at_us": now_us(),
+            "completed_at_us": now_us() + 1000000,
+            "error_message": None,
+            "llm_interaction_count": 1,
+            "mcp_communication_count": 0,
+            "total_interactions": 1,
+            "chain_id": f"chain-{session_id}",
+            "total_stages": 1,
+            "completed_stages": 1,
+            "failed_stages": 0,
+            "current_stage_index": 0
+        }
+        base_data.update(overrides)
+        return SessionOverview(**base_data)
     
     @staticmethod
     def create_mock_paginated_sessions(sessions=None, page=1, page_size=20, total_items=None, **overrides):

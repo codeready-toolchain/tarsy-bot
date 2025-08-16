@@ -6,7 +6,6 @@ MCP communication tracking, and timeline reconstruction with graceful
 degradation when database operations fail.
 """
 
-from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
 import pytest
@@ -15,8 +14,7 @@ from tarsy.config.settings import Settings
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.db_models import AlertSession
 from tarsy.services.history_service import HistoryService, get_history_service
-from tarsy.utils.timestamp import now_us
-from tests.utils import MockFactory, TestUtils, SessionFactory
+from tests.utils import MockFactory, SessionFactory
 
 
 class TestHistoryService:
@@ -1375,15 +1373,15 @@ class TestHistoryServiceSummaryMethods:
         """Test get_session_summary with successful data retrieval."""
         session_id = "test-session-123"
         
-        # Get_session_summary now uses get_session_with_stages directly 
-        mock_detailed_session = MockFactory.create_mock_detailed_session(
+        # Get_session_summary now uses get_session_overview directly 
+        mock_session_overview = MockFactory.create_mock_session_overview(
             session_id=session_id,
             chain_id="test-chain"
         )
         
-        # Mock the repository to return our DetailedSession
+        # Mock the repository to return our SessionOverview
         dependencies = MockFactory.create_mock_history_service_dependencies()
-        dependencies['repository'].get_session_with_stages.return_value = mock_detailed_session
+        dependencies['repository'].get_session_overview.return_value = mock_session_overview
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
@@ -1393,7 +1391,7 @@ class TestHistoryServiceSummaryMethods:
             summary = await history_service.get_session_summary(session_id)
         
         # Verify repository method was called
-        dependencies['repository'].get_session_with_stages.assert_called_once_with(session_id)
+        dependencies['repository'].get_session_overview.assert_called_once_with(session_id)
         
         # Verify summary structure
         assert summary is not None
@@ -1412,7 +1410,7 @@ class TestHistoryServiceSummaryMethods:
         
         # Mock repository to return None (session not found)
         dependencies = MockFactory.create_mock_history_service_dependencies()
-        dependencies['repository'].get_session_with_stages.return_value = None
+        dependencies['repository'].get_session_overview.return_value = None
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
@@ -1425,8 +1423,8 @@ class TestHistoryServiceSummaryMethods:
         assert summary is None
         
         # Verify repository method was called once (no retries needed when session not found)
-        assert dependencies['repository'].get_session_with_stages.call_count == 1
-        dependencies['repository'].get_session_with_stages.assert_called_with(session_id)
+        assert dependencies['repository'].get_session_overview.call_count == 1
+        dependencies['repository'].get_session_overview.assert_called_with(session_id)
 
     @pytest.mark.unit
     async def test_get_session_summary_non_chain_session(self, history_service):
@@ -1434,17 +1432,19 @@ class TestHistoryServiceSummaryMethods:
         session_id = "minimal-chain-session"
         
         # All sessions are chains, but this one has minimal chain data
-        mock_detailed_session = MockFactory.create_mock_detailed_session(
+        mock_session_overview = MockFactory.create_mock_session_overview(
             session_id=session_id,
             chain_id="minimal-chain",
             total_interactions=2,
             mcp_communication_count=1,
-            stages=[]  # No stages
+            total_stages=0,  # No stages
+            completed_stages=0,
+            failed_stages=0
         )
         
-        # Mock the repository to return our DetailedSession
+        # Mock the repository to return our SessionOverview
         dependencies = MockFactory.create_mock_history_service_dependencies()
-        dependencies['repository'].get_session_with_stages.return_value = mock_detailed_session
+        dependencies['repository'].get_session_overview.return_value = mock_session_overview
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
@@ -1454,7 +1454,7 @@ class TestHistoryServiceSummaryMethods:
             summary = await history_service.get_session_summary(session_id)
         
         # Verify repository method was called
-        dependencies['repository'].get_session_with_stages.assert_called_once_with(session_id)
+        dependencies['repository'].get_session_overview.assert_called_once_with(session_id)
         
         # Verify summary structure - all sessions have chain statistics now
         assert summary is not None
@@ -1471,7 +1471,7 @@ class TestHistoryServiceSummaryMethods:
         
         # Repository returns None due to error or session not found
         dependencies = MockFactory.create_mock_history_service_dependencies()
-        dependencies['repository'].get_session_with_stages.return_value = None  # Simulate error/not found
+        dependencies['repository'].get_session_overview.return_value = None  # Simulate error/not found
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
@@ -1484,5 +1484,5 @@ class TestHistoryServiceSummaryMethods:
         assert summary is None
         
         # Verify repository method was called once (no retries needed when session not found)
-        assert dependencies['repository'].get_session_with_stages.call_count == 1
-        dependencies['repository'].get_session_with_stages.assert_called_with(session_id)
+        assert dependencies['repository'].get_session_overview.call_count == 1
+        dependencies['repository'].get_session_overview.assert_called_with(session_id)

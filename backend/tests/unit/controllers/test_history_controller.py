@@ -768,8 +768,8 @@ class TestHistoryControllerEndpoints:
         )
         mock_history_service.get_session_timeline.return_value = mock_timeline
         
-        # Mock the get_session_with_stages async method
-        async def mock_get_session_with_stages_first(session_id):
+        # Mock the get_session_overview async method
+        async def mock_get_session_overview_first(session_id):
             return {
                 "session": {
                     "session_id": "test-session-123",
@@ -791,7 +791,7 @@ class TestHistoryControllerEndpoints:
                     }
                 ]
             }
-        mock_history_service.get_session_with_stages = mock_get_session_with_stages_first
+        mock_history_service.get_session_overview = mock_get_session_overview_first
         
         # Mock the new get_stage_interaction_counts method
         mock_history_service.get_stage_interaction_counts.return_value = {
@@ -1315,7 +1315,7 @@ class TestHistoryControllerResponseFormat:
         )
         mock_history_service.get_session_timeline.return_value = mock_timeline
         
-        # Mock the get_session_with_stages call for chain execution data
+        # Mock the get_session_overview call for chain execution data
         mock_chain_data = {
             "stages": [
                 {
@@ -1331,8 +1331,8 @@ class TestHistoryControllerResponseFormat:
                 }
             ]
         }
-        # Mock async method for get_session_with_stages  
-        async def mock_get_session_with_stages(session_id):
+        # Mock async method for get_session_overview  
+        async def mock_get_session_overview(session_id):
             return {
                 "session": {
                     "session_id": "test-session",
@@ -1342,7 +1342,7 @@ class TestHistoryControllerResponseFormat:
                 },
                 "stages": mock_chain_data["stages"]
             }
-        mock_history_service.get_session_with_stages = mock_get_session_with_stages
+        mock_history_service.get_session_overview = mock_get_session_overview
         
         # Mock the new get_stage_interaction_counts method
         mock_history_service.get_stage_interaction_counts.return_value = {

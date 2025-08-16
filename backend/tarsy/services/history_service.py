@@ -527,25 +527,39 @@ class HistoryService:
                     if not repo:
                         raise RuntimeError("History repository unavailable - cannot retrieve session summary")
                     
-                    detailed_session = repo.get_session_with_stages(session_id)
-                    if not detailed_session:
+                    session_overview = repo.get_session_overview(session_id)
+                    if not session_overview:
                         # This is a legitimate case - session doesn't exist, not a system failure
                         return None
                     
-                    # Calculate statistics using type-safe model and return as SessionStats
-                    summary_dict = self.calculate_session_summary_from_model(detailed_session)
-                    
-                    # Create SessionStats model from the calculated dictionary
+                    # Calculate statistics from SessionOverview and return as SessionStats
                     from tarsy.models.history_models import SessionStats, ChainStatistics
-                    chain_stats = ChainStatistics(**summary_dict["chain_statistics"])
+                    
+                    # Calculate basic counts from the SessionOverview model
+                    total_interactions = session_overview.total_interactions
+                    llm_interactions = session_overview.llm_interaction_count
+                    mcp_communications = session_overview.mcp_communication_count
+                    
+                    # Calculate duration from session timing
+                    total_duration_ms = 0
+                    if session_overview.started_at_us and session_overview.completed_at_us:
+                        total_duration_ms = (session_overview.completed_at_us - session_overview.started_at_us) // 1000
+                    
+                    # Create chain statistics from SessionOverview
+                    chain_stats = ChainStatistics(
+                        total_stages=session_overview.total_stages or 0,
+                        completed_stages=session_overview.completed_stages or 0,
+                        failed_stages=session_overview.failed_stages,
+                        stages_by_agent={}  # Not calculated in overview for performance
+                    )
                     
                     session_stats = SessionStats(
-                        total_interactions=summary_dict["total_interactions"],
-                        llm_interactions=summary_dict["llm_interactions"],
-                        mcp_communications=summary_dict["mcp_communications"],
-                        system_events=summary_dict["system_events"],
-                        errors_count=summary_dict["errors_count"],
-                        total_duration_ms=summary_dict["total_duration_ms"],
+                        total_interactions=total_interactions,
+                        llm_interactions=llm_interactions,
+                        mcp_communications=mcp_communications,
+                        system_events=0,  # Not tracked in SessionOverview
+                        errors_count=1 if session_overview.error_message else 0,
+                        total_duration_ms=total_duration_ms,
                         chain_statistics=chain_stats
                     )
                     return session_stats

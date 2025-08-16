@@ -724,19 +724,17 @@ class HistoryRepository:
                 ]
             )
 
-    def get_session_with_stages(self, session_id: str) -> Optional[DetailedSession]:
+    def get_session_overview(self, session_id: str) -> Optional[SessionOverview]:
         """
-        Get session with all stage execution details.
+        Get session overview with stage counts (lightweight version for summaries).
         """
         try:
-            from tarsy.models.history_models import DetailedStage
-            
             # Get the session
             session = self.get_alert_session(session_id)
             if not session:
                 return None
             
-            # Get stage executions (without loading full interactions for performance)
+            # Get stage executions for counting (without loading full interactions for performance)
             stages_stmt = (
                 select(StageExecution)
                 .where(StageExecution.session_id == session_id)
@@ -748,71 +746,42 @@ class HistoryRepository:
             stage_execution_ids = [stage.execution_id for stage in stage_executions_db]
             stage_interaction_counts = self.get_stage_interaction_counts(stage_execution_ids)
             
-            # Build DetailedStage objects WITHOUT full interactions but WITH counts (lighter but functional)
-            detailed_stages = []
-            for stage_db in stage_executions_db:
-                # Get counts for this specific stage
-                stage_counts = stage_interaction_counts.get(stage_db.execution_id, {})
-                llm_count = stage_counts.get('llm_interactions', 0)
-                mcp_count = stage_counts.get('mcp_communications', 0)
-                
-                detailed_stage = DetailedStage(
-                    execution_id=stage_db.execution_id,
-                    session_id=stage_db.session_id,
-                    stage_id=stage_db.stage_id,
-                    stage_index=stage_db.stage_index,
-                    stage_name=stage_db.stage_name,
-                    agent=stage_db.agent,
-                    status=StageStatus(stage_db.status),
-                    started_at_us=stage_db.started_at_us,
-                    completed_at_us=stage_db.completed_at_us,
-                    duration_ms=stage_db.duration_ms,
-                    stage_output=stage_db.stage_output,
-                    error_message=stage_db.error_message,
-                    # NO full interactions loaded - keep empty for performance
-                    llm_interactions=[],
-                    mcp_communications=[],
-                    # BUT include counts for summary calculations
-                    llm_interaction_count=llm_count,
-                    mcp_communication_count=mcp_count,
-                    total_interactions=llm_count + mcp_count
-                )
-                detailed_stages.append(detailed_stage)
+            # Calculate total interaction counts and stage statistics
+            total_llm = sum(counts.get('llm_interactions', 0) for counts in stage_interaction_counts.values())
+            total_mcp = sum(counts.get('mcp_communications', 0) for counts in stage_interaction_counts.values())
             
-            # Calculate total interaction counts from all stages
-            total_llm = sum(stage.llm_interaction_count for stage in detailed_stages)
-            total_mcp = sum(stage.mcp_communication_count for stage in detailed_stages)
+            # Calculate stage statistics
+            from tarsy.models.constants import StageStatus
+            completed_stages = len([stage for stage in stage_executions_db if stage.status == StageStatus.COMPLETED.value])
+            failed_stages = len([stage for stage in stage_executions_db if stage.status == StageStatus.FAILED.value])
             
-            # Create DetailedSession (with interaction counts calculated from stages)
-            return DetailedSession(
-                # Core session data
+            # Create SessionOverview (lighter weight model for summaries)
+            return SessionOverview(
+                # Core identification
                 session_id=session.session_id,
                 alert_id=session.alert_id,
                 alert_type=session.alert_type,
                 agent_type=session.agent_type,
                 status=AlertSessionStatus(session.status),
+                
+                # Timing info
                 started_at_us=session.started_at_us,
                 completed_at_us=session.completed_at_us,
+                
+                # Basic status info
                 error_message=session.error_message,
                 
-                # Full session details
-                alert_data=session.alert_data,
-                final_analysis=session.final_analysis,
-                session_metadata=session.session_metadata,
-                
-                # Chain execution details
-                chain_id=session.chain_id,
-                chain_definition=session.chain_definition or {},
-                current_stage_index=session.current_stage_index,
-                current_stage_id=session.current_stage_id,
-                
-                # Interaction counts (calculated from stages)
-                total_interactions=total_llm + total_mcp,
+                # Summary counts (for dashboard display)
                 llm_interaction_count=total_llm,
                 mcp_communication_count=total_mcp,
+                total_interactions=total_llm + total_mcp,
                 
-                # Stage executions WITH counts but WITHOUT full interactions (lighter but functional)
-                stages=detailed_stages
+                # Chain progress info (for dashboard filtering/display)
+                chain_id=session.chain_id,
+                total_stages=len(stage_executions_db),
+                completed_stages=completed_stages,
+                failed_stages=failed_stages,
+                current_stage_index=session.current_stage_index
             )
             
         except Exception as e:
