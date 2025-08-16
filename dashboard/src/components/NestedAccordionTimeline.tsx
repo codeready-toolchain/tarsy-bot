@@ -151,7 +151,7 @@ const formatStageForCopy = (stage: any, stageIndex: number, interactions: Timeli
   let content = `=== STAGE ${stageIndex + 1}: ${stage.stage_name} ===\n`;
   content += `Agent: ${stage.agent}\n`;
   content += `Status: ${stage.status}\n`;
-  // iteration_strategy removed in EP-0010
+
   if (stage.started_at_us) {
     content += `Started: ${formatTimestamp(stage.started_at_us, 'absolute')}\n`;
   }
@@ -563,7 +563,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                       <Typography variant="body2">
                         <strong>Agent:</strong> {stage.agent}
                       </Typography>
-                      {/* iteration_strategy removed in EP-0010 */}
+
                       <Typography variant="body2">
                         <strong>Interactions:</strong> {stageInteractions.length}
                       </Typography>

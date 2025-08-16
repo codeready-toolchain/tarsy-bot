@@ -68,8 +68,7 @@ Best practices:
 - Keep factory methods focused and single-purpose
 """
 
-import asyncio
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -77,7 +76,6 @@ from fastapi import WebSocket
 from pydantic import ValidationError
 
 from tarsy.models.alert import Alert
-from tarsy.models.alert_processing import AlertProcessingData
 from tarsy.utils.timestamp import now_us
 
 
@@ -297,7 +295,7 @@ class SessionFactory:
         """Create a SessionOverview (type-safe model) for list views."""
         from tarsy.models.history_models import SessionOverview
         from tarsy.models.constants import AlertSessionStatus
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         current_time_us = now_us()
         
@@ -349,7 +347,7 @@ class SessionFactory:
         """Create a DetailedSession (type-safe model) with realistic stage and interaction data."""
         from tarsy.models.history_models import DetailedSession, DetailedStage, LLMInteraction, MCPInteraction, LLMEventDetails, MCPEventDetails
         from tarsy.models.constants import AlertSessionStatus, StageStatus
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         current_time_us = now_us()
         

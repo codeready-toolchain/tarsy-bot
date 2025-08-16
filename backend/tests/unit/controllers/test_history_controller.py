@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tarsy.controllers.history_controller import HistoryService, router
-from tarsy.models.db_models import now_us
+from tarsy.utils.timestamp import now_us
 from tarsy.services.history_service import get_history_service
 
 
@@ -1727,19 +1727,19 @@ class TestDashboardEndpoints:
     @pytest.mark.unit
     def test_get_filter_options_success(self, app, client, mock_history_service):
         """Test successful filter options retrieval."""
-        # Create a simple Mock that returns the expected dict directly to avoid recursion
-        mock_filter_result = Mock()
-        mock_filter_result.model_dump.return_value = {
-            "agent_types": ["kubernetes", "base", "analysis"],
-            "alert_types": ["HighCPU", "NamespaceTerminating", "PodCrashLooping"],
-            "status_options": ["pending", "in_progress", "completed", "failed"],
-            "time_ranges": [
-                {"label": "Last Hour", "value": "1h"},
-                {"label": "Last 4 Hours", "value": "4h"},
-                {"label": "Today", "value": "today"},
-                {"label": "This Week", "value": "week"}
+        # Create a proper FilterOptions model instance
+        from tarsy.models.history_models import FilterOptions, TimeRangeOption
+        mock_filter_result = FilterOptions(
+            agent_types=["kubernetes", "base", "analysis"],
+            alert_types=["HighCPU", "NamespaceTerminating", "PodCrashLooping"],
+            status_options=["pending", "in_progress", "completed", "failed"],
+            time_ranges=[
+                TimeRangeOption(label="Last Hour", value="1h"),
+                TimeRangeOption(label="Last 4 Hours", value="4h"),
+                TimeRangeOption(label="Today", value="today"),
+                TimeRangeOption(label="This Week", value="week")
             ]
-        }
+        )
         mock_history_service.get_filter_options.return_value = mock_filter_result
         
         # Override dependency

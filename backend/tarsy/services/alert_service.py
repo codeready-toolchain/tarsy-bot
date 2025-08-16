@@ -19,7 +19,7 @@ from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.agent_config import ChainConfigModel
 from tarsy.models.alert_processing import AlertProcessingData
 from tarsy.models.constants import AlertSessionStatus, StageStatus
-from tarsy.models.db_models import now_us
+from tarsy.utils.timestamp import now_us
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.chain_registry import ChainRegistry
 from tarsy.services.history_service import get_history_service

@@ -8,29 +8,26 @@ Uses Unix timestamps (microseconds since epoch) throughout for optimal
 performance and consistency with the rest of the system.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from tarsy.utils.logger import get_logger
-
-# Initialize logger
-logger = get_logger(__name__)
-
 from tarsy.models.history_models import (
     DetailedSession,
     PaginatedSessions,
-    SessionOverview, 
     SessionStats,
-    FilterOptions
+    FilterOptions,
 )
-# Keep only non-history related API models
 from tarsy.models.api_models import (
     ErrorResponse,
-    HealthCheckResponse
+    HealthCheckResponse,
 )
-from tarsy.models.db_models import now_us
+from tarsy.utils.timestamp import now_us
 from tarsy.services.history_service import HistoryService, get_history_service
+
+# Initialize logger
+logger = get_logger(__name__)
 
 # Valid event types expected from the repository
 VALID_EVENT_TYPES = {'llm', 'mcp', 'system'}
@@ -363,6 +360,7 @@ async def get_active_sessions(
 
 @router.get(
     "/filter-options",
+    response_model=FilterOptions,
     summary="Filter Options",
     description="Get available filter options for dashboard filtering"
 )
@@ -372,7 +370,7 @@ async def get_filter_options(
     """Get available filter options for the dashboard."""
     try:
         filter_options = history_service.get_filter_options()
-        return filter_options.model_dump()
+        return filter_options
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get filter options: {str(e)}")

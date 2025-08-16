@@ -148,7 +148,7 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
     e.stopPropagation(); // Prevent card click
     if (session.session_id) {
       const url = `${window.location.origin}/sessions/${session.session_id}`;
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 

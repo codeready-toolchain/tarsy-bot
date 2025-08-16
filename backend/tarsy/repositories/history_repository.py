@@ -12,16 +12,13 @@ from sqlmodel import Session, asc, desc, func, select, and_, or_
 
 from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.db_models import AlertSession, StageExecution
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.repositories.base_repository import BaseRepository
-from tarsy.utils.logger import get_logger
-
-# Import new type-safe models for internal use
 from tarsy.models.history_models import (
     PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo,
     SessionOverview
 )
-from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.repositories.base_repository import BaseRepository
+from tarsy.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -495,8 +492,14 @@ class HistoryRepository:
         """
         try:
             from collections import defaultdict
-            from tarsy.models.history_models import DetailedStage, LLMInteraction, MCPInteraction, LLMEventDetails, MCPEventDetails
-            from tarsy.models.unified_interactions import LLMMessage
+            from tarsy.models.history_models import (
+                DetailedStage,
+                LLMInteraction,
+                MCPInteraction,
+                LLMEventDetails,
+                MCPEventDetails,
+                LLMMessage,
+            )
             
             # Get the session
             session = self.get_alert_session(session_id)

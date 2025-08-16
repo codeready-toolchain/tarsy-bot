@@ -89,7 +89,9 @@ const StageCard: React.FC<StageCardProps> = ({
   const stageInteractions = [...(stage.llm_interactions || []), ...(stage.mcp_communications || [])].sort((a, b) => a.timestamp_us - b.timestamp_us);
   const hasInteractions = stageInteractions.length > 0;
   const hasOutput = stage.stage_output !== null && stage.stage_output !== undefined;
-  const hasError = stage.error_message !== null;
+  const hasError =
+    stage.error_message != null &&
+    String(stage.error_message).trim().length > 0;
 
   return (
     <Card 

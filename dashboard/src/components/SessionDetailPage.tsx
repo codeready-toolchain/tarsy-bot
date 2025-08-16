@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Container, 
@@ -38,6 +38,12 @@ function SessionDetailPage() {
   const [session, setSession] = useState<DetailedSession | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Ref to hold latest session to avoid stale closures in WebSocket handlers
+  const sessionRef = useRef<DetailedSession | null>(null);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   // Fetch just session summary statistics (lightweight)
   const refreshSessionSummary = async (id: string) => {
@@ -176,7 +182,7 @@ function SessionDetailPage() {
           console.log('Session status change detected, updating session state');
           
           // Check if this is a chain session that might have stage changes
-          const isChainSession = session?.chain_id && session?.stages;
+          const isChainSession = !!(sessionRef.current?.chain_id && sessionRef.current?.stages);
           
           // For chain sessions, we need to refetch to get updated stage information
           // because stage progress updates are critical for the UI

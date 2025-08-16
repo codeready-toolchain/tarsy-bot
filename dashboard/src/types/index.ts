@@ -89,7 +89,7 @@ export interface BaseInteraction {
   timestamp_us: number;
   step_description: string;
   duration_ms: number | null;
-  stage_execution_id: string;
+  stage_execution_id?: string | null;
 }
 
 // LLM message structure (from backend)
@@ -114,12 +114,12 @@ export interface LLMEventDetails {
 
 // MCP event details (EP-0010 structure)  
 export interface MCPEventDetails {
-  tool_name: string;
+  tool_name?: string | null;
   server_name: string;
   communication_type: string;
-  parameters: Record<string, any>;
-  result: Record<string, any>;
-  available_tools: Record<string, any>;
+  parameters?: Record<string, any> | null;
+  result?: Record<string, any> | null;
+  available_tools?: Record<string, any> | null;
   success: boolean;
 }
 

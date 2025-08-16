@@ -124,7 +124,6 @@ class TestMegaAPIEndpointsE2E:
             
             # Import the hook context
             from tarsy.hooks.typed_context import llm_interaction_context
-            from tarsy.models.unified_interactions import LLMMessage
             
             # Create request data structure like the real LLM client
             request_data = {
@@ -422,7 +421,7 @@ Action Input: {step['action_input']}"""
                 elif interaction_type == "mcp":
                     self._validate_mcp_interaction_deep(chrono_interaction, stage_name, f"chrono[{chrono_index}]")
                 else:
-                    assert False, f"CHRONOLOGICAL VALIDATION FAILED: Stage '{stage_name}' chronological_interactions[{chrono_index}] has unknown type: {interaction_type}"
+                    pytest.fail(f"CHRONOLOGICAL VALIDATION FAILED: Stage '{stage_name}' chronological_interactions[{chrono_index}] has unknown type: {interaction_type}")
             
             print(f"   ✅ Stage '{stage_name}' chronological_interactions validated: {len(chronological_interactions)} interactions in proper chronological order with deep validation")
         elif len(chronological_interactions) == 1:
@@ -434,7 +433,7 @@ Action Input: {step['action_input']}"""
             elif interaction_type == "mcp":
                 self._validate_mcp_interaction_deep(chrono_interaction, stage_name, "chrono[0]")
             else:
-                assert False, f"CHRONOLOGICAL VALIDATION FAILED: Stage '{stage_name}' chronological_interactions[0] has unknown type: {interaction_type}"
+                pytest.fail(f"CHRONOLOGICAL VALIDATION FAILED: Stage '{stage_name}' chronological_interactions[0] has unknown type: {interaction_type}")
             
             print(f"   ✅ Stage '{stage_name}' chronological_interactions: 1 interaction validated (type: {interaction_type})")
         else:
@@ -787,7 +786,7 @@ Action Input: {step['action_input']}"""
         for field in chain_fields:
             assert field in chain_stats, f"Chain statistics missing field: {field}"
         
-        print(f"✅ Summary endpoint validation passed - data consistency confirmed")
+        print("✅ Summary endpoint validation passed - data consistency confirmed")
         
         # VALIDATION 4: Validate chain execution and stages
         print("🔍 Validating chain execution and stages...")
@@ -798,7 +797,7 @@ Action Input: {step['action_input']}"""
         # EXACT VALIDATION: Number of stages MUST be exactly 3 (from test_agents.yaml)
         expected_stage_count = 3
         expected_stages = ["data-collection", "verification", "analysis"]  # Actual stage names from YAML config
-        print(f"🔍 Validating stage count and names...")
+        print("🔍 Validating stage count and names...")
         print(f"   📊 Found {len(stages)} stages (expected exactly {expected_stage_count})")
         
         assert len(stages) == expected_stage_count, f"EXACT VALIDATION FAILED: Expected exactly {expected_stage_count} stages, found {len(stages)}"
@@ -918,7 +917,7 @@ Action Input: {step['action_input']}"""
             actual_name = actual_stage_names[i]
             assert actual_name == expected_name, f"STRICT VALIDATION FAILED: Stage {i} name mismatch - expected '{expected_name}', got '{actual_name}'"
         
-        print(f"✅ Stage validation passed:")
+        print("✅ Stage validation passed:")
         print(f"   📊 Total stages: {len(stages)}")
         print(f"   📋 Stage names: {', '.join(actual_stage_names)}")
         
@@ -958,7 +957,7 @@ Action Input: {step['action_input']}"""
         if session_alert_data:
             stored_alert_type = session_alert_data.get("alert_type")
             assert stored_alert_type == expected_alert_type, f"Stored alert type mismatch: expected {expected_alert_type}, got {stored_alert_type}"
-            print(f"✅ Session detail alert data matches submission")
+            print("✅ Session detail alert data matches submission")
         
         # VALIDATION 9 - Summary data is now embedded in DetailedSession, validate via summary endpoint
         print("🔍 Validating session summary statistics via dedicated endpoint...")
@@ -984,7 +983,7 @@ Action Input: {step['action_input']}"""
             actual_value = detail_data.get(field, -999)
             assert actual_value == expected_value, f"EXACT VALIDATION FAILED: DetailedSession {field} expected exactly {expected_value}, got {actual_value}"
         
-        print(f"   📊 DetailedSession count fields validated:")
+        print("   📊 DetailedSession count fields validated:")
         print(f"      Total Interactions: {detail_data['total_interactions']}")
         print(f"      LLM Interactions: {detail_data['llm_interaction_count']}")
         print(f"      MCP Communications: {detail_data['mcp_communication_count']}")
@@ -1010,9 +1009,9 @@ Action Input: {step['action_input']}"""
         
         # Chain statistics validation is done via the summary endpoint (already validated above)
         # DetailedSession doesn't have embedded chain statistics - they're only in SessionStats from summary endpoint
-        print(f"✅ DetailedSession count validation passed - All counts accurate")
+        print("✅ DetailedSession count validation passed - All counts accurate")
         
-        print(f"✅ Session detail validation passed - Chain data comprehensive")
+        print("✅ Session detail validation passed - Chain data comprehensive")
         
         # Test with query parameters (if supported)
         filtered_response = test_client.get("/api/v1/history/sessions?limit=10")
@@ -1063,9 +1062,9 @@ Action Input: {step['action_input']}"""
         assert session_mcp == expected_mcp, f"EXPECTED VALUES FAILED: Session MCP count ({session_mcp}) != Expected ({expected_mcp})"
         assert session_total == expected_total, f"EXPECTED VALUES FAILED: Session total count ({session_total}) != Expected ({expected_total})"
         
-        print(f"   ✅ CROSS-VALIDATION PASSED: Session and stage counts are consistent")
+        print("   ✅ CROSS-VALIDATION PASSED: Session and stage counts are consistent")
         print(f"   ✅ EXPECTED VALUES PASSED: Counts match known test scenario ({expected_llm} LLM + {expected_mcp} MCP = {expected_total} total)")
-        print(f"   ✅ UNIFIED COUNTING VERIFIED: SQL aggregation works correctly at both session and stage levels")
+        print("   ✅ UNIFIED COUNTING VERIFIED: SQL aggregation works correctly at both session and stage levels")
 
     async def test_comprehensive_alert_processing_and_api_validation(
         self,
@@ -1092,7 +1091,7 @@ Action Input: {step['action_input']}"""
         """
         print("🚀 Starting comprehensive alert processing and API validation...")
         print(f"   📊 Using isolated database: {isolated_test_database}")
-        print(f"   ⚙️  Using isolated settings with proper isolation")
+        print("   ⚙️  Using isolated settings with proper isolation")
         
         # Create realistic mocks using the isolated environment
         llm_mock, mcp_mock = await self._create_simple_fast_mocks()
@@ -1313,15 +1312,15 @@ Action Input: {step['action_input']}"""
                 # Step 5: Enhanced Summary
                 print("\n🎉 All API validations completed successfully!")
                 print(f"   ✅ Alert processing: {session_data.get('status')}")
-                print(f"   ✅ Session uniqueness: 1 session confirmed")
-                print(f"   ✅ Alert data consistency: Verified")
-                print(f"   ✅ Sessions list API validated")  
-                print(f"   ✅ Session detail API validated")
-                print(f"   ✅ Comprehensive data validated")
-                print(f"   ✅ Session vs Stage count cross-validation passed")
-                print(f"   ✅ Unified SQL aggregation counting verified")
+                print("   ✅ Session uniqueness: 1 session confirmed")
+                print("   ✅ Alert data consistency: Verified")
+                print("   ✅ Sessions list API validated")  
+                print("   ✅ Session detail API validated")
+                print("   ✅ Comprehensive data validated")
+                print("   ✅ Session vs Stage count cross-validation passed")
+                print("   ✅ Unified SQL aggregation counting verified")
                 print(f"   ✅ Processing took: {session_data.get('duration_ms', 'unknown')}ms")
-                print(f"   ✅ Complete isolation: All resources automatically cleaned up")
+                print("   ✅ Complete isolation: All resources automatically cleaned up")
                 
                 # EXACT VALIDATION: We MUST have stage interaction data
                 assert stage_interaction_counts, "EXACT VALIDATION FAILED: No stage interaction counts available. Stage processing failed."
@@ -1333,7 +1332,7 @@ Action Input: {step['action_input']}"""
                     "analysis": {"llm": 1, "mcp": 0, "total": 1}          # react-final-analysis: 1 LLM + 0 MCP (no tools executed)
                 }
                 
-                print(f"   📊 Stage breakdown:")
+                print("   📊 Stage breakdown:")
                 for stage_name, counts in stage_interaction_counts.items():
                     expected = final_stage_exact_counts.get(stage_name, {"llm": 1, "mcp": 1, "total": 2})
                     

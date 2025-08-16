@@ -16,7 +16,7 @@ from sqlmodel import SQLModel, create_engine
 
 from tarsy.main import app
 from tarsy.models.alert import Alert
-from tarsy.models.db_models import now_us
+from tarsy.utils.timestamp import now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 
 # Import history models to ensure they're registered with SQLModel.metadata

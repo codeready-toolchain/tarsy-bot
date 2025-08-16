@@ -22,8 +22,8 @@ from tarsy.models.alert_processing import AlertProcessingData
 from tarsy.utils.timestamp import now_us
 
 # Import all database models to ensure they're registered with SQLModel.metadata
-from tarsy.models.db_models import AlertSession, StageExecution
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+import tarsy.models.db_models  # noqa: F401
+import tarsy.models.unified_interactions  # noqa: F401
 
 
 def alert_to_api_format(alert: Alert) -> AlertProcessingData:

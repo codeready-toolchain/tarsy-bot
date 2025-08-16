@@ -1424,8 +1424,8 @@ class TestHistoryServiceSummaryMethods:
         # Should return None
         assert summary is None
         
-        # Verify repository method was called (retry logic calls it 4 times on failure)
-        assert dependencies['repository'].get_session_with_stages.call_count == 4
+        # Verify repository method was called once (no retries needed when session not found)
+        assert dependencies['repository'].get_session_with_stages.call_count == 1
         dependencies['repository'].get_session_with_stages.assert_called_with(session_id)
 
     @pytest.mark.unit
@@ -1483,6 +1483,6 @@ class TestHistoryServiceSummaryMethods:
         # Should return None when repository can't find session or has error
         assert summary is None
         
-        # Verify repository method was called (retry logic calls it 4 times on failure)
-        assert dependencies['repository'].get_session_with_stages.call_count == 4
+        # Verify repository method was called once (no retries needed when session not found)
+        assert dependencies['repository'].get_session_with_stages.call_count == 1
         dependencies['repository'].get_session_with_stages.assert_called_with(session_id)

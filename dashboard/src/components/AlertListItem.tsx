@@ -2,7 +2,7 @@ import React from 'react';
 import { TableRow, TableCell, Typography, IconButton, Tooltip } from '@mui/material';
 import { OpenInNew } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
-import { highlightSearchTerm } from '../utils/search';
+import { highlightSearchTermNodes } from '../utils/search';
 import type { AlertListItemProps } from '../types';
 import { formatTimestamp, formatDurationMs, formatDuration } from '../utils/timestamp';
 
@@ -27,7 +27,7 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
     e.stopPropagation(); // Prevent row click
     if (session.session_id) {
       const url = `${window.location.origin}/sessions/${session.session_id}`;
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -53,10 +53,9 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
         <Typography 
           variant="body2" 
           sx={{ fontWeight: 500 }}
-          dangerouslySetInnerHTML={{
-            __html: highlightSearchTerm(session.alert_type || '', searchTerm || '')
-          }}
-        />
+        >
+          {highlightSearchTermNodes(session.alert_type || '', searchTerm || '')}
+        </Typography>
       </TableCell>
       <TableCell>
         <Typography variant="body2">

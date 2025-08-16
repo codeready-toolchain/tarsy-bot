@@ -8,7 +8,7 @@ performance and consistency with the rest of the system.
 from typing import Any, Dict, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
-from tarsy.models.db_models import now_us
+from tarsy.utils.timestamp import now_us
 from tarsy.models.constants import StageStatus, ChainStatus, SystemHealthStatus
 
 

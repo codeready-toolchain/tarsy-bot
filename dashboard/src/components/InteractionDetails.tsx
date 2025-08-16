@@ -37,8 +37,12 @@ function InteractionDetails({
     const systemMsg = llm.messages?.find((m: any) => m?.role === 'system');
     const userMsg = llm.messages?.find((m: any) => m?.role === 'user');
     return {
-      system: typeof systemMsg?.content === 'string' ? systemMsg.content : JSON.stringify(systemMsg?.content ?? ''),
-      user: typeof userMsg?.content === 'string' ? userMsg.content : JSON.stringify(userMsg?.content ?? ''),
+      system: typeof systemMsg?.content === 'string' ? systemMsg.content : 
+              (systemMsg?.content == null || systemMsg?.content === '') ? '' : 
+              JSON.stringify(systemMsg.content),
+      user: typeof userMsg?.content === 'string' ? userMsg.content : 
+            (userMsg?.content == null || userMsg?.content === '') ? '' : 
+            JSON.stringify(userMsg.content),
     };
   };
 
@@ -458,12 +462,16 @@ function InteractionDetails({
           const system = llm.messages.find((m: any) => m?.role === 'system');
           const user = llm.messages.find((m: any) => m?.role === 'user');
           if (system) {
-            const s = typeof system.content === 'string' ? system.content : JSON.stringify(system.content);
-            formatted += `SYSTEM:\n${s}\n\n`;
+            const s = typeof system.content === 'string' ? system.content : 
+                     (system.content == null || system.content === '') ? '' : 
+                     JSON.stringify(system.content);
+            if (s) formatted += `SYSTEM:\n${s}\n\n`;
           }
           if (user) {
-            const u = typeof user.content === 'string' ? user.content : JSON.stringify(user.content);
-            formatted += `USER:\n${u}\n\n`;
+            const u = typeof user.content === 'string' ? user.content : 
+                     (user.content == null || user.content === '') ? '' : 
+                     JSON.stringify(user.content);
+            if (u) formatted += `USER:\n${u}\n\n`;
           }
         }
 
@@ -515,8 +523,12 @@ function InteractionDetails({
         const llm = details as LLMInteraction;
         const system = llm.messages?.find((m: any) => m?.role === 'system');
         const user = llm.messages?.find((m: any) => m?.role === 'user');
-        const s = system ? (typeof system.content === 'string' ? system.content : JSON.stringify(system.content)) : '';
-        const u = user ? (typeof user.content === 'string' ? user.content : JSON.stringify(user.content)) : '';
+        const s = system ? (typeof system.content === 'string' ? system.content : 
+                          (system.content == null || system.content === '') ? '' : 
+                          JSON.stringify(system.content)) : '';
+        const u = user ? (typeof user.content === 'string' ? user.content : 
+                         (user.content == null || user.content === '') ? '' : 
+                         JSON.stringify(user.content)) : '';
         const assistant = llm.messages?.find((m: any) => m?.role === 'assistant');
         const resp = assistant?.content ?? '';
         const respStr = typeof resp === 'string' ? resp : JSON.stringify(resp);

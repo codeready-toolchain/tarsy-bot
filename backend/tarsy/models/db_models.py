@@ -9,8 +9,8 @@ performance and consistency.
 import uuid
 from typing import Optional
 
-from sqlmodel import JSON, Column, Field, SQLModel, Index
-from sqlalchemy import text
+from sqlmodel import Column, Field, SQLModel, Index
+from sqlalchemy import JSON
 
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.utils.timestamp import now_us
@@ -26,12 +26,20 @@ class AlertSession(SQLModel, table=True):
     
     __tablename__ = "alert_sessions"
     
-    # JSON indexes for efficient querying of flexible alert data
+    # Database-agnostic indexes for common query patterns
     __table_args__ = (
-        Index('ix_alert_data_gin', 'alert_data', postgresql_using='gin'),
-        Index('ix_alert_data_severity', text("((alert_data->>'severity'))")),
-        Index('ix_alert_data_environment', text("((alert_data->>'environment'))")),
-        Index('ix_alert_data_cluster', text("((alert_data->>'cluster'))")),
+        # Individual column indexes for filtering
+        Index('ix_alert_sessions_status', 'status'),
+        Index('ix_alert_sessions_agent_type', 'agent_type'), 
+        Index('ix_alert_sessions_alert_type', 'alert_type'),
+        
+        # Composite index for most common query pattern: filter by status + order by timestamp
+        Index('ix_alert_sessions_status_started_at', 'status', 'started_at_us'),
+        
+        # Note: PostgreSQL-specific JSON indexes removed for database compatibility
+        # In production with PostgreSQL, consider adding:
+        # - GIN index on alert_data: Index('ix_alert_data_gin', 'alert_data', postgresql_using='gin')
+        # - JSON field indexes: Index('ix_alert_data_severity', text("((alert_data->>'severity'))"))
     )
     
     session_id: str = Field(
@@ -126,7 +134,7 @@ class StageExecution(SQLModel, table=True):
     
     # Stage identification
     stage_id: str = Field(description="Stage identifier (e.g., 'initial-analysis')")
-    stage_index: int = Field(description="Stage position in chain (0-based)")
+    stage_index: int = Field(description="Stage position in chain (0-based)", index=True)
     stage_name: str = Field(description="Human-readable stage name from configuration")
     agent: str = Field(description="Agent used for this stage")
     

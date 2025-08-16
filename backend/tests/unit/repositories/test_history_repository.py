@@ -14,7 +14,6 @@ from sqlmodel import Session, SQLModel, create_engine
 from tarsy.models.db_models import AlertSession, StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.history_repository import HistoryRepository
-from tests.utils import AlertFactory
 
 
 class TestHistoryRepository:
@@ -41,7 +40,7 @@ class TestHistoryRepository:
     @pytest.fixture
     def sample_alert_session(self):
         """Create sample AlertSession for testing."""
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         return AlertSession(
             session_id="test-session-123",
             alert_id="alert-456",
@@ -191,8 +190,8 @@ class TestHistoryRepository:
             agent_type="KubernetesAgent",
             alert_type="HighCPU",
             status="completed",
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
             chain_id="test-chain-456"
         )
         repository.create_alert_session(session2)
@@ -215,7 +214,7 @@ class TestHistoryRepository:
     def test_get_alert_sessions_with_date_filters(self, repository):
         """Test getting alert sessions with date range filters."""
         # Create sessions with different timestamps
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         now_us_time = now_us()
         five_days_ago_us = now_us_time - (5 * 24 * 60 * 60 * 1000000)  # 5 days in microseconds
         one_hour_ago_us = now_us_time - (60 * 60 * 1000000)  # 1 hour in microseconds
@@ -270,7 +269,7 @@ class TestHistoryRepository:
                 agent_type="TestAgent",
                 alert_type="test",
                 status="completed",
-                started_at=datetime.now(timezone.utc) - timedelta(minutes=i),
+                started_at_us=int((datetime.now(timezone.utc) - timedelta(minutes=i)).timestamp() * 1_000_000),
                 chain_id=f"test-chain-{i}"
             )
             repository.create_alert_session(session)
@@ -296,7 +295,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_error_message(self, repository):
         """Test search functionality in error_message field."""
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         # Create sessions with different error messages
         session1 = AlertSession(
@@ -341,7 +340,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_final_analysis(self, repository):
         """Test search functionality in final_analysis field."""
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         # Create sessions with different analyses
         session1 = AlertSession(
@@ -386,7 +385,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_alert_data_fields(self, repository):
         """Test search functionality in JSON alert_data fields."""
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         # Create sessions with different alert data
         session1 = AlertSession(
@@ -457,7 +456,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_case_insensitive(self, repository):
         """Test that search is case-insensitive."""
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         session = AlertSession(
             session_id="test-session-case-1",
@@ -494,7 +493,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_combined_with_filters(self, repository):
         """Test search functionality combined with other filters."""
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         session1 = AlertSession(
             session_id="test-session-combined-1",
@@ -552,7 +551,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_no_matches(self, repository):
         """Test search functionality when no matches are found."""
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         session = AlertSession(
             session_id="test-session-nomatch-1",
@@ -579,7 +578,7 @@ class TestHistoryRepository:
     def test_get_session_timeline_chronological_order(self, repository, sample_alert_session):
         """Test session timeline reconstruction with chronological ordering."""
         from tarsy.models.db_models import StageExecution
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         # Create session
         repository.create_alert_session(sample_alert_session)
@@ -666,7 +665,7 @@ class TestHistoryRepository:
     def test_get_session_timeline_unix_timestamp_precision(self, repository, sample_alert_session):
         """Test session timeline with Unix timestamp precision and chronological ordering."""
         from tarsy.models.db_models import StageExecution
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         # Create session
         repository.create_alert_session(sample_alert_session)
@@ -772,7 +771,7 @@ class TestHistoryRepository:
             agent_type="TestAgent",
             alert_type="test",
             status="in_progress",
-            started_at=datetime.now(timezone.utc),
+            started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
             chain_id="test-chain-active"
         )
         
@@ -783,8 +782,8 @@ class TestHistoryRepository:
             agent_type="TestAgent",
             alert_type="test",
             status="completed",
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
             chain_id="test-chain-completed"
         )
         
@@ -876,7 +875,7 @@ class TestHistoryRepository:
                 agent_type="TestAgent",
                 alert_type="TestAlert",
                 status=status,
-                started_at=datetime.now(timezone.utc) - timedelta(minutes=i),
+                started_at_us=int((datetime.now(timezone.utc) - timedelta(minutes=i)).timestamp() * 1_000_000),
                 chain_id=f"test-chain-multi-{i}"
             )
             repository.create_alert_session(session)
@@ -884,11 +883,13 @@ class TestHistoryRepository:
         # Test filtering by multiple statuses
         result = repository.get_alert_sessions(status=["pending", "in_progress"])
         assert len(result.sessions) == 2
-        session_statuses = [s.status.value for s in result.sessions]
-        assert "pending" in session_statuses
-        assert "in_progress" in session_statuses
-        assert "completed" not in session_statuses
-        assert "failed" not in session_statuses
+        session_statuses = [s.status for s in result.sessions]
+        # Convert enum objects to strings for comparison
+        session_status_values = [status.value if hasattr(status, 'value') else status for status in session_statuses]
+        assert "pending" in session_status_values
+        assert "in_progress" in session_status_values
+        assert "completed" not in session_status_values
+        assert "failed" not in session_status_values
         
     @pytest.mark.unit
     def test_complex_filter_combinations(self, repository):
@@ -911,8 +912,8 @@ class TestHistoryRepository:
                 agent_type=agent_type,
                 alert_type=alert_type,
                 status=status,
-                started_at=started_at,
-                completed_at=started_at + timedelta(minutes=10) if status == "completed" else None,
+                started_at_us=int(started_at.timestamp() * 1_000_000),
+                completed_at_us=int((started_at + timedelta(minutes=10)).timestamp() * 1_000_000) if status == "completed" else None,
                 chain_id=f"test-chain-{session_id}"
             )
             repository.create_alert_session(session)
@@ -990,7 +991,7 @@ class TestHistoryRepository:
     def test_get_session_timeline_includes_success_error_fields(self, repository, sample_alert_session):
         """Test session timeline includes success and error_message fields in LLM interactions."""
         from tarsy.models.db_models import StageExecution
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         
         # Create session
         repository.create_alert_session(sample_alert_session)
@@ -1130,7 +1131,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_update_stage_execution_success(self, repository, sample_alert_session):
         """Test successful stage execution update."""
-        from tarsy.models.db_models import now_us
+        from tarsy.utils.timestamp import now_us
         from tarsy.models.constants import StageStatus
         
         # Create session first
@@ -1209,7 +1210,7 @@ class TestHistoryRepositoryErrorHandling:
             agent_type="KubernetesAgent",
             alert_type="NamespaceTerminating",
             status="in_progress",
-            started_at=datetime.now(timezone.utc),
+            started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
             session_metadata={"test": "metadata"}
         )
     
@@ -1313,8 +1314,8 @@ class TestHistoryRepositoryPerformance:
                 agent_type="TestAgent",
                 alert_type=f"TestAlert{i % 5}",
                 status="completed" if i % 2 == 0 else "in_progress",
-                started_at=now - timedelta(minutes=i),
-                completed_at=now - timedelta(minutes=i-5) if i % 2 == 0 else None,
+                started_at_us=int((now - timedelta(minutes=i)).timestamp() * 1_000_000),
+                completed_at_us=int((now - timedelta(minutes=i-5)).timestamp() * 1_000_000) if i % 2 == 0 else None,
                 chain_id=f"test-chain-perf-{i}"
             )
             repository.create_alert_session(session)

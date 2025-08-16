@@ -817,7 +817,7 @@ def alert_service_with_mocks(
     # Inject mocked dependencies
     service.llm_manager = mock_llm_manager
     service.mcp_client = mock_mcp_client
-    service.mcp_registry = mock_mcp_server_registry
+    service.mcp_server_registry = mock_mcp_server_registry
     service.runbook_service = mock_runbook_service
     service.chain_registry = mock_agent_registry  # Reuse the mock for chain registry
     service.agent_factory = mock_agent_factory

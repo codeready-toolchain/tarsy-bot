@@ -15,10 +15,11 @@ from typing import Any, Dict, List, Optional
 from tarsy.config.settings import get_settings
 
 from tarsy.models.history_models import (
-    PaginatedSessions, DetailedSession, FilterOptions, SessionStats, SessionOverview
+    PaginatedSessions, DetailedSession, FilterOptions, SessionStats
 )
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.db_models import AlertSession, StageExecution, now_us
+from tarsy.models.db_models import AlertSession, StageExecution
+from tarsy.utils.timestamp import now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository
@@ -48,7 +49,13 @@ class HistoryService:
         self.base_delay = 0.1  # 100ms base delay
         self.max_delay = 2.0   # 2 second max delay
     
-    def _retry_database_operation(self, operation_name: str, operation_func):
+    def _retry_database_operation(
+        self,
+        operation_name: str,
+        operation_func,
+        *,
+        treat_none_as_success: bool = False,
+    ):
         """
         Retry database operations with exponential backoff for transient failures.
         
@@ -66,8 +73,13 @@ class HistoryService:
                 result = operation_func()
                 if result is not None:
                     return result
+                if treat_none_as_success:
+                    # None is an acceptable outcome (e.g., entity not found)
+                    return None
                 # If result is None, log and continue to retry
-                logger.warning(f"Database operation '{operation_name}' returned None on attempt {attempt + 1}")
+                logger.warning(
+                    f"Database operation '{operation_name}' returned None on attempt {attempt + 1}"
+                )
                 
             except Exception as e:
                 last_exception = e
@@ -538,7 +550,11 @@ class HistoryService:
                     )
                     return session_stats
             
-            result = self._retry_database_operation("get_session_summary", _get_session_summary_operation)
+            result = self._retry_database_operation(
+                "get_session_summary",
+                _get_session_summary_operation,
+                treat_none_as_success=True,
+            )
             return result
                 
         except Exception as e:
@@ -554,7 +570,11 @@ class HistoryService:
                     return None
                 return repo.get_stage_execution(execution_id)
         
-        result = self._retry_database_operation("get_stage_execution", _get_stage_execution_operation)
+        result = self._retry_database_operation(
+            "get_stage_execution",
+            _get_stage_execution_operation,
+            treat_none_as_success=True,
+        )
         return result
     
     # LLM Interaction Logging
@@ -579,7 +599,8 @@ class HistoryService:
                 
                 # Set step description if not already set
                 if not interaction.step_description:
-                    interaction.step_description = f"LLM analysis using {interaction.model_name}"
+                    model_name = getattr(getattr(interaction, "details", None), "model_name", None) or "LLM"
+                    interaction.step_description = f"LLM analysis using {model_name}"
                 
                 repo.create_llm_interaction(interaction)
                 logger.debug(f"Logged LLM interaction for session {interaction.session_id}")
