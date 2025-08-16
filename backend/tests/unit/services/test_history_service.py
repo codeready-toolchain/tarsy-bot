@@ -997,13 +997,31 @@ async def test_cleanup_orphaned_sessions():
             mock_active_sessions.append(session_dict)
     
     # Mock repository responses - Phase 3: Repository now returns PaginatedSessions model
-    from tarsy.models.converters import alert_session_to_session_overview
+    from tarsy.models.history_models import SessionOverview
     
     # Convert session dicts to AlertSession objects, then to SessionOverview models
     session_overviews = []
     for session_dict in mock_active_sessions:
         alert_session = AlertSession(**session_dict)
-        session_overview = alert_session_to_session_overview(alert_session)
+        # Create SessionOverview from AlertSession like the repository does
+        session_overview = SessionOverview(
+            session_id=alert_session.session_id,
+            alert_id=alert_session.alert_id,
+            alert_type=alert_session.alert_type,
+            agent_type=alert_session.agent_type,
+            status=alert_session.status,
+            started_at_us=alert_session.started_at_us,
+            completed_at_us=alert_session.completed_at_us,
+            error_message=alert_session.error_message,
+            llm_interaction_count=0,  # Default values for test
+            mcp_communication_count=0,
+            total_interactions=0,
+            chain_id=alert_session.chain_id or "test-chain",
+            current_stage_index=alert_session.current_stage_index,
+            total_stages=None,
+            completed_stages=None,
+            failed_stages=0
+        )
         session_overviews.append(session_overview)
     
     mock_repo.get_alert_sessions.return_value = MockFactory.create_mock_paginated_sessions(

@@ -690,10 +690,10 @@ class TestHistoryAPIIntegration:
             assert response.status_code == 200
             data = response.json()
             
-            # Check the actual SessionDetailResponse structure (not nested session_info)
+            # Check the actual DetailedSession structure
             assert "session_id" in data
-            assert "chain_execution" in data
-            assert "summary" in data
+            assert "chain_id" in data
+            assert "stages" in data
             
             # Verify session details
             assert data["session_id"] == expected_session_id
@@ -701,45 +701,45 @@ class TestHistoryAPIIntegration:
             assert data["status"] == "completed"
             
             # All sessions should have chain execution data since we support chains only
-            chain_execution = data["chain_execution"]
-            assert chain_execution is not None, "All sessions should have chain execution data"
+            assert "chain_id" in data, "All sessions should have chain execution data"
             
             # Verify comprehensive chain execution structure
-            assert "chain_id" in chain_execution
-            assert chain_execution["chain_id"] == "integration-chain-123"
-            assert "stages" in chain_execution
-            assert isinstance(chain_execution["stages"], list)
-            assert len(chain_execution["stages"]) == 1
+            assert data["chain_id"] == "integration-chain-123"
+            assert "stages" in data
+            assert isinstance(data["stages"], list)
+            assert len(data["stages"]) == 1
             
             # Verify stage structure and timeline
-            stage = chain_execution["stages"][0]
+            stage = data["stages"][0]
             assert "execution_id" in stage
             assert "stage_id" in stage  
             assert "stage_name" in stage
             assert "status" in stage
-            assert "interaction_summary" in stage
-            assert "timeline" in stage
+            assert "llm_interaction_count" in stage
+            assert "mcp_communication_count" in stage
+            assert "total_interactions" in stage
             
-            # Verify interaction summary
-            summary = stage["interaction_summary"]
-            assert summary["llm_count"] == 1  # 1 LLM interaction
-            assert summary["mcp_count"] == 1  # 1 MCP interaction 
-            assert summary["total_count"] == 2  # Total of 2 interactions
-            assert summary["duration_ms"] == 150000  # 120000 + 30000
+            # Verify interaction counts
+            assert stage["llm_interaction_count"] == 1  # 1 LLM interaction
+            assert stage["mcp_communication_count"] == 1  # 1 MCP interaction
+            assert stage["total_interactions"] == 2  # Total interactions
             
-            # Verify timeline structure
-            timeline = stage["timeline"]
-            assert isinstance(timeline, list)
-            assert len(timeline) == 2  # Now we have 2 interactions (1 LLM + 1 MCP)
+            # Verify timeline structure (chronological_interactions)
+            assert "llm_interactions" in stage
+            assert "mcp_communications" in stage
+            assert isinstance(stage["llm_interactions"], list)
+            assert isinstance(stage["mcp_communications"], list)
+            assert len(stage["llm_interactions"]) == 1  # 1 LLM interaction
+            assert len(stage["mcp_communications"]) == 1  # 1 MCP interaction
             
             # Verify first interaction (LLM)
-            llm_interaction = timeline[0]
+            llm_interaction = stage["llm_interactions"][0]
             assert llm_interaction["type"] == "llm"
             assert llm_interaction["step_description"] == "Analysis"
             assert "details" in llm_interaction
             
             # Verify second interaction (MCP)
-            mcp_interaction = timeline[1] 
+            mcp_interaction = stage["mcp_communications"][0]
             assert mcp_interaction["type"] == "mcp"
             assert mcp_interaction["step_description"] == "Tool execution"
             assert "details" in mcp_interaction

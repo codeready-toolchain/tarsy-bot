@@ -9,7 +9,7 @@ for session timelines, interaction details, and API responses.
 from __future__ import annotations  # Deferred evaluation for forward references
 
 from typing import List, Dict, Optional, Union, Literal, Any
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, computed_field
 
 # Import existing enums and models
 from tarsy.models.constants import AlertSessionStatus, StageStatus, ChainStatus
@@ -108,8 +108,9 @@ class MCPInteraction(BaseInteraction):
         """Validate MCP-specific details"""
         if not self.details.server_name:
             raise ValueError("MCP interactions require server_name in details")
-        if not self.details.tool_name:
-            raise ValueError("MCP interactions require tool_name in details")
+        # tool_name is only required for tool_call interactions, not tool_list
+        if self.details.communication_type == "tool_call" and not self.details.tool_name:
+            raise ValueError("MCP tool_call interactions require tool_name in details")
         return self
 
 
@@ -186,6 +187,7 @@ class SessionOverview(BaseModel):
     current_stage_index: Optional[int] = None  # Matches AlertSession field type
     
     # Calculated properties
+    @computed_field
     @property
     def duration_ms(self) -> Optional[int]:
         """Calculate session duration from start and completion times"""
@@ -222,6 +224,7 @@ class DetailedStage(BaseModel):
     total_interactions: int = 0
     
     # Calculated properties (replaces InteractionSummary functionality)
+    @computed_field
     @property
     def stage_interactions_duration_ms(self) -> Optional[int]:
         """Calculate total duration from all interactions in this stage"""
@@ -230,6 +233,28 @@ class DetailedStage(BaseModel):
             if interaction.duration_ms:
                 total += interaction.duration_ms
         return total if total > 0 else None
+    
+    @computed_field
+    @property
+    def chronological_interactions(self) -> List[Interaction]:
+        """
+        Get all interactions in chronological order by timestamp.
+        
+        Returns a sorted list combining LLM and MCP interactions, ordered by timestamp_us.
+        This provides the actual timeline of what happened during stage execution,
+        which is essential for debugging, dashboards, and understanding agent reasoning flow.
+        
+        Returns:
+            List[Interaction]: All interactions sorted chronologically
+        """
+        # Combine all interactions and sort by timestamp
+        all_interactions: List[Interaction] = [
+            *self.llm_interactions,
+            *self.mcp_communications
+        ]
+        
+        # Sort chronologically by timestamp_us
+        return sorted(all_interactions, key=lambda x: x.timestamp_us)
 
 
 class DetailedSession(BaseModel):
@@ -264,6 +289,7 @@ class DetailedSession(BaseModel):
     stages: List[DetailedStage] = Field(default_factory=list)  # Each stage contains its full interaction timeline
     
     # Calculated properties
+    @computed_field
     @property
     def duration_ms(self) -> Optional[int]:
         """Calculate session duration from start and completion times"""

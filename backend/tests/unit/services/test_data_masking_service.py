@@ -12,7 +12,7 @@ import pytest
 from unittest.mock import Mock
 
 from tarsy.services.data_masking_service import DataMaskingService
-from tarsy.models.masking_config import MaskingConfig, MaskingPattern
+from tarsy.models.agent_config import MaskingConfig, MaskingPattern
 from tests.utils import MockFactory, TestUtils, DataMaskingFactory
 
 # Precomputed factory outputs for test reuse

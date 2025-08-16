@@ -11,8 +11,8 @@ import pytest
 
 from tarsy.config.settings import Settings
 from tarsy.models.alert import Alert
-from tarsy.models.alert_processing import AlertKey, AlertProcessingData
-from tarsy.models.chains import ChainDefinitionModel, ChainStageModel
+from tarsy.models.alert_processing import AlertKey
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 from tarsy.services.alert_service import AlertService
 from tarsy.utils.timestamp import now_us
 from tests.conftest import alert_to_api_format
@@ -216,10 +216,10 @@ class TestAlertProcessing:
         service.runbook_service = dependencies['runbook']
         service.llm_manager = dependencies['llm_manager']
         
-        dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainDefinitionModel(
+        dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainConfigModel(
             chain_id='kubernetes-agent-chain',
             alert_types=['kubernetes'],
-            stages=[ChainStageModel(name='analysis', agent='KubernetesAgent')],
+            stages=[ChainStageConfigModel(name='analysis', agent='KubernetesAgent')],
             description='Test chain'
         )
         service.agent_factory.create_agent.return_value = mock_agent
@@ -289,10 +289,10 @@ class TestAlertProcessing:
         service.runbook_service = dependencies['runbook']
         service.llm_manager = dependencies['llm_manager']
         
-        dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainDefinitionModel(
+        dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainConfigModel(
             chain_id='kubernetes-agent-chain',
             alert_types=['kubernetes'],
-            stages=[ChainStageModel(name='analysis', agent='KubernetesAgent')],
+            stages=[ChainStageConfigModel(name='analysis', agent='KubernetesAgent')],
             description='Test chain'
         )
         dependencies['llm_manager'].is_available.return_value = True
@@ -322,10 +322,10 @@ class TestAlertProcessing:
         mock_agent = AsyncMock()
         mock_agent.process_alert.side_effect = Exception("Agent processing failed")
         
-        dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainDefinitionModel(
+        dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainConfigModel(
             chain_id='kubernetes-agent-chain',
             alert_types=['kubernetes'],
-            stages=[ChainStageModel(name='analysis', agent='KubernetesAgent')],
+            stages=[ChainStageConfigModel(name='analysis', agent='KubernetesAgent')],
             description='Test chain'
         )
         dependencies['llm_manager'].is_available.return_value = True
@@ -383,10 +383,10 @@ class TestAlertProcessing:
         service.runbook_service = dependencies['runbook']
         service.llm_manager = dependencies['llm_manager']
         
-        dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainDefinitionModel(
+        dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainConfigModel(
             chain_id='kubernetes-agent-chain',
             alert_types=['kubernetes'],
-            stages=[ChainStageModel(name='analysis', agent='KubernetesAgent')],
+            stages=[ChainStageConfigModel(name='analysis', agent='KubernetesAgent')],
             description='Test chain'
         ) 
         dependencies['llm_manager'].is_available.return_value = True

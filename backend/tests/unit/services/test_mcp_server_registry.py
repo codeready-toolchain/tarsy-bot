@@ -8,8 +8,9 @@ default configurations, and edge case handling.
 from unittest.mock import Mock, patch
 
 import pytest
+from pydantic import ValidationError
 
-from tarsy.models.mcp_config import MCPServerConfig
+from tarsy.models.agent_config import MCPServerConfigModel
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tests.utils import MCPServerFactory
 
@@ -29,7 +30,7 @@ class TestMCPServerRegistryInitialization:
         
         # Check kubernetes-server configuration
         k8s_config = registry.static_servers["kubernetes-server"]
-        assert isinstance(k8s_config, MCPServerConfig)
+        assert isinstance(k8s_config, MCPServerConfigModel)
         assert k8s_config.server_id == "kubernetes-server"
         assert k8s_config.server_type == "kubernetes"
         assert k8s_config.enabled is True
@@ -54,7 +55,7 @@ class TestMCPServerRegistryInitialization:
         
         # Verify server configs are properly converted
         test_config = registry.static_servers["test-server"]
-        assert isinstance(test_config, MCPServerConfig)
+        assert isinstance(test_config, MCPServerConfigModel)
         assert test_config.server_id == "test-server"
         assert test_config.enabled is True
     
@@ -86,7 +87,7 @@ class TestMCPServerRegistryInitialization:
         assert set(registry1.static_servers.keys()) == set(registry2.static_servers.keys())
     
     def test_mcp_server_config_instantiation(self):
-        """Test that MCPServerConfig is properly instantiated for each server."""
+        """Test that MCPServerConfigModel is properly instantiated for each server."""
         with patch('tarsy.services.mcp_server_registry.MCPServerConfig') as mock_mcp_config:
             mock_config_instance = Mock()
             mock_mcp_config.return_value = mock_config_instance
@@ -96,7 +97,7 @@ class TestMCPServerRegistryInitialization:
             
             registry = MCPServerRegistry(config=custom_config)
             
-            # Verify MCPServerConfig was called with correct parameters
+            # Verify MCPServerConfigModel was called with correct parameters
             mock_mcp_config.assert_called_once_with(
                 server_id="test-server",
                 server_type="test", 
@@ -125,7 +126,7 @@ class TestServerConfigRetrieval:
         """Test getting configuration for existing servers."""
         k8s_config = sample_registry.get_server_config("kubernetes-server")
         assert k8s_config is not None
-        assert isinstance(k8s_config, MCPServerConfig)
+        assert isinstance(k8s_config, MCPServerConfigModel)
         assert k8s_config.server_id == "kubernetes-server"
         assert k8s_config.server_type == "kubernetes"
         assert k8s_config.enabled is True
@@ -182,7 +183,7 @@ class TestServerConfigRetrieval:
         configs = sample_registry.get_server_configs(server_ids)
         
         assert len(configs) == 2
-        assert all(isinstance(config, MCPServerConfig) for config in configs)
+        assert all(isinstance(config, MCPServerConfigModel) for config in configs)
         
         # Check order is preserved
         assert configs[0].server_id == "kubernetes-server"
@@ -276,9 +277,9 @@ class TestDefaultConfigurations:
             assert isinstance(server_id, str)
             assert len(server_id) > 0
         
-        # All values should be MCPServerConfig instances
+        # All values should be MCPServerConfigModel instances
         for config in registry.static_servers.values():
-            assert isinstance(config, MCPServerConfig)
+            assert isinstance(config, MCPServerConfigModel)
             assert hasattr(config, 'server_id')
             assert hasattr(config, 'server_type')
             assert hasattr(config, 'enabled')
@@ -376,7 +377,7 @@ class TestEdgeCases:
         assert registry.get_server_config(long_server_id) is not None
     
     def test_registry_with_empty_string_server_id(self):
-        """Test registry behavior with empty string server ID."""
+        """Test registry rejects empty string server ID due to validation."""
         empty_config = {
             "": {
                 "server_id": "",
@@ -386,11 +387,11 @@ class TestEdgeCases:
             }
         }
         
-        registry = MCPServerRegistry(config=empty_config)
+        # Should raise ValidationError due to min_length=1 constraint on server_id
+        with pytest.raises(ValidationError) as exc_info:
+            MCPServerRegistry(config=empty_config)
         
-        # Should handle empty string server ID
-        assert registry.get_server_config("") is not None
-        assert "" in registry.get_all_server_ids()
+        assert "string_too_short" in str(exc_info.value)
     
     def test_get_server_config_with_non_string_input(self):
         """Test get_server_config with non-string inputs."""
@@ -474,21 +475,21 @@ class TestRegistryLogging:
 
 @pytest.mark.unit
 class TestServerConfigObjectIntegration:
-    """Test integration with MCPServerConfig objects."""
+    """Test integration with MCPServerConfigModel objects."""
     
     def test_server_config_objects_have_correct_attributes(self):
-        """Test that created MCPServerConfig objects have expected attributes."""
+        """Test that created MCPServerConfigModel objects have expected attributes."""
         registry = MCPServerRegistry()
         
         for server_id, config in registry.static_servers.items():
-            assert isinstance(config, MCPServerConfig)
+            assert isinstance(config, MCPServerConfigModel)
             assert hasattr(config, 'server_id')
             assert hasattr(config, 'server_type') 
             assert hasattr(config, 'enabled')
             assert config.server_id == server_id
     
     def test_server_config_objects_maintain_data_integrity(self):
-        """Test that MCPServerConfig objects maintain data integrity."""
+        """Test that MCPServerConfigModel objects maintain data integrity."""
         custom_config = {
             "test-server": {
                 "server_id": "test-server",

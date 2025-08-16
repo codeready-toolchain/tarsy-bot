@@ -308,7 +308,19 @@ class ConfigurationLoader:
             ValidationError: For Pydantic validation errors
         """
         try:
-            return CombinedConfigModel(**raw_config)
+            # Pre-process raw_config to inject chain_id fields into agent_chains
+            processed_config = raw_config.copy()
+            
+            if "agent_chains" in processed_config and processed_config["agent_chains"]:
+                updated_chains = {}
+                for chain_id, chain_data in processed_config["agent_chains"].items():
+                    # Add chain_id field to each chain configuration
+                    updated_chain_data = chain_data.copy()
+                    updated_chain_data["chain_id"] = chain_id
+                    updated_chains[chain_id] = updated_chain_data
+                processed_config["agent_chains"] = updated_chains
+            
+            return CombinedConfigModel(**processed_config)
         except ValidationError as e:
             # Add context and re-raise (will be caught and formatted by main handler)
             logger.debug(f"Pydantic validation failed with {len(e.errors())} errors")

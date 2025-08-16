@@ -16,6 +16,7 @@ from tarsy.config.settings import Settings
 from tarsy.config.agent_config import ConfigurationLoader, ConfigurationError
 from tarsy.integrations.llm.client import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
+from tarsy.models.agent_config import ChainConfigModel
 from tarsy.models.alert_processing import AlertProcessingData
 from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.db_models import now_us
@@ -268,7 +269,7 @@ class AlertService:
 
     async def _execute_chain_stages(
         self, 
-        chain_definition, 
+        chain_definition: ChainConfigModel, 
         alert_processing_data: AlertProcessingData,
         session_id: str
     ) -> Dict[str, Any]:
@@ -549,7 +550,7 @@ class AlertService:
 
     # History Session Management Methods
 
-    def _create_chain_history_session(self, alert: AlertProcessingData, chain_definition) -> Optional[str]:
+    def _create_chain_history_session(self, alert: AlertProcessingData, chain_definition: ChainConfigModel) -> Optional[str]:
         """
         Create a history session for chain processing.
         
@@ -576,7 +577,7 @@ class AlertService:
                 agent_type=f"chain:{chain_definition.chain_id}",  # Mark as chain processing
                 alert_type=alert.alert_type,  # Store in separate column for fast routing
                 chain_id=chain_definition.chain_id,  # Store chain identifier
-                chain_definition=chain_definition.to_dict()  # Store complete chain definition as JSON-serializable dict
+                chain_definition=chain_definition.model_dump()  # Store complete chain definition as JSON-serializable dict
             )
             
             logger.info(f"Created chain history session {session_id} for alert {alert_id} with chain {chain_definition.chain_id}")

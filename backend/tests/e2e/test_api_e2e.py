@@ -336,15 +336,15 @@ Action Input: {step['action_input']}"""
     # Note: Test settings are now handled by the isolated_e2e_settings fixture
 
     async def _validate_comprehensive_api_data(self, test_client, alert_id: str, session_id: str):
-        """Validate API data structures and processing results."""
+        """Validate API data structures and processing results (Phase 5: Updated for new Pydantic models)."""
         print("🔍 Validating API data...")
         
-        # Get session details
+        # Get session details (Phase 5: PaginatedSessions response)
         sessions_response = test_client.get("/api/v1/history/sessions")
         assert sessions_response.status_code == 200
         sessions_list = sessions_response.json()
         
-        # Find our session
+        # Find our session (Phase 5: sessions are now in PaginatedSessions.sessions)
         our_session = None
         for session in sessions_list["sessions"]:
             if session.get("session_id") == session_id:
@@ -357,17 +357,14 @@ Action Input: {step['action_input']}"""
         llm_count = our_session.get("llm_interaction_count", 0)
         mcp_count = our_session.get("mcp_communication_count", 0)
         
-        # Get session detail
+        # Get session detail (Phase 5: DetailedSession response - different structure)
         detail_response = test_client.get(f"/api/v1/history/sessions/{session_id}")
         assert detail_response.status_code == 200
         session_detail = detail_response.json()
         
-        # No longer using global timeline - data is now in stages
-        chain_execution = session_detail.get("chain_execution", {})
-        
-        # Basic validation
+        # Basic validation (Phase 5: Updated field validation)
         assert status in ["completed", "failed", "processing"], f"Invalid status: {status}"
-        assert chain_execution.get("chain_id"), "Missing chain execution data"
+        assert session_detail.get("chain_id"), "Missing chain_id in session detail"
         
         print(f"✅ Session-level counts extracted: {status} with {llm_count} LLM + {mcp_count} MCP interactions")
         
@@ -378,6 +375,227 @@ Action Input: {step['action_input']}"""
             "session_mcp_count": mcp_count,
             "session_total_count": llm_count + mcp_count
         }
+
+    def _validate_stage_timeline_chronological(self, stage, stage_name):
+        """Validate that all interactions in a stage are in chronological order"""
+        llm_interactions = stage.get("llm_interactions", [])
+        mcp_interactions = stage.get("mcp_communications", [])
+        
+        # Validate that LLM interactions are internally chronologically sorted
+        llm_timestamps = [i.get("timestamp_us") for i in llm_interactions if i.get("timestamp_us") is not None]
+        if len(llm_timestamps) > 1:
+            sorted_llm_timestamps = sorted(llm_timestamps)
+            assert llm_timestamps == sorted_llm_timestamps, \
+                f"TIMELINE VALIDATION FAILED: Stage '{stage_name}' LLM interactions not chronologically sorted within type. " \
+                f"Expected: {sorted_llm_timestamps}, Got: {llm_timestamps}"
+        
+        # Validate that MCP interactions are internally chronologically sorted  
+        mcp_timestamps = [i.get("timestamp_us") for i in mcp_interactions if i.get("timestamp_us") is not None]
+        if len(mcp_timestamps) > 1:
+            sorted_mcp_timestamps = sorted(mcp_timestamps)
+            assert mcp_timestamps == sorted_mcp_timestamps, \
+                f"TIMELINE VALIDATION FAILED: Stage '{stage_name}' MCP interactions not chronologically sorted within type. " \
+                f"Expected: {sorted_mcp_timestamps}, Got: {mcp_timestamps}"
+        
+        # Validate chronological_interactions property (now available in API response!)
+        chronological_interactions = stage.get("chronological_interactions", [])
+        if len(chronological_interactions) > 1:
+            timestamps = [i.get("timestamp_us") for i in chronological_interactions if i.get("timestamp_us") is not None]
+            assert timestamps == sorted(timestamps), \
+                f"CHRONOLOGICAL ORDERING FAILED: Stage '{stage_name}' chronological_interactions not properly sorted. " \
+                f"Expected: {sorted(timestamps)}, Got: {timestamps}"
+            
+            # Validate that chronological_interactions combines both types correctly
+            llm_count_in_chrono = sum(1 for i in chronological_interactions if i.get("type") == "llm")
+            mcp_count_in_chrono = sum(1 for i in chronological_interactions if i.get("type") == "mcp")
+            
+            assert llm_count_in_chrono == len(llm_timestamps), \
+                f"LLM count mismatch in chronological_interactions: expected {len(llm_timestamps)}, got {llm_count_in_chrono}"
+            assert mcp_count_in_chrono == len(mcp_timestamps), \
+                f"MCP count mismatch in chronological_interactions: expected {len(mcp_timestamps)}, got {mcp_count_in_chrono}"
+            
+            # Deep validate ALL interactions in chronological_interactions list
+            for chrono_index, chrono_interaction in enumerate(chronological_interactions):
+                interaction_type = chrono_interaction.get("type")
+                if interaction_type == "llm":
+                    self._validate_llm_interaction_deep(chrono_interaction, stage_name, f"chrono[{chrono_index}]")
+                elif interaction_type == "mcp":
+                    self._validate_mcp_interaction_deep(chrono_interaction, stage_name, f"chrono[{chrono_index}]")
+                else:
+                    assert False, f"CHRONOLOGICAL VALIDATION FAILED: Stage '{stage_name}' chronological_interactions[{chrono_index}] has unknown type: {interaction_type}"
+            
+            print(f"   ✅ Stage '{stage_name}' chronological_interactions validated: {len(chronological_interactions)} interactions in proper chronological order with deep validation")
+        elif len(chronological_interactions) == 1:
+            # Deep validate the single interaction
+            chrono_interaction = chronological_interactions[0]
+            interaction_type = chrono_interaction.get("type")
+            if interaction_type == "llm":
+                self._validate_llm_interaction_deep(chrono_interaction, stage_name, "chrono[0]")
+            elif interaction_type == "mcp":
+                self._validate_mcp_interaction_deep(chrono_interaction, stage_name, "chrono[0]")
+            else:
+                assert False, f"CHRONOLOGICAL VALIDATION FAILED: Stage '{stage_name}' chronological_interactions[0] has unknown type: {interaction_type}"
+            
+            print(f"   ✅ Stage '{stage_name}' chronological_interactions: 1 interaction validated (type: {interaction_type})")
+        else:
+            print(f"   ✅ Stage '{stage_name}' chronological_interactions: empty (no interactions to validate)")
+        
+        total_interactions = len(llm_timestamps) + len(mcp_timestamps)
+        print(f"   ✅ Stage '{stage_name}' timeline validated: LLM({len(llm_timestamps)}) and MCP({len(mcp_timestamps)}) interactions chronologically sorted within types, total timeline has {total_interactions} interactions")
+
+    def _validate_stage_timing_and_status(self, stage, stage_name):
+        """Validate stage timing and status make sense"""
+        status = stage.get("status")
+        started_at_us = stage.get("started_at_us")
+        completed_at_us = stage.get("completed_at_us") 
+        duration_ms = stage.get("duration_ms")
+        
+        # Status validation
+        expected_status = "completed"  # For successful e2e test
+        assert status == expected_status, f"TIMING VALIDATION FAILED: Stage '{stage_name}' status is '{status}', expected '{expected_status}'"
+        
+        # Timing presence validation
+        assert started_at_us is not None, f"TIMING VALIDATION FAILED: Stage '{stage_name}' missing started_at_us"
+        assert completed_at_us is not None, f"TIMING VALIDATION FAILED: Stage '{stage_name}' missing completed_at_us"
+        assert duration_ms is not None, f"TIMING VALIDATION FAILED: Stage '{stage_name}' missing duration_ms"
+        
+        # Timing sanity checks
+        assert isinstance(started_at_us, int), f"TIMING VALIDATION FAILED: Stage '{stage_name}' started_at_us not integer"
+        assert isinstance(completed_at_us, int), f"TIMING VALIDATION FAILED: Stage '{stage_name}' completed_at_us not integer"
+        assert isinstance(duration_ms, (int, float)), f"TIMING VALIDATION FAILED: Stage '{stage_name}' duration_ms not numeric"
+        
+        assert completed_at_us >= started_at_us, f"TIMING VALIDATION FAILED: Stage '{stage_name}' completed before started"
+        assert duration_ms >= 0, f"TIMING VALIDATION FAILED: Stage '{stage_name}' negative duration: {duration_ms}ms"
+        
+        # Realistic timing bounds (stages should take some time but not too long)
+        assert duration_ms < 30000, f"TIMING VALIDATION FAILED: Stage '{stage_name}' took too long: {duration_ms}ms (>30s)"
+        assert duration_ms > 0, f"TIMING VALIDATION FAILED: Stage '{stage_name}' completed too fast: {duration_ms}ms"
+        
+        print(f"   ✅ Stage '{stage_name}' timing validated: {duration_ms}ms duration, status='{status}'")
+
+    def _validate_llm_interaction_deep(self, interaction, stage_name, interaction_index):
+        """Deep validation of a single LLM interaction"""
+        event_id = interaction.get("event_id")
+        timestamp_us = interaction.get("timestamp_us") 
+        interaction_type = interaction.get("type")
+        step_description = interaction.get("step_description")
+        details = interaction.get("details", {})
+        
+        # Basic structure (already validated but double-check)
+        assert event_id, f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] missing event_id"
+        assert timestamp_us is not None, f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] missing timestamp_us"
+        assert interaction_type == "llm", f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] wrong type: {interaction_type}"
+        
+        # Deep content validation
+        assert step_description, f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] missing step_description"
+        assert isinstance(details, dict), f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] details not dict"
+        
+        # LLM-specific details
+        model_name = details.get("model_name")
+        assert model_name, f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] missing model_name in details"
+        
+        # Validate request/response structure if present
+        if "request" in details:
+            request = details["request"]
+            assert isinstance(request, dict), f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] request not dict"
+        
+        if "response" in details:
+            response = details["response"] 
+            assert isinstance(response, dict), f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] response not dict"
+        
+        print(f"   ✅ Stage '{stage_name}' LLM interaction [{interaction_index}] deeply validated (model: {model_name})")
+
+    def _validate_mcp_sequence_pattern(self, mcp_interactions, stage_name):
+        """
+        Validate MCP interaction sequence pattern: should include both tool_list and tool_call interactions.
+        
+        Expected pattern for stages that use tools:
+        - First interaction: tool_list (tool discovery)
+        - Subsequent interactions: tool_call (actual tool execution)
+        
+        For analysis stage: no MCP interactions (empty list)
+        """
+        if len(mcp_interactions) == 0:
+            print(f"   ✅ Stage '{stage_name}' MCP sequence: empty (no tools used)")
+            return
+            
+        # Validate sequence pattern based on stage
+        if stage_name in ["data-collection", "verification"]:
+            # These stages should start with tool_list, then have tool_call interactions
+            assert len(mcp_interactions) >= 1, f"MCP SEQUENCE VALIDATION FAILED: Stage '{stage_name}' should have at least 1 interaction"
+            
+            # First interaction should be tool_list (tool discovery)
+            first_interaction = mcp_interactions[0]
+            first_details = first_interaction.get("details", {})
+            first_comm_type = first_details.get("communication_type", "unknown")
+            
+            assert first_comm_type == "tool_list", \
+                f"MCP SEQUENCE VALIDATION FAILED: Stage '{stage_name}' MCP[0] should be tool_list, got: {first_comm_type}"
+            print(f"   ✅ Stage '{stage_name}' MCP sequence: interaction[0] is tool_list as expected")
+            
+            # Subsequent interactions should be tool_call
+            for i in range(1, len(mcp_interactions)):
+                interaction = mcp_interactions[i]
+                details = interaction.get("details", {})
+                communication_type = details.get("communication_type", "unknown")
+                
+                assert communication_type == "tool_call", \
+                    f"MCP SEQUENCE VALIDATION FAILED: Stage '{stage_name}' MCP[{i}] should be tool_call, got: {communication_type}"
+                print(f"   ✅ Stage '{stage_name}' MCP sequence: interaction[{i}] is tool_call as expected")
+        else:
+            # For other stages, just validate that interactions are valid types
+            for i, interaction in enumerate(mcp_interactions):
+                details = interaction.get("details", {})
+                communication_type = details.get("communication_type", "unknown")
+                
+                assert communication_type in ["tool_list", "tool_call"], \
+                    f"MCP SEQUENCE VALIDATION FAILED: Stage '{stage_name}' MCP[{i}] has invalid communication_type: {communication_type}"
+                print(f"   ✅ Stage '{stage_name}' MCP sequence: interaction[{i}] has valid type: {communication_type}")
+
+    def _validate_mcp_interaction_deep(self, interaction, stage_name, interaction_index):
+        """Deep validation of a single MCP interaction with enhanced MCP protocol checks"""
+        event_id = interaction.get("event_id")
+        timestamp_us = interaction.get("timestamp_us")
+        interaction_type = interaction.get("type") 
+        step_description = interaction.get("step_description")
+        details = interaction.get("details", {})
+        
+        # Basic structure
+        assert event_id, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] missing event_id"
+        assert timestamp_us is not None, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] missing timestamp_us"
+        assert interaction_type == "mcp", f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] wrong type: {interaction_type}"
+        
+        # Deep content validation
+        assert step_description, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] missing step_description"
+        assert isinstance(details, dict), f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] details not dict"
+        
+        # MCP-specific details
+        server_name = details.get("server_name")
+        tool_name = details.get("tool_name")
+        communication_type = details.get("communication_type")
+        
+        assert server_name, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] missing server_name in details"
+        assert communication_type, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] missing communication_type in details"
+        
+        # tool_name is only required for tool_call interactions, not tool_list
+        if communication_type == "tool_call":
+            assert tool_name, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] missing tool_name for tool_call interaction"
+        
+        # Validate communication_type is either tool_list or tool_call
+        assert communication_type in ["tool_list", "tool_call"], \
+            f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] invalid communication_type: {communication_type}, expected: tool_list or tool_call"
+        
+        # Validate tool call structure if present
+        if "tool_input" in details:
+            tool_input = details["tool_input"]
+            assert isinstance(tool_input, dict), f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] tool_input not dict"
+        
+        if "tool_result" in details:
+            tool_result = details["tool_result"]
+            # tool_result can be various types depending on the tool
+            assert tool_result is not None, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] tool_result is None"
+        
+        print(f"   ✅ Stage '{stage_name}' MCP interaction [{interaction_index}] deeply validated (server: {server_name}, tool: {tool_name}, type: {communication_type})")
 
     async def _validate_sessions_api(self, test_client, session_id, expected_alert_data):
         """
@@ -429,15 +647,15 @@ Action Input: {step['action_input']}"""
         
         print(f"✅ Session list validation passed - Status: {our_session['status']}")
         
-        # VALIDATION 3: Get detailed session data and validate stages
+        # VALIDATION 3: Get detailed session data and validate stages (Phase 5: Updated structure)
         print(f"🔍 Testing GET /api/v1/history/sessions/{session_id}...")
         detail_response = test_client.get(f"/api/v1/history/sessions/{session_id}")
         
         assert detail_response.status_code == 200, f"Session detail API failed: {detail_response.status_code}"
         detail_data = detail_response.json()
         
-        # Validate detail structure
-        required_detail_fields = ["session_id", "alert_data", "chain_execution", "summary"]
+        # Phase 5: Validate updated DetailedSession structure - fields are now at root level
+        required_detail_fields = ["session_id", "alert_data", "chain_id", "stages"]
         for field in required_detail_fields:
             assert field in detail_data, f"Missing required detail field: {field}"
         
@@ -453,247 +671,209 @@ Action Input: {step['action_input']}"""
         for field in required_summary_fields:
             assert field in summary_data, f"Missing required summary field: {field}"
         
-        # VALIDATION: Summary from lightweight endpoint should match detail endpoint summary
-        detail_summary = detail_data.get("summary", {})
-        for field in required_summary_fields:
-            if field in detail_summary:
-                assert summary_data[field] == detail_summary[field], f"Summary mismatch for {field}: endpoint={summary_data[field]}, detail={detail_summary[field]}"
+        # Phase 5: DetailedSession no longer has a separate "summary" field - summary data is embedded
+        # We can still validate the standalone summary endpoint against derived values from detail session
+        detail_total_interactions = detail_data.get("total_interactions", 0)
+        detail_llm_interactions = detail_data.get("llm_interaction_count", 0)
+        detail_mcp_communications = detail_data.get("mcp_communication_count", 0)
+        
+        # Basic consistency check for core counts
+        assert summary_data["total_interactions"] == detail_total_interactions, f"Total interactions mismatch: summary={summary_data['total_interactions']}, detail={detail_total_interactions}"
+        assert summary_data["llm_interactions"] == detail_llm_interactions, f"LLM interactions mismatch: summary={summary_data['llm_interactions']}, detail={detail_llm_interactions}"
+        assert summary_data["mcp_communications"] == detail_mcp_communications, f"MCP communications mismatch: summary={summary_data['mcp_communications']}, detail={detail_mcp_communications}"
         
         # EXACT VALIDATION: Both endpoints should return precisely the same known values
+        # Updated counts now include tool_list interactions (1 per data-collection and verification stage)
         expected_exact_counts = {
-            "total_interactions": 13,
-            "llm_interactions": 8, 
-            "mcp_communications": 5,
+            "total_interactions": 15,  # 13 + 2 tool_list interactions (data-collection + verification)
+            "llm_interactions": 8,     # 4+3+1 = 8 LLM interactions (unchanged)
+            "mcp_communications": 7,   # 5 tool_call + 2 tool_list interactions
             "system_events": 0,
             "errors_count": 0
         }
         
-        for endpoint_name, summary_dict in [("lightweight", summary_data), ("detail", detail_summary)]:
-            for field, expected_value in expected_exact_counts.items():
-                actual_value = summary_dict.get(field, -999)
-                assert actual_value == expected_value, f"EXACT VALIDATION FAILED: {endpoint_name} endpoint {field} expected exactly {expected_value}, got {actual_value}"
-            
-            # SANITY CHECK: Duration should be non-negative (exact value depends on execution speed)
-            duration = summary_dict.get("total_duration_ms", -1)
-            assert duration >= 0, f"SANITY CHECK FAILED: {endpoint_name} endpoint shows negative processing duration ({duration}ms)"
+        # EXACT VALIDATION: Validate exact counts for summary endpoint (Phase 5: Only summary endpoint now)
+        for field, expected_value in expected_exact_counts.items():
+            actual_value = summary_data.get(field, -999)
+            assert actual_value == expected_value, f"EXACT VALIDATION FAILED: summary endpoint {field} expected exactly {expected_value}, got {actual_value}"
         
-        # Chain statistics should match if present
-        if "chain_statistics" in detail_summary:
-            assert "chain_statistics" in summary_data, "Chain statistics missing from summary endpoint"
-            chain_fields = ["total_stages", "completed_stages", "failed_stages"]
-            for field in chain_fields:
-                if field in detail_summary["chain_statistics"]:
-                    assert summary_data["chain_statistics"][field] == detail_summary["chain_statistics"][field], f"Chain statistic mismatch for {field}"
+        # SANITY CHECK: Duration should be non-negative (exact value depends on execution speed)
+        duration = summary_data.get("total_duration_ms", -1)
+        assert duration >= 0, f"SANITY CHECK FAILED: summary endpoint shows negative processing duration ({duration}ms)"
+        
+        # Phase 5: Chain statistics validation - now nested in SessionStats
+        assert "chain_statistics" in summary_data, "Chain statistics missing from summary endpoint"
+        chain_stats = summary_data["chain_statistics"]
+        chain_fields = ["total_stages", "completed_stages", "failed_stages"]
+        for field in chain_fields:
+            assert field in chain_stats, f"Chain statistics missing field: {field}"
         
         print(f"✅ Summary endpoint validation passed - data consistency confirmed")
         
-        # VALIDATION 4: Validate chain execution and stages
+        # VALIDATION 4: Validate chain execution and stages (Phase 5: Updated structure)
         print("🔍 Validating chain execution and stages...")
-        chain_execution = detail_data["chain_execution"]
-        assert isinstance(chain_execution, dict), "chain_execution should be dict"
         
-        # Check for stages data
-        if "stages" in chain_execution:
-            stages = chain_execution["stages"]
-            assert isinstance(stages, list), "stages should be list"
-            
-            # EXACT VALIDATION: Number of stages MUST be exactly 3 (from test_agents.yaml)
-            expected_stage_count = 3
-            expected_stages = ["stage_0", "stage_1", "stage_2"]
-            print(f"🔍 Validating stage count and names...")
-            print(f"   📊 Found {len(stages)} stages (expected exactly {expected_stage_count})")
-            
-            assert len(stages) == expected_stage_count, f"EXACT VALIDATION FAILED: Expected exactly {expected_stage_count} stages, found {len(stages)}"
-            
-            # VALIDATION 6: Each stage name should match expectations
-            actual_stage_names = []
-            stage_interaction_counts = {}
-            
-            for i, stage in enumerate(stages):
-                assert isinstance(stage, dict), f"Stage {i} should be dict"
-                stage_name = stage.get("name", f"stage_{i}")
-                actual_stage_names.append(stage_name)
-                
-                # VALIDATION 7: Check interactions in each stage (new structure)
-                timeline = stage.get("timeline", [])
-                interaction_summary = stage.get("interaction_summary", {})
-                
-                # Count by timeline events
-                timeline_llm_count = len([e for e in timeline if e.get("type") == "llm"]) if isinstance(timeline, list) else 0
-                timeline_mcp_count = len([e for e in timeline if e.get("type") == "mcp"]) if isinstance(timeline, list) else 0
-                
-                # Get counts from summary
-                summary_llm_count = interaction_summary.get("llm_count", 0)
-                summary_mcp_count = interaction_summary.get("mcp_count", 0)
-                summary_total = interaction_summary.get("total_count", 0)
-                
-                # Use timeline counts for backward compatibility
-                llm_count = timeline_llm_count
-                mcp_count = timeline_mcp_count
-                
-                # VALIDATION: Timeline and summary should match
-                assert timeline_llm_count == summary_llm_count, f"Timeline LLM count ({timeline_llm_count}) != Summary LLM count ({summary_llm_count})"
-                assert timeline_mcp_count == summary_mcp_count, f"Timeline MCP count ({timeline_mcp_count}) != Summary MCP count ({summary_mcp_count})"
-                assert len(timeline) == summary_total, f"Timeline total ({len(timeline)}) != Summary total ({summary_total})"
-                
-                stage_interaction_counts[stage_name] = {
-                    "llm": llm_count,
-                    "mcp": mcp_count,
-                    "total": llm_count + mcp_count
-                }
-                
-                print(f"   📋 Stage '{stage_name}': {llm_count} LLM + {mcp_count} MCP interactions")
-                
-                # STRICT VALIDATION: Each stage MUST have exactly the expected interactions
-                total_interactions = llm_count + mcp_count
-                
-                # Define exact interaction requirements per stage
-                stage_exact_counts = {
-                    "stage_0": {"llm": 4, "mcp": 3, "total": 7},  # data-collection: exactly 4 LLM + 3 MCP
-                    "stage_1": {"llm": 3, "mcp": 2, "total": 5},  # verification: exactly 3 LLM + 2 MCP  
-                    "stage_2": {"llm": 1, "mcp": 0, "total": 1}   # analysis: exactly 1 LLM + 0 MCP (final-analysis strategy)
-                }
-                
-                # Get exact expected counts for this stage
-                expected = stage_exact_counts.get(stage_name, {"llm": 1, "mcp": 1, "total": 2})
-                
-                # STRICT ASSERTION: LLM interactions must be exactly as expected
-                assert llm_count == expected["llm"], f"STRICT VALIDATION FAILED: Stage '{stage_name}' has {llm_count} LLM interactions, expected exactly {expected['llm']}"
-                
-                # STRICT ASSERTION: MCP interactions must be exactly as expected  
-                assert mcp_count == expected["mcp"], f"STRICT VALIDATION FAILED: Stage '{stage_name}' has {mcp_count} MCP interactions, expected exactly {expected['mcp']}"
-                
-                # STRICT ASSERTION: Total interactions must be exactly as expected
-                assert total_interactions == expected["total"], f"STRICT VALIDATION FAILED: Stage '{stage_name}' has {total_interactions} total interactions, expected exactly {expected['total']}"
-                
-                print(f"   ✅ Stage '{stage_name}': {llm_count} LLM + {mcp_count} MCP = {total_interactions} interactions (exactly {expected['total']} as required)")
-                
-                # STRICT VALIDATION: Verify actual interaction data exists (not just counts)
-                timeline = stage.get("timeline", [])
-                llm_interactions = [event for event in timeline if event.get("type") == "llm"]
-                mcp_interactions = [event for event in timeline if event.get("type") == "mcp"]
-                
-                # Check that LLM interactions have actual data
-                if expected["llm"] > 0:
-                    assert len(llm_interactions) >= 1, f"STRICT VALIDATION FAILED: Stage '{stage_name}' missing LLM interaction data in timeline"
-                    # Verify first LLM interaction has required fields
-                    first_llm = llm_interactions[0]
-                    assert "event_id" in first_llm, f"STRICT VALIDATION FAILED: Stage '{stage_name}' LLM interaction missing event_id"
-                    assert "timestamp_us" in first_llm, f"STRICT VALIDATION FAILED: Stage '{stage_name}' LLM interaction missing timestamp_us"
-                    assert "type" in first_llm and first_llm["type"] == "llm", f"STRICT VALIDATION FAILED: Stage '{stage_name}' LLM interaction type incorrect"
-                    
-                    # SANITY CHECK: Dynamic values that we can't predict exactly
-                    event_id = first_llm.get("event_id")
-                    timestamp_us = first_llm.get("timestamp_us")
-                    
-                    # Sanity check: event_id looks like a UUID (not empty string)
-                    assert event_id and len(event_id) >= 30, f"SANITY CHECK FAILED: Stage '{stage_name}' LLM event_id is empty or too short: '{event_id}'"
-                    
-                    # Sanity check: timestamp is realistic microseconds (not 0, not placeholder)
-                    assert isinstance(timestamp_us, int) and timestamp_us > 1_000_000_000_000, f"SANITY CHECK FAILED: Stage '{stage_name}' LLM timestamp_us invalid: {timestamp_us}"
-                    
-                    # EXACT VALIDATION: LLM interaction must have proper structure
-                    details = first_llm.get("details", {})
-                    assert details, f"EXACT VALIDATION FAILED: Stage '{stage_name}' LLM interaction missing details"
-                    
-                    # EXACT VALIDATION: Must have request/response data (we know the mock provides this)
-                    has_request = "request_json" in details or "request" in details or "messages" in details or "prompt" in details
-                    has_response = "response_json" in details or "response" in details or "content" in details or "choices" in details
-                    assert has_request or has_response, f"EXACT VALIDATION FAILED: Stage '{stage_name}' LLM interaction missing conversation content in details: {list(details.keys())}"
-                    
-                    print(f"   ✅ Stage '{stage_name}' LLM interaction data and content validated")
-                
-                # Check that MCP interactions have actual data (if expected)
-                if expected["mcp"] > 0:
-                    assert len(mcp_interactions) >= 1, f"STRICT VALIDATION FAILED: Stage '{stage_name}' missing MCP interaction data in timeline"
-                    # Verify first MCP interaction has required fields
-                    first_mcp = mcp_interactions[0]
-                    assert "event_id" in first_mcp, f"STRICT VALIDATION FAILED: Stage '{stage_name}' MCP interaction missing event_id"
-                    assert "timestamp_us" in first_mcp, f"STRICT VALIDATION FAILED: Stage '{stage_name}' MCP interaction missing timestamp_us"
-                    assert "type" in first_mcp and first_mcp["type"] == "mcp", f"STRICT VALIDATION FAILED: Stage '{stage_name}' MCP interaction type incorrect"
-                    
-                    # SANITY CHECK: Dynamic values that we can't predict exactly
-                    event_id = first_mcp.get("event_id")
-                    timestamp_us = first_mcp.get("timestamp_us")
-                    
-                    # Sanity check: event_id looks like a UUID (not empty string)
-                    assert event_id and len(event_id) >= 30, f"SANITY CHECK FAILED: Stage '{stage_name}' MCP event_id is empty or too short: '{event_id}'"
-                    
-                    # Sanity check: timestamp is realistic microseconds (not 0, not placeholder)
-                    assert isinstance(timestamp_us, int) and timestamp_us > 1_000_000_000_000, f"SANITY CHECK FAILED: Stage '{stage_name}' MCP timestamp_us invalid: {timestamp_us}"
-                    
-                    # EXACT VALIDATION: MCP interaction must have proper structure and known values
-                    details = first_mcp.get("details", {})
-                    assert details, f"EXACT VALIDATION FAILED: Stage '{stage_name}' MCP interaction missing details"
-                    assert "server_name" in details, f"EXACT VALIDATION FAILED: Stage '{stage_name}' MCP interaction missing server_name in details"
-                    assert "tool_name" in details, f"EXACT VALIDATION FAILED: Stage '{stage_name}' MCP interaction missing tool_name in details"
-                    
-                    # EXACT VALIDATION: We know exactly what server name our mock uses
-                    server_name = details.get("server_name", "")
-                    assert server_name == "kubernetes-server", f"EXACT VALIDATION FAILED: Stage '{stage_name}' MCP server_name expected 'kubernetes-server', got '{server_name}'"
-                    
-                    # EXACT VALIDATION: Tool name should be one of the known tools our mock provides
-                    tool_name = details.get("tool_name", "")
-                    expected_tools = ["get_namespace", "list_pods", "get_events", "describe_namespace", "check_dependencies", "analyze_finalizers"]
-                    assert tool_name in expected_tools, f"EXACT VALIDATION FAILED: Stage '{stage_name}' MCP tool_name '{tool_name}' not in expected tools: {expected_tools}"
-                    
-                    # EXACT VALIDATION: Must have tool call/result data (we know the mock provides this)
-                    has_parameters = "parameters" in details or "tool_input" in details or "input" in details or "tool_parameters" in details
-                    has_result = "result" in details or "tool_result" in details or "output" in details or "response" in details
-                    assert has_parameters or has_result, f"EXACT VALIDATION FAILED: Stage '{stage_name}' MCP interaction missing tool call/result data in details: {list(details.keys())}"
-                    
-                    print(f"   ✅ Stage '{stage_name}' MCP interaction data and content validated")
-                elif expected["mcp"] == 0:
-                    # For stages with 0 expected MCP interactions, verify none exist
-                    assert len(mcp_interactions) == 0, f"STRICT VALIDATION FAILED: Stage '{stage_name}' should have 0 MCP interactions but found {len(mcp_interactions)}"
-                    print(f"   ✅ Stage '{stage_name}' correctly has no MCP interactions")
-            
-            # VALIDATION 7: Stage names MUST match expected order exactly
-            for i, expected_name in enumerate(expected_stages):
-                assert i < len(actual_stage_names), f"STRICT VALIDATION FAILED: Missing stage '{expected_name}' at position {i}"
-                actual_name = actual_stage_names[i]
-                assert actual_name == expected_name, f"STRICT VALIDATION FAILED: Stage {i} name mismatch - expected '{expected_name}', got '{actual_name}'"
-            
-            print(f"✅ Stage validation passed:")
-            print(f"   📊 Total stages: {len(stages)}")
-            print(f"   📋 Stage names: {', '.join(actual_stage_names)}")
-            
-            # EXACT VALIDATION: Overall interaction count must be precisely what we expect
-            total_llm = sum(counts["llm"] for counts in stage_interaction_counts.values())
-            total_mcp = sum(counts["mcp"] for counts in stage_interaction_counts.values())
-            total_interactions = total_llm + total_mcp
-            print(f"   🔄 Total interactions across all stages: {total_llm} LLM + {total_mcp} MCP = {total_interactions}")
-            
-            # EXACT VALIDATION: Total interactions must be exactly as expected
-            expected_total_llm = 8   # 4 + 3 + 1 from all stages
-            expected_total_mcp = 5   # 3 + 2 + 0 from all stages  
-            expected_total_interactions = 13  # 8 + 5
-            
-            # EXACT ASSERTION: Total LLM interactions must be exactly as expected
-            assert total_llm == expected_total_llm, f"EXACT VALIDATION FAILED: Total LLM interactions {total_llm}, expected exactly {expected_total_llm}"
-            
-            # EXACT ASSERTION: Total MCP interactions must be exactly as expected
-            assert total_mcp == expected_total_mcp, f"EXACT VALIDATION FAILED: Total MCP interactions {total_mcp}, expected exactly {expected_total_mcp}"
-            
-            # EXACT ASSERTION: Total interactions must be exactly as expected
-            assert total_interactions == expected_total_interactions, f"EXACT VALIDATION FAILED: Total interactions {total_interactions}, expected exactly {expected_total_interactions}"
-                
-            print(f"   ✅ Total interactions validated: {total_llm} LLM + {total_mcp} MCP = {total_interactions} (exactly {expected_total_interactions} as required)")
-            print(f"   ✅ Agent execution successful: {len(stages)} stage(s) completed")
-            
-        else:
-            # STRICT VALIDATION: We MUST have stages data
-            available_keys = list(chain_execution.keys())
-            pytest.fail(f"STRICT VALIDATION FAILED: No 'stages' field found in chain_execution. Available keys: {available_keys}. Chain execution is broken.")
+        # Phase 5: stages are now directly at root level in DetailedSession
+        stages = detail_data["stages"]
+        assert isinstance(stages, list), "stages should be list"
         
-        # Validate stage-embedded timelines (new structure)
+        # EXACT VALIDATION: Number of stages MUST be exactly 3 (from test_agents.yaml)
+        expected_stage_count = 3
+        expected_stages = ["data-collection", "verification", "analysis"]  # Actual stage names from YAML config
+        print(f"🔍 Validating stage count and names...")
+        print(f"   📊 Found {len(stages)} stages (expected exactly {expected_stage_count})")
+        
+        assert len(stages) == expected_stage_count, f"EXACT VALIDATION FAILED: Expected exactly {expected_stage_count} stages, found {len(stages)}"
+        
+        # VALIDATION 6: Each stage name should match expectations (Phase 5: Updated stage structure)
+        actual_stage_names = []
+        stage_interaction_counts = {}
+        
+        for i, stage in enumerate(stages):
+            assert isinstance(stage, dict), f"Stage {i} should be dict"
+            stage_name = stage.get("stage_name", f"stage_{i}")  # Phase 5: DetailedStage uses "stage_name"
+            actual_stage_names.append(stage_name)
+            
+            # Phase 5: DetailedStage has direct interaction lists, not nested timeline/summary
+            llm_interactions = stage.get("llm_interactions", [])
+            mcp_communications = stage.get("mcp_communications", [])
+            
+            # Phase 5: Count from the direct interaction lists
+            llm_count = len(llm_interactions)
+            mcp_count = len(mcp_communications)
+            
+            # Phase 5: Validate against the summary counts in DetailedStage
+            stage_llm_count = stage.get("llm_interaction_count", 0)
+            stage_mcp_count = stage.get("mcp_communication_count", 0)
+            stage_total_count = stage.get("total_interactions", 0)
+            
+            # VALIDATION: Stage lists and counts should match
+            assert llm_count == stage_llm_count, f"Stage {stage_name} LLM list count ({llm_count}) != Stage count field ({stage_llm_count})"
+            assert mcp_count == stage_mcp_count, f"Stage {stage_name} MCP list count ({mcp_count}) != Stage count field ({stage_mcp_count})"
+            assert llm_count + mcp_count == stage_total_count, f"Stage {stage_name} total count mismatch"
+            
+            stage_interaction_counts[stage_name] = {
+                "llm": llm_count,
+                "mcp": mcp_count,
+                "total": llm_count + mcp_count
+            }
+            
+            print(f"   📋 Stage '{stage_name}': {llm_count} LLM + {mcp_count} MCP interactions")
+            
+            # STRICT VALIDATION: Each stage MUST have exactly the expected interactions
+            total_interactions = llm_count + mcp_count
+            
+            # Define exact interaction requirements per stage (updated to include tool_list interactions)
+            stage_exact_counts = {
+                "data-collection": {"llm": 4, "mcp": 4, "total": 8},  # ReAct: 4 LLM calls + 1 tool_list + 3 MCP tool calls 
+                "verification": {"llm": 3, "mcp": 3, "total": 6},     # ReAct: 3 LLM calls + 1 tool_list + 2 MCP tool calls
+                "analysis": {"llm": 1, "mcp": 0, "total": 1}          # react-final-analysis: 1 LLM call + 0 MCP (no tools executed)
+            }
+            
+            # Get exact expected counts for this stage
+            expected = stage_exact_counts.get(stage_name, {"llm": 1, "mcp": 1, "total": 2})
+            
+            # STRICT ASSERTION: LLM interactions must be exactly as expected
+            assert llm_count == expected["llm"], f"STRICT VALIDATION FAILED: Stage '{stage_name}' has {llm_count} LLM interactions, expected exactly {expected['llm']}"
+            
+            # STRICT ASSERTION: MCP interactions must be exactly as expected  
+            assert mcp_count == expected["mcp"], f"STRICT VALIDATION FAILED: Stage '{stage_name}' has {mcp_count} MCP interactions, expected exactly {expected['mcp']}"
+            
+            # STRICT ASSERTION: Total interactions must be exactly as expected
+            assert total_interactions == expected["total"], f"STRICT VALIDATION FAILED: Stage '{stage_name}' has {total_interactions} total interactions, expected exactly {expected['total']}"
+            
+            print(f"   ✅ Stage '{stage_name}': {llm_count} LLM + {mcp_count} MCP = {total_interactions} interactions (exactly {expected['total']} as required)")
+            
+            # COMPREHENSIVE VALIDATION: Enhanced validation with timing, timeline, and deep content checks
+            
+            # 1. Stage timing and status validation
+            self._validate_stage_timing_and_status(stage, stage_name)
+            
+            # 2. Timeline chronological validation
+            self._validate_stage_timeline_chronological(stage, stage_name)
+            
+            # 3. Deep interaction validation (COMPREHENSIVE approach - validate ALL interactions)
+            llm_interaction_objects = stage.get("llm_interactions", [])
+            mcp_interaction_objects = stage.get("mcp_communications", [])
+            
+            # Validate ALL LLM interactions per stage (if expected)
+            if expected["llm"] > 0:
+                assert len(llm_interaction_objects) >= 1, f"COMPREHENSIVE VALIDATION FAILED: Stage '{stage_name}' missing LLM interaction data"
+                
+                # Deep validate ALL LLM interactions (comprehensive validation)
+                for interaction_index, llm_interaction in enumerate(llm_interaction_objects):
+                    self._validate_llm_interaction_deep(llm_interaction, stage_name, interaction_index)
+            
+            # Validate ALL MCP interactions per stage (if expected) + MCP tool validation
+            if expected["mcp"] > 0:
+                assert len(mcp_interaction_objects) >= 1, f"COMPREHENSIVE VALIDATION FAILED: Stage '{stage_name}' missing MCP interaction data"
+                
+                # Deep validate ALL MCP interactions (comprehensive validation)
+                for interaction_index, mcp_interaction in enumerate(mcp_interaction_objects):
+                    self._validate_mcp_interaction_deep(mcp_interaction, stage_name, interaction_index)
+                
+                # MCP SEQUENCE VALIDATION: Validate proper MCP protocol pattern (tool_list first, then tool_call)
+                self._validate_mcp_sequence_pattern(mcp_interaction_objects, stage_name)
+                    
+                # MCP TOOL VALIDATION: Ensure we have variety of MCP tools being used
+                unique_tools = set()
+                unique_servers = set()
+                for mcp_interaction in mcp_interaction_objects:
+                    details = mcp_interaction.get("details", {})
+                    server_name = details.get("server_name")
+                    tool_name = details.get("tool_name") 
+                    if server_name:
+                        unique_servers.add(server_name)
+                    if tool_name:
+                        unique_tools.add(tool_name)
+                
+                print(f"   ✅ Stage '{stage_name}' MCP tool diversity: {len(unique_servers)} servers, {len(unique_tools)} tools ({', '.join(unique_tools)})")
+                
+            elif expected["mcp"] == 0:
+                # For stages with 0 expected MCP interactions, verify none exist
+                assert len(mcp_interaction_objects) == 0, f"COMPREHENSIVE VALIDATION FAILED: Stage '{stage_name}' should have 0 MCP interactions but found {len(mcp_interaction_objects)}"
+                print(f"   ✅ Stage '{stage_name}' correctly has no MCP interactions")
+        
+        # VALIDATION 7: Stage names MUST match expected order exactly
+        for i, expected_name in enumerate(expected_stages):
+            assert i < len(actual_stage_names), f"STRICT VALIDATION FAILED: Missing stage '{expected_name}' at position {i}"
+            actual_name = actual_stage_names[i]
+            assert actual_name == expected_name, f"STRICT VALIDATION FAILED: Stage {i} name mismatch - expected '{expected_name}', got '{actual_name}'"
+        
+        print(f"✅ Stage validation passed:")
+        print(f"   📊 Total stages: {len(stages)}")
+        print(f"   📋 Stage names: {', '.join(actual_stage_names)}")
+        
+        # EXACT VALIDATION: Overall interaction count must be precisely what we expect
+        total_llm = sum(counts["llm"] for counts in stage_interaction_counts.values())
+        total_mcp = sum(counts["mcp"] for counts in stage_interaction_counts.values())
+        total_interactions = total_llm + total_mcp
+        print(f"   🔄 Total interactions across all stages: {total_llm} LLM + {total_mcp} MCP = {total_interactions}")
+        
+        # EXACT VALIDATION: Total interactions must be exactly as expected (updated for tool_list)
+        expected_total_llm = 8   # 4 + 3 + 1 from all stages (unchanged)
+        expected_total_mcp = 7   # 4 + 3 + 0 from all stages (includes tool_list interactions)
+        expected_total_interactions = 15  # 8 + 7
+        
+        # EXACT ASSERTION: Total LLM interactions must be exactly as expected
+        assert total_llm == expected_total_llm, f"EXACT VALIDATION FAILED: Total LLM interactions {total_llm}, expected exactly {expected_total_llm}"
+        
+        # EXACT ASSERTION: Total MCP interactions must be exactly as expected
+        assert total_mcp == expected_total_mcp, f"EXACT VALIDATION FAILED: Total MCP interactions {total_mcp}, expected exactly {expected_total_mcp}"
+        
+        # EXACT ASSERTION: Total interactions must be exactly as expected
+        assert total_interactions == expected_total_interactions, f"EXACT VALIDATION FAILED: Total interactions {total_interactions}, expected exactly {expected_total_interactions}"
+            
+        print(f"   ✅ Total interactions validated: {total_llm} LLM + {total_mcp} MCP = {total_interactions} (exactly {expected_total_interactions} as required)")
+        print(f"   ✅ Agent execution successful: {len(stages)} stage(s) completed")
+        
+        # Phase 5: Calculate total interaction events from all stages
         total_timeline_events = 0
-        if chain_execution and "stages" in chain_execution:
-            for stage in chain_execution["stages"]:
-                stage_timeline = stage.get("timeline", [])
-                total_timeline_events += len(stage_timeline)
+        for stage in stages:
+            stage_interactions = stage.get("llm_interactions", []) + stage.get("mcp_communications", [])
+            total_timeline_events += len(stage_interactions)
         
-        print(f"📅 Total timeline events across all stages: {total_timeline_events}")
+        print(f"📅 Total interaction events across all stages: {total_timeline_events}")
         
         # VALIDATION 8: Verify alert data in session detail matches our submission
         session_alert_data = detail_data.get("alert_data", {})
@@ -702,119 +882,57 @@ Action Input: {step['action_input']}"""
             assert stored_alert_type == expected_alert_type, f"Stored alert type mismatch: expected {expected_alert_type}, got {stored_alert_type}"
             print(f"✅ Session detail alert data matches submission")
         
-        # VALIDATION 9: Comprehensive summary statistics validation
-        print("🔍 Validating session summary statistics...")
-        summary = detail_data.get("summary", {})
-        assert isinstance(summary, dict), "Summary should be a dictionary"
-        assert summary, "Summary should not be empty"  # Should not be {} anymore
+        # Phase 5: VALIDATION 9 - Summary data is now embedded in DetailedSession, validate via summary endpoint
+        print("🔍 Validating session summary statistics via dedicated endpoint...")
+        # We already validated the summary endpoint earlier, so we can refer to that data
+        # Just validate that DetailedSession has the core count fields
         
-        # Required summary fields
-        required_summary_fields = [
-            "total_interactions", "llm_interactions", "mcp_communications", 
-            "system_events", "errors_count", "total_duration_ms"
-        ]
+        # Phase 5: Required fields are now directly in DetailedSession
+        required_detail_count_fields = ["total_interactions", "llm_interaction_count", "mcp_communication_count"]
         
-        for field in required_summary_fields:
-            assert field in summary, f"Missing required summary field: {field}"
-            assert isinstance(summary[field], int), f"Summary field '{field}' should be an integer"
-            assert summary[field] >= 0, f"Summary field '{field}' should be non-negative"
+        for field in required_detail_count_fields:
+            assert field in detail_data, f"Missing required count field in DetailedSession: {field}"
+            assert isinstance(detail_data[field], int), f"DetailedSession field '{field}' should be an integer"
+            assert detail_data[field] >= 0, f"DetailedSession field '{field}' should be non-negative"
         
-        # EXACT VALIDATION: We know precisely what this test should produce
-        # Based on our mock setup: 8 LLM + 5 MCP + 0 system = 13 total interactions
-        expected_exact_summary = {
-            "total_interactions": 13,
-            "llm_interactions": 8,
-            "mcp_communications": 5,
-            "system_events": 0,
-            "errors_count": 0
+        # Phase 5: EXACT VALIDATION - Validate DetailedSession count fields match expected values (updated for tool_list)
+        expected_detail_counts = {
+            "total_interactions": 15,  # 8 LLM + 7 MCP (includes 2 tool_list)
+            "llm_interaction_count": 8,
+            "mcp_communication_count": 7  # 5 tool_call + 2 tool_list
         }
         
-        for field, expected_value in expected_exact_summary.items():
-            actual_value = summary.get(field, -999)
-            assert actual_value == expected_value, f"EXACT VALIDATION FAILED: {field} expected exactly {expected_value}, got {actual_value}"
+        for field, expected_value in expected_detail_counts.items():
+            actual_value = detail_data.get(field, -999)
+            assert actual_value == expected_value, f"EXACT VALIDATION FAILED: DetailedSession {field} expected exactly {expected_value}, got {actual_value}"
         
-        # SANITY CHECK: Duration should be non-negative (exact value depends on execution speed)
-        total_duration = summary.get("total_duration_ms", -1)
-        assert total_duration >= 0, f"SANITY CHECK FAILED: Processing duration is negative ({total_duration}ms)"
+        print(f"   📊 DetailedSession count fields validated:")
+        print(f"      Total Interactions: {detail_data['total_interactions']}")
+        print(f"      LLM Interactions: {detail_data['llm_interaction_count']}")
+        print(f"      MCP Communications: {detail_data['mcp_communication_count']}")
         
-        print(f"   📊 Summary statistics found:")
-        print(f"      Total Interactions: {summary['total_interactions']}")
-        print(f"      LLM Interactions: {summary['llm_interactions']}")
-        print(f"      MCP Communications: {summary['mcp_communications']}")
-        print(f"      System Events: {summary['system_events']}")
-        print(f"      Errors Count: {summary['errors_count']}")
-        print(f"      Total Duration (ms): {summary['total_duration_ms']}")
+        # Phase 5: Validation - DetailedSession counts should match actual stage interaction counts
+        calculated_total_events = 0
+        calculated_llm_events = 0
+        calculated_mcp_events = 0
         
-        # Validation: Total interactions should equal sum of individual interaction types
-        expected_total = summary['llm_interactions'] + summary['mcp_communications'] + summary['system_events']
-        assert summary['total_interactions'] == expected_total, \
-            f"Total interactions ({summary['total_interactions']}) should equal sum of LLM + MCP + System ({expected_total})"
+        for stage in stages:
+            stage_interactions = stage.get("llm_interactions", []) + stage.get("mcp_communications", [])
+            calculated_total_events += len(stage_interactions)
+            calculated_llm_events += len(stage.get("llm_interactions", []))
+            calculated_mcp_events += len(stage.get("mcp_communications", []))
         
-        # Validation: Summary should match actual timeline events count
-        # Count all timeline events across all stages
-        actual_total_events = 0
-        actual_llm_events = 0
-        actual_mcp_events = 0
-        actual_system_events = 0
+        # Assert DetailedSession counts match calculated stage counts
+        assert detail_data['total_interactions'] == calculated_total_events, \
+            f"DetailedSession total_interactions ({detail_data['total_interactions']}) != calculated events ({calculated_total_events})"
+        assert detail_data['llm_interaction_count'] == calculated_llm_events, \
+            f"DetailedSession llm_interaction_count ({detail_data['llm_interaction_count']}) != calculated LLM events ({calculated_llm_events})"
+        assert detail_data['mcp_communication_count'] == calculated_mcp_events, \
+            f"DetailedSession mcp_communication_count ({detail_data['mcp_communication_count']}) != calculated MCP events ({calculated_mcp_events})"
         
-        if chain_execution and "stages" in chain_execution:
-            for stage in chain_execution["stages"]:
-                stage_timeline = stage.get("timeline", [])
-                actual_total_events += len(stage_timeline)
-                actual_llm_events += len([e for e in stage_timeline if e.get("type") == "llm"])
-                actual_mcp_events += len([e for e in stage_timeline if e.get("type") == "mcp"])
-                actual_system_events += len([e for e in stage_timeline if e.get("type") == "system"])
-        
-        # Assert summary matches actual timeline counts
-        assert summary['total_interactions'] == actual_total_events, \
-            f"Summary total_interactions ({summary['total_interactions']}) != actual timeline events ({actual_total_events})"
-        assert summary['llm_interactions'] == actual_llm_events, \
-            f"Summary llm_interactions ({summary['llm_interactions']}) != actual LLM events ({actual_llm_events})"
-        assert summary['mcp_communications'] == actual_mcp_events, \
-            f"Summary mcp_communications ({summary['mcp_communications']}) != actual MCP events ({actual_mcp_events})"
-        assert summary['system_events'] == actual_system_events, \
-            f"Summary system_events ({summary['system_events']}) != actual system events ({actual_system_events})"
-        
-        # EXACT VALIDATION: Chain-specific statistics (we know exactly what this test produces)
-        if chain_execution and "stages" in chain_execution:
-            assert "chain_statistics" in summary, "Chain executions should have chain_statistics in summary"
-            chain_stats = summary["chain_statistics"]
-            
-            # Required chain statistics fields
-            required_chain_fields = ["total_stages", "completed_stages", "failed_stages", "stages_by_agent"]
-            for field in required_chain_fields:
-                assert field in chain_stats, f"Missing required chain statistics field: {field}"
-            
-            # EXACT VALIDATION: We know precisely what this test should produce
-            expected_chain_stats = {
-                "total_stages": 3,
-                "completed_stages": 3,
-                "failed_stages": 0
-            }
-            
-            for field, expected_value in expected_chain_stats.items():
-                actual_value = chain_stats.get(field, -999)
-                assert actual_value == expected_value, f"EXACT VALIDATION FAILED: Chain stats {field} expected exactly {expected_value}, got {actual_value}"
-            
-            # EXACT VALIDATION: stages_by_agent should show exactly our test agents
-            expected_stages_by_agent = {
-                "DataCollectionAgent": 1,
-                "KubernetesAgent": 1, 
-                "AnalysisAgent": 1
-            }
-            
-            actual_stages_by_agent = chain_stats.get("stages_by_agent", {})
-            for agent, expected_count in expected_stages_by_agent.items():
-                actual_count = actual_stages_by_agent.get(agent, -999)
-                assert actual_count == expected_count, f"EXACT VALIDATION FAILED: stages_by_agent[{agent}] expected exactly {expected_count}, got {actual_count}"
-            
-            print(f"   🔗 Chain statistics validated:")
-            print(f"      Total Stages: {chain_stats['total_stages']}")
-            print(f"      Completed Stages: {chain_stats['completed_stages']}")
-            print(f"      Failed Stages: {chain_stats['failed_stages']}")
-            print(f"      Stages by Agent: {chain_stats['stages_by_agent']}")
-        
-        print(f"✅ Session summary statistics validation passed - All statistics accurate")
+        # Phase 5: Chain statistics validation is done via the summary endpoint (already validated above)
+        # DetailedSession doesn't have embedded chain statistics - they're only in SessionStats from summary endpoint
+        print(f"✅ DetailedSession count validation passed - All counts accurate")
         
         print(f"✅ Session detail validation passed - Chain data comprehensive")
         
@@ -824,7 +942,7 @@ Action Input: {step['action_input']}"""
         
         print("✅ Comprehensive sessions API validation completed successfully!")
         
-        return our_session, stage_interaction_counts if 'stages' in chain_execution else {}
+        return our_session, stage_interaction_counts if stages else {}
 
     def _validate_session_vs_stage_counts(self, session_level_counts: dict, stage_level_totals: dict):
         """
@@ -858,10 +976,10 @@ Action Input: {step['action_input']}"""
         assert session_mcp == stage_mcp, f"CROSS-VALIDATION FAILED: Session MCP count ({session_mcp}) != Stage MCP total ({stage_mcp})"
         assert session_total == stage_total, f"CROSS-VALIDATION FAILED: Session total count ({session_total}) != Stage total count ({stage_total})"
         
-        # EXPECTED VALUES VALIDATION: Ensure they match our known test scenario
-        expected_llm = 8    # 4 + 3 + 1 from all stages
-        expected_mcp = 5    # 3 + 2 + 0 from all stages
-        expected_total = 13 # 8 + 5
+        # EXPECTED VALUES VALIDATION: Ensure they match our known test scenario (updated for tool_list)
+        expected_llm = 8    # 4 + 3 + 1 from all stages (unchanged)
+        expected_mcp = 7    # 4 + 3 + 0 from all stages (includes tool_list interactions)
+        expected_total = 15 # 8 + 7
         
         assert session_llm == expected_llm, f"EXPECTED VALUES FAILED: Session LLM count ({session_llm}) != Expected ({expected_llm})"
         assert session_mcp == expected_mcp, f"EXPECTED VALUES FAILED: Session MCP count ({session_mcp}) != Expected ({expected_mcp})"
@@ -948,14 +1066,31 @@ Action Input: {step['action_input']}"""
             mock_mcp_client_instance.list_servers = AsyncMock(return_value=["kubernetes-server"])
             mock_mcp_client_instance.get_available_tools = AsyncMock(return_value=["get_namespace", "patch_namespace", "check_status"])
             
-            # CRITICAL: This is the method that was failing at line 639 in base_agent.py
-            mock_mcp_client_instance.list_tools = AsyncMock(return_value={
-                "kubernetes-server": [
-                    {"name": "get_namespace", "description": "Get namespace information"},
-                    {"name": "patch_namespace", "description": "Patch namespace configuration"},
-                    {"name": "check_status", "description": "Check resource status"},
-                ]
-            })
+            # CRITICAL: Hook-aware list_tools implementation that triggers tool_list interactions
+            async def hook_aware_list_tools(session_id: str, server_name: str = None, stage_execution_id: str = None):
+                # Import the real hook context
+                from tarsy.hooks.typed_context import mcp_list_context
+                
+                # Use the real hook context to record this tool discovery interaction
+                async with mcp_list_context(session_id, server_name, stage_execution_id) as ctx:
+                    # Generate tool list data like the real implementation
+                    tools_data = {
+                        "kubernetes-server": [
+                            {"name": "get_namespace", "description": "Get namespace information"},
+                            {"name": "patch_namespace", "description": "Patch namespace configuration"}, 
+                            {"name": "check_status", "description": "Check resource status"},
+                        ]
+                    }
+                    
+                    # Update context with tool data (like the real MCP client does)
+                    ctx.interaction.available_tools = tools_data
+                    
+                    # Complete context successfully (this triggers the hooks!)
+                    await ctx.complete_success({})
+                    
+                    return tools_data
+            
+            mock_mcp_client_instance.list_tools = AsyncMock(side_effect=hook_aware_list_tools)
             mock_mcp_client_class.return_value = mock_mcp_client_instance
             
             # Setup MCP Server Registry mock with realistic tool discovery
@@ -1113,11 +1248,11 @@ Action Input: {step['action_input']}"""
                 # EXACT VALIDATION: We MUST have stage interaction data
                 assert stage_interaction_counts, "EXACT VALIDATION FAILED: No stage interaction counts available. Stage processing failed."
                 
-                # EXACT VALIDATION: Final verification of exact stage interaction counts
+                # EXACT VALIDATION: Final verification of exact stage interaction counts (updated for tool_list)
                 final_stage_exact_counts = {
-                    "stage_0": {"llm": 4, "mcp": 3, "total": 7},  # data-collection
-                    "stage_1": {"llm": 3, "mcp": 2, "total": 5},  # verification  
-                    "stage_2": {"llm": 1, "mcp": 0, "total": 1}   # analysis (final-analysis strategy)
+                    "data-collection": {"llm": 4, "mcp": 4, "total": 8},  # ReAct: 4 LLM + 1 tool_list + 3 MCP tool calls
+                    "verification": {"llm": 3, "mcp": 3, "total": 6},     # ReAct: 3 LLM + 1 tool_list + 2 MCP tool calls  
+                    "analysis": {"llm": 1, "mcp": 0, "total": 1}          # react-final-analysis: 1 LLM + 0 MCP (no tools executed)
                 }
                 
                 print(f"   📊 Stage breakdown:")

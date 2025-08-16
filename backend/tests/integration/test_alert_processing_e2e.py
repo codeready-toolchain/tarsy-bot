@@ -735,11 +735,11 @@ data:
         
         for alert_type, expected_agent in test_cases:
             # Create mock chain definition for the test
-            from tarsy.models.chains import ChainDefinitionModel, ChainStageModel
-            registry_mock.get_chain_for_alert_type.return_value = ChainDefinitionModel(
+            from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+            registry_mock.get_chain_for_alert_type.return_value = ChainConfigModel(
                 chain_id=f'{alert_type}-chain',
                 alert_types=[alert_type],
-                stages=[ChainStageModel(name='analysis', agent=expected_agent)],
+                stages=[ChainStageConfigModel(name='analysis', agent=expected_agent)],
                 description=f'Test chain for {alert_type}'
             )
             

@@ -9,9 +9,9 @@ import pytest
 from unittest.mock import Mock, patch
 
 from tarsy.services.chain_registry import ChainRegistry
-from tarsy.models.chains import ChainDefinitionModel, ChainStageModel
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 from tarsy.config.agent_config import ConfigurationLoader
-from tests.utils import MockFactory, TestUtils, ChainFactory
+from tests.utils import ChainFactory
 
 
 @pytest.mark.unit
@@ -252,7 +252,7 @@ class TestChainRegistryIntegration:
         assert k8s_chain.stages[0].agent == 'KubernetesAgent'
     
     def test_chain_definition_models_creation(self):
-        """Test that ChainDefinitionModel objects are created correctly."""
+        """Test that ChainConfigModel objects are created correctly."""
         with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
             test_chain = ChainFactory.create_kubernetes_chain(
                 chain_id='test-chain',
@@ -264,15 +264,15 @@ class TestChainRegistryIntegration:
             registry = ChainRegistry()
             chain = registry.get_chain_for_alert_type('test1')
             
-            # Verify ChainDefinitionModel structure
-            assert isinstance(chain, ChainDefinitionModel)
+            # Verify ChainConfigModel structure
+            assert isinstance(chain, ChainConfigModel)
             assert chain.chain_id == 'test-chain'
             assert chain.alert_types == ['test1', 'test2']
             assert chain.description == 'Test chain description'
             
-            # Verify ChainStageModel structure
+            # Verify ChainStageConfigModel structure
             assert len(chain.stages) == 2
-            assert isinstance(chain.stages[0], ChainStageModel)
+            assert isinstance(chain.stages[0], ChainStageConfigModel)
             assert chain.stages[0].name == 'data-collection'
             assert chain.stages[0].agent == 'KubernetesAgent'
             assert chain.stages[0].iteration_strategy == 'regular'

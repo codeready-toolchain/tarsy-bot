@@ -591,9 +591,15 @@ class HistoryRepository:
             for stage_db in stage_executions_db:
                 stage_interactions = interactions_by_stage.get(stage_db.execution_id, [])
                 
-                # Separate LLM and MCP interactions
-                llm_stage_interactions = [i for i in stage_interactions if isinstance(i, LLMInteraction)]
-                mcp_stage_interactions = [i for i in stage_interactions if isinstance(i, MCPInteraction)]
+                # Separate LLM and MCP interactions and sort chronologically
+                llm_stage_interactions = sorted(
+                    [i for i in stage_interactions if isinstance(i, LLMInteraction)],
+                    key=lambda x: x.timestamp_us
+                )
+                mcp_stage_interactions = sorted(
+                    [i for i in stage_interactions if isinstance(i, MCPInteraction)], 
+                    key=lambda x: x.timestamp_us
+                )
                 
                 detailed_stage = DetailedStage(
                     execution_id=stage_db.execution_id,

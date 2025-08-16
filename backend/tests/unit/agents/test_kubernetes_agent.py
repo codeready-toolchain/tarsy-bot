@@ -16,7 +16,7 @@ from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert import Alert
-from tarsy.models.mcp_config import MCPServerConfig
+from tarsy.models.agent_config import MCPServerConfigModel
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.timestamp import now_us
 
@@ -44,7 +44,7 @@ class TestKubernetesAgentInitialization:
     def mock_mcp_registry(self):
         """Create mock MCP registry."""
         registry = Mock(spec=MCPServerRegistry)
-        server_config = MCPServerConfig(
+        server_config = MCPServerConfigModel(
             server_id="kubernetes-server",
             server_type="kubernetes",
             enabled=True,
@@ -274,7 +274,7 @@ class TestKubernetesAgentInheritedFunctionality:
         mock_mcp.call_tool = AsyncMock(return_value={"result": "test"})
         
         mock_registry = Mock(spec=MCPServerRegistry)
-        server_config = MCPServerConfig(
+        server_config = MCPServerConfigModel(
             server_id="kubernetes-server",
             server_type="kubernetes",
             enabled=True,
@@ -387,7 +387,7 @@ class TestKubernetesAgentLLMIntegration:
         mock_registry = Mock(spec=MCPServerRegistry)
         
         # Mock server config
-        server_config = MCPServerConfig(
+        server_config = MCPServerConfigModel(
             server_id="kubernetes-server",
             server_type="kubernetes",
             enabled=True,
@@ -481,7 +481,7 @@ class TestKubernetesAgentMCPIntegration:
         mock_mcp = Mock(spec=MCPClient)
         mock_registry = Mock(spec=MCPServerRegistry)
         
-        server_config = MCPServerConfig(
+        server_config = MCPServerConfigModel(
             server_id="kubernetes-server",
             server_type="kubernetes",
             enabled=True,
@@ -641,7 +641,7 @@ class TestKubernetesAgentIntegrationScenarios:
         mock_callback = Mock()
         
         # Configure MCP registry with kubernetes-server
-        server_config = MCPServerConfig(
+        server_config = MCPServerConfigModel(
             server_id="kubernetes-server",
             server_type="kubernetes", 
             enabled=True,

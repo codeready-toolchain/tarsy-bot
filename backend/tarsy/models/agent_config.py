@@ -240,6 +240,11 @@ class ChainConfigModel(BaseModel):
         str_strip_whitespace=True
     )
     
+    chain_id: str = Field(
+        ...,
+        description="Unique chain identifier",
+        min_length=1
+    )
     alert_types: List[str] = Field(
         ...,
         description="Alert types this chain handles",

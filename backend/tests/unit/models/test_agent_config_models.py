@@ -397,6 +397,7 @@ class TestCombinedConfigModel:
             },
             "agent_chains": {
                 "security-chain": {
+                    "chain_id": "security-chain",
                     "alert_types": ["security"],
                     "stages": [
                         {
@@ -441,6 +442,7 @@ class TestCombinedConfigModel:
             },
             "agent_chains": {
                 "test-chain": {
+                    "chain_id": "test-chain",
                     "alert_types": ["security"],
                     "stages": [
                         {
@@ -469,6 +471,7 @@ class TestCombinedConfigModel:
             "mcp_servers": {},
             "agent_chains": {
                 "builtin-chain": {
+                    "chain_id": "builtin-chain",
                     "alert_types": ["kubernetes"],
                     "stages": [
                         {
@@ -503,6 +506,7 @@ class TestCombinedConfigModel:
             "mcp_servers": {},
             "agent_chains": {
                 "chain1": {
+                    "chain_id": "chain1",
                     "alert_types": ["security"],
                     "stages": [
                         {
@@ -512,6 +516,7 @@ class TestCombinedConfigModel:
                     ]
                 },
                 "chain2": {
+                    "chain_id": "chain2",
                     "alert_types": ["performance"],
                     "stages": [
                         {

@@ -5,6 +5,7 @@ Tests model creation, validation, serialization, and data access methods.
 """
 
 import pytest
+from pydantic import ValidationError
 from tarsy.models.agent_config import ChainStageConfigModel, ChainConfigModel
 
 
@@ -64,7 +65,7 @@ class TestChainStageConfigModel:
     def test_to_dict_serialization(self, stage_data, expected_dict):
         """Test stage serialization to dictionary with various configurations."""
         stage = ChainStageConfigModel(**stage_data)
-        result = stage.to_dict()
+        result = stage.model_dump()
         assert result == expected_dict
 
 
@@ -108,7 +109,7 @@ class TestChainConfigModel:
         )
         
         # Test serialization to dict
-        chain_dict = chain.to_dict()
+        chain_dict = chain.model_dump()
         
         # Test that we can reconstruct the stages properly
         reconstructed_stages = [ChainStageConfigModel(**stage_dict) for stage_dict in chain_dict['stages']]
@@ -172,7 +173,7 @@ class TestChainConfigModel:
             description="Test serialization"
         )
         
-        result = chain.to_dict()
+        result = chain.model_dump()
         expected = {
             'chain_id': 'serialization-test',
             'alert_types': ['alert1', 'alert2'],
@@ -194,7 +195,7 @@ class TestChainConfigModel:
             stages=[stage]
         )
         
-        result = chain.to_dict()
+        result = chain.model_dump()
         expected = {
             'chain_id': 'test-chain',
             'alert_types': ['test'],
@@ -212,28 +213,29 @@ class TestChainModelValidation:
     """Test validation and edge cases for chain models."""
     
     def test_empty_stages_list(self):
-        """Test chain with empty stages list."""
-        # This should be allowed by the model but may be invalid in business logic
-        chain = ChainConfigModel(
-            chain_id="empty-chain",
-            alert_types=["test"],
-            stages=[]
-        )
+        """Test chain with empty stages list should fail validation."""
+        # This should raise a validation error due to min_length=1 constraint
+        with pytest.raises(ValidationError) as exc_info:
+            ChainConfigModel(
+                chain_id="empty-chain",
+                alert_types=["test"],
+                stages=[]
+            )
         
-        assert len(chain.stages) == 0
-        assert chain.to_dict()['stages'] == []
+        assert "too_short" in str(exc_info.value)
     
     def test_empty_alert_types_list(self):
-        """Test chain with empty alert types list."""
+        """Test chain with empty alert types list should fail validation."""
+        # This should raise a validation error due to min_length=1 constraint
         stage = ChainStageConfigModel(name="test", agent="TestAgent")
-        chain = ChainConfigModel(
-            chain_id="no-alerts-chain",
-            alert_types=[],
-            stages=[stage]
-        )
+        with pytest.raises(ValidationError) as exc_info:
+            ChainConfigModel(
+                chain_id="no-alerts-chain",
+                alert_types=[],
+                stages=[stage]
+            )
         
-        assert len(chain.alert_types) == 0
-        assert chain.to_dict()['alert_types'] == []
+        assert "too_short" in str(exc_info.value)
     
     def test_stage_name_variations(self):
         """Test stage names with various formats."""
@@ -249,7 +251,7 @@ class TestChainModelValidation:
         for name in test_names:
             stage = ChainStageConfigModel(name=name, agent="TestAgent")
             assert stage.name == name
-            assert stage.to_dict()['name'] == name
+            assert stage.model_dump()['name'] == name
     
     def test_agent_identifier_variations(self):
         """Test agent identifiers with various formats."""
@@ -265,7 +267,7 @@ class TestChainModelValidation:
         for agent in test_agents:
             stage = ChainStageConfigModel(name="test", agent=agent)
             assert stage.agent == agent
-            assert stage.to_dict()['agent'] == agent
+            assert stage.model_dump()['agent'] == agent
 
 
 @pytest.mark.unit
@@ -309,7 +311,7 @@ class TestChainModelComplexScenarios:
         assert "Comprehensive" in chain.description
         
         # Verify serialization works
-        serialized = chain.to_dict()
+        serialized = chain.model_dump()
         assert len(serialized['stages']) == 4
         assert serialized['stages'][0]['iteration_strategy'] == 'regular'
         assert serialized['stages'][1]['agent'] == 'ConfigurableAgent:log-analyzer'
@@ -358,7 +360,7 @@ class TestChainModelComplexScenarios:
         assert len(configurable_agents) == 2
         
         # Verify serialization preserves agent identifiers
-        serialized = chain.to_dict()
+        serialized = chain.model_dump()
         agent_ids = [stage['agent'] for stage in serialized['stages']]
         assert "KubernetesAgent" in agent_ids
         assert "ConfigurableAgent:custom1" in agent_ids

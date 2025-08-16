@@ -147,7 +147,7 @@ class LLMClient:
                 typed_response = LLMResponse(
                     choices=[
                         LLMChoice(
-                            message=TypedLLMMessage(role="assistant", content=response.content),
+                            message=LLMMessage(role="assistant", content=response.content),
                             finish_reason="stop"
                         )
                     ],
