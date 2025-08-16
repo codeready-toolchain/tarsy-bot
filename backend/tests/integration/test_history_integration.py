@@ -195,12 +195,14 @@ class TestHistoryServiceIntegration:
         # Verify complete timeline
         timeline = history_service_with_db.get_session_timeline(session_id)
         assert timeline is not None
-        assert timeline["session"]["status"] == "completed"
-        assert len(timeline["chronological_timeline"]) == 2
-        assert timeline["session"]["total_interactions"] == 2
-        # Check individual interaction/communication lists
-        assert len(timeline["llm_interactions"]) == 1
-        assert len(timeline["mcp_communications"]) == 1
+        assert timeline.status.value == "completed"  # Access enum status
+        # Total interactions from all stages
+        total_stage_interactions = sum(len(stage.llm_interactions) + len(stage.mcp_communications) for stage in timeline.stages)
+        assert total_stage_interactions == 2
+        assert timeline.total_interactions == 2
+        # Check interaction counts
+        assert timeline.llm_interaction_count == 1
+        assert timeline.mcp_communication_count == 1
     
     @pytest.mark.integration
     def test_chronological_timeline_ordering(self, history_service_with_db, sample_alert):
@@ -270,23 +272,29 @@ class TestHistoryServiceIntegration:
         
         # Get timeline and verify ordering
         timeline = history_service_with_db.get_session_timeline(session_id)
-        events = timeline["chronological_timeline"]
         
-        assert len(events) == 3
+        # Collect all interactions from all stages
+        all_interactions = []
+        for stage in timeline.stages:
+            all_interactions.extend(stage.llm_interactions)
+            all_interactions.extend(stage.mcp_communications)
         
-        # Verify events are in chronological order
-        for i in range(len(events) - 1):
-            current_time_us = events[i]["timestamp_us"]
-            next_time_us = events[i + 1]["timestamp_us"]
-            assert current_time_us <= next_time_us, f"Event {i} timestamp is after event {i+1}"
+        assert len(all_interactions) == 3
         
-        # Verify event types in expected order
-        assert events[0]["type"] == "llm"
-        assert events[0]["step_description"] == "Initial analysis"
-        assert events[1]["type"] == "mcp"
-        assert events[1]["step_description"] == "Get namespace info"
-        assert events[2]["type"] == "llm"
-        assert events[2]["step_description"] == "Follow-up analysis"
+        # Sort interactions by timestamp and verify chronological order
+        all_interactions.sort(key=lambda x: x.timestamp_us)
+        for i in range(len(all_interactions) - 1):
+            current_time_us = all_interactions[i].timestamp_us
+            next_time_us = all_interactions[i + 1].timestamp_us
+            assert current_time_us <= next_time_us, f"Interaction {i} timestamp is after interaction {i+1}"
+        
+        # Verify interaction types and descriptions in expected order
+        assert hasattr(all_interactions[0].details, 'model_name')  # LLM interaction
+        assert all_interactions[0].step_description == "Initial analysis"
+        assert hasattr(all_interactions[1].details, 'server_name')  # MCP interaction
+        assert all_interactions[1].step_description == "Get namespace info"
+        assert hasattr(all_interactions[2].details, 'model_name')  # LLM interaction
+        assert all_interactions[2].step_description == "Follow-up analysis"
     
     @pytest.mark.integration
     def test_complex_filtering_scenarios(self, history_service_with_db):
@@ -339,36 +347,40 @@ class TestHistoryServiceIntegration:
                 history_service_with_db.log_llm_interaction(llm_interaction_variety)
         
         # Test 1: Filter by alert_type + status
-        sessions, count = history_service_with_db.get_sessions_list(
+        result = history_service_with_db.get_sessions_list(
             filters={"alert_type": "NamespaceTerminating", "status": "completed"}
         )
-        assert count == 2  # session-1 and session-4
+        assert result is not None
+        assert result.pagination.total_items == 2  # session-1 and session-4
         
         # Test 2: Filter by agent_type + status + alert_type
-        sessions, count = history_service_with_db.get_sessions_list(
+        result = history_service_with_db.get_sessions_list(
             filters={
                 "agent_type": "KubernetesAgent",
                 "status": "completed",
                 "alert_type": "NamespaceTerminating"
             }
         )
-        assert count == 1  # only session-1
+        assert result is not None
+        assert result.pagination.total_items == 1  # only session-1
         
         # Test 3: Filter by time range
         cutoff_time = now - timedelta(hours=5)
-        sessions, count = history_service_with_db.get_sessions_list(
+        result = history_service_with_db.get_sessions_list(
             filters={"start_date_us": int(cutoff_time.timestamp() * 1_000_000)}
         )
-        assert count == 4  # All except session-5 (older than 5 hours)
+        assert result is not None
+        assert result.pagination.total_items == 4  # All except session-5 (older than 5 hours)
         
         # Test 4: Combined filters with pagination
-        sessions, count = history_service_with_db.get_sessions_list(
+        result = history_service_with_db.get_sessions_list(
             filters={"agent_type": "KubernetesAgent"},
             page=1,
             page_size=2
         )
-        assert len(sessions) == 2  # First page of KubernetesAgent sessions
-        assert count == 4  # Total KubernetesAgent sessions
+        assert result is not None
+        assert len(result.sessions) == 2  # First page of KubernetesAgent sessions
+        assert result.pagination.total_items == 4  # Total KubernetesAgent sessions
     
     @pytest.mark.integration
     def test_error_handling_and_graceful_degradation(self, history_service_with_db, sample_alert):
@@ -405,7 +417,7 @@ class TestHistoryServiceIntegration:
         
         # Test timeline retrieval with invalid session ID
         timeline = history_service_with_db.get_session_timeline("non-existent-session")
-        assert timeline == {}  # Should return empty dict for non-existent sessions
+        assert timeline is None  # Should return None for non-existent sessions
     
 
     @pytest.mark.integration
@@ -436,7 +448,7 @@ class TestHistoryServiceIntegration:
         # Verify session was created correctly
         timeline = history_service_with_db.get_session_timeline(session_id)
         assert timeline is not None
-        assert timeline["session"]["status"] == "completed"
+        assert timeline.status.value == "completed"
         
         logger.info("✅ SQLite retry logic and improvements working correctly")
 
@@ -589,63 +601,26 @@ class TestHistoryAPIIntegration:
     @pytest.fixture
     def mock_history_service_for_api(self):
         """Create mock history service for API testing."""
-        service = Mock()
-        service.enabled = True
+        from tests.utils import MockFactory, SessionFactory
+        from unittest.mock import AsyncMock
         
-        # Mock sessions data with all required attributes (using Unix timestamps)
-        from tarsy.models.history import now_us
-        current_time_us = now_us()
+        # Create the base mock service with all sensible defaults
+        service = MockFactory.create_mock_history_service()
         
-        mock_sessions = [
-            Mock(
-                session_id="api-session-1",
-                alert_id="api-alert-1",
-                alert_type="NamespaceTerminating",
-                agent_type="KubernetesAgent",
-                status="completed",
-                started_at_us=current_time_us - 300000000,  # Started 5 minutes ago
-                completed_at_us=current_time_us,  # Completed now
-                error_message=None,
-                llm_interactions=[],  # Add missing attributes
-                mcp_communications=[],
-                # Add the new dynamic attributes expected by the controller
-                llm_interaction_count=0,
-                mcp_communication_count=0
-            )
-        ]
-        service.get_sessions_list.return_value = (mock_sessions, 1)
+        # Override only what's specific to this test
+        custom_detailed_session = SessionFactory.create_detailed_session(
+            session_id="api-session-1",
+            chain_id="integration-chain-123",  # Match test expectation
+        )
+        service.get_session_timeline.return_value = custom_detailed_session
         
-        # Mock timeline data with correct structure (session instead of session_info) using Unix timestamps
-        service.get_session_timeline.return_value = {
-            "session": {
-                "session_id": "api-session-1",
-                "alert_id": "api-alert-1",
-                "alert_type": "NamespaceTerminating",
-                "agent_type": "KubernetesAgent",
-                "status": "completed",
-                "started_at_us": current_time_us - 300000000,  # Started 5 minutes ago
-                "completed_at_us": current_time_us,  # Completed now
-                "error_message": None
-            },
-            "chronological_timeline": [
-                {
-                    "interaction_id": "int-1",
-                    "type": "llm_interaction",
-                    "timestamp_us": current_time_us - 240000000,  # 4 minutes ago
-                    "step_description": "Analysis",
-                    "details": {
-                        "prompt_text": "Analyze issue",
-                        "response_text": "Found solution"
-                    }
-                }
-            ]
-        }
+        # Override session stats to match test expectations
+        custom_stats = SessionFactory.create_session_stats(
+            total_duration_ms=150000  # Match test expectation
+        )
+        service.get_session_summary = AsyncMock(return_value=custom_stats)
         
-        service.test_database_connection.return_value = True
-        service.settings = Mock()
-        service.settings.history_database_url = "sqlite:///test.db"
-        
-        # Add calculate_session_summary mock with default return value
+        # Add legacy mock for backward compatibility
         service.calculate_session_summary.return_value = {
             "total_interactions": 2,
             "llm_interactions": 1,
@@ -681,7 +656,7 @@ class TestHistoryAPIIntegration:
             assert len(data["sessions"]) == 1
             assert data["sessions"][0]["session_id"] == "api-session-1"
             
-            # Verify service was called with correct parameters
+            # Verify service was called with correct parameters (Phase 4)
             mock_history_service_for_api.get_sessions_list.assert_called_once()
             call_args = mock_history_service_for_api.get_sessions_list.call_args
             assert call_args.kwargs["filters"]["status"] == ["completed"]  # Now expects list due to multiple status support
@@ -700,105 +675,9 @@ class TestHistoryAPIIntegration:
         current_time_us = now_us()
         expected_session_id = "api-session-1"
         
-        mock_history_service_for_api.get_session_timeline.return_value = {
-            "session": {
-                "session_id": expected_session_id,
-                "alert_id": "api-alert-1",
-                "alert_type": "NamespaceTerminating",
-                "agent_type": "KubernetesAgent", 
-                "status": "completed",
-                "started_at_us": current_time_us - 300000000,  # Started 5 minutes ago
-                "completed_at_us": current_time_us,  # Completed now
-                "error_message": None,
-                "chain_id": "integration-chain-123"  # Add chain_id so endpoint processes chain execution
-            },
-            "chronological_timeline": [
-                {
-                    "interaction_id": "int-1",
-                    "event_id": "int-1",  # Add required event_id
-                    "type": "llm",  # Changed from llm_interaction to llm to match controller logic
-                    "timestamp_us": current_time_us - 240000000,  # 4 minutes ago
-                    "step_description": "Analysis",
-                    "duration_ms": 120000,  # Add duration for calculation
-                    "stage_execution_id": "integration-exec-1",  # Map to our stage
-                    "details": {
-                        "prompt_text": "Analyze issue",
-                        "response_text": "Found solution"
-                    }
-                },
-                {
-                    "interaction_id": "int-2",
-                    "event_id": "int-2",  # Add required event_id
-                    "type": "mcp",  # Add an MCP interaction
-                    "timestamp_us": current_time_us - 180000000,  # 3 minutes ago 
-                    "step_description": "Tool execution",
-                    "duration_ms": 30000,  # Add duration
-                    "stage_execution_id": "integration-exec-1",  # Map to our stage
-                    "details": {
-                        "tool_name": "kubectl_get",
-                        "result": "namespace info retrieved"
-                    }
-                }
-            ]
-        }
+        # Phase 4: Type-safe DetailedSession already set up above - no dict override needed
         
-        # Mock the get_session_with_stages method to return chain execution data
-        async def mock_get_session_with_stages(session_id):
-            return {
-                "session": {
-                    "session_id": expected_session_id,
-                    "chain_id": "integration-chain-123",
-                    "alert_type": "NamespaceTerminating",
-                    "status": "completed"
-                },
-                "stages": [
-                    {
-                        "execution_id": "integration-exec-1",
-                        "stage_id": "analysis-stage",
-                        "stage_name": "Root Cause Analysis",
-                        "stage_index": 0,
-                        "status": "completed",
-                        "started_at_us": current_time_us - 250000000,  # Started 4.2 minutes ago
-                        "completed_at_us": current_time_us - 60000000,  # Completed 1 minute ago
-                        "duration_ms": 190000,
-                        "interaction_summary": {
-                            "llm_count": 1,
-                            "mcp_count": 1,
-                            "total_count": 2,
-                            "duration_ms": 190000
-                        },
-                        "timeline": [
-                            {
-                                "interaction_id": "int-1",
-                                "event_id": "int-1",  # Add required event_id
-                                "type": "llm",  # Use normalized type
-                                "timestamp_us": current_time_us - 240000000,
-                                "step_description": "Analysis",
-                                "stage_execution_id": "integration-exec-1",  # Add required stage_execution_id
-                                "duration_ms": 120000,  # Add duration
-                                "details": {
-                                    "prompt_text": "Analyze issue",
-                                    "response_text": "Found solution"
-                                }
-                            }
-                        ]
-                    }
-                ]
-            }
-        mock_history_service_for_api.get_session_with_stages = mock_get_session_with_stages
-        
-        # Mock the new get_stage_interaction_counts method
-        mock_history_service_for_api.get_stage_interaction_counts.return_value = {
-            "integration-exec-1": {"llm_interactions": 1, "mcp_communications": 1}
-        }
-        
-        # Mock calculate_session_summary method
-        mock_history_service_for_api.calculate_session_summary.return_value = {
-            "total_interactions": 2,
-            "llm_interactions": 1, 
-            "mcp_communications": 1,
-            "total_duration_ms": 150000
-        }
+        # Phase 4: All legacy dict-based mocks removed - using type-safe models only
         
         # Use FastAPI's dependency override system instead of mock patching
         from tarsy.controllers.history_controller import get_history_service
@@ -806,6 +685,7 @@ class TestHistoryAPIIntegration:
         
         try:
             response = client.get(f"/api/v1/history/sessions/{expected_session_id}")
+            
             
             assert response.status_code == 200
             data = response.json()
@@ -960,9 +840,9 @@ class TestDuplicatePreventionIntegration:
         # Verify original session data is preserved
         session = history_service_with_test_db.get_session_timeline(session_id_1)
         assert session is not None
-        assert session["session"]["agent_type"] == "KubernetesAgent"  # Original agent type
-        assert session["session"]["alert_type"] == "PodCrashLoopBackOff"  # Original alert type
-        assert session["session"]["alert_data"]["severity"] == "high"  # Original severity
+        assert session.agent_type == "KubernetesAgent"  # Original agent type
+        assert session.alert_type == "PodCrashLoopBackOff"  # Original alert type
+        assert session.alert_data["severity"] == "high"  # Original severity
     
     def test_concurrent_session_creation_same_alert_id(self, history_service_with_test_db, sample_alert_data):
         """Test concurrent creation attempts with same alert_id."""
@@ -1017,13 +897,13 @@ class TestDuplicatePreventionIntegration:
         session_id = valid_results[0]
         session = history_service_with_test_db.get_session_timeline(session_id)
         
-        if not session or "session" not in session:
+        if not session:
             # Session was created but timeline can't be retrieved - this is acceptable for the test
             return
         
         # Original thread's data should be preserved (thread 0)
-        assert session["session"]["alert_data"]["thread_id"] == 0
-        assert session["session"]["agent_type"] == "Agent_0"
+        assert session.alert_data["thread_id"] == 0
+        assert session.agent_type == "Agent_0"
     
     def test_database_constraint_enforcement(self, history_service_with_test_db, sample_alert_data):
         """Test that database-level unique constraints are enforced."""
@@ -1202,8 +1082,8 @@ class TestDuplicatePreventionIntegration:
         session_1 = history_service_with_test_db.get_session_timeline(created_sessions["unique_alert_1"])
         session_2 = history_service_with_test_db.get_session_timeline(created_sessions["unique_alert_2"])
         
-        assert session_1["session"]["agent_type"] == "Agent1"  # Not "Agent1_Modified"
-        assert session_2["session"]["agent_type"] == "Agent2"  # Not "Agent2_Modified"
+        assert session_1.agent_type == "Agent1"  # Not "Agent1_Modified"
+        assert session_2.agent_type == "Agent2"  # Not "Agent2_Modified"
     
     def test_duplicate_prevention_with_database_errors(self, history_service_with_test_db, sample_alert_data):
         """Test duplicate prevention behavior when database errors occur."""

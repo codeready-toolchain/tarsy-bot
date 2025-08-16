@@ -316,14 +316,18 @@ class TestHistoryService:
                 mock_get_repo.return_value.__enter__.return_value = None
                 mock_get_repo.return_value.__exit__.return_value = None
             
-            sessions, total_count = history_service.get_sessions_list(
+            result = history_service.get_sessions_list(
                 filters={"status": "completed"} if service_enabled else None,
                 page=1,
                 page_size=20
             )
             
-            assert len(sessions) == expected_sessions
-            assert total_count == expected_count
+            if service_enabled:
+                assert result is not None
+                assert len(result.sessions) == expected_sessions
+                assert result.pagination.total_items == expected_count
+            else:
+                assert result is None
             if service_enabled:
                 dependencies['repository'].get_alert_sessions.assert_called_once()
     
@@ -393,9 +397,10 @@ class TestHistoryService:
             
             timeline = history_service.get_session_timeline("test-session-id")
             
-            assert timeline == expected_timeline_data
-            assert timeline["session"]["session_id"] == "test-session-id"
-            assert timeline["session"]["status"] == "completed"
+            assert timeline is not None
+            assert isinstance(timeline, DetailedSession)
+            assert timeline.session_id == "test-session-id"
+            assert timeline.status == AlertSessionStatus.COMPLETED
     
     @pytest.mark.parametrize("connection_success,expected_result", [
         (True, True),  # Connection successful
@@ -590,9 +595,8 @@ class TestHistoryServiceErrorHandling:
             result = history_service_with_errors.update_session_status("test", "completed")
             assert result == False
             
-            sessions, count = history_service_with_errors.get_sessions_list()
-            assert sessions == []
-            assert count == 0
+            result = history_service_with_errors.get_sessions_list()
+            assert result is None
     
     @pytest.mark.unit
     def test_exception_handling_in_operations(self, history_service_with_errors):
@@ -654,10 +658,10 @@ class TestDashboardMethods:
                 
                 result = service.get_filter_options()
                 
-                assert len(result["agent_types"]) == expected_agent_types
-                assert len(result["alert_types"]) == expected_alert_types
-                assert len(result["status_options"]) == 4
-                assert len(result["time_ranges"]) == 2
+                assert len(result.agent_types) == expected_agent_types
+                assert len(result.alert_types) == expected_alert_types
+                assert len(result.status_options) == 4
+                assert len(result.time_ranges) == 2
                 dependencies['repository'].get_filter_options.assert_called_once()
         
         elif scenario == "no_repository":
@@ -668,10 +672,10 @@ class TestDashboardMethods:
                 
                 result = service.get_filter_options()
                 
-                assert result["agent_types"] == []
-                assert result["alert_types"] == []
-                assert len(result["status_options"]) == 4
-                assert len(result["time_ranges"]) == 4
+                assert result.agent_types == []
+                assert result.alert_types == []
+                assert len(result.status_options) == 4
+                assert len(result.time_ranges) == 4
         
         else:  # exception
             with patch.object(service, 'get_repository') as mock_get_repo:
@@ -679,9 +683,9 @@ class TestDashboardMethods:
                 
                 result = service.get_filter_options()
                 
-                assert result["agent_types"] == []
-                assert result["alert_types"] == []
-                assert len(result["status_options"]) == 4
+                assert result.agent_types == []
+                assert result.alert_types == []
+                assert len(result.status_options) == 4
 
 @pytest.mark.unit
 class TestHistoryServiceRetryLogicDuplicatePrevention:
@@ -1305,13 +1309,13 @@ class TestHistoryServiceSummaryMethods:
         
         # Verify summary structure
         assert summary is not None
-        assert 'total_interactions' in summary
-        assert 'llm_interactions' in summary
-        assert 'chain_statistics' in summary
-        assert summary['total_interactions'] == 1
-        assert summary['llm_interactions'] == 1
-        assert summary['chain_statistics']['total_stages'] == 1
-        assert summary['chain_statistics']['completed_stages'] == 1
+        assert hasattr(summary, 'total_interactions')
+        assert hasattr(summary, 'llm_interactions')
+        assert hasattr(summary, 'chain_statistics')
+        assert summary.total_interactions == 1
+        assert summary.llm_interactions == 1
+        assert summary.chain_statistics.total_stages == 1
+        assert summary.chain_statistics.completed_stages == 1
 
     @pytest.mark.unit
     async def test_get_session_summary_not_found(self, history_service):
@@ -1366,11 +1370,11 @@ class TestHistoryServiceSummaryMethods:
         
         # Verify summary structure - all sessions have chain statistics now
         assert summary is not None
-        assert summary['total_interactions'] == 2
-        assert summary['llm_interactions'] == 1
-        assert summary['mcp_communications'] == 1
-        assert 'chain_statistics' in summary
-        assert summary['chain_statistics']['total_stages'] == 0  # No stages
+        assert summary.total_interactions == 2
+        assert summary.llm_interactions == 1
+        assert summary.mcp_communications == 1
+        assert hasattr(summary, 'chain_statistics')
+        assert summary.chain_statistics.total_stages == 0  # No stages
 
     @pytest.mark.unit
     async def test_get_session_summary_chain_session_without_stages(self, history_service):

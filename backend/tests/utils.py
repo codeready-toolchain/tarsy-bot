@@ -9,10 +9,10 @@ FACTORY SYSTEM OVERVIEW
 This module contains 12 specialized factory classes for creating consistent test data:
 
 1. AlertFactory - Alert objects and processing data
-2. SessionFactory - Session data for history tests  
+2. SessionFactory - Session data for history tests (includes Phase 4 type-safe models)
 3. ChainFactory - Chain configurations for registry tests
 4. AgentFactory - Agent mappings for registry tests
-5. MockFactory - Common mock objects and dependencies
+5. MockFactory - Common mock objects and dependencies (includes type-safe history service mocks)
 6. MCPServerFactory - MCP server configurations
 7. DashboardFactory - Dashboard interaction data
 8. AgentFactoryFactory - Agent factory test dependencies
@@ -20,6 +20,10 @@ This module contains 12 specialized factory classes for creating consistent test
 10. DataMaskingFactory - Data masking service test data
 11. DashboardConnectionFactory - WebSocket and connection test data
 12. MCPServerMaskingFactory - MCP server masking and template configurations
+
+NEW IN PHASE 4:
+- SessionFactory: Added create_session_overview(), create_detailed_session(), create_paginated_sessions(), create_session_stats()
+- MockFactory: Added create_mock_history_service() for comprehensive type-safe history service mocking
 
 WHEN TO USE FACTORIES
 ====================
@@ -288,6 +292,167 @@ class SessionFactory:
             status="in_progress",
             **overrides
         )
+
+    # Phase 4: Type-safe model factories for new Pydantic history models
+    @staticmethod
+    def create_session_overview(**overrides):
+        """Create a SessionOverview (type-safe model) for list views."""
+        from tarsy.models.history_models import SessionOverview
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.history import now_us
+        
+        current_time_us = now_us()
+        
+        base_data = {
+            "session_id": "api-session-1",
+            "alert_id": "api-alert-1", 
+            "alert_type": "NamespaceTerminating",
+            "agent_type": "KubernetesAgent",
+            "status": AlertSessionStatus.COMPLETED,
+            "started_at_us": current_time_us - 300000000,  # 5 minutes ago
+            "completed_at_us": current_time_us,
+            "error_message": None,
+            "llm_interaction_count": 1,
+            "mcp_communication_count": 1,
+            "total_interactions": 2,
+            "chain_id": "test-chain-1",
+            "total_stages": 1,
+            "completed_stages": 1,
+            "failed_stages": 0,
+            "current_stage_index": 0
+        }
+        base_data.update(overrides)
+        return SessionOverview(**base_data)
+
+    @staticmethod
+    def create_paginated_sessions(sessions=None, **pagination_overrides):
+        """Create a PaginatedSessions object with sensible defaults."""
+        from tarsy.models.history_models import PaginatedSessions, PaginationInfo
+        
+        if sessions is None:
+            sessions = [SessionFactory.create_session_overview()]
+        
+        pagination_data = {
+            "page": 1,
+            "page_size": 10, 
+            "total_pages": 1,
+            "total_items": len(sessions)
+        }
+        pagination_data.update(pagination_overrides)
+        
+        return PaginatedSessions(
+            sessions=sessions,
+            pagination=PaginationInfo(**pagination_data),
+            filters_applied={"status": ["completed"]}
+        )
+
+    @staticmethod  
+    def create_detailed_session(**overrides):
+        """Create a DetailedSession (type-safe model) with realistic stage and interaction data."""
+        from tarsy.models.history_models import DetailedSession, DetailedStage, LLMInteraction, MCPInteraction, LLMEventDetails, MCPEventDetails
+        from tarsy.models.constants import AlertSessionStatus, StageStatus
+        from tarsy.models.history import now_us
+        
+        current_time_us = now_us()
+        
+        # Create realistic interactions
+        llm_interaction = LLMInteraction(
+            id="int-1",
+            event_id="int-1", 
+            timestamp_us=current_time_us - 240000000,
+            step_description="Analysis",
+            duration_ms=120000,
+            stage_execution_id="integration-exec-1",
+            type="llm",
+            details=LLMEventDetails(
+                model_name="gpt-4",
+                success=True,
+                messages=[]
+            )
+        )
+        
+        mcp_interaction = MCPInteraction(
+            id="int-2",
+            event_id="int-2",
+            timestamp_us=current_time_us - 180000000, 
+            step_description="Tool execution",
+            duration_ms=30000,
+            stage_execution_id="integration-exec-1",
+            type="mcp",
+            details=MCPEventDetails(
+                tool_name="kubectl_get",
+                server_name="kubernetes", 
+                communication_type="tool_call",
+                success=True
+            )
+        )
+        
+        # Create realistic stage
+        detailed_stage = DetailedStage(
+            execution_id="integration-exec-1",
+            session_id="api-session-1",
+            stage_id="root_cause_analysis",
+            stage_index=0,
+            stage_name="Root Cause Analysis",
+            agent="KubernetesAgent",
+            status=StageStatus.COMPLETED,
+            started_at_us=current_time_us - 250000000,
+            completed_at_us=current_time_us - 60000000, 
+            duration_ms=190000,
+            stage_output={"analysis": "complete"},
+            error_message=None,
+            llm_interaction_count=1,
+            mcp_communication_count=1,
+            total_interactions=2,
+            llm_interactions=[llm_interaction],
+            mcp_communications=[mcp_interaction]
+        )
+        
+        base_data = {
+            "session_id": "api-session-1",
+            "alert_id": "api-alert-1",
+            "alert_type": "NamespaceTerminating", 
+            "agent_type": "KubernetesAgent",
+            "status": AlertSessionStatus.COMPLETED,
+            "started_at_us": current_time_us - 300000000,
+            "completed_at_us": current_time_us,
+            "error_message": None,
+            "alert_data": {"test": "data"},
+            "final_analysis": "Test final analysis",
+            "session_metadata": {},
+            "chain_id": "integration-chain-123",
+            "chain_definition": {"stages": ["root_cause_analysis"]},
+            "current_stage_index": 0,
+            "current_stage_id": "root_cause_analysis", 
+            "total_interactions": 2,
+            "llm_interaction_count": 1,
+            "mcp_communication_count": 1,
+            "stages": [detailed_stage]
+        }
+        base_data.update(overrides)
+        return DetailedSession(**base_data)
+
+    @staticmethod
+    def create_session_stats(**overrides):
+        """Create SessionStats (type-safe model) for summary statistics."""
+        from tarsy.models.history_models import SessionStats, ChainStatistics
+        
+        base_data = {
+            "total_interactions": 2,
+            "llm_interactions": 1,
+            "mcp_communications": 1, 
+            "total_duration_ms": 150000,
+            "errors_count": 0,
+            "system_events": 0,
+            "chain_statistics": ChainStatistics(
+                total_stages=1,
+                completed_stages=1,
+                failed_stages=0,
+                stages_by_agent={"analysis": 1}
+            )
+        }
+        base_data.update(overrides)
+        return SessionStats(**base_data)
 
 
 class StageExecutionFactory:
@@ -790,6 +955,58 @@ class MockFactory:
         # Use existing SessionFactory to create AlertSession objects, then convert
         alert_sessions = [SessionFactory.create_test_session() for _ in range(count)]
         return [alert_session_to_session_overview(session) for session in alert_sessions]
+
+    @staticmethod  
+    def create_mock_history_service(**overrides):
+        """Create a comprehensive mock HistoryService for API/integration testing."""
+        from unittest.mock import Mock, AsyncMock
+        
+        service = Mock()
+        service.enabled = True
+        service.test_database_connection.return_value = True
+        
+        # Mock settings
+        service.settings = Mock()
+        service.settings.history_database_url = "sqlite:///test.db"
+        
+        # Create default return values using SessionFactory
+        # Mock get_sessions_list (returns PaginatedSessions) 
+        default_paginated = SessionFactory.create_paginated_sessions()
+        service.get_sessions_list.return_value = default_paginated
+        
+        # Mock get_session_timeline (returns DetailedSession)
+        default_detailed_session = SessionFactory.create_detailed_session()
+        service.get_session_timeline.return_value = default_detailed_session
+        
+        # Mock get_session_summary (async, returns SessionStats)
+        default_session_stats = SessionFactory.create_session_stats()
+        service.get_session_summary = AsyncMock(return_value=default_session_stats)
+        
+        # Mock get_filter_options (returns FilterOptions)
+        from tarsy.models.history_models import FilterOptions, TimeRangeOption
+        default_filter_options = FilterOptions(
+            agent_types=["KubernetesAgent"],
+            alert_types=["NamespaceTerminating"], 
+            status_options=["pending", "in_progress", "completed", "failed"],
+            time_ranges=[
+                TimeRangeOption(label="Last Hour", value="1h"),
+                TimeRangeOption(label="Today", value="today")
+            ]
+        )
+        service.get_filter_options.return_value = default_filter_options
+        
+        # Apply any overrides
+        for key, value in overrides.items():
+            if hasattr(service, key):
+                if callable(getattr(service, key)):
+                    if key == "get_session_summary":  # Async method
+                        service.get_session_summary = AsyncMock(return_value=value)
+                    else:
+                        getattr(service, key).return_value = value
+                else:
+                    setattr(service, key, value)
+        
+        return service
 
 
 class ModelValidationTester:
