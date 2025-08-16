@@ -138,7 +138,7 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
                       )}
                       
                       {/* Interaction count badges similar to session summary */}
-                      {stage.interaction_summary && stage.interaction_summary.total_count > 0 && (
+                      {stage.total_interactions > 0 && (
                         <Box display="flex" gap={0.25} alignItems="center">
                           {/* Total interactions badge */}
                           <Box sx={{ 
@@ -153,7 +153,7 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
                             borderColor: 'grey.300'
                           }}>
                             <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.6rem' }}>
-                              {stage.interaction_summary.total_count}
+                              {stage.total_interactions}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.55rem' }}>
                               total
@@ -161,7 +161,7 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
                           </Box>
                           
                           {/* LLM interactions badge */}
-                          {stage.interaction_summary.llm_count > 0 && (
+                          {stage.llm_interaction_count > 0 && (
                             <Box sx={{ 
                               display: 'flex',
                               alignItems: 'center',
@@ -174,13 +174,13 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
                               borderColor: 'primary.200'
                             }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.6rem' }}>
-                                🧠 {stage.interaction_summary.llm_count}
+                                🧠 {stage.llm_interaction_count}
                               </Typography>
                             </Box>
                           )}
                           
                           {/* MCP interactions badge */}
-                          {stage.interaction_summary.mcp_count > 0 && (
+                          {stage.mcp_communication_count > 0 && (
                             <Box sx={{ 
                               display: 'flex',
                               alignItems: 'center',
@@ -193,7 +193,7 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
                               borderColor: 'secondary.200'
                             }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.6rem' }}>
-                                🔧 {stage.interaction_summary.mcp_count}
+                                🔧 {stage.mcp_communication_count}
                               </Typography>
                             </Box>
                           )}
@@ -209,11 +209,7 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
                   <Box ml={1} mb={1}>
                     {/* Stage details */}
                     <Box display="flex" gap={2} flexWrap="wrap" mb={1}>
-                      {stage.iteration_strategy && (
-                        <Typography variant="caption" color="text.secondary">
-                          Strategy: {stage.iteration_strategy}
-                        </Typography>
-                      )}
+                      {/* iteration_strategy removed in EP-0010 */}
                       
                       {stage.duration_ms && (
                         <Box display="flex" alignItems="center" gap={0.5}>

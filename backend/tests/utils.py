@@ -6,10 +6,10 @@ This module provides shared utilities, factories, and helpers for tests.
 FACTORY SYSTEM OVERVIEW
 ======================
 
-This module contains 12 specialized factory classes for creating consistent test data:
+This module contains specialized factory classes for creating consistent test data:
 
 1. AlertFactory - Alert objects and processing data
-2. SessionFactory - Session data for history tests (includes Phase 4 type-safe models)
+2. SessionFactory - Session data for history tests
 3. ChainFactory - Chain configurations for registry tests
 4. AgentFactory - Agent mappings for registry tests
 5. MockFactory - Common mock objects and dependencies (includes type-safe history service mocks)
@@ -20,10 +20,8 @@ This module contains 12 specialized factory classes for creating consistent test
 10. DataMaskingFactory - Data masking service test data
 11. DashboardConnectionFactory - WebSocket and connection test data
 12. MCPServerMaskingFactory - MCP server masking and template configurations
-
-NEW IN PHASE 4:
-- SessionFactory: Added create_session_overview(), create_detailed_session(), create_paginated_sessions(), create_session_stats()
-- MockFactory: Added create_mock_history_service() for comprehensive type-safe history service mocking
+13. SessionFactory: Added create_session_overview(), create_detailed_session(), create_paginated_sessions(), create_session_stats()
+14. MockFactory: Added create_mock_history_service() for comprehensive type-safe history service mocking
 
 WHEN TO USE FACTORIES
 ====================
@@ -70,8 +68,7 @@ Best practices:
 - Keep factory methods focused and single-purpose
 """
 
-import asyncio
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -79,7 +76,6 @@ from fastapi import WebSocket
 from pydantic import ValidationError
 
 from tarsy.models.alert import Alert
-from tarsy.models.alert_processing import AlertProcessingData
 from tarsy.utils.timestamp import now_us
 
 
@@ -246,7 +242,7 @@ class SessionFactory:
     @staticmethod
     def create_test_session(**overrides):
         """Create a test session with sensible defaults."""
-        from tarsy.models.history import AlertSession
+        from tarsy.models.db_models import AlertSession
         from tarsy.models.constants import AlertSessionStatus
         
         base_data = {
@@ -293,13 +289,13 @@ class SessionFactory:
             **overrides
         )
 
-    # Phase 4: Type-safe model factories for new Pydantic history models
+    # Type-safe model factories for new Pydantic history models
     @staticmethod
     def create_session_overview(**overrides):
         """Create a SessionOverview (type-safe model) for list views."""
         from tarsy.models.history_models import SessionOverview
         from tarsy.models.constants import AlertSessionStatus
-        from tarsy.models.history import now_us
+        from tarsy.utils.timestamp import now_us
         
         current_time_us = now_us()
         
@@ -351,7 +347,7 @@ class SessionFactory:
         """Create a DetailedSession (type-safe model) with realistic stage and interaction data."""
         from tarsy.models.history_models import DetailedSession, DetailedStage, LLMInteraction, MCPInteraction, LLMEventDetails, MCPEventDetails
         from tarsy.models.constants import AlertSessionStatus, StageStatus
-        from tarsy.models.history import now_us
+        from tarsy.utils.timestamp import now_us
         
         current_time_us = now_us()
         
@@ -495,7 +491,7 @@ class StageExecutionFactory:
     @staticmethod
     def create_test_stage_execution(session_id: str, **overrides):
         """Create a basic test stage execution."""
-        from tarsy.models.history import StageExecution
+        from tarsy.models.db_models import StageExecution
         from tarsy.models.constants import StageStatus
         
         base_data = {
@@ -778,7 +774,7 @@ class MockFactory:
     
     @staticmethod
     def create_mock_history_service_dependencies():
-        """Create mock dependencies for HistoryService - Phase 3: Updated for type-safe models."""
+        """Create mock dependencies for HistoryService."""
         from unittest.mock import Mock
         from tarsy.models.history_models import PaginatedSessions, FilterOptions, PaginationInfo, TimeRangeOption
         
@@ -792,7 +788,7 @@ class MockFactory:
         mock_db_manager.get_session.return_value.__enter__ = Mock()
         mock_db_manager.get_session.return_value.__exit__ = Mock()
         
-        # Set up repository - Phase 3: Repository methods now return type-safe models
+        # Set up repository
         mock_session.session_id = "test-session-id"
         mock_repository.create_alert_session.return_value = mock_session
         mock_repository.get_alert_session.return_value = Mock()
@@ -818,7 +814,7 @@ class MockFactory:
         
         # Add mocks for other repository methods that may be called
         mock_repository.get_session_timeline.return_value = None
-        mock_repository.get_session_with_stages.return_value = None
+        mock_repository.get_session_overview.return_value = None
         
         return {
             'db_manager': mock_db_manager,
@@ -894,6 +890,43 @@ class MockFactory:
         return DetailedSession(**base_data)
     
     @staticmethod
+    def create_mock_session_overview(session_id="test-session", **overrides):
+        """
+        Create a mock SessionOverview with sensible defaults for testing.
+        
+        Args:
+            session_id: Session identifier (default: "test-session")
+            **overrides: Override any default values
+            
+        Returns:
+            SessionOverview: Configured SessionOverview for testing
+        """
+        from tarsy.models.history_models import SessionOverview
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.utils.timestamp import now_us
+        
+        base_data = {
+            "session_id": session_id,
+            "alert_id": f"alert-{session_id}",
+            "alert_type": "TestAlert",
+            "agent_type": "TestAgent",
+            "status": AlertSessionStatus.COMPLETED,
+            "started_at_us": now_us(),
+            "completed_at_us": now_us() + 1000000,
+            "error_message": None,
+            "llm_interaction_count": 1,
+            "mcp_communication_count": 0,
+            "total_interactions": 1,
+            "chain_id": f"chain-{session_id}",
+            "total_stages": 1,
+            "completed_stages": 1,
+            "failed_stages": 0,
+            "current_stage_index": 0
+        }
+        base_data.update(overrides)
+        return SessionOverview(**base_data)
+    
+    @staticmethod
     def create_mock_paginated_sessions(sessions=None, page=1, page_size=20, total_items=None, **overrides):
         """
         Create a mock PaginatedSessions with proper pagination.
@@ -950,11 +983,8 @@ class MockFactory:
         Example:
             overviews = MockFactory.create_mock_session_overviews(count=5)
         """
-        from tarsy.models.converters.session_converters import alert_session_to_session_overview
-        
-        # Use existing SessionFactory to create AlertSession objects, then convert
-        alert_sessions = [SessionFactory.create_test_session() for _ in range(count)]
-        return [alert_session_to_session_overview(session) for session in alert_sessions]
+        # Use SessionFactory's type-safe factory method directly
+        return [SessionFactory.create_session_overview() for _ in range(count)]
 
     @staticmethod  
     def create_mock_history_service(**overrides):

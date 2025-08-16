@@ -6,23 +6,19 @@ supporting comprehensive audit trails, chronological timeline reconstruction,
 and advanced querying capabilities using Unix timestamps for optimal performance.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from sqlmodel import Session, asc, desc, func, select, and_, or_
 
 from tarsy.models.constants import AlertSessionStatus, StageStatus
-from tarsy.models.history import AlertSession, StageExecution
+from tarsy.models.db_models import AlertSession, StageExecution
+from tarsy.models.history_models import (
+    PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo,
+    SessionOverview
+)
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import BaseRepository
 from tarsy.utils.logger import get_logger
-
-# Import new type-safe models for internal use (Phase 2.1)
-from tarsy.models.history_models import (
-    PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo
-)
-from tarsy.models.converters import (
-    alert_session_to_session_overview,
-)
 
 logger = get_logger(__name__)
 
@@ -318,8 +314,6 @@ class HistoryRepository:
     ) -> Optional[PaginatedSessions]:
         """
         Retrieve alert sessions with filtering and pagination.
-        
-        Phase 3: Returns PaginatedSessions model directly (no dict conversion).
         """
         try:
             # Defensively handle pagination parameters to prevent negative DB offsets
@@ -421,11 +415,41 @@ class HistoryRepository:
                         'mcp_communications': mcp_counts.get(session_id, 0)
                     }
             
-            # Convert AlertSession objects to SessionOverview models
             session_overviews = []
             for alert_session in alert_sessions:
                 session_counts = interaction_counts.get(alert_session.session_id, {})
-                overview = alert_session_to_session_overview(alert_session, session_counts)
+                llm_count = session_counts.get('llm_interactions', 0)
+                mcp_count = session_counts.get('mcp_communications', 0)
+                
+                overview = SessionOverview(
+                    # Core identification
+                    session_id=alert_session.session_id,
+                    alert_id=alert_session.alert_id,
+                    alert_type=alert_session.alert_type,
+                    agent_type=alert_session.agent_type,
+                    status=AlertSessionStatus(alert_session.status),
+                    
+                    # Timing info
+                    started_at_us=alert_session.started_at_us,
+                    completed_at_us=alert_session.completed_at_us,
+                    
+                    # Basic status info
+                    error_message=alert_session.error_message,
+                    
+                    # Summary counts (merged from interaction_counts)
+                    llm_interaction_count=llm_count,
+                    mcp_communication_count=mcp_count,
+                    total_interactions=llm_count + mcp_count,
+                    
+                    # Chain progress info
+                    chain_id=alert_session.chain_id,
+                    current_stage_index=alert_session.current_stage_index,
+                    
+                    # Optional fields that may need calculation elsewhere (defaults from SessionOverview)
+                    total_stages=None,
+                    completed_stages=None,
+                    failed_stages=0
+                )
                 session_overviews.append(overview)
             
             # Calculate pagination info
@@ -465,13 +489,17 @@ class HistoryRepository:
     def get_session_timeline(self, session_id: str) -> Optional[DetailedSession]:
         """
         Reconstruct chronological timeline for a session.
-        
-        Phase 3: Returns DetailedSession model directly (no dict conversion).
         """
         try:
             from collections import defaultdict
-            from tarsy.models.history_models import DetailedStage, LLMInteraction, MCPInteraction, LLMEventDetails, MCPEventDetails
-            from tarsy.models.unified_interactions import LLMMessage
+            from tarsy.models.history_models import (
+                DetailedStage,
+                LLMInteraction,
+                MCPInteraction,
+                LLMEventDetails,
+                MCPEventDetails,
+                LLMMessage,
+            )
             
             # Get the session
             session = self.get_alert_session(session_id)
@@ -501,6 +529,16 @@ class HistoryRepository:
                     for msg in llm_db.request_json.get('messages', []):
                         if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
                             messages.append(LLMMessage(role=msg['role'], content=msg['content']))
+                
+                # Add assistant response from response_json if available
+                if llm_db.response_json and isinstance(llm_db.response_json, dict):
+                    choices = llm_db.response_json.get('choices', [])
+                    if choices and len(choices) > 0:
+                        first_choice = choices[0]
+                        if isinstance(first_choice, dict) and 'message' in first_choice:
+                            assistant_msg = first_choice['message']
+                            if isinstance(assistant_msg, dict) and 'content' in assistant_msg:
+                                messages.append(LLMMessage(role="assistant", content=assistant_msg['content']))
                 
                 # Extract token usage
                 tokens_used = llm_db.token_usage or {}
@@ -561,9 +599,15 @@ class HistoryRepository:
             for stage_db in stage_executions_db:
                 stage_interactions = interactions_by_stage.get(stage_db.execution_id, [])
                 
-                # Separate LLM and MCP interactions
-                llm_stage_interactions = [i for i in stage_interactions if isinstance(i, LLMInteraction)]
-                mcp_stage_interactions = [i for i in stage_interactions if isinstance(i, MCPInteraction)]
+                # Separate LLM and MCP interactions and sort chronologically
+                llm_stage_interactions = sorted(
+                    [i for i in stage_interactions if isinstance(i, LLMInteraction)],
+                    key=lambda x: x.timestamp_us
+                )
+                mcp_stage_interactions = sorted(
+                    [i for i in stage_interactions if isinstance(i, MCPInteraction)], 
+                    key=lambda x: x.timestamp_us
+                )
                 
                 detailed_stage = DetailedStage(
                     execution_id=stage_db.execution_id,
@@ -629,8 +673,6 @@ class HistoryRepository:
     def get_filter_options(self) -> FilterOptions:
         """
         Get dynamic filter options based on actual data in the database.
-        
-        Phase 3: Returns FilterOptions model directly (no dict conversion).
         """
         try:
             # Get distinct agent types as a flat list of strings
@@ -682,21 +724,17 @@ class HistoryRepository:
                 ]
             )
 
-    def get_session_with_stages(self, session_id: str) -> Optional[DetailedSession]:
+    def get_session_overview(self, session_id: str) -> Optional[SessionOverview]:
         """
-        Get session with all stage execution details.
-        
-        Phase 3: Returns DetailedSession model directly (no dict conversion).
+        Get session overview with stage counts (lightweight version for summaries).
         """
         try:
-            from tarsy.models.history_models import DetailedStage
-            
             # Get the session
             session = self.get_alert_session(session_id)
             if not session:
                 return None
             
-            # Get stage executions (without loading full interactions for performance)
+            # Get stage executions for counting (without loading full interactions for performance)
             stages_stmt = (
                 select(StageExecution)
                 .where(StageExecution.session_id == session_id)
@@ -708,71 +746,42 @@ class HistoryRepository:
             stage_execution_ids = [stage.execution_id for stage in stage_executions_db]
             stage_interaction_counts = self.get_stage_interaction_counts(stage_execution_ids)
             
-            # Build DetailedStage objects WITHOUT full interactions but WITH counts (lighter but functional)
-            detailed_stages = []
-            for stage_db in stage_executions_db:
-                # Get counts for this specific stage
-                stage_counts = stage_interaction_counts.get(stage_db.execution_id, {})
-                llm_count = stage_counts.get('llm_interactions', 0)
-                mcp_count = stage_counts.get('mcp_communications', 0)
-                
-                detailed_stage = DetailedStage(
-                    execution_id=stage_db.execution_id,
-                    session_id=stage_db.session_id,
-                    stage_id=stage_db.stage_id,
-                    stage_index=stage_db.stage_index,
-                    stage_name=stage_db.stage_name,
-                    agent=stage_db.agent,
-                    status=StageStatus(stage_db.status),
-                    started_at_us=stage_db.started_at_us,
-                    completed_at_us=stage_db.completed_at_us,
-                    duration_ms=stage_db.duration_ms,
-                    stage_output=stage_db.stage_output,
-                    error_message=stage_db.error_message,
-                    # NO full interactions loaded - keep empty for performance
-                    llm_interactions=[],
-                    mcp_communications=[],
-                    # BUT include counts for summary calculations
-                    llm_interaction_count=llm_count,
-                    mcp_communication_count=mcp_count,
-                    total_interactions=llm_count + mcp_count
-                )
-                detailed_stages.append(detailed_stage)
+            # Calculate total interaction counts and stage statistics
+            total_llm = sum(counts.get('llm_interactions', 0) for counts in stage_interaction_counts.values())
+            total_mcp = sum(counts.get('mcp_communications', 0) for counts in stage_interaction_counts.values())
             
-            # Calculate total interaction counts from all stages
-            total_llm = sum(stage.llm_interaction_count for stage in detailed_stages)
-            total_mcp = sum(stage.mcp_communication_count for stage in detailed_stages)
+            # Calculate stage statistics
+            from tarsy.models.constants import StageStatus
+            completed_stages = len([stage for stage in stage_executions_db if stage.status == StageStatus.COMPLETED.value])
+            failed_stages = len([stage for stage in stage_executions_db if stage.status == StageStatus.FAILED.value])
             
-            # Create DetailedSession (with interaction counts calculated from stages)
-            return DetailedSession(
-                # Core session data
+            # Create SessionOverview (lighter weight model for summaries)
+            return SessionOverview(
+                # Core identification
                 session_id=session.session_id,
                 alert_id=session.alert_id,
                 alert_type=session.alert_type,
                 agent_type=session.agent_type,
                 status=AlertSessionStatus(session.status),
+                
+                # Timing info
                 started_at_us=session.started_at_us,
                 completed_at_us=session.completed_at_us,
+                
+                # Basic status info
                 error_message=session.error_message,
                 
-                # Full session details
-                alert_data=session.alert_data,
-                final_analysis=session.final_analysis,
-                session_metadata=session.session_metadata,
-                
-                # Chain execution details
-                chain_id=session.chain_id,
-                chain_definition=session.chain_definition or {},
-                current_stage_index=session.current_stage_index,
-                current_stage_id=session.current_stage_id,
-                
-                # Interaction counts (calculated from stages)
-                total_interactions=total_llm + total_mcp,
+                # Summary counts (for dashboard display)
                 llm_interaction_count=total_llm,
                 mcp_communication_count=total_mcp,
+                total_interactions=total_llm + total_mcp,
                 
-                # Stage executions WITH counts but WITHOUT full interactions (lighter but functional)
-                stages=detailed_stages
+                # Chain progress info (for dashboard filtering/display)
+                chain_id=session.chain_id,
+                total_stages=len(stage_executions_db),
+                completed_stages=completed_stages,
+                failed_stages=failed_stages,
+                current_stage_index=session.current_stage_index
             )
             
         except Exception as e:

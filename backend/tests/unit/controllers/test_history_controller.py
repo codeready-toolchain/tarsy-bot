@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tarsy.controllers.history_controller import HistoryService, router
-from tarsy.models.history import now_us
+from tarsy.utils.timestamp import now_us
 from tarsy.services.history_service import get_history_service
 
 
@@ -55,7 +55,6 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_get_sessions_list_success(self, app, client, mock_history_service):
         """Test successful sessions list retrieval."""
-        # Phase 4: Mock using new models
         from tarsy.models.history_models import SessionOverview, PaginatedSessions, PaginationInfo
         from tarsy.models.constants import AlertSessionStatus
         
@@ -769,8 +768,8 @@ class TestHistoryControllerEndpoints:
         )
         mock_history_service.get_session_timeline.return_value = mock_timeline
         
-        # Mock the get_session_with_stages async method
-        async def mock_get_session_with_stages_first(session_id):
+        # Mock the get_session_overview async method
+        async def mock_get_session_overview_first(session_id):
             return {
                 "session": {
                     "session_id": "test-session-123",
@@ -792,7 +791,7 @@ class TestHistoryControllerEndpoints:
                     }
                 ]
             }
-        mock_history_service.get_session_with_stages = mock_get_session_with_stages_first
+        mock_history_service.get_session_overview = mock_get_session_overview_first
         
         # Mock the new get_stage_interaction_counts method
         mock_history_service.get_stage_interaction_counts.return_value = {
@@ -835,51 +834,47 @@ class TestHistoryControllerEndpoints:
         assert response.status_code == 200
         data = response.json()
         
-        # The response should have these fields based on the SessionDetailResponse model
+        # The response should have these fields based on the DetailedSession model
         assert "session_id" in data
         assert "alert_id" in data
-        assert "chain_execution" in data
+        assert "chain_id" in data  # Chain fields are now at top level
+        assert "chain_definition" in data
+        assert "stages" in data
         
         # Verify session details
         assert data["session_id"] == "test-session-123"
         assert data["alert_type"] == "NamespaceTerminating"
         assert data["status"] == "completed"
         
-        # All sessions should have chain execution data since we support chains only
-        chain_execution = data["chain_execution"]
+        # All sessions should have chain data since we support chains only
+        assert data["chain_id"] == "chain-123"
+        stages = data["stages"]
         
-        # Chain execution should never be None since we support chains only
-            
-        assert chain_execution is not None, f"All sessions should have chain execution data. Got: {chain_execution}"
+        # Stages should always be present since we support chains only
+        assert stages is not None, f"All sessions should have stages data. Got: {stages}"
         
-        # Verify chain execution structure
-        assert "chain_id" in chain_execution
-        assert "stages" in chain_execution
-        assert isinstance(chain_execution["stages"], list)
+        # Verify stages structure
+        assert isinstance(stages, list)
         
         # Verify stage structure and timeline if stages exist
-        if chain_execution["stages"]:
-            for stage in chain_execution["stages"]:
+        if stages:
+            for stage in stages:
                 # Verify required stage fields
                 assert "execution_id" in stage
                 assert "stage_id" in stage
                 assert "stage_name" in stage
                 assert "status" in stage
-                assert "timeline" in stage
-                assert "interaction_summary" in stage
+                assert "chronological_interactions" in stage
+                assert "llm_interaction_count" in stage
+                assert "mcp_communication_count" in stage
                 
-                # Verify interaction summary structure
-                summary = stage["interaction_summary"]
-                assert "llm_count" in summary
-                assert "mcp_count" in summary
-                assert "total_count" in summary
-                assert isinstance(summary["llm_count"], int)
-                assert isinstance(summary["mcp_count"], int)
-                assert isinstance(summary["total_count"], int)
+                # Verify interaction count fields
+                assert isinstance(stage["llm_interaction_count"], int)
+                assert isinstance(stage["mcp_communication_count"], int)
                 
                 # Verify timeline events structure if present
-                if stage["timeline"]:
-                    for event in stage["timeline"]:
+                if stage["chronological_interactions"]:
+                    for event in stage["chronological_interactions"]:
                         assert "type" in event
                         assert "timestamp_us" in event
                         assert "step_description" in event
@@ -889,7 +884,7 @@ class TestHistoryControllerEndpoints:
         
         # Verify other expected fields
         assert "duration_ms" in data
-        assert "summary" in data
+        assert "total_interactions" in data
     
     @pytest.mark.unit
     def test_get_session_detail_not_found(self, app, client, mock_history_service):
@@ -1244,7 +1239,7 @@ class TestHistoryControllerResponseFormat:
         }
         # Allow additional fields that are actually returned (including chain-based fields)
         optional_fields = {
-            "duration_ms", "llm_interaction_count", "mcp_communication_count",
+            "duration_ms", "llm_interaction_count", "mcp_communication_count", "total_interactions",
             "current_stage_index", "failed_stages", "total_stages", "chain_id", "completed_stages"
         }
         actual_fields = set(session.keys())
@@ -1320,7 +1315,7 @@ class TestHistoryControllerResponseFormat:
         )
         mock_history_service.get_session_timeline.return_value = mock_timeline
         
-        # Mock the get_session_with_stages call for chain execution data
+        # Mock the get_session_overview call for chain execution data
         mock_chain_data = {
             "stages": [
                 {
@@ -1336,8 +1331,8 @@ class TestHistoryControllerResponseFormat:
                 }
             ]
         }
-        # Mock async method for get_session_with_stages  
-        async def mock_get_session_with_stages(session_id):
+        # Mock async method for get_session_overview  
+        async def mock_get_session_overview(session_id):
             return {
                 "session": {
                     "session_id": "test-session",
@@ -1347,7 +1342,7 @@ class TestHistoryControllerResponseFormat:
                 },
                 "stages": mock_chain_data["stages"]
             }
-        mock_history_service.get_session_with_stages = mock_get_session_with_stages
+        mock_history_service.get_session_overview = mock_get_session_overview
         
         # Mock the new get_stage_interaction_counts method
         mock_history_service.get_stage_interaction_counts.return_value = {
@@ -1391,11 +1386,14 @@ class TestHistoryControllerResponseFormat:
         assert response.status_code == 200
         data = response.json()
         
-        # Validate top-level structure (SessionDetailResponse fields)
+        # Validate top-level structure (DetailedSession fields)
         expected_fields = {
             "session_id", "alert_id", "alert_type", "agent_type",
             "status", "started_at_us", "completed_at_us", "error_message",
-            "chain_execution", "summary", "duration_ms", "session_metadata", "alert_data"
+            "chain_id", "chain_definition", "stages", "duration_ms", 
+            "session_metadata", "alert_data", "final_analysis",
+            "llm_interaction_count", "mcp_communication_count", "total_interactions",
+            "current_stage_index", "current_stage_id"
         }
         assert expected_fields.issubset(set(data.keys()))
         
@@ -1404,41 +1402,40 @@ class TestHistoryControllerResponseFormat:
         assert data["alert_type"] == "TestAlert"
         assert data["status"] == "completed"
         
-        # Validate chain execution structure (all sessions should be chain-based)
-        chain_execution = data["chain_execution"]
-        assert chain_execution is not None, "All sessions should have chain execution data"
-        assert isinstance(chain_execution, dict)
-        assert "chain_id" in chain_execution
-        assert "stages" in chain_execution
-        assert isinstance(chain_execution["stages"], list)
+        # Validate chain structure (all sessions should be chain-based)
+        assert data["chain_id"] is not None, "All sessions should have chain data"
+        assert isinstance(data["chain_definition"], dict)
+        assert "stages" in data
+        assert isinstance(data["stages"], list)
         
         # Verify stage timeline structure if stages exist
-        if chain_execution["stages"]:
-            first_stage = chain_execution["stages"][0]
-            assert "timeline" in first_stage
-            assert "interaction_summary" in first_stage
+        if data["stages"]:
+            first_stage = data["stages"][0]
+            # Check for chronological_interactions (the new timeline structure)
+            assert "chronological_interactions" in first_stage or "llm_interactions" in first_stage
+            # Check for count fields instead of interaction_summary
+            assert "llm_interaction_count" in first_stage
+            assert "mcp_communication_count" in first_stage
             assert "execution_id" in first_stage
             assert "stage_id" in first_stage
             assert "stage_name" in first_stage
             assert "status" in first_stage
             
-            # Validate interaction summary structure
-            interaction_summary = first_stage["interaction_summary"]
-            assert "llm_count" in interaction_summary
-            assert "mcp_count" in interaction_summary
-            assert "total_count" in interaction_summary
+            # Validate interaction counts are present
+            assert isinstance(first_stage["llm_interaction_count"], int)
+            assert isinstance(first_stage["mcp_communication_count"], int)
             
-            # Validate timeline events if present
-            if first_stage["timeline"]:
-                event = first_stage["timeline"][0]
+            # Validate timeline events if present in chronological_interactions
+            if "chronological_interactions" in first_stage and first_stage["chronological_interactions"]:
+                event = first_stage["chronological_interactions"][0]
                 assert "type" in event
                 assert "timestamp_us" in event
                 assert "step_description" in event
                 assert "details" in event
         
-        # Validate summary exists
-        summary = data["summary"]
-        assert isinstance(summary, dict)
+        # Validate interaction counts exist at top level
+        assert "total_interactions" in data
+        assert isinstance(data["total_interactions"], int)
     
     @pytest.mark.unit
     def test_health_check_response_format(self, app, client, mock_history_service):
@@ -1648,7 +1645,7 @@ class TestDashboardEndpoints:
         mock_service = Mock()
         
         # Create a real AlertSession-like object
-        from tarsy.models.history import AlertSession
+        from tarsy.models.db_models import AlertSession
         test_session = AlertSession(
             session_id="session_1",
             alert_id="alert_1",
@@ -1730,19 +1727,19 @@ class TestDashboardEndpoints:
     @pytest.mark.unit
     def test_get_filter_options_success(self, app, client, mock_history_service):
         """Test successful filter options retrieval."""
-        # Phase 4: Create a simple Mock that returns the expected dict directly to avoid recursion
-        mock_filter_result = Mock()
-        mock_filter_result.model_dump.return_value = {
-            "agent_types": ["kubernetes", "base", "analysis"],
-            "alert_types": ["HighCPU", "NamespaceTerminating", "PodCrashLooping"],
-            "status_options": ["pending", "in_progress", "completed", "failed"],
-            "time_ranges": [
-                {"label": "Last Hour", "value": "1h"},
-                {"label": "Last 4 Hours", "value": "4h"},
-                {"label": "Today", "value": "today"},
-                {"label": "This Week", "value": "week"}
+        # Create a proper FilterOptions model instance
+        from tarsy.models.history_models import FilterOptions, TimeRangeOption
+        mock_filter_result = FilterOptions(
+            agent_types=["kubernetes", "base", "analysis"],
+            alert_types=["HighCPU", "NamespaceTerminating", "PodCrashLooping"],
+            status_options=["pending", "in_progress", "completed", "failed"],
+            time_ranges=[
+                TimeRangeOption(label="Last Hour", value="1h"),
+                TimeRangeOption(label="Last 4 Hours", value="4h"),
+                TimeRangeOption(label="Today", value="today"),
+                TimeRangeOption(label="This Week", value="week")
             ]
-        }
+        )
         mock_history_service.get_filter_options.return_value = mock_filter_result
         
         # Override dependency
@@ -1792,7 +1789,7 @@ class TestDashboardEndpoints:
         """Test successful session summary retrieval."""
         session_id = "test-session-123"
         
-        # Phase 4: Create SessionStats model using factory
+        # Create SessionStats model using factory
         from tests.utils import SessionFactory
         from tarsy.models.history_models import ChainStatistics
         
@@ -1848,7 +1845,7 @@ class TestDashboardEndpoints:
         """Test session summary when session doesn't exist."""
         session_id = "non-existent-session"
         
-        # Phase 4: Mock the service method to return None (session not found)
+        # Mock the service method to return None (session not found)
         mock_history_service.get_session_summary = AsyncMock(return_value=None)
         
         # Dependency override
@@ -1934,7 +1931,7 @@ class TestDashboardEndpoints:
         assert data['errors_count'] == 0
         assert data['total_duration_ms'] == 1500
         
-        # Verify chain statistics are present (all sessions have chain info in Phase 4)
+        # Verify chain statistics are present
         assert 'chain_statistics' in data
         assert data['chain_statistics']['total_stages'] == 1
         

@@ -9,7 +9,7 @@ Tests focus on practical masking integration scenarios:
 
 import pytest
 
-from tarsy.models.mcp_config import MCPServerConfig
+from tarsy.models.agent_config import MCPServerConfigModel
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tests.utils import MCPServerMaskingFactory
 
@@ -26,7 +26,7 @@ class TestMCPServerRegistryMaskingIntegration:
         config = registry.get_server_config_safe("kubernetes-server")
         
         assert config is not None
-        assert isinstance(config, MCPServerConfig)
+        assert isinstance(config, MCPServerConfigModel)
         assert config.server_id == "kubernetes-server"
         # Built-in kubernetes server has masking configuration
         assert config.data_masking is not None
@@ -182,7 +182,7 @@ class TestMCPServerRegistryMaskingServiceIntegration:
     
     def test_masking_config_validation_during_registry_initialization(self):
         """Test that invalid masking configs fail during registry initialization."""
-        # Invalid masking config should fail during MCPServerConfig creation
+        # Invalid masking config should fail during MCPServerConfigModel creation
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
             server_configs = {
@@ -349,7 +349,7 @@ class TestMCPServerRegistryMaskingEdgeCases:
         
         # Test serialization roundtrip
         config_dict = config.model_dump()
-        restored_config = MCPServerConfig(**config_dict)
+        restored_config = MCPServerConfigModel(**config_dict)
         
         assert restored_config.server_id == config.server_id
         assert restored_config.data_masking is not None

@@ -14,7 +14,7 @@ from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 
-from tarsy.models.llm import LLMMessage
+from tarsy.models.unified_interactions import LLMMessage
 from tarsy.models.alert_processing import AlertProcessingData
 from .iteration_controllers import (
     IterationController, RegularIterationController, SimpleReActController, 
@@ -29,7 +29,7 @@ from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
-from .constants import IterationStrategy
+from ..models.constants import IterationStrategy
 from .json_parser import parse_llm_json_response
 from .prompt_builder import PromptContext, get_prompt_builder
 

@@ -100,7 +100,7 @@ class TestBaseAgentAbstractInterface:
         assert agent._iteration_count == 0
         assert agent._configured_servers is None
         # Verify default iteration strategy
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         assert agent.iteration_strategy == IterationStrategy.REACT
 
 

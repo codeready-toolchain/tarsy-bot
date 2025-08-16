@@ -15,9 +15,9 @@ from tarsy.config.settings import Settings
 from tarsy.integrations.llm.client import LLMClient, LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert import Alert
-from tarsy.models.history import AlertSession
+from tarsy.models.db_models import AlertSession
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.models.mcp_config import MCPServerConfig
+from tarsy.models.agent_config import MCPServerConfigModel as MCPServerConfig
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.agent_registry import AgentRegistry
 from tarsy.services.alert_service import AlertService
@@ -387,16 +387,16 @@ def mock_runbook_service(sample_runbook_content):
 def mock_agent_registry():
     """Mock chain registry (adapted from agent registry)."""
     from tarsy.services.chain_registry import ChainRegistry
-    from tarsy.models.chains import ChainDefinitionModel, ChainStageModel
+    from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
     registry = Mock(spec=ChainRegistry)
     
     # Dynamic chain routing based on alert type
     def get_chain_for_alert_type(alert_type):
         agent = "KubernetesAgent" if alert_type == "kubernetes" else "BaseAgent"
-        return ChainDefinitionModel(
+        return ChainConfigModel(
             chain_id=f'{alert_type}-chain',
             alert_types=[alert_type],
-            stages=[ChainStageModel(name='analysis', agent=agent)],
+            stages=[ChainStageConfigModel(name='analysis', agent=agent)],
             description=f'Test chain for {alert_type}'
         )
     
@@ -817,7 +817,7 @@ def alert_service_with_mocks(
     # Inject mocked dependencies
     service.llm_manager = mock_llm_manager
     service.mcp_client = mock_mcp_client
-    service.mcp_registry = mock_mcp_server_registry
+    service.mcp_server_registry = mock_mcp_server_registry
     service.runbook_service = mock_runbook_service
     service.chain_registry = mock_agent_registry  # Reuse the mock for chain registry
     service.agent_factory = mock_agent_factory

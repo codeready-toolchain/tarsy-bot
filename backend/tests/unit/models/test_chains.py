@@ -1,21 +1,21 @@
 """
-Unit tests for Chain models - ChainStageModel and ChainDefinitionModel.
+Unit tests for Chain models - ChainStageModel and ChainConfigModel.
 
 Tests model creation, validation, serialization, and data access methods.
 """
 
 import pytest
-from tarsy.models.chains import ChainStageModel, ChainDefinitionModel
-from tests.utils import ModelValidationTester, TestUtils
+from pydantic import ValidationError
+from tarsy.models.agent_config import ChainStageConfigModel, ChainConfigModel
 
 
 @pytest.mark.unit
-class TestChainStageModel:
-    """Test ChainStageModel functionality."""
+class TestChainStageConfigModel:
+    """Test ChainStageConfigModel functionality."""
     
     def test_basic_creation(self):
         """Test basic stage model creation."""
-        stage = ChainStageModel(
+        stage = ChainStageConfigModel(
             name="data-collection",
             agent="KubernetesAgent"
         )
@@ -26,7 +26,7 @@ class TestChainStageModel:
     
     def test_creation_with_iteration_strategy(self):
         """Test stage creation with iteration strategy."""
-        stage = ChainStageModel(
+        stage = ChainStageConfigModel(
             name="analysis",
             agent="KubernetesAgent",
             iteration_strategy="react"
@@ -38,7 +38,7 @@ class TestChainStageModel:
     
     def test_creation_with_configurable_agent(self):
         """Test stage creation with configurable agent syntax."""
-        stage = ChainStageModel(
+        stage = ChainStageConfigModel(
             name="custom-analysis",
             agent="ConfigurableAgent:my-custom-agent",
             iteration_strategy="regular"
@@ -64,19 +64,19 @@ class TestChainStageModel:
     ])
     def test_to_dict_serialization(self, stage_data, expected_dict):
         """Test stage serialization to dictionary with various configurations."""
-        stage = ChainStageModel(**stage_data)
-        result = stage.to_dict()
+        stage = ChainStageConfigModel(**stage_data)
+        result = stage.model_dump()
         assert result == expected_dict
 
 
 @pytest.mark.unit
-class TestChainDefinitionModel:
-    """Test ChainDefinitionModel functionality."""
+class TestChainConfigModel:
+    """Test ChainConfigModel functionality."""
     
     def test_basic_creation(self):
         """Test basic chain definition creation."""
-        stage = ChainStageModel(name="analysis", agent="TestAgent")
-        chain = ChainDefinitionModel(
+        stage = ChainStageConfigModel(name="analysis", agent="TestAgent")
+        chain = ChainConfigModel(
             chain_id="test-chain",
             alert_types=["test-alert"],
             stages=[stage]
@@ -92,30 +92,30 @@ class TestChainDefinitionModel:
         valid_data = {
             "chain_id": "test-chain",
             "alert_types": ["test-alert"],
-            "stages": [ChainStageModel(name="analysis", agent="TestAgent")]
+            "stages": [ChainStageConfigModel(name="analysis", agent="TestAgent")]
         }
         
         required_fields = ["chain_id", "alert_types", "stages"]
-        model_validation_tester.test_required_fields(ChainDefinitionModel, required_fields, valid_data)
+        model_validation_tester.test_required_fields(ChainConfigModel, required_fields, valid_data)
 
     def test_serialization_roundtrip(self, model_test_helpers):
         """Test that chain definition can be serialized and deserialized correctly."""
         # Create the model instance first
-        chain = ChainDefinitionModel(
+        chain = ChainConfigModel(
             chain_id="test-chain",
             alert_types=["test-alert"],
-            stages=[ChainStageModel(name="analysis", agent="TestAgent")],
+            stages=[ChainStageConfigModel(name="analysis", agent="TestAgent")],
             description="Test chain description"
         )
         
         # Test serialization to dict
-        chain_dict = chain.to_dict()
+        chain_dict = chain.model_dump()
         
         # Test that we can reconstruct the stages properly
-        reconstructed_stages = [ChainStageModel(**stage_dict) for stage_dict in chain_dict['stages']]
+        reconstructed_stages = [ChainStageConfigModel(**stage_dict) for stage_dict in chain_dict['stages']]
         
         # Create a new chain with reconstructed stages
-        reconstructed_chain = ChainDefinitionModel(
+        reconstructed_chain = ChainConfigModel(
             chain_id=chain_dict['chain_id'],
             alert_types=chain_dict['alert_types'],
             stages=reconstructed_stages,
@@ -127,8 +127,8 @@ class TestChainDefinitionModel:
     
     def test_creation_with_description(self):
         """Test chain creation with description."""
-        stage = ChainStageModel(name="analysis", agent="TestAgent")
-        chain = ChainDefinitionModel(
+        stage = ChainStageConfigModel(name="analysis", agent="TestAgent")
+        chain = ChainConfigModel(
             chain_id="test-chain",
             alert_types=["test1", "test2"],
             stages=[stage],
@@ -141,12 +141,12 @@ class TestChainDefinitionModel:
     def test_multi_stage_chain(self):
         """Test chain with multiple stages."""
         stages = [
-            ChainStageModel(name="data-collection", agent="DataAgent"),
-            ChainStageModel(name="analysis", agent="AnalysisAgent", iteration_strategy="react"),
-            ChainStageModel(name="response", agent="ResponseAgent")
+            ChainStageConfigModel(name="data-collection", agent="DataAgent"),
+            ChainStageConfigModel(name="analysis", agent="AnalysisAgent", iteration_strategy="react"),
+            ChainStageConfigModel(name="response", agent="ResponseAgent")
         ]
         
-        chain = ChainDefinitionModel(
+        chain = ChainConfigModel(
             chain_id="multi-stage-chain",
             alert_types=["kubernetes", "pod-failure"],
             stages=stages,
@@ -162,18 +162,18 @@ class TestChainDefinitionModel:
     def test_to_dict_serialization(self):
         """Test chain definition serialization to dictionary."""
         stages = [
-            ChainStageModel(name="stage1", agent="Agent1"),
-            ChainStageModel(name="stage2", agent="Agent2", iteration_strategy="react")
+            ChainStageConfigModel(name="stage1", agent="Agent1"),
+            ChainStageConfigModel(name="stage2", agent="Agent2", iteration_strategy="react")
         ]
         
-        chain = ChainDefinitionModel(
+        chain = ChainConfigModel(
             chain_id="serialization-test",
             alert_types=["alert1", "alert2"],
             stages=stages,
             description="Test serialization"
         )
         
-        result = chain.to_dict()
+        result = chain.model_dump()
         expected = {
             'chain_id': 'serialization-test',
             'alert_types': ['alert1', 'alert2'],
@@ -188,14 +188,14 @@ class TestChainDefinitionModel:
     
     def test_to_dict_serialization_none_description(self):
         """Test chain serialization with None description."""
-        stage = ChainStageModel(name="test-stage", agent="TestAgent")
-        chain = ChainDefinitionModel(
+        stage = ChainStageConfigModel(name="test-stage", agent="TestAgent")
+        chain = ChainConfigModel(
             chain_id="test-chain",
             alert_types=["test"],
             stages=[stage]
         )
         
-        result = chain.to_dict()
+        result = chain.model_dump()
         expected = {
             'chain_id': 'test-chain',
             'alert_types': ['test'],
@@ -213,28 +213,29 @@ class TestChainModelValidation:
     """Test validation and edge cases for chain models."""
     
     def test_empty_stages_list(self):
-        """Test chain with empty stages list."""
-        # This should be allowed by the model but may be invalid in business logic
-        chain = ChainDefinitionModel(
-            chain_id="empty-chain",
-            alert_types=["test"],
-            stages=[]
-        )
+        """Test chain with empty stages list should fail validation."""
+        # This should raise a validation error due to min_length=1 constraint
+        with pytest.raises(ValidationError) as exc_info:
+            ChainConfigModel(
+                chain_id="empty-chain",
+                alert_types=["test"],
+                stages=[]
+            )
         
-        assert len(chain.stages) == 0
-        assert chain.to_dict()['stages'] == []
+        assert "too_short" in str(exc_info.value)
     
     def test_empty_alert_types_list(self):
-        """Test chain with empty alert types list."""
-        stage = ChainStageModel(name="test", agent="TestAgent")
-        chain = ChainDefinitionModel(
-            chain_id="no-alerts-chain",
-            alert_types=[],
-            stages=[stage]
-        )
+        """Test chain with empty alert types list should fail validation."""
+        # This should raise a validation error due to min_length=1 constraint
+        stage = ChainStageConfigModel(name="test", agent="TestAgent")
+        with pytest.raises(ValidationError) as exc_info:
+            ChainConfigModel(
+                chain_id="no-alerts-chain",
+                alert_types=[],
+                stages=[stage]
+            )
         
-        assert len(chain.alert_types) == 0
-        assert chain.to_dict()['alert_types'] == []
+        assert "too_short" in str(exc_info.value)
     
     def test_stage_name_variations(self):
         """Test stage names with various formats."""
@@ -248,9 +249,9 @@ class TestChainModelValidation:
         ]
         
         for name in test_names:
-            stage = ChainStageModel(name=name, agent="TestAgent")
+            stage = ChainStageConfigModel(name=name, agent="TestAgent")
             assert stage.name == name
-            assert stage.to_dict()['name'] == name
+            assert stage.model_dump()['name'] == name
     
     def test_agent_identifier_variations(self):
         """Test agent identifiers with various formats."""
@@ -264,9 +265,9 @@ class TestChainModelValidation:
         ]
         
         for agent in test_agents:
-            stage = ChainStageModel(name="test", agent=agent)
+            stage = ChainStageConfigModel(name="test", agent=agent)
             assert stage.agent == agent
-            assert stage.to_dict()['agent'] == agent
+            assert stage.model_dump()['agent'] == agent
 
 
 @pytest.mark.unit
@@ -276,28 +277,28 @@ class TestChainModelComplexScenarios:
     def test_kubernetes_troubleshooting_chain(self):
         """Test a realistic Kubernetes troubleshooting chain."""
         stages = [
-            ChainStageModel(
+            ChainStageConfigModel(
                 name="data-collection",
                 agent="KubernetesAgent",
                 iteration_strategy="regular"
             ),
-            ChainStageModel(
+            ChainStageConfigModel(
                 name="log-analysis",
                 agent="ConfigurableAgent:log-analyzer",
                 iteration_strategy="react"
             ),
-            ChainStageModel(
+            ChainStageConfigModel(
                 name="root-cause-analysis",
                 agent="KubernetesAgent",
                 iteration_strategy="react"
             ),
-            ChainStageModel(
+            ChainStageConfigModel(
                 name="remediation-planning",
                 agent="ConfigurableAgent:remediation-planner"
             )
         ]
         
-        chain = ChainDefinitionModel(
+        chain = ChainConfigModel(
             chain_id="kubernetes-troubleshooting-chain",
             alert_types=["PodFailure", "ServiceDown", "NamespaceTerminating"],
             stages=stages,
@@ -310,7 +311,7 @@ class TestChainModelComplexScenarios:
         assert "Comprehensive" in chain.description
         
         # Verify serialization works
-        serialized = chain.to_dict()
+        serialized = chain.model_dump()
         assert len(serialized['stages']) == 4
         assert serialized['stages'][0]['iteration_strategy'] == 'regular'
         assert serialized['stages'][1]['agent'] == 'ConfigurableAgent:log-analyzer'
@@ -318,12 +319,12 @@ class TestChainModelComplexScenarios:
     
     def test_single_stage_chain_conversion(self):
         """Test that single-agent workflows become single-stage chains."""
-        stage = ChainStageModel(
+        stage = ChainStageConfigModel(
             name="analysis",
             agent="KubernetesAgent"
         )
         
-        chain = ChainDefinitionModel(
+        chain = ChainConfigModel(
             chain_id="kubernetes-agent-chain",
             alert_types=["kubernetes", "NamespaceTerminating"],
             stages=[stage],
@@ -339,13 +340,13 @@ class TestChainModelComplexScenarios:
     def test_chain_with_mixed_agent_types(self):
         """Test chain mixing built-in and configurable agents."""
         stages = [
-            ChainStageModel(name="builtin-stage", agent="KubernetesAgent"),
-            ChainStageModel(name="configurable-stage1", agent="ConfigurableAgent:custom1"),
-            ChainStageModel(name="configurable-stage2", agent="ConfigurableAgent:custom2"),
-            ChainStageModel(name="another-builtin", agent="SomeOtherBuiltinAgent")
+            ChainStageConfigModel(name="builtin-stage", agent="KubernetesAgent"),
+            ChainStageConfigModel(name="configurable-stage1", agent="ConfigurableAgent:custom1"),
+            ChainStageConfigModel(name="configurable-stage2", agent="ConfigurableAgent:custom2"),
+            ChainStageConfigModel(name="another-builtin", agent="SomeOtherBuiltinAgent")
         ]
         
-        chain = ChainDefinitionModel(
+        chain = ChainConfigModel(
             chain_id="mixed-agents-chain",
             alert_types=["mixed-processing"],
             stages=stages
@@ -359,7 +360,7 @@ class TestChainModelComplexScenarios:
         assert len(configurable_agents) == 2
         
         # Verify serialization preserves agent identifiers
-        serialized = chain.to_dict()
+        serialized = chain.model_dump()
         agent_ids = [stage['agent'] for stage in serialized['stages']]
         assert "KubernetesAgent" in agent_ids
         assert "ConfigurableAgent:custom1" in agent_ids

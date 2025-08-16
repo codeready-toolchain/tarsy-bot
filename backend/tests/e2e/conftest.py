@@ -270,7 +270,7 @@ def isolated_test_database(e2e_isolation):
             # Try direct table creation
             try:
                 # Import all models to ensure they're registered
-                from tarsy.models.history import AlertSession, StageExecution
+                from tarsy.models.db_models import AlertSession, StageExecution
                 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
                 
                 SQLModel.metadata.create_all(engine)

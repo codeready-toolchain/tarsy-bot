@@ -6,7 +6,7 @@ import pytest
 
 from tarsy.agents.configurable_agent import ConfigurableAgent
 from tarsy.models.agent_config import AgentConfigModel
-from tarsy.agents.constants import IterationStrategy
+from tarsy.models.constants import IterationStrategy
 
 
 @pytest.mark.unit

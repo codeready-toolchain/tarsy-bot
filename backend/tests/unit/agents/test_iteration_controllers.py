@@ -16,7 +16,7 @@ from tarsy.agents.iteration_controllers.react_iteration_controller import Simple
 from tarsy.agents.iteration_controllers.react_final_analysis_controller import ReactFinalAnalysisController
 from tarsy.agents.iteration_controllers.react_tools_controller import ReactToolsController
 from tarsy.agents.iteration_controllers.react_tools_partial_controller import ReactToolsPartialController
-from tarsy.agents.constants import IterationStrategy
+from tarsy.models.constants import IterationStrategy
 
 
 @pytest.mark.unit

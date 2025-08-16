@@ -9,7 +9,7 @@ import pytest
 from unittest.mock import AsyncMock, Mock
 
 from tarsy.models.alert_processing import AlertProcessingData
-from tarsy.models.chains import ChainDefinitionModel, ChainStageModel
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 
 
 @pytest.mark.asyncio
@@ -20,15 +20,15 @@ class TestMultiStageChainExecution:
     @pytest.fixture
     def simple_two_stage_chain(self):
         """Create a simple 2-stage chain for testing data flow."""
-        return ChainDefinitionModel(
+        return ChainConfigModel(
             chain_id="integration-test-chain",
             alert_types=["integration-test"],
             stages=[
-                ChainStageModel(
+                ChainStageConfigModel(
                     name="data-collection",
                     agent="DataCollectionAgent"
                 ),
-                ChainStageModel(
+                ChainStageConfigModel(
                     name="analysis", 
                     agent="AnalysisAgent"
                 )
@@ -193,12 +193,12 @@ class TestChainExecutionErrorHandling:
     async def test_chain_partial_execution_on_stage_failure(self):
         """Test that chain execution handles stage failures gracefully."""
         # Create chain with 2 stages where second stage will fail
-        chain = ChainDefinitionModel(
+        chain = ChainConfigModel(
             chain_id="failure-test-chain",
             alert_types=["failure-test"],
             stages=[
-                ChainStageModel(name="success-stage", agent="SuccessAgent"),
-                ChainStageModel(name="failure-stage", agent="FailureAgent")
+                ChainStageConfigModel(name="success-stage", agent="SuccessAgent"),
+                ChainStageConfigModel(name="failure-stage", agent="FailureAgent")
             ]
         )
         

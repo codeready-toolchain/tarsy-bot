@@ -14,7 +14,7 @@ from ..models.agent_config import AgentConfigModel
 from ..services.mcp_server_registry import MCPServerRegistry
 from ..utils.logger import get_module_logger
 from .base_agent import BaseAgent
-from .constants import IterationStrategy
+from ..models.constants import IterationStrategy
 
 logger = get_module_logger(__name__)
 

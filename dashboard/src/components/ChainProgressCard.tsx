@@ -300,25 +300,25 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
             <StageProgressBar
               stages={stageProgress?.map(sp => ({
                 execution_id: sp.stage_execution_id,
+                session_id: session.session_id,
                 stage_id: sp.stage_id,
                 stage_index: sp.stage_index,
                 stage_name: sp.stage_name,
                 agent: sp.agent,
-                iteration_strategy: sp.iteration_strategy ?? null,
                 status: sp.status,
                 started_at_us: sp.started_at_us ?? null,
                 completed_at_us: sp.completed_at_us ?? null,
                 duration_ms: sp.duration_ms ?? null,
                 stage_output: null,
                 error_message: sp.error_message ?? null,
-                // Add required fields for new API structure
-                timeline: [],
-                interaction_summary: {
-                  llm_count: 0,
-                  mcp_count: 0,
-                  total_count: 0,
-                  duration_ms: sp.duration_ms ?? null
-                }
+                // EP-0010: Add required fields for new API structure
+                llm_interactions: [],
+                mcp_communications: [],
+                llm_interaction_count: 0,
+                mcp_communication_count: 0,
+                total_interactions: 0,
+                stage_interactions_duration_ms: sp.duration_ms ?? null,
+                chronological_interactions: []
               })) ?? []}
               currentStageIndex={currentStageIndex}
               showLabels={true}

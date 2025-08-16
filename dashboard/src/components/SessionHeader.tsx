@@ -314,9 +314,9 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                 }}
               >
                 {session.alert_data?.alert_type || session.alert_type || 'Alert Processing'}
-                {session.chain_execution?.chain_definition?.name && (
+                {session.chain_definition?.name && (
                   <Typography component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}>
-                    {' - '}{session.chain_execution.chain_definition.name}
+                    {' - '}{session.chain_definition.name}
                   </Typography>
                 )}
               </Typography>
@@ -328,13 +328,13 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
             </Box>
             
             {/* Chain details */}
-            {session.chain_execution?.chain_definition?.description && (
+            {session.chain_definition?.description && (
               <Typography 
                 variant="body2" 
                 color="text.secondary" 
                 sx={{ mb: 0.5 }}
               >
-                chain:{session.chain_execution.chain_definition.description}
+                chain:{session.chain_definition.description}
               </Typography>
             )}
             
@@ -407,8 +407,21 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
 
         {/* Summary section */}
         <Box>
-          {session.summary && (
-            <SessionSummary summary={session.summary} sessionStatus={session.status} />
+          {(session.total_interactions > 0 || session.status === 'in_progress' || session.status === 'pending') && (
+            <SessionSummary 
+              summary={{
+                total_interactions: session.total_interactions,
+                llm_interactions: session.llm_interaction_count,
+                mcp_communications: session.mcp_communication_count,
+                errors_count: session.error_message ? 1 : 0, // Simple error counting
+                chain_statistics: session.total_stages ? {
+                  total_stages: session.total_stages,
+                  completed_stages: session.completed_stages || 0,
+                  failed_stages: session.failed_stages || 0
+                } : undefined
+              }} 
+              sessionStatus={session.status} 
+            />
           )}
         </Box>
       </Box>

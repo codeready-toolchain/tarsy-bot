@@ -12,16 +12,8 @@ interface MCPInteractionPreviewProps {
  * Shows preview of MCP interactions - tool list count or tool call details
  */
 function MCPInteractionPreview({ 
-  interaction, 
-  showFullPreview = false 
+  interaction
 }: MCPInteractionPreviewProps) {
-
-  const formatJsonContent = (content: any): string => {
-    if (content === null || content === undefined) return '';
-    if (typeof content === 'string') return content;
-    if (content !== undefined) return JSON.stringify(content);
-    return '';
-  };
 
   const getToolListPreview = (): { count: number; examples: string[] } => {
     if (!interaction.available_tools) {
@@ -32,7 +24,7 @@ function MCPInteractionPreview({
     let totalCount = 0;
     const examples: string[] = [];
 
-    Object.entries(interaction.available_tools).forEach(([serverName, tools]) => {
+          Object.entries(interaction.available_tools).forEach(([, tools]) => {
       if (Array.isArray(tools)) {
         totalCount += tools.length;
         // Get first few tool names as examples
@@ -184,17 +176,7 @@ function MCPInteractionPreview({
         </Box>
       )}
 
-      {/* Execution Time */}
-      {interaction.execution_time_ms && (
-        <Typography variant="caption" sx={{ 
-          color: 'text.disabled',
-          fontSize: '0.65rem',
-          mt: 0.5,
-          display: 'block'
-        }}>
-          {interaction.execution_time_ms}ms
-        </Typography>
-      )}
+      {/* Execution Time removed in EP-0010 */}
     </Box>
   );
 }

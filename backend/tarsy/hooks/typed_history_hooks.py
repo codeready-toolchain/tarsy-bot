@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 from tarsy.hooks.typed_context import BaseTypedHook
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.models.history import StageExecution
+from tarsy.models.db_models import StageExecution
 from tarsy.services.history_service import HistoryService
 
 logger = logging.getLogger(__name__)
@@ -135,8 +135,12 @@ class TypedStageExecutionHistoryHook(BaseTypedHook[StageExecution]):
                 logger.debug(f"Created stage execution {execution_id} in history")
             else:
                 # This is an update to an existing stage execution (has started/completed times)
-                await self.history_service.update_stage_execution(stage_execution)
-                logger.debug(f"Updated stage execution {stage_execution.execution_id} in history")
+                success = await self.history_service.update_stage_execution(stage_execution)
+                if not success:
+                    execution_id = await self.history_service.create_stage_execution(stage_execution)
+                    logger.debug(f"Created (via fallback) stage execution {execution_id} in history")
+                else:
+                    logger.debug(f"Updated stage execution {stage_execution.execution_id} in history")
                 
         except Exception as e:
             logger.error(f"Failed to log stage execution to history: {e}")

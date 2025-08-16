@@ -15,7 +15,7 @@ from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.utils.logger import get_module_logger
 from tarsy.config.builtin_config import get_builtin_agent_import_mapping, get_builtin_agent_config
-from tarsy.agents.constants import IterationStrategy
+from tarsy.models.constants import IterationStrategy
 
 from .mcp_server_registry import MCPServerRegistry
 

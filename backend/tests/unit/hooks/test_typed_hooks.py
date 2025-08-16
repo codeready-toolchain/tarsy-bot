@@ -13,7 +13,7 @@ from tarsy.hooks.typed_history_hooks import TypedLLMHistoryHook, TypedMCPHistory
 from tarsy.hooks.typed_dashboard_hooks import TypedLLMDashboardHook, TypedMCPDashboardHook
 from tarsy.hooks.typed_context import BaseTypedHook
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.models.history import StageExecution
+from tarsy.models.db_models import StageExecution
 from tarsy.models.constants import StageStatus
 from tarsy.services.history_service import HistoryService
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster

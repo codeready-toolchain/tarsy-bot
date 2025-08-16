@@ -1,6 +1,5 @@
 import { memo } from 'react';
 import { Box, Typography, Chip } from '@mui/material';
-import { alpha } from '@mui/material/styles';
 import type { LLMInteraction } from '../types';
 
 interface LLMInteractionPreviewProps {
@@ -18,21 +17,22 @@ function LLMInteractionPreview({
 }: LLMInteractionPreviewProps) {
   
   const extractResponseText = (llm: LLMInteraction): string => {
-    // Handle failed interactions
-    if (llm.success === false || llm.response_json === null) {
+    // EP-0010: Handle failed interactions
+    if (llm.success === false) {
       return '';
     }
     
-    const choice = llm.response_json?.choices?.[0];
-    const content = choice?.message?.content;
-    if (typeof content === 'string') return content;
-    if (content !== undefined) return JSON.stringify(content);
+    // EP-0010: Look for assistant message in messages array
+    const assistantMsg = llm.messages?.find((m: any) => m?.role === 'assistant');
+    if (assistantMsg) {
+      if (typeof assistantMsg.content === 'string') return assistantMsg.content;
+      if (assistantMsg.content !== undefined) return JSON.stringify(assistantMsg.content);
+    }
     return '';
   };
 
-  // Check if this is a failed interaction
-  // Handle both explicit failure (success: false) and null response (API failure)
-  const isFailed = interaction.success === false || interaction.response_json === null;
+  // EP-0010: Check if this is a failed interaction
+  const isFailed = interaction.success === false;
 
   const parseThoughtAndAction = (responseText: string) => {
     let thought = '';

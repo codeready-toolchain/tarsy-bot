@@ -10,7 +10,7 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 from tarsy.integrations.llm.client import LLMClient, LLM_PROVIDERS
-from tarsy.models.llm import LLMMessage
+from tarsy.models.unified_interactions import LLMMessage
 from tarsy.config.settings import Settings
 
 

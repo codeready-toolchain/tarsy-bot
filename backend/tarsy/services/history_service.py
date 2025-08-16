@@ -14,12 +14,12 @@ from typing import Any, Dict, List, Optional
 
 from tarsy.config.settings import get_settings
 
-# Import new type-safe models for internal use (Phase 3)
 from tarsy.models.history_models import (
-    PaginatedSessions, DetailedSession, FilterOptions, SessionStats, SessionOverview
+    PaginatedSessions, DetailedSession, FilterOptions, SessionStats
 )
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.history import AlertSession, StageExecution, now_us
+from tarsy.models.db_models import AlertSession, StageExecution
+from tarsy.utils.timestamp import now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository
@@ -49,7 +49,13 @@ class HistoryService:
         self.base_delay = 0.1  # 100ms base delay
         self.max_delay = 2.0   # 2 second max delay
     
-    def _retry_database_operation(self, operation_name: str, operation_func):
+    def _retry_database_operation(
+        self,
+        operation_name: str,
+        operation_func,
+        *,
+        treat_none_as_success: bool = False,
+    ):
         """
         Retry database operations with exponential backoff for transient failures.
         
@@ -67,8 +73,13 @@ class HistoryService:
                 result = operation_func()
                 if result is not None:
                     return result
+                if treat_none_as_success:
+                    # None is an acceptable outcome (e.g., entity not found)
+                    return None
                 # If result is None, log and continue to retry
-                logger.warning(f"Database operation '{operation_name}' returned None on attempt {attempt + 1}")
+                logger.warning(
+                    f"Database operation '{operation_name}' returned None on attempt {attempt + 1}"
+                )
                 
             except Exception as e:
                 last_exception = e
@@ -349,25 +360,6 @@ class HistoryService:
         
         result = self._retry_database_operation("update_session_current_stage", _update_current_stage_operation)
         return result if result is not None else False
-    
-    async def get_session_with_stages(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Get session with all stage execution details - Phase 3: Uses internal models but returns dict for controllers."""
-        def _get_session_with_stages_operation():
-            with self.get_repository() as repo:
-                if not repo:
-                    logger.warning("History repository unavailable - session with stages not retrieved")
-                    return None
-                # Use regular method that now returns DetailedSession model directly (Phase 3)
-                detailed_session = repo.get_session_with_stages(session_id)
-                if detailed_session:
-                    # Convert back to dict for controllers (Phase 3.2 - maintain dict APIs)
-                    # Use mode='json' to serialize enums as their values (needed for legacy compatibility)
-                    return detailed_session.model_dump(mode='json')
-                return None
-        
-        result = self._retry_database_operation("get_session_with_stages", _get_session_with_stages_operation)
-        return result
-
 
     def get_stage_interaction_counts(self, execution_ids: List[str]) -> Dict[str, Dict[str, int]]:
         """
@@ -459,105 +451,9 @@ class HistoryService:
         
         return summary
     
-    def _convert_detailed_session_to_legacy_timeline(self, detailed_session: DetailedSession) -> Dict[str, Any]:
-        """
-        Convert DetailedSession model to legacy timeline dict structure - Phase 3: Backward compatibility.
-        
-        The legacy structure expected by tests and controllers:
-        {
-            "session": { ...session fields... },
-            "chronological_timeline": [ ...events... ],
-            "llm_interactions": [ ...summaries... ],
-            "mcp_communications": [ ...summaries... ]
-        }
-        
-        Args:
-            detailed_session: DetailedSession model from repository
-            
-        Returns:
-            Dictionary in legacy timeline format
-        """
-        # Build session dict from DetailedSession fields
-        session_dict = {
-            "session_id": detailed_session.session_id,
-            "alert_id": detailed_session.alert_id,
-            "alert_data": detailed_session.alert_data,
-            "agent_type": detailed_session.agent_type,
-            "alert_type": detailed_session.alert_type,
-            "status": detailed_session.status.value,
-            "started_at_us": detailed_session.started_at_us,
-            "completed_at_us": detailed_session.completed_at_us,
-            "error_message": detailed_session.error_message,
-            "final_analysis": detailed_session.final_analysis,
-            "session_metadata": detailed_session.session_metadata,
-            "chain_id": detailed_session.chain_id,
-            "chain_definition": detailed_session.chain_definition,
-            "current_stage_index": detailed_session.current_stage_index,
-            "current_stage_id": detailed_session.current_stage_id,
-            "total_interactions": detailed_session.total_interactions,
-            "llm_interaction_count": detailed_session.llm_interaction_count,
-            "mcp_communication_count": detailed_session.mcp_communication_count
-        }
-        
-        # Build chronological timeline from all stage interactions
-        chronological_timeline = []
-        llm_summaries = []
-        mcp_summaries = []
-        
-        # Collect all interactions from all stages and sort chronologically
-        all_interactions = []
-        for stage in detailed_session.stages:
-            all_interactions.extend(stage.llm_interactions)
-            all_interactions.extend(stage.mcp_communications)
-        
-        # Sort by timestamp
-        all_interactions.sort(key=lambda x: x.timestamp_us)
-        
-        # Convert interactions to timeline events and summaries
-        for interaction in all_interactions:
-            # Add to chronological timeline
-            event_dict = {
-                "id": interaction.id,
-                "event_id": interaction.event_id,
-                "timestamp_us": interaction.timestamp_us,
-                "type": interaction.type,
-                "step_description": interaction.step_description,
-                "duration_ms": interaction.duration_ms,
-                "stage_execution_id": interaction.stage_execution_id,
-                "details": interaction.details.model_dump()
-            }
-            chronological_timeline.append(event_dict)
-            
-            # Add to summary lists
-            if interaction.type == "llm":
-                llm_summaries.append({
-                    "interaction_id": interaction.id,
-                    "timestamp_us": interaction.timestamp_us,
-                    "step_description": interaction.step_description,
-                    "model_name": interaction.details.model_name,
-                    "duration_ms": interaction.duration_ms
-                })
-            elif interaction.type == "mcp":
-                mcp_summaries.append({
-                    "communication_id": interaction.id,
-                    "timestamp_us": interaction.timestamp_us,
-                    "step_description": interaction.step_description,
-                    "server_name": interaction.details.server_name,
-                    "tool_name": interaction.details.tool_name,
-                    "success": interaction.details.success,
-                    "duration_ms": interaction.duration_ms
-                })
-        
-        return {
-            "session": session_dict,
-            "chronological_timeline": chronological_timeline,
-            "llm_interactions": llm_summaries,
-            "mcp_communications": mcp_summaries
-        }
-    
     def calculate_session_summary_from_model(self, detailed_session: DetailedSession) -> Dict[str, Any]:
         """
-        Calculate summary statistics from DetailedSession model - Phase 3: Type-safe calculation.
+        Calculate summary statistics from DetailedSession model.
         
         This replaces the dict-based calculate_session_summary method for better type safety.
         
@@ -617,7 +513,7 @@ class HistoryService:
 
     async def get_session_summary(self, session_id: str) -> Optional[SessionStats]:
         """
-        Phase 4: Get just the summary statistics for a session - returns SessionStats model for controllers.
+        Get just the summary statistics for a session - returns SessionStats model for controllers.
         
         Args:
             session_id: Session identifier
@@ -631,31 +527,48 @@ class HistoryService:
                     if not repo:
                         raise RuntimeError("History repository unavailable - cannot retrieve session summary")
                     
-                    # Use regular method that now returns DetailedSession model directly (Phase 3)
-                    detailed_session = repo.get_session_with_stages(session_id)
-                    if not detailed_session:
+                    session_overview = repo.get_session_overview(session_id)
+                    if not session_overview:
                         # This is a legitimate case - session doesn't exist, not a system failure
                         return None
                     
-                    # Calculate statistics using type-safe model and return as SessionStats
-                    summary_dict = self.calculate_session_summary_from_model(detailed_session)
-                    
-                    # Create SessionStats model from the calculated dictionary
+                    # Calculate statistics from SessionOverview and return as SessionStats
                     from tarsy.models.history_models import SessionStats, ChainStatistics
-                    chain_stats = ChainStatistics(**summary_dict["chain_statistics"])
+                    
+                    # Calculate basic counts from the SessionOverview model
+                    total_interactions = session_overview.total_interactions
+                    llm_interactions = session_overview.llm_interaction_count
+                    mcp_communications = session_overview.mcp_communication_count
+                    
+                    # Calculate duration from session timing
+                    total_duration_ms = 0
+                    if session_overview.started_at_us and session_overview.completed_at_us:
+                        total_duration_ms = (session_overview.completed_at_us - session_overview.started_at_us) // 1000
+                    
+                    # Create chain statistics from SessionOverview
+                    chain_stats = ChainStatistics(
+                        total_stages=session_overview.total_stages or 0,
+                        completed_stages=session_overview.completed_stages or 0,
+                        failed_stages=session_overview.failed_stages,
+                        stages_by_agent={}  # Not calculated in overview for performance
+                    )
                     
                     session_stats = SessionStats(
-                        total_interactions=summary_dict["total_interactions"],
-                        llm_interactions=summary_dict["llm_interactions"],
-                        mcp_communications=summary_dict["mcp_communications"],
-                        system_events=summary_dict["system_events"],
-                        errors_count=summary_dict["errors_count"],
-                        total_duration_ms=summary_dict["total_duration_ms"],
+                        total_interactions=total_interactions,
+                        llm_interactions=llm_interactions,
+                        mcp_communications=mcp_communications,
+                        system_events=0,  # Not tracked in SessionOverview
+                        errors_count=1 if session_overview.error_message else 0,
+                        total_duration_ms=total_duration_ms,
                         chain_statistics=chain_stats
                     )
                     return session_stats
             
-            result = self._retry_database_operation("get_session_summary", _get_session_summary_operation)
+            result = self._retry_database_operation(
+                "get_session_summary",
+                _get_session_summary_operation,
+                treat_none_as_success=True,
+            )
             return result
                 
         except Exception as e:
@@ -671,7 +584,11 @@ class HistoryService:
                     return None
                 return repo.get_stage_execution(execution_id)
         
-        result = self._retry_database_operation("get_stage_execution", _get_stage_execution_operation)
+        result = self._retry_database_operation(
+            "get_stage_execution",
+            _get_stage_execution_operation,
+            treat_none_as_success=True,
+        )
         return result
     
     # LLM Interaction Logging
@@ -696,9 +613,9 @@ class HistoryService:
                 
                 # Set step description if not already set
                 if not interaction.step_description:
-                    interaction.step_description = f"LLM analysis using {interaction.model_name}"
+                    model_name = getattr(getattr(interaction, "details", None), "model_name", None) or "LLM"
+                    interaction.step_description = f"LLM analysis using {model_name}"
                 
-                # Direct storage - no conversion needed!
                 repo.create_llm_interaction(interaction)
                 logger.debug(f"Logged LLM interaction for session {interaction.session_id}")
                 return True
@@ -732,7 +649,6 @@ class HistoryService:
                 if not interaction.step_description:
                     interaction.step_description = interaction.get_step_description()
                 
-                # Direct storage - no conversion needed!
                 repo.create_mcp_communication(interaction)
                 logger.debug(f"Logged MCP communication for session {interaction.session_id}")
                 return True
@@ -756,7 +672,7 @@ class HistoryService:
         page_size: int = 20
     ) -> Optional[PaginatedSessions]:
         """
-        Phase 4: Retrieve alert sessions with filtering and pagination - returns PaginatedSessions model directly for controllers.
+        Retrieve alert sessions with filtering and pagination - returns PaginatedSessions model directly for controllers.
         
         Args:
             filters: Dictionary of filters (status, agent_type, alert_type, start_date_us, end_date_us)
@@ -774,7 +690,7 @@ class HistoryService:
                 # Extract filters or use defaults
                 filters = filters or {}
                 
-                # Use regular method that now returns PaginatedSessions model directly (Phase 3)
+                # Use regular method that returns PaginatedSessions model directly
                 paginated_sessions = repo.get_alert_sessions(
                     status=filters.get('status'),
                     agent_type=filters.get('agent_type'),
@@ -820,7 +736,7 @@ class HistoryService:
 
     def get_session_timeline(self, session_id: str) -> Optional[DetailedSession]:
         """
-        Phase 4: Get complete session timeline - returns DetailedSession model directly for controllers.
+        Get complete session timeline - returns DetailedSession model directly for controllers.
         
         Args:
             session_id: The session identifier
@@ -833,7 +749,6 @@ class HistoryService:
                 if not repo:
                     return None
                 
-                # Use regular method that now returns DetailedSession model directly (Phase 3)
                 detailed_session = repo.get_session_timeline(session_id)
                 return detailed_session
                 
@@ -861,7 +776,7 @@ class HistoryService:
 
     def get_filter_options(self) -> FilterOptions:
         """
-        Phase 4: Get available filter options for the dashboard - returns FilterOptions model for controllers.
+        Get available filter options for the dashboard - returns FilterOptions model for controllers.
         
         Returns:
             FilterOptions model
@@ -884,7 +799,6 @@ class HistoryService:
                     )
                     return default_options
                 
-                # Use regular method that now returns FilterOptions model directly (Phase 3)
                 filter_options = repo.get_filter_options()
                 return filter_options
                 
@@ -938,27 +852,18 @@ class HistoryService:
                     logger.info("No orphaned sessions found during startup cleanup")
                     return 0
                 
-                # active_sessions_result is now PaginatedSessions model (Phase 3)
                 session_overviews = active_sessions_result.sessions
                 cleanup_count = 0
                 
                 for session_overview in session_overviews:
                     try:
-                        # Convert SessionOverview to AlertSession object for update
-                        session = AlertSession(
-                            session_id=session_overview.session_id,
-                            alert_id=session_overview.alert_id,
-                            alert_type=session_overview.alert_type,
-                            agent_type=session_overview.agent_type,
-                            status=session_overview.status.value,
-                            started_at_us=session_overview.started_at_us,
-                            completed_at_us=session_overview.completed_at_us,
-                            error_message=session_overview.error_message,
-                            chain_id=session_overview.chain_id,
-                            current_stage_index=session_overview.current_stage_index
-                        )
+                        # Get the existing session from database instead of creating new object
+                        session = repo.get_alert_session(session_overview.session_id)
+                        if not session:
+                            logger.warning(f"Could not find session {session_overview.session_id} for cleanup")
+                            continue
                         
-                        # Mark session as failed with appropriate error message
+                        # Update the existing session object's fields
                         session.status = AlertSessionStatus.FAILED.value
                         session.error_message = "Backend was restarted - session terminated unexpectedly"
                         session.completed_at_us = now_us()

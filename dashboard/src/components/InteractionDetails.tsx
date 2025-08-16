@@ -33,25 +33,32 @@ function InteractionDetails({
   };
 
   const extractSystemUserFromRequest = (llm: LLMInteraction) => {
-    const systemMsg = llm.request_json?.messages?.find((m: any) => m?.role === 'system');
-    const userMsg = llm.request_json?.messages?.find((m: any) => m?.role === 'user');
+    // EP-0010: messages are now directly in LLMEventDetails
+    const systemMsg = llm.messages?.find((m: any) => m?.role === 'system');
+    const userMsg = llm.messages?.find((m: any) => m?.role === 'user');
     return {
-      system: typeof systemMsg?.content === 'string' ? systemMsg.content : JSON.stringify(systemMsg?.content ?? ''),
-      user: typeof userMsg?.content === 'string' ? userMsg.content : JSON.stringify(userMsg?.content ?? ''),
+      system: typeof systemMsg?.content === 'string' ? systemMsg.content : 
+              (systemMsg?.content == null || systemMsg?.content === '') ? '' : 
+              JSON.stringify(systemMsg.content),
+      user: typeof userMsg?.content === 'string' ? userMsg.content : 
+            (userMsg?.content == null || userMsg?.content === '') ? '' : 
+            JSON.stringify(userMsg.content),
     };
   };
 
   const extractResponseText = (llm: LLMInteraction) => {
-    const choice = llm.response_json?.choices?.[0];
-    const content = choice?.message?.content;
-    if (typeof content === 'string') return content;
-    if (content !== undefined) return JSON.stringify(content);
+    // EP-0010: Look for assistant message in the messages array
+    const assistantMsg = llm.messages?.find((m: any) => m?.role === 'assistant');
+    if (assistantMsg) {
+      if (typeof assistantMsg.content === 'string') return assistantMsg.content;
+      if (assistantMsg.content !== undefined) return JSON.stringify(assistantMsg.content);
+    }
     return '';
   };
 
   const renderLLMDetails = (llmDetails: LLMInteraction) => {
-    // Check if this is a failed interaction
-    const isFailed = llmDetails.success === false || llmDetails.response_json === null;
+    // EP-0010: Check if this is a failed interaction
+    const isFailed = llmDetails.success === false;
     
     return (
       <Stack spacing={2}>
@@ -280,9 +287,9 @@ function InteractionDetails({
           <Typography variant="body2" color="text.secondary">
             <strong>Model:</strong> {llmDetails.model_name}
           </Typography>
-          {llmDetails.tokens_used && (
+          {llmDetails.total_tokens && (
             <Typography variant="body2" color="text.secondary">
-              <strong>Tokens:</strong> {llmDetails.tokens_used.toLocaleString()}
+              <strong>Tokens:</strong> {llmDetails.total_tokens.toLocaleString()}
             </Typography>
           )}
           {llmDetails.temperature !== undefined && (
@@ -391,11 +398,7 @@ function InteractionDetails({
           <Typography variant="body2" color="text.secondary">
             <strong>Server:</strong> {mcpDetails.server_name}
           </Typography>
-          {mcpDetails.execution_time_ms && (
-            <Typography variant="body2" color="text.secondary">
-              <strong>Execution Time:</strong> {mcpDetails.execution_time_ms}ms
-            </Typography>
-          )}
+          {/* execution_time_ms removed in EP-0010 */}
         </Stack>
       </Box>
     </Stack>
@@ -454,24 +457,28 @@ function InteractionDetails({
         // Parse and format LLM messages nicely
         let formatted = '=== LLM INTERACTION ===\n\n';
         
-        // New JSON-first formatting
-        if (llm.request_json?.messages?.length) {
-          const system = llm.request_json.messages.find((m: any) => m?.role === 'system');
-          const user = llm.request_json.messages.find((m: any) => m?.role === 'user');
+        // EP-0010: Format messages directly from the messages array
+        if (llm.messages?.length) {
+          const system = llm.messages.find((m: any) => m?.role === 'system');
+          const user = llm.messages.find((m: any) => m?.role === 'user');
           if (system) {
-            const s = typeof system.content === 'string' ? system.content : JSON.stringify(system.content);
-            formatted += `SYSTEM:\n${s}\n\n`;
+            const s = typeof system.content === 'string' ? system.content : 
+                     (system.content == null || system.content === '') ? '' : 
+                     JSON.stringify(system.content);
+            if (s) formatted += `SYSTEM:\n${s}\n\n`;
           }
           if (user) {
-            const u = typeof user.content === 'string' ? user.content : JSON.stringify(user.content);
-            formatted += `USER:\n${u}\n\n`;
+            const u = typeof user.content === 'string' ? user.content : 
+                     (user.content == null || user.content === '') ? '' : 
+                     JSON.stringify(user.content);
+            if (u) formatted += `USER:\n${u}\n\n`;
           }
         }
 
         const resp = extractResponseText(llm);
         formatted += `RESPONSE:\n${resp}\n\n`;
         formatted += `MODEL: ${llm.model_name}`;
-        if (llm.tokens_used) formatted += ` | TOKENS: ${llm.tokens_used}`;
+        if (llm.total_tokens) formatted += ` | TOKENS: ${llm.total_tokens}`;
         if (llm.temperature !== undefined) formatted += ` | TEMPERATURE: ${llm.temperature}`;
         
         return formatted;
@@ -484,12 +491,12 @@ function InteractionDetails({
         
         if (isToolList(mcp)) {
           mcpFormatted += `SERVER: ${mcp.server_name}\n`;
-          if (mcp.execution_time_ms) mcpFormatted += `EXECUTION TIME: ${mcp.execution_time_ms}ms\n`;
+          // execution_time_ms removed in EP-0010
           mcpFormatted += `\nAVAILABLE TOOLS:\n${JSON.stringify(mcp.available_tools, null, 2)}`;
         } else {
           mcpFormatted += `TOOL: ${mcp.tool_name}\n`;
           mcpFormatted += `SERVER: ${mcp.server_name}\n`;
-          if (mcp.execution_time_ms) mcpFormatted += `EXECUTION TIME: ${mcp.execution_time_ms}ms\n`;
+          // execution_time_ms removed in EP-0010
           mcpFormatted += `\nPARAMETERS:\n${JSON.stringify(mcp.parameters, null, 2)}\n\n`;
           mcpFormatted += `RESULT:\n${JSON.stringify(mcp.result, null, 2)}`;
         }
@@ -514,12 +521,16 @@ function InteractionDetails({
     switch (type) {
       case 'llm': {
         const llm = details as LLMInteraction;
-        const system = llm.request_json?.messages?.find((m: any) => m?.role === 'system');
-        const user = llm.request_json?.messages?.find((m: any) => m?.role === 'user');
-        const s = system ? (typeof system.content === 'string' ? system.content : JSON.stringify(system.content)) : '';
-        const u = user ? (typeof user.content === 'string' ? user.content : JSON.stringify(user.content)) : '';
-        const choice = llm.response_json?.choices?.[0];
-        const resp = choice?.message?.content ?? '';
+        const system = llm.messages?.find((m: any) => m?.role === 'system');
+        const user = llm.messages?.find((m: any) => m?.role === 'user');
+        const s = system ? (typeof system.content === 'string' ? system.content : 
+                          (system.content == null || system.content === '') ? '' : 
+                          JSON.stringify(system.content)) : '';
+        const u = user ? (typeof user.content === 'string' ? user.content : 
+                         (user.content == null || user.content === '') ? '' : 
+                         JSON.stringify(user.content)) : '';
+        const assistant = llm.messages?.find((m: any) => m?.role === 'assistant');
+        const resp = assistant?.content ?? '';
         const respStr = typeof resp === 'string' ? resp : JSON.stringify(resp);
         return `${s}${u ? '\n\n' + u : ''}\n\n---\n\n${respStr}`;
       }
