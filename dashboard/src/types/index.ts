@@ -1,24 +1,26 @@
-// Basic alert session types for Phase 1
+// Updated session types for EP-0010 (SessionOverview model)
 export interface Session {
   session_id: string;
   alert_id: string;
-  alert_type: string;
+  alert_type: string | null;
   agent_type: string;
   status: 'completed' | 'failed' | 'in_progress' | 'pending';
   started_at_us: number; // Unix timestamp (microseconds since epoch)
   completed_at_us: number | null; // Unix timestamp (microseconds since epoch)
-  duration_ms: number | null;
-  summary?: string | object; // Backend may return string or empty object
+  duration_ms: number | null; // Computed property from backend
   error_message: string | null;
-  llm_interaction_count?: number;
-  mcp_communication_count?: number;
   
-  // Phase 5: Chain execution information
-  chain_id?: string; // Chain identifier if this is a chain execution
-  total_stages?: number; // Total number of stages in the chain
-  completed_stages?: number; // Number of successfully completed stages
-  failed_stages?: number; // Number of failed stages
-  current_stage_index?: number; // Current stage index (if still processing)
+  // Interaction counts (now always present)
+  llm_interaction_count: number;
+  mcp_communication_count: number;
+  total_interactions: number;
+  
+  // Chain information (now always present since all sessions are chains)
+  chain_id: string;
+  total_stages: number | null;
+  completed_stages: number | null;
+  failed_stages: number;
+  current_stage_index: number | null;
 }
 
 // Phase 5: Interaction summary for stages
@@ -29,14 +31,14 @@ export interface InteractionSummary {
   duration_ms: number | null;
 }
 
-// Phase 5: Stage execution data (updated for new API)
+// Updated stage execution for EP-0010 (DetailedStage model)
 export interface StageExecution {
   execution_id: string;
+  session_id: string;
   stage_id: string;
   stage_index: number;
   stage_name: string;
   agent: string;
-  iteration_strategy: string | null;
   status: 'pending' | 'active' | 'completed' | 'failed';
   started_at_us: number | null;
   completed_at_us: number | null;
@@ -44,28 +46,33 @@ export interface StageExecution {
   stage_output: any | null;
   error_message: string | null;
   
-  // New API structure - timeline embedded in stage
-  timeline: TimelineItem[];
-  interaction_summary: InteractionSummary;
+  // Direct interaction arrays (EP-0010 structure)
+  llm_interactions: LLMInteractionDetail[];
+  mcp_communications: MCPInteractionDetail[];
+  
+  // Summary counts
+  llm_interaction_count: number;
+  mcp_communication_count: number;
+  total_interactions: number;
+  
+  // Computed properties (available from backend)
+  stage_interactions_duration_ms: number | null;
+  chronological_interactions: InteractionDetail[];
 }
 
-// Phase 5: Chain execution data
-export interface ChainExecution {
-  chain_id: string;
-  chain_definition: any;
-  current_stage_index: number | null;
-  current_stage_id: string | null;
-  stages: StageExecution[];
-}
-
-// Phase 3: Detailed session data for session detail page (updated for new API)
+// Updated detailed session for EP-0010 (DetailedSession model)
 export interface DetailedSession extends Session {
+  // Full session details
   alert_data: AlertData;
   final_analysis: string | null;
-  summary: { [key: string]: any };
+  session_metadata: { [key: string]: any } | null;
   
-  // Phase 5: Chain execution information (contains stage-specific timelines)
-  chain_execution?: ChainExecution;
+  // Chain execution details (moved to top level)
+  chain_definition: any;
+  current_stage_id: string | null;
+  
+  // Stage executions with all their interactions (EP-0010 improvement)
+  stages: StageExecution[];
 }
 
 // Flexible alert data structure supporting any fields
@@ -73,52 +80,76 @@ export interface AlertData {
   [key: string]: any; // Can contain any fields
 }
 
-// Phase 3: Timeline item structure (updated for new API)
+// EP-0010: Updated interaction structures matching backend models
+
+// Base interaction fields (shared by LLM and MCP)
+export interface BaseInteraction {
+  id: string;                    // Same as event_id (legacy field)
+  event_id: string;
+  timestamp_us: number;
+  step_description: string;
+  duration_ms: number | null;
+  stage_execution_id: string;
+}
+
+// LLM message structure (from backend)
+export interface LLMMessage {
+  role: string;
+  content: any;
+}
+
+// LLM event details (EP-0010 structure)
+export interface LLMEventDetails {
+  messages: LLMMessage[];
+  model_name: string;
+  temperature: number | null;
+  success: boolean;
+  error_message: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  tool_calls: any | null;
+  tool_results: any | null;
+}
+
+// MCP event details (EP-0010 structure)  
+export interface MCPEventDetails {
+  tool_name: string;
+  server_name: string;
+  communication_type: string;
+  parameters: Record<string, any>;
+  result: Record<string, any>;
+  available_tools: Record<string, any>;
+  success: boolean;
+}
+
+// Complete interaction types (EP-0010)
+export interface LLMInteractionDetail extends BaseInteraction {
+  type: 'llm';
+  details: LLMEventDetails;
+}
+
+export interface MCPInteractionDetail extends BaseInteraction {
+  type: 'mcp';
+  details: MCPEventDetails;
+}
+
+// Union type for all interactions
+export type InteractionDetail = LLMInteractionDetail | MCPInteractionDetail;
+
+// Legacy timeline item for backward compatibility
 export interface TimelineItem {
   event_id: string;
   type: 'llm' | 'mcp' | 'system';
-  timestamp_us: number; // Unix timestamp (microseconds since epoch)
+  timestamp_us: number;
   step_description: string;
   duration_ms: number | null;
-  details?: LLMInteraction | MCPInteraction | SystemEvent;
+  details?: LLMEventDetails | MCPEventDetails | SystemEvent;
 }
 
-// Phase 3: LLM interaction details
-export interface LLMInteraction {
-  // New JSON-first shape coming from backend
-  request_json?: {
-    model?: string;
-    messages?: Array<{ role: string; content: any }>;
-    temperature?: number;
-    [key: string]: any;
-  };
-  response_json?: {
-    choices?: any[];
-    usage?: any;
-    [key: string]: any;
-  } | null;
-
-  // Normalized metadata
-  model_name: string;
-  tokens_used?: number;
-  temperature?: number;
-  
-  // Success/error fields for failed interactions
-  success?: boolean;
-  error_message?: string;
-}
-
-// Phase 3: MCP interaction details
-export interface MCPInteraction {
-  tool_name: string | null;
-  parameters: Record<string, any>;
-  result: any;
-  available_tools?: Record<string, any[]>;
-  server_name: string;
-  communication_type: string;
-  execution_time_ms: number;
-  success: boolean;
-}
+// Legacy interaction types for backward compatibility (aliased to new types)
+export type LLMInteraction = LLMEventDetails;
+export type MCPInteraction = MCPEventDetails;
 
 // Phase 3: System event details
 export interface SystemEvent {
@@ -373,10 +404,10 @@ export interface EnhancedHistoricalAlertsListProps extends HistoricalAlertsListP
   onPageSizeChange?: (pageSize: number) => void;
 }
 
-// Phase 5: Enhanced timeline and interaction components
+// Updated interaction details props for EP-0010
 export interface InteractionDetailsProps {
   type: 'llm' | 'mcp' | 'system';
-  details: LLMInteraction | MCPInteraction | SystemEvent;
+  details: LLMEventDetails | MCPEventDetails | SystemEvent;
   expanded?: boolean;
 }
 
@@ -466,6 +497,15 @@ export interface StageProgressBarProps {
   currentStageIndex?: number | null;
   showLabels?: boolean;
   size?: 'small' | 'medium' | 'large';
+}
+
+// Legacy ChainExecution interface for backward compatibility
+export interface ChainExecution {
+  chain_id: string;
+  chain_definition: any;
+  current_stage_index: number | null;
+  current_stage_id: string | null;
+  stages: StageExecution[];
 }
 
 export interface ChainTimelineProps {

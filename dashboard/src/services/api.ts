@@ -130,8 +130,8 @@ class APIClient {
   }
 
   /**
-   * Phase 3: Fetch detailed session data by ID
-   * Returns comprehensive session data including alert_data, final_analysis, and timeline
+   * EP-0010: Fetch detailed session data by ID
+   * Returns comprehensive session data including alert_data, final_analysis, and stages with embedded interactions
    */
   async getSessionDetail(sessionId: string): Promise<DetailedSession> {
     try {
@@ -141,8 +141,9 @@ class APIClient {
         sessionId,
         hasAlertData: !!response.data?.alert_data,
         hasFinalAnalysis: !!response.data?.final_analysis,
-        timelineItems: response.data?.chain_execution?.stages?.reduce(
-          (total, stage) => total + (stage.timeline?.length || 0), 0
+        stagesCount: response.data?.stages?.length || 0,
+        totalInteractions: response.data?.stages?.reduce(
+          (total, stage) => total + (stage.total_interactions || 0), 0
         ) || 0,
         status: response.data?.status
       });

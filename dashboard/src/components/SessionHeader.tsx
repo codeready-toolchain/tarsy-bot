@@ -314,9 +314,9 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                 }}
               >
                 {session.alert_data?.alert_type || session.alert_type || 'Alert Processing'}
-                {session.chain_execution?.chain_definition?.name && (
+                {session.chain_definition?.name && (
                   <Typography component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}>
-                    {' - '}{session.chain_execution.chain_definition.name}
+                    {' - '}{session.chain_definition.name}
                   </Typography>
                 )}
               </Typography>
@@ -328,13 +328,13 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
             </Box>
             
             {/* Chain details */}
-            {session.chain_execution?.chain_definition?.description && (
+            {session.chain_definition?.description && (
               <Typography 
                 variant="body2" 
                 color="text.secondary" 
                 sx={{ mb: 0.5 }}
               >
-                chain:{session.chain_execution.chain_definition.description}
+                chain:{session.chain_definition.description}
               </Typography>
             )}
             
@@ -407,9 +407,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
 
         {/* Summary section */}
         <Box>
-          {session.summary && (
-            <SessionSummary summary={session.summary} sessionStatus={session.status} />
-          )}
+          {/* Session summary removed in EP-0010 - detailed analysis available in final_analysis */}
         </Box>
       </Box>
     </Paper>

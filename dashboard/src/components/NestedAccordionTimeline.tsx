@@ -189,7 +189,26 @@ const formatEntireFlowForCopy = (chainExecution: ChainExecution): string => {
   content += `Current Stage: ${chainExecution.current_stage_index !== null ? chainExecution.current_stage_index + 1 : 'None'}\n\n`;
   
   chainExecution.stages.forEach((stage, stageIndex) => {
-    const stageInteractions = [...(stage.timeline || [])]
+    // EP-0010: Get interactions using the same logic as getStageInteractions
+    const llmInteractions = (stage.llm_interactions || []).map(interaction => ({
+      event_id: interaction.event_id,
+      type: 'llm' as const,
+      timestamp_us: interaction.timestamp_us,
+      step_description: interaction.step_description,
+      duration_ms: interaction.duration_ms,
+      details: interaction.details
+    }));
+    
+    const mcpInteractions = (stage.mcp_communications || []).map(interaction => ({
+      event_id: interaction.event_id,
+      type: 'mcp' as const,
+      timestamp_us: interaction.timestamp_us,
+      step_description: interaction.step_description,
+      duration_ms: interaction.duration_ms,
+      details: interaction.details
+    }));
+    
+    const stageInteractions = [...llmInteractions, ...mcpInteractions]
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
     
     content += `\n${'='.repeat(80)}\n`;
@@ -251,7 +270,29 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
 
   const getStageInteractions = (stageId: string) => {
     const stage = chainExecution.stages.find(s => s.execution_id === stageId);
-    return [...(stage?.timeline || [])]
+    if (!stage) return [];
+    
+    // EP-0010: Combine LLM and MCP interactions into chronological timeline
+    const llmInteractions = (stage.llm_interactions || []).map(interaction => ({
+      event_id: interaction.event_id,
+      type: 'llm' as const,
+      timestamp_us: interaction.timestamp_us,
+      step_description: interaction.step_description,
+      duration_ms: interaction.duration_ms,
+      details: interaction.details
+    }));
+    
+    const mcpInteractions = (stage.mcp_communications || []).map(interaction => ({
+      event_id: interaction.event_id,
+      type: 'mcp' as const,
+      timestamp_us: interaction.timestamp_us,
+      step_description: interaction.step_description,
+      duration_ms: interaction.duration_ms,
+      details: interaction.details
+    }));
+    
+    // Combine and sort chronologically
+    return [...llmInteractions, ...mcpInteractions]
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
   };
 

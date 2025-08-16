@@ -17,7 +17,7 @@ import {
   OpenInNew,
 } from '@mui/icons-material';
 import type { ActiveAlertCardProps } from '../types';
-import { formatTimestamp, formatDuration, getCurrentTimestampUs, formatDurationMs } from '../utils/timestamp';
+import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import ProgressIndicator from './ProgressIndicator';
 
 // Helper function to get status chip configuration
@@ -262,21 +262,7 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
           </Box>
         )}
 
-        {/* Summary (if available) */}
-        {session.summary && typeof session.summary === 'string' && session.summary.trim() && (
-          <Typography 
-            variant="body2" 
-            color="text.secondary"
-            sx={{ 
-              mt: 1,
-              textOverflow: 'ellipsis',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {session.summary}
-          </Typography>
-        )}
+        {/* Summary removed in EP-0010 - detailed analysis available in session details */}
       </CardContent>
     </Card>
   );

@@ -77,7 +77,7 @@ const prepareStagesWithTimelines = (stages: StageExecution[]) => {
     .sort((a, b) => a.stage_index - b.stage_index)
     .map(stage => ({
       stage,
-      interactions: stage.timeline || [] // Direct access to stage timeline
+             interactions: [...(stage.llm_interactions || []), ...(stage.mcp_communications || [])].sort((a, b) => a.timestamp_us - b.timestamp_us)
     }));
 };
 
@@ -186,7 +186,7 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
                 />
                 
                 {/* Interaction count badges similar to session summary */}
-                {stage.interaction_summary && stage.interaction_summary.total_count > 0 && (
+                {stage.total_interactions > 0 && (
                   <Box display="flex" gap={0.5} alignItems="center">
                     {/* Total interactions badge */}
                     <Box sx={{ 
@@ -201,7 +201,7 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
                       borderColor: 'grey.300'
                     }}>
                       <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>
-                        {stage.interaction_summary.total_count}
+                        {stage.total_interactions}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
                         total
@@ -209,7 +209,7 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
                     </Box>
                     
                     {/* LLM interactions badge */}
-                    {stage.interaction_summary.llm_count > 0 && (
+                    {stage.llm_interaction_count > 0 && (
                       <Box sx={{ 
                         display: 'flex',
                         alignItems: 'center',
@@ -222,7 +222,7 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
                         borderColor: 'primary.200'
                       }}>
                         <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.7rem' }}>
-                          🧠 {stage.interaction_summary.llm_count}
+                          🧠 {stage.llm_interaction_count}
                         </Typography>
                         <Typography variant="caption" color="primary.main" sx={{ fontSize: '0.65rem' }}>
                           LLM
@@ -231,7 +231,7 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
                     )}
                     
                     {/* MCP interactions badge */}
-                    {stage.interaction_summary.mcp_count > 0 && (
+                    {stage.mcp_communication_count > 0 && (
                       <Box sx={{ 
                         display: 'flex',
                         alignItems: 'center',
@@ -244,7 +244,7 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
                         borderColor: 'secondary.200'
                       }}>
                         <Typography variant="caption" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.7rem' }}>
-                          🔧 {stage.interaction_summary.mcp_count}
+                          🔧 {stage.mcp_communication_count}
                         </Typography>
                         <Typography variant="caption" color="secondary.main" sx={{ fontSize: '0.65rem' }}>
                           MCP
@@ -262,12 +262,7 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
             <Box mb={2}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 <strong>Agent:</strong> {stage.agent}
-                {stage.iteration_strategy && (
-                  <>
-                    {' | '}
-                    <strong>Strategy:</strong> {stage.iteration_strategy}
-                  </>
-                )}
+                {/* iteration_strategy removed in EP-0010 */}
               </Typography>
               
               {stage.started_at_us && (

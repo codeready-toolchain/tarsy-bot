@@ -54,7 +54,7 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
           variant="body2" 
           sx={{ fontWeight: 500 }}
           dangerouslySetInnerHTML={{
-            __html: highlightSearchTerm(session.alert_type, searchTerm || '')
+            __html: highlightSearchTerm(session.alert_type || '', searchTerm || '')
           }}
         />
       </TableCell>

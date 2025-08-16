@@ -22,8 +22,8 @@ import FinalAnalysisCard from './FinalAnalysisCard';
 import NestedAccordionTimeline from './NestedAccordionTimeline';
 
 // Helper function to compute total timeline length across all stages
-const totalTimelineLength = (stages?: { timeline?: {}[] }[]) =>
-  stages?.reduce((total, stage) => total + (stage.timeline?.length || 0), 0) || 0;
+const totalTimelineLength = (stages?: { llm_interactions?: any[], mcp_communications?: any[] }[]) =>
+  stages?.reduce((total, stage) => total + ((stage.llm_interactions?.length || 0) + (stage.mcp_communications?.length || 0)), 0) || 0;
 
 
 /**
@@ -176,7 +176,7 @@ function SessionDetailPage() {
           console.log('Session status change detected, updating session state');
           
           // Check if this is a chain session that might have stage changes
-          const isChainSession = session?.chain_id && session?.chain_execution;
+          const isChainSession = session?.chain_id && session?.stages;
           
           // For chain sessions, we need to refetch to get updated stage information
           // because stage progress updates are critical for the UI
@@ -221,10 +221,10 @@ function SessionDetailPage() {
             const updatedSessionData = await apiClient.getSessionDetail(sessionId);
             
             // Only update if we actually have new timeline items (calculate from all stages)
-            const newTimelineLength = totalTimelineLength(updatedSessionData.chain_execution?.stages);
+            const newTimelineLength = totalTimelineLength(updatedSessionData.stages);
             setSession(prevSession => {
               if (!prevSession) return updatedSessionData;
-              const currentTimelineLength = totalTimelineLength(prevSession?.chain_execution?.stages);
+              const currentTimelineLength = totalTimelineLength(prevSession?.stages);
               if (newTimelineLength <= currentTimelineLength) {
                 console.log('No new timeline items detected, skipping update');
                 return prevSession;
@@ -232,7 +232,7 @@ function SessionDetailPage() {
               console.log(`Timeline updated smoothly: ${newTimelineLength - currentTimelineLength} new items added`);
               return {
                 ...prevSession,
-                chain_execution: updatedSessionData.chain_execution,
+                stages: updatedSessionData.stages,
                 status: updatedSessionData.status,
                 duration_ms: updatedSessionData.duration_ms,
                 completed_at_us: updatedSessionData.completed_at_us,
@@ -259,7 +259,7 @@ function SessionDetailPage() {
               // Only update the chain execution and essential fields, preserve everything else
               return {
                 ...prevSession,
-                chain_execution: updatedSessionData.chain_execution || prevSession.chain_execution,
+                stages: updatedSessionData.stages || prevSession.stages,
                 current_stage_index: updatedSessionData.current_stage_index ?? prevSession.current_stage_index,
                 completed_stages: updatedSessionData.completed_stages ?? prevSession.completed_stages,
                 failed_stages: updatedSessionData.failed_stages ?? prevSession.failed_stages,
@@ -285,17 +285,17 @@ function SessionDetailPage() {
           try {
             const updatedSessionData = await apiClient.getSessionDetail(sessionId);
             
-            const newTimelineLength = totalTimelineLength(updatedSessionData.chain_execution?.stages);
+            const newTimelineLength = totalTimelineLength(updatedSessionData.stages);
             
             setSession(prevSession => {
               if (!prevSession) return updatedSessionData;
-              const currentTimelineLength = totalTimelineLength(prevSession?.chain_execution?.stages);
+              const currentTimelineLength = totalTimelineLength(prevSession?.stages);
               if (newTimelineLength <= currentTimelineLength) {
                 return prevSession;
               }
               return {
                 ...prevSession,
-                chain_execution: updatedSessionData.chain_execution,
+                stages: updatedSessionData.stages,
                 status: updatedSessionData.status,
                 duration_ms: updatedSessionData.duration_ms,
                 completed_at_us: updatedSessionData.completed_at_us,
@@ -320,7 +320,7 @@ function SessionDetailPage() {
               
               return {
                 ...prevSession,
-                chain_execution: updatedSessionData.chain_execution,
+                stages: updatedSessionData.stages,
                 llm_interaction_count: updatedSessionData.llm_interaction_count,
                 mcp_communication_count: updatedSessionData.mcp_communication_count
               };
@@ -555,9 +555,15 @@ function SessionDetailPage() {
             <OriginalAlertCard alertData={session.alert_data} />
 
             {/* Enhanced Processing Timeline */}
-            {session.chain_execution ? (
+            {session.stages && session.stages.length > 0 ? (
               <NestedAccordionTimeline
-                chainExecution={session.chain_execution}
+                chainExecution={{
+                  chain_id: session.chain_id,
+                  chain_definition: session.chain_definition,
+                  current_stage_index: session.current_stage_index,
+                  current_stage_id: session.current_stage_id,
+                  stages: session.stages
+                }}
               />
             ) : (
               <Alert severity="error" sx={{ mb: 2 }}>
@@ -565,7 +571,7 @@ function SessionDetailPage() {
                   Backend Chain Execution Error
                 </Typography>
                 <Typography variant="body2">
-                  This session is missing chain execution data. All sessions should be processed as chains.
+                  This session is missing stage execution data. All sessions should be processed as chains.
                   This indicates a backend bug where stage execution records were not created properly.
                 </Typography>
                 <Box sx={{ mt: 2 }}>
