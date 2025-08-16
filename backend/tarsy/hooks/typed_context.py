@@ -11,13 +11,11 @@ from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from typing import Any, AsyncContextManager, Dict, Generic, Optional, TypeVar, Union
 
+from tarsy.models.db_models import StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.utils.timestamp import now_us
 
 logger = logging.getLogger(__name__)
-
-# Import StageExecution for type support
-from tarsy.models.db_models import StageExecution
 
 # Type variables for generic hook context
 TInteraction = TypeVar('TInteraction', LLMInteraction, MCPInteraction, StageExecution)

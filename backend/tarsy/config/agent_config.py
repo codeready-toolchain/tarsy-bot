@@ -314,10 +314,15 @@ class ConfigurationLoader:
             if "agent_chains" in processed_config and processed_config["agent_chains"]:
                 updated_chains = {}
                 for chain_id, chain_data in processed_config["agent_chains"].items():
-                    # Add chain_id field to each chain configuration
-                    updated_chain_data = chain_data.copy()
-                    updated_chain_data["chain_id"] = chain_id
-                    updated_chains[chain_id] = updated_chain_data
+                    # Only mutate dict entries, pass through others unchanged for Pydantic validation
+                    if isinstance(chain_data, dict):
+                        # Add chain_id field to each chain configuration
+                        updated_chain_data = chain_data.copy()
+                        updated_chain_data["chain_id"] = chain_id
+                        updated_chains[chain_id] = updated_chain_data
+                    else:
+                        # Pass through non-dict values unchanged so Pydantic can validate and surface errors
+                        updated_chains[chain_id] = chain_data
                 processed_config["agent_chains"] = updated_chains
             
             return CombinedConfigModel(**processed_config)

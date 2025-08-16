@@ -407,7 +407,22 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
 
         {/* Summary section */}
         <Box>
-          {/* Session summary removed in EP-0010 - detailed analysis available in final_analysis */}
+          {(session.total_interactions > 0 || session.status === 'in_progress' || session.status === 'pending') && (
+            <SessionSummary 
+              summary={{
+                total_interactions: session.total_interactions,
+                llm_interactions: session.llm_interaction_count,
+                mcp_communications: session.mcp_communication_count,
+                errors_count: session.error_message ? 1 : 0, // Simple error counting
+                chain_statistics: session.total_stages ? {
+                  total_stages: session.total_stages,
+                  completed_stages: session.completed_stages || 0,
+                  failed_stages: session.failed_stages || 0
+                } : undefined
+              }} 
+              sessionStatus={session.status} 
+            />
+          )}
         </Box>
       </Box>
     </Paper>

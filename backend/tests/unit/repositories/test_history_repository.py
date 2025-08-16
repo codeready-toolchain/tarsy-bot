@@ -1580,7 +1580,7 @@ class TestFlexibleAlertDataPerformance:
     @pytest.mark.unit
     def test_json_field_query_functionality(self, repository_with_flexible_data):
         """Test functionality of JSON field queries with complex data structures."""
-        # Get session list (Phase 2: returns session overviews without alert_data)
+        # Get session list
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
         
         # Verify we get the expected number of sessions
@@ -1607,7 +1607,7 @@ class TestFlexibleAlertDataPerformance:
     @pytest.mark.unit  
     def test_complex_json_structure_functionality(self, repository_with_flexible_data):
         """Test functionality with complex nested JSON structures."""
-        # Get session list (Phase 2: returns session overviews without alert_data)
+        # Get session list
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
         
         # Verify we get all sessions
@@ -1636,7 +1636,7 @@ class TestFlexibleAlertDataPerformance:
     @pytest.mark.unit
     def test_json_array_query_functionality(self, repository_with_flexible_data):
         """Test functionality of querying JSON arrays within alert data."""
-        # Get session list (Phase 2: returns session overviews without alert_data)
+        # Get session list
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
         
         # Verify we get all sessions

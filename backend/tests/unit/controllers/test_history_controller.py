@@ -55,7 +55,6 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_get_sessions_list_success(self, app, client, mock_history_service):
         """Test successful sessions list retrieval."""
-        # Phase 4: Mock using new models
         from tarsy.models.history_models import SessionOverview, PaginatedSessions, PaginationInfo
         from tarsy.models.constants import AlertSessionStatus
         
@@ -1728,7 +1727,7 @@ class TestDashboardEndpoints:
     @pytest.mark.unit
     def test_get_filter_options_success(self, app, client, mock_history_service):
         """Test successful filter options retrieval."""
-        # Phase 4: Create a simple Mock that returns the expected dict directly to avoid recursion
+        # Create a simple Mock that returns the expected dict directly to avoid recursion
         mock_filter_result = Mock()
         mock_filter_result.model_dump.return_value = {
             "agent_types": ["kubernetes", "base", "analysis"],
@@ -1790,7 +1789,7 @@ class TestDashboardEndpoints:
         """Test successful session summary retrieval."""
         session_id = "test-session-123"
         
-        # Phase 4: Create SessionStats model using factory
+        # Create SessionStats model using factory
         from tests.utils import SessionFactory
         from tarsy.models.history_models import ChainStatistics
         
@@ -1846,7 +1845,7 @@ class TestDashboardEndpoints:
         """Test session summary when session doesn't exist."""
         session_id = "non-existent-session"
         
-        # Phase 4: Mock the service method to return None (session not found)
+        # Mock the service method to return None (session not found)
         mock_history_service.get_session_summary = AsyncMock(return_value=None)
         
         # Dependency override
@@ -1932,7 +1931,7 @@ class TestDashboardEndpoints:
         assert data['errors_count'] == 0
         assert data['total_duration_ms'] == 1500
         
-        # Verify chain statistics are present (all sessions have chain info in Phase 4)
+        # Verify chain statistics are present
         assert 'chain_statistics' in data
         assert data['chain_statistics']['total_stages'] == 1
         

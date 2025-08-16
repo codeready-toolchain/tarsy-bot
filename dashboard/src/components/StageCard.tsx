@@ -86,7 +86,7 @@ const StageCard: React.FC<StageCardProps> = ({
 }) => {
   const statusConfig = getStageStatusConfig(stage.status);
   
-  const stageInteractions = stage.timeline || [];
+  const stageInteractions = [...(stage.llm_interactions || []), ...(stage.mcp_communications || [])].sort((a, b) => a.timestamp_us - b.timestamp_us);
   const hasInteractions = stageInteractions.length > 0;
   const hasOutput = stage.stage_output !== null && stage.stage_output !== undefined;
   const hasError = stage.error_message !== null;
@@ -119,9 +119,7 @@ const StageCard: React.FC<StageCardProps> = ({
             </Box>
             <Typography variant="body2" color="text.secondary">
               Agent: {stage.agent}
-              {stage.iteration_strategy && (
-                <> | Strategy: {stage.iteration_strategy}</>
-              )}
+              {/* iteration_strategy removed in EP-0010 */}
             </Typography>
           </Box>
           
@@ -262,7 +260,7 @@ const StageCard: React.FC<StageCardProps> = ({
                 </Typography>
                 
                 {/* Interaction count badges similar to session summary */}
-                {stage.interaction_summary && (
+                {stage.total_interactions > 0 && (
                   <Box display="flex" gap={0.5} alignItems="center">
                     {/* Total interactions badge */}
                     <Box sx={{ 
@@ -277,7 +275,7 @@ const StageCard: React.FC<StageCardProps> = ({
                       borderColor: 'grey.300'
                     }}>
                       <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>
-                        {stage.interaction_summary.total_count}
+                        {stage.total_interactions}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
                         total
@@ -285,7 +283,7 @@ const StageCard: React.FC<StageCardProps> = ({
                     </Box>
                     
                     {/* LLM interactions badge */}
-                    {stage.interaction_summary.llm_count > 0 && (
+                    {stage.llm_interaction_count > 0 && (
                       <Box sx={{ 
                         display: 'flex',
                         alignItems: 'center',
@@ -298,7 +296,7 @@ const StageCard: React.FC<StageCardProps> = ({
                         borderColor: 'primary.200'
                       }}>
                         <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.7rem' }}>
-                          🧠 {stage.interaction_summary.llm_count}
+                          🧠 {stage.llm_interaction_count}
                         </Typography>
                         <Typography variant="caption" color="primary.main" sx={{ fontSize: '0.65rem' }}>
                           LLM
@@ -307,7 +305,7 @@ const StageCard: React.FC<StageCardProps> = ({
                     )}
                     
                     {/* MCP interactions badge */}
-                    {stage.interaction_summary.mcp_count > 0 && (
+                    {stage.mcp_communication_count > 0 && (
                       <Box sx={{ 
                         display: 'flex',
                         alignItems: 'center',
@@ -320,7 +318,7 @@ const StageCard: React.FC<StageCardProps> = ({
                         borderColor: 'secondary.200'
                       }}>
                         <Typography variant="caption" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.7rem' }}>
-                          🔧 {stage.interaction_summary.mcp_count}
+                          🔧 {stage.mcp_communication_count}
                         </Typography>
                         <Typography variant="caption" color="secondary.main" sx={{ fontSize: '0.65rem' }}>
                           MCP

@@ -6,10 +6,10 @@ This module provides shared utilities, factories, and helpers for tests.
 FACTORY SYSTEM OVERVIEW
 ======================
 
-This module contains 12 specialized factory classes for creating consistent test data:
+This module contains specialized factory classes for creating consistent test data:
 
 1. AlertFactory - Alert objects and processing data
-2. SessionFactory - Session data for history tests (includes Phase 4 type-safe models)
+2. SessionFactory - Session data for history tests
 3. ChainFactory - Chain configurations for registry tests
 4. AgentFactory - Agent mappings for registry tests
 5. MockFactory - Common mock objects and dependencies (includes type-safe history service mocks)
@@ -20,10 +20,8 @@ This module contains 12 specialized factory classes for creating consistent test
 10. DataMaskingFactory - Data masking service test data
 11. DashboardConnectionFactory - WebSocket and connection test data
 12. MCPServerMaskingFactory - MCP server masking and template configurations
-
-NEW IN PHASE 4:
-- SessionFactory: Added create_session_overview(), create_detailed_session(), create_paginated_sessions(), create_session_stats()
-- MockFactory: Added create_mock_history_service() for comprehensive type-safe history service mocking
+13. SessionFactory: Added create_session_overview(), create_detailed_session(), create_paginated_sessions(), create_session_stats()
+14. MockFactory: Added create_mock_history_service() for comprehensive type-safe history service mocking
 
 WHEN TO USE FACTORIES
 ====================
@@ -293,7 +291,7 @@ class SessionFactory:
             **overrides
         )
 
-    # Phase 4: Type-safe model factories for new Pydantic history models
+    # Type-safe model factories for new Pydantic history models
     @staticmethod
     def create_session_overview(**overrides):
         """Create a SessionOverview (type-safe model) for list views."""
@@ -778,7 +776,7 @@ class MockFactory:
     
     @staticmethod
     def create_mock_history_service_dependencies():
-        """Create mock dependencies for HistoryService - Phase 3: Updated for type-safe models."""
+        """Create mock dependencies for HistoryService."""
         from unittest.mock import Mock
         from tarsy.models.history_models import PaginatedSessions, FilterOptions, PaginationInfo, TimeRangeOption
         
@@ -792,7 +790,7 @@ class MockFactory:
         mock_db_manager.get_session.return_value.__enter__ = Mock()
         mock_db_manager.get_session.return_value.__exit__ = Mock()
         
-        # Set up repository - Phase 3: Repository methods now return type-safe models
+        # Set up repository
         mock_session.session_id = "test-session-id"
         mock_repository.create_alert_session.return_value = mock_session
         mock_repository.get_alert_session.return_value = Mock()

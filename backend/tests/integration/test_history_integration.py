@@ -144,7 +144,7 @@ class TestHistoryServiceIntegration:
         )
         assert result == True
         
-        # Create stage execution (required for interactions in Phase 2)
+        # Create stage execution
         from tests.utils import StageExecutionFactory
         import asyncio
         stage_execution_id = asyncio.run(StageExecutionFactory.create_and_save_stage_execution(
@@ -216,7 +216,7 @@ class TestHistoryServiceIntegration:
             chain_id="test-integration-chain-timeline"
         )
         
-        # Create stage execution (required for interactions in Phase 2)
+        # Create stage execution
         from tests.utils import StageExecutionFactory
         import asyncio
         stage_execution_id = asyncio.run(StageExecutionFactory.create_and_save_stage_execution(
@@ -656,7 +656,7 @@ class TestHistoryAPIIntegration:
             assert len(data["sessions"]) == 1
             assert data["sessions"][0]["session_id"] == "api-session-1"
             
-            # Verify service was called with correct parameters (Phase 4)
+            # Verify service was called with correct parameters
             mock_history_service_for_api.get_sessions_list.assert_called_once()
             call_args = mock_history_service_for_api.get_sessions_list.call_args
             assert call_args.kwargs["filters"]["status"] == ["completed"]  # Now expects list due to multiple status support
@@ -671,13 +671,7 @@ class TestHistoryAPIIntegration:
     def test_api_session_detail_integration(self, client, mock_history_service_for_api):
         """Test session detail API endpoint integration."""
         # Ensure the mock returns the timeline for the specific session ID (using Unix timestamps)
-        from tarsy.models.db_models import now_us
-        current_time_us = now_us()
         expected_session_id = "api-session-1"
-        
-        # Phase 4: Type-safe DetailedSession already set up above - no dict override needed
-        
-        # Phase 4: All legacy dict-based mocks removed - using type-safe models only
         
         # Use FastAPI's dependency override system instead of mock patching
         from tarsy.controllers.history_controller import get_history_service

@@ -5,7 +5,7 @@ This module defines Pydantic models for validating agent and MCP server configur
 loaded from YAML files. These models ensure configuration data integrity and provide
 clear validation errors for misconfigured agents.
 
-Phase 5 Consolidation: This module now contains all configuration models
+This module contains all configuration models
 (masking, MCP servers, chains, agents) to avoid circular imports.
 """
 

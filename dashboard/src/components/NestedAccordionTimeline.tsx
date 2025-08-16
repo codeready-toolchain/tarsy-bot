@@ -114,18 +114,19 @@ const formatInteractionForCopy = (interaction: TimelineItem): string => {
       const llmDetails = interaction.details as LLMInteraction;
       content += `Model: ${llmDetails.model_name || 'N/A'}\n`;
       
-      // Extract prompt from request messages
-      const prompt = llmDetails.request_json?.messages 
-        ? llmDetails.request_json.messages.map((msg: any) => `${msg.role}: ${msg.content}`).join('\n')
+      // EP-0010: Extract prompt from messages array
+      const prompt = llmDetails.messages 
+        ? llmDetails.messages.map((msg: any) => `${msg.role}: ${msg.content}`).join('\n')
         : 'N/A';
       content += `Prompt: ${prompt}\n`;
       
-      // Extract response from response choices
-      const response = llmDetails.response_json?.choices?.[0]?.message?.content || 'N/A';
+      // EP-0010: Extract response from assistant message
+      const assistantMsg = llmDetails.messages?.find((m: any) => m?.role === 'assistant');
+      const response = assistantMsg?.content || 'N/A';
       content += `Response: ${response}\n`;
       
-      if (llmDetails.tokens_used) {
-        content += `Tokens Used: ${llmDetails.tokens_used}\n`;
+      if (llmDetails.total_tokens) {
+        content += `Tokens Used: ${llmDetails.total_tokens}\n`;
       }
     } else if (interaction.type === 'mcp') {
       const mcpDetails = interaction.details as MCPInteraction;
@@ -138,9 +139,7 @@ const formatInteractionForCopy = (interaction: TimelineItem): string => {
       if (mcpDetails.result) {
         content += `Result: ${JSON.stringify(mcpDetails.result, null, 2)}\n`;
       }
-      if (mcpDetails.execution_time_ms) {
-        content += `Execution Time: ${mcpDetails.execution_time_ms}ms\n`;
-      }
+      // execution_time_ms removed in EP-0010
     }
   }
   
@@ -152,9 +151,7 @@ const formatStageForCopy = (stage: any, stageIndex: number, interactions: Timeli
   let content = `=== STAGE ${stageIndex + 1}: ${stage.stage_name} ===\n`;
   content += `Agent: ${stage.agent}\n`;
   content += `Status: ${stage.status}\n`;
-  if (stage.iteration_strategy) {
-    content += `Strategy: ${stage.iteration_strategy}\n`;
-  }
+  // iteration_strategy removed in EP-0010
   if (stage.started_at_us) {
     content += `Started: ${formatTimestamp(stage.started_at_us, 'absolute')}\n`;
   }
@@ -454,7 +451,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                       </Typography>
                       
                       {/* Interaction count badges similar to session summary */}
-                      {stage.interaction_summary && stage.interaction_summary.total_count > 0 && (
+                      {stage.total_interactions > 0 && (
                         <Box display="flex" gap={0.5} alignItems="center">
                           {/* Total interactions badge */}
                           <Box sx={{ 
@@ -469,7 +466,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                             borderColor: 'grey.300'
                           }}>
                             <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>
-                              {stage.interaction_summary.total_count}
+                              {stage.total_interactions}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
                               total
@@ -477,7 +474,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                           </Box>
                           
                           {/* LLM interactions badge */}
-                          {stage.interaction_summary.llm_count > 0 && (
+                          {stage.llm_interaction_count > 0 && (
                             <Box sx={{ 
                               display: 'flex',
                               alignItems: 'center',
@@ -490,7 +487,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                               borderColor: 'primary.200'
                             }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.7rem' }}>
-                                🧠 {stage.interaction_summary.llm_count}
+                                🧠 {stage.llm_interaction_count}
                               </Typography>
                               <Typography variant="caption" color="primary.main" sx={{ fontSize: '0.65rem' }}>
                                 LLM
@@ -499,7 +496,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                           )}
                           
                           {/* MCP interactions badge */}
-                          {stage.interaction_summary.mcp_count > 0 && (
+                          {stage.mcp_communication_count > 0 && (
                             <Box sx={{ 
                               display: 'flex',
                               alignItems: 'center',
@@ -512,7 +509,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                               borderColor: 'secondary.200'
                             }}>
                               <Typography variant="caption" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.7rem' }}>
-                                🔧 {stage.interaction_summary.mcp_count}
+                                🔧 {stage.mcp_communication_count}
                               </Typography>
                               <Typography variant="caption" color="secondary.main" sx={{ fontSize: '0.65rem' }}>
                                 MCP
@@ -566,11 +563,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                       <Typography variant="body2">
                         <strong>Agent:</strong> {stage.agent}
                       </Typography>
-                      {stage.iteration_strategy && (
-                        <Typography variant="body2">
-                          <strong>Strategy:</strong> {stage.iteration_strategy}
-                        </Typography>
-                      )}
+                      {/* iteration_strategy removed in EP-0010 */}
                       <Typography variant="body2">
                         <strong>Interactions:</strong> {stageInteractions.length}
                       </Typography>

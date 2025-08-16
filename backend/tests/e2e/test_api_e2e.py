@@ -336,15 +336,15 @@ Action Input: {step['action_input']}"""
     # Note: Test settings are now handled by the isolated_e2e_settings fixture
 
     async def _validate_comprehensive_api_data(self, test_client, alert_id: str, session_id: str):
-        """Validate API data structures and processing results (Phase 5: Updated for new Pydantic models)."""
+        """Validate API data structures and processing results."""
         print("🔍 Validating API data...")
         
-        # Get session details (Phase 5: PaginatedSessions response)
+        # Get session details
         sessions_response = test_client.get("/api/v1/history/sessions")
         assert sessions_response.status_code == 200
         sessions_list = sessions_response.json()
         
-        # Find our session (Phase 5: sessions are now in PaginatedSessions.sessions)
+        # Find our session
         our_session = None
         for session in sessions_list["sessions"]:
             if session.get("session_id") == session_id:
@@ -357,12 +357,12 @@ Action Input: {step['action_input']}"""
         llm_count = our_session.get("llm_interaction_count", 0)
         mcp_count = our_session.get("mcp_communication_count", 0)
         
-        # Get session detail (Phase 5: DetailedSession response - different structure)
+        # Get session detail
         detail_response = test_client.get(f"/api/v1/history/sessions/{session_id}")
         assert detail_response.status_code == 200
         session_detail = detail_response.json()
         
-        # Basic validation (Phase 5: Updated field validation)
+        # Basic validation
         assert status in ["completed", "failed", "processing"], f"Invalid status: {status}"
         assert session_detail.get("chain_id"), "Missing chain_id in session detail"
         
@@ -474,7 +474,7 @@ Action Input: {step['action_input']}"""
         print(f"   ✅ Stage '{stage_name}' timing validated: {duration_ms}ms duration, status='{status}'")
 
     def _validate_llm_interaction_deep(self, interaction, stage_name, interaction_index):
-        """Deep validation of a single LLM interaction"""
+        """Deep validation of a single LLM interaction with comprehensive content checking"""
         event_id = interaction.get("event_id")
         timestamp_us = interaction.get("timestamp_us") 
         interaction_type = interaction.get("type")
@@ -494,16 +494,57 @@ Action Input: {step['action_input']}"""
         model_name = details.get("model_name")
         assert model_name, f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] missing model_name in details"
         
-        # Validate request/response structure if present
-        if "request" in details:
-            request = details["request"]
-            assert isinstance(request, dict), f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] request not dict"
+        success = details.get("success")
+        assert success is not None, f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] missing success field in details"
         
-        if "response" in details:
-            response = details["response"] 
-            assert isinstance(response, dict), f"DEEP VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] response not dict"
+        # EP-0010 CRITICAL CONTENT VALIDATION: Messages array should contain system, user, AND assistant messages
+        messages = details.get("messages", [])
+        assert isinstance(messages, list), f"CONTENT VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] messages not a list"
+        assert len(messages) >= 2, f"CONTENT VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] messages array too short ({len(messages)}) - should have at least system+user or user+assistant"
         
-        print(f"   ✅ Stage '{stage_name}' LLM interaction [{interaction_index}] deeply validated (model: {model_name})")
+        # Find message types in the messages array
+        message_roles = set()
+        message_contents = {}
+        for msg_idx, msg in enumerate(messages):
+            assert isinstance(msg, dict), f"CONTENT VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] message[{msg_idx}] not a dict"
+            role = msg.get("role")
+            content = msg.get("content")
+            
+            assert role, f"CONTENT VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] message[{msg_idx}] missing role"
+            assert content, f"CONTENT VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] message[{msg_idx}] missing or empty content"
+            
+            message_roles.add(role)
+            message_contents[role] = content
+            
+            # Validate content is non-trivial (not just whitespace)
+            if isinstance(content, str):
+                assert content.strip(), f"CONTENT VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] message[{msg_idx}] ({role}) has empty content"
+        
+        # CRITICAL: Must have assistant response (this would have caught our bug!)
+        assert "assistant" in message_roles, f"CONTENT VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] MISSING ASSISTANT RESPONSE - found roles: {message_roles}"
+        
+        # Should have either system+user or just user (minimum conversation structure)
+        has_user = "user" in message_roles
+        has_system = "system" in message_roles
+        assert has_user or has_system, f"CONTENT VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] missing user or system message - found roles: {message_roles}"
+        
+        # Log the actual content for verification during development
+        if has_system:
+            system_preview = message_contents["system"][:100] + "..." if len(message_contents["system"]) > 100 else message_contents["system"]
+            print(f"     🔍 System: {system_preview}")
+        if has_user:
+            user_preview = message_contents["user"][:100] + "..." if len(message_contents["user"]) > 100 else message_contents["user"]  
+            print(f"     🔍 User: {user_preview}")
+        
+        assistant_preview = message_contents["assistant"][:100] + "..." if len(message_contents["assistant"]) > 100 else message_contents["assistant"]
+        print(f"     🔍 Assistant: {assistant_preview}")
+        
+        # Validate token usage if present
+        total_tokens = details.get("total_tokens")
+        if total_tokens is not None:
+            assert isinstance(total_tokens, int) and total_tokens > 0, f"CONTENT VALIDATION FAILED: Stage '{stage_name}' LLM[{interaction_index}] invalid total_tokens: {total_tokens}"
+        
+        print(f"   ✅ Stage '{stage_name}' LLM interaction [{interaction_index}] CONTENT VALIDATED (model: {model_name}, roles: {sorted(message_roles)})")
 
     def _validate_mcp_sequence_pattern(self, mcp_interactions, stage_name):
         """
@@ -553,7 +594,7 @@ Action Input: {step['action_input']}"""
                 print(f"   ✅ Stage '{stage_name}' MCP sequence: interaction[{i}] has valid type: {communication_type}")
 
     def _validate_mcp_interaction_deep(self, interaction, stage_name, interaction_index):
-        """Deep validation of a single MCP interaction with enhanced MCP protocol checks"""
+        """Deep validation of a single MCP interaction with enhanced MCP protocol and content checks"""
         event_id = interaction.get("event_id")
         timestamp_us = interaction.get("timestamp_us")
         interaction_type = interaction.get("type") 
@@ -573,9 +614,11 @@ Action Input: {step['action_input']}"""
         server_name = details.get("server_name")
         tool_name = details.get("tool_name")
         communication_type = details.get("communication_type")
+        success = details.get("success")
         
         assert server_name, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] missing server_name in details"
         assert communication_type, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] missing communication_type in details"
+        assert success is not None, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] missing success field in details"
         
         # tool_name is only required for tool_call interactions, not tool_list
         if communication_type == "tool_call":
@@ -585,17 +628,53 @@ Action Input: {step['action_input']}"""
         assert communication_type in ["tool_list", "tool_call"], \
             f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] invalid communication_type: {communication_type}, expected: tool_list or tool_call"
         
-        # Validate tool call structure if present
-        if "tool_input" in details:
-            tool_input = details["tool_input"]
-            assert isinstance(tool_input, dict), f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] tool_input not dict"
+        # EP-0010 CRITICAL CONTENT VALIDATION: Check actual MCP content based on type
+        if communication_type == "tool_list":
+            # Tool list should have available_tools data
+            available_tools = details.get("available_tools", {})
+            assert isinstance(available_tools, dict), f"CONTENT VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] available_tools not a dict"
+            assert len(available_tools) > 0, f"CONTENT VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] available_tools is empty"
+            
+            # Log tools found for verification
+            total_tools = 0
+            for server, tools in available_tools.items():
+                if isinstance(tools, list):
+                    total_tools += len(tools)
+                    if len(tools) > 0 and isinstance(tools[0], dict):
+                        sample_tool = tools[0].get("name", "unknown")
+                        print(f"     🔧 Server '{server}': {len(tools)} tools (e.g., {sample_tool})")
+            
+            assert total_tools > 0, f"CONTENT VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] no tools found in available_tools"
+            
+        elif communication_type == "tool_call":
+            # Tool call should have parameters and result
+            parameters = details.get("parameters", {})
+            result = details.get("result", {})
+            
+            assert isinstance(parameters, dict), f"CONTENT VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] parameters not a dict"
+            assert isinstance(result, dict), f"CONTENT VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] result not a dict"
+            
+            # For successful tool calls, result should have content (unless the tool genuinely returns empty results)
+            if success:
+                assert result is not None, f"CONTENT VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] successful tool_call has None result"
+                
+                # Log parameter and result summary for verification
+                param_keys = list(parameters.keys()) if parameters else []
+                result_keys = list(result.keys()) if result else []
+                print(f"     🔧 Tool '{tool_name}' called with params: {param_keys}, returned: {result_keys}")
+                
+                # If result has content, show a preview
+                if result_keys:
+                    first_key = result_keys[0]
+                    first_value = result.get(first_key)
+                    if isinstance(first_value, str) and len(first_value) > 0:
+                        preview = first_value[:50] + "..." if len(first_value) > 50 else first_value
+                        print(f"       📄 Result preview ({first_key}): {preview}")
+            else:
+                # Failed tool calls should have meaningful error information
+                assert result is not None, f"CONTENT VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] failed tool_call should have error information in result"
         
-        if "tool_result" in details:
-            tool_result = details["tool_result"]
-            # tool_result can be various types depending on the tool
-            assert tool_result is not None, f"DEEP VALIDATION FAILED: Stage '{stage_name}' MCP[{interaction_index}] tool_result is None"
-        
-        print(f"   ✅ Stage '{stage_name}' MCP interaction [{interaction_index}] deeply validated (server: {server_name}, tool: {tool_name}, type: {communication_type})")
+        print(f"   ✅ Stage '{stage_name}' MCP interaction [{interaction_index}] CONTENT VALIDATED (server: {server_name}, tool: {tool_name}, type: {communication_type}, success: {success})")
 
     async def _validate_sessions_api(self, test_client, session_id, expected_alert_data):
         """
@@ -647,14 +726,14 @@ Action Input: {step['action_input']}"""
         
         print(f"✅ Session list validation passed - Status: {our_session['status']}")
         
-        # VALIDATION 3: Get detailed session data and validate stages (Phase 5: Updated structure)
+        # VALIDATION 3: Get detailed session data and validate stages
         print(f"🔍 Testing GET /api/v1/history/sessions/{session_id}...")
         detail_response = test_client.get(f"/api/v1/history/sessions/{session_id}")
         
         assert detail_response.status_code == 200, f"Session detail API failed: {detail_response.status_code}"
         detail_data = detail_response.json()
         
-        # Phase 5: Validate updated DetailedSession structure - fields are now at root level
+        # Validate updated DetailedSession structure - fields are now at root level
         required_detail_fields = ["session_id", "alert_data", "chain_id", "stages"]
         for field in required_detail_fields:
             assert field in detail_data, f"Missing required detail field: {field}"
@@ -671,7 +750,7 @@ Action Input: {step['action_input']}"""
         for field in required_summary_fields:
             assert field in summary_data, f"Missing required summary field: {field}"
         
-        # Phase 5: DetailedSession no longer has a separate "summary" field - summary data is embedded
+        # DetailedSession no longer has a separate "summary" field - summary data is embedded
         # We can still validate the standalone summary endpoint against derived values from detail session
         detail_total_interactions = detail_data.get("total_interactions", 0)
         detail_llm_interactions = detail_data.get("llm_interaction_count", 0)
@@ -692,7 +771,7 @@ Action Input: {step['action_input']}"""
             "errors_count": 0
         }
         
-        # EXACT VALIDATION: Validate exact counts for summary endpoint (Phase 5: Only summary endpoint now)
+        # EXACT VALIDATION: Validate exact counts for summary endpoint
         for field, expected_value in expected_exact_counts.items():
             actual_value = summary_data.get(field, -999)
             assert actual_value == expected_value, f"EXACT VALIDATION FAILED: summary endpoint {field} expected exactly {expected_value}, got {actual_value}"
@@ -701,7 +780,7 @@ Action Input: {step['action_input']}"""
         duration = summary_data.get("total_duration_ms", -1)
         assert duration >= 0, f"SANITY CHECK FAILED: summary endpoint shows negative processing duration ({duration}ms)"
         
-        # Phase 5: Chain statistics validation - now nested in SessionStats
+        # Chain statistics validation
         assert "chain_statistics" in summary_data, "Chain statistics missing from summary endpoint"
         chain_stats = summary_data["chain_statistics"]
         chain_fields = ["total_stages", "completed_stages", "failed_stages"]
@@ -710,10 +789,9 @@ Action Input: {step['action_input']}"""
         
         print(f"✅ Summary endpoint validation passed - data consistency confirmed")
         
-        # VALIDATION 4: Validate chain execution and stages (Phase 5: Updated structure)
+        # VALIDATION 4: Validate chain execution and stages
         print("🔍 Validating chain execution and stages...")
         
-        # Phase 5: stages are now directly at root level in DetailedSession
         stages = detail_data["stages"]
         assert isinstance(stages, list), "stages should be list"
         
@@ -725,24 +803,24 @@ Action Input: {step['action_input']}"""
         
         assert len(stages) == expected_stage_count, f"EXACT VALIDATION FAILED: Expected exactly {expected_stage_count} stages, found {len(stages)}"
         
-        # VALIDATION 6: Each stage name should match expectations (Phase 5: Updated stage structure)
+        # VALIDATION 6: Each stage name should match expectations
         actual_stage_names = []
         stage_interaction_counts = {}
         
         for i, stage in enumerate(stages):
             assert isinstance(stage, dict), f"Stage {i} should be dict"
-            stage_name = stage.get("stage_name", f"stage_{i}")  # Phase 5: DetailedStage uses "stage_name"
+            stage_name = stage.get("stage_name", f"stage_{i}")  # DetailedStage uses "stage_name"
             actual_stage_names.append(stage_name)
             
-            # Phase 5: DetailedStage has direct interaction lists, not nested timeline/summary
+            # DetailedStage has direct interaction lists, not nested timeline/summary
             llm_interactions = stage.get("llm_interactions", [])
             mcp_communications = stage.get("mcp_communications", [])
             
-            # Phase 5: Count from the direct interaction lists
+            # Count from the direct interaction lists
             llm_count = len(llm_interactions)
             mcp_count = len(mcp_communications)
             
-            # Phase 5: Validate against the summary counts in DetailedStage
+            # Validate against the summary counts in DetailedStage
             stage_llm_count = stage.get("llm_interaction_count", 0)
             stage_mcp_count = stage.get("mcp_communication_count", 0)
             stage_total_count = stage.get("total_interactions", 0)
@@ -867,7 +945,7 @@ Action Input: {step['action_input']}"""
         print(f"   ✅ Total interactions validated: {total_llm} LLM + {total_mcp} MCP = {total_interactions} (exactly {expected_total_interactions} as required)")
         print(f"   ✅ Agent execution successful: {len(stages)} stage(s) completed")
         
-        # Phase 5: Calculate total interaction events from all stages
+        # Calculate total interaction events from all stages
         total_timeline_events = 0
         for stage in stages:
             stage_interactions = stage.get("llm_interactions", []) + stage.get("mcp_communications", [])
@@ -882,12 +960,12 @@ Action Input: {step['action_input']}"""
             assert stored_alert_type == expected_alert_type, f"Stored alert type mismatch: expected {expected_alert_type}, got {stored_alert_type}"
             print(f"✅ Session detail alert data matches submission")
         
-        # Phase 5: VALIDATION 9 - Summary data is now embedded in DetailedSession, validate via summary endpoint
+        # VALIDATION 9 - Summary data is now embedded in DetailedSession, validate via summary endpoint
         print("🔍 Validating session summary statistics via dedicated endpoint...")
         # We already validated the summary endpoint earlier, so we can refer to that data
         # Just validate that DetailedSession has the core count fields
         
-        # Phase 5: Required fields are now directly in DetailedSession
+        # Required fields are now directly in DetailedSession
         required_detail_count_fields = ["total_interactions", "llm_interaction_count", "mcp_communication_count"]
         
         for field in required_detail_count_fields:
@@ -895,7 +973,7 @@ Action Input: {step['action_input']}"""
             assert isinstance(detail_data[field], int), f"DetailedSession field '{field}' should be an integer"
             assert detail_data[field] >= 0, f"DetailedSession field '{field}' should be non-negative"
         
-        # Phase 5: EXACT VALIDATION - Validate DetailedSession count fields match expected values (updated for tool_list)
+        # EXACT VALIDATION - Validate DetailedSession count fields match expected values (updated for tool_list)
         expected_detail_counts = {
             "total_interactions": 15,  # 8 LLM + 7 MCP (includes 2 tool_list)
             "llm_interaction_count": 8,
@@ -911,7 +989,7 @@ Action Input: {step['action_input']}"""
         print(f"      LLM Interactions: {detail_data['llm_interaction_count']}")
         print(f"      MCP Communications: {detail_data['mcp_communication_count']}")
         
-        # Phase 5: Validation - DetailedSession counts should match actual stage interaction counts
+        # Validation - DetailedSession counts should match actual stage interaction counts
         calculated_total_events = 0
         calculated_llm_events = 0
         calculated_mcp_events = 0
@@ -930,7 +1008,7 @@ Action Input: {step['action_input']}"""
         assert detail_data['mcp_communication_count'] == calculated_mcp_events, \
             f"DetailedSession mcp_communication_count ({detail_data['mcp_communication_count']}) != calculated MCP events ({calculated_mcp_events})"
         
-        # Phase 5: Chain statistics validation is done via the summary endpoint (already validated above)
+        # Chain statistics validation is done via the summary endpoint (already validated above)
         # DetailedSession doesn't have embedded chain statistics - they're only in SessionStats from summary endpoint
         print(f"✅ DetailedSession count validation passed - All counts accurate")
         

@@ -17,7 +17,6 @@ from tarsy.utils.logger import get_logger
 # Initialize logger
 logger = get_logger(__name__)
 
-# Import new type-safe models (Phase 5: Full migration)
 from tarsy.models.history_models import (
     DetailedSession,
     PaginatedSessions,
@@ -119,7 +118,6 @@ async def list_sessions(
                 detail="start_date_us must be before end_date_us"
             )
         
-        # Phase 5: Use internal service method that returns type-safe PaginatedSessions model directly
         paginated_sessions = history_service.get_sessions_list(
             filters=filters,
             page=page,
@@ -140,7 +138,6 @@ async def list_sessions(
                 filters_applied=filters
             )
         
-        # Phase 5.1: Return new models directly - no more conversion!
         return paginated_sessions
         
     except HTTPException:
@@ -190,7 +187,6 @@ async def get_session_detail(
         HTTPException: 404 if session not found, 500 for internal errors
     """
     try:
-        # Phase 5: Use internal service method that returns type-safe DetailedSession model
         detailed_session = history_service.get_session_timeline(session_id)
         
         if not detailed_session:
@@ -198,9 +194,6 @@ async def get_session_detail(
                 status_code=404,
                 detail=f"Session {session_id} not found"
             )
-        
-
-        # Phase 5.1: Return detailed session directly - no more conversion!
         return detailed_session
         
     except HTTPException:
@@ -234,8 +227,6 @@ async def get_session_summary(
     """Get summary statistics for a specific session (lightweight)."""
     try:
         logger.info(f"Fetching summary statistics for session {session_id}")
-        
-        # Phase 5: Use internal service method that returns type-safe SessionStats model
         session_stats = await history_service.get_session_summary(session_id)
         
         if session_stats is None:
@@ -244,7 +235,6 @@ async def get_session_summary(
                 detail=f"Session {session_id} not found"
             )
         
-        # Phase 5.1: Return SessionStats directly - no more conversion!
         logger.info(f"Summary statistics calculated for session {session_id}")
         return session_stats
         
@@ -381,10 +371,7 @@ async def get_filter_options(
 ):
     """Get available filter options for the dashboard."""
     try:
-        # Phase 4: Use internal service method that returns type-safe FilterOptions model
         filter_options = history_service.get_filter_options()
-        
-        # Phase 4.2: Convert FilterOptions to dict for API response compatibility  
         return filter_options.model_dump()
         
     except Exception as e:

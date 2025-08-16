@@ -10,8 +10,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
-
-# Non-history related response models (Phase 5: History models moved to history_models.py)
+# Non-history related response models
 
 class HealthCheckResponse(BaseModel):
     """Response for health check endpoints."""

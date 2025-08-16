@@ -16,7 +16,7 @@ from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import BaseRepository
 from tarsy.utils.logger import get_logger
 
-# Import new type-safe models for internal use (Phase 5: Direct model usage)
+# Import new type-safe models for internal use
 from tarsy.models.history_models import (
     PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo,
     SessionOverview
@@ -317,8 +317,6 @@ class HistoryRepository:
     ) -> Optional[PaginatedSessions]:
         """
         Retrieve alert sessions with filtering and pagination.
-        
-        Phase 3: Returns PaginatedSessions model directly (no dict conversion).
         """
         try:
             # Defensively handle pagination parameters to prevent negative DB offsets
@@ -420,7 +418,6 @@ class HistoryRepository:
                         'mcp_communications': mcp_counts.get(session_id, 0)
                     }
             
-            # Phase 5: Create SessionOverview models directly - no more converters!
             session_overviews = []
             for alert_session in alert_sessions:
                 session_counts = interaction_counts.get(alert_session.session_id, {})
@@ -495,8 +492,6 @@ class HistoryRepository:
     def get_session_timeline(self, session_id: str) -> Optional[DetailedSession]:
         """
         Reconstruct chronological timeline for a session.
-        
-        Phase 3: Returns DetailedSession model directly (no dict conversion).
         """
         try:
             from collections import defaultdict
@@ -531,6 +526,16 @@ class HistoryRepository:
                     for msg in llm_db.request_json.get('messages', []):
                         if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
                             messages.append(LLMMessage(role=msg['role'], content=msg['content']))
+                
+                # Add assistant response from response_json if available
+                if llm_db.response_json and isinstance(llm_db.response_json, dict):
+                    choices = llm_db.response_json.get('choices', [])
+                    if choices and len(choices) > 0:
+                        first_choice = choices[0]
+                        if isinstance(first_choice, dict) and 'message' in first_choice:
+                            assistant_msg = first_choice['message']
+                            if isinstance(assistant_msg, dict) and 'content' in assistant_msg:
+                                messages.append(LLMMessage(role="assistant", content=assistant_msg['content']))
                 
                 # Extract token usage
                 tokens_used = llm_db.token_usage or {}
@@ -665,8 +670,6 @@ class HistoryRepository:
     def get_filter_options(self) -> FilterOptions:
         """
         Get dynamic filter options based on actual data in the database.
-        
-        Phase 3: Returns FilterOptions model directly (no dict conversion).
         """
         try:
             # Get distinct agent types as a flat list of strings
@@ -721,8 +724,6 @@ class HistoryRepository:
     def get_session_with_stages(self, session_id: str) -> Optional[DetailedSession]:
         """
         Get session with all stage execution details.
-        
-        Phase 3: Returns DetailedSession model directly (no dict conversion).
         """
         try:
             from tarsy.models.history_models import DetailedStage
