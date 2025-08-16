@@ -14,8 +14,7 @@ from langchain_xai import ChatXAI
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import llm_interaction_context
-from tarsy.models.llm import LLMMessage
-from tarsy.models.unified_interactions import LLMMessage as TypedLLMMessage, LLMResponse, LLMChoice
+from tarsy.models.unified_interactions import LLMMessage, LLMResponse, LLMChoice
 from tarsy.utils.logger import get_module_logger
 
 # Setup logger for this module

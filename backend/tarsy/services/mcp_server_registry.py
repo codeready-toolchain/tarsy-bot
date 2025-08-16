@@ -9,7 +9,7 @@ including both built-in and configured servers.
 
 from typing import Dict, List, Optional
 
-from ..models.mcp_config import MCPServerConfig
+from ..models.agent_config import MCPServerConfigModel as MCPServerConfig
 from ..utils.logger import get_module_logger
 from ..config.builtin_config import BUILTIN_MCP_SERVERS
 from ..utils.template_resolver import TemplateResolver, TemplateResolutionError

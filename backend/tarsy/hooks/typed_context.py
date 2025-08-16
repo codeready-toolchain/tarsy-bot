@@ -17,7 +17,7 @@ from tarsy.utils.timestamp import now_us
 logger = logging.getLogger(__name__)
 
 # Import StageExecution for type support
-from tarsy.models.history import StageExecution
+from tarsy.models.db_models import StageExecution
 
 # Type variables for generic hook context
 TInteraction = TypeVar('TInteraction', LLMInteraction, MCPInteraction, StageExecution)

@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from tarsy.agents.configurable_agent import ConfigurableAgent
-from tarsy.agents.constants import IterationStrategy
+from tarsy.models.constants import IterationStrategy
 from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.models.agent_config import AgentConfigModel

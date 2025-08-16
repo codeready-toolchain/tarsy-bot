@@ -14,7 +14,7 @@ import yaml
 from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.config.exceptions import ConfigurationError
 from tarsy.models.agent_config import CombinedConfigModel, AgentConfigModel, MCPServerConfigModel, ChainConfigModel, ChainStageConfigModel
-from tarsy.agents.constants import IterationStrategy
+from tarsy.models.constants import IterationStrategy
 
 
 @pytest.mark.unit

@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tarsy.controllers.history_controller import HistoryService, router
-from tarsy.models.history import now_us
+from tarsy.models.db_models import now_us
 from tarsy.services.history_service import get_history_service
 
 
@@ -1648,7 +1648,7 @@ class TestDashboardEndpoints:
         mock_service = Mock()
         
         # Create a real AlertSession-like object
-        from tarsy.models.history import AlertSession
+        from tarsy.models.db_models import AlertSession
         test_session = AlertSession(
             session_id="session_1",
             alert_id="alert_1",

@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 from tarsy.hooks.typed_context import BaseTypedHook
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.models.history import StageExecution
+from tarsy.models.db_models import StageExecution
 from tarsy.utils.timestamp import now_us
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
 

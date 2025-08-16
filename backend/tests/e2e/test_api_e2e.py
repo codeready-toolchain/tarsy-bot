@@ -124,7 +124,7 @@ class TestMegaAPIEndpointsE2E:
             
             # Import the hook context
             from tarsy.hooks.typed_context import llm_interaction_context
-            from tarsy.models.llm import LLMMessage
+            from tarsy.models.unified_interactions import LLMMessage
             
             # Create request data structure like the real LLM client
             request_data = {

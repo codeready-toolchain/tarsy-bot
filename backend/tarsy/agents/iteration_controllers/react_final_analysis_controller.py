@@ -8,7 +8,7 @@ accumulated data from previous stages to provide comprehensive conclusions.
 from typing import TYPE_CHECKING
 
 from tarsy.utils.logger import get_module_logger
-from tarsy.models.llm import LLMMessage
+from tarsy.models.unified_interactions import LLMMessage
 from .base_iteration_controller import IterationController, IterationContext
 
 if TYPE_CHECKING:

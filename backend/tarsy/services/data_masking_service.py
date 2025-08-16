@@ -8,7 +8,7 @@ import re
 from typing import Any, Dict, List, Optional, Pattern
 import json
 
-from tarsy.models.masking_config import MaskingConfig, MaskingPattern
+from tarsy.models.agent_config import MaskingConfig, MaskingPattern
 from tarsy.config.builtin_config import BUILTIN_MASKING_PATTERNS, BUILTIN_PATTERN_GROUPS
 from tarsy.utils.logger import get_logger
 

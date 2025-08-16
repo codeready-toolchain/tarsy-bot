@@ -9,7 +9,7 @@ and provides chain lookup functionality for alert types.
 from typing import Dict, Optional
 from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.config.builtin_config import get_builtin_chain_definitions
-from tarsy.models.chains import ChainDefinitionModel, ChainStageModel
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 from tarsy.utils.logger import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -47,20 +47,19 @@ class ChainRegistry:
             f"and {len(self.yaml_chains)} YAML chains"
         )
     
-    def _load_builtin_chains(self) -> Dict[str, ChainDefinitionModel]:
+    def _load_builtin_chains(self) -> Dict[str, ChainConfigModel]:
         """Load built-in chain definitions."""
         builtin_chain_data = get_builtin_chain_definitions()
         builtin_chains = {}
         
         for chain_id, chain_data in builtin_chain_data.items():
             try:
-                # Convert dictionary data to ChainDefinitionModel with proper stage objects
-                from tarsy.models.chains import ChainStageModel
-                chain_def = ChainDefinitionModel(
+                # Convert dictionary data to ChainConfigModel with proper stage objects
+                chain_def = ChainConfigModel(
                     chain_id=chain_id,
                     alert_types=chain_data["alert_types"],
                     stages=[
-                        ChainStageModel(name=stage["name"], agent=stage["agent"], iteration_strategy=stage.get("iteration_strategy"))
+                        ChainStageConfigModel(name=stage["name"], agent=stage["agent"], iteration_strategy=stage.get("iteration_strategy"))
                         for stage in chain_data["stages"]
                     ],
                     description=chain_data.get("description")
@@ -75,7 +74,7 @@ class ChainRegistry:
         logger.info(f"Loaded {len(builtin_chains)} built-in chains")
         return builtin_chains
     
-    def _load_yaml_chains(self, config_loader: ConfigurationLoader) -> Dict[str, ChainDefinitionModel]:
+    def _load_yaml_chains(self, config_loader: ConfigurationLoader) -> Dict[str, ChainConfigModel]:
         """Load YAML chain definitions."""
         try:
             chain_configs = config_loader.get_chain_configs()
@@ -83,12 +82,12 @@ class ChainRegistry:
             
             for chain_id, chain_data in chain_configs.items():
                 try:
-                    # Convert dictionary data to ChainDefinitionModel with proper stage objects
-                    chain_def = ChainDefinitionModel(
+                    # Convert dictionary data to ChainConfigModel with proper stage objects  
+                    chain_def = ChainConfigModel(
                         chain_id=chain_id,
                         alert_types=chain_data["alert_types"],
                         stages=[
-                            ChainStageModel(name=stage["name"], agent=stage["agent"], iteration_strategy=stage.get("iteration_strategy"))
+                            ChainStageConfigModel(name=stage["name"], agent=stage["agent"], iteration_strategy=stage.get("iteration_strategy"))
                             for stage in chain_data["stages"]
                         ],
                         description=chain_data.get("description")
@@ -152,7 +151,7 @@ class ChainRegistry:
         logger.info(f"Built alert type mappings for {len(mappings)} alert types")
         return mappings
     
-    def get_chain_for_alert_type(self, alert_type: str) -> ChainDefinitionModel:
+    def get_chain_for_alert_type(self, alert_type: str) -> ChainConfigModel:
         """
         Always returns a chain. Single agents become 1-stage chains.
         
@@ -160,7 +159,7 @@ class ChainRegistry:
             alert_type: The alert type to find a chain for
             
         Returns:
-            ChainDefinitionModel for the alert type
+            ChainConfigModel for the alert type
             
         Raises:
             ValueError: If no chain is found for the alert type
@@ -189,6 +188,6 @@ class ChainRegistry:
         all_chains = set(self.builtin_chains.keys()) | set(self.yaml_chains.keys())
         return sorted(all_chains)
     
-    def get_chain_by_id(self, chain_id: str) -> Optional[ChainDefinitionModel]:
+    def get_chain_by_id(self, chain_id: str) -> Optional[ChainConfigModel]:
         """Get a specific chain by its ID."""
         return self.builtin_chains.get(chain_id) or self.yaml_chains.get(chain_id)

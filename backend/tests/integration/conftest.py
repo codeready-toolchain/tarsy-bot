@@ -15,7 +15,7 @@ from tarsy.config.settings import Settings
 from tarsy.integrations.llm.client import LLMClient, LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert import Alert
-from tarsy.models.history import AlertSession
+from tarsy.models.db_models import AlertSession
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.models.mcp_config import MCPServerConfig
 from tarsy.services.agent_factory import AgentFactory

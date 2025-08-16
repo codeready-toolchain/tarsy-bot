@@ -10,8 +10,7 @@ Tests focus on practical validation and model behavior:
 import pytest
 from pydantic import ValidationError
 
-from tarsy.models.masking_config import MaskingConfig, MaskingPattern
-from tests.utils import ModelValidationTester, TestUtils
+from tarsy.models.agent_config import MaskingConfig, MaskingPattern
 
 
 @pytest.mark.unit

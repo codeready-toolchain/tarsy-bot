@@ -18,7 +18,7 @@ from tarsy.integrations.llm.client import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert_processing import AlertProcessingData
 from tarsy.models.constants import AlertSessionStatus, StageStatus
-from tarsy.models.history import now_us
+from tarsy.models.db_models import now_us
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.chain_registry import ChainRegistry
 from tarsy.services.history_service import get_history_service
@@ -700,7 +700,7 @@ class AlertService:
                 "All alert processing must be done as chains with proper stage tracking."
             )
         
-        from tarsy.models.history import StageExecution
+        from tarsy.models.db_models import StageExecution
         stage_execution = StageExecution(
             session_id=session_id,
             stage_id=f"{stage.name}_{stage_index}",

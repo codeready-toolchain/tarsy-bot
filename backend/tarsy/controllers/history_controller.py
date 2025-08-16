@@ -17,18 +17,7 @@ from tarsy.utils.logger import get_logger
 # Initialize logger
 logger = get_logger(__name__)
 
-from tarsy.models.api_models import (
-    ErrorResponse,
-    HealthCheckResponse,
-    InteractionSummary,
-    PaginationInfo,
-    SessionDetailResponse,
-    SessionsListResponse,
-    SessionSummary,
-    ChainExecution,
-    StageExecution,
-)
-# Import new type-safe models for Phase 4
+# Import new type-safe models (Phase 5: Full migration)
 from tarsy.models.history_models import (
     DetailedSession,
     PaginatedSessions,
@@ -36,7 +25,12 @@ from tarsy.models.history_models import (
     SessionStats,
     FilterOptions
 )
-from tarsy.models.history import now_us
+# Keep only non-history related API models
+from tarsy.models.api_models import (
+    ErrorResponse,
+    HealthCheckResponse
+)
+from tarsy.models.db_models import now_us
 from tarsy.services.history_service import HistoryService, get_history_service
 
 # Valid event types expected from the repository
@@ -46,7 +40,7 @@ router = APIRouter(prefix="/api/v1/history", tags=["history"])
 
 @router.get(
     "/sessions", 
-    response_model=SessionsListResponse,
+    response_model=PaginatedSessions,
     responses={
         400: {"model": ErrorResponse, "description": "Bad request - invalid parameters"},
         500: {"model": ErrorResponse, "description": "Internal server error"}
@@ -81,7 +75,7 @@ async def list_sessions(
     page: int = Query(1, ge=1, description="Page number for pagination"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page (1-100)"),
     history_service: HistoryService = Depends(get_history_service)
-) -> SessionsListResponse:
+) -> PaginatedSessions:
     """
     List alert processing sessions with filtering and pagination.
     
@@ -125,7 +119,7 @@ async def list_sessions(
                 detail="start_date_us must be before end_date_us"
             )
         
-        # Phase 4: Use internal service method that returns type-safe PaginatedSessions model
+        # Phase 5: Use internal service method that returns type-safe PaginatedSessions model directly
         paginated_sessions = history_service.get_sessions_list(
             filters=filters,
             page=page,
@@ -133,8 +127,9 @@ async def list_sessions(
         )
         
         if not paginated_sessions:
-            # Return empty response if no data available
-            return SessionsListResponse(
+            # Return empty response if no data available  
+            from tarsy.models.history_models import PaginationInfo
+            return PaginatedSessions(
                 sessions=[],
                 pagination=PaginationInfo(
                     page=page,
@@ -145,44 +140,8 @@ async def list_sessions(
                 filters_applied=filters
             )
         
-        # Phase 4.2: Convert new models to API models for compatibility
-        # Convert SessionOverview objects to SessionSummary for existing API contract
-        session_summaries = []
-        for session_overview in paginated_sessions.sessions:
-            session_summary = SessionSummary(
-                session_id=session_overview.session_id,
-                alert_id=session_overview.alert_id,
-                agent_type=session_overview.agent_type,
-                alert_type=session_overview.alert_type,
-                status=session_overview.status.value,  # Convert enum to string
-                started_at_us=session_overview.started_at_us,
-                completed_at_us=session_overview.completed_at_us,
-                error_message=session_overview.error_message,
-                duration_ms=session_overview.duration_ms,  # Use the property
-                llm_interaction_count=session_overview.llm_interaction_count,
-                mcp_communication_count=session_overview.mcp_communication_count,
-                # Chain fields
-                chain_id=session_overview.chain_id,
-                total_stages=session_overview.total_stages,
-                completed_stages=session_overview.completed_stages,
-                failed_stages=session_overview.failed_stages,
-                current_stage_index=session_overview.current_stage_index
-            )
-            session_summaries.append(session_summary)
-        
-        # Convert PaginationInfo from history_models to api_models format
-        api_pagination = PaginationInfo(
-            page=paginated_sessions.pagination.page,
-            page_size=paginated_sessions.pagination.page_size,
-            total_pages=paginated_sessions.pagination.total_pages,
-            total_items=paginated_sessions.pagination.total_items
-        )
-        
-        return SessionsListResponse(
-            sessions=session_summaries,
-            pagination=api_pagination,
-            filters_applied=paginated_sessions.filters_applied
-        )
+        # Phase 5.1: Return new models directly - no more conversion!
+        return paginated_sessions
         
     except HTTPException:
         raise
@@ -194,7 +153,7 @@ async def list_sessions(
 
 @router.get(
     "/sessions/{session_id}",
-    response_model=SessionDetailResponse,
+    response_model=DetailedSession,
     responses={
         404: {"model": ErrorResponse, "description": "Session not found"},
         500: {"model": ErrorResponse, "description": "Internal server error"}
@@ -216,7 +175,7 @@ async def list_sessions(
 async def get_session_detail(
     session_id: str = Path(..., description="Unique session identifier"),
     history_service: HistoryService = Depends(get_history_service)
-) -> SessionDetailResponse:
+) -> DetailedSession:
     """
     Get detailed session information with chronological timeline.
     
@@ -231,7 +190,7 @@ async def get_session_detail(
         HTTPException: 404 if session not found, 500 for internal errors
     """
     try:
-        # Phase 4: Use internal service method that returns type-safe DetailedSession model
+        # Phase 5: Use internal service method that returns type-safe DetailedSession model
         detailed_session = history_service.get_session_timeline(session_id)
         
         if not detailed_session:
@@ -240,93 +199,9 @@ async def get_session_detail(
                 detail=f"Session {session_id} not found"
             )
         
-        # Get session summary statistics using type-safe method
-        session_stats = await history_service.get_session_summary(session_id)
-        if not session_stats:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to calculate summary statistics for session {session_id}"
-            )
-        
-        # Phase 4.2: Convert DetailedSession to API response model for compatibility
-        # Convert stages to API StageExecution format
-        stage_executions = []
-        for detailed_stage in detailed_session.stages:
-            # Build chronological timeline for this stage from its interactions
-            stage_timeline = []
-            all_stage_interactions = detailed_stage.llm_interactions + detailed_stage.mcp_communications
-            # Sort by timestamp
-            all_stage_interactions.sort(key=lambda x: x.timestamp_us)
-            
-            for interaction in all_stage_interactions:
-                # Validate event_id is present - no fallbacks
-                if not interaction.event_id:
-                    raise ValueError(f"Missing required event_id for interaction: {interaction}")
-                
-                # Validate event type - fail fast on unknown types
-                if interaction.type not in VALID_EVENT_TYPES:
-                    raise ValueError(f"Unknown interaction type: {interaction.type}. Expected one of: {VALID_EVENT_TYPES}")
-                
-                stage_timeline.append({
-                    'event_id': interaction.event_id,
-                    'type': interaction.type,
-                    'timestamp_us': interaction.timestamp_us,
-                    'step_description': interaction.step_description,
-                    'duration_ms': interaction.duration_ms,
-                    'details': interaction.details.model_dump()
-                })
-            
-            # Create interaction summary from stage data
-            interaction_summary = InteractionSummary(
-                llm_count=detailed_stage.llm_interaction_count,
-                mcp_count=detailed_stage.mcp_communication_count,
-                total_count=detailed_stage.total_interactions,
-                duration_ms=detailed_stage.stage_interactions_duration_ms
-            )
-            
-            stage_execution = StageExecution(
-                execution_id=detailed_stage.execution_id,
-                stage_id=detailed_stage.stage_id,
-                stage_index=detailed_stage.stage_index,
-                stage_name=detailed_stage.stage_name,
-                agent=detailed_stage.agent,
-                iteration_strategy=None,  # Not currently tracked in DetailedStage
-                status=detailed_stage.status,
-                started_at_us=detailed_stage.started_at_us,
-                completed_at_us=detailed_stage.completed_at_us,
-                duration_ms=detailed_stage.duration_ms,
-                stage_output=detailed_stage.stage_output,
-                error_message=detailed_stage.error_message,
-                timeline=stage_timeline,
-                interaction_summary=interaction_summary
-            )
-            stage_executions.append(stage_execution)
-        
-        # Create chain execution from detailed session
-        chain_execution = ChainExecution(
-            chain_id=detailed_session.chain_id,
-            chain_definition=detailed_session.chain_definition,
-            current_stage_index=detailed_session.current_stage_index,
-            current_stage_id=detailed_session.current_stage_id,
-            stages=stage_executions
-        )
-        
-        return SessionDetailResponse(
-            session_id=detailed_session.session_id,
-            alert_id=detailed_session.alert_id,
-            alert_data=detailed_session.alert_data,
-            agent_type=detailed_session.agent_type,
-            alert_type=detailed_session.alert_type,
-            status=detailed_session.status.value,  # Convert enum to string
-            started_at_us=detailed_session.started_at_us,
-            completed_at_us=detailed_session.completed_at_us,
-            error_message=detailed_session.error_message,
-            final_analysis=detailed_session.final_analysis,
-            duration_ms=detailed_session.duration_ms,  # Use the property
-            session_metadata=detailed_session.session_metadata or {},
-            chain_execution=chain_execution,
-            summary=session_stats.model_dump()  # Convert SessionStats to dict
-        )
+
+        # Phase 5.1: Return detailed session directly - no more conversion!
+        return detailed_session
         
     except HTTPException:
         raise
@@ -338,7 +213,7 @@ async def get_session_detail(
 
 @router.get(
     "/sessions/{session_id}/summary",
-    response_model=Dict[str, Any],
+    response_model=SessionStats,
     responses={
         404: {"model": ErrorResponse, "description": "Session not found"},
         500: {"model": ErrorResponse, "description": "Internal server error"}
@@ -355,12 +230,12 @@ async def get_session_detail(
 async def get_session_summary(
     session_id: str = Path(..., description="Unique session identifier"),
     history_service: HistoryService = Depends(get_history_service)
-) -> Dict[str, Any]:
+) -> SessionStats:
     """Get summary statistics for a specific session (lightweight)."""
     try:
         logger.info(f"Fetching summary statistics for session {session_id}")
         
-        # Phase 4: Use internal service method that returns type-safe SessionStats model
+        # Phase 5: Use internal service method that returns type-safe SessionStats model
         session_stats = await history_service.get_session_summary(session_id)
         
         if session_stats is None:
@@ -369,11 +244,9 @@ async def get_session_summary(
                 detail=f"Session {session_id} not found"
             )
         
-        # Phase 4.2: Convert SessionStats to dict for API response compatibility
-        summary_dict = session_stats.model_dump()
-        
-        logger.info(f"Summary statistics calculated for session {session_id}: {summary_dict}")
-        return summary_dict
+        # Phase 5.1: Return SessionStats directly - no more conversion!
+        logger.info(f"Summary statistics calculated for session {session_id}")
+        return session_stats
         
     except HTTPException:
         raise

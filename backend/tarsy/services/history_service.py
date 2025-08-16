@@ -19,7 +19,7 @@ from tarsy.models.history_models import (
     PaginatedSessions, DetailedSession, FilterOptions, SessionStats, SessionOverview
 )
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.history import AlertSession, StageExecution, now_us
+from tarsy.models.db_models import AlertSession, StageExecution, now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository
@@ -349,25 +349,6 @@ class HistoryService:
         
         result = self._retry_database_operation("update_session_current_stage", _update_current_stage_operation)
         return result if result is not None else False
-    
-    async def get_session_with_stages(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Get session with all stage execution details - Phase 3: Uses internal models but returns dict for controllers."""
-        def _get_session_with_stages_operation():
-            with self.get_repository() as repo:
-                if not repo:
-                    logger.warning("History repository unavailable - session with stages not retrieved")
-                    return None
-                # Use regular method that now returns DetailedSession model directly (Phase 3)
-                detailed_session = repo.get_session_with_stages(session_id)
-                if detailed_session:
-                    # Convert back to dict for controllers (Phase 3.2 - maintain dict APIs)
-                    # Use mode='json' to serialize enums as their values (needed for legacy compatibility)
-                    return detailed_session.model_dump(mode='json')
-                return None
-        
-        result = self._retry_database_operation("get_session_with_stages", _get_session_with_stages_operation)
-        return result
-
 
     def get_stage_interaction_counts(self, execution_ids: List[str]) -> Dict[str, Dict[str, int]]:
         """
@@ -756,7 +737,7 @@ class HistoryService:
         page_size: int = 20
     ) -> Optional[PaginatedSessions]:
         """
-        Phase 4: Retrieve alert sessions with filtering and pagination - returns PaginatedSessions model directly for controllers.
+        Phase 5: Retrieve alert sessions with filtering and pagination - returns PaginatedSessions model directly for controllers.
         
         Args:
             filters: Dictionary of filters (status, agent_type, alert_type, start_date_us, end_date_us)
@@ -774,7 +755,7 @@ class HistoryService:
                 # Extract filters or use defaults
                 filters = filters or {}
                 
-                # Use regular method that now returns PaginatedSessions model directly (Phase 3)
+                # Phase 5: Use regular method that returns PaginatedSessions model directly
                 paginated_sessions = repo.get_alert_sessions(
                     status=filters.get('status'),
                     agent_type=filters.get('agent_type'),
@@ -820,7 +801,7 @@ class HistoryService:
 
     def get_session_timeline(self, session_id: str) -> Optional[DetailedSession]:
         """
-        Phase 4: Get complete session timeline - returns DetailedSession model directly for controllers.
+        Phase 5: Get complete session timeline - returns DetailedSession model directly for controllers.
         
         Args:
             session_id: The session identifier
@@ -833,7 +814,7 @@ class HistoryService:
                 if not repo:
                     return None
                 
-                # Use regular method that now returns DetailedSession model directly (Phase 3)
+                # Phase 5: Use regular method that returns DetailedSession model directly 
                 detailed_session = repo.get_session_timeline(session_id)
                 return detailed_session
                 

@@ -13,7 +13,7 @@ import pytest
 
 from tarsy.config.settings import Settings
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.history import AlertSession
+from tarsy.models.db_models import AlertSession
 from tarsy.services.history_service import HistoryService, get_history_service
 from tarsy.utils.timestamp import now_us
 from tests.utils import MockFactory, TestUtils, SessionFactory
@@ -517,7 +517,7 @@ class TestHistoryServiceStageExecution:
     @pytest.fixture
     def sample_stage_execution(self):
         """Sample stage execution for testing."""
-        from tarsy.models.history import StageExecution
+        from tarsy.models.db_models import StageExecution
         from tarsy.models.constants import StageStatus
         return StageExecution(
             session_id="test-session",

@@ -148,7 +148,7 @@ class TestAgentCreation:
         agent = factory.create_agent("KubernetesAgent")
         
         # Verify agent class was called with default iteration strategy
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         mock_kubernetes_agent.assert_called_once_with(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
@@ -312,7 +312,7 @@ class TestDependencyInjection:
         factory.create_agent("KubernetesAgent")
         
         # Verify all dependencies were passed correctly
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         mock_kubernetes_agent.assert_called_once_with(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
@@ -335,7 +335,7 @@ class TestDependencyInjection:
         call_args = mock_kubernetes_agent.call_args
         
         # Verify keyword arguments are correct
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         assert call_args[1]['llm_client'] == mock_dependencies['llm_client']
         assert call_args[1]['mcp_client'] == mock_dependencies['mcp_client']
         assert call_args[1]['mcp_registry'] == mock_dependencies['mcp_registry']
@@ -359,7 +359,7 @@ class TestDependencyInjection:
         
         # Verify agent is still created with correct parameters
         call_args = mock_kubernetes_agent.call_args
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         assert call_args[1]['iteration_strategy'] == IterationStrategy.REACT
     
     def test_mcp_registry_requirement(self, mock_dependencies):
@@ -510,7 +510,7 @@ class TestAgentFactoryIterationStrategies:
     def sample_agent_configs(self):
         """Sample agent configurations with different iteration strategies."""
         from tarsy.models.agent_config import AgentConfigModel
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         
         return {
             'regular-agent': AgentConfigModel(
@@ -530,7 +530,7 @@ class TestAgentFactoryIterationStrategies:
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
     def test_create_kubernetes_agent_with_regular_strategy(self, mock_kubernetes_agent, mock_dependencies):
         """Test creating KubernetesAgent with REGULAR iteration strategy."""
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
@@ -573,7 +573,7 @@ class TestAgentFactoryIterationStrategies:
         agent = factory.create_agent("ConfigurableAgent:regular-agent")
         
         from tarsy.agents.configurable_agent import ConfigurableAgent
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         
         assert isinstance(agent, ConfigurableAgent)
         assert agent.iteration_strategy == IterationStrategy.REGULAR
@@ -597,7 +597,7 @@ class TestAgentFactoryIterationStrategies:
         agent = factory.create_agent("ConfigurableAgent:react-agent")
         
         from tarsy.agents.configurable_agent import ConfigurableAgent
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         
         assert isinstance(agent, ConfigurableAgent)
         assert agent.iteration_strategy == IterationStrategy.REACT
@@ -628,7 +628,7 @@ class TestAgentFactoryIterationStrategies:
         regular_agent = factory.create_agent("ConfigurableAgent:regular-agent")
         react_agent = factory.create_agent("ConfigurableAgent:react-agent")
         
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         
         # Verify different strategies
         assert regular_agent.iteration_strategy == IterationStrategy.REGULAR
@@ -644,7 +644,7 @@ class TestAgentFactoryIterationStrategies:
     def test_agent_factory_logging_includes_iteration_strategy(self, mock_dependencies, caplog):
         """Test that agent factory logging includes iteration strategy information."""
         from tarsy.models.agent_config import AgentConfigModel
-        from tarsy.agents.constants import IterationStrategy
+        from tarsy.models.constants import IterationStrategy
         
         agent_configs = {
             'test-agent': AgentConfigModel(

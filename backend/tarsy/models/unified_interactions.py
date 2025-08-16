@@ -7,12 +7,9 @@ separate runtime/database model hierarchies and manual conversions.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional
-from sqlmodel import JSON, Column, Field, Relationship, SQLModel, Index
-from sqlalchemy import text
-
+from typing import List, Optional
+from sqlmodel import JSON, Column, Field, SQLModel
 from tarsy.utils.timestamp import now_us
-
 
 
 class LLMMessage(SQLModel):

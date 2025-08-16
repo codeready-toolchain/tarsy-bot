@@ -8,7 +8,7 @@ from tarsy.models.agent_config import (
     CombinedConfigModel,
     MCPServerConfigModel,
 )
-from tarsy.agents.constants import IterationStrategy
+from tarsy.models.constants import IterationStrategy
 from tests.utils import ModelValidationTester, TestUtils
 
 

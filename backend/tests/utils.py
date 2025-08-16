@@ -246,7 +246,7 @@ class SessionFactory:
     @staticmethod
     def create_test_session(**overrides):
         """Create a test session with sensible defaults."""
-        from tarsy.models.history import AlertSession
+        from tarsy.models.db_models import AlertSession
         from tarsy.models.constants import AlertSessionStatus
         
         base_data = {
@@ -299,7 +299,7 @@ class SessionFactory:
         """Create a SessionOverview (type-safe model) for list views."""
         from tarsy.models.history_models import SessionOverview
         from tarsy.models.constants import AlertSessionStatus
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         
         current_time_us = now_us()
         
@@ -351,7 +351,7 @@ class SessionFactory:
         """Create a DetailedSession (type-safe model) with realistic stage and interaction data."""
         from tarsy.models.history_models import DetailedSession, DetailedStage, LLMInteraction, MCPInteraction, LLMEventDetails, MCPEventDetails
         from tarsy.models.constants import AlertSessionStatus, StageStatus
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         
         current_time_us = now_us()
         
@@ -495,7 +495,7 @@ class StageExecutionFactory:
     @staticmethod
     def create_test_stage_execution(session_id: str, **overrides):
         """Create a basic test stage execution."""
-        from tarsy.models.history import StageExecution
+        from tarsy.models.db_models import StageExecution
         from tarsy.models.constants import StageStatus
         
         base_data = {

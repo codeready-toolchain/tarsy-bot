@@ -16,7 +16,7 @@ from sqlmodel import SQLModel, create_engine
 
 from tarsy.main import app
 from tarsy.models.alert import Alert
-from tarsy.models.history import now_us
+from tarsy.models.db_models import now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 
 # Import history models to ensure they're registered with SQLModel.metadata
@@ -671,7 +671,7 @@ class TestHistoryAPIIntegration:
     def test_api_session_detail_integration(self, client, mock_history_service_for_api):
         """Test session detail API endpoint integration."""
         # Ensure the mock returns the timeline for the specific session ID (using Unix timestamps)
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         current_time_us = now_us()
         expected_session_id = "api-session-1"
         
@@ -921,7 +921,7 @@ class TestDuplicatePreventionIntegration:
         # Try to bypass application logic and create duplicate directly in database
         with history_service_with_test_db.get_repository() as repo:
             if repo:
-                from tarsy.models.history import AlertSession
+                from tarsy.models.db_models import AlertSession
                 
                 # Try to create duplicate session directly
                 duplicate_session = AlertSession(

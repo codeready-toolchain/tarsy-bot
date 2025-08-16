@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from tarsy.models.history import AlertSession, StageExecution
+from tarsy.models.db_models import AlertSession, StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.history_repository import HistoryRepository
 from tests.utils import AlertFactory
@@ -41,7 +41,7 @@ class TestHistoryRepository:
     @pytest.fixture
     def sample_alert_session(self):
         """Create sample AlertSession for testing."""
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         return AlertSession(
             session_id="test-session-123",
             alert_id="alert-456",
@@ -215,7 +215,7 @@ class TestHistoryRepository:
     def test_get_alert_sessions_with_date_filters(self, repository):
         """Test getting alert sessions with date range filters."""
         # Create sessions with different timestamps
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         now_us_time = now_us()
         five_days_ago_us = now_us_time - (5 * 24 * 60 * 60 * 1000000)  # 5 days in microseconds
         one_hour_ago_us = now_us_time - (60 * 60 * 1000000)  # 1 hour in microseconds
@@ -296,7 +296,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_error_message(self, repository):
         """Test search functionality in error_message field."""
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         
         # Create sessions with different error messages
         session1 = AlertSession(
@@ -341,7 +341,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_final_analysis(self, repository):
         """Test search functionality in final_analysis field."""
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         
         # Create sessions with different analyses
         session1 = AlertSession(
@@ -386,7 +386,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_alert_data_fields(self, repository):
         """Test search functionality in JSON alert_data fields."""
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         
         # Create sessions with different alert data
         session1 = AlertSession(
@@ -457,7 +457,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_case_insensitive(self, repository):
         """Test that search is case-insensitive."""
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         
         session = AlertSession(
             session_id="test-session-case-1",
@@ -494,7 +494,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_combined_with_filters(self, repository):
         """Test search functionality combined with other filters."""
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         
         session1 = AlertSession(
             session_id="test-session-combined-1",
@@ -552,7 +552,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_no_matches(self, repository):
         """Test search functionality when no matches are found."""
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         
         session = AlertSession(
             session_id="test-session-nomatch-1",
@@ -578,8 +578,8 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_session_timeline_chronological_order(self, repository, sample_alert_session):
         """Test session timeline reconstruction with chronological ordering."""
-        from tarsy.models.history import StageExecution
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import StageExecution
+        from tarsy.models.db_models import now_us
         
         # Create session
         repository.create_alert_session(sample_alert_session)
@@ -665,8 +665,8 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_session_timeline_unix_timestamp_precision(self, repository, sample_alert_session):
         """Test session timeline with Unix timestamp precision and chronological ordering."""
-        from tarsy.models.history import StageExecution
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import StageExecution
+        from tarsy.models.db_models import now_us
         
         # Create session
         repository.create_alert_session(sample_alert_session)
@@ -989,8 +989,8 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_session_timeline_includes_success_error_fields(self, repository, sample_alert_session):
         """Test session timeline includes success and error_message fields in LLM interactions."""
-        from tarsy.models.history import StageExecution
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import StageExecution
+        from tarsy.models.db_models import now_us
         
         # Create session
         repository.create_alert_session(sample_alert_session)
@@ -1130,7 +1130,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_update_stage_execution_success(self, repository, sample_alert_session):
         """Test successful stage execution update."""
-        from tarsy.models.history import now_us
+        from tarsy.models.db_models import now_us
         from tarsy.models.constants import StageStatus
         
         # Create session first

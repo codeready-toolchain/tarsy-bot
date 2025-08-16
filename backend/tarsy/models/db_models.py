@@ -1,19 +1,18 @@
 """
-History data models for alert processing audit trail.
+Database models for alert processing audit trail.
 
-Defines SQLModel classes for storing alert processing sessions,
-LLM interactions, and MCP communications with Unix timestamp
-precision for optimal performance and consistency.
+Defines SQLModel table classes for storing alert processing sessions
+and stage executions with Unix timestamp precision for optimal 
+performance and consistency.
 """
 
 import uuid
-from enum import Enum
 from typing import Optional
 
-from sqlmodel import JSON, Column, Field, Relationship, SQLModel, Index
-from sqlalchemy import text, Enum as SQLEnum
+from sqlmodel import JSON, Column, Field, SQLModel, Index
+from sqlalchemy import text
 
-from tarsy.models.constants import AlertSessionStatus, StageStatus
+from tarsy.models.constants import AlertSessionStatus
 from tarsy.utils.timestamp import now_us
 
 class AlertSession(SQLModel, table=True):

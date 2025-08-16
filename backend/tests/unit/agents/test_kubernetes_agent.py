@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from tarsy.agents.constants import IterationStrategy
+from tarsy.models.constants import IterationStrategy
 from tarsy.agents.exceptions import ConfigurationError
 from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.integrations.llm.client import LLMClient

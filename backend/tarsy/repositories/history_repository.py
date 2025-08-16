@@ -6,23 +6,22 @@ supporting comprehensive audit trails, chronological timeline reconstruction,
 and advanced querying capabilities using Unix timestamps for optimal performance.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from sqlmodel import Session, asc, desc, func, select, and_, or_
 
 from tarsy.models.constants import AlertSessionStatus, StageStatus
-from tarsy.models.history import AlertSession, StageExecution
+from tarsy.models.db_models import AlertSession, StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import BaseRepository
 from tarsy.utils.logger import get_logger
 
-# Import new type-safe models for internal use (Phase 2.1)
+# Import new type-safe models for internal use (Phase 5: Direct model usage)
 from tarsy.models.history_models import (
-    PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo
+    PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo,
+    SessionOverview
 )
-from tarsy.models.converters import (
-    alert_session_to_session_overview,
-)
+from tarsy.models.constants import AlertSessionStatus
 
 logger = get_logger(__name__)
 
@@ -421,11 +420,42 @@ class HistoryRepository:
                         'mcp_communications': mcp_counts.get(session_id, 0)
                     }
             
-            # Convert AlertSession objects to SessionOverview models
+            # Phase 5: Create SessionOverview models directly - no more converters!
             session_overviews = []
             for alert_session in alert_sessions:
                 session_counts = interaction_counts.get(alert_session.session_id, {})
-                overview = alert_session_to_session_overview(alert_session, session_counts)
+                llm_count = session_counts.get('llm_interactions', 0)
+                mcp_count = session_counts.get('mcp_communications', 0)
+                
+                overview = SessionOverview(
+                    # Core identification
+                    session_id=alert_session.session_id,
+                    alert_id=alert_session.alert_id,
+                    alert_type=alert_session.alert_type,
+                    agent_type=alert_session.agent_type,
+                    status=AlertSessionStatus(alert_session.status),
+                    
+                    # Timing info
+                    started_at_us=alert_session.started_at_us,
+                    completed_at_us=alert_session.completed_at_us,
+                    
+                    # Basic status info
+                    error_message=alert_session.error_message,
+                    
+                    # Summary counts (merged from interaction_counts)
+                    llm_interaction_count=llm_count,
+                    mcp_communication_count=mcp_count,
+                    total_interactions=llm_count + mcp_count,
+                    
+                    # Chain progress info
+                    chain_id=alert_session.chain_id,
+                    current_stage_index=alert_session.current_stage_index,
+                    
+                    # Optional fields that may need calculation elsewhere (defaults from SessionOverview)
+                    total_stages=None,
+                    completed_stages=None,
+                    failed_stages=0
+                )
                 session_overviews.append(overview)
             
             # Calculate pagination info
