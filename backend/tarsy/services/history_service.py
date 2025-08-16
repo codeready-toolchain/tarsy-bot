@@ -13,6 +13,11 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from tarsy.config.settings import get_settings
+
+# Import new type-safe models for internal use (Phase 3)
+from tarsy.models.history_models import (
+    PaginatedSessions, DetailedSession, FilterOptions, SessionStats, SessionOverview
+)
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.history import AlertSession, StageExecution, now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
@@ -346,13 +351,19 @@ class HistoryService:
         return result if result is not None else False
     
     async def get_session_with_stages(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Get session with all stage execution details."""
+        """Get session with all stage execution details - Phase 3: Uses internal models but returns dict for controllers."""
         def _get_session_with_stages_operation():
             with self.get_repository() as repo:
                 if not repo:
                     logger.warning("History repository unavailable - session with stages not retrieved")
                     return None
-                return repo.get_session_with_stages(session_id)
+                # Use regular method that now returns DetailedSession model directly (Phase 3)
+                detailed_session = repo.get_session_with_stages(session_id)
+                if detailed_session:
+                    # Convert back to dict for controllers (Phase 3.2 - maintain dict APIs)
+                    # Use mode='json' to serialize enums as their values (needed for legacy compatibility)
+                    return detailed_session.model_dump(mode='json')
+                return None
         
         result = self._retry_database_operation("get_session_with_stages", _get_session_with_stages_operation)
         return result
@@ -447,9 +458,164 @@ class HistoryService:
         
         return summary
     
+    def _convert_detailed_session_to_legacy_timeline(self, detailed_session: DetailedSession) -> Dict[str, Any]:
+        """
+        Convert DetailedSession model to legacy timeline dict structure - Phase 3: Backward compatibility.
+        
+        The legacy structure expected by tests and controllers:
+        {
+            "session": { ...session fields... },
+            "chronological_timeline": [ ...events... ],
+            "llm_interactions": [ ...summaries... ],
+            "mcp_communications": [ ...summaries... ]
+        }
+        
+        Args:
+            detailed_session: DetailedSession model from repository
+            
+        Returns:
+            Dictionary in legacy timeline format
+        """
+        # Build session dict from DetailedSession fields
+        session_dict = {
+            "session_id": detailed_session.session_id,
+            "alert_id": detailed_session.alert_id,
+            "alert_data": detailed_session.alert_data,
+            "agent_type": detailed_session.agent_type,
+            "alert_type": detailed_session.alert_type,
+            "status": detailed_session.status.value,
+            "started_at_us": detailed_session.started_at_us,
+            "completed_at_us": detailed_session.completed_at_us,
+            "error_message": detailed_session.error_message,
+            "final_analysis": detailed_session.final_analysis,
+            "session_metadata": detailed_session.session_metadata,
+            "chain_id": detailed_session.chain_id,
+            "chain_definition": detailed_session.chain_definition,
+            "current_stage_index": detailed_session.current_stage_index,
+            "current_stage_id": detailed_session.current_stage_id,
+            "total_interactions": detailed_session.total_interactions,
+            "llm_interaction_count": detailed_session.llm_interaction_count,
+            "mcp_communication_count": detailed_session.mcp_communication_count
+        }
+        
+        # Build chronological timeline from all stage interactions
+        chronological_timeline = []
+        llm_summaries = []
+        mcp_summaries = []
+        
+        # Collect all interactions from all stages and sort chronologically
+        all_interactions = []
+        for stage in detailed_session.stages:
+            all_interactions.extend(stage.llm_interactions)
+            all_interactions.extend(stage.mcp_communications)
+        
+        # Sort by timestamp
+        all_interactions.sort(key=lambda x: x.timestamp_us)
+        
+        # Convert interactions to timeline events and summaries
+        for interaction in all_interactions:
+            # Add to chronological timeline
+            event_dict = {
+                "id": interaction.id,
+                "event_id": interaction.event_id,
+                "timestamp_us": interaction.timestamp_us,
+                "type": interaction.type,
+                "step_description": interaction.step_description,
+                "duration_ms": interaction.duration_ms,
+                "stage_execution_id": interaction.stage_execution_id,
+                "details": interaction.details.model_dump()
+            }
+            chronological_timeline.append(event_dict)
+            
+            # Add to summary lists
+            if interaction.type == "llm":
+                llm_summaries.append({
+                    "interaction_id": interaction.id,
+                    "timestamp_us": interaction.timestamp_us,
+                    "step_description": interaction.step_description,
+                    "model_name": interaction.details.model_name,
+                    "duration_ms": interaction.duration_ms
+                })
+            elif interaction.type == "mcp":
+                mcp_summaries.append({
+                    "communication_id": interaction.id,
+                    "timestamp_us": interaction.timestamp_us,
+                    "step_description": interaction.step_description,
+                    "server_name": interaction.details.server_name,
+                    "tool_name": interaction.details.tool_name,
+                    "success": interaction.details.success,
+                    "duration_ms": interaction.duration_ms
+                })
+        
+        return {
+            "session": session_dict,
+            "chronological_timeline": chronological_timeline,
+            "llm_interactions": llm_summaries,
+            "mcp_communications": mcp_summaries
+        }
+    
+    def calculate_session_summary_from_model(self, detailed_session: DetailedSession) -> Dict[str, Any]:
+        """
+        Calculate summary statistics from DetailedSession model - Phase 3: Type-safe calculation.
+        
+        This replaces the dict-based calculate_session_summary method for better type safety.
+        
+        Args:
+            detailed_session: DetailedSession model with all session data
+            
+        Returns:
+            Dictionary with calculated summary statistics
+        """
+        # Calculate basic counts from the model
+        total_interactions = detailed_session.total_interactions
+        llm_interactions = detailed_session.llm_interaction_count
+        mcp_communications = detailed_session.mcp_communication_count
+        
+        # Count errors across all stages
+        errors_count = 0
+        system_events = 0  # Currently not tracked in our system
+        
+        # Calculate duration by summing from all interactions across all stages
+        total_duration_ms = 0
+        for stage in detailed_session.stages:
+            for interaction in stage.llm_interactions:
+                total_duration_ms += interaction.duration_ms or 0
+            for interaction in stage.mcp_communications:
+                total_duration_ms += interaction.duration_ms or 0
+        
+        # Calculate chain statistics
+        total_stages = len(detailed_session.stages)
+        completed_stages = len([s for s in detailed_session.stages if s.status.value == 'completed'])
+        failed_stages = len([s for s in detailed_session.stages if s.status.value == 'failed'])
+        
+        # Count errors and calculate stages by agent
+        stages_by_agent = {}
+        for stage in detailed_session.stages:
+            if stage.error_message:
+                errors_count += 1
+            
+            # Count stages by agent
+            agent_name = stage.agent
+            stages_by_agent[agent_name] = stages_by_agent.get(agent_name, 0) + 1
+        
+        return {
+            "total_interactions": total_interactions,
+            "llm_interactions": llm_interactions,
+            "mcp_communications": mcp_communications,
+            "system_events": system_events,
+            "errors_count": errors_count,
+            "total_duration_ms": total_duration_ms,
+            "chain_statistics": {
+                "total_stages": total_stages,
+                "completed_stages": completed_stages,
+                "failed_stages": failed_stages,
+                "stages_by_agent": stages_by_agent
+            }
+        }
+    
     async def get_session_summary(self, session_id: str) -> Optional[Dict[str, Any]]:
         """
-        Get just the summary statistics for a session (lightweight operation).
+        Get just the summary statistics for a session - Phase 3: Uses internal models for better type safety.
         
         Args:
             session_id: Session identifier
@@ -457,20 +623,29 @@ class HistoryService:
         Returns:
             Dictionary with summary statistics or None if session not found
         """
-        # Use same data retrieval method as detail endpoint for consistency
-        session_data = self.get_session_timeline(session_id)
-        if not session_data:
-            return None
-        
-        # For chain sessions, also get stage data for chain statistics
-        session_info = session_data.get('session', {})
-        if session_info.get('chain_id'):
-            stage_data = await self.get_session_with_stages(session_id)
-            if stage_data:
-                # Merge stage information into session_data
-                session_data['stages'] = stage_data.get('stages', [])
+        try:
+            def _get_session_summary_operation():
+                with self.get_repository() as repo:
+                    if not repo:
+                        logger.warning("History repository unavailable - session summary not retrieved")
+                        return None
+                    
+                    # Use regular method that now returns DetailedSession model directly (Phase 3)
+                    detailed_session = repo.get_session_with_stages(session_id)
+                    if not detailed_session:
+                        logger.warning(f"No session data found for session {session_id}")
+                        return None
+                    
+                    # Calculate statistics using type-safe model (better than dict manipulation)
+                    summary = self.calculate_session_summary_from_model(detailed_session)
+                    return summary
             
-        return self.calculate_session_summary(session_data)
+            result = self._retry_database_operation("get_session_summary", _get_session_summary_operation)
+            return result
+                
+        except Exception as e:
+            logger.error(f"Failed to get session summary for {session_id}: {str(e)}")
+            return None
     
     async def get_stage_execution(self, execution_id: str) -> Optional[StageExecution]:
         """Get a single stage execution by ID."""
@@ -566,7 +741,7 @@ class HistoryService:
         page_size: int = 20
     ) -> tuple[List[AlertSession], int]:
         """
-        Retrieve alert sessions with filtering and pagination (returns tuple for API).
+        Retrieve alert sessions with filtering and pagination - Phase 3: Uses internal models but returns tuple for API.
         
         Args:
             filters: Dictionary of filters (status, agent_type, alert_type, start_date_us, end_date_us)
@@ -584,7 +759,8 @@ class HistoryService:
                 # Extract filters or use defaults
                 filters = filters or {}
                 
-                result = repo.get_alert_sessions(
+                # Use regular method that now returns PaginatedSessions model directly (Phase 3)
+                paginated_sessions = repo.get_alert_sessions(
                     status=filters.get('status'),
                     agent_type=filters.get('agent_type'),
                     alert_type=filters.get('alert_type'),
@@ -595,27 +771,36 @@ class HistoryService:
                     page_size=page_size
                 )
                 
-                sessions = result.get('sessions', [])
-                interaction_counts = result.get('interaction_counts', {})
-                total_items = result.get('pagination', {}).get('total_items', 0)
+                if not paginated_sessions:
+                    return [], 0
                 
-                # Handle sessions as dicts (repository now returns dicts for backward compatibility)
-                # Convert dict sessions back to AlertSession objects for service layer
+                # Convert SessionOverview objects back to AlertSession objects for API compatibility
                 alert_sessions = []
-                for session_dict in sessions:
+                for session_overview in paginated_sessions.sessions:
                     try:
-                        # Create AlertSession object from dict
-                        session = AlertSession(**session_dict)
-                        counts = interaction_counts.get(session.session_id, {})
-                        # Use object.__setattr__ to bypass SQLModel validation
-                        object.__setattr__(session, 'llm_interaction_count', counts.get('llm_interactions', 0))
-                        object.__setattr__(session, 'mcp_communication_count', counts.get('mcp_communications', 0))
+                        # Create AlertSession from SessionOverview data (Phase 3.2 - maintain API compatibility)
+                        session = AlertSession(
+                            session_id=session_overview.session_id,
+                            alert_id=session_overview.alert_id,
+                            alert_type=session_overview.alert_type,
+                            agent_type=session_overview.agent_type,
+                            status=session_overview.status.value,
+                            started_at_us=session_overview.started_at_us,
+                            completed_at_us=session_overview.completed_at_us,
+                            error_message=session_overview.error_message,
+                            chain_id=session_overview.chain_id,
+                            current_stage_index=session_overview.current_stage_index
+                        )
+                        
+                        # Add interaction counts as attributes
+                        object.__setattr__(session, 'llm_interaction_count', session_overview.llm_interaction_count)
+                        object.__setattr__(session, 'mcp_communication_count', session_overview.mcp_communication_count)
                         alert_sessions.append(session)
                     except Exception as e:
-                        logger.warning(f"Failed to convert session dict to AlertSession: {e}")
+                        logger.warning(f"Failed to convert SessionOverview to AlertSession: {e}")
                         continue
                 
-                return alert_sessions, total_items
+                return alert_sessions, paginated_sessions.pagination.total_items
                 
         except Exception as e:
             logger.error(f"Failed to get sessions list: {str(e)}")
@@ -635,7 +820,8 @@ class HistoryService:
                 
                 # Try to perform a simple database operation
                 # This will test both connection and basic functionality
-                repo.get_alert_sessions(page=1, page_size=1)
+                result = repo.get_alert_sessions(page=1, page_size=1)
+                # Result is now PaginatedSessions model or None
                 return True
                 
         except Exception as e:
@@ -644,20 +830,26 @@ class HistoryService:
     
     def get_session_timeline(self, session_id: str) -> Dict[str, Any]:
         """
-        Get complete session timeline with chronological ordering.
+        Get complete session timeline with chronological ordering - Phase 3: Uses internal models but returns legacy dict structure.
         
         Args:
             session_id: The session identifier
             
         Returns:
-            Dictionary containing session details and chronological timeline
+            Dictionary containing session details and chronological timeline in legacy format
         """
         try:
             with self.get_repository() as repo:
                 if not repo:
                     return {}
                 
-                return repo.get_session_timeline(session_id)
+                # Use regular method that now returns DetailedSession model directly (Phase 3)
+                detailed_session = repo.get_session_timeline(session_id)
+                if detailed_session:
+                    # Convert to legacy dict structure for backward compatibility (Phase 3.2)
+                    return self._convert_detailed_session_to_legacy_timeline(detailed_session)
+                
+                return {}
                 
         except Exception as e:
             logger.error(f"Failed to get session timeline for {session_id}: {str(e)}")
@@ -684,7 +876,7 @@ class HistoryService:
     
     def get_filter_options(self) -> Dict[str, Any]:
         """
-        Get available filter options for the dashboard.
+        Get available filter options for the dashboard - Phase 3: Uses internal models but returns dict.
         
         Returns:
             Dictionary containing filter options
@@ -692,33 +884,42 @@ class HistoryService:
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    return {
-                        "agent_types": [],
-                        "alert_types": [],
-                        "status_options": AlertSessionStatus.values(),
-                        "time_ranges": [
-                            {"label": "Last Hour", "value": "1h"},
-                            {"label": "Last 4 Hours", "value": "4h"},
-                            {"label": "Today", "value": "today"},
-                            {"label": "This Week", "value": "week"}
+                    # Create default FilterOptions model and convert to dict
+                    from tarsy.models.history_models import FilterOptions, TimeRangeOption
+                    default_options = FilterOptions(
+                        agent_types=[],
+                        alert_types=[],
+                        status_options=AlertSessionStatus.values(),
+                        time_ranges=[
+                            TimeRangeOption(label="Last Hour", value="1h"),
+                            TimeRangeOption(label="Last 4 Hours", value="4h"),
+                            TimeRangeOption(label="Today", value="today"),
+                            TimeRangeOption(label="This Week", value="week")
                         ]
-                    }
+                    )
+                    return default_options.model_dump()
                 
-                return repo.get_filter_options()
+                # Use regular method that now returns FilterOptions model directly (Phase 3)
+                filter_options = repo.get_filter_options()
+                # Convert back to dict for controllers (Phase 3.2 - maintain dict APIs)
+                return filter_options.model_dump()
                 
         except Exception as e:
             logger.error(f"Failed to get filter options: {str(e)}")
-            return {
-                "agent_types": [],
-                "alert_types": [],
-                "status_options": AlertSessionStatus.values(),
-                "time_ranges": [
-                    {"label": "Last Hour", "value": "1h"},
-                    {"label": "Last 4 Hours", "value": "4h"},
-                    {"label": "Today", "value": "today"},
-                    {"label": "This Week", "value": "week"}
+            # Return default options on error
+            from tarsy.models.history_models import FilterOptions, TimeRangeOption
+            default_options = FilterOptions(
+                agent_types=[],
+                alert_types=[],
+                status_options=AlertSessionStatus.values(),
+                time_ranges=[
+                    TimeRangeOption(label="Last Hour", value="1h"),
+                    TimeRangeOption(label="Last 4 Hours", value="4h"),
+                    TimeRangeOption(label="Today", value="today"),
+                    TimeRangeOption(label="This Week", value="week")
                 ]
-            }
+            )
+            return default_options.model_dump()
 
     # Maintenance Operations
     def cleanup_orphaned_sessions(self) -> int:
@@ -749,17 +950,29 @@ class HistoryService:
                     page_size=1000  # Get a large batch to handle all orphaned sessions
                 )
                 
-                if not active_sessions_result or not active_sessions_result.get("sessions"):
+                if not active_sessions_result or not active_sessions_result.sessions:
                     logger.info("No orphaned sessions found during startup cleanup")
                     return 0
                 
-                active_sessions_dicts = active_sessions_result["sessions"]
+                # active_sessions_result is now PaginatedSessions model (Phase 3)
+                session_overviews = active_sessions_result.sessions
                 cleanup_count = 0
                 
-                for session_dict in active_sessions_dicts:
+                for session_overview in session_overviews:
                     try:
-                        # Convert dict to AlertSession object (repository now returns dicts)
-                        session = AlertSession(**session_dict)
+                        # Convert SessionOverview to AlertSession object for update
+                        session = AlertSession(
+                            session_id=session_overview.session_id,
+                            alert_id=session_overview.alert_id,
+                            alert_type=session_overview.alert_type,
+                            agent_type=session_overview.agent_type,
+                            status=session_overview.status.value,
+                            started_at_us=session_overview.started_at_us,
+                            completed_at_us=session_overview.completed_at_us,
+                            error_message=session_overview.error_message,
+                            chain_id=session_overview.chain_id,
+                            current_stage_index=session_overview.current_stage_index
+                        )
                         
                         # Mark session as failed with appropriate error message
                         session.status = AlertSessionStatus.FAILED.value
@@ -774,7 +987,7 @@ class HistoryService:
                             logger.warning(f"Failed to update orphaned session {session.session_id}")
                             
                     except Exception as session_error:
-                        session_id = session_dict.get('session_id', 'unknown') if isinstance(session_dict, dict) else 'unknown'
+                        session_id = session_overview.session_id if hasattr(session_overview, 'session_id') else 'unknown'
                         logger.error(f"Error cleaning up session {session_id}: {str(session_error)}")
                         continue
                 

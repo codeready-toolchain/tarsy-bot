@@ -15,6 +15,7 @@ from tarsy.config.settings import Settings
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.history import AlertSession
 from tarsy.services.history_service import HistoryService, get_history_service
+from tarsy.utils.timestamp import now_us
 from tests.utils import MockFactory, TestUtils, SessionFactory
 
 
@@ -295,12 +296,12 @@ class TestHistoryService:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
         if service_enabled:
-            # Create dictionaries that match repository return format, not AlertSession objects
-            mock_sessions = [SessionFactory.create_test_session().model_dump() for _ in range(expected_sessions)]
-            dependencies['repository'].get_alert_sessions.return_value = {
-                "sessions": mock_sessions,
-                "pagination": {"page": 1, "page_size": 20, "total_pages": 1, "total_items": expected_count}
-            }
+            # Phase 3: Repository now returns PaginatedSessions model
+            session_overviews = MockFactory.create_mock_session_overviews(count=expected_sessions)
+            dependencies['repository'].get_alert_sessions.return_value = MockFactory.create_mock_paginated_sessions(
+                sessions=session_overviews,
+                total_items=expected_count
+            )
         else:
             # When service is disabled, get_repository returns None
             dependencies = None
@@ -329,16 +330,62 @@ class TestHistoryService:
     @pytest.mark.unit
     def test_get_session_timeline_success(self, history_service):
         """Test successful session timeline retrieval."""
+        from tarsy.models.history_models import DetailedSession, DetailedStage, LLMInteraction, MCPInteraction, LLMEventDetails, MCPEventDetails
+        from tarsy.models.constants import AlertSessionStatus, StageStatus
+        from tarsy.models.unified_interactions import LLMMessage
+        
         dependencies = MockFactory.create_mock_history_service_dependencies()
-        mock_timeline_data = {
-            "session_info": {"session_id": "test-session-id", "status": "completed"},
-            "chronological_timeline": [
-                {"type": "llm_interaction", "timestamp": datetime.now(timezone.utc)},
-                {"type": "mcp_communication", "timestamp": datetime.now(timezone.utc)}
-            ],
-            "summary": {"total_interactions": 2}
+        
+        # Create a proper DetailedSession mock object
+        mock_detailed_session = DetailedSession(
+            session_id="test-session-id",
+            alert_id="alert-123", 
+            alert_type="TestAlert",
+            agent_type="TestAgent",
+            status=AlertSessionStatus.COMPLETED,
+            started_at_us=1000000,
+            completed_at_us=2000000,
+            error_message=None,
+            alert_data={},
+            final_analysis=None,
+            session_metadata={},
+            chain_id="test-chain-123",
+            chain_definition={},
+            current_stage_index=None,
+            current_stage_id=None,
+            total_interactions=2,
+            llm_interaction_count=1,
+            mcp_communication_count=1,
+            stages=[]
+        )
+        
+        dependencies['repository'].get_session_timeline.return_value = mock_detailed_session
+        
+        expected_timeline_data = {
+            "session": {
+                "session_id": "test-session-id",
+                "alert_id": "alert-123",
+                "alert_data": {},
+                "agent_type": "TestAgent",
+                "alert_type": "TestAlert",
+                "status": "completed",
+                "started_at_us": 1000000,
+                "completed_at_us": 2000000,
+                "error_message": None,
+                "final_analysis": None,
+                "session_metadata": {},
+                "total_interactions": 2,
+                "llm_interaction_count": 1,
+                "mcp_communication_count": 1,
+                "chain_id": "test-chain-123",
+                "chain_definition": {},
+                "current_stage_index": None,
+                "current_stage_id": None
+            },
+            "chronological_timeline": [],
+            "llm_interactions": [],
+            "mcp_communications": []
         }
-        dependencies['repository'].get_session_timeline.return_value = mock_timeline_data
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
@@ -346,9 +393,9 @@ class TestHistoryService:
             
             timeline = history_service.get_session_timeline("test-session-id")
             
-            assert timeline == mock_timeline_data
-            assert timeline["session_info"]["session_id"] == "test-session-id"
-            assert len(timeline["chronological_timeline"]) == 2
+            assert timeline == expected_timeline_data
+            assert timeline["session"]["session_id"] == "test-session-id"
+            assert timeline["session"]["status"] == "completed"
     
     @pytest.mark.parametrize("connection_success,expected_result", [
         (True, True),  # Connection successful
@@ -945,11 +992,21 @@ async def test_cleanup_orphaned_sessions():
         if status_value in AlertSessionStatus.active_values():
             mock_active_sessions.append(session_dict)
     
-    # Mock repository responses
-    mock_repo.get_alert_sessions.return_value = {
-        "sessions": mock_active_sessions,
-        "total": len(mock_active_sessions)
-    }
+    # Mock repository responses - Phase 3: Repository now returns PaginatedSessions model
+    from tarsy.models.converters import alert_session_to_session_overview
+    
+    # Convert session dicts to AlertSession objects, then to SessionOverview models
+    session_overviews = []
+    for session_dict in mock_active_sessions:
+        alert_session = AlertSession(**session_dict)
+        session_overview = alert_session_to_session_overview(alert_session)
+        session_overviews.append(session_overview)
+    
+    mock_repo.get_alert_sessions.return_value = MockFactory.create_mock_paginated_sessions(
+        sessions=session_overviews,
+        page_size=1000,
+        total_items=len(session_overviews)
+    )
     mock_repo.update_alert_session.return_value = True
     
     # Mock the context manager
@@ -1219,119 +1276,117 @@ class TestHistoryServiceSummaryMethods:
 
     @pytest.mark.unit
     async def test_get_session_summary_success(self, history_service):
-        """Test get_session_summary with successful data retrieval."""
+        """Test get_session_summary with successful data retrieval - Phase 3: Updated for new implementation."""
         session_id = "test-session-123"
         
-        # Mock session timeline data
-        mock_timeline_data = {
-            'chronological_timeline': [
-                {'type': 'llm', 'status': 'completed', 'duration_ms': 1000}
-            ],
-            'session': {'chain_id': 'test-chain'}
-        }
+        # Phase 3: get_session_summary now uses get_session_with_stages directly 
+        mock_detailed_session = MockFactory.create_mock_detailed_session(
+            session_id=session_id,
+            chain_id="test-chain"
+        )
         
-        # Mock stage data  
-        mock_stage_data = {
-            'stages': [
-                {'status': 'completed', 'agent': 'TestAgent'}
-            ]
-        }
+        # Mock the repository to return our DetailedSession
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_session_with_stages.return_value = mock_detailed_session
         
-        # Mock the service methods
-        history_service.get_session_timeline = Mock(return_value=mock_timeline_data)
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Get summary
+            summary = await history_service.get_session_summary(session_id)
         
-        # Mock async method using AsyncMock
-        from unittest.mock import AsyncMock
-        history_service.get_session_with_stages = AsyncMock(return_value=mock_stage_data)
-        
-        # Get summary
-        summary = await history_service.get_session_summary(session_id)
-        
-        # Verify calls were made
-        history_service.get_session_timeline.assert_called_once_with(session_id)
-        history_service.get_session_with_stages.assert_called_once_with(session_id)
+        # Verify repository method was called
+        dependencies['repository'].get_session_with_stages.assert_called_once_with(session_id)
         
         # Verify summary structure
         assert summary is not None
         assert 'total_interactions' in summary
         assert 'llm_interactions' in summary
+        assert 'chain_statistics' in summary
         assert summary['total_interactions'] == 1
         assert summary['llm_interactions'] == 1
+        assert summary['chain_statistics']['total_stages'] == 1
+        assert summary['chain_statistics']['completed_stages'] == 1
 
     @pytest.mark.unit
     async def test_get_session_summary_not_found(self, history_service):
-        """Test get_session_summary when session doesn't exist."""
+        """Test get_session_summary when session doesn't exist - Phase 3: Updated for new implementation."""
         session_id = "non-existent-session"
         
-        # Mock service to return None (session not found)
-        history_service.get_session_timeline = Mock(return_value=None)
+        # Phase 3: Mock repository to return None (session not found)
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_session_with_stages.return_value = None
         
-        # Get summary
-        summary = await history_service.get_session_summary(session_id)
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Get summary
+            summary = await history_service.get_session_summary(session_id)
         
         # Should return None
         assert summary is None
         
-        # Verify timeline method was called
-        history_service.get_session_timeline.assert_called_once_with(session_id)
+        # Verify repository method was called (retry logic calls it 4 times on failure)
+        assert dependencies['repository'].get_session_with_stages.call_count == 4
+        dependencies['repository'].get_session_with_stages.assert_called_with(session_id)
 
     @pytest.mark.unit
     async def test_get_session_summary_non_chain_session(self, history_service):
-        """Test get_session_summary for non-chain session."""
-        session_id = "non-chain-session"
+        """Test get_session_summary for session with minimal chain data - Phase 3: All sessions are chains now."""
+        session_id = "minimal-chain-session"
         
-        # Mock session data without chain_id
-        mock_timeline_data = {
-            'chronological_timeline': [
-                {'type': 'llm', 'status': 'completed', 'duration_ms': 1000},
-                {'type': 'mcp', 'status': 'completed', 'duration_ms': 500}
-            ],
-            'session': {}  # No chain_id
-        }
+        # Phase 3: All sessions are chains, but this one has minimal chain data
+        mock_detailed_session = MockFactory.create_mock_detailed_session(
+            session_id=session_id,
+            chain_id="minimal-chain",
+            total_interactions=2,
+            mcp_communication_count=1,
+            stages=[]  # No stages
+        )
         
-        # Mock the service methods
-        history_service.get_session_timeline = Mock(return_value=mock_timeline_data)
-        from unittest.mock import AsyncMock
-        history_service.get_session_with_stages = AsyncMock()
+        # Mock the repository to return our DetailedSession
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_session_with_stages.return_value = mock_detailed_session
         
-        # Get summary
-        summary = await history_service.get_session_summary(session_id)
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Get summary
+            summary = await history_service.get_session_summary(session_id)
         
-        # Verify only timeline method was called (no need for stage data)
-        history_service.get_session_timeline.assert_called_once_with(session_id)
-        history_service.get_session_with_stages.assert_not_called()
+        # Verify repository method was called
+        dependencies['repository'].get_session_with_stages.assert_called_once_with(session_id)
         
-        # Verify summary doesn't have chain statistics
+        # Verify summary structure - all sessions have chain statistics now
         assert summary is not None
         assert summary['total_interactions'] == 2
-        assert 'chain_statistics' not in summary
+        assert summary['llm_interactions'] == 1
+        assert summary['mcp_communications'] == 1
+        assert 'chain_statistics' in summary
+        assert summary['chain_statistics']['total_stages'] == 0  # No stages
 
     @pytest.mark.unit
     async def test_get_session_summary_chain_session_without_stages(self, history_service):
-        """Test get_session_summary for chain session when stage data is unavailable."""
-        session_id = "chain-session-no-stages"
+        """Test get_session_summary when repository returns None (error case) - Phase 3: Updated."""
+        session_id = "error-case-session"
         
-        # Mock session data with chain_id
-        mock_timeline_data = {
-            'chronological_timeline': [
-                {'type': 'llm', 'status': 'completed', 'duration_ms': 1000}
-            ],
-            'session': {'chain_id': 'test-chain'}
-        }
+        # Phase 3: Repository returns None due to error or session not found
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_session_with_stages.return_value = None  # Simulate error/not found
         
-        # Mock the service methods
-        history_service.get_session_timeline = Mock(return_value=mock_timeline_data)
-        from unittest.mock import AsyncMock
-        history_service.get_session_with_stages = AsyncMock(return_value=None)  # No stage data
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Get summary
+            summary = await history_service.get_session_summary(session_id)
         
-        # Get summary
-        summary = await history_service.get_session_summary(session_id)
+        # Should return None when repository can't find session or has error
+        assert summary is None
         
-        # Verify both methods were called
-        history_service.get_session_timeline.assert_called_once_with(session_id)
-        history_service.get_session_with_stages.assert_called_once_with(session_id)
-        
-        # Verify summary still calculated but without chain statistics
-        assert summary is not None
-        assert summary['total_interactions'] == 1
-        assert 'chain_statistics' not in summary
+        # Verify repository method was called (retry logic calls it 4 times on failure)
+        assert dependencies['repository'].get_session_with_stages.call_count == 4
+        dependencies['repository'].get_session_with_stages.assert_called_with(session_id)

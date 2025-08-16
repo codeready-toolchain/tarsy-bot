@@ -879,6 +879,12 @@ def mock_history_service():
 @pytest.fixture
 def sample_alert_session():
     """Create sample AlertSession for testing."""
+    from datetime import datetime, timezone
+    
+    # Convert datetime to microseconds timestamp for started_at_us
+    dt = datetime.now(timezone.utc)
+    started_at_us = int(dt.timestamp() * 1_000_000)
+    
     return AlertSession(
         session_id="test-session-123",
         alert_id="test-alert-456",
@@ -893,7 +899,7 @@ def sample_alert_session():
         agent_type="KubernetesAgent",
         alert_type="NamespaceTerminating",
         status="in_progress",
-        started_at=pytest.lazy_fixture('datetime_now_utc'),
+        started_at_us=started_at_us,
         session_metadata={"test": "metadata"},
         chain_id="test-integration-chain"
     )

@@ -307,13 +307,7 @@ class HistoryRepository:
             logger.error(f"Failed to get stage execution {execution_id}: {str(e)}")
             raise
 
-    # =============================================================================
-    # PHASE 2.1: INTERNAL TYPE-SAFE METHODS (CORRECTED APPROACH)
-    # These methods implement business logic using type-safe models DIRECTLY from database
-    # NO conversion loops - builds models directly from database queries
-    # =============================================================================
-
-    def _get_alert_sessions_internal(
+    def get_alert_sessions(
         self,
         status: Optional[Union[str, List[str]]] = None,
         agent_type: Optional[str] = None,
@@ -323,13 +317,16 @@ class HistoryRepository:
         end_date_us: Optional[int] = None,
         page: int = 1,
         page_size: int = 20
-    ) -> PaginatedSessions:
+    ) -> Optional[PaginatedSessions]:
         """
-        Internal method returning PaginatedSessions model - builds type-safe models DIRECTLY from database.
+        Retrieve alert sessions with filtering and pagination.
         
-        This is the new business logic implementation using type-safe models.
+        Phase 3: Returns PaginatedSessions model directly (no dict conversion).
         """
         try:
+            # Defensively handle pagination parameters to prevent negative DB offsets
+            page = max(1, int(page)) if page is not None else 1
+            page_size = max(1, int(page_size)) if page_size is not None else 20
             # Build the base query (same logic as dict version but builds models directly)
             statement = select(AlertSession)
             conditions = []
@@ -459,7 +456,7 @@ class HistoryRepository:
             )
             
         except Exception as e:
-            logger.error(f"Failed to get alert sessions (internal): {str(e)}")
+            logger.error(f"Failed to get alert sessions: {str(e)}")
             # Return empty result on error
             return PaginatedSessions(
                 sessions=[],
@@ -467,11 +464,11 @@ class HistoryRepository:
                 filters_applied={}
             )
 
-    def _get_session_timeline_internal(self, session_id: str) -> Optional[DetailedSession]:
+    def get_session_timeline(self, session_id: str) -> Optional[DetailedSession]:
         """
-        Internal method returning DetailedSession model - builds type-safe models DIRECTLY from database.
+        Reconstruct chronological timeline for a session.
         
-        This is the new business logic implementation using type-safe models.
+        Phase 3: Returns DetailedSession model directly (no dict conversion).
         """
         try:
             from collections import defaultdict
@@ -496,7 +493,7 @@ class HistoryRepository:
             stage_executions_db = self.session.exec(stages_stmt).all()
             
             # Group interactions by stage_execution_id
-            interactions_by_stage: Dict[str, List[Union[LLMInteraction, MCPInteraction]]] = defaultdict(list)
+            interactions_by_stage = defaultdict(list)
             
             # Convert LLM interactions to type-safe models
             for llm_db in llm_interactions_db:
@@ -628,14 +625,14 @@ class HistoryRepository:
             )
             
         except Exception as e:
-            logger.error(f"Failed to build session timeline (internal) for session {session_id}: {str(e)}")
+            logger.error(f"Failed to build session timeline for session {session_id}: {str(e)}")
             return None
 
-    def _get_filter_options_internal(self) -> FilterOptions:
+    def get_filter_options(self) -> FilterOptions:
         """
-        Internal method returning FilterOptions model - builds type-safe models DIRECTLY from database.
+        Get dynamic filter options based on actual data in the database.
         
-        This is the new business logic implementation using type-safe models.
+        Phase 3: Returns FilterOptions model directly (no dict conversion).
         """
         try:
             # Get distinct agent types from the database
@@ -670,7 +667,7 @@ class HistoryRepository:
             )
             
         except Exception as e:
-            logger.error(f"Failed to get filter options (internal): {str(e)}")
+            logger.error(f"Failed to get filter options: {str(e)}")
             # Return empty options on error
             return FilterOptions(
                 agent_types=[],
@@ -685,12 +682,11 @@ class HistoryRepository:
                 ]
             )
 
-    def _get_session_with_stages_internal(self, session_id: str) -> Optional[DetailedSession]:
+    def get_session_with_stages(self, session_id: str) -> Optional[DetailedSession]:
         """
-        Internal method returning DetailedSession model (without interactions) - builds type-safe models DIRECTLY from database.
+        Get session with all stage execution details.
         
-        This is lighter than _get_session_timeline_internal - provides session + stages but NO interactions.
-        Used for chain execution details without the overhead of loading all interactions.
+        Phase 3: Returns DetailedSession model directly (no dict conversion).
         """
         try:
             from tarsy.models.history_models import DetailedStage
@@ -700,7 +696,7 @@ class HistoryRepository:
             if not session:
                 return None
             
-            # Get stage executions (without loading interactions)
+            # Get stage executions (without loading full interactions for performance)
             stages_stmt = (
                 select(StageExecution)
                 .where(StageExecution.session_id == session_id)
@@ -708,9 +704,18 @@ class HistoryRepository:
             )
             stage_executions_db = self.session.exec(stages_stmt).all()
             
-            # Build DetailedStage objects WITHOUT interactions (lighter)
+            # Get interaction counts for all stages (needed for summary calculations)
+            stage_execution_ids = [stage.execution_id for stage in stage_executions_db]
+            stage_interaction_counts = self.get_stage_interaction_counts(stage_execution_ids)
+            
+            # Build DetailedStage objects WITHOUT full interactions but WITH counts (lighter but functional)
             detailed_stages = []
             for stage_db in stage_executions_db:
+                # Get counts for this specific stage
+                stage_counts = stage_interaction_counts.get(stage_db.execution_id, {})
+                llm_count = stage_counts.get('llm_interactions', 0)
+                mcp_count = stage_counts.get('mcp_communications', 0)
+                
                 detailed_stage = DetailedStage(
                     execution_id=stage_db.execution_id,
                     session_id=stage_db.session_id,
@@ -724,16 +729,21 @@ class HistoryRepository:
                     duration_ms=stage_db.duration_ms,
                     stage_output=stage_db.stage_output,
                     error_message=stage_db.error_message,
-                    # NO interactions loaded - keep empty for performance
+                    # NO full interactions loaded - keep empty for performance
                     llm_interactions=[],
                     mcp_communications=[],
-                    llm_interaction_count=0,
-                    mcp_communication_count=0,
-                    total_interactions=0
+                    # BUT include counts for summary calculations
+                    llm_interaction_count=llm_count,
+                    mcp_communication_count=mcp_count,
+                    total_interactions=llm_count + mcp_count
                 )
                 detailed_stages.append(detailed_stage)
             
-            # Create DetailedSession (without interaction counts since we didn't load them)
+            # Calculate total interaction counts from all stages
+            total_llm = sum(stage.llm_interaction_count for stage in detailed_stages)
+            total_mcp = sum(stage.mcp_communication_count for stage in detailed_stages)
+            
+            # Create DetailedSession (with interaction counts calculated from stages)
             return DetailedSession(
                 # Core session data
                 session_id=session.session_id,
@@ -756,270 +766,15 @@ class HistoryRepository:
                 current_stage_index=session.current_stage_index,
                 current_stage_id=session.current_stage_id,
                 
-                # Interaction counts (0 since we don't load them for performance)
-                total_interactions=0,
-                llm_interaction_count=0,
-                mcp_communication_count=0,
+                # Interaction counts (calculated from stages)
+                total_interactions=total_llm + total_mcp,
+                llm_interaction_count=total_llm,
+                mcp_communication_count=total_mcp,
                 
-                # Stage executions WITHOUT interactions (lighter)
+                # Stage executions WITH counts but WITHOUT full interactions (lighter but functional)
                 stages=detailed_stages
             )
             
         except Exception as e:
-            logger.error(f"Failed to build session with stages (internal) for session {session_id}: {str(e)}")
+            logger.error(f"Failed to build session with stages for session {session_id}: {str(e)}")
             return None
-
-    # =============================================================================
-    # PHASE 2.2: PUBLIC WRAPPER METHODS (BACKWARD COMPATIBILITY)
-    # These maintain the existing dict-based API while using type-safe models internally
-    # Flow: Database → Type-safe Model (via _internal methods) → Dict (for compatibility)
-    # =============================================================================
-
-    def get_alert_sessions(
-        self,
-        status: Optional[Union[str, List[str]]] = None,
-        agent_type: Optional[str] = None,
-        alert_type: Optional[str] = None,
-        search: Optional[str] = None,
-        start_date_us: Optional[int] = None,
-        end_date_us: Optional[int] = None,
-        page: int = 1,
-        page_size: int = 20
-    ) -> Dict[str, Any]:
-        """
-        Retrieve alert sessions with filtering and pagination.
-        
-        PHASE 2.2: Uses type-safe models internally, converts to dict for backward compatibility.
-        """
-        # Get type-safe model from internal method
-        paginated_sessions = self._get_alert_sessions_internal(
-            status, agent_type, alert_type, search, start_date_us, end_date_us, page, page_size
-        )
-        
-        # Convert back to dict for backward compatibility
-        sessions_dicts = []
-        for session_overview in paginated_sessions.sessions:
-            # Convert SessionOverview back to AlertSession-like dict
-            session_dict = {
-                'session_id': session_overview.session_id,
-                'alert_id': session_overview.alert_id,
-                'alert_type': session_overview.alert_type,
-                'agent_type': session_overview.agent_type,
-                'status': session_overview.status.value,  # Convert enum to string
-                'started_at_us': session_overview.started_at_us,
-                'completed_at_us': session_overview.completed_at_us,
-                'error_message': session_overview.error_message,
-                'chain_id': session_overview.chain_id,
-                'current_stage_index': session_overview.current_stage_index,
-                # Note: Some fields are not preserved in conversion back to match AlertSession
-            }
-            sessions_dicts.append(session_dict)
-        
-        # Create interaction counts dict
-        interaction_counts = {}
-        for session_overview in paginated_sessions.sessions:
-            interaction_counts[session_overview.session_id] = {
-                'llm_interactions': session_overview.llm_interaction_count,
-                'mcp_communications': session_overview.mcp_communication_count
-            }
-        
-        return {
-            'sessions': sessions_dicts,  # Convert to dicts that look like AlertSession objects
-            'interaction_counts': interaction_counts,
-            'pagination': {
-                'page': paginated_sessions.pagination.page,
-                'page_size': paginated_sessions.pagination.page_size,
-                'total_pages': paginated_sessions.pagination.total_pages,
-                'total_items': paginated_sessions.pagination.total_items
-            }
-        }
-
-    def get_session_timeline(self, session_id: str) -> Dict[str, Any]:
-        """
-        Reconstruct chronological timeline for a session.
-        
-        PHASE 2.2: Uses type-safe models internally, converts to dict for backward compatibility.
-        """
-        # Get type-safe model from internal method
-        detailed_session = self._get_session_timeline_internal(session_id)
-        if not detailed_session:
-            return {}
-        
-        # Convert DetailedSession back to dict format (simplified for compatibility)
-        # Note: This conversion flattens the nested stage structure back to the original timeline format
-        timeline_events = []
-        llm_summaries = []
-        mcp_summaries = []
-        
-        # Extract interactions from stages back into flat timeline
-        for stage in detailed_session.stages:
-            for llm_interaction in stage.llm_interactions:
-                event = {
-                    'id': llm_interaction.id,
-                    'event_id': llm_interaction.event_id,
-                    'timestamp_us': llm_interaction.timestamp_us,
-                    'type': 'llm',
-                    'step_description': llm_interaction.step_description,
-                    'duration_ms': llm_interaction.duration_ms,
-                    'stage_execution_id': llm_interaction.stage_execution_id,
-                    'details': {
-                        'model_name': llm_interaction.details.model_name,
-                        'success': llm_interaction.details.success,
-                        'error_message': llm_interaction.details.error_message,
-                        'temperature': llm_interaction.details.temperature,
-                        'tokens_used': {
-                            'prompt_tokens': llm_interaction.details.input_tokens,
-                            'completion_tokens': llm_interaction.details.output_tokens,
-                            'total_tokens': llm_interaction.details.total_tokens
-                        } if llm_interaction.details.total_tokens else None,
-                        'tool_calls': llm_interaction.details.tool_calls,
-                        'tool_results': llm_interaction.details.tool_results,
-                        'request_json': {
-                            'messages': [{'role': msg.role, 'content': msg.content} for msg in llm_interaction.details.messages],
-                            'temperature': llm_interaction.details.temperature
-                        } if llm_interaction.details.messages else None,
-                        'response_json': None  # Would need to be reconstructed from original data
-                    }
-                }
-                timeline_events.append(event)
-                
-                # Add to summary
-                llm_summaries.append({
-                    'interaction_id': llm_interaction.event_id,
-                    'timestamp_us': llm_interaction.timestamp_us,
-                    'step_description': llm_interaction.step_description,
-                    'model_name': llm_interaction.details.model_name,
-                    'duration_ms': llm_interaction.duration_ms
-                })
-            
-            for mcp_interaction in stage.mcp_communications:
-                event = {
-                    'id': mcp_interaction.id,
-                    'event_id': mcp_interaction.event_id,
-                    'timestamp_us': mcp_interaction.timestamp_us,
-                    'type': 'mcp',
-                    'step_description': mcp_interaction.step_description,
-                    'duration_ms': mcp_interaction.duration_ms,
-                    'stage_execution_id': mcp_interaction.stage_execution_id,
-                    'details': {
-                        'tool_name': mcp_interaction.details.tool_name,
-                        'server_name': mcp_interaction.details.server_name,
-                        'communication_type': mcp_interaction.details.communication_type,
-                        'parameters': mcp_interaction.details.parameters,
-                        'result': mcp_interaction.details.result,
-                        'available_tools': mcp_interaction.details.available_tools,
-                        'success': mcp_interaction.details.success
-                    }
-                }
-                timeline_events.append(event)
-                
-                # Add to summary
-                mcp_summaries.append({
-                    'communication_id': mcp_interaction.event_id,
-                    'timestamp_us': mcp_interaction.timestamp_us,
-                    'step_description': mcp_interaction.step_description,
-                    'server_name': mcp_interaction.details.server_name,
-                    'tool_name': mcp_interaction.details.tool_name,
-                    'success': mcp_interaction.details.success,
-                    'duration_ms': mcp_interaction.duration_ms
-                })
-        
-        # Sort timeline by timestamp
-        timeline_events.sort(key=lambda x: x['timestamp_us'])
-        
-        return {
-            'session': {
-                'session_id': detailed_session.session_id,
-                'alert_id': detailed_session.alert_id,
-                'alert_data': detailed_session.alert_data,
-                'agent_type': detailed_session.agent_type,
-                'alert_type': detailed_session.alert_type,
-                'status': detailed_session.status.value,
-                'started_at_us': detailed_session.started_at_us,
-                'completed_at_us': detailed_session.completed_at_us,
-                'error_message': detailed_session.error_message,
-                'final_analysis': detailed_session.final_analysis,
-                'session_metadata': detailed_session.session_metadata,
-                'total_interactions': detailed_session.total_interactions,
-                'llm_interaction_count': detailed_session.llm_interaction_count,
-                'mcp_communication_count': detailed_session.mcp_communication_count,
-                'chain_id': detailed_session.chain_id,
-                'chain_definition': detailed_session.chain_definition,
-                'current_stage_index': detailed_session.current_stage_index,
-                'current_stage_id': detailed_session.current_stage_id
-            },
-            'chronological_timeline': timeline_events,
-            'llm_interactions': llm_summaries,
-            'mcp_communications': mcp_summaries
-        }
-
-    def get_filter_options(self) -> Dict[str, Any]:
-        """
-        Get dynamic filter options based on actual data in the database.
-        
-        PHASE 2.2: Uses type-safe models internally, converts to dict for backward compatibility.
-        """
-        # Get type-safe model from internal method
-        filter_options = self._get_filter_options_internal()
-        
-        # Convert back to dict for backward compatibility
-        return {
-            'agent_types': filter_options.agent_types,
-            'alert_types': filter_options.alert_types,
-            'status_options': filter_options.status_options,
-            'time_ranges': [
-                {'label': tr.label, 'value': tr.value}
-                for tr in filter_options.time_ranges
-            ]
-        }
-
-    def get_session_with_stages(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get session with all stage execution details.
-        
-        PHASE 2.2: Uses type-safe models internally, converts to dict for backward compatibility.
-        """
-        # Get type-safe model from internal method
-        detailed_session = self._get_session_with_stages_internal(session_id)
-        if not detailed_session:
-            return None
-        
-        # Convert DetailedSession back to expected dict format
-        return {
-            "session": {
-                # Convert session part to dict (matches AlertSession.model_dump() format)
-                "session_id": detailed_session.session_id,
-                "alert_id": detailed_session.alert_id,
-                "alert_type": detailed_session.alert_type,
-                "agent_type": detailed_session.agent_type,
-                "status": detailed_session.status.value,
-                "started_at_us": detailed_session.started_at_us,
-                "completed_at_us": detailed_session.completed_at_us,
-                "error_message": detailed_session.error_message,
-                "alert_data": detailed_session.alert_data,
-                "final_analysis": detailed_session.final_analysis,
-                "session_metadata": detailed_session.session_metadata,
-                "chain_id": detailed_session.chain_id,
-                "chain_definition": detailed_session.chain_definition,
-                "current_stage_index": detailed_session.current_stage_index,
-                "current_stage_id": detailed_session.current_stage_id
-            },
-            "stages": [
-                # Convert stages to dict format (matches StageExecution.model_dump() format)
-                {
-                    "execution_id": stage.execution_id,
-                    "session_id": stage.session_id,
-                    "stage_id": stage.stage_id,
-                    "stage_index": stage.stage_index,
-                    "stage_name": stage.stage_name,
-                    "agent": stage.agent,
-                    "status": stage.status.value,
-                    "started_at_us": stage.started_at_us,
-                    "completed_at_us": stage.completed_at_us,
-                    "duration_ms": stage.duration_ms,
-                    "stage_output": stage.stage_output,
-                    "error_message": stage.error_message
-                }
-                for stage in detailed_session.stages
-            ]
-        }

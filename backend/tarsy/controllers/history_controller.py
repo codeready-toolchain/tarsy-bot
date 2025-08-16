@@ -232,12 +232,18 @@ async def get_session_detail(
         session_info = session_data.get('session', {})
         timeline = session_data.get('chronological_timeline', [])
         
-        # Calculate session summary statistics using service method (reuse logic)
-        # Merge chain execution data for chain statistics if available
-        if chain_execution_data:
-            session_data['stages'] = chain_execution_data.get('stages', [])
+        # Calculate session summary statistics - all sessions must be chain sessions in production
+        if not chain_execution_data:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Session {session_id} has no chain execution data - all sessions must be chain sessions"
+            )
         
-        summary = history_service.calculate_session_summary(session_data)
+        # Calculate summary directly from the chain execution data we already have 
+        # Add chain data to session_data so calculate_session_summary can process chain statistics
+        session_data_with_chain = session_data.copy()
+        session_data_with_chain.update(chain_execution_data)
+        summary = history_service.calculate_session_summary(session_data_with_chain)
         
         # Calculate total duration if completed
         duration_ms = None

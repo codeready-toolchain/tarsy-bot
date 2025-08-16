@@ -613,8 +613,9 @@ class MockFactory:
     
     @staticmethod
     def create_mock_history_service_dependencies():
-        """Create mock dependencies for HistoryService."""
+        """Create mock dependencies for HistoryService - Phase 3: Updated for type-safe models."""
         from unittest.mock import Mock
+        from tarsy.models.history_models import PaginatedSessions, FilterOptions, PaginationInfo, TimeRangeOption
         
         # Create mock objects
         mock_db_manager = Mock()
@@ -626,30 +627,169 @@ class MockFactory:
         mock_db_manager.get_session.return_value.__enter__ = Mock()
         mock_db_manager.get_session.return_value.__exit__ = Mock()
         
-        # Set up repository
+        # Set up repository - Phase 3: Repository methods now return type-safe models
         mock_session.session_id = "test-session-id"
         mock_repository.create_alert_session.return_value = mock_session
         mock_repository.get_alert_session.return_value = Mock()
         mock_repository.update_alert_session.return_value = True
-        mock_repository.get_alert_sessions.return_value = {
-            "sessions": [],
-            "pagination": {"page": 1, "page_size": 20, "total_pages": 0, "total_items": 0}
-        }
-        mock_repository.get_filter_options.return_value = {
-            "agent_types": ["kubernetes", "network"],
-            "alert_types": ["PodCrashLooping"],
-            "status_options": ["pending", "in_progress", "completed", "failed"],
-            "time_ranges": [
-                {"label": "Last Hour", "value": "1h"},
-                {"label": "Today", "value": "today"}
+        
+        # get_alert_sessions now returns PaginatedSessions model
+        mock_repository.get_alert_sessions.return_value = PaginatedSessions(
+            sessions=[],  # Empty list of SessionOverview objects
+            pagination=PaginationInfo(page=1, page_size=20, total_pages=0, total_items=0),
+            filters_applied={}
+        )
+        
+        # get_filter_options now returns FilterOptions model
+        mock_repository.get_filter_options.return_value = FilterOptions(
+            agent_types=["kubernetes", "network"],
+            alert_types=["PodCrashLooping"],
+            status_options=["pending", "in_progress", "completed", "failed"],
+            time_ranges=[
+                TimeRangeOption(label="Last Hour", value="1h"),
+                TimeRangeOption(label="Today", value="today")
             ]
-        }
+        )
+        
+        # Add mocks for other repository methods that may be called
+        mock_repository.get_session_timeline.return_value = None
+        mock_repository.get_session_with_stages.return_value = None
         
         return {
             'db_manager': mock_db_manager,
             'repository': mock_repository,
             'session': mock_session
         }
+    
+    @staticmethod
+    def create_mock_detailed_session(session_id="test-session", **overrides):
+        """
+        Create a mock DetailedSession with sensible defaults for testing.
+        
+        Args:
+            session_id: Session identifier (default: "test-session")
+            **overrides: Override any default values
+            
+        Returns:
+            DetailedSession: Configured DetailedSession for testing
+            
+        Example:
+            session = MockFactory.create_mock_detailed_session(
+                session_id="custom-session",
+                llm_interaction_count=5,
+                stages=[]
+            )
+        """
+        from tarsy.models.history_models import DetailedSession, DetailedStage
+        from tarsy.models.constants import AlertSessionStatus, StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        base_data = {
+            "session_id": session_id,
+            "alert_id": f"alert-{session_id}",
+            "alert_type": "TestAlert",
+            "agent_type": "TestAgent",
+            "status": AlertSessionStatus.COMPLETED,
+            "started_at_us": now_us(),
+            "completed_at_us": now_us() + 1000000,
+            "error_message": None,
+            "alert_data": {},
+            "final_analysis": None,
+            "session_metadata": None,
+            "chain_id": f"chain-{session_id}",
+            "chain_definition": {},
+            "current_stage_index": None,
+            "current_stage_id": None,
+            "total_interactions": 1,
+            "llm_interaction_count": 1,
+            "mcp_communication_count": 0,
+            "stages": [
+                DetailedStage(
+                    execution_id=f"stage-{session_id}",
+                    session_id=session_id,
+                    stage_id="stage-1",
+                    stage_index=0,
+                    stage_name="Test Stage",
+                    agent="TestAgent",
+                    status=StageStatus.COMPLETED,
+                    started_at_us=now_us(),
+                    completed_at_us=now_us() + 500000,
+                    duration_ms=500,
+                    stage_output=None,
+                    error_message=None,
+                    llm_interactions=[],
+                    mcp_communications=[],
+                    llm_interaction_count=1,
+                    mcp_communication_count=0,
+                    total_interactions=1
+                )
+            ]
+        }
+        base_data.update(overrides)
+        return DetailedSession(**base_data)
+    
+    @staticmethod
+    def create_mock_paginated_sessions(sessions=None, page=1, page_size=20, total_items=None, **overrides):
+        """
+        Create a mock PaginatedSessions with proper pagination.
+        
+        Args:
+            sessions: List of SessionOverview objects (default: empty list)
+            page: Page number (default: 1)
+            page_size: Items per page (default: 20)
+            total_items: Total items count (default: len(sessions))
+            **overrides: Override any default values
+            
+        Returns:
+            PaginatedSessions: Configured PaginatedSessions for testing
+            
+        Example:
+            paginated = MockFactory.create_mock_paginated_sessions(
+                sessions=session_overviews,
+                total_items=10
+            )
+        """
+        from tarsy.models.history_models import PaginatedSessions, PaginationInfo
+        
+        if sessions is None:
+            sessions = []
+        if total_items is None:
+            total_items = len(sessions)
+        
+        total_pages = (total_items + page_size - 1) // page_size if total_items > 0 else 0
+        
+        base_data = {
+            "sessions": sessions,
+            "pagination": PaginationInfo(
+                page=page,
+                page_size=page_size,
+                total_pages=total_pages,
+                total_items=total_items
+            ),
+            "filters_applied": {}
+        }
+        base_data.update(overrides)
+        return PaginatedSessions(**base_data)
+    
+    @staticmethod
+    def create_mock_session_overviews(count=3):
+        """
+        Create a list of SessionOverview models for testing.
+        
+        Args:
+            count: Number of SessionOverview objects to create (default: 3)
+            
+        Returns:
+            List[SessionOverview]: List of configured SessionOverview objects
+            
+        Example:
+            overviews = MockFactory.create_mock_session_overviews(count=5)
+        """
+        from tarsy.models.converters import alert_session_to_session_overview
+        
+        # Use existing SessionFactory to create AlertSession objects, then convert
+        alert_sessions = [SessionFactory.create_test_session() for _ in range(count)]
+        return [alert_session_to_session_overview(session) for session in alert_sessions]
 
 
 class ModelValidationTester:

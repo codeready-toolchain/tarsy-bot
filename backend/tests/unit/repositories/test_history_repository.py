@@ -199,17 +199,17 @@ class TestHistoryRepository:
         
         # Test status filter
         result = repository.get_alert_sessions(status="completed")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session2.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session2.session_id
         
         # Test agent_type filter
         result = repository.get_alert_sessions(agent_type="KubernetesAgent")
-        assert len(result["sessions"]) == 2
+        assert len(result.sessions) == 2
         
         # Test alert_type filter
         result = repository.get_alert_sessions(alert_type="NamespaceTerminating")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session1.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session1.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_date_filters(self, repository):
@@ -250,13 +250,13 @@ class TestHistoryRepository:
         # Test start_date filter (convert unix timestamp back to datetime for current API)
         two_days_ago_us = now_us_time - (2 * 24 * 60 * 60 * 1000000)  # 2 days in microseconds
         result = repository.get_alert_sessions(start_date_us=two_days_ago_us)
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == new_session.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == new_session.session_id
         
         # Test end_date_us filter
         result = repository.get_alert_sessions(end_date_us=two_days_ago_us)
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == old_session.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == old_session.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_pagination(self, repository):
@@ -277,21 +277,21 @@ class TestHistoryRepository:
         
         # Test first page
         result = repository.get_alert_sessions(page=1, page_size=2)
-        assert len(result["sessions"]) == 2
-        assert result["pagination"]["page"] == 1
-        assert result["pagination"]["page_size"] == 2
-        assert result["pagination"]["total_items"] == 5
-        assert result["pagination"]["total_pages"] == 3
+        assert len(result.sessions) == 2
+        assert result.pagination.page == 1
+        assert result.pagination.page_size == 2
+        assert result.pagination.total_items == 5
+        assert result.pagination.total_pages == 3
         
         # Test second page
         result = repository.get_alert_sessions(page=2, page_size=2)
-        assert len(result["sessions"]) == 2
-        assert result["pagination"]["page"] == 2
+        assert len(result.sessions) == 2
+        assert result.pagination.page == 2
         
         # Test last page
         result = repository.get_alert_sessions(page=3, page_size=2)
-        assert len(result["sessions"]) == 1
-        assert result["pagination"]["page"] == 3
+        assert len(result.sessions) == 1
+        assert result.pagination.page == 3
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_error_message(self, repository):
@@ -327,16 +327,16 @@ class TestHistoryRepository:
         
         # Test search in error messages
         result = repository.get_alert_sessions(search="kubernetes")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session1.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session1.session_id
         
         result = repository.get_alert_sessions(search="timeout")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session2.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session2.session_id
         
         result = repository.get_alert_sessions(search="connection")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session1.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session1.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_final_analysis(self, repository):
@@ -372,16 +372,16 @@ class TestHistoryRepository:
         
         # Test search in final analysis
         result = repository.get_alert_sessions(search="finalizer")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session1.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session1.session_id
         
         result = repository.get_alert_sessions(search="memory")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session2.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session2.session_id
         
         result = repository.get_alert_sessions(search="kubectl")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session1.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session1.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_alert_data_fields(self, repository):
@@ -431,28 +431,28 @@ class TestHistoryRepository:
         
         # Test search in different JSON fields
         result = repository.get_alert_sessions(search="superman")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session1.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session1.session_id
         
         result = repository.get_alert_sessions(search="finalizers")  
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session1.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session1.session_id
         
         result = repository.get_alert_sessions(search="cpu")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session2.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session2.session_id
         
         result = repository.get_alert_sessions(search="production")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session1.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session1.session_id
         
         result = repository.get_alert_sessions(search="critical")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session1.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session1.session_id
         
         result = repository.get_alert_sessions(search="staging")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session2.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session2.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_case_insensitive(self, repository):
@@ -477,19 +477,19 @@ class TestHistoryRepository:
         
         # Test case insensitive search
         result = repository.get_alert_sessions(search="kubernetes")  # lowercase
-        assert len(result["sessions"]) == 1
+        assert len(result.sessions) == 1
         
         result = repository.get_alert_sessions(search="KUBERNETES")  # uppercase
-        assert len(result["sessions"]) == 1
+        assert len(result.sessions) == 1
         
         result = repository.get_alert_sessions(search="KuBeRnEtEs")  # mixed case
-        assert len(result["sessions"]) == 1
+        assert len(result.sessions) == 1
         
         result = repository.get_alert_sessions(search="production")  # lowercase environment
-        assert len(result["sessions"]) == 1
+        assert len(result.sessions) == 1
         
         result = repository.get_alert_sessions(search="api server")  # lowercase error message
-        assert len(result["sessions"]) == 1
+        assert len(result.sessions) == 1
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_combined_with_filters(self, repository):
@@ -534,20 +534,20 @@ class TestHistoryRepository:
         
         # Test search + status filter
         result = repository.get_alert_sessions(search="kubernetes", status="completed")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session1.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session1.session_id
         
         # Test search + agent_type filter
         result = repository.get_alert_sessions(search="issue", agent_type="KubernetesAgent")
-        assert len(result["sessions"]) == 2
-        session_ids = [s["session_id"] for s in result["sessions"]]
+        assert len(result.sessions) == 2
+        session_ids = [s.session_id for s in result.sessions]
         assert session1.session_id in session_ids
         assert session2.session_id in session_ids
         
         # Test search + alert_type filter
         result = repository.get_alert_sessions(search="kubernetes", alert_type="UnidledPods")
-        assert len(result["sessions"]) == 1
-        assert result["sessions"][0]["session_id"] == session2.session_id
+        assert len(result.sessions) == 1
+        assert result.sessions[0].session_id == session2.session_id
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_search_no_matches(self, repository):
@@ -568,12 +568,12 @@ class TestHistoryRepository:
         
         # Test search that should return no results
         result = repository.get_alert_sessions(search="nonexistent")
-        assert len(result["sessions"]) == 0
-        assert result["pagination"]["total_items"] == 0
+        assert len(result.sessions) == 0
+        assert result.pagination.total_items == 0
         
         result = repository.get_alert_sessions(search="kubernetes")  # Not in any field
-        assert len(result["sessions"]) == 0
-        assert result["pagination"]["total_items"] == 0
+        assert len(result.sessions) == 0
+        assert result.pagination.total_items == 0
     
     @pytest.mark.unit
     def test_get_session_timeline_chronological_order(self, repository, sample_alert_session):
@@ -641,21 +641,26 @@ class TestHistoryRepository:
         timeline = repository.get_session_timeline(sample_alert_session.session_id)
         
         assert timeline is not None
-        assert "session" in timeline
-        assert "chronological_timeline" in timeline
-        assert "llm_interactions" in timeline
-        assert "mcp_communications" in timeline
+        assert timeline.session_id == sample_alert_session.session_id
+        assert len(timeline.stages) > 0
         
-        # Verify chronological order
-        events = timeline["chronological_timeline"]
-        assert len(events) == 3
-        assert events[0]["type"] == "llm"
-        assert events[1]["type"] == "mcp"
-        assert events[2]["type"] == "llm"
+        # Collect all interactions from all stages for chronological verification
+        all_interactions = []
+        for stage in timeline.stages:
+            all_interactions.extend(stage.llm_interactions)
+            all_interactions.extend(stage.mcp_communications)
         
-                # Verify timeline is ordered by timestamp_us
-        for i in range(len(events) - 1):
-            assert events[i]["timestamp_us"] <= events[i + 1]["timestamp_us"]
+        # Sort by timestamp for chronological order verification
+        all_interactions.sort(key=lambda x: x.timestamp_us)
+        
+        assert len(all_interactions) == 3
+        assert all_interactions[0].type == "llm"
+        assert all_interactions[1].type == "mcp"  
+        assert all_interactions[2].type == "llm"
+        
+        # Verify timeline is ordered by timestamp_us
+        for i in range(len(all_interactions) - 1):
+            assert all_interactions[i].timestamp_us <= all_interactions[i + 1].timestamp_us
 
     @pytest.mark.unit
     def test_get_session_timeline_unix_timestamp_precision(self, repository, sample_alert_session):
@@ -726,31 +731,35 @@ class TestHistoryRepository:
         timeline = repository.get_session_timeline(sample_alert_session.session_id)
         
         assert timeline is not None
-        events = timeline["chronological_timeline"]
-        assert len(events) == 3
+        
+        # Collect all interactions from stages and sort chronologically
+        all_interactions = []
+        for stage in timeline.stages:
+            all_interactions.extend(stage.llm_interactions)
+            all_interactions.extend(stage.mcp_communications)
+        
+        all_interactions.sort(key=lambda x: x.timestamp_us)
+        assert len(all_interactions) == 3
         
         # Verify chronological ordering by timestamp_us
-        assert events[0]["type"] == "llm"
-        assert events[1]["type"] == "llm"
-        assert events[2]["type"] == "mcp"
+        assert all_interactions[0].type == "llm"
+        assert all_interactions[1].type == "llm"
+        assert all_interactions[2].type == "mcp"
         
         # Verify Unix timestamps are preserved for sorting
-        assert events[0]["timestamp_us"] == base_timestamp_us
-        assert events[1]["timestamp_us"] == base_timestamp_us + 500_000
-        assert events[2]["timestamp_us"] == base_timestamp_us + 1_000_000
+        assert all_interactions[0].timestamp_us == base_timestamp_us
+        assert all_interactions[1].timestamp_us == base_timestamp_us + 500_000
+        assert all_interactions[2].timestamp_us == base_timestamp_us + 1_000_000
         
         # Verify Unix timestamps are returned as integers
-        assert events[0]["timestamp_us"] == base_timestamp_us
-        assert events[1]["timestamp_us"] == base_timestamp_us + 500_000  # +500ms
-        assert events[2]["timestamp_us"] == base_timestamp_us + 1_000_000  # +1s
+        assert all_interactions[0].timestamp_us == base_timestamp_us
+        assert all_interactions[1].timestamp_us == base_timestamp_us + 500_000  # +500ms
+        assert all_interactions[2].timestamp_us == base_timestamp_us + 1_000_000  # +1s
         
         # Verify all timestamp_us values are integers
-        for event in events:
-            assert isinstance(event["timestamp_us"], int)
-            assert event["timestamp_us"] > 0
-            
-            # Verify no ISO string conversion is happening anymore
-            assert "timestamp" not in event or event.get("timestamp") is None
+        for interaction in all_interactions:
+            assert isinstance(interaction.timestamp_us, int)
+            assert interaction.timestamp_us > 0
 
     @pytest.mark.unit
     def test_get_active_sessions(self, repository):
@@ -793,7 +802,7 @@ class TestHistoryRepository:
     def test_get_session_timeline_empty_session(self, repository):
         """Test getting timeline for non-existent session."""
         result = repository.get_session_timeline("non-existent-session")
-        assert result == {}
+        assert result is None
 
     @pytest.mark.unit
     def test_get_llm_interactions_empty_session(self, repository):
@@ -838,20 +847,20 @@ class TestHistoryRepository:
         """Test edge cases for get_alert_sessions method."""
         # Test with empty database
         result = repository.get_alert_sessions()
-        assert result["sessions"] == []
-        assert result["pagination"]["total_items"] == 0
-        assert result["pagination"]["total_pages"] == 0
+        assert result.sessions == []
+        assert result.pagination.total_items == 0
+        assert result.pagination.total_pages == 0
 
         # Test with invalid page numbers
         result = repository.get_alert_sessions(page=0)  # Should handle gracefully
-        assert result["sessions"] == []
+        assert result.sessions == []
 
         result = repository.get_alert_sessions(page=-1)  # Should handle gracefully  
-        assert result["sessions"] == []
+        assert result.sessions == []
 
         # Test with very large page size
         result = repository.get_alert_sessions(page_size=10000)
-        assert result["sessions"] == []
+        assert result.sessions == []
 
     @pytest.mark.unit  
     def test_get_alert_sessions_multiple_status_list(self, repository):
@@ -874,8 +883,8 @@ class TestHistoryRepository:
 
         # Test filtering by multiple statuses
         result = repository.get_alert_sessions(status=["pending", "in_progress"])
-        assert len(result["sessions"]) == 2
-        session_statuses = [s['status'] for s in result["sessions"]]
+        assert len(result.sessions) == 2
+        session_statuses = [s.status.value for s in result.sessions]
         assert "pending" in session_statuses
         assert "in_progress" in session_statuses
         assert "completed" not in session_statuses
@@ -913,7 +922,7 @@ class TestHistoryRepository:
             alert_type="NamespaceTerminating",
             status="completed"
         )
-        assert len(result["sessions"]) == 2  # session-1 and session-4
+        assert len(result.sessions) == 2  # session-1 and session-4
         
         # Test alert_type + status + agent_type combination
         result = repository.get_alert_sessions(
@@ -921,8 +930,8 @@ class TestHistoryRepository:
             status="completed",
             agent_type="KubernetesAgent"
         )
-        assert len(result["sessions"]) == 1  # only session-1
-        assert result["sessions"][0]["session_id"] == "session-1"
+        assert len(result.sessions) == 1  # only session-1
+        assert result.sessions[0].session_id == "session-1"
         
         # Test agent_type + status + time_range combination
         result = repository.get_alert_sessions(
@@ -930,8 +939,8 @@ class TestHistoryRepository:
             status="completed",
             start_date_us=int((now - timedelta(hours=3.5)).timestamp() * 1_000_000)  # Should get session-1 and session-3
         )
-        assert len(result["sessions"]) == 2
-        session_ids = [s['session_id'] for s in result["sessions"]]
+        assert len(result.sessions) == 2
+        session_ids = [s.session_id for s in result.sessions]
         assert "session-1" in session_ids
         assert "session-3" in session_ids
 
@@ -1032,32 +1041,34 @@ class TestHistoryRepository:
         timeline = repository.get_session_timeline(sample_alert_session.session_id)
         
         assert timeline is not None
-        assert "chronological_timeline" in timeline
+        assert len(timeline.stages) > 0
         
-        # Verify timeline events include success and error_message fields
-        events = timeline["chronological_timeline"]
-        assert len(events) == 2
+        # Collect all LLM interactions from stages
+        llm_interactions = []
+        for stage in timeline.stages:
+            llm_interactions.extend(stage.llm_interactions)
         
-        # Find the successful and failed interactions in timeline
-        successful_event = None
-        failed_event = None
+        assert len(llm_interactions) == 2
         
-        for event in events:
-            if event["type"] == "llm":
-                if event["details"]["success"] == True:
-                    successful_event = event
-                elif event["details"]["success"] == False:
-                    failed_event = event
+        # Find the successful and failed interactions
+        successful_interaction = None
+        failed_interaction = None
+        
+        for interaction in llm_interactions:
+            if interaction.details.success == True:
+                successful_interaction = interaction
+            elif interaction.details.success == False:
+                failed_interaction = interaction
         
         # Verify successful interaction details
-        assert successful_event is not None
-        assert successful_event["details"]["success"] == True
-        assert successful_event["details"]["error_message"] is None
+        assert successful_interaction is not None
+        assert successful_interaction.details.success == True
+        assert successful_interaction.details.error_message is None
         
         # Verify failed interaction details
-        assert failed_event is not None
-        assert failed_event["details"]["success"] == False
-        assert failed_event["details"]["error_message"] == "API rate limit exceeded"
+        assert failed_interaction is not None
+        assert failed_interaction.details.success == False
+        assert failed_interaction.details.error_message == "API rate limit exceeded"
 
     @pytest.mark.unit
     def test_mixed_successful_and_failed_interactions_in_session(self, repository, sample_alert_session):
@@ -1224,14 +1235,14 @@ class TestHistoryRepositoryErrorHandling:
         result = repository_with_session_error.get_alert_sessions()
         
         # Should return empty result structure
-        assert result["sessions"] == []
-        assert result["pagination"]["total_items"] == 0
+        assert result.sessions == []
+        assert result.pagination.total_items == 0
     
     @pytest.mark.unit
     def test_get_session_timeline_database_error(self, repository_with_session_error):
         """Test getting session timeline with database error."""
         result = repository_with_session_error.get_session_timeline("test-session")
-        assert result == {}
+        assert result is None
 
     @pytest.mark.unit
     def test_update_alert_session_database_error(self, repository_with_session_error, sample_alert_session):
@@ -1262,10 +1273,10 @@ class TestHistoryRepositoryErrorHandling:
         """Test getting filter options with database error."""
         result = repository_with_session_error.get_filter_options()
         # Should return default structure with empty lists on error
-        assert result["agent_types"] == []
-        assert result["alert_types"] == []
-        assert result["status_options"] == ["pending", "in_progress", "completed", "failed"]
-        assert len(result["time_ranges"]) == 5
+        assert result.agent_types == []
+        assert result.alert_types == []
+        assert result.status_options == ["pending", "in_progress", "completed", "failed"]
+        assert len(result.time_ranges) == 5
 
 class TestHistoryRepositoryPerformance:
     """Test suite for HistoryRepository performance scenarios."""
@@ -1328,21 +1339,21 @@ class TestHistoryRepositoryPerformance:
         # Test that pagination works efficiently with large dataset
         result = repository_with_large_dataset.get_alert_sessions(page=1, page_size=10)
         
-        assert len(result["sessions"]) == 10
-        assert result["pagination"]["total_items"] == 100
-        assert result["pagination"]["total_pages"] == 10
+        assert len(result.sessions) == 10
+        assert result.pagination.total_items == 100
+        assert result.pagination.total_pages == 10
         
         # Test middle page
         result = repository_with_large_dataset.get_alert_sessions(page=5, page_size=10)
-        assert len(result["sessions"]) == 10
-        assert result["pagination"]["page"] == 5
+        assert len(result.sessions) == 10
+        assert result.pagination.page == 5
     
     @pytest.mark.unit
     def test_filtering_performance_large_dataset(self, repository_with_large_dataset):
         """Test filtering performance with large dataset."""
         # Test status filter performance
         result = repository_with_large_dataset.get_alert_sessions(status="completed", page_size=100)
-        assert len(result["sessions"]) == 50  # Half of the sessions
+        assert len(result.sessions) == 50  # Half of the sessions
         
         # Test combined filters performance
         result = repository_with_large_dataset.get_alert_sessions(
@@ -1350,7 +1361,7 @@ class TestHistoryRepositoryPerformance:
             alert_type="TestAlert0"
         )
         # Should get completed sessions with TestAlert0 (sessions 0, 10, 20, etc.)
-        assert len(result["sessions"]) == 10
+        assert len(result.sessions) == 10
 
     # Dashboard-specific tests
     
@@ -1373,30 +1384,30 @@ class TestHistoryRepositoryPerformance:
         result = repo.get_filter_options()
         
         # Verify agent types (should include kubernetes, network, database)
-        assert "agent_types" in result
-        assert len(result["agent_types"]) == 3
-        assert "kubernetes" in result["agent_types"]
-        assert "network" in result["agent_types"]
-        assert "database" in result["agent_types"]
+        assert hasattr(result, 'agent_types')
+        assert len(result.agent_types) == 3
+        assert "kubernetes" in result.agent_types
+        assert "network" in result.agent_types
+        assert "database" in result.agent_types
         
         # Verify alert types
-        assert "alert_types" in result
-        assert len(result["alert_types"]) == 3
-        assert "PodCrashLooping" in result["alert_types"]
-        assert "ServiceDown" in result["alert_types"]
-        assert "ConnectionTimeout" in result["alert_types"]
+        assert hasattr(result, 'alert_types')
+        assert len(result.alert_types) == 3
+        assert "PodCrashLooping" in result.alert_types
+        assert "ServiceDown" in result.alert_types
+        assert "ConnectionTimeout" in result.alert_types
         
         # Verify status options
-        assert "status_options" in result
-        assert len(result["status_options"]) == 4
-        assert "pending" in result["status_options"]
-        assert "in_progress" in result["status_options"]
-        assert "completed" in result["status_options"]
-        assert "failed" in result["status_options"]
+        assert hasattr(result, 'status_options')
+        assert len(result.status_options) == 4
+        assert "pending" in result.status_options
+        assert "in_progress" in result.status_options
+        assert "completed" in result.status_options
+        assert "failed" in result.status_options
         
         # Verify time ranges
-        assert "time_ranges" in result
-        assert len(result["time_ranges"]) == 5
+        assert hasattr(result, 'time_ranges')
+        assert len(result.time_ranges) == 5
     
     @pytest.mark.unit
     def test_get_filter_options_empty_database(self, db_session):
@@ -1406,14 +1417,14 @@ class TestHistoryRepositoryPerformance:
         result = repo.get_filter_options()
         
         # Should return empty lists for dynamic options
-        assert result["agent_types"] == []
-        assert result["alert_types"] == []
+        assert result.agent_types == []
+        assert result.alert_types == []
         # Status options should always return all possible statuses (not dynamic from database)
-        assert len(result["status_options"]) == 4
-        assert result["status_options"] == ["pending", "in_progress", "completed", "failed"]
+        assert len(result.status_options) == 4
+        assert result.status_options == ["pending", "in_progress", "completed", "failed"]
         
         # Time ranges should still be present (static)
-        assert len(result["time_ranges"]) == 5
+        assert len(result.time_ranges) == 5
     
     @pytest.mark.unit
     def test_get_filter_options_sorted_results(self, db_session):
@@ -1434,10 +1445,10 @@ class TestHistoryRepositoryPerformance:
         result = repo.get_filter_options()
         
         # Verify sorting
-        assert result["agent_types"] == sorted(result["agent_types"])
-        assert result["alert_types"] == sorted(result["alert_types"])
+        assert result.agent_types == sorted(result.agent_types)
+        assert result.alert_types == sorted(result.alert_types)
         # Status options are returned in constant definition order (not sorted)
-        assert result["status_options"] == ["pending", "in_progress", "completed", "failed"]
+        assert result.status_options == ["pending", "in_progress", "completed", "failed"]
 
 @pytest.mark.unit  
 class TestHistoryRepositoryDuplicatePrevention:
@@ -1573,16 +1584,16 @@ class TestFlexibleAlertDataPerformance:
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
         
         # Verify we get the expected number of sessions
-        assert len(sessions["sessions"]) == 100, "Should retrieve all 100 test sessions"
+        assert len(sessions.sessions) == 100, "Should retrieve all 100 test sessions"
         
         # Test JSON queries by getting full session details for each session
         critical_sessions = []
-        for session_overview in sessions["sessions"]:
-            session_id = session_overview['session_id']
+        for session_overview in sessions.sessions:
+            session_id = session_overview.session_id
             # Get full session details (includes alert_data)
             full_session = repository_with_flexible_data.get_session_timeline(session_id)
-            if full_session and full_session.get('session', {}).get('alert_data'):
-                alert_data = full_session['session']['alert_data']
+            if full_session and full_session.alert_data:
+                alert_data = full_session.alert_data
                 if alert_data.get("severity") == "critical":
                     critical_sessions.append(full_session)
         
@@ -1591,7 +1602,7 @@ class TestFlexibleAlertDataPerformance:
         
         # Verify all returned sessions actually have critical severity
         for session in critical_sessions:
-            assert session['session']['alert_data'].get("severity") == "critical"
+            assert session.alert_data.get("severity") == "critical"
     
     @pytest.mark.unit  
     def test_complex_json_structure_functionality(self, repository_with_flexible_data):
@@ -1600,16 +1611,16 @@ class TestFlexibleAlertDataPerformance:
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
         
         # Verify we get all sessions
-        assert len(sessions["sessions"]) == 100, "Should retrieve all 100 test sessions"
+        assert len(sessions.sessions) == 100, "Should retrieve all 100 test sessions"
         
         # Test complex nested JSON queries by getting full session details
         monitoring_with_high_cpu = []
-        for session_overview in sessions["sessions"]:
-            session_id = session_overview['session_id']
+        for session_overview in sessions.sessions:
+            session_id = session_overview.session_id
             # Get full session details (includes alert_data)
             full_session = repository_with_flexible_data.get_session_timeline(session_id)
-            if full_session and full_session.get('session', {}).get('alert_data'):
-                alert_data = full_session['session']['alert_data']
+            if full_session and full_session.alert_data:
+                alert_data = full_session.alert_data
                 if (alert_data.get("metrics") and
                     isinstance(alert_data["metrics"], dict) and
                     alert_data["metrics"].get("cpu_usage", 0) > 80):
@@ -1620,7 +1631,7 @@ class TestFlexibleAlertDataPerformance:
         
         # Verify all returned sessions actually have high CPU usage
         for session in monitoring_with_high_cpu:
-            assert session['session']['alert_data'].get("metrics", {}).get("cpu_usage", 0) > 80
+            assert session.alert_data.get("metrics", {}).get("cpu_usage", 0) > 80
     
     @pytest.mark.unit
     def test_json_array_query_functionality(self, repository_with_flexible_data):
@@ -1629,16 +1640,16 @@ class TestFlexibleAlertDataPerformance:
         sessions = repository_with_flexible_data.get_alert_sessions(page_size=100)
         
         # Verify we get all sessions
-        assert len(sessions["sessions"]) == 100, "Should retrieve all 100 test sessions"
+        assert len(sessions.sessions) == 100, "Should retrieve all 100 test sessions"
         
         # Query sessions with array data (labels, queries, events, etc.)
         sessions_with_arrays = []
-        for session_overview in sessions["sessions"]:
-            session_id = session_overview['session_id']
+        for session_overview in sessions.sessions:
+            session_id = session_overview.session_id
             # Get full session details (includes alert_data)
             full_session = repository_with_flexible_data.get_session_timeline(session_id)
-            if full_session and full_session.get('session', {}).get('alert_data'):
-                alert_data = full_session['session']['alert_data']
+            if full_session and full_session.alert_data:
+                alert_data = full_session.alert_data
                 # Check for any array fields
                 has_arrays = any(
                     isinstance(v, list) for v in alert_data.values()
@@ -1655,7 +1666,7 @@ class TestFlexibleAlertDataPerformance:
         
         # Verify all returned sessions actually have arrays
         for session in sessions_with_arrays:
-            alert_data = session['session']['alert_data']
+            alert_data = session.alert_data
             has_arrays = any(
                 isinstance(v, list) for v in alert_data.values()
             ) or any(
@@ -1677,14 +1688,14 @@ class TestFlexibleAlertDataPerformance:
             )
             
             # Verify pagination structure works correctly
-            assert len(result["sessions"]) <= 20, f"Page {page} should have at most 20 sessions"
-            assert result["pagination"]["page"] == page, f"Page number should match request"
-            assert result["pagination"]["page_size"] == 20, "Page size should match request"
-            assert result["pagination"]["total_items"] == 100, "Total items should be consistent"
-            assert result["pagination"]["total_pages"] == 5, "Total pages should be 5 for 100 items with page_size 20"
+            assert len(result.sessions) <= 20, f"Page {page} should have at most 20 sessions"
+            assert result.pagination.page == page, f"Page number should match request"
+            assert result.pagination.page_size == 20, "Page size should match request"
+            assert result.pagination.total_items == 100, "Total items should be consistent"
+            assert result.pagination.total_pages == 5, "Total pages should be 5 for 100 items with page_size 20"
             
             # Track session IDs to ensure no duplicates across pages
-            session_ids = {s['session_id'] for s in result["sessions"]}
+            session_ids = {s.session_id for s in result.sessions}
             
             # Verify no duplicate sessions across pages
             overlap = total_sessions_seen.intersection(session_ids)
