@@ -368,6 +368,7 @@ class HistoryService:
         result = self._retry_database_operation("get_session_with_stages", _get_session_with_stages_operation)
         return result
 
+
     def get_stage_interaction_counts(self, execution_ids: List[str]) -> Dict[str, Dict[str, int]]:
         """
         Get interaction counts for stages using SQL aggregation.
@@ -613,32 +614,46 @@ class HistoryService:
             }
         }
     
-    async def get_session_summary(self, session_id: str) -> Optional[Dict[str, Any]]:
+
+    async def get_session_summary(self, session_id: str) -> Optional[SessionStats]:
         """
-        Get just the summary statistics for a session - Phase 3: Uses internal models for better type safety.
+        Phase 4: Get just the summary statistics for a session - returns SessionStats model for controllers.
         
         Args:
             session_id: Session identifier
             
         Returns:
-            Dictionary with summary statistics or None if session not found
+            SessionStats model or None if session not found
         """
         try:
             def _get_session_summary_operation():
                 with self.get_repository() as repo:
                     if not repo:
-                        logger.warning("History repository unavailable - session summary not retrieved")
-                        return None
+                        raise RuntimeError("History repository unavailable - cannot retrieve session summary")
                     
                     # Use regular method that now returns DetailedSession model directly (Phase 3)
                     detailed_session = repo.get_session_with_stages(session_id)
                     if not detailed_session:
-                        logger.warning(f"No session data found for session {session_id}")
+                        # This is a legitimate case - session doesn't exist, not a system failure
                         return None
                     
-                    # Calculate statistics using type-safe model (better than dict manipulation)
-                    summary = self.calculate_session_summary_from_model(detailed_session)
-                    return summary
+                    # Calculate statistics using type-safe model and return as SessionStats
+                    summary_dict = self.calculate_session_summary_from_model(detailed_session)
+                    
+                    # Create SessionStats model from the calculated dictionary
+                    from tarsy.models.history_models import SessionStats, ChainStatistics
+                    chain_stats = ChainStatistics(**summary_dict["chain_statistics"])
+                    
+                    session_stats = SessionStats(
+                        total_interactions=summary_dict["total_interactions"],
+                        llm_interactions=summary_dict["llm_interactions"],
+                        mcp_communications=summary_dict["mcp_communications"],
+                        system_events=summary_dict["system_events"],
+                        errors_count=summary_dict["errors_count"],
+                        total_duration_ms=summary_dict["total_duration_ms"],
+                        chain_statistics=chain_stats
+                    )
+                    return session_stats
             
             result = self._retry_database_operation("get_session_summary", _get_session_summary_operation)
             return result
@@ -733,15 +748,15 @@ class HistoryService:
         """Check if history service is enabled."""
         return self.is_enabled
 
-    # Query Operations
+
     def get_sessions_list(
         self,
         filters: Optional[Dict[str, Any]] = None,
         page: int = 1,
         page_size: int = 20
-    ) -> tuple[List[AlertSession], int]:
+    ) -> Optional[PaginatedSessions]:
         """
-        Retrieve alert sessions with filtering and pagination - Phase 3: Uses internal models but returns tuple for API.
+        Phase 4: Retrieve alert sessions with filtering and pagination - returns PaginatedSessions model directly for controllers.
         
         Args:
             filters: Dictionary of filters (status, agent_type, alert_type, start_date_us, end_date_us)
@@ -749,12 +764,12 @@ class HistoryService:
             page_size: Number of results per page
             
         Returns:
-            Tuple of (sessions_list, total_count), empty list if unavailable
+            PaginatedSessions model or None if unavailable
         """
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    return [], 0
+                    return None
                 
                 # Extract filters or use defaults
                 filters = filters or {}
@@ -771,40 +786,15 @@ class HistoryService:
                     page_size=page_size
                 )
                 
-                if not paginated_sessions:
-                    return [], 0
+                # Add the applied filters to the model
+                if paginated_sessions and filters:
+                    paginated_sessions.filters_applied = filters
                 
-                # Convert SessionOverview objects back to AlertSession objects for API compatibility
-                alert_sessions = []
-                for session_overview in paginated_sessions.sessions:
-                    try:
-                        # Create AlertSession from SessionOverview data (Phase 3.2 - maintain API compatibility)
-                        session = AlertSession(
-                            session_id=session_overview.session_id,
-                            alert_id=session_overview.alert_id,
-                            alert_type=session_overview.alert_type,
-                            agent_type=session_overview.agent_type,
-                            status=session_overview.status.value,
-                            started_at_us=session_overview.started_at_us,
-                            completed_at_us=session_overview.completed_at_us,
-                            error_message=session_overview.error_message,
-                            chain_id=session_overview.chain_id,
-                            current_stage_index=session_overview.current_stage_index
-                        )
-                        
-                        # Add interaction counts as attributes
-                        object.__setattr__(session, 'llm_interaction_count', session_overview.llm_interaction_count)
-                        object.__setattr__(session, 'mcp_communication_count', session_overview.mcp_communication_count)
-                        alert_sessions.append(session)
-                    except Exception as e:
-                        logger.warning(f"Failed to convert SessionOverview to AlertSession: {e}")
-                        continue
-                
-                return alert_sessions, paginated_sessions.pagination.total_items
+                return paginated_sessions
                 
         except Exception as e:
             logger.error(f"Failed to get sessions list: {str(e)}")
-            return [], 0
+            return None
 
     def test_database_connection(self) -> bool:
         """
@@ -820,40 +810,36 @@ class HistoryService:
                 
                 # Try to perform a simple database operation
                 # This will test both connection and basic functionality
-                result = repo.get_alert_sessions(page=1, page_size=1)
+                repo.get_alert_sessions(page=1, page_size=1)
                 # Result is now PaginatedSessions model or None
                 return True
                 
         except Exception as e:
             logger.error(f"Database connection test failed: {str(e)}")
             return False
-    
-    def get_session_timeline(self, session_id: str) -> Dict[str, Any]:
+
+    def get_session_timeline(self, session_id: str) -> Optional[DetailedSession]:
         """
-        Get complete session timeline with chronological ordering - Phase 3: Uses internal models but returns legacy dict structure.
+        Phase 4: Get complete session timeline - returns DetailedSession model directly for controllers.
         
         Args:
             session_id: The session identifier
             
         Returns:
-            Dictionary containing session details and chronological timeline in legacy format
+            DetailedSession model or None if not found
         """
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    return {}
+                    return None
                 
                 # Use regular method that now returns DetailedSession model directly (Phase 3)
                 detailed_session = repo.get_session_timeline(session_id)
-                if detailed_session:
-                    # Convert to legacy dict structure for backward compatibility (Phase 3.2)
-                    return self._convert_detailed_session_to_legacy_timeline(detailed_session)
-                
-                return {}
+                return detailed_session
                 
         except Exception as e:
             logger.error(f"Failed to get session timeline for {session_id}: {str(e)}")
-            return {}
+            return None
     
     def get_active_sessions(self) -> List[AlertSession]:
         """
@@ -872,19 +858,18 @@ class HistoryService:
         except Exception as e:
             logger.error(f"Failed to get active sessions: {str(e)}")
             return []
-    
-    
-    def get_filter_options(self) -> Dict[str, Any]:
+
+    def get_filter_options(self) -> FilterOptions:
         """
-        Get available filter options for the dashboard - Phase 3: Uses internal models but returns dict.
+        Phase 4: Get available filter options for the dashboard - returns FilterOptions model for controllers.
         
         Returns:
-            Dictionary containing filter options
+            FilterOptions model
         """
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    # Create default FilterOptions model and convert to dict
+                    # Create default FilterOptions model
                     from tarsy.models.history_models import FilterOptions, TimeRangeOption
                     default_options = FilterOptions(
                         agent_types=[],
@@ -897,12 +882,11 @@ class HistoryService:
                             TimeRangeOption(label="This Week", value="week")
                         ]
                     )
-                    return default_options.model_dump()
+                    return default_options
                 
                 # Use regular method that now returns FilterOptions model directly (Phase 3)
                 filter_options = repo.get_filter_options()
-                # Convert back to dict for controllers (Phase 3.2 - maintain dict APIs)
-                return filter_options.model_dump()
+                return filter_options
                 
         except Exception as e:
             logger.error(f"Failed to get filter options: {str(e)}")
@@ -919,7 +903,7 @@ class HistoryService:
                     TimeRangeOption(label="This Week", value="week")
                 ]
             )
-            return default_options.model_dump()
+            return default_options
 
     # Maintenance Operations
     def cleanup_orphaned_sessions(self) -> int:

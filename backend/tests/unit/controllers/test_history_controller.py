@@ -6,7 +6,7 @@ to ensure proper request/response handling and API contract compliance.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -42,6 +42,31 @@ class TestHistoryControllerEndpoints:
         service.get_session_timeline.return_value = None
         service.test_database_connection.return_value = True
         
+        # Phase 4: Add new internal methods
+        from tarsy.models.history_models import PaginatedSessions, PaginationInfo, FilterOptions, TimeRangeOption
+        # Create default empty PaginatedSessions
+        empty_paginated = PaginatedSessions(
+            sessions=[],
+            pagination=PaginationInfo(page=1, page_size=20, total_pages=0, total_items=0),
+            filters_applied={}
+        )
+        service.get_sessions_list_internal.return_value = empty_paginated
+        service.get_session_timeline_internal.return_value = None
+        service.get_session_summary_internal = AsyncMock(return_value=None)
+        
+        # Create simple dict to avoid recursion issues during serialization
+        mock_filter_options = Mock()
+        mock_filter_options.model_dump.return_value = {
+            "agent_types": [],
+            "alert_types": [],
+            "status_options": ["pending", "in_progress", "completed", "failed"],
+            "time_ranges": [
+                {"label": "Last Hour", "value": "1h"},
+                {"label": "Today", "value": "today"}
+            ]
+        }
+        service.get_filter_options_internal.return_value = mock_filter_options
+        
         # Add settings mock
         mock_settings = Mock()
         mock_settings.history_database_url = "sqlite:///test_history.db"
@@ -64,40 +89,50 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_get_sessions_list_success(self, app, client, mock_history_service):
         """Test successful sessions list retrieval."""
-        # Mock response data
-        session1 = Mock()
-        session1.session_id = "session-1"
-        session1.alert_id = "alert-1"
-        session1.alert_type = "NamespaceTerminating"
-        session1.agent_type = "KubernetesAgent"
-        session1.status = "completed"
+        # Phase 4: Mock using new models
+        from tarsy.models.history_models import SessionOverview, PaginatedSessions, PaginationInfo
+        from tarsy.models.constants import AlertSessionStatus
+        
         now_us_time = now_us()
-        session1.started_at_us = now_us_time - 60000000  # 1 minute ago in microseconds
-        session1.completed_at_us = now_us_time
-        session1.error_message = None
-        session1.llm_interactions = []
-        session1.mcp_communications = []
-        # Add the new dynamic attributes expected by the controller
-        session1.llm_interaction_count = 0
-        session1.mcp_communication_count = 0
+        session1 = SessionOverview(
+            session_id="session-1",
+            alert_id="alert-1",
+            alert_type="NamespaceTerminating",
+            agent_type="KubernetesAgent", 
+            status=AlertSessionStatus.COMPLETED,
+            started_at_us=now_us_time - 60000000,  # 1 minute ago in microseconds
+            completed_at_us=now_us_time,
+            error_message=None,
+            llm_interaction_count=0,
+            mcp_communication_count=0,
+            total_interactions=0,
+            chain_id="chain-1"
+        )
         
-        session2 = Mock()
-        session2.session_id = "session-2"
-        session2.alert_id = "alert-2"
-        session2.alert_type = "HighCPU"
-        session2.agent_type = "KubernetesAgent"
-        session2.status = "in_progress"
-        session2.started_at_us = now_us_time - 300000000  # 5 minutes ago in microseconds
-        session2.completed_at_us = None
-        session2.error_message = None
-        session2.llm_interactions = []
-        session2.mcp_communications = []
-        # Add the new dynamic attributes expected by the controller
-        session2.llm_interaction_count = 0
-        session2.mcp_communication_count = 0
+        session2 = SessionOverview(
+            session_id="session-2", 
+            alert_id="alert-2",
+            alert_type="HighCPU",
+            agent_type="KubernetesAgent",
+            status=AlertSessionStatus.IN_PROGRESS,
+            started_at_us=now_us_time - 300000000,  # 5 minutes ago in microseconds
+            completed_at_us=None,
+            error_message=None,
+            llm_interaction_count=0,
+            mcp_communication_count=0,
+            total_interactions=0,
+            chain_id="chain-2"
+        )
         
-        mock_sessions = [session1, session2]
-        mock_history_service.get_sessions_list.return_value = (mock_sessions, 2)
+        # Create PaginatedSessions response
+        paginated_sessions = PaginatedSessions(
+            sessions=[session1, session2],
+            pagination=PaginationInfo(page=1, page_size=20, total_pages=1, total_items=2),
+            filters_applied={}
+        )
+        
+        # Mock the new internal method 
+        mock_history_service.get_sessions_list_internal.return_value = paginated_sessions
         
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
@@ -1543,6 +1578,21 @@ class TestDashboardEndpoints:
     @pytest.mark.unit
     def test_get_filter_options_success(self, app, client, mock_history_service):
         """Test successful filter options retrieval."""
+        # Phase 4: Create a simple Mock that returns the expected dict directly to avoid recursion
+        mock_filter_result = Mock()
+        mock_filter_result.model_dump.return_value = {
+            "agent_types": ["kubernetes", "base", "analysis"],
+            "alert_types": ["HighCPU", "NamespaceTerminating", "PodCrashLooping"],
+            "status_options": ["pending", "in_progress", "completed", "failed"],
+            "time_ranges": [
+                {"label": "Last Hour", "value": "1h"},
+                {"label": "Last 4 Hours", "value": "4h"},
+                {"label": "Today", "value": "today"},
+                {"label": "This Week", "value": "week"}
+            ]
+        }
+        mock_history_service.get_filter_options_internal.return_value = mock_filter_result
+        
         # Override dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
@@ -1564,7 +1614,7 @@ class TestDashboardEndpoints:
         assert len(data["time_ranges"]) == 4
         
         # Verify service was called
-        mock_history_service.get_filter_options.assert_called_once()
+        mock_history_service.get_filter_options_internal.assert_called_once()
     
     @pytest.mark.unit
     def test_get_filter_options_service_error(self, app, client, mock_history_service):
@@ -1590,22 +1640,28 @@ class TestDashboardEndpoints:
         """Test successful session summary retrieval."""
         session_id = "test-session-123"
         
-        # Mock service response
-        mock_summary = {
-            'total_interactions': 13,
-            'llm_interactions': 8,
-            'mcp_communications': 5,
-            'system_events': 0,
-            'errors_count': 0,
-            'total_duration_ms': 15000,
-            'chain_statistics': {
-                'total_stages': 3,
-                'completed_stages': 3,
-                'failed_stages': 0,
-                'stages_by_agent': {'KubernetesAgent': 2, 'AnalysisAgent': 1}
-            }
-        }
-        mock_history_service.get_session_summary.return_value = mock_summary
+        # Phase 4: Create SessionStats model for the new internal method
+        from tarsy.models.history_models import SessionStats, ChainStatistics
+        
+        chain_stats = ChainStatistics(
+            total_stages=3,
+            completed_stages=3,
+            failed_stages=0,
+            stages_by_agent={'KubernetesAgent': 2, 'AnalysisAgent': 1}
+        )
+        
+        session_stats = SessionStats(
+            total_interactions=13,
+            llm_interactions=8,
+            mcp_communications=5,
+            system_events=0,
+            errors_count=0,
+            total_duration_ms=15000,
+            chain_statistics=chain_stats
+        )
+        
+        # Mock the new internal method
+        mock_history_service.get_session_summary_internal = AsyncMock(return_value=session_stats)
         
         # Dependency override
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
@@ -1636,15 +1692,15 @@ class TestDashboardEndpoints:
         assert data['chain_statistics']['stages_by_agent']['KubernetesAgent'] == 2
         
         # Verify service was called correctly
-        mock_history_service.get_session_summary.assert_called_once_with(session_id)
+        mock_history_service.get_session_summary_internal.assert_called_once_with(session_id)
 
     @pytest.mark.unit
     def test_get_session_summary_not_found(self, app, client, mock_history_service):
         """Test session summary when session doesn't exist."""
         session_id = "non-existent-session"
         
-        # Mock service to return None (session not found)
-        mock_history_service.get_session_summary.return_value = None
+        # Phase 4: Mock the new internal method to return None (session not found)
+        mock_history_service.get_session_summary_internal = AsyncMock(return_value=None)
         
         # Dependency override
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
@@ -1660,7 +1716,7 @@ class TestDashboardEndpoints:
         assert "not found" in response.json()["detail"].lower()
         
         # Verify service was called
-        mock_history_service.get_session_summary.assert_called_once_with(session_id)
+        mock_history_service.get_session_summary_internal.assert_called_once_with(session_id)
 
     @pytest.mark.unit
     def test_get_session_summary_service_error(self, app, client, mock_history_service):

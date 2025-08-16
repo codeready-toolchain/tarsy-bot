@@ -1072,7 +1072,11 @@ async def test_cleanup_orphaned_sessions_no_active_sessions():
     history_service.is_enabled = True
     
     mock_repo = Mock()
-    mock_repo.get_alert_sessions.return_value = {"sessions": [], "total": 0}
+    mock_repo.get_alert_sessions.return_value = MockFactory.create_mock_paginated_sessions(
+        sessions=[],
+        page_size=1000,
+        total_items=0
+    )
     
     history_service.get_repository = Mock(return_value=Mock(__enter__=Mock(return_value=mock_repo), __exit__=Mock(return_value=None)))
     

@@ -22,8 +22,6 @@ from tarsy.models.history_models import (
 )
 from tarsy.models.converters import (
     alert_session_to_session_overview,
-    sessions_list_to_paginated_sessions,
-    session_timeline_to_detailed_session
 )
 
 logger = get_logger(__name__)
@@ -635,16 +633,18 @@ class HistoryRepository:
         Phase 3: Returns FilterOptions model directly (no dict conversion).
         """
         try:
-            # Get distinct agent types from the database
-            agent_types = self.session.exec(
-                select(AlertSession.agent_type).distinct()
-                .where(AlertSession.agent_type.is_not(None))
+            # Get distinct agent types as a flat list of strings
+            agent_types = self.session.scalars(
+                select(AlertSession.agent_type)
+                    .distinct()
+                    .where(AlertSession.agent_type.is_not(None))
             ).all()
             
-            # Get distinct alert types from the database
-            alert_types = self.session.exec(
-                select(AlertSession.alert_type).distinct()
-                .where(AlertSession.alert_type.is_not(None))
+            # Get distinct alert types as a flat list of strings
+            alert_types = self.session.scalars(
+                select(AlertSession.alert_type)
+                    .distinct()
+                    .where(AlertSession.alert_type.is_not(None))
             ).all()
             
             # Always return all possible status options for consistent filtering

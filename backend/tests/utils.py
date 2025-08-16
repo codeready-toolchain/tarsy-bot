@@ -785,7 +785,7 @@ class MockFactory:
         Example:
             overviews = MockFactory.create_mock_session_overviews(count=5)
         """
-        from tarsy.models.converters import alert_session_to_session_overview
+        from tarsy.models.converters.session_converters import alert_session_to_session_overview
         
         # Use existing SessionFactory to create AlertSession objects, then convert
         alert_sessions = [SessionFactory.create_test_session() for _ in range(count)]
