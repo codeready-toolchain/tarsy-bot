@@ -80,11 +80,12 @@ class SimpleReActController(IterationController):
                 # Build ReAct prompt with history
                 prompt = self.prompt_builder.build_standard_react_prompt(prompt_context, react_history)
                 
-                # Get LLM response in ReAct format
+                # Get LLM response in ReAct format with enhanced system message
+                composed_instructions = agent._compose_instructions()
                 messages = [
                     LLMMessage(
                         role="system", 
-                        content=self.prompt_builder.get_standard_react_system_message("investigation and providing recommendations")
+                        content=self.prompt_builder.get_enhanced_react_system_message(composed_instructions, "investigation and providing recommendations")
                     ),
                     LLMMessage(role="user", content=prompt)
                 ]

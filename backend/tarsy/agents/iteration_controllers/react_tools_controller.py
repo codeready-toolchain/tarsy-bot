@@ -64,11 +64,12 @@ class ReactToolsController(IterationController):
                 # Use chain-specific data collection prompt but SAME ReAct format
                 prompt = self.prompt_builder.build_data_collection_react_prompt(prompt_context, react_history)
                 
-                # REUSE centralized ReAct system message
+                # Use enhanced ReAct system message with MCP server instructions
+                composed_instructions = agent._compose_instructions()
                 messages = [
                     LLMMessage(
                         role="system", 
-                        content=self.prompt_builder.get_standard_react_system_message("comprehensive data collection for this stage")
+                        content=self.prompt_builder.get_enhanced_react_system_message(composed_instructions, "comprehensive data collection for this stage")
                     ),
                     LLMMessage(role="user", content=prompt)
                 ]

@@ -1,8 +1,8 @@
 """
-Tests for PromptBuilder class, focusing on ReAct response parsing.
+Tests for PromptBuilder class, focusing on ReAct response parsing and system messages.
 
 This module tests the robust parsing logic introduced to handle edge cases
-and malformed inputs gracefully.
+and malformed inputs gracefully, as well as system message generation.
 """
 
 import pytest
@@ -341,12 +341,50 @@ class TestPromptBuilderBasicMethods:
         message = builder.get_iterative_mcp_tool_selection_system_message()
         assert isinstance(message, str)
         assert len(message) > 0
+    
+    def test_get_enhanced_react_system_message(self, builder):
+        """Test getting enhanced ReAct system message with composed instructions."""
+        composed_instructions = """## General SRE Agent Instructions
+        
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+
+## Kubernetes Server Instructions
+For Kubernetes operations: be careful with cluster-scoped listings...
+
+## Agent-Specific Instructions
+Custom agent instructions here."""
+        
+        message = builder.get_enhanced_react_system_message(composed_instructions, "investigation and providing recommendations")
+        
+        # Should contain the composed instructions
+        assert "General SRE Agent Instructions" in message
+        assert "Kubernetes Server Instructions" in message
+        assert "Agent-Specific Instructions" in message
+        
+        # Should contain comprehensive ReAct formatting rules
+        assert "CRITICAL REACT FORMATTING RULES" in message
+        assert "Follow the ReAct pattern exactly" in message
+        assert "Thought:" in message
+        assert "Action:" in message
+        assert "Action Input:" in message
+        assert "FORMATTING REQUIREMENTS:" in message
+        assert "EXAMPLE OF CORRECT FORMAT:" in message
+        
+        # Should contain the task focus
+        assert "investigation and providing recommendations" in message
+        
+        assert isinstance(message, str)
+        assert len(message) > len(composed_instructions)  # Should be longer due to added formatting rules
 
     def test_build_standard_react_prompt(self, builder, context):
         """Test building standard ReAct prompt."""
         prompt = builder.build_standard_react_prompt(context)
-        assert "Answer the following question" in prompt
-        assert "Test alert" in prompt  # Agent name might not be in the prompt
+        assert "Available tools:" in prompt
+        assert "Question:" in prompt
+        assert "Begin!" in prompt
+        assert "Test alert" in prompt  # Should be in the formatted question
 
     def test_build_standard_react_prompt_with_history(self, builder, context):
         """Test building standard ReAct prompt with history."""
@@ -354,6 +392,9 @@ class TestPromptBuilderBasicMethods:
         prompt = builder.build_standard_react_prompt(context, history)
         assert "Previous action 1" in prompt
         assert "Previous action 2" in prompt
+        assert "Available tools:" in prompt
+        assert "Question:" in prompt
+        assert "Begin!" in prompt
 
     def test_convert_action_to_tool_call(self, builder):
         """Test converting action to tool call."""

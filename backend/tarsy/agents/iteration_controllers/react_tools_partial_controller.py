@@ -63,11 +63,12 @@ class ReactToolsPartialController(IterationController):
                 # Use partial analysis prompt but SAME ReAct format
                 prompt = self.prompt_builder.build_partial_analysis_react_prompt(prompt_context, react_history)
                 
-                # REUSE centralized ReAct system message
+                # Use enhanced ReAct system message with MCP server instructions
+                composed_instructions = agent._compose_instructions()
                 messages = [
                     LLMMessage(
                         role="system", 
-                        content=self.prompt_builder.get_standard_react_system_message("collecting additional data and providing stage-specific analysis")
+                        content=self.prompt_builder.get_enhanced_react_system_message(composed_instructions, "collecting additional data and providing stage-specific analysis")
                     ),
                     LLMMessage(role="user", content=prompt)
                 ]

@@ -277,7 +277,7 @@ class TestSimpleReActController:
         """Create mock prompt builder."""
         builder = Mock()
         builder.build_standard_react_prompt.return_value = "ReAct prompt"
-        builder.get_standard_react_system_message.return_value = "You are an AI assistant that analyzes alerts using the ReAct pattern."
+        builder.get_enhanced_react_system_message.return_value = "You are an AI assistant that analyzes alerts using the ReAct pattern."
         builder.parse_react_response.return_value = {
             'thought': 'Need to analyze the alert',
             'action': 'test-tool',
@@ -305,6 +305,7 @@ class TestSimpleReActController:
         agent.execute_mcp_tools = AsyncMock(return_value={
             "test-server": [{"tool": "test-tool", "result": "success"}]
         })
+        agent._compose_instructions.return_value = "Composed instructions with MCP server guidance"
         return agent
     
     @pytest.fixture
@@ -607,7 +608,7 @@ class TestReactToolsController:
         """Create mock prompt builder."""
         builder = Mock()
         builder.build_data_collection_react_prompt.return_value = "Data collection ReAct prompt"
-        builder.get_standard_react_system_message.return_value = "You are a data collection agent using ReAct."
+        builder.get_enhanced_react_system_message.return_value = "You are a data collection agent using ReAct."
         builder.parse_react_response.return_value = {
             'thought': 'Need to collect data',
             'action': 'test-tool',
@@ -639,6 +640,7 @@ class TestReactToolsController:
             "test-server": [{"tool": "test-tool", "result": "data collected"}]
         })
         agent.merge_mcp_data = Mock(return_value={"merged": "data"})
+        agent._compose_instructions.return_value = "Composed instructions with MCP server guidance"
         return agent
     
     @pytest.fixture
@@ -923,7 +925,7 @@ class TestReactToolsPartialController:
         """Create mock prompt builder."""
         builder = Mock()
         builder.build_partial_analysis_react_prompt.return_value = "Partial analysis ReAct prompt"
-        builder.get_standard_react_system_message.return_value = "You are an agent doing partial analysis using ReAct."
+        builder.get_enhanced_react_system_message.return_value = "You are an agent doing partial analysis using ReAct."
         builder.parse_react_response.return_value = {
             'thought': 'Need to analyze partially',
             'action': 'analysis-tool',
@@ -955,6 +957,7 @@ class TestReactToolsPartialController:
             "analysis-server": [{"tool": "analysis-tool", "result": "analysis data"}]
         })
         agent.merge_mcp_data = Mock(return_value={"merged": "analysis_data"})
+        agent._compose_instructions.return_value = "Composed instructions with MCP server guidance"
         return agent
     
     @pytest.fixture

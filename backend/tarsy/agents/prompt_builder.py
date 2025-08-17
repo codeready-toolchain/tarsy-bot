@@ -477,28 +477,55 @@ Focus on root cause analysis and sustainable solutions."""
         """Get system message for iterative MCP tool selection."""
         return "You are an expert SRE analyzing alerts through multi-step runbooks. Based on the alert, runbook, available MCP tools, and previous iteration results, determine what tools should be called next or if the analysis is complete. Return only a valid JSON object with no additional text."
     
-    def get_standard_react_system_message(self, task_focus: str = "investigation and providing recommendations") -> str:
-        """Get the standard ReAct system message with consistent formatting rules."""
-        return f"""You are an expert SRE analyzing alerts. Follow the ReAct format EXACTLY as specified.
+    def get_enhanced_react_system_message(self, composed_instructions: str, task_focus: str = "investigation and providing recommendations") -> str:
+        """Get enhanced ReAct system message that includes composed instructions from BaseAgent.
+        
+        This combines the agent's composed instructions (general + MCP server + custom instructions)
+        with ReAct-specific formatting rules.
+        
+        Args:
+            composed_instructions: The full composed instructions from BaseAgent._compose_instructions()
+            task_focus: Specific focus for this ReAct session
+            
+        Returns:
+            Complete system message with both instructions and ReAct formatting rules
+        """
+        react_formatting = f"""
+CRITICAL REACT FORMATTING RULES:
+Follow the ReAct pattern exactly. You must use this structure:
 
-CRITICAL FORMATTING RULES:
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take (choose from available tools)
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+FORMATTING REQUIREMENTS:
 1. ALWAYS include colons after section headers: "Thought:", "Action:", "Action Input:"
-2. For Action Input, provide ONLY the parameter values (no YAML, no code blocks, no triple backticks)
+2. For Action Input, provide ONLY parameter values (no YAML, no code blocks, no triple backticks)
 3. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
 4. NEVER write fake observations or continue the conversation
+5. Either continue with "Thought:" for more investigation OR conclude with "Final Answer:"
 
-CORRECT FORMAT:
-Thought: [your reasoning here]
-Action: [exact tool name]
-Action Input: [parameter values only]
+EXAMPLE OF CORRECT FORMAT:
+Thought: I need to check the namespace status first.
+Action: kubernetes-server.resources_get
+Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
 
 INCORRECT FORMATS TO AVOID:
 - "Thought" without colon
 - Action Input with ```yaml or code blocks
-- Adding "Observation:" section
-- Continuing with more Thought/Action pairs
+- Adding "Observation:" section yourself
+- Continuing with more Thought/Action pairs after Action Input
 
 Focus on {task_focus} for human operators to execute."""
+        
+        return f"""{composed_instructions}
+
+{react_formatting}"""
     
 
     # ====================================================================
@@ -527,7 +554,10 @@ Focus on {task_focus} for human operators to execute."""
         return flattened_history
 
     def build_standard_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
-        """Build standard ReAct prompt following the established ReAct pattern."""
+        """Build streamlined ReAct prompt focusing on the task and available tools.
+        
+        ReAct formatting rules are handled in the system message to avoid duplication.
+        """
         
         # Build the ReAct history from previous iterations
         history_text = ""
@@ -536,54 +566,16 @@ Focus on {task_focus} for human operators to execute."""
             history_text = "\n".join(flattened_history) + "\n"
         
         available_actions = self._format_available_actions(context.available_tools)
-        action_names = self._get_action_names(context.available_tools)
         
-        prompt = f"""Answer the following question as best you can. You have access to the following tools:
+        prompt = f"""Answer the following question using the available tools.
 
+Available tools:
 {available_actions}
 
-MANDATORY FORMAT - Follow this EXACT structure:
-
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{', '.join(action_names)}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
-
-CRITICAL INSTRUCTIONS:
-1. ALWAYS use colons after "Thought:", "Action:", and "Action Input:"
-2. For Action Input, provide ONLY parameter values (no YAML, no ```code blocks```, no formatting)
-3. STOP immediately after your "Action Input:" line
-4. NEVER write "Observation:" - the system provides that
-
-EXAMPLE OF CORRECT FORMAT:
-Thought: I need to check the namespace status first.
-Action: kubernetes-server.resources_get
-Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
-
-EXAMPLE OF INCORRECT FORMAT (DO NOT DO THIS):
-Thought
-I need to check...
-Action: kubernetes-server.resources_get
-Action Input:
-```yaml
-apiVersion: v1
-kind: Namespace
-name: superman-dev
-```
-Observation: (fake observation)
-
-RESPONSE OPTIONS:
-1. Continue investigating: "Thought: [reasoning] Action: [tool] Action Input: [params]"
-2. OR conclude: "Thought: I now know the final answer Final Answer: [analysis]"
-
-Begin!
-
 Question: {self._format_react_question(context)}
-{history_text}"""
+{history_text}
+
+Begin!"""
         
         return prompt
 
