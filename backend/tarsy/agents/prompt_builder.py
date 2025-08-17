@@ -614,7 +614,6 @@ Begin!"""
         # Create concise question for ReAct
         question = f"""Analyze this {alert_type} alert and provide actionable recommendations.
 
-## Alert Details
 {self._build_alert_section(context.alert_data)}
 
 {self._build_runbook_section(context.runbook_content)}
@@ -896,7 +895,6 @@ Be thorough in your investigation before providing the final answer."""
         
         question = f"""Collect comprehensive data about this {alert_type} alert for the next analysis stage.
 
-## Alert Details
 {self._build_alert_section(context.alert_data)}
 
 {self._build_runbook_section(context.runbook_content)}
@@ -922,7 +920,6 @@ Your Final Answer should summarize what data was collected, not analyze it."""
         
         question = f"""Investigate this {alert_type} alert and provide stage-specific analysis.
 
-## Alert Details
 {self._build_alert_section(context.alert_data)}
 
 {self._build_runbook_section(context.runbook_content)}

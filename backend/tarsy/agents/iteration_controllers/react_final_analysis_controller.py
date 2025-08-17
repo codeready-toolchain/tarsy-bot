@@ -59,11 +59,19 @@ class ReactFinalAnalysisController(IterationController):
         
         prompt = self.prompt_builder.build_final_analysis_prompt(prompt_context)
         
-        # Single comprehensive analysis call
+        # Single comprehensive analysis call with simplified system message
+        # No ReAct or MCP instructions needed for final analysis
+        general_instructions = context.agent._get_general_instructions()
+        custom_instructions = context.agent.custom_instructions()
+        
+        system_content_parts = [general_instructions]
+        if custom_instructions:
+            system_content_parts.append(f"\n## Agent-Specific Instructions\n{custom_instructions}")
+        
         messages = [
             LLMMessage(
                 role="system", 
-                content="You are an expert SRE. Provide comprehensive final analysis based on all available data."
+                content="\n".join(system_content_parts)
             ),
             LLMMessage(role="user", content=prompt)
         ]

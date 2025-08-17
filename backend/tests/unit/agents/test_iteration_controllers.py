@@ -460,6 +460,7 @@ class TestReactFinalAnalysisController:
         """Create mock prompt builder."""
         builder = Mock()
         builder.build_final_analysis_prompt.return_value = "Final analysis prompt"
+        # Final analysis doesn't use enhanced ReAct system message anymore
         return builder
     
     @pytest.fixture
@@ -468,6 +469,8 @@ class TestReactFinalAnalysisController:
         agent = Mock()
         agent.create_prompt_context.return_value = Mock()
         agent.get_current_stage_execution_id.return_value = "stage-exec-123"
+        agent._get_general_instructions.return_value = "## General SRE Agent Instructions\nYou are an expert SRE..."
+        agent.custom_instructions.return_value = "Custom agent instructions here"
         return agent
     
     @pytest.fixture
@@ -520,7 +523,7 @@ class TestReactFinalAnalysisController:
         messages = call_args[0]
         assert len(messages) == 2
         assert messages[0].role == "system"
-        assert "expert SRE" in messages[0].content
+        assert "General SRE Agent Instructions" in messages[0].content
         assert messages[1].role == "user"
         assert messages[1].content == "Final analysis prompt"
         
