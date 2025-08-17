@@ -613,7 +613,11 @@ class HistoryService:
                 
                 # Set step description if not already set
                 if not interaction.step_description:
-                    model_name = getattr(getattr(interaction, "details", None), "model_name", None) or "LLM"
+                    model_name = (
+                        getattr(interaction, "model_name", None) or
+                        getattr(getattr(interaction, "details", None), "model_name", None) or
+                        "LLM"
+                    )
                     interaction.step_description = f"LLM analysis using {model_name}"
                 
                 repo.create_llm_interaction(interaction)

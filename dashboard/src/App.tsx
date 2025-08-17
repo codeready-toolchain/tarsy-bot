@@ -3,7 +3,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
 import { theme } from './theme';
 import DashboardView from './components/DashboardView';
-import SessionDetailPage from './components/SessionDetailPage';
+import OptimizedSessionDetailPage from './components/OptimizedSessionDetailPage';
 
 /**
  * Main App component for the Tarsy Dashboard - Phase 3
@@ -19,8 +19,8 @@ function App() {
           <Route path="/" element={<DashboardView />} />
           <Route path="/dashboard" element={<DashboardView />} />
           
-          {/* Session detail route */}
-          <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
+          {/* Session detail route - Performance Optimized */}
+          <Route path="/sessions/:sessionId" element={<OptimizedSessionDetailPage />} />
           
           {/* Catch-all route redirects to dashboard */}
           <Route path="*" element={<DashboardView />} />

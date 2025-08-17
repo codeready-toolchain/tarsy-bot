@@ -41,7 +41,8 @@ export const highlightSearchTermNodes = (text: string, searchTerm: string): Reac
 
   const parts = text.split(regex);
   return parts.map((part, idx) =>
-    regex.test(part)
+    // When splitting with a capturing group, matched segments are at odd indexes
+    idx % 2 === 1
       ? React.createElement('mark', { 
           key: idx, 
           style: { backgroundColor: '#ffeb3b', padding: '1px 2px', borderRadius: 2 } 

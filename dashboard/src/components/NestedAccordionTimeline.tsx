@@ -31,10 +31,17 @@ import {
 } from '@mui/icons-material';
 import type { ChainExecution, TimelineItem, LLMInteraction, MCPInteraction } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
+import { 
+  getStageStatusColor, 
+  getInteractionColor, 
+  getInteractionBackgroundColor,
+  formatStageForCopy
+} from '../utils/timelineHelpers';
 import InteractionDetails from './InteractionDetails';
 import LLMInteractionPreview from './LLMInteractionPreview';
 import MCPInteractionPreview from './MCPInteractionPreview';
 import CopyButton from './CopyButton';
+import InteractionCountBadges from './InteractionCountBadges';
 
 interface NestedAccordionTimelineProps {
   chainExecution: ChainExecution;
@@ -55,20 +62,7 @@ const getStageStatusIcon = (status: string) => {
   }
 };
 
-// Helper function to get stage status color
-const getStageStatusColor = (status: string): 'success' | 'error' | 'primary' | 'default' => {
-  switch (status) {
-    case 'completed':
-      return 'success';
-    case 'failed':
-      return 'error';
-    case 'active':
-      return 'primary';
-    case 'pending':
-    default:
-      return 'default';
-  }
-};
+// Helper functions moved to shared utils
 
 // Helper function to get interaction type icon
 const getInteractionIcon = (type: string) => {
@@ -86,96 +80,9 @@ const getInteractionIcon = (type: string) => {
   }
 };
 
-// Helper function to get interaction color
-const getInteractionColor = (type: string): 'primary' | 'secondary' | 'warning' => {
-  switch (type) {
-    case 'llm':
-      return 'primary';    // Blue
-    case 'mcp':
-      return 'secondary';  // Purple  
-    case 'system':
-      return 'warning';    // Orange
-    default:  
-      return 'primary';
-  }
-};
 
-// Helper function to format interaction data for copying
-const formatInteractionForCopy = (interaction: TimelineItem): string => {
-  const timestamp = formatTimestamp(interaction.timestamp_us, 'absolute');
-  const duration = interaction.duration_ms ? ` (${formatDurationMs(interaction.duration_ms)})` : '';
-  
-  let content = `${interaction.step_description}${duration}\n`;
-  content += `Type: ${interaction.type.toUpperCase()}\n`;
-  content += `Time: ${timestamp}\n`;
-  
-  if (interaction.details) {
-    if (interaction.type === 'llm') {
-      const llmDetails = interaction.details as LLMInteraction;
-      content += `Model: ${llmDetails.model_name || 'N/A'}\n`;
-      
-      // EP-0010: Extract prompt from messages array
-      const prompt = llmDetails.messages 
-        ? llmDetails.messages.map((msg: any) => `${msg.role}: ${msg.content}`).join('\n')
-        : 'N/A';
-      content += `Prompt: ${prompt}\n`;
-      
-      // EP-0010: Extract response from assistant message
-      const assistantMsg = llmDetails.messages?.find((m: any) => m?.role === 'assistant');
-      const response = assistantMsg?.content || 'N/A';
-      content += `Response: ${response}\n`;
-      
-      if (llmDetails.total_tokens) {
-        content += `Tokens Used: ${llmDetails.total_tokens}\n`;
-      }
-    } else if (interaction.type === 'mcp') {
-      const mcpDetails = interaction.details as MCPInteraction;
-      content += `Server: ${mcpDetails.server_name || 'N/A'}\n`;
-      content += `Tool: ${mcpDetails.tool_name || 'N/A'}\n`;
-      content += `Success: ${mcpDetails.success}\n`;
-      if (mcpDetails.parameters) {
-        content += `Parameters: ${JSON.stringify(mcpDetails.parameters, null, 2)}\n`;
-      }
-      if (mcpDetails.result) {
-        content += `Result: ${JSON.stringify(mcpDetails.result, null, 2)}\n`;
-      }
-      // execution_time_ms removed in EP-0010
-    }
-  }
-  
-  return content;
-};
 
-// Helper function to format stage data for copying
-const formatStageForCopy = (stage: any, stageIndex: number, interactions: TimelineItem[]): string => {
-  let content = `=== STAGE ${stageIndex + 1}: ${stage.stage_name} ===\n`;
-  content += `Agent: ${stage.agent}\n`;
-  content += `Status: ${stage.status}\n`;
-
-  if (stage.started_at_us) {
-    content += `Started: ${formatTimestamp(stage.started_at_us, 'absolute')}\n`;
-  }
-  if (stage.duration_ms) {
-    content += `Duration: ${formatDurationMs(stage.duration_ms)}\n`;
-  }
-  if (stage.error_message) {
-    content += `Error: ${stage.error_message}\n`;
-  }
-  content += `Interactions: ${interactions.length}\n\n`;
-  
-  if (interactions.length > 0) {
-    content += `--- INTERACTIONS ---\n\n`;
-    interactions.forEach((interaction, index) => {
-      content += `┌─── INTERACTION ${index + 1} ───────────────────────────────────────────\n`;
-      content += `${formatInteractionForCopy(interaction)}`;
-      content += `└─────────────────────────────────────────────────────────────\n\n`;
-    });
-  } else {
-    content += `No interactions recorded for this stage.\n\n`;
-  }
-  
-  return content;
-};
+// Removed duplicate helper functions - now imported from shared utils
 
 // Helper function to format entire flow for copying
 const formatEntireFlowForCopy = (chainExecution: ChainExecution): string => {
@@ -473,49 +380,8 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                             </Typography>
                           </Box>
                           
-                          {/* LLM interactions badge */}
-                          {stage.llm_interaction_count > 0 && (
-                            <Box sx={{ 
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 0.25,
-                              px: 0.75,
-                              py: 0.25,
-                              backgroundColor: 'primary.50',
-                              borderRadius: '12px',
-                              border: '1px solid',
-                              borderColor: 'primary.200'
-                            }}>
-                              <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.7rem' }}>
-                                🧠 {stage.llm_interaction_count}
-                              </Typography>
-                              <Typography variant="caption" color="primary.main" sx={{ fontSize: '0.65rem' }}>
-                                LLM
-                              </Typography>
-                            </Box>
-                          )}
-                          
-                          {/* MCP interactions badge */}
-                          {stage.mcp_communication_count > 0 && (
-                            <Box sx={{ 
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 0.25,
-                              px: 0.75,
-                              py: 0.25,
-                              backgroundColor: 'secondary.50',
-                              borderRadius: '12px',
-                              border: '1px solid',
-                              borderColor: 'secondary.200'
-                            }}>
-                              <Typography variant="caption" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.7rem' }}>
-                                🔧 {stage.mcp_communication_count}
-                              </Typography>
-                              <Typography variant="caption" color="secondary.main" sx={{ fontSize: '0.65rem' }}>
-                                MCP
-                              </Typography>
-                            </Box>
-                          )}
+                          {/* LLM and MCP interaction count badges */}
+                          <InteractionCountBadges stage={stage} />
                         </Box>
                       )}
                       
@@ -658,11 +524,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                             action={null}
                             sx={{ 
                               pb: interaction.details && !isDetailsExpanded ? 2 : 1,
-                              bgcolor: interaction.type === 'llm' 
-                                ? '#f0f8ff' 
-                                : interaction.type === 'mcp'
-                                ? '#f5f0fa'
-                                : '#fef9e7'
+                              bgcolor: getInteractionBackgroundColor(interaction.type)
                             }}
                           />
                               

@@ -49,9 +49,9 @@ function InteractionDetails({
   const extractResponseText = (llm: LLMInteraction) => {
     // EP-0010: Look for assistant message in the messages array
     const assistantMsg = llm.messages?.find((m: any) => m?.role === 'assistant');
-    if (assistantMsg) {
+    if (assistantMsg && assistantMsg.content) {
       if (typeof assistantMsg.content === 'string') return assistantMsg.content;
-      if (assistantMsg.content !== undefined) return JSON.stringify(assistantMsg.content);
+      return JSON.stringify(assistantMsg.content);
     }
     return '';
   };
@@ -334,7 +334,7 @@ function InteractionDetails({
             >
               {mcpDetails.tool_name}
             </Typography>
-            {Object.keys(mcpDetails.parameters).length > 0 && (
+            {mcpDetails.parameters && Object.keys(mcpDetails.parameters).length > 0 && (
               <JsonDisplay data={mcpDetails.parameters} collapsed={1} />
             )}
           </Box>
@@ -529,10 +529,17 @@ function InteractionDetails({
         const u = user ? (typeof user.content === 'string' ? user.content : 
                          (user.content == null || user.content === '') ? '' : 
                          JSON.stringify(user.content)) : '';
+        // Use the same logic as extractResponseText() and formatInteractionForCopy()
         const assistant = llm.messages?.find((m: any) => m?.role === 'assistant');
-        const resp = assistant?.content ?? '';
-        const respStr = typeof resp === 'string' ? resp : JSON.stringify(resp);
-        return `${s}${u ? '\n\n' + u : ''}\n\n---\n\n${respStr}`;
+        let respStr = '';
+        if (assistant && assistant.content) {
+          if (typeof assistant.content === 'string') {
+            respStr = assistant.content;
+          } else {
+            respStr = JSON.stringify(assistant.content);
+          }
+        }
+        return `${s}${u ? '\n\n' + u : ''}${respStr ? '\n\n---\n\n' + respStr : ''}`;
       }
       case 'mcp': {
         const mcp = details as MCPInteraction;

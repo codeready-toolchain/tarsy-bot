@@ -19,13 +19,16 @@
     "@mui/lab": "^7.0.0-beta.14",
     "@mui/material": "^7.2.0",
     "@mui/x-date-pickers": "^8.9.0",
+    "@types/react-window": "^1.8.8",
     "@uiw/react-json-view": "^2.0.0-alpha.33",
     "axios": "^1.11.0",
     "date-fns": "^4.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.7.1"
+    "react-router-dom": "^7.7.1",
+    "react-window": "^1.8.11",
+    "react-window-infinite-loader": "^1.0.10"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",
