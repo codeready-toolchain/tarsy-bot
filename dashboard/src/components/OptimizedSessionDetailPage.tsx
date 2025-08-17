@@ -160,7 +160,16 @@ function OptimizedSessionDetailPage() {
         console.log('📊 Updating session summary with fresh data:', summaryData);
         return {
           ...prevSession,
-          summary: summaryData
+          // Update the summary field
+          summary: summaryData,
+          // Update main session count fields that SessionHeader uses
+          llm_interaction_count: summaryData.llm_interactions,
+          mcp_communication_count: summaryData.mcp_communications,
+          total_interactions: summaryData.total_interactions,
+          // Update other relevant fields from summary
+          total_stages: summaryData.chain_statistics?.total_stages || prevSession.total_stages,
+          completed_stages: summaryData.chain_statistics?.completed_stages || prevSession.completed_stages,
+          failed_stages: summaryData.chain_statistics?.failed_stages || prevSession.failed_stages
         };
       });
       
@@ -312,6 +321,7 @@ function OptimizedSessionDetailPage() {
                       
                       updatedStage.llm_interactions = [...(stage.llm_interactions || []), newInteraction];
                       updatedStage.llm_interaction_count = (updatedStage.llm_interaction_count || 0) + 1;
+                      updatedStage.total_interactions = (updatedStage.total_interactions || 0) + 1;
                       console.log('📊 Added LLM interaction:', eventId, 'to stage:', targetStageExecutionId);
                     } else if (exists) {
                       console.log('📊 Duplicate LLM interaction detected, skipping:', eventId);
@@ -352,6 +362,7 @@ function OptimizedSessionDetailPage() {
                       
                       updatedStage.mcp_communications = [...(stage.mcp_communications || []), newInteraction];
                       updatedStage.mcp_communication_count = (updatedStage.mcp_communication_count || 0) + 1;
+                      updatedStage.total_interactions = (updatedStage.total_interactions || 0) + 1;
                       console.log('📊 Added MCP interaction:', eventId, 'to stage:', targetStageExecutionId);
                     } else if (exists) {
                       console.log('📊 Duplicate MCP interaction detected, skipping:', eventId);
@@ -403,6 +414,15 @@ function OptimizedSessionDetailPage() {
               
               return { ...prev, ...updates };
             });
+            
+            // If session is completed/failed, also refresh summary counts
+            if (update.status && ['completed', 'failed'].includes(update.status)) {
+              console.log('📊 Session completion via status change - refreshing summary counts');
+              // Small delay to ensure backend has processed completion fully
+              setTimeout(() => {
+                refreshSessionSummary(sessionId);
+              }, 500);
+            }
             break;
             
           case 'stage_update':
@@ -480,12 +500,12 @@ function OptimizedSessionDetailPage() {
             break;
             
           default:
-            // Unknown update type or session completion - do full refresh only for important changes
+            // Unknown update type or session completion - refresh summary only for completion
             if (update.status && ['completed', 'failed'].includes(update.status)) {
-              console.log('🔄 Session completion detected - refreshing for final summary data');
+              console.log('🔄 Session completion detected - refreshing summary data only');
               // Small delay to ensure backend has processed completion fully
               setTimeout(() => {
-                fetchSessionDetail(sessionId);
+                refreshSessionSummary(sessionId);
               }, 1000);
             } else {
               console.log('📊 Unknown update type - ignoring to avoid unnecessary refresh:', updateType);

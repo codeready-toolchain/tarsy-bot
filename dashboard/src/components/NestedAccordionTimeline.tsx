@@ -339,10 +339,14 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                 }}
               >
                 <Box display="flex" alignItems="center" gap={2} width="100%">
-                  <Avatar sx={{ 
-                    width: 40, 
+                  <Avatar sx={{
+                    width: 40,
                     height: 40,
-                    bgcolor: getStageStatusColor(stage.status) + '.main',
+                    bgcolor: (theme) => {
+                      const key = getStageStatusColor(stage.status);
+                      // @ts-expect-error palette indexing by key is runtime-safe
+                      return theme.palette[key]?.main ?? theme.palette.grey[500];
+                    },
                     color: 'white'
                   }}>
                     {getStageStatusIcon(stage.status)}
@@ -358,7 +362,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                       </Typography>
                       
                       {/* Interaction count badges similar to session summary */}
-                      {stage.total_interactions > 0 && (
+                      {stageInteractions.length > 0 && (
                         <Box display="flex" gap={0.5} alignItems="center">
                           {/* Total interactions badge */}
                           <Box sx={{ 
@@ -373,7 +377,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                             borderColor: 'grey.300'
                           }}>
                             <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>
-                              {stage.total_interactions}
+                              {stageInteractions.length}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
                               total

@@ -13,7 +13,7 @@ import type { LLMInteraction, MCPInteraction, SystemEvent } from '../types';
 
 // Lazy load the heavy components
 const CopyButton = lazy(() => import('./CopyButton'));
-const JsonDisplay = lazy(() => import('./JsonDisplay'));
+const LazyJsonDisplay = lazy(() => import('./LazyJsonDisplay'));
 
 interface LazyInteractionDetailsProps {
   type: 'llm' | 'mcp' | 'system';
@@ -496,7 +496,7 @@ const LazyDetailsRenderer = memo(({
           </Typography>
           {mcpDetails.parameters && Object.keys(mcpDetails.parameters).length > 0 && (
             <Suspense fallback={<CircularProgress size={20} />}>
-              <JsonDisplay data={mcpDetails.parameters} collapsed={1} maxHeight={400} />
+              <LazyJsonDisplay data={mcpDetails.parameters} collapsed={1} maxHeight={400} />
             </Suspense>
           )}
         </Box>
@@ -521,7 +521,7 @@ const LazyDetailsRenderer = memo(({
           </Suspense>
         </Box>
         <Suspense fallback={<CircularProgress size={20} />}>
-          <JsonDisplay 
+          <LazyJsonDisplay 
             data={isToolList(mcpDetails) ? mcpDetails.available_tools : mcpDetails.result} 
             collapsed={isToolList(mcpDetails) ? false : 1}
             maxHeight={600}
@@ -579,7 +579,7 @@ const LazyDetailsRenderer = memo(({
             </Suspense>
           </Box>
           <Suspense fallback={<CircularProgress size={20} />}>
-            <JsonDisplay data={systemDetails.metadata} collapsed={1} />
+            <LazyJsonDisplay data={systemDetails.metadata} collapsed={1} />
           </Suspense>
         </Box>
       )}
@@ -610,7 +610,7 @@ const LazyDetailsRenderer = memo(({
   // Create formatted text for copying based on interaction type
   const getFormattedCopyText = () => {
     switch (type) {
-      case 'llm':
+      case 'llm': {
         const llmDetails = details as LLMInteraction;
         const { system, user } = extractSystemUserFromRequest(llmDetails);
         const responseText = extractResponseText(llmDetails);
@@ -641,8 +641,9 @@ const LazyDetailsRenderer = memo(({
         }
         
         return conversation;
+      }
         
-      case 'mcp':
+      case 'mcp': {
         const mcpDetails = details as MCPInteraction;
         let mcpText = `=== MCP INTERACTION ===\n\n`;
         mcpText += `TOOL: ${mcpDetails.tool_name || 'Unknown'}\n\n`;
@@ -661,8 +662,9 @@ const LazyDetailsRenderer = memo(({
         mcpText += `Success: ${mcpDetails.success}\n`;
         
         return mcpText;
+      }
         
-      case 'system':
+      case 'system': {
         const systemDetails = details as SystemEvent;
         let systemText = `=== SYSTEM EVENT ===\n\n`;
         systemText += `DESCRIPTION:\n${typeof systemDetails.description === 'string' ? systemDetails.description : JSON.stringify(systemDetails.description)}\n\n`;
@@ -672,9 +674,11 @@ const LazyDetailsRenderer = memo(({
         }
         
         return systemText;
+      }
         
-      default:
+      default: {
         return `=== ${(type as string).toUpperCase()} INTERACTION ===\n\n${JSON.stringify(details, null, 2)}`;
+      }
     }
   };
 

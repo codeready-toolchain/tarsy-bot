@@ -1,4 +1,5 @@
 import { Box, Typography } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import type { StageExecution } from '../types';
 
 interface InteractionCountBadgesProps {
@@ -17,17 +18,17 @@ function InteractionCountBadges({ stage }: InteractionCountBadgesProps) {
   return (
     <Box sx={{ display: 'flex', gap: 0.5 }}>
       {stage.llm_interaction_count > 0 && (
-        <Box sx={{ 
+        <Box sx={(theme) => ({ 
           display: 'flex',
           alignItems: 'center',
           gap: 0.25,
           px: 0.75,
           py: 0.25,
-          backgroundColor: 'primary.50',
+          backgroundColor: alpha(theme.palette.primary.main, 0.08),
           borderRadius: '12px',
           border: '1px solid',
-          borderColor: 'primary.200'
-        }}>
+          borderColor: alpha(theme.palette.primary.main, 0.28)
+        })}>
           <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.7rem' }}>
             🧠 {stage.llm_interaction_count}
           </Typography>
@@ -38,17 +39,17 @@ function InteractionCountBadges({ stage }: InteractionCountBadgesProps) {
       )}
       
       {stage.mcp_communication_count > 0 && (
-        <Box sx={{ 
+        <Box sx={(theme) => ({ 
           display: 'flex',
           alignItems: 'center',
           gap: 0.25,
           px: 0.75,
           py: 0.25,
-          backgroundColor: 'secondary.50',
+          backgroundColor: alpha(theme.palette.secondary.main, 0.08),
           borderRadius: '12px',
           border: '1px solid',
-          borderColor: 'secondary.200'
-        }}>
+          borderColor: alpha(theme.palette.secondary.main, 0.28)
+        })}>
           <Typography variant="caption" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.7rem' }}>
             🔧 {stage.mcp_communication_count}
           </Typography>

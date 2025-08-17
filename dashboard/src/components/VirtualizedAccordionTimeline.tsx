@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback, lazy, Suspense } from 'react';
-import { FixedSizeList as List } from 'react-window';
+import React, { useState, useMemo, useCallback, lazy, Suspense, useRef } from 'react';
+import { VariableSizeList as List } from 'react-window';
 import {
   Box,
   Card,
@@ -17,6 +17,8 @@ import {
   Alert,
   CircularProgress,
   Skeleton,
+  useTheme,
+  alpha,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -100,11 +102,13 @@ interface VirtualizedAccordionTimelineProps {
 interface InteractionItemData {
   interactions: TimelineItem[];
   expandedInteractionDetails: Record<string, boolean>;
-  toggleInteractionDetails: (itemId: string) => void;
+  toggleInteractionDetails: (itemId: string, index: number) => void;
   stageId: string;
+  onHeightChange: (index: number, height: number) => void;
 }
 
-const ITEM_HEIGHT = 200; // Estimated height per interaction item
+const ITEM_HEIGHT = 200; // Default height per interaction item
+const EXPANDED_ITEM_HEIGHT = 400; // Estimated height when expanded
 const MAX_NON_VIRTUALIZED_ITEMS = 50; // Threshold for enabling virtualization
 
 // Enhanced loading skeleton for interaction items with glowing effect
@@ -140,7 +144,8 @@ const InteractionItem = React.memo(({ index, style, data }: {
   style: React.CSSProperties; 
   data: InteractionItemData;
 }) => {
-  const { interactions, expandedInteractionDetails, toggleInteractionDetails } = data;
+  const { interactions, expandedInteractionDetails, toggleInteractionDetails, onHeightChange } = data;
+  const itemRef = useRef<HTMLDivElement>(null);
   const interaction = interactions[index];
   
   if (!interaction) {
@@ -153,6 +158,14 @@ const InteractionItem = React.memo(({ index, style, data }: {
 
   const itemKey = interaction.event_id || `interaction-${index}`;
   const isDetailsExpanded = expandedInteractionDetails[itemKey];
+  
+  // Measure and report height changes
+  React.useEffect(() => {
+    if (itemRef.current) {
+      const height = itemRef.current.offsetHeight;
+      onHeightChange(index, height);
+    }
+  }, [isDetailsExpanded, index, onHeightChange]);
 
   // Helper functions
   const getInteractionIcon = (type: string) => {
@@ -171,7 +184,7 @@ const InteractionItem = React.memo(({ index, style, data }: {
 
 
   return (
-    <div style={style}>
+    <div style={style} ref={itemRef}>
       <Card
         elevation={2}
         sx={{ 
@@ -266,7 +279,7 @@ const InteractionItem = React.memo(({ index, style, data }: {
               pt: 0.5
             }}>
               <Box 
-                onClick={() => toggleInteractionDetails(itemKey)}
+                onClick={() => toggleInteractionDetails(itemKey, index)}
                 sx={{ 
                   display: 'flex', 
                   alignItems: 'center', 
@@ -328,6 +341,7 @@ function VirtualizedAccordionTimeline({
   chainExecution,
   maxVisibleInteractions = MAX_NON_VIRTUALIZED_ITEMS
 }: VirtualizedAccordionTimelineProps) {
+  const theme = useTheme();
   const [expandedStages, setExpandedStages] = useState<Set<string>>(
     new Set(
       chainExecution.current_stage_index !== null && 
@@ -341,6 +355,23 @@ function VirtualizedAccordionTimeline({
     chainExecution.current_stage_index ?? 0
   );
   const [expandedInteractionDetails, setExpandedInteractionDetails] = useState<Record<string, boolean>>({});
+  const listRef = useRef<List>(null);
+  const sizeMapRef = useRef<Map<number, number>>(new Map());
+  
+  // Helper function to resolve stage status to actual theme colors
+  const getResolvedStageStatusColor = useCallback((status: string) => {
+    switch (status) {
+      case 'completed':
+        return theme.palette.success.main;
+      case 'failed':
+        return theme.palette.error.main;
+      case 'active':
+        return theme.palette.primary.main;
+      case 'pending':
+      default:
+        return theme.palette.grey[600];
+    }
+  }, [theme]);
 
   const handleStageToggle = (stageId: string, stageIndex: number) => {
     const newExpanded = new Set(expandedStages);
@@ -363,11 +394,39 @@ function VirtualizedAccordionTimeline({
     setExpandedStages(new Set([stageId]));
   };
 
-  const toggleInteractionDetails = useCallback((itemId: string) => {
+  const toggleInteractionDetails = useCallback((itemId: string, index: number) => {
     setExpandedInteractionDetails(prev => ({
       ...prev,
       [itemId]: !prev[itemId]
     }));
+    
+    // Reset the list layout from this index onward
+    if (listRef.current) {
+      listRef.current.resetAfterIndex(index, true);
+    }
+  }, []);
+  
+  // Callback to handle height changes
+  const handleHeightChange = useCallback((index: number, height: number) => {
+    if (sizeMapRef.current.get(index) !== height) {
+      sizeMapRef.current.set(index, height);
+      // Trigger re-render of the list item if needed
+      if (listRef.current) {
+        listRef.current.resetAfterIndex(index, true);
+      }
+    }
+  }, []);
+  
+  // Item size resolver for VariableSizeList
+  const getItemSize = useCallback((index: number) => {
+    const storedSize = sizeMapRef.current.get(index);
+    if (storedSize !== undefined) {
+      return storedSize;
+    }
+    
+    // Estimate size based on expansion state if we have the data
+    // This is a fallback for initial render before measurements
+    return ITEM_HEIGHT;
   }, []);
 
   // Memoized stage interactions
@@ -524,7 +583,7 @@ function VirtualizedAccordionTimeline({
                 mb: 1,
                 '&:before': { display: 'none' },
                 boxShadow: isCurrentStage ? 3 : 1,
-                bgcolor: isCurrentStage ? 'primary.50' : 'inherit',
+                bgcolor: isCurrentStage ? alpha(theme.palette.primary.main, 0.06) : 'inherit',
                 border: isCurrentStage ? 2 : 1,
                 borderColor: isCurrentStage ? 'primary.main' : 'divider'
               }}
@@ -532,9 +591,9 @@ function VirtualizedAccordionTimeline({
               <AccordionSummary 
                 expandIcon={<ExpandMore />}
                 sx={{ 
-                  bgcolor: isCurrentStage ? 'primary.100' : 'grey.50',
+                  bgcolor: isCurrentStage ? alpha(theme.palette.primary.main, 0.12) : 'grey.50',
                   '&.Mui-expanded': {
-                    bgcolor: isCurrentStage ? 'primary.100' : 'grey.100'
+                    bgcolor: isCurrentStage ? alpha(theme.palette.primary.main, 0.12) : 'grey.100'
                   }
                 }}
               >
@@ -542,7 +601,7 @@ function VirtualizedAccordionTimeline({
                   <Avatar sx={{ 
                     width: 40, 
                     height: 40,
-                    bgcolor: getStageStatusColor(stage.status) + '.main',
+                    bgcolor: getResolvedStageStatusColor(stage.status),
                     color: 'white'
                   }}>
                     {getStageStatusIconJSX(stage.status)}
@@ -654,15 +713,17 @@ function VirtualizedAccordionTimeline({
                     // Virtualized rendering for large interaction lists
                     <Box sx={{ height: Math.min(600, stageInteractions.length * 60), width: '100%' }}>
                       <List
+                        ref={listRef}
                         height={Math.min(600, stageInteractions.length * 60)}
                         width="100%"
                         itemCount={stageInteractions.length}
-                        itemSize={ITEM_HEIGHT}
+                        itemSize={getItemSize}
                         itemData={{
                           interactions: stageInteractions,
                           expandedInteractionDetails,
                           toggleInteractionDetails,
-                          stageId: stage.execution_id
+                          stageId: stage.execution_id,
+                          onHeightChange: handleHeightChange
                         }}
                         overscanCount={5} // Pre-render 5 items above/below visible area
                       >
@@ -683,8 +744,9 @@ function VirtualizedAccordionTimeline({
                             data={{
                               interactions: stageInteractions,
                               expandedInteractionDetails,
-                              toggleInteractionDetails,
-                              stageId: stage.execution_id
+                              toggleInteractionDetails: (itemId: string) => toggleInteractionDetails(itemId, interactionIndex),
+                              stageId: stage.execution_id,
+                              onHeightChange: () => {} // No-op for non-virtualized items
                             }}
                           />
                         );

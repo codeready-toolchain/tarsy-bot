@@ -63,8 +63,19 @@ function LazyJsonDisplay({
   
   // Calculate content size
   const contentSize = useMemo(() => {
-    const jsonString = JSON.stringify(data);
-    return jsonString.length;
+    try {
+      const json = JSON.stringify(data);
+      if (json === undefined) {
+        // JSON.stringify returned undefined, use fallback
+        const fallback = String(data);
+        return (fallback ?? "").length;
+      }
+      return json.length;
+    } catch (error) {
+      // Unserializable data, estimate size from string representation
+      const fallback = String(data);
+      return (fallback ?? "").length;
+    }
   }, [data]);
   
   const isLargeContent = contentSize > maxContentLength;
@@ -87,7 +98,16 @@ function LazyJsonDisplay({
           title: 'Large Content',
           type: 'json',
           content: data,
-          raw: JSON.stringify(data),
+          raw: (() => {
+            try {
+              const json = JSON.stringify(data);
+              return json ?? '[undefined - not serializable]';
+            } catch (error) {
+              // Provide informative fallback for unserializable data
+              const errorMsg = error instanceof Error ? error.message : 'unknown error';
+              return `[unserializable data: ${errorMsg}]\n\nFallback representation:\n${String(data).slice(0, 500)}${String(data).length > 500 ? '...' : ''}`;
+            }
+          })(),
           size: contentSize
         }]
       };

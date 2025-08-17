@@ -7,7 +7,7 @@ import { formatTimestamp, formatDurationMs } from './timestamp';
  */
 
 // Stage status color mapping
-export const getStageStatusColor = (status: string): 'success' | 'error' | 'primary' | 'default' => {
+export const getStageStatusColor = (status: string): 'success' | 'error' | 'primary' | 'warning' | 'default' => {
   switch (status) {
     case 'completed':
       return 'success';
@@ -16,6 +16,7 @@ export const getStageStatusColor = (status: string): 'success' | 'error' | 'prim
     case 'active':
       return 'primary';
     case 'pending':
+      return 'warning';
     default:
       return 'default';
   }
