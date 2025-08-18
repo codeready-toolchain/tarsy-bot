@@ -93,7 +93,7 @@ class TestKubernetesAgentInitialization:
         assert hasattr(agent, '_iteration_count')
         assert hasattr(agent, 'max_iterations')
         assert hasattr(agent, 'process_alert')
-        assert hasattr(agent, 'analyze_alert')
+
         assert hasattr(agent, '_compose_instructions')
     
     def test_multiple_instances_independence(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
@@ -198,20 +198,6 @@ class TestKubernetesAgentPromptBuilding:
                 }
             ]
         }
-    
-    @patch('tarsy.agents.kubernetes_agent.super')
-    def test_build_analysis_prompt_uses_base_implementation(self, mock_super, kubernetes_agent, sample_alert_data):
-        """Test that build_analysis_prompt uses BaseAgent implementation."""
-        mock_base_prompt = "Base analysis prompt"
-        mock_super().build_analysis_prompt.return_value = mock_base_prompt
-        
-        runbook_content = "Test runbook content"
-        mcp_data = {"test": "data"}
-        
-        result = kubernetes_agent.build_analysis_prompt(sample_alert_data, runbook_content, mcp_data)
-        
-        assert result == mock_base_prompt
-        mock_super().build_analysis_prompt.assert_called_once_with(sample_alert_data, runbook_content, mcp_data)
     
     @patch('tarsy.agents.kubernetes_agent.super')
     def test_build_mcp_tool_selection_prompt_adds_kubernetes_guidance(self, mock_super, kubernetes_agent, sample_alert_data, sample_available_tools):
@@ -408,29 +394,6 @@ class TestKubernetesAgentLLMIntegration:
             "namespace": "production"
         }
     
-    async def test_analyze_alert_calls_llm_with_kubernetes_context(self, kubernetes_agent_with_mocks, sample_alert_data):
-        """Test that analyze_alert calls LLM with Kubernetes-specific context."""
-        agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_mocks
-        mock_llm.generate_response = AsyncMock(return_value="Analysis result")
-        
-        runbook_content = "Test runbook"
-        mcp_data = {"test": "data"}
-        
-        result = await agent.analyze_alert(sample_alert_data, runbook_content, mcp_data, session_id="test-session-123")
-        
-        assert result == "Analysis result"
-        mock_llm.generate_response.assert_called_once()
-        
-        # Verify the messages structure
-        call_args = mock_llm.generate_response.call_args[0]
-        messages = call_args[0]
-        assert len(messages) == 2
-        assert messages[0].role == "system"
-        assert messages[1].role == "user"
-        
-        # Verify system message includes Kubernetes server instructions
-        assert "Test K8s instructions" in messages[0].content
-    
     async def test_determine_mcp_tools_with_kubernetes_guidance(self, kubernetes_agent_with_mocks, sample_alert_data):
         """Test that determine_mcp_tools includes Kubernetes-specific guidance."""
         agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_mocks
@@ -460,15 +423,6 @@ class TestKubernetesAgentLLMIntegration:
         call_args = mock_llm.generate_response.call_args[0]
         user_message = call_args[0][1].content
         assert "Kubernetes-Specific Tool Selection Strategy" in user_message
-    
-    async def test_analyze_alert_error_handling(self, kubernetes_agent_with_mocks, sample_alert_data):
-        """Test error handling in analyze_alert."""
-        agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_mocks
-        mock_llm.generate_response = AsyncMock(side_effect=Exception("LLM error"))
-        
-        with pytest.raises(Exception, match="Analysis error: LLM error"):
-            await agent.analyze_alert(sample_alert_data, "runbook", {}, session_id="test-session-123")
-
 
 @pytest.mark.unit
 class TestKubernetesAgentMCPIntegration:

@@ -155,20 +155,6 @@ class BaseAgent(ABC):
         """
         pass
 
-    def build_analysis_prompt(self, alert_data: Dict, runbook_content: str, mcp_data: Dict) -> str:
-        """
-        Build analysis prompt leveraging agent-specific context.
-        
-        Agents can override this method to customize prompt building based on their domain.
-        The default implementation provides a comprehensive SRE analysis prompt.
-        """
-        context = self.create_prompt_context(
-            alert_data=alert_data,
-            runbook_content=runbook_content,
-            mcp_data=mcp_data
-        )
-        return self._prompt_builder.build_analysis_prompt(context)
-
     def build_mcp_tool_selection_prompt(self, alert_data: Dict, runbook_content: str, available_tools: Dict) -> str:
         """
         Build MCP tool selection prompt with agent-specific context.
@@ -276,37 +262,7 @@ class BaseAgent(ABC):
         return "\n\n".join(guidance_parts) if guidance_parts else ""
 
 
-    async def analyze_alert(self, 
-                          alert_data: Dict, 
-                          runbook_content: str, 
-                          mcp_data: Dict,
-                          session_id: str,
-                          **kwargs) -> str:
-        """Analyze an alert using the agent's LLM capabilities."""
-        logger.info(f"Starting alert analysis with {self.__class__.__name__} - Alert: {alert_data.get('alert_type', alert_data.get('alert', 'unknown'))}")
-        
-        # Build comprehensive prompt using agent-specific prompt building
-        prompt = self.build_analysis_prompt(alert_data, runbook_content, mcp_data)
-        
-        # Create structured messages for LLM
-        messages = [
-            LLMMessage(
-                role="system",
-                content=self._compose_instructions()
-            ),
-            LLMMessage(
-                role="user",
-                content=prompt
-            )
-        ]
-        
-        try:
-            result = await self.llm_client.generate_response(messages, session_id, self._current_stage_execution_id, **kwargs)
-            logger.info(f"Alert analysis completed with {self.__class__.__name__}")
-            return result
-        except Exception as e:
-            logger.error(f"Alert analysis failed with {self.__class__.__name__}: {str(e)}")
-            raise Exception(f"Analysis error: {str(e)}")
+
 
     async def determine_mcp_tools(self,
                                 alert_data: Dict,

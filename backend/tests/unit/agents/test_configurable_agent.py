@@ -220,9 +220,9 @@ class TestConfigurableAgent:
     def test_inheritance_from_base_agent(self, agent):
         """Test that ConfigurableAgent inherits from BaseAgent properly."""
         # Check that required BaseAgent methods exist
-        assert hasattr(agent, 'analyze_alert')
         assert hasattr(agent, 'mcp_servers')
         assert hasattr(agent, 'custom_instructions')
+        assert hasattr(agent, 'process_alert')  # Main processing method
         
         # Check that agent has a proper name
         assert agent._generate_agent_name() == "ConfigurableAgent(test-security-agent)"

@@ -375,13 +375,6 @@ class TestPromptBuilderBasicMethods:
             max_iterations=5
         )
 
-    def test_build_analysis_prompt(self, builder, context):
-        """Test building analysis prompt."""
-        prompt = builder.build_analysis_prompt(context)
-        assert "TestAgent" in prompt
-        assert "Test alert" in prompt
-        assert "Test Runbook" in prompt
-
     def test_build_mcp_tool_selection_prompt(self, builder, context):
         """Test building MCP tool selection prompt."""
         prompt = builder.build_mcp_tool_selection_prompt(context)
@@ -859,30 +852,6 @@ class TestPromptBuilderPrivateMethods:
         assert "## Runbook Content" in result
         assert "No runbook available" in result
 
-    def test_build_mcp_data_section_with_data(self, builder, context):
-        """Test _build_mcp_data_section with MCP data."""
-        result = builder._build_mcp_data_section(context.mcp_data)
-        
-        assert "## System Data (MCP Servers)" in result
-        assert "### Kubernetes-Server MCP Server Data" in result
-        assert "get_pods" in result
-        assert "Permission denied" in result
-        assert "### Legacy-Server MCP Server Data" in result
-
-    def test_build_mcp_data_section_empty(self, builder):
-        """Test _build_mcp_data_section with empty data."""
-        result = builder._build_mcp_data_section({})
-        
-        assert "## System Data (MCP Servers)" in result
-        assert "No system data available" in result
-
-    def test_build_mcp_data_section_none(self, builder):
-        """Test _build_mcp_data_section with None data."""
-        result = builder._build_mcp_data_section(None)
-        
-        assert "## System Data (MCP Servers)" in result
-        assert "No system data available" in result
-
     def test_build_agent_specific_analysis_guidance(self, builder, context):
         """Test _build_agent_specific_analysis_guidance method."""
         result = builder._build_agent_specific_analysis_guidance(context)
@@ -906,14 +875,6 @@ class TestPromptBuilderPrivateMethods:
         
         # When no guidance is available, empty string is returned
         assert result == ""
-
-    def test_build_analysis_instructions(self, builder):
-        """Test _build_analysis_instructions method."""
-        result = builder._build_analysis_instructions()
-        
-        assert isinstance(result, str)
-        assert len(result) > 0
-        assert "analysis" in result.lower() or "instructions" in result.lower()
 
     def test_format_iteration_history_complex(self, builder, context):
         """Test _format_iteration_history with complex data."""
@@ -1057,7 +1018,8 @@ class TestPromptBuilderChainFunctionality:
 
     def test_build_chain_prompt_components(self, builder, chain_context):
         """Test that chain prompts include stage-attributed data."""
-        analysis_prompt = builder.build_analysis_prompt(chain_context)
+        # Use final analysis prompt instead of removed build_analysis_prompt
+        analysis_prompt = builder.build_final_analysis_prompt(chain_context)
         
         # The analysis prompt includes alert and runbook data
         assert "service down" in analysis_prompt
@@ -1071,7 +1033,6 @@ class TestPromptBuilderChainFunctionality:
         assert "remediation" in result
         assert "issue found" in result
         assert "applied" in result
-
 
 @pytest.mark.unit
 class TestPromptBuilderEdgeCases:
@@ -1096,35 +1057,10 @@ class TestPromptBuilderEdgeCases:
         context_result = builder._build_context_section(context)
         alert_result = builder._build_alert_section(None)
         runbook_result = builder._build_runbook_section(None)
-        mcp_result = builder._build_mcp_data_section(None)
         
         assert isinstance(context_result, str)
         assert isinstance(alert_result, str)
         assert isinstance(runbook_result, str)
-        assert isinstance(mcp_result, str)
-
-    def test_complex_nested_mcp_data(self, builder):
-        """Test MCP data section with deeply nested structures."""
-        complex_mcp_data = {
-            "complex-server": {
-                "nested_result": {
-                    "level1": {
-                        "level2": {
-                            "level3": ["item1", "item2", {"deep": "value"}]
-                        }
-                    }
-                },
-                "array_result": [{"item": 1}, {"item": 2}],
-                "string_result": "simple string"
-            }
-        }
-        
-        result = builder._build_mcp_data_section(complex_mcp_data)
-        
-        assert "level1" in result
-        assert "level2" in result
-        assert "level3" in result
-        assert "simple string" in result
 
     def test_very_long_iteration_history(self, builder):
         """Test iteration history with many iterations."""

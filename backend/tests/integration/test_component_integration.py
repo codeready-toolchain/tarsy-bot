@@ -410,28 +410,24 @@ class TestServiceInteractionPatterns:
             mcp_registry=mock_mcp_server_registry
         )
         
-        alert_data = {
-            "alert": sample_alert.alert_type,
-            "namespace": sample_alert.data.get('namespace', ''),
-            "message": sample_alert.data.get('message', '')
-        }
-        
-        mcp_data = {
-            "kubernetes-server": [
-                {"tool": "kubectl_get_namespace", "result": {"status": "Terminating"}}
-            ]
-        }
+        # Create AlertProcessingData for the new architecture
+        from tarsy.models.alert_processing import AlertProcessingData
+        alert_processing_data = AlertProcessingData(
+            alert_type=sample_alert.alert_type,
+            alert_data=sample_alert.data,
+            runbook_content=sample_runbook_content
+        )
         
         # Act
-        result = await agent.analyze_alert(alert_data, sample_runbook_content, mcp_data, "test-session-integration")
+        result = await agent.process_alert(alert_processing_data, "test-session-integration")
         
         # Assert
-        assert isinstance(result, str)
-        assert len(result) > 0
-        mock_llm_manager.get_client().generate_response.assert_called_once()
-
-
-
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        assert isinstance(result, AgentExecutionResult)
+        assert result.result_summary
+        assert len(result.result_summary) > 0
+        assert result.status == StageStatus.COMPLETED
+        mock_llm_manager.get_client().generate_response.assert_called()
 
 @pytest.mark.asyncio
 @pytest.mark.integration

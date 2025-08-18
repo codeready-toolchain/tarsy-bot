@@ -496,72 +496,44 @@ class TestBaseAgentCoreProcessing:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    @patch('tarsy.agents.base_agent.get_prompt_builder')
-    async def test_analyze_alert_success(self, mock_get_prompt_builder, base_agent, mock_llm_client, sample_alert_data):
-        """Test successful alert analysis."""
-        # Mock prompt builder
-        mock_prompt_builder = Mock()
-        mock_prompt_builder.get_general_instructions.return_value = "General instructions"
-        mock_get_prompt_builder.return_value = mock_prompt_builder
-        base_agent._prompt_builder = mock_prompt_builder
-        base_agent.build_analysis_prompt = Mock(return_value="Analysis prompt")
-        
-        runbook_content = "Test runbook"
-        mcp_data = {"test-server": [{"tool": "kubectl", "result": "pod logs"}]}
-        
-        result = await base_agent.analyze_alert(sample_alert_data, runbook_content, mcp_data, "test-session-123")
-        
-        assert result == "Detailed analysis result"
-        mock_llm_client.generate_response.assert_called_once()
-        
-        # Verify LLM was called with proper message structure
-        call_args = mock_llm_client.generate_response.call_args[0][0]
-        assert len(call_args) == 2  # System + user messages
-        assert call_args[0].role == "system"
-        assert call_args[1].role == "user"
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_analyze_alert_llm_error(self, base_agent, mock_llm_client, sample_alert_data):
-        """Test alert analysis with LLM error."""
-        mock_llm_client.generate_response.side_effect = Exception("LLM service unavailable")
-        
-        with pytest.raises(Exception, match="Analysis error: LLM service unavailable"):
-            await base_agent.analyze_alert(sample_alert_data, "runbook", {}, "test-session-error")
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    @patch('tarsy.agents.base_agent.get_prompt_builder')
-    async def test_determine_mcp_tools_success(self, mock_get_prompt_builder, base_agent, mock_llm_client):
+    async def test_determine_mcp_tools_success(self):
         """Test successful MCP tool selection."""
-        # Mock LLM response with proper JSON
-        mock_llm_client.generate_response.return_value = '''[
+        # Create fresh mocks
+        mock_llm_client = Mock(spec=LLMClient)
+        mock_llm_client.generate_response = AsyncMock(return_value='''[
             {
                 "server": "test-server",
                 "tool": "kubectl-get-pods",
                 "parameters": {"namespace": "default"},
                 "reason": "Check pod status"
             }
-        ]'''
+        ]''')
+        
+        mock_mcp_client = Mock(spec=MCPClient)
+        mock_mcp_registry = Mock(spec=MCPServerRegistry)
+        
+        # Create agent with mocks
+        base_agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
         
         # Mock prompt builder
-        mock_prompt_builder = Mock()
-        mock_prompt_builder.get_mcp_tool_selection_system_message.return_value = "Tool selection system message"
-        mock_get_prompt_builder.return_value = mock_prompt_builder
-        base_agent._prompt_builder = mock_prompt_builder
-        base_agent.build_mcp_tool_selection_prompt = Mock(return_value="Tool selection prompt")
-        
-        alert_data = {"alert": "TestAlert"}
-        runbook_content = "Test runbook"
-        available_tools = {"tools": [{"name": "kubectl-get-pods"}]}
-        
-        result = await base_agent.determine_mcp_tools(alert_data, runbook_content, available_tools, "test-session-123")
-        
-        assert len(result) == 1
-        assert result[0]["server"] == "test-server"
-        assert result[0]["tool"] == "kubectl-get-pods"
-        assert result[0]["parameters"] == {"namespace": "default"}
-        assert result[0]["reason"] == "Check pod status"
+        with patch('tarsy.agents.base_agent.get_prompt_builder') as mock_get_prompt_builder:
+            mock_prompt_builder = Mock()
+            mock_prompt_builder.get_mcp_tool_selection_system_message.return_value = "Tool selection system message"
+            mock_get_prompt_builder.return_value = mock_prompt_builder
+            base_agent._prompt_builder = mock_prompt_builder
+            base_agent.build_mcp_tool_selection_prompt = Mock(return_value="Tool selection prompt")
+            
+            alert_data = {"alert": "TestAlert"}
+            runbook_content = "Test runbook"
+            available_tools = {"tools": [{"name": "kubectl-get-pods"}]}
+            
+            result = await base_agent.determine_mcp_tools(alert_data, runbook_content, available_tools, "test-session-123")
+            
+            assert len(result) == 1
+            assert result[0]["server"] == "test-server"
+            assert result[0]["tool"] == "kubectl-get-pods"
+            assert result[0]["parameters"] == {"namespace": "default"}
+            assert result[0]["reason"] == "Check pod status"
 
     @pytest.mark.unit
     @pytest.mark.asyncio

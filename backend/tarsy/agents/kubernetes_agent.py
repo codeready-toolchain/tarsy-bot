@@ -43,17 +43,6 @@ class KubernetesAgent(BaseAgent):
         """
         return ""
     
-    def build_analysis_prompt(self, alert_data: Dict, runbook_content: str, mcp_data: Dict) -> str:
-        """
-        Build Kubernetes-specific analysis prompt.
-        
-        This method can be overridden to provide Kubernetes-specific prompt
-        customization beyond the default implementation.
-        """
-        # For now, use the default implementation from BaseAgent
-        # Future enhancements could add Kubernetes-specific prompt sections
-        return super().build_analysis_prompt(alert_data, runbook_content, mcp_data)
-    
     def build_mcp_tool_selection_prompt(self, alert_data: Dict, runbook_content: str, available_tools: Dict) -> str:
         """
         Build Kubernetes-specific tool selection prompt.

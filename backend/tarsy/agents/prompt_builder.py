@@ -48,26 +48,7 @@ class PromptBuilder:
         """Initialize the prompt builder."""
         pass
     
-    def build_analysis_prompt(self, context: PromptContext) -> str:
-        """
-        Build comprehensive analysis prompt for alert analysis.
-        
-        Args:
-            context: Prompt context containing all necessary data
-            
-        Returns:
-            Formatted analysis prompt
-        """
-        prompt_parts = [
-            self._build_context_section(context),
-            self._build_alert_section(context.alert_data),
-            self._build_runbook_section(context.runbook_content),
-            self._build_mcp_data_section(context.mcp_data),
-            self._build_agent_specific_analysis_guidance(context),
-            self._build_analysis_instructions()
-        ]
-        
-        return "\n\n".join(prompt_parts)
+
     
     def build_mcp_tool_selection_prompt(self, context: PromptContext) -> str:
         """
@@ -246,36 +227,6 @@ Please provide detailed, actionable insights about what's happening and potentia
 <!-- RUNBOOK END -->
 ```"""
     
-    def _build_mcp_data_section(self, mcp_data: Dict) -> str:
-        """Build the MCP data section of the prompt."""
-        if not mcp_data:
-            return "## System Data (MCP Servers)\n\nNo system data available from MCP servers."
-        
-        mcp_text = "## System Data (MCP Servers)\n\n"
-        
-        for server_name, server_data in mcp_data.items():
-            mcp_text += f"### {server_name.title()} MCP Server Data\n\n"
-            
-            if isinstance(server_data, list):
-                # Handle list of tool results
-                for i, item in enumerate(server_data):
-                    tool_name = item.get('tool', f'result_{i+1}')
-                    if 'result' in item:
-                        mcp_text += f"**{tool_name}_result:**\n```\n{self._format_data(item['result'])}\n```\n\n"
-                    elif 'error' in item:
-                        mcp_text += f"**{tool_name}_error:** {item['error']}\n\n"
-                    else:
-                        mcp_text += f"**{tool_name}:**\n```\n{self._format_data(item)}\n```\n\n"
-            elif isinstance(server_data, dict):
-                # Handle legacy dict format (for backward compatibility)
-                for key, value in server_data.items():
-                    mcp_text += f"**{key}:**\n```\n{self._format_data(value)}\n```\n\n"
-            else:
-                # Handle other data types
-                mcp_text += f"```\n{self._format_data(server_data)}\n```\n\n"
-        
-        return mcp_text.strip()
-    
     def _build_agent_specific_analysis_guidance(self, context: PromptContext) -> str:
         """Build agent-specific analysis guidance."""
         guidance_parts = []
@@ -291,75 +242,6 @@ Please provide detailed, actionable insights about what's happening and potentia
             guidance_parts.append(context.agent_specific_guidance)
         
         return "\n\n".join(guidance_parts) if guidance_parts else ""
-    
-    def _build_analysis_instructions(self) -> str:
-        """Build the analysis instructions section."""
-        return """## Analysis Instructions
-
-Please provide your analysis in the following structured format:
-
-# 🚨 1. QUICK SUMMARY
-**Provide a brief, concrete summary (2-3 sentences maximum):**
-- What specific resource is affected (include **name**, **type**, **namespace** if applicable)
-- What exactly is wrong with it
-- Root cause in simple terms
-
----
-
-# ⚡ 2. RECOMMENDED ACTIONS
-
-## 🔧 Immediate Fix Actions (if any):
-**List specific commands that could potentially resolve the issue, in order of priority:**
-- Command 1. Explanation of what this does
-```command
-command here
-```
-- Command 2. Explanation of what this does
-```command
-command here
-```
-
-## 🔍 Investigation Actions (if needed):
-**List commands for further investigation:**
-- Command 1. What information this will provide
-```command
-command here
-```
-- Command 2. What information this will provide
-```command
-command here
-```
-
----
-
-## 3. DETAILED ANALYSIS
-
-### Root Cause Analysis:
-- What is the primary cause of this alert?
-- What evidence from the system data supports this conclusion?
-- Technical details and context
-
-### Current System State:
-- Detailed state of affected systems and resources
-- Any blocked processes or dependencies preventing resolution
-- Related system dependencies and interactions
-
-### Impact Assessment:
-- Current impact on system functionality
-- Potential escalation scenarios
-- Affected services or users
-
-### Prevention Measures:
-- How can this issue be prevented in the future?
-- Monitoring improvements needed
-- Process or automation recommendations
-
-### Additional Context:
-- Related systems that should be monitored
-- Historical patterns or similar incidents
-- Any other relevant technical details
-
-Please be specific and reference the actual data provided. Use exact resource names, namespaces, and status information from the system data."""
     
     def _format_data(self, data) -> str:
         """Format data for display in prompt."""
