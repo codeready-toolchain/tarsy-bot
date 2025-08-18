@@ -103,7 +103,6 @@ class TestBaseAgentAbstractInterface:
         from tarsy.models.constants import IterationStrategy
         assert agent.iteration_strategy == IterationStrategy.REACT
 
-
 @pytest.mark.unit
 class TestBaseAgentUtilityMethods:
     """Test utility and helper methods."""
@@ -151,8 +150,6 @@ class TestBaseAgentUtilityMethods:
             }
         )
 
-
-
     @pytest.mark.unit
     @patch('tarsy.agents.base_agent.get_prompt_builder')
     def test_get_server_specific_tool_guidance(self, mock_get_prompt_builder, base_agent, mock_mcp_registry):
@@ -199,7 +196,6 @@ class TestBaseAgentUtilityMethods:
         guidance = base_agent._get_server_specific_tool_guidance()
         # When there are no server configs, it returns empty string
         assert guidance == ""
-
 
 @pytest.mark.unit
 class TestBaseAgentInstructionComposition:
@@ -284,22 +280,14 @@ class TestBaseAgentInstructionComposition:
         context = base_agent.create_prompt_context(
             alert_data=alert_data,
             runbook_content=runbook_content,
-            mcp_data=mcp_data,
-            available_tools=available_tools,
-            iteration_history=iteration_history,
-            current_iteration=1,
-            max_iterations=3
+            available_tools=available_tools
         )
         
         assert context.agent_name == "TestConcreteAgent"
         assert context.alert_data == alert_data
         assert context.runbook_content == runbook_content
-        assert context.mcp_data == mcp_data
         assert context.mcp_servers == ["test-server"]
         assert context.available_tools == available_tools
-        assert context.iteration_history == iteration_history
-        assert context.current_iteration == 1
-        assert context.max_iterations == 3
 
 
 @pytest.mark.unit
@@ -454,211 +442,6 @@ class TestBaseAgentMCPIntegration:
         assert "test-server" in results
         assert "Tool execution failed" in results["test-server"][0]["error"]
 
-
-@pytest.mark.unit 
-
-@pytest.mark.unit
-class TestBaseAgentCoreProcessing:
-    """Test core processing methods including LLM interactions."""
-    
-    @pytest.fixture
-    def mock_llm_client(self):
-        client = Mock(spec=LLMClient)
-        client.generate_response = AsyncMock(return_value="Detailed analysis result")
-        return client
-    
-    @pytest.fixture
-    def mock_mcp_client(self):
-        return Mock(spec=MCPClient)
-    
-    @pytest.fixture
-    def mock_mcp_registry(self):
-        registry = Mock(spec=MCPServerRegistry)
-        mock_config = Mock()
-        mock_config.server_id = "test-server"
-        mock_config.server_type = "kubernetes"
-        mock_config.instructions = "Use kubectl for analysis"
-        registry.get_server_configs.return_value = [mock_config]
-        return registry
-    
-    @pytest.fixture
-    def base_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
-        return TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
-
-    @pytest.fixture
-    def sample_alert_data(self):
-        return {
-            "alert": "PodCrashLoopBackOff",
-            "message": "Pod is failing to start",
-            "severity": "critical",
-            "cluster": "prod"
-        }
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_determine_mcp_tools_success(self):
-        """Test successful MCP tool selection."""
-        # Create fresh mocks
-        mock_llm_client = Mock(spec=LLMClient)
-        mock_llm_client.generate_response = AsyncMock(return_value='''[
-            {
-                "server": "test-server",
-                "tool": "kubectl-get-pods",
-                "parameters": {"namespace": "default"},
-                "reason": "Check pod status"
-            }
-        ]''')
-        
-        mock_mcp_client = Mock(spec=MCPClient)
-        mock_mcp_registry = Mock(spec=MCPServerRegistry)
-        
-        # Create agent with mocks
-        base_agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
-        
-        # Mock prompt builder
-        with patch('tarsy.agents.base_agent.get_prompt_builder') as mock_get_prompt_builder:
-            mock_prompt_builder = Mock()
-            mock_prompt_builder.get_mcp_tool_selection_system_message.return_value = "Tool selection system message"
-            mock_get_prompt_builder.return_value = mock_prompt_builder
-            base_agent._prompt_builder = mock_prompt_builder
-            base_agent.build_mcp_tool_selection_prompt = Mock(return_value="Tool selection prompt")
-            
-            alert_data = {"alert": "TestAlert"}
-            runbook_content = "Test runbook"
-            available_tools = {"tools": [{"name": "kubectl-get-pods"}]}
-            
-            result = await base_agent.determine_mcp_tools(alert_data, runbook_content, available_tools, "test-session-123")
-            
-            assert len(result) == 1
-            assert result[0]["server"] == "test-server"
-            assert result[0]["tool"] == "kubectl-get-pods"
-            assert result[0]["parameters"] == {"namespace": "default"}
-            assert result[0]["reason"] == "Check pod status"
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_determine_mcp_tools_invalid_json(self, base_agent, mock_llm_client):
-        """Test MCP tool selection with invalid JSON response."""
-        mock_llm_client.generate_response.return_value = "Not valid JSON"
-        
-        with pytest.raises(Exception, match="Tool selection error"):
-            await base_agent.determine_mcp_tools({}, "", {}, "test-session-error")
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_determine_mcp_tools_missing_fields(self, base_agent, mock_llm_client):
-        """Test MCP tool selection with missing required fields."""
-        mock_llm_client.generate_response.return_value = '''[
-            {
-                "server": "test-server",
-                "tool": "kubectl-get-pods"
-                // Missing "parameters" and "reason"
-            }
-        ]'''
-        
-        with pytest.raises(Exception, match="Tool selection error"):
-            await base_agent.determine_mcp_tools({}, "", {}, "test-session-error")
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    @patch('tarsy.agents.base_agent.get_prompt_builder')
-    async def test_determine_next_mcp_tools_continue(self, mock_get_prompt_builder, base_agent, mock_llm_client):
-        """Test determining next MCP tools when continuing iteration."""
-        # Mock LLM response indicating to continue
-        mock_llm_client.generate_response.return_value = '''{
-            "continue": true,
-            "tools": [
-                {
-                    "server": "test-server",
-                    "tool": "kubectl-describe",
-                    "parameters": {"resource": "pod", "name": "failing-pod"},
-                    "reason": "Get detailed pod information"
-                }
-            ]
-        }'''
-        
-        # Mock prompt builder
-        mock_prompt_builder = Mock()
-        mock_prompt_builder.get_iterative_mcp_tool_selection_system_message.return_value = "Iterative system message"
-        mock_get_prompt_builder.return_value = mock_prompt_builder
-        base_agent._prompt_builder = mock_prompt_builder
-        base_agent.build_iterative_mcp_tool_selection_prompt = Mock(return_value="Iterative prompt")
-        
-        alert_data = {"alert": "TestAlert"}
-        runbook_content = "Test runbook"
-        available_tools = {"tools": []}
-        iteration_history = [{"tools_called": [], "mcp_data": {}}]
-        
-        result = await base_agent.determine_next_mcp_tools(
-            alert_data, runbook_content, available_tools, iteration_history, 1, "test-session-123"
-        )
-        
-        assert result["continue"] is True
-        assert len(result["tools"]) == 1
-        assert result["tools"][0]["tool"] == "kubectl-describe"
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_determine_next_mcp_tools_stop(self, base_agent, mock_llm_client):
-        """Test determining next MCP tools when stopping iteration."""
-        mock_llm_client.generate_response.return_value = '{"continue": false}'
-        
-        result = await base_agent.determine_next_mcp_tools({}, "", {}, [], 2, "test-session-stop")
-        
-        assert result["continue"] is False
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_determine_next_mcp_tools_invalid_format(self, base_agent, mock_llm_client):
-        """Test determining next MCP tools with invalid response format."""
-        mock_llm_client.generate_response.return_value = '{"missing_continue_field": true}'
-        
-        with pytest.raises(Exception, match="Iterative tool selection error"):
-            await base_agent.determine_next_mcp_tools({}, "", {}, [], 1, "test-session-error")
-
-
-
-
-
-        client = Mock(spec=LLMClient)
-        client.generate_response = AsyncMock()
-        return client
-    
-    @pytest.fixture
-    def mock_mcp_client(self):
-        client = Mock(spec=MCPClient)
-        client.list_tools = AsyncMock(return_value={
-            "test-server": [{"name": "kubectl-get", "description": "Get resources"}]
-        })
-        client.call_tool = AsyncMock(return_value={"status": "success", "data": "pod info"})
-        return client
-    
-    @pytest.fixture
-    def mock_mcp_registry(self):
-        registry = Mock(spec=MCPServerRegistry)
-        mock_config = Mock()
-        mock_config.server_id = "test-server"
-        mock_config.server_type = "kubernetes"
-        mock_config.instructions = "Use kubectl for analysis"
-        registry.get_server_configs.return_value = [mock_config]
-        return registry
-    
-    @pytest.fixture
-    def base_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
-        agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
-        # The max_iterations property is read-only, we can't set it in tests
-        return agent
-
-    @pytest.fixture
-    def sample_alert_data(self):
-        return {
-            "alert": "PodCrashLoopBackOff",
-            "message": "Pod is failing to start",
-            "severity": "critical",
-            "cluster": "prod"
-        }
-
-
 @pytest.mark.unit
 class TestBaseAgentErrorHandling:
     """Test comprehensive error handling scenarios."""
@@ -709,8 +492,6 @@ class TestBaseAgentErrorHandling:
         
         assert result.status.value == "failed"
         assert "MCP config error" in result.error_message
-
-
 
     @pytest.mark.asyncio
     async def test_process_alert_success_flow(self, base_agent, mock_mcp_client, mock_llm_client, sample_alert):

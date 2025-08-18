@@ -5,7 +5,7 @@ This agent inherits from BaseAgent and specializes in Kubernetes operations
 by defining specific MCP servers and custom instructions.
 """
 
-from typing import Dict, List
+from typing import List
 
 from tarsy.utils.logger import get_module_logger
 
@@ -42,27 +42,4 @@ class KubernetesAgent(BaseAgent):
             Empty string (no additional custom instructions)
         """
         return ""
-    
-    def build_mcp_tool_selection_prompt(self, alert_data: Dict, runbook_content: str, available_tools: Dict) -> str:
-        """
-        Build Kubernetes-specific tool selection prompt.
-        
-        This method enhances the default tool selection with Kubernetes-specific guidance.
-        """
-        # Get the base prompt with server-specific guidance
-        base_prompt = super().build_mcp_tool_selection_prompt(alert_data, runbook_content, available_tools)
-        
-        # Add Kubernetes-specific tool selection hints
-        k8s_hints = """
-## Kubernetes-Specific Tool Selection Strategy
-
-When analyzing Kubernetes issues, prioritize tools in this order:
-1. **Namespace-level resources first** (pods, services, configmaps in specific namespace)
-2. **Resource status and events** (describe resources to get events and conditions)
-3. **Cluster-level resources only if needed** (nodes, persistent volumes, cluster-wide issues)
-4. **Logs last** (pod logs can be large, use only when necessary)
-
-Focus on the specific namespace and resources mentioned in the alert before expanding scope.
-"""
-        
-        return base_prompt + "\n\n" + k8s_hints 
+ 

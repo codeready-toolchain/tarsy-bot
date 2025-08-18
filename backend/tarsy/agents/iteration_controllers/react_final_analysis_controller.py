@@ -44,12 +44,10 @@ class ReactFinalAnalysisController(IterationController):
         prompt_context = context.agent.create_prompt_context(
             alert_data=context.alert_data,
             runbook_content=context.runbook_content,
-            mcp_data={},  # Final analysis gets previous stage data via chain context in prompt
             available_tools=None,  # No tools available
             stage_name=stage_name,
             is_final_stage=True,
-            previous_stages=None,  # Will be handled by chain context
-            stage_attributed_data=None  # Will be handled by chain context
+            previous_stages=None  # Will be handled by chain context
         )
         
         prompt = self.prompt_builder.build_final_analysis_prompt(prompt_context)

@@ -227,93 +227,7 @@ Your task is to provide a comprehensive analysis of the incident based on:
 
 Please provide detailed, actionable insights about what's happening and potential next steps.""")
 
-# MCP Tool Selection Template
-MCP_TOOL_SELECTION_TEMPLATE = PromptTemplate.from_template("""# MCP Tool Selection Request
 
-Based on the following alert and runbook, determine which MCP tools should be called to gather additional information.
-
-{server_guidance}
-
-## Alert Information
-{alert_section}
-
-{runbook_section}
-
-## Available MCP Tools
-{available_tools}
-
-## Instructions
-Analyze the alert and runbook to determine which MCP tools should be called and with what parameters.
-Return a JSON list of tool calls in this format:
-
-```json
-[
-  {{
-    "server": "kubernetes",
-    "tool": "get_namespace_status",
-    "parameters": {{
-      "cluster": "cluster_url_here",
-      "namespace": "namespace_name_here"
-    }},
-    "reason": "Need to check namespace status to understand why it's stuck"
-  }}
-]
-```
-
-Focus on gathering the most relevant information to diagnose the issue described in the alert.""")
-
-# Iterative MCP Tool Selection Template
-ITERATIVE_MCP_TOOL_SELECTION_TEMPLATE = PromptTemplate.from_template("""# Iterative MCP Tool Selection Request (Iteration {current_iteration})
-
-You are analyzing a multi-step runbook. Based on the alert, runbook, and previous iterations, determine if more MCP tools need to be called or if you have sufficient information to complete the analysis.
-
-{server_guidance}
-
-## Alert Information
-{alert_section}
-
-{runbook_section}
-
-## Available MCP Tools
-{available_tools}
-
-## Previous Iterations History
-{iteration_history}
-
-## Instructions
-Based on the runbook steps and what has been discovered so far, determine if you need to call more MCP tools or if the analysis can be completed.
-
-**IMPORTANT**: You are currently on iteration {current_iteration} of {max_iterations} maximum iterations. Be judicious about continuing - only continue if you genuinely need critical missing information that prevents completing the analysis.
-
-Return a JSON object in this format:
-
-If more tools are needed:
-```json
-{{
-  "continue": true,
-  "reasoning": "Specific explanation of what critical information is missing and why it's needed to complete the runbook steps",
-  "tools": [
-    {{
-      "server": "kubernetes",
-      "tool": "tool_name",
-      "parameters": {{
-        "param1": "value1"
-      }},
-      "reason": "Why this specific tool call is needed"
-    }}
-  ]
-}}
-```
-
-If analysis can be completed:
-```json
-{{
-  "continue": false,  
-  "reasoning": "Explanation of what sufficient information has been gathered and why analysis can now be completed"
-}}
-```
-
-**Default to stopping if you have reasonable data to work with.** The analysis doesn't need to be perfect - it needs to be actionable based on the runbook steps.""")
 ```
 
 ### 3. Main Builder Class (`builders.py`)
@@ -423,35 +337,7 @@ class LangChainPromptBuilder:
             chain_context=chain_context
         )
     
-    def build_mcp_tool_selection_prompt(self, context) -> str:
-        """Build MCP tool selection prompt."""
-        alert_section = self.alert_component.format(context.alert_data)
-        runbook_section = self.runbook_component.format(context.runbook_content)
-        
-        return MCP_TOOL_SELECTION_TEMPLATE.format(
-            server_guidance=context.server_guidance,
-            alert_section=alert_section,
-            runbook_section=runbook_section,
-            available_tools=json.dumps(context.available_tools, indent=2)
-        )
-    
-    def build_iterative_mcp_tool_selection_prompt(self, context) -> str:
-        """Build iterative MCP tool selection prompt."""
-        alert_section = self.alert_component.format(context.alert_data)
-        runbook_section = self.runbook_component.format(context.runbook_content)
-        
-        max_iterations = context.max_iterations or 5
-        display_max = max_iterations if context.current_iteration <= max_iterations else context.current_iteration
-        
-        return ITERATIVE_MCP_TOOL_SELECTION_TEMPLATE.format(
-            current_iteration=context.current_iteration,
-            server_guidance=context.server_guidance,
-            alert_section=alert_section,
-            runbook_section=runbook_section,
-            available_tools=json.dumps(context.available_tools, indent=2),
-            iteration_history=self._format_iteration_history(context.iteration_history),
-            max_iterations=display_max
-        )
+
     
     # ============ System Message Methods ============
     
@@ -481,13 +367,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions."""
     
-    def get_mcp_tool_selection_system_message(self) -> str:
-        """Get system message for MCP tool selection."""
-        return "You are an expert SRE analyzing alerts. Based on the alert, runbook, and available MCP tools, determine which tools should be called to gather the necessary information for diagnosis. Return only a valid JSON array with no additional text."
-    
-    def get_iterative_mcp_tool_selection_system_message(self) -> str:
-        """Get system message for iterative MCP tool selection."""
-        return "You are an expert SRE analyzing alerts through multi-step runbooks. Based on the alert, runbook, available MCP tools, and previous iteration results, determine what tools should be called next or if the analysis is complete. Return only a valid JSON object with no additional text."
+
     
     # ============ Helper Methods (Keep Current Logic) ============
     

@@ -228,7 +228,7 @@ class TestKubernetesAgentIntegration:
         instructions = agent.custom_instructions()
         assert isinstance(instructions, str)  # May be empty but should be string
 
-    async def test_kubernetes_agent_tool_selection_prompt(
+    def test_kubernetes_agent_prompt_context_creation(
         self, 
         mock_llm_manager, 
         mock_mcp_client, 
@@ -236,7 +236,7 @@ class TestKubernetesAgentIntegration:
         sample_alert,
         sample_runbook_content
     ):
-        """Test KubernetesAgent tool selection prompt customization."""
+        """Test KubernetesAgent prompt context creation with Kubernetes-specific data."""
         # Arrange
         agent = KubernetesAgent(
             llm_client=mock_llm_manager.get_client(),
@@ -258,14 +258,18 @@ class TestKubernetesAgentIntegration:
         }
         
         # Act
-        prompt = agent.build_mcp_tool_selection_prompt(
-            alert_data, sample_runbook_content, available_tools
+        context = agent.create_prompt_context(
+            alert_data=alert_data, 
+            runbook_content=sample_runbook_content, 
+            available_tools=available_tools
         )
         
         # Assert
-        assert isinstance(prompt, str)
-        assert len(prompt) > 100
-        assert "kubernetes" in prompt.lower() or "namespace" in prompt.lower()
+        assert context.agent_name == "KubernetesAgent"
+        assert context.alert_data == alert_data
+        assert context.runbook_content == sample_runbook_content
+        assert context.available_tools == available_tools
+        assert context.mcp_servers == ["kubernetes-server"]
 
 
 @pytest.mark.asyncio

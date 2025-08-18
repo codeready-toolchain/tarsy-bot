@@ -19,20 +19,13 @@ class PromptContext:
     agent_name: str
     alert_data: Dict[str, Any]
     runbook_content: str
-    mcp_data: Dict[str, Any]
     mcp_servers: List[str]
-    server_guidance: str = ""
-    agent_specific_guidance: str = ""
     available_tools: Optional[Dict] = None
-    iteration_history: Optional[List[Dict]] = None
-    current_iteration: Optional[int] = None
-    max_iterations: Optional[int] = None
     # Stage context for chain processing
     stage_name: Optional[str] = None
     is_final_stage: bool = False
     previous_stages: Optional[List[str]] = None
-    stage_attributed_data: Optional[Dict[str, Any]] = None  # Legacy MCP data with stage attribution
-    chain_context: Optional['ChainExecutionContext'] = None  # New AgentExecutionResult-based chain context
+    chain_context: Optional['ChainExecutionContext'] = None
 
 class PromptBuilder:
     """
@@ -47,117 +40,6 @@ class PromptBuilder:
     def __init__(self):
         """Initialize the prompt builder."""
         pass
-    
-
-    
-    def build_mcp_tool_selection_prompt(self, context: PromptContext) -> str:
-        """
-        Build MCP tool selection prompt for initial tool selection.
-        
-        Args:
-            context: Prompt context containing all necessary data
-            
-        Returns:
-            Formatted tool selection prompt
-        """
-        return f"""# MCP Tool Selection Request
-
-Based on the following alert and runbook, determine which MCP tools should be called to gather additional information.
-
-{context.server_guidance}
-
-## Alert Information
-{self._build_alert_section(context.alert_data)}
-
-{self._build_runbook_section(context.runbook_content)}
-
-## Available MCP Tools
-{json.dumps(context.available_tools, indent=2)}
-
-## Instructions
-Analyze the alert and runbook to determine which MCP tools should be called and with what parameters.
-Return a JSON list of tool calls in this format:
-
-```json
-[
-  {{
-    "server": "kubernetes",
-    "tool": "get_namespace_status",
-    "parameters": {{
-      "cluster": "cluster_url_here",
-      "namespace": "namespace_name_here"
-    }},
-    "reason": "Need to check namespace status to understand why it's stuck"
-  }}
-]
-```
-
-Focus on gathering the most relevant information to diagnose the issue described in the alert."""
-    
-    def build_iterative_mcp_tool_selection_prompt(self, context: PromptContext) -> str:
-        """
-        Build iterative MCP tool selection prompt for follow-up tool selection.
-        
-        Args:
-            context: Prompt context containing all necessary data
-            
-        Returns:
-            Formatted iterative tool selection prompt
-        """
-        max_iterations = context.max_iterations or 5
-        display_max = max_iterations if context.current_iteration <= max_iterations else context.current_iteration
-        
-        return f"""# Iterative MCP Tool Selection Request (Iteration {context.current_iteration})
-
-You are analyzing a multi-step runbook. Based on the alert, runbook, and previous iterations, determine if more MCP tools need to be called or if you have sufficient information to complete the analysis.
-
-{context.server_guidance}
-
-## Alert Information
-{self._build_alert_section(context.alert_data)}
-
-{self._build_runbook_section(context.runbook_content)}
-
-## Available MCP Tools
-{json.dumps(context.available_tools, indent=2)}
-
-## Previous Iterations History
-{self._format_iteration_history(context.iteration_history)}
-
-## Instructions
-Based on the runbook steps and what has been discovered so far, determine if you need to call more MCP tools or if the analysis can be completed.
-
-**IMPORTANT**: You are currently on iteration {context.current_iteration} of {display_max} maximum iterations. Be judicious about continuing - only continue if you genuinely need critical missing information that prevents completing the analysis.
-
-Return a JSON object in this format:
-
-If more tools are needed:
-```json
-{{
-  "continue": true,
-  "reasoning": "Specific explanation of what critical information is missing and why it's needed to complete the runbook steps",
-  "tools": [
-    {{
-      "server": "kubernetes",
-      "tool": "tool_name",
-      "parameters": {{
-        "param1": "value1"
-      }},
-      "reason": "Why this specific tool call is needed"
-    }}
-  ]
-}}
-```
-
-If analysis can be completed:
-```json
-{{
-  "continue": false,  
-  "reasoning": "Explanation of what sufficient information has been gathered and why analysis can now be completed"
-}}
-```
-
-**Default to stopping if you have reasonable data to work with.** The analysis doesn't need to be perfect - it needs to be actionable based on the runbook steps."""
     
     def _build_context_section(self, context: PromptContext) -> str:
         """Build the context section of the prompt."""
@@ -226,22 +108,6 @@ Please provide detailed, actionable insights about what's happening and potentia
 {runbook_content if runbook_content else 'No runbook available'}
 <!-- RUNBOOK END -->
 ```"""
-    
-    def _build_agent_specific_analysis_guidance(self, context: PromptContext) -> str:
-        """Build agent-specific analysis guidance."""
-        guidance_parts = []
-        
-        # Add server-specific guidance if available
-        if context.server_guidance:
-            guidance_parts.append("## Domain-Specific Analysis Guidance")
-            guidance_parts.append(context.server_guidance)
-        
-        # Add custom agent guidance if available
-        if context.agent_specific_guidance:
-            guidance_parts.append("### Agent-Specific Guidance")
-            guidance_parts.append(context.agent_specific_guidance)
-        
-        return "\n\n".join(guidance_parts) if guidance_parts else ""
     
     def _format_data(self, data) -> str:
         """Format data for display in prompt."""
@@ -328,7 +194,6 @@ Please provide detailed, actionable insights about what's happening and potentia
         
         return history_text.strip()
 
-
     def get_general_instructions(self) -> str:
         """
         Get general SRE instructions common to all agents.
@@ -352,14 +217,6 @@ Analyze alerts thoroughly and provide actionable insights based on:
 
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions."""
-
-    def get_mcp_tool_selection_system_message(self) -> str:
-        """Get system message for MCP tool selection."""
-        return "You are an expert SRE analyzing alerts. Based on the alert, runbook, and available MCP tools, determine which tools should be called to gather the necessary information for diagnosis. Return only a valid JSON array with no additional text."
-    
-    def get_iterative_mcp_tool_selection_system_message(self) -> str:
-        """Get system message for iterative MCP tool selection."""
-        return "You are an expert SRE analyzing alerts through multi-step runbooks. Based on the alert, runbook, available MCP tools, and previous iteration results, determine what tools should be called next or if the analysis is complete. Return only a valid JSON object with no additional text."
     
     def get_enhanced_react_system_message(self, composed_instructions: str, task_focus: str = "investigation and providing recommendations") -> str:
         """Get enhanced ReAct system message that includes composed instructions from BaseAgent.
@@ -550,14 +407,6 @@ Be thorough in your investigation before providing the final answer."""
                 actions.append(f"{action_name}: {description}")
         
         return '\n'.join(actions)
-
-    def _get_action_names(self, available_tools: Dict) -> List[str]:
-        """Get list of action names for the ReAct prompt."""
-        if not available_tools or not available_tools.get("tools"):
-            return ["No tools available"]
-        
-        return [f"{tool.get('server', 'unknown')}.{tool.get('name', tool.get('tool', 'unknown'))}" 
-                for tool in available_tools["tools"]]
 
     # ====================================================================
     # ReAct Response Parsing Methods
@@ -923,39 +772,6 @@ Provide comprehensive final analysis based on ALL collected data:
 Do NOT call any tools - use only the provided data.""")
         
         return "\n\n".join(sections)
-
-    def _format_stage_attributed_data(self, stage_attributed_data: Dict[str, Any]) -> str:
-        """Format stage-attributed MCP data for clear presentation."""
-        if not stage_attributed_data:
-            return "No investigation data from previous stages."
-        
-        sections = []
-        for stage_name, stage_data in stage_attributed_data.items():
-            sections.append(f"### Data from '{stage_name}' stage:")
-            
-            if not stage_data:
-                sections.append("*No MCP data collected in this stage*")
-                continue
-            
-            for server_name, server_results in stage_data.items():
-                if not server_results:
-                    continue
-                    
-                sections.append(f"**{server_name} server:**")
-                
-                # Handle both list and single result formats
-                results_list = server_results if isinstance(server_results, list) else [server_results]
-                
-                for i, result in enumerate(results_list, 1):
-                    if isinstance(result, dict):
-                        tool_name = result.get('tool', 'unknown_tool')
-                        sections.append(f"  {i}. {tool_name}:")
-                        sections.append(f"     {json.dumps(result, indent=6)}")
-                    else:
-                        sections.append(f"  {i}. {json.dumps(result, indent=4)}")
-                sections.append("")  # Add spacing between servers
-        
-        return "\n".join(sections)
     
     def _build_chain_context_section(self, context: PromptContext) -> str:
         """

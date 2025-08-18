@@ -51,11 +51,9 @@ class ReactStageController(IterationController):
         prompt_context = agent.create_prompt_context(
             alert_data=context.alert_data,
             runbook_content=context.runbook_content,
-            mcp_data={},  # Previous stage data handled at chain level
             available_tools={"tools": context.available_tools},
             stage_name=stage_name,
-            previous_stages=None,  # Handled by chain context
-            stage_attributed_data=None  # Handled by chain context
+            previous_stages=None  # Handled by chain context
         )
         
         # Execute ReAct loop using EXISTING ReAct format and parsing (same as SimpleReActController)

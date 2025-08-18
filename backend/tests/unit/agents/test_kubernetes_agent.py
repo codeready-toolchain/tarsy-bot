@@ -5,7 +5,6 @@ Tests the Kubernetes-specialized agent implementation including abstract method
 implementations, Kubernetes-specific functionality, and integration with BaseAgent.
 """
 
-import json
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -108,7 +107,6 @@ class TestKubernetesAgentInitialization:
         agent1._iteration_count = 5
         assert agent2._iteration_count == 0
 
-
 @pytest.mark.unit
 class TestKubernetesAgentAbstractMethods:
     """Test implementation of abstract methods from BaseAgent."""
@@ -150,7 +148,6 @@ class TestKubernetesAgentAbstractMethods:
         instructions2 = kubernetes_agent.custom_instructions()
         
         assert instructions1 == instructions2
-
 
 @pytest.mark.unit
 class TestKubernetesAgentPromptBuilding:
@@ -198,52 +195,6 @@ class TestKubernetesAgentPromptBuilding:
                 }
             ]
         }
-    
-    @patch('tarsy.agents.kubernetes_agent.super')
-    def test_build_mcp_tool_selection_prompt_adds_kubernetes_guidance(self, mock_super, kubernetes_agent, sample_alert_data, sample_available_tools):
-        """Test that build_mcp_tool_selection_prompt adds Kubernetes-specific guidance."""
-        base_prompt = "Base tool selection prompt"
-        mock_super().build_mcp_tool_selection_prompt.return_value = base_prompt
-        
-        runbook_content = "Test runbook content"
-        
-        result = kubernetes_agent.build_mcp_tool_selection_prompt(
-            sample_alert_data, runbook_content, sample_available_tools
-        )
-        
-        # Verify base method was called
-        mock_super().build_mcp_tool_selection_prompt.assert_called_once_with(
-            sample_alert_data, runbook_content, sample_available_tools
-        )
-        
-        # Verify Kubernetes-specific guidance was added
-        assert base_prompt in result
-        assert "Kubernetes-Specific Tool Selection Strategy" in result
-        assert "Namespace-level resources first" in result
-        assert "Resource status and events" in result
-        assert "Cluster-level resources only if needed" in result
-        assert "Logs last" in result
-        assert "Focus on the specific namespace" in result
-    
-    def test_build_mcp_tool_selection_prompt_preserves_base_content(self, kubernetes_agent, sample_alert_data, sample_available_tools):
-        """Test that Kubernetes guidance doesn't interfere with base content."""
-        runbook_content = "Test runbook with specific guidance"
-        
-        with patch('tarsy.agents.kubernetes_agent.super') as mock_super:
-            base_prompt = "Base prompt with important content"
-            mock_super().build_mcp_tool_selection_prompt.return_value = base_prompt
-            
-            result = kubernetes_agent.build_mcp_tool_selection_prompt(
-                sample_alert_data, runbook_content, sample_available_tools
-            )
-            
-            # Verify both base content and Kubernetes guidance are present
-            assert base_prompt in result
-            assert "Kubernetes-Specific Tool Selection Strategy" in result
-            # Verify they're properly separated
-            assert result.startswith(base_prompt)
-            assert "\n\n" in result  # Proper separation
-
 
 @pytest.mark.unit
 class TestKubernetesAgentInheritedFunctionality:
@@ -360,7 +311,6 @@ class TestKubernetesAgentInheritedFunctionality:
         assert "Kubernetes Tools" in guidance
         assert "K8s instructions" in guidance
 
-
 @pytest.mark.unit
 class TestKubernetesAgentLLMIntegration:
     """Test KubernetesAgent integration with LLM client."""
@@ -393,36 +343,6 @@ class TestKubernetesAgentLLMIntegration:
             "message": "Pod crashing",
             "namespace": "production"
         }
-    
-    async def test_determine_mcp_tools_with_kubernetes_guidance(self, kubernetes_agent_with_mocks, sample_alert_data):
-        """Test that determine_mcp_tools includes Kubernetes-specific guidance."""
-        agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_mocks
-        
-        # Mock LLM response for tool selection
-        tool_selection_response = json.dumps([
-            {
-                "server": "kubernetes-server",
-                "tool": "get_pod_status",
-                "parameters": {"namespace": "production"},
-                "reason": "Check pod status"
-            }
-        ])
-        mock_llm.generate_response = AsyncMock(return_value=tool_selection_response)
-        
-        available_tools = {"tools": [{"name": "get_pod_status", "server": "kubernetes-server"}]}
-        runbook_content = "Test runbook"
-        
-        result = await agent.determine_mcp_tools(sample_alert_data, runbook_content, available_tools, session_id="test-session-123")
-        
-        assert len(result) == 1
-        assert result[0]["server"] == "kubernetes-server"
-        assert result[0]["tool"] == "get_pod_status"
-        
-        # Verify LLM was called with Kubernetes guidance
-        mock_llm.generate_response.assert_called_once()
-        call_args = mock_llm.generate_response.call_args[0]
-        user_message = call_args[0][1].content
-        assert "Kubernetes-Specific Tool Selection Strategy" in user_message
 
 @pytest.mark.unit
 class TestKubernetesAgentMCPIntegration:
@@ -530,8 +450,6 @@ class TestKubernetesAgentMCPIntegration:
         assert "error" in tool_result
         assert "Tool execution failed" in tool_result["error"]
 
-
-
 @pytest.mark.unit
 class TestKubernetesAgentErrorHandling:
     """Test KubernetesAgent error handling and edge cases."""
@@ -545,42 +463,6 @@ class TestKubernetesAgentErrorHandling:
         # Mock get_server_configs to return an empty list
         mock_registry.get_server_configs.return_value = []
         return KubernetesAgent(mock_llm, mock_mcp, mock_registry)
-    
-    async def test_determine_mcp_tools_invalid_json_response(self, kubernetes_agent):
-        """Test handling of invalid JSON response from LLM."""
-        kubernetes_agent.llm_client.generate_response = AsyncMock(return_value="Invalid JSON response")
-        
-        with pytest.raises(Exception, match="Tool selection error"):
-            await kubernetes_agent.determine_mcp_tools(
-                {"alert": "test"}, "runbook", {"tools": []}, session_id="test-session-123"
-            )
-    
-    async def test_determine_mcp_tools_wrong_response_type(self, kubernetes_agent):
-        """Test handling of wrong response type from LLM."""
-        kubernetes_agent.llm_client.generate_response = AsyncMock(return_value='{"wrong": "type"}')
-        
-        with pytest.raises(Exception, match="Tool selection error"):
-            await kubernetes_agent.determine_mcp_tools(
-                {"alert": "test"}, "runbook", {"tools": []}, session_id="test-session-123"
-            )
-    
-    async def test_determine_mcp_tools_missing_required_fields(self, kubernetes_agent):
-        """Test handling of tool calls missing required fields."""
-        invalid_tools_response = json.dumps([
-            {
-                "server": "kubernetes-server",
-                "tool": "get_pod_status"
-                # Missing "parameters" and "reason"
-            }
-        ])
-        kubernetes_agent.llm_client.generate_response = AsyncMock(return_value=invalid_tools_response)
-        
-        with pytest.raises(Exception, match="Tool selection error"):
-            await kubernetes_agent.determine_mcp_tools(
-                {"alert": "test"}, "runbook", {"tools": []}, session_id="test-session-123"
-            )
-    
-
 
 @pytest.mark.unit
 class TestKubernetesAgentIntegrationScenarios:
@@ -647,8 +529,6 @@ class TestKubernetesAgentIntegrationScenarios:
         mock_llm.generate_response.return_value = "Pod analysis completed"
         
         # Mock agent methods for complete workflow
-        agent.determine_mcp_tools = AsyncMock(return_value=[])
-        agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
         agent.analyze_alert = AsyncMock(return_value="Detailed pod analysis")
         
         # Mock MCP registry
@@ -775,8 +655,6 @@ class TestKubernetesAgentIntegrationScenarios:
         mock_llm.generate_response.return_value = "Comprehensive analysis"
         
         # Mock agent methods for iteration
-        agent.determine_mcp_tools = AsyncMock(return_value=[{"server": "kubernetes-server", "tool": "kubectl"}])
-        agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
         agent.analyze_alert = AsyncMock(return_value="Multi-iteration analysis")
         
         # Mock MCP registry

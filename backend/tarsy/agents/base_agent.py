@@ -5,7 +5,6 @@ This module provides the abstract base class that all specialized agents must in
 It implements common processing logic and defines abstract methods for agent-specific behavior.
 """
 
-import asyncio
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
@@ -14,7 +13,6 @@ from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 
-from tarsy.models.unified_interactions import LLMMessage
 from tarsy.models.agent_execution_result import (
     AgentExecutionResult
 )
@@ -34,7 +32,6 @@ from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
 from ..models.constants import IterationStrategy
-from .json_parser import parse_llm_json_response
 from .prompt_builder import PromptContext, get_prompt_builder
 
 
@@ -155,66 +152,23 @@ class BaseAgent(ABC):
         """
         pass
 
-    def build_mcp_tool_selection_prompt(self, alert_data: Dict, runbook_content: str, available_tools: Dict) -> str:
-        """
-        Build MCP tool selection prompt with agent-specific context.
-        
-        Agents can override this method to customize tool selection logic.
-        """
-        context = self.create_prompt_context(
-            alert_data=alert_data,
-            runbook_content=runbook_content,
-            mcp_data={},
-            available_tools=available_tools
-        )
-        return self._prompt_builder.build_mcp_tool_selection_prompt(context)
-
-    def build_iterative_mcp_tool_selection_prompt(self, alert_data: Dict, runbook_content: str, 
-                                                available_tools: Dict, iteration_history: List[Dict], 
-                                                current_iteration: int) -> str:
-        """
-        Build iterative MCP tool selection prompt with agent-specific context.
-        
-        Agents can override this method to customize iterative tool selection logic.
-        """
-        context = self.create_prompt_context(
-            alert_data=alert_data,
-            runbook_content=runbook_content,
-            mcp_data={},
-            available_tools=available_tools,
-            iteration_history=iteration_history,
-            current_iteration=current_iteration,
-            max_iterations=self._max_iterations
-        )
-        return self._prompt_builder.build_iterative_mcp_tool_selection_prompt(context)
-
     def create_prompt_context(self, 
                              alert_data: Dict, 
-                             runbook_content: str, 
-                             mcp_data: Dict,
+                             runbook_content: str,
                              available_tools: Optional[Dict] = None,
-                             iteration_history: Optional[List[Dict]] = None,
-                             current_iteration: Optional[int] = None,
-                             max_iterations: Optional[int] = None,
                              stage_name: Optional[str] = None,
                              is_final_stage: bool = False,
-                             previous_stages: Optional[List[str]] = None,
-                             stage_attributed_data: Optional[Dict[str, Any]] = None) -> PromptContext:
+                             previous_stages: Optional[List[str]] = None) -> PromptContext:
         """
         Create a PromptContext object with all necessary data for prompt building.
         
         Args:
             alert_data: Complete alert data as flexible dictionary
             runbook_content: The downloaded runbook content
-            mcp_data: Data from MCP tool executions
             available_tools: Available MCP tools (optional)
-            iteration_history: History of previous iterations (optional)
-            current_iteration: Current iteration number (optional)
-            max_iterations: Maximum number of iterations (optional)
             stage_name: Name of current processing stage (optional)
             is_final_stage: Whether this is the final stage in a chain (optional)
             previous_stages: List of previous stage names (optional)
-            stage_attributed_data: MCP data with stage attribution preserved (optional)
             
         Returns:
             PromptContext object ready for prompt building
@@ -229,18 +183,11 @@ class BaseAgent(ABC):
             agent_name=self.__class__.__name__,
             alert_data=alert_data.get_original_alert_data() if hasattr(alert_data, 'get_original_alert_data') else alert_data,
             runbook_content=runbook_content,
-            mcp_data=mcp_data,
             mcp_servers=self.mcp_servers(),
-            server_guidance=self._get_server_specific_tool_guidance(),
-            agent_specific_guidance=self.custom_instructions(),
             available_tools=available_tools,
-            iteration_history=iteration_history,
-            current_iteration=current_iteration,
-            max_iterations=max_iterations or self._max_iterations,
             stage_name=stage_name,
             is_final_stage=is_final_stage,
             previous_stages=previous_stages,
-            stage_attributed_data=stage_attributed_data,
             chain_context=chain_context
         )
 
@@ -260,114 +207,6 @@ class BaseAgent(ABC):
                     guidance_parts.append(server_config.instructions)
         
         return "\n\n".join(guidance_parts) if guidance_parts else ""
-
-
-
-
-    async def determine_mcp_tools(self,
-                                alert_data: Dict,
-                                runbook_content: str,
-                                available_tools: Dict,
-                                session_id: str,
-                                **kwargs) -> List[Dict]:
-        """Determine which MCP tools to call based on alert and runbook."""
-        logger.info(f"Starting MCP tool selection with {self.__class__.__name__} - Alert: {alert_data.get('alert_type', alert_data.get('alert', 'unknown'))}")
-        
-        # Build prompt using agent-specific prompt building
-        prompt = self.build_mcp_tool_selection_prompt(alert_data, runbook_content, available_tools)
-        
-        # Create messages
-        messages = [
-            LLMMessage(
-                role="system",
-                content=self._prompt_builder.get_mcp_tool_selection_system_message()
-            ),
-            LLMMessage(
-                role="user",
-                content=prompt
-            )
-        ]
-        
-        try:
-            response = await self.llm_client.generate_response(messages, session_id, self._current_stage_execution_id)
-            
-            # Parse the JSON response
-            tools_to_call = parse_llm_json_response(response, expected_type=list)
-            
-            # Validate each tool call
-            for tool_call in tools_to_call:
-                if not isinstance(tool_call, dict):
-                    raise ValueError("Each tool call must be a JSON object")
-                
-                required_fields = ["server", "tool", "parameters", "reason"]
-                for field in required_fields:
-                    if field not in tool_call:
-                        raise ValueError(f"Missing required field: {field}")
-            
-            logger.info(f"MCP tool selection completed with {self.__class__.__name__} - Selected {len(tools_to_call)} tools")
-            return tools_to_call
-            
-        except Exception as e:
-            logger.error(f"MCP tool selection failed with {self.__class__.__name__}: {str(e)}")
-            raise Exception(f"Tool selection error: {str(e)}")
-
-    async def determine_next_mcp_tools(self,
-                                     alert_data: Dict,
-                                     runbook_content: str,
-                                     available_tools: Dict,
-                                     iteration_history: List[Dict],
-                                     current_iteration: int,
-                                     session_id: str) -> Dict:
-        """Determine next MCP tools to call based on current context and previous iterations."""
-        logger.info(f"Starting iterative MCP tool selection with {self.__class__.__name__} - Iteration {current_iteration}")
-        
-        # Build prompt using agent-specific prompt building
-        prompt = self.build_iterative_mcp_tool_selection_prompt(
-            alert_data, runbook_content, available_tools, iteration_history, current_iteration
-        )
-        
-        # Create messages
-        messages = [
-            LLMMessage(
-                role="system",
-                content=self._prompt_builder.get_iterative_mcp_tool_selection_system_message()
-            ),
-            LLMMessage(
-                role="user",
-                content=prompt
-            )
-        ]
-        
-        try:
-            response = await self.llm_client.generate_response(messages, session_id, self._current_stage_execution_id)
-            
-            # Parse the JSON response
-            next_action = parse_llm_json_response(response, expected_type=dict)
-            
-            # Validate the response format
-            if "continue" not in next_action:
-                raise ValueError("Missing required field: continue")
-            
-            if next_action.get("continue", False):
-                if "tools" not in next_action or not isinstance(next_action["tools"], list):
-                    raise ValueError("When continue=true, 'tools' field must be a list")
-                
-                # Validate each tool call
-                for tool_call in next_action["tools"]:
-                    if not isinstance(tool_call, dict):
-                        raise ValueError("Each tool call must be a JSON object")
-                    
-                    required_fields = ["server", "tool", "parameters", "reason"]
-                    for field in required_fields:
-                        if field not in tool_call:
-                            raise ValueError(f"Missing required field: {field}")
-            
-            logger.info(f"Iterative MCP tool selection completed with {self.__class__.__name__} - Continue: {next_action.get('continue', False)}")
-            return next_action
-            
-        except Exception as e:
-            logger.error(f"Iterative MCP tool selection failed with {self.__class__.__name__}: {str(e)}")
-            raise Exception(f"Iterative tool selection error: {str(e)}")
 
     async def process_alert(
         self,

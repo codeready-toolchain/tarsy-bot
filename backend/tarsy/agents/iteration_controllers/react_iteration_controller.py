@@ -72,7 +72,6 @@ class SimpleReActController(IterationController):
         prompt_context = agent.create_prompt_context(
             alert_data=context.alert_data,
             runbook_content=context.runbook_content,
-            mcp_data={},
             available_tools={"tools": context.available_tools},
             stage_name=stage_name
         )

@@ -307,12 +307,10 @@ class TestReactFinalAnalysisController:
         call_args = mock_agent.create_prompt_context.call_args[1]
         assert call_args["alert_data"] == sample_context.alert_data
         assert call_args["runbook_content"] == sample_context.runbook_content
-        assert call_args["mcp_data"] == {}  # Final analysis uses empty mcp_data
         assert call_args["available_tools"] is None
         assert call_args["stage_name"] is None  # No stage name in unit test context (plain dict)
         assert call_args["is_final_stage"] is True
         assert call_args["previous_stages"] is None  # Handled by chain context
-        assert call_args["stage_attributed_data"] is None  # Handled by chain context
         
         # Verify prompt building was called
         mock_prompt_builder.build_final_analysis_prompt.assert_called_once()
@@ -355,7 +353,7 @@ class TestReactFinalAnalysisController:
         
         # Verify context creation was called correctly
         call_args = mock_agent.create_prompt_context.call_args[1]
-        assert call_args["mcp_data"] == {}  # Empty for final analysis
+        assert call_args["available_tools"] is None  # Empty for final analysis
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_minimal_context(self, controller, mock_agent, mock_llm_client, mock_prompt_builder):
@@ -374,9 +372,8 @@ class TestReactFinalAnalysisController:
         
         # Verify context creation used correct parameters
         call_args = mock_agent.create_prompt_context.call_args[1]
-        assert call_args["mcp_data"] == {}  # Empty for final analysis
+        assert call_args["available_tools"] is None  # Empty for final analysis
         assert call_args["previous_stages"] is None  # Handled by chain context
-        assert call_args["stage_attributed_data"] is None  # Handled by chain context
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_llm_failure(self, controller, sample_context, mock_llm_client):
@@ -385,10 +382,6 @@ class TestReactFinalAnalysisController:
         
         with pytest.raises(Exception, match="LLM service unavailable"):
             await controller.execute_analysis_loop(sample_context)
-
-
-# Removed TestReactToolsController - REACT_TOOLS strategy no longer supported
-
 
 @pytest.mark.unit
 class TestReactStageController:
@@ -595,7 +588,6 @@ class TestReactStageController:
         assert "reached maximum iterations" in result
         assert "without final answer" in result
 
-
 @pytest.mark.unit
 class TestIterationControllerFactory:
     """Test the factory method in BaseAgent for creating iteration controllers."""
@@ -639,7 +631,6 @@ class TestIterationControllerFactory:
                 return ["test"]
             def custom_instructions(self):
                 return "test"
-
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', return_value=mock_prompt_builder):
             agent = TestAgent(
@@ -661,7 +652,6 @@ class TestIterationControllerFactory:
                 return ["test"]
             def custom_instructions(self):
                 return "test"
-
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', return_value=mock_prompt_builder):
             with pytest.raises(ValueError, match="Unknown iteration strategy"):
@@ -671,7 +661,6 @@ class TestIterationControllerFactory:
                     mcp_registry=Mock(),
                     iteration_strategy="unknown_strategy"  # Invalid strategy
                 )
-
 
 @pytest.mark.unit
 class TestIterationControllerIntegration:
@@ -696,7 +685,6 @@ class TestIterationControllerIntegration:
                 return ["test"]
             def custom_instructions(self):
                 return "test"
-
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', 
                    return_value=mock_dependencies['prompt_builder']):
@@ -723,7 +711,6 @@ class TestIterationControllerIntegration:
             # Verify strategy property works correctly
             assert react_agent.iteration_strategy == IterationStrategy.REACT
             assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
-
 
 @pytest.mark.unit
 class TestFinalAnswerExtraction:
