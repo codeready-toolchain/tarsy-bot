@@ -985,7 +985,7 @@ class TestPromptBuilderPrivateMethods:
         assert "No investigation data from previous stages" in result
 
     # Note: _format_react_question_for_* methods were removed and inlined into 
-    # build_data_collection_react_prompt and build_partial_analysis_react_prompt methods
+    # build_stage_analysis_react_prompt method (build_data_collection_react_prompt was removed)
 
     def test_get_action_names(self, builder, context):
         """Test _get_action_names method."""

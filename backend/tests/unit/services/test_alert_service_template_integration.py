@@ -126,13 +126,13 @@ agents:
   performance-monitor:
     alert_types: ["performance", "resource-usage"]
     mcp_servers: ["kubernetes-server"]
-    iteration_strategy: regular
+    iteration_strategy: react
     custom_instructions: "Monitor performance metrics"
 
   data-collector:
     alert_types: ["kubernetes"]
     mcp_servers: ["custom-k8s-server"]
-    iteration_strategy: react-tools
+    iteration_strategy: react-stage
     custom_instructions: "Collect data from Kubernetes cluster"
 
   analyzer:
@@ -154,7 +154,7 @@ agent_chains:
     stages:
       - name: "data-collection"
         agent: "ConfigurableAgent:data-collector"
-        iteration_strategy: "react-tools"
+        iteration_strategy: "react-stage"
       - name: "analysis"
         agent: "ConfigurableAgent:analyzer"
         iteration_strategy: "react-final-analysis"
@@ -204,7 +204,7 @@ mcp_servers:
                 
                 performance_config = alert_service.parsed_config.agents["performance-monitor"]
                 assert performance_config.alert_types == ["performance", "resource-usage"]
-                assert performance_config.iteration_strategy == IterationStrategy.REGULAR
+                assert performance_config.iteration_strategy == IterationStrategy.REACT
                 assert "Monitor performance metrics" in performance_config.custom_instructions
                 
                 # Verify MCP server configuration
@@ -236,7 +236,7 @@ mcp_servers:
                 assert len(k8s_chain.stages) == 2
                 assert k8s_chain.stages[0].name == "data-collection"
                 assert k8s_chain.stages[0].agent == "ConfigurableAgent:data-collector"
-                assert k8s_chain.stages[0].iteration_strategy == "react-tools"
+                assert k8s_chain.stages[0].iteration_strategy == "react-stage"
                 assert k8s_chain.stages[1].name == "analysis"
                 assert k8s_chain.stages[1].agent == "ConfigurableAgent:analyzer"
                 assert k8s_chain.stages[1].iteration_strategy == "react-final-analysis"

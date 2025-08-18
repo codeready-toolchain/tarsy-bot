@@ -7,7 +7,7 @@ and modify prompts without touching business logic in agents.
 
 import json
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from tarsy.models.agent_execution_result import ChainExecutionContext
@@ -177,8 +177,6 @@ If analysis can be completed:
 ```
 
 **Default to stopping if you have reasonable data to work with.** The analysis doesn't need to be perfect - it needs to be actionable based on the runbook steps."""
-    
-
     
     def _build_context_section(self, context: PromptContext) -> str:
         """Build the context section of the prompt."""
@@ -966,10 +964,8 @@ Be thorough in your investigation before providing the final answer."""
     # Chain-Specific ReAct Prompt Methods
     # ====================================================================
 
-
-
-    def build_data_collection_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
-        """Build ReAct prompt for data collection."""
+    def build_stage_analysis_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+        """Build ReAct prompt for stage-specific analysis."""
         history_text = ""
         if react_history:
             flattened_history = self._flatten_react_history(react_history)
@@ -977,46 +973,7 @@ Be thorough in your investigation before providing the final answer."""
 
         available_actions = self._format_available_actions(context.available_tools)
         
-        # Format data collection question directly
-        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
-        question = f"""Collect comprehensive data about this {alert_type} alert for the next analysis stage.
-
-{self._build_alert_section(context.alert_data)}
-
-{self._build_runbook_section(context.runbook_content)}
-
-## Previous Stage Data
-{self._build_chain_context_section(context)}
-
-## Your Task: DATA COLLECTION ONLY
-Use available tools to systematically collect information about:
-1. Current system state related to this alert
-2. Historical patterns or trends
-3. Related resource status
-4. Configuration details
-
-DO NOT provide analysis or conclusions - focus purely on gathering comprehensive data.
-Your Final Answer should summarize what data was collected, not analyze it."""
-
-        prompt = (
-            "Answer the following question using the available tools.\n\n"
-            f"Available tools:\n{available_actions}\n\n"
-            f"Question: {question}\n"
-            f"{history_text}\n"
-            "Begin!"
-        )
-        return prompt
-
-    def build_partial_analysis_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
-        """Build ReAct prompt for partial analysis."""
-        history_text = ""
-        if react_history:
-            flattened_history = self._flatten_react_history(react_history)
-            history_text = "\n".join(flattened_history) + "\n"
-
-        available_actions = self._format_available_actions(context.available_tools)
-        
-        # Format partial analysis question directly
+        # Format stage-specific analysis question directly
         alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
         stage_name = context.stage_name or "analysis"
         question = f"""Investigate this {alert_type} alert and provide stage-specific analysis.

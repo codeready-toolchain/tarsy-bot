@@ -6,7 +6,7 @@ agents:
   DataCollectionAgent:
     alert_types:
       - "test-kubernetes-data-collection"
-    iteration_strategy: "react-tools"
+    iteration_strategy: "react-stage"
     custom_instructions: |
       You are a Kubernetes data collection specialist. Your role is to gather comprehensive 
       information about problematic resources using available kubectl tools.
@@ -54,10 +54,10 @@ agent_chains:
     stages:
       - name: "data-collection"
         agent: "DataCollectionAgent"
-        iteration_strategy: "react-tools"
+        iteration_strategy: "react-stage"
       - name: "verification"
         agent: "KubernetesAgent"     # This is a built-in agent that should to be available
-        iteration_strategy: "react-tools"
+        iteration_strategy: "react-stage"
       - name: "analysis"  
         agent: "AnalysisAgent"
         iteration_strategy: "react-final-analysis"

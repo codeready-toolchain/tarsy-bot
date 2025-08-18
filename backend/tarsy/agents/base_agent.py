@@ -21,7 +21,7 @@ from tarsy.models.agent_execution_result import (
 from tarsy.models.constants import StageStatus
 from tarsy.models.alert_processing import AlertProcessingData
 from .iteration_controllers import (
-    IterationController, RegularIterationController, SimpleReActController, 
+    IterationController, SimpleReActController, ReactStageController,
     IterationContext
 )
 from .exceptions import (
@@ -102,16 +102,10 @@ class BaseAgent(ABC):
         Returns:
             Appropriate IterationController instance
         """
-        if strategy == IterationStrategy.REGULAR:
-            return RegularIterationController()
-        elif strategy == IterationStrategy.REACT:
+        if strategy == IterationStrategy.REACT:
             return SimpleReActController(self.llm_client, self._prompt_builder)
-        elif strategy == IterationStrategy.REACT_TOOLS:
-            from .iteration_controllers.react_tools_controller import ReactToolsController
-            return ReactToolsController(self.llm_client, self._prompt_builder)
-        elif strategy == IterationStrategy.REACT_TOOLS_PARTIAL:
-            from .iteration_controllers.react_tools_partial_controller import ReactToolsPartialController
-            return ReactToolsPartialController(self.llm_client, self._prompt_builder)
+        elif strategy == IterationStrategy.REACT_STAGE:
+            return ReactStageController(self.llm_client, self._prompt_builder)
         elif strategy == IterationStrategy.REACT_FINAL_ANALYSIS:
             from .iteration_controllers.react_final_analysis_controller import ReactFinalAnalysisController
             return ReactFinalAnalysisController(self.llm_client, self._prompt_builder)

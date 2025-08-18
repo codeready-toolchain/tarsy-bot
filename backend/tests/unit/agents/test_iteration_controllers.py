@@ -10,13 +10,10 @@ import pytest
 
 from tarsy.agents.iteration_controllers.base_iteration_controller import (
     IterationContext,
-    IterationController,
 )
-from tarsy.agents.iteration_controllers.regular_iteration_controller import RegularIterationController
 from tarsy.agents.iteration_controllers.react_iteration_controller import SimpleReActController
 from tarsy.agents.iteration_controllers.react_final_analysis_controller import ReactFinalAnalysisController
-from tarsy.agents.iteration_controllers.react_tools_controller import ReactToolsController
-from tarsy.agents.iteration_controllers.react_tools_partial_controller import ReactToolsPartialController
+from tarsy.agents.iteration_controllers.react_stage_controller import ReactStageController
 from tarsy.models.constants import IterationStrategy
 
 
@@ -53,213 +50,7 @@ class TestIterationContext:
         assert context.agent == mock_agent
 
 
-@pytest.mark.unit
-class TestRegularIterationController:
-    """Test RegularIterationController implementation."""
-    
-    @pytest.fixture
-    def mock_agent(self):
-        """Create mock agent for testing."""
-        agent = Mock()
-        agent.determine_mcp_tools = AsyncMock(return_value=[
-            {
-                "server": "test-server",
-                "tool": "test-tool",
-                "parameters": {"param": "value"},
-                "reason": "test reason"
-            }
-        ])
-        agent.execute_mcp_tools = AsyncMock(return_value={
-            "test-server": [{"tool": "test-tool", "result": "success"}]
-        })
-        agent.analyze_alert = AsyncMock(return_value="Regular analysis complete")
-        agent.max_iterations = 3
-        return agent
-    
-    @pytest.fixture
-    def controller(self):
-        """Create RegularIterationController instance."""
-        return RegularIterationController()
-    
-    @pytest.fixture
-    def sample_context(self, mock_agent):
-        """Create sample iteration context."""
-        return IterationContext(
-            alert_data={"alert": "TestAlert", "severity": "high"},
-            runbook_content="Test runbook content",
-            available_tools=[{"name": "test-tool", "description": "Test tool"}],
-            session_id="test-session-123",
-            agent=mock_agent
-        )
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_success(self, controller, sample_context, mock_agent):
-        """Test successful regular iteration analysis loop."""
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        assert result == "Regular analysis complete"
-        
-        # Verify the flow was followed correctly
-        mock_agent.determine_mcp_tools.assert_called_once()
-        mock_agent.execute_mcp_tools.assert_called()
-        mock_agent.analyze_alert.assert_called_once()
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_no_agent(self, controller):
-        """Test analysis loop with missing agent reference."""
-        context = IterationContext(
-            alert_data={},
-            runbook_content="",
-            available_tools=[],
-            session_id="test-session-123",
-            agent=None
-        )
-        
-        with pytest.raises(ValueError, match="Agent reference is required in context"):
-            await controller.execute_analysis_loop(context)
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_tool_selection_failure(self, controller, sample_context, mock_agent):
-        """Test analysis loop when tool selection fails."""
-        # Mock tool selection to fail
-        mock_agent.determine_mcp_tools.side_effect = Exception("Tool selection failed")
-        
-        await controller.execute_analysis_loop(sample_context)
-        
-        # Should still return analysis result with error info
-        mock_agent.analyze_alert.assert_called_once()
-        call_args = mock_agent.analyze_alert.call_args[0]
-        assert "tool_selection_error" in call_args[2]  # mcp_data parameter
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_empty_tools(self, controller, sample_context, mock_agent):
-        """Test analysis loop with no tools selected."""
-        mock_agent.determine_mcp_tools.return_value = []
-        mock_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        assert result == "Regular analysis complete"
-        # Should still execute analysis even with no tools
-        mock_agent.analyze_alert.assert_called_once()
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_continue_true_empty_tools(self, controller, sample_context, mock_agent):
-        """Test analysis loop when determine_next_mcp_tools returns continue=true with empty tools."""
-        # Mock determine_next_mcp_tools to return continue=true with empty tools list
-        mock_agent.determine_next_mcp_tools = AsyncMock(return_value={
-            "continue": True,
-            "tools": []
-        })
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        assert result == "Regular analysis complete"
-        
-        # Verify the sequence of calls
-        mock_agent.determine_mcp_tools.assert_called_once()  # Initial tool selection
-        mock_agent.execute_mcp_tools.assert_called_once()  # Initial tool execution
-        mock_agent.determine_next_mcp_tools.assert_called_once()  # Next iteration check
-        mock_agent.analyze_alert.assert_called_once()  # Final analysis
-        
-        # Verify that no additional tools were executed (only initial ones)
-        assert mock_agent.execute_mcp_tools.call_count == 1
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_continue_false_early_return(self, controller, sample_context, mock_agent):
-        """Test analysis loop when determine_next_mcp_tools returns continue=false for early exit."""
-        # Mock determine_next_mcp_tools to return continue=false
-        mock_agent.determine_next_mcp_tools = AsyncMock(return_value={
-            "continue": False,
-            "reason": "Sufficient data gathered"
-        })
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        assert result == "Regular analysis complete"
-        
-        # Verify the sequence of calls
-        mock_agent.determine_mcp_tools.assert_called_once()  # Initial tool selection
-        mock_agent.execute_mcp_tools.assert_called_once()  # Initial tool execution
-        mock_agent.determine_next_mcp_tools.assert_called_once()  # Next iteration check
-        mock_agent.analyze_alert.assert_called_once()  # Final analysis
-        
-        # Verify that no additional tools were executed (only initial ones)
-        assert mock_agent.execute_mcp_tools.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_tool_execution_failure(self, controller, sample_context, mock_agent):
-        """Test analysis loop when tool execution fails."""
-        mock_agent.execute_mcp_tools.side_effect = Exception("Tool execution failed")
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        # Should still return analysis result with error info
-        assert result == "Regular analysis complete"
-        mock_agent.analyze_alert.assert_called_once()
-        call_args = mock_agent.analyze_alert.call_args[0]
-        assert "tool_execution_error" in call_args[2]  # mcp_data parameter
-
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_multiple_iterations(self, controller, sample_context, mock_agent):
-        """Test analysis loop with multiple iterations."""
-        call_count = 0
-        
-        def mock_determine_next_tools(*args):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return {
-                    "continue": True,
-                    "tools": [{"server": "test", "tool": "additional_tool", "parameters": {}}]
-                }
-            else:
-                return {"continue": False}
-        
-        mock_agent.determine_next_mcp_tools = AsyncMock(side_effect=mock_determine_next_tools)
-        mock_agent.merge_mcp_data = Mock(return_value={"merged": "data"})
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        assert result == "Regular analysis complete"
-        assert mock_agent.execute_mcp_tools.call_count == 2  # Initial + 1 iteration
-        mock_agent.merge_mcp_data.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_max_iterations_reached(self, controller, sample_context, mock_agent):
-        """Test analysis loop reaching max iterations."""
-        mock_agent.max_iterations = 2
-        mock_agent.determine_next_mcp_tools = AsyncMock(return_value={
-            "continue": True,
-            "tools": [{"server": "test", "tool": "tool", "parameters": {}}]
-        })
-        mock_agent.merge_mcp_data = Mock(return_value={"merged": "data"})
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        assert result == "Regular analysis complete"
-        # Should stop after max_iterations (initial + 2 iterations)
-        assert mock_agent.execute_mcp_tools.call_count == 3
-
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_iteration_failure(self, controller, sample_context, mock_agent):
-        """Test analysis loop when iteration fails."""
-        mock_agent.determine_next_mcp_tools = AsyncMock(side_effect=Exception("Iteration failed"))
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        # Should continue with analysis despite iteration failure
-        assert result == "Regular analysis complete"
-        mock_agent.analyze_alert.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_invalid_next_action_type(self, controller, sample_context, mock_agent):
-        """Test analysis loop when determine_next_mcp_tools returns invalid type."""
-        mock_agent.determine_next_mcp_tools = AsyncMock(return_value="invalid_type")
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        # Should handle invalid type gracefully
-        assert result == "Regular analysis complete"
-        mock_agent.analyze_alert.assert_called_once()
+# Removed TestRegularIterationController - REGULAR strategy no longer supported
 
 
 @pytest.mark.unit
@@ -596,335 +387,12 @@ class TestReactFinalAnalysisController:
             await controller.execute_analysis_loop(sample_context)
 
 
-@pytest.mark.unit  
-class TestReactToolsController:
-    """Test ReactToolsController implementation."""
-    
-    @pytest.fixture
-    def mock_llm_client(self):
-        """Create mock LLM client."""
-        client = Mock()
-        client.generate_response = AsyncMock(return_value="Final Answer: Data collection complete")
-        return client
-    
-    @pytest.fixture
-    def mock_prompt_builder(self):
-        """Create mock prompt builder."""
-        builder = Mock()
-        builder.build_data_collection_react_prompt.return_value = "Data collection ReAct prompt"
-        builder.get_enhanced_react_system_message.return_value = "You are a data collection agent using ReAct."
-        builder.parse_react_response.return_value = {
-            'thought': 'Need to collect data',
-            'action': 'test-tool',
-            'action_input': 'param=value',
-            'is_complete': True,
-            'final_answer': 'Data collection complete'
-        }
-        builder.convert_action_to_tool_call.return_value = {
-            "server": "test-server",
-            "tool": "test-tool", 
-            "parameters": {"param": "value"},
-            "reason": "data collection"
-        }
-        builder.format_observation.return_value = "Tool executed successfully for data collection"
-        builder.get_react_continuation_prompt.return_value = ["Please continue with data collection..."]
-        builder.get_react_error_continuation.return_value = ["Error occurred, continue collecting data..."]
-        builder._flatten_react_history.return_value = ["Thought: Need data", "Action: test-tool", "Observation: Data collected"]
-        return builder
-    
-    @pytest.fixture
-    def mock_agent(self):
-        """Create mock agent for data collection testing."""
-        agent = Mock()
-        agent.max_iterations = 3
-        agent.create_prompt_context.return_value = Mock()
-        agent.get_current_stage_execution_id.return_value = "stage-exec-456"
-        agent.execute_mcp_tools = AsyncMock(return_value={
-            "test-server": [{"tool": "test-tool", "result": "data collected"}]
-        })
-        agent.merge_mcp_data = Mock(return_value={"merged": "data"})
-        agent._compose_instructions.return_value = "Composed instructions with MCP server guidance"
-        return agent
-    
-    @pytest.fixture
-    def controller(self, mock_llm_client, mock_prompt_builder):
-        """Create ReactToolsController instance."""
-        return ReactToolsController(mock_llm_client, mock_prompt_builder)
-    
-    @pytest.fixture
-    def sample_context(self, mock_agent):
-        """Create sample iteration context for data collection testing."""
-        return IterationContext(
-            alert_data={"alert": "TestAlert", "severity": "high"},
-            runbook_content="Test runbook content",
-            available_tools=[{"name": "test-tool"}],
-            session_id="test-session-456", 
-            agent=mock_agent,
-        )
-    
-    def test_needs_mcp_tools(self, controller):
-        """Test that ReactToolsController needs MCP tools."""
-        assert controller.needs_mcp_tools() is True
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_success_immediate_completion(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
-        """Test successful data collection that completes immediately."""
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        # Should return full ReAct history including final answer
-        assert "Thought: Need to collect data" in result
-        assert "Final Answer: Data collection complete" in result
-        
-        # Verify agent context creation
-        mock_agent.create_prompt_context.assert_called_once()
-        call_args = mock_agent.create_prompt_context.call_args[1]
-        assert call_args["stage_name"] == "data-collection"
-        assert call_args["available_tools"] == {"tools": sample_context.available_tools}
-        
-        # Verify prompt building
-        mock_prompt_builder.build_data_collection_react_prompt.assert_called_once()
-        
-        # Verify LLM call
-        mock_llm_client.generate_response.assert_called_once()
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_no_agent(self, controller):
-        """Test data collection loop with missing agent reference."""
-        context = IterationContext(
-            alert_data={},
-            runbook_content="",
-            available_tools=[],
-            session_id="test-session-123",
-            agent=None
-        )
-        
-        with pytest.raises(ValueError, match="Agent reference is required in context"):
-            await controller.execute_analysis_loop(context)
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_with_tool_execution(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
-        """Test data collection loop that executes tools before completing."""
-        # Mock sequence: action first, then completion
-        mock_prompt_builder.parse_react_response.side_effect = [
-            {
-                'thought': 'Need to collect data',
-                'action': 'test-tool',
-                'action_input': 'param=value',
-                'is_complete': False,
-                'final_answer': None
-            },
-            {
-                'thought': 'Data collected successfully',
-                'action': None,
-                'action_input': None,
-                'is_complete': True,
-                'final_answer': 'All data collected'
-            }
-        ]
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        # Should return full ReAct history with tool execution
-        assert "Thought: Need to collect data" in result
-        assert "Action: test-tool" in result
-        assert "Observation: Tool executed successfully" in result
-        assert "Final Answer: All data collected" in result
-        
-        # Verify tool was executed
-        mock_agent.execute_mcp_tools.assert_called_once()
-        
-        # Verify tool was executed during ReAct loop  
-        mock_agent.execute_mcp_tools.assert_called_once()
-        
-        # Verify observation formatting
-        mock_prompt_builder.format_observation.assert_called_once()
-        
-        # Verify multiple LLM calls
-        assert mock_llm_client.generate_response.call_count >= 2
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_tool_execution_error(self, controller, sample_context, mock_agent, mock_prompt_builder):
-        """Test data collection loop with tool execution error."""
-        # Mock tool execution failure
-        mock_agent.execute_mcp_tools.side_effect = Exception("Tool execution failed")
-        
-        # Mock sequence: action fails, then completion
-        mock_prompt_builder.parse_react_response.side_effect = [
-            {
-                'thought': 'Need to collect data',
-                'action': 'test-tool',
-                'action_input': 'param=value',
-                'is_complete': False,
-                'final_answer': None
-            },
-            {
-                'thought': 'Tool failed but continuing',
-                'action': None,
-                'action_input': None,
-                'is_complete': True,
-                'final_answer': 'Data collection with errors'
-            }
-        ]
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        # Should return full ReAct history including error handling
-        assert "Thought: Need to collect data" in result
-        assert "Action: test-tool" in result
-        assert "Observation: Error executing action" in result
-        assert "Final Answer: Data collection with errors" in result
-        
-        # Verify tool execution was attempted
-        mock_agent.execute_mcp_tools.assert_called_once()
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_max_iterations_reached(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
-        """Test data collection loop that reaches maximum iterations."""
-        mock_agent.max_iterations = 1  # Force quick max iterations
-        
-        # Mock always incomplete response
-        mock_prompt_builder.parse_react_response.return_value = {
-            'thought': 'Still collecting data...',
-            'action': None,
-            'action_input': None,
-            'is_complete': False,
-            'final_answer': None
-        }
-        
-        # Mock fallback response
-        fallback_response = "Partial data collection summary"
-        mock_llm_client.generate_response.side_effect = ["ReAct response", fallback_response]
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        assert "Data collection completed (reached max iterations)" in result
-        assert fallback_response in result
-        
-        # Should include fallback LLM call
-        assert mock_llm_client.generate_response.call_count >= 2
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_missing_action_continuation(self, controller, sample_context, mock_agent, mock_prompt_builder):
-        """Test data collection loop with missing action that needs continuation."""
-        # Mock sequence: incomplete without action, then completion
-        mock_prompt_builder.parse_react_response.side_effect = [
-            {
-                'thought': 'Thinking about data collection',
-                'action': None,
-                'action_input': None,
-                'is_complete': False,
-                'final_answer': None
-            },
-            {
-                'thought': 'Now ready to complete',
-                'action': None,
-                'action_input': None,
-                'is_complete': True,
-                'final_answer': 'Data collection done'
-            }
-        ]
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        # Should return full ReAct history with continuation handling
-        assert "Thought: Thinking about data collection" in result
-        assert "Please continue with data collection" in result
-        assert "Final Answer: Data collection done" in result
-        
-        # Verify continuation prompt was added
-        mock_prompt_builder.get_react_continuation_prompt.assert_called_once_with("data_collection")
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_history_truncation(self, controller, sample_context, mock_agent, mock_prompt_builder):
-        """Test data collection loop with conversation history truncation."""
-        iteration_count = 0
-        
-        def side_effect_parse(response):
-            nonlocal iteration_count
-            iteration_count += 1
-            
-            # Complete after many iterations to trigger history truncation logic
-            if iteration_count < 20:  # Keep adding to history
-                return {
-                    'thought': f'Adding to history iteration {iteration_count}',
-                    'action': None,
-                    'action_input': None,
-                    'is_complete': False,
-                    'final_answer': None
-                }
-            else:  # Finally complete
-                return {
-                    'thought': 'Final completion',
-                    'action': None,
-                    'action_input': None,
-                    'is_complete': True,
-                    'final_answer': 'Data collection complete'
-                }
-        
-        # Set high max iterations to allow for history buildup
-        mock_agent.max_iterations = 25
-        mock_prompt_builder.parse_react_response.side_effect = side_effect_parse
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        # Should return full ReAct history including final answer
-        assert "Final Answer: Data collection complete" in result
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_iteration_exception(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
-        """Test data collection loop with exception during iteration."""
-        # Mock LLM to fail first, then succeed
-        mock_llm_client.generate_response.side_effect = [
-            Exception("Network error"),
-            "Final Answer: Data collection recovered"
-        ]
-        
-        mock_prompt_builder.parse_react_response.return_value = {
-            'thought': 'Recovered from error',
-            'action': None,
-            'action_input': None,
-            'is_complete': True,
-            'final_answer': 'Data collection recovered'
-        }
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        # Should return full ReAct history including exception handling
-        assert "Error occurred, continue collecting data" in result
-        assert "Final Answer: Data collection recovered" in result
-        
-        # Verify error continuation was called
-        mock_prompt_builder.get_react_error_continuation.assert_called_once()
-    
-    @pytest.mark.asyncio
-    async def test_execute_analysis_loop_fallback_generation_error(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
-        """Test data collection loop with fallback generation failure."""
-        mock_agent.max_iterations = 1
-        
-        # Mock incomplete response
-        mock_prompt_builder.parse_react_response.return_value = {
-            'thought': 'Still working',
-            'action': None,
-            'action_input': None,
-            'is_complete': False,
-            'final_answer': None
-        }
-        
-        # Mock both initial and fallback LLM calls to fail
-        mock_llm_client.generate_response.side_effect = [
-            "Initial response",
-            Exception("Fallback generation failed")
-        ]
-        
-        result = await controller.execute_analysis_loop(sample_context)
-        
-        assert "Data collection incomplete" in result
-        assert "reached maximum iterations" in result
+# Removed TestReactToolsController - REACT_TOOLS strategy no longer supported
 
 
 @pytest.mark.unit
-class TestReactToolsPartialController:
-    """Test ReactToolsPartialController implementation."""
+class TestReactStageController:
+    """Test ReactStageController implementation."""
     
     @pytest.fixture
     def mock_llm_client(self):
@@ -937,7 +405,7 @@ class TestReactToolsPartialController:
     def mock_prompt_builder(self):
         """Create mock prompt builder."""
         builder = Mock()
-        builder.build_partial_analysis_react_prompt.return_value = "Partial analysis ReAct prompt"
+        builder.build_stage_analysis_react_prompt.return_value = "Stage analysis ReAct prompt"
         builder.get_enhanced_react_system_message.return_value = "You are an agent doing partial analysis using ReAct."
         builder.parse_react_response.return_value = {
             'thought': 'Need to analyze partially',
@@ -974,8 +442,8 @@ class TestReactToolsPartialController:
     
     @pytest.fixture
     def controller(self, mock_llm_client, mock_prompt_builder):
-        """Create ReactToolsPartialController instance."""
-        return ReactToolsPartialController(mock_llm_client, mock_prompt_builder)
+        """Create ReactStageController instance."""
+        return ReactStageController(mock_llm_client, mock_prompt_builder)
     
     @pytest.fixture
     def sample_context(self, mock_agent):
@@ -990,7 +458,7 @@ class TestReactToolsPartialController:
         )
     
     def test_needs_mcp_tools(self, controller):
-        """Test that ReactToolsPartialController needs MCP tools."""
+        """Test that ReactStageController needs MCP tools."""
         assert controller.needs_mcp_tools() is True
     
     @pytest.mark.asyncio
@@ -1009,7 +477,7 @@ class TestReactToolsPartialController:
         assert call_args["available_tools"] == {"tools": sample_context.available_tools}
         
         # Verify prompt building
-        mock_prompt_builder.build_partial_analysis_react_prompt.assert_called_once()
+        mock_prompt_builder.build_stage_analysis_react_prompt.assert_called_once()
         
         # Verify LLM call
         mock_llm_client.generate_response.assert_called_once()
@@ -1140,12 +608,10 @@ class TestIterationControllerFactory:
     def mock_prompt_builder(self):
         return Mock()
     
-    def test_create_regular_iteration_controller(self, mock_llm_client, mock_prompt_builder):
-        """Test creating RegularIterationController."""
+    def test_create_react_stage_controller(self, mock_llm_client, mock_prompt_builder):
+        """Test creating ReactStageController."""
         from tarsy.agents.base_agent import BaseAgent
         
-        # We can't instantiate BaseAgent directly, so we'll test the factory method logic
-        # by importing and testing the method directly in a concrete test class
         class TestAgent(BaseAgent):
             def mcp_servers(self):
                 return ["test"]
@@ -1158,11 +624,11 @@ class TestIterationControllerFactory:
                 llm_client=mock_llm_client,
                 mcp_client=Mock(),
                 mcp_registry=Mock(),
-                iteration_strategy=IterationStrategy.REGULAR
+                iteration_strategy=IterationStrategy.REACT_STAGE
             )
             
-            assert isinstance(agent._iteration_controller, RegularIterationController)
-            assert agent.iteration_strategy == IterationStrategy.REGULAR
+            assert isinstance(agent._iteration_controller, ReactStageController)
+            assert agent.iteration_strategy == IterationStrategy.REACT_STAGE
     
     def test_create_react_iteration_controller(self, mock_llm_client, mock_prompt_builder):
         """Test creating SimpleReActController."""
@@ -1221,7 +687,7 @@ class TestIterationControllerIntegration:
             'prompt_builder': Mock()
         }
     
-    def test_regular_vs_react_initialization(self, mock_dependencies):
+    def test_react_vs_react_stage_initialization(self, mock_dependencies):
         """Test that different strategies create different controllers."""
         from tarsy.agents.base_agent import BaseAgent
         
@@ -1234,15 +700,7 @@ class TestIterationControllerIntegration:
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', 
                    return_value=mock_dependencies['prompt_builder']):
-            # Create agent with REGULAR strategy
-            regular_agent = TestAgent(
-                llm_client=mock_dependencies['llm_client'],
-                mcp_client=mock_dependencies['mcp_client'],
-                mcp_registry=mock_dependencies['mcp_registry'],
-                iteration_strategy=IterationStrategy.REGULAR
-            )
-            
-            # Create agent with REACT strategy  
+            # Create agent with REACT strategy
             react_agent = TestAgent(
                 llm_client=mock_dependencies['llm_client'],
                 mcp_client=mock_dependencies['mcp_client'],
@@ -1250,13 +708,21 @@ class TestIterationControllerIntegration:
                 iteration_strategy=IterationStrategy.REACT
             )
             
+            # Create agent with REACT_STAGE strategy  
+            react_stage_agent = TestAgent(
+                llm_client=mock_dependencies['llm_client'],
+                mcp_client=mock_dependencies['mcp_client'],
+                mcp_registry=mock_dependencies['mcp_registry'],
+                iteration_strategy=IterationStrategy.REACT_STAGE
+            )
+            
             # Verify different controller types
-            assert isinstance(regular_agent._iteration_controller, RegularIterationController)
             assert isinstance(react_agent._iteration_controller, SimpleReActController)
+            assert isinstance(react_stage_agent._iteration_controller, ReactStageController)
             
             # Verify strategy property works correctly
-            assert regular_agent.iteration_strategy == IterationStrategy.REGULAR
             assert react_agent.iteration_strategy == IterationStrategy.REACT
+            assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
 
 
 @pytest.mark.unit

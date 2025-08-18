@@ -76,10 +76,10 @@ class TestKubernetesAgentInitialization:
             llm_client=mock_llm_client,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry,
-            iteration_strategy=IterationStrategy.REGULAR
+            iteration_strategy=IterationStrategy.REACT_STAGE
         )
         
-        assert agent.iteration_strategy == IterationStrategy.REGULAR
+        assert agent.iteration_strategy == IterationStrategy.REACT_STAGE
     
     def test_inheritance_from_base_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test that KubernetesAgent properly inherits from BaseAgent."""

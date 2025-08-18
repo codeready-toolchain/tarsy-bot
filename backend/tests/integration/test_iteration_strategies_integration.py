@@ -85,22 +85,15 @@ class TestIterationStrategiesIntegration:
         return registry
     
     @pytest.mark.asyncio
-    async def test_kubernetes_agent_regular_vs_react_strategies(
+    async def test_kubernetes_agent_react_vs_react_stage_strategies(
         self, mock_llm_client, mock_mcp_client, mock_mcp_registry, 
         sample_alert_data, sample_runbook
     ):
-        """Test KubernetesAgent with both REGULAR and REACT strategies."""
+        """Test KubernetesAgent with both REACT and REACT_STAGE strategies."""
         # Mock LLM responses
         mock_llm_client.generate_response.return_value = "Analysis completed successfully"
         
         # Create agents with different strategies
-        regular_agent = KubernetesAgent(
-            llm_client=mock_llm_client,
-            mcp_client=mock_mcp_client,
-            mcp_registry=mock_mcp_registry,
-            iteration_strategy=IterationStrategy.REGULAR
-        )
-        
         react_agent = KubernetesAgent(
             llm_client=mock_llm_client,
             mcp_client=mock_mcp_client,
@@ -108,12 +101,19 @@ class TestIterationStrategiesIntegration:
             iteration_strategy=IterationStrategy.REACT
         )
         
+        react_stage_agent = KubernetesAgent(
+            llm_client=mock_llm_client,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry,
+            iteration_strategy=IterationStrategy.REACT_STAGE
+        )
+        
         # Verify different strategies assigned
-        assert regular_agent.iteration_strategy == IterationStrategy.REGULAR
         assert react_agent.iteration_strategy == IterationStrategy.REACT
+        assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
         
         # Mock additional methods needed for processing
-        for agent in [regular_agent, react_agent]:
+        for agent in [react_agent, react_stage_agent]:
             agent.determine_mcp_tools = AsyncMock(return_value=[])
             agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
             agent.analyze_alert = AsyncMock(return_value="Strategy-specific analysis")
@@ -126,20 +126,20 @@ class TestIterationStrategiesIntegration:
             runbook_content=sample_runbook
         )
         
-        regular_result = await regular_agent.process_alert(
-            alert_processing_data, "test-session-regular"
-        )
-        
         react_result = await react_agent.process_alert(
             alert_processing_data, "test-session-react"
         )
         
+        react_stage_result = await react_stage_agent.process_alert(
+            alert_processing_data, "test-session-react-stage"
+        )
+        
         # Both should succeed but potentially use different processing paths
-        assert regular_result.status == StageStatus.COMPLETED
         assert react_result.status == StageStatus.COMPLETED
+        assert react_stage_result.status == StageStatus.COMPLETED
         
         # Results should be different (different iteration strategies produce different outputs)
-        assert regular_result.result_summary != react_result.result_summary
+        assert react_result.result_summary != react_stage_result.result_summary
     
     @pytest.mark.asyncio
     async def test_configurable_agent_iteration_strategies(
@@ -151,11 +151,11 @@ class TestIterationStrategiesIntegration:
         mock_llm_client.generate_response.return_value = "Configurable analysis complete"
         
         # Create configurations with different strategies
-        regular_config = AgentConfigModel(
+        react_stage_config = AgentConfigModel(
             alert_types=["kubernetes"],
             mcp_servers=["kubernetes-server"],
-            custom_instructions="Use regular processing",
-            iteration_strategy=IterationStrategy.REGULAR
+            custom_instructions="Use react stage processing",
+            iteration_strategy=IterationStrategy.REACT_STAGE
         )
         
         react_config = AgentConfigModel(
@@ -166,9 +166,9 @@ class TestIterationStrategiesIntegration:
         )
         
         # Create agents
-        regular_agent = ConfigurableAgent(
-            agent_name="regular-k8s-agent",
-            config=regular_config,
+        react_stage_agent = ConfigurableAgent(
+            agent_name="react-stage-k8s-agent",
+            config=react_stage_config,
             llm_client=mock_llm_client,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
@@ -183,11 +183,11 @@ class TestIterationStrategiesIntegration:
         )
         
         # Verify strategies
-        assert regular_agent.iteration_strategy == IterationStrategy.REGULAR
+        assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
         assert react_agent.iteration_strategy == IterationStrategy.REACT
         
         # Mock processing methods
-        for agent in [regular_agent, react_agent]:
+        for agent in [react_stage_agent, react_agent]:
             agent.determine_mcp_tools = AsyncMock(return_value=[])
             agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
             agent.analyze_alert = AsyncMock(return_value="Configurable agent analysis")
@@ -200,8 +200,8 @@ class TestIterationStrategiesIntegration:
             runbook_content=sample_runbook
         )
         
-        regular_result = await regular_agent.process_alert(
-            alert_processing_data, "test-config-regular"
+        react_stage_result = await react_stage_agent.process_alert(
+            alert_processing_data, "test-config-react-stage"
         )
         
         react_result = await react_agent.process_alert(
@@ -209,11 +209,11 @@ class TestIterationStrategiesIntegration:
         )
         
         # Verify results
-        assert regular_result.status == StageStatus.COMPLETED
+        assert react_stage_result.status == StageStatus.COMPLETED
         assert react_result.status == StageStatus.COMPLETED
         
         # Results should be different (different iteration strategies produce different outputs)
-        assert regular_result.result_summary != react_result.result_summary
+        assert react_result.result_summary != react_stage_result.result_summary
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
     def test_agent_factory_creates_agents_with_correct_strategies(
@@ -247,14 +247,14 @@ class TestIterationStrategiesIntegration:
         """Test loading agents from YAML configuration with iteration strategies."""
         config_yaml = """
 agents:
-  regular-security-agent:
+  react-stage-security-agent:
     alert_types:
       - security
       - intrusion
     mcp_servers:
       - security-tools
-    iteration_strategy: regular
-    custom_instructions: "Use regular processing for security alerts"
+    iteration_strategy: react-stage
+    custom_instructions: "Use react stage processing for security alerts"
   
   react-performance-agent:
     alert_types:
@@ -295,19 +295,19 @@ mcp_servers:
             # Verify agent configurations loaded correctly
             assert len(config.agents) == 2
             
-            regular_agent_config = config.agents["regular-security-agent"]
+            react_stage_agent_config = config.agents["react-stage-security-agent"]
             react_agent_config = config.agents["react-performance-agent"]
             
             # Verify iteration strategies
-            assert regular_agent_config.iteration_strategy == IterationStrategy.REGULAR
+            assert react_stage_agent_config.iteration_strategy == IterationStrategy.REACT_STAGE
             assert react_agent_config.iteration_strategy == IterationStrategy.REACT
             
             # Verify other properties
-            assert regular_agent_config.alert_types == ["security", "intrusion"]
+            assert react_stage_agent_config.alert_types == ["security", "intrusion"]
             assert react_agent_config.alert_types == ["performance", "resource-usage"]
             
             # Verify custom instructions
-            assert "regular processing" in regular_agent_config.custom_instructions
+            assert "react stage processing" in react_stage_agent_config.custom_instructions
             assert "ReAct reasoning" in react_agent_config.custom_instructions
             
         finally:
@@ -320,11 +320,11 @@ mcp_servers:
         """Test complete flow from YAML config to agent execution with different strategies."""
         config_yaml = """
 agents:
-  test-regular-agent:
+  test-react-stage-agent:
     alert_types: ["test-alerts"]
     mcp_servers: ["test-k8s-server"]
-    iteration_strategy: regular
-    custom_instructions: "Simple processing"
+    iteration_strategy: react-stage
+    custom_instructions: "React stage processing"
   
   test-react-agent:
     alert_types: ["test-performance"] 
@@ -371,17 +371,17 @@ mcp_servers:
             )
             
             # Create agents with different strategies
-            regular_agent = factory.create_agent("ConfigurableAgent:test-regular-agent")
+            react_stage_agent = factory.create_agent("ConfigurableAgent:test-react-stage-agent")
             react_agent = factory.create_agent("ConfigurableAgent:test-react-agent")
             
             # Verify correct strategies assigned
-            assert regular_agent.iteration_strategy == IterationStrategy.REGULAR
+            assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
             assert react_agent.iteration_strategy == IterationStrategy.REACT
             
             # Mock processing for testing
             mock_llm_client.generate_response.return_value = "YAML config test analysis"
             
-            for agent in [regular_agent, react_agent]:
+            for agent in [react_stage_agent, react_agent]:
                 agent.determine_mcp_tools = AsyncMock(return_value=[])
                 agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
                 agent.analyze_alert = AsyncMock(return_value="YAML test analysis")
@@ -394,8 +394,8 @@ mcp_servers:
                 runbook_content=sample_runbook
             )
             
-            regular_result = await regular_agent.process_alert(
-                alert_processing_data, "yaml-regular-test"
+            react_stage_result = await react_stage_agent.process_alert(
+                alert_processing_data, "yaml-react-stage-test"
             )
             
             react_result = await react_agent.process_alert(
@@ -403,11 +403,11 @@ mcp_servers:
             )
             
             # Verify both processed successfully
-            assert regular_result.status == StageStatus.COMPLETED
+            assert react_stage_result.status == StageStatus.COMPLETED
             assert react_result.status == StageStatus.COMPLETED
             
             # Results should be different (different iteration strategies produce different outputs)
-            assert regular_result.result_summary != react_result.result_summary
+            assert react_result.result_summary != react_stage_result.result_summary
             
         finally:
             os.unlink(temp_path)

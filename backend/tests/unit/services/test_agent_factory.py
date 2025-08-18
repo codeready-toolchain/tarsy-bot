@@ -513,11 +513,11 @@ class TestAgentFactoryIterationStrategies:
         from tarsy.models.constants import IterationStrategy
         
         return {
-            'regular-agent': AgentConfigModel(
+            'react-stage-agent': AgentConfigModel(
                 alert_types=['performance'],
                 mcp_servers=['monitoring-server'],
-                iteration_strategy=IterationStrategy.REGULAR,
-                custom_instructions='Use regular processing'
+                iteration_strategy=IterationStrategy.REACT_STAGE,
+                custom_instructions='Use react stage processing'
             ),
             'react-agent': AgentConfigModel(
                 alert_types=['security'],
@@ -528,8 +528,8 @@ class TestAgentFactoryIterationStrategies:
         }
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
-    def test_create_kubernetes_agent_with_regular_strategy(self, mock_kubernetes_agent, mock_dependencies):
-        """Test creating KubernetesAgent with REGULAR iteration strategy."""
+    def test_create_kubernetes_agent_with_react_stage_strategy(self, mock_kubernetes_agent, mock_dependencies):
+        """Test creating KubernetesAgent with REACT_STAGE iteration strategy."""
         from tarsy.models.constants import IterationStrategy
         
         factory = AgentFactory(
@@ -539,7 +539,7 @@ class TestAgentFactoryIterationStrategies:
         )
         
         mock_agent_instance = Mock()
-        mock_agent_instance.iteration_strategy = IterationStrategy.REGULAR
+        mock_agent_instance.iteration_strategy = IterationStrategy.REACT_STAGE
         mock_kubernetes_agent.return_value = mock_agent_instance
         
         # Create agent - should use default REACT strategy
@@ -555,8 +555,8 @@ class TestAgentFactoryIterationStrategies:
         
         assert agent == mock_agent_instance
     
-    def test_create_configurable_agent_with_regular_strategy(self, mock_dependencies, sample_agent_configs):
-        """Test creating ConfigurableAgent with REGULAR iteration strategy."""
+    def test_create_configurable_agent_with_react_stage_strategy(self, mock_dependencies, sample_agent_configs):
+        """Test creating ConfigurableAgent with REACT_STAGE iteration strategy."""
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
             mcp_client=mock_dependencies['mcp_client'],
@@ -570,14 +570,14 @@ class TestAgentFactoryIterationStrategies:
         mock_dependencies['mcp_registry'].get_server_config.return_value = mock_server_config
         mock_dependencies['mcp_registry'].get_server_configs.return_value = [mock_server_config]
         
-        agent = factory.create_agent("ConfigurableAgent:regular-agent")
+        agent = factory.create_agent("ConfigurableAgent:react-stage-agent")
         
         from tarsy.agents.configurable_agent import ConfigurableAgent
         from tarsy.models.constants import IterationStrategy
         
         assert isinstance(agent, ConfigurableAgent)
-        assert agent.iteration_strategy == IterationStrategy.REGULAR
-        assert agent.agent_name == "regular-agent"
+        assert agent.iteration_strategy == IterationStrategy.REACT_STAGE
+        assert agent.agent_name == "react-stage-agent"
     
     def test_create_configurable_agent_with_react_strategy(self, mock_dependencies, sample_agent_configs):
         """Test creating ConfigurableAgent with REACT iteration strategy."""
@@ -625,20 +625,20 @@ class TestAgentFactoryIterationStrategies:
         mock_dependencies['mcp_registry'].get_server_configs.side_effect = mock_get_server_configs
         
         # Create both agents
-        regular_agent = factory.create_agent("ConfigurableAgent:regular-agent")
+        react_stage_agent = factory.create_agent("ConfigurableAgent:react-stage-agent")
         react_agent = factory.create_agent("ConfigurableAgent:react-agent")
         
         from tarsy.models.constants import IterationStrategy
         
         # Verify different strategies
-        assert regular_agent.iteration_strategy == IterationStrategy.REGULAR
+        assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
         assert react_agent.iteration_strategy == IterationStrategy.REACT
         
         # Verify different configurations
-        assert regular_agent.agent_name == "regular-agent"
+        assert react_stage_agent.agent_name == "react-stage-agent"
         assert react_agent.agent_name == "react-agent"
         
-        assert 'performance' in regular_agent.get_supported_alert_types()
+        assert 'performance' in react_stage_agent.get_supported_alert_types()
         assert 'security' in react_agent.get_supported_alert_types()
     
     def test_agent_factory_logging_includes_iteration_strategy(self, mock_dependencies, caplog):
@@ -650,7 +650,7 @@ class TestAgentFactoryIterationStrategies:
             'test-agent': AgentConfigModel(
                 alert_types=['test'],
                 mcp_servers=['test-server'],
-                iteration_strategy=IterationStrategy.REGULAR
+                iteration_strategy=IterationStrategy.REACT_STAGE
             )
         }
         

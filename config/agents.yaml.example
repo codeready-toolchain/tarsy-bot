@@ -25,11 +25,12 @@
 #
 # ITERATION STRATEGIES:
 # - Each agent can use different iteration strategies for alert processing:
-#   - "react": ReAct pattern with Think→Action→Observation cycles for systematic analysis
-#   - "regular": Simple tool iteration without reasoning overhead for fast response
+#   - "react": ReAct pattern with Think→Action→Observation cycles for complete analysis
+#   - "react-stage": ReAct pattern for stage-specific analysis within multi-stage chains
+#   - "react-final-analysis": ReAct final analysis only, no tools, uses accumulated data
 # - Built-in agents have default strategies: KubernetesAgent uses "react"
 # - Configured agents default to "react" if iteration_strategy is not specified
-# - Choose "react" for complex troubleshooting, "regular" for simple/fast operations
+# - Choose "react" for standalone analysis, "react-stage" for chain stages, "react-final-analysis" for synthesis
 #
 # DATA MASKING:
 # - MCP servers can include optional data_masking configuration to protect sensitive data
@@ -171,7 +172,7 @@ agents:
     mcp_servers:
       - "monitoring-server"       # Custom monitoring MCP server (defined above)
       - "kubernetes-server"       # Built-in Kubernetes MCP server for cluster metrics
-    iteration_strategy: "regular" # Use regular strategy for fast performance issue resolution
+    iteration_strategy: "react" # Use react strategy for systematic performance troubleshooting
     custom_instructions: |
       You are a performance-focused SRE agent specializing in system optimization.
       
@@ -255,10 +256,8 @@ agents:
 # - Single agents are treated as 1-stage chains for unified processing
 #
 # STAGE ITERATION STRATEGIES:
-# - "react": Standard ReAct pattern for comprehensive analysis (default)
-# - "regular": Simple tool iteration without reasoning overhead for fast response
-# - "react-tools": Data collection focused with minimal analysis
-# - "react-tools-partial": Data collection + partial analysis of collected data  
+# - "react": Standard ReAct pattern for complete analysis (default)
+# - "react-stage": ReAct pattern for stage-specific analysis within multi-stage chains
 # - "react-final-analysis": Pure analysis using all accumulated data (no tool calls)
 
 agent_chains:
@@ -268,7 +267,7 @@ agent_chains:
     stages:
       - name: "evidence-collection"        # Stage 1: Gather security evidence
         agent: "security-agent"
-        iteration_strategy: "react-tools" # Focus on data collection
+        iteration_strategy: "react-stage" # Focus on data collection and stage analysis
       - name: "security-analysis"          # Stage 2: Analyze collected evidence  
         agent: "security-agent"
         iteration_strategy: "react"       # Full analysis with recommendations
@@ -280,10 +279,10 @@ agent_chains:
     stages:
       - name: "system-data-collection"     # Stage 1: Collect system metrics and status
         agent: "performance-agent"
-        iteration_strategy: "react-tools" # Focus on gathering comprehensive data
+        iteration_strategy: "react-stage" # Focus on gathering comprehensive data and stage analysis
       - name: "detailed-analysis"          # Stage 2: Deep dive analysis with tools
         agent: "database-agent"            # Different agent for specialized analysis
-        iteration_strategy: "react-tools-partial" # Collect additional data + partial analysis
+        iteration_strategy: "react-stage" # Collect additional data + stage-specific analysis
       - name: "final-diagnosis"            # Stage 3: Comprehensive diagnosis and recommendations
         agent: "performance-agent"         # Back to performance agent for final analysis
         iteration_strategy: "react-final-analysis" # Pure analysis, no additional data collection
@@ -298,7 +297,7 @@ agent_chains:
         iteration_strategy: "react-tools" # Data collection focus
       - name: "resource-analysis"          # Stage 2: Analyze resource utilization  
         agent: "performance-agent"
-        iteration_strategy: "react-tools-partial" # Additional data + partial analysis
+        iteration_strategy: "react-stage" # Additional data + stage-specific analysis
       - name: "optimization-recommendations" # Stage 3: Provide optimization plan
         agent: "performance-agent"
         iteration_strategy: "react-final-analysis" # Comprehensive recommendations
@@ -310,13 +309,13 @@ agent_chains:
     stages:
       - name: "kubernetes-investigation"    # Stage 1: Kubernetes cluster analysis
         agent: "database-agent"             # Using database-agent for K8s analysis
-        iteration_strategy: "react-tools-partial" # Collect K8s data + initial analysis
+        iteration_strategy: "react-stage" # Collect K8s data + initial analysis
       - name: "performance-investigation"   # Stage 2: Performance metrics analysis
         agent: "performance-agent" 
-        iteration_strategy: "react-tools-partial" # Collect perf data + analysis
+        iteration_strategy: "react-stage" # Collect perf data + analysis
       - name: "security-assessment"         # Stage 3: Security impact assessment
         agent: "security-agent"
-        iteration_strategy: "react-tools-partial" # Security data + assessment
+        iteration_strategy: "react-stage" # Security data + assessment
       - name: "unified-incident-report"     # Stage 4: Comprehensive incident report
         agent: "security-agent"             # Security agent for final report (highest priority)
         iteration_strategy: "react-final-analysis" # Synthesize all data into final report
