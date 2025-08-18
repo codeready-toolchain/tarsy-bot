@@ -294,7 +294,7 @@ agent_chains:
     stages:
       - name: "metrics-collection"         # Stage 1: Gather performance metrics
         agent: "performance-agent"
-        iteration_strategy: "react-tools" # Data collection focus
+        iteration_strategy: "react-stage" # Data collection focus
       - name: "resource-analysis"          # Stage 2: Analyze resource utilization  
         agent: "performance-agent"
         iteration_strategy: "react-stage" # Additional data + stage-specific analysis

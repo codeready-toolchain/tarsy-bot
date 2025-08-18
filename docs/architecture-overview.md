@@ -38,7 +38,7 @@ graph LR
 ### 3. Specialized Agents (Enhanced for Chains)
 - **Domain experts** for different infrastructure areas (Kubernetes, databases, networks, etc.)
 - Each agent comes with its own **dedicated MCP servers/tools** (kubectl, database clients, network diagnostics, etc.)
-- **Advanced processing approaches**: ReAct (systematic reasoning), Regular (fast iteration), ReAct Tools (data collection only), ReAct Tools Partial (data collection and partial analysis), ReAct Final Analysis (comprehensive analysis of data collected by previous stages, no tool calling)
+- **Advanced processing approaches**: ReAct (systematic reasoning), ReAct Stage (stage-specific analysis within chains), ReAct Final Analysis (comprehensive analysis of data collected by previous stages, no tool calling)
 - **Stage-aware processing**: Agents can access data from all previous stages in the chain
 - Uses AI to intelligently select and use the right tools based on stage requirements and accumulated data
 
@@ -220,14 +220,14 @@ The AI combines all four to make intelligent decisions about investigation appro
     performance-k8s-data-collector:
       mcp_servers:
         - "kubernetes-server"
-      iteration_strategy: "react-tools"  # Optional default strategy: Data collection only
+      iteration_strategy: "react-stage"  # Optional default strategy: Stage-specific analysis
       custom_instructions: |             # Optional
         Collect comprehensive performance metrics for k8s cluster for analysis stage.
     performance-prometheus-data-collector:
       mcp_servers:
         - "prometheus-server"
         - "kubernetes-server"
-      iteration_strategy: "react-tools"  # Optional default strategy: Data collection only
+      iteration_strategy: "react-stage"  # Optional default strategy: Stage-specific analysis
     performance-analyzer:
       iteration_strategy: "react-final-analysis"  # Optional default strategy: Analysis without tools
       custom_instructions: |
@@ -242,10 +242,10 @@ The AI combines all four to make intelligent decisions about investigation appro
       stages:
         - name: "k8s-data-collection"
           agent: "performance-k8s-data-collector"         # Only k8s MCP Server available for this agent
-          iteration_strategy: "react-tools"               # Override default if needed
+          iteration_strategy: "react-stage"               # Override default if needed
         - name: "prometheus-metrics-collection"
           agent: "performance-prometheus-data-collector"  # Only prometheus MCP Server available for this agent
-          iteration_strategy: "react-tools"
+          iteration_strategy: "react-stage"
         - name: "trend-analysis"
           agent: "performance-analyzer"
           iteration_strategy: "react-final-analysis"

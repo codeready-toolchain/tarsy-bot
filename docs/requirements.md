@@ -128,9 +128,7 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
   2. Stage-by-stage execution with data accumulation:
      - Each stage instantiates an agent with stage-specific iteration strategy
      - **ReAct Strategy**: Think→Action→Observation cycles with structured reasoning
-     - **Regular Strategy**: Direct tool selection and execution for faster processing
-     - **REACT_TOOLS Strategy**: ReAct data collection without analysis for subsequent stages
-     - **REACT_TOOLS_PARTIAL Strategy**: ReAct data collection with stage-specific analysis
+     - **REACT_STAGE Strategy**: ReAct stage-specific analysis within multi-stage chains
      - **REACT_FINAL_ANALYSIS Strategy**: Comprehensive analysis using all accumulated stage data
   3. Data collection using agent's assigned MCP server subset
   4. Progressive data enrichment through stage outputs accumulation
@@ -478,7 +476,7 @@ For proposed changes or new requirements, see the [Enhancement Proposals directo
 - Agents shall apply domain-specific analysis logic using stage-specific iteration strategies
 - Agents shall have access to accumulated data from all previous stages in the chain
 - Agents shall provide specialized error handling and recovery within their domain and stage context
-- Stages shall use strategy-specific processing patterns (ReAct reasoning, Regular tool iteration, REACT_TOOLS data collection, etc.)
+- Stages shall use strategy-specific processing patterns (ReAct reasoning, ReAct stage analysis, ReAct final analysis, etc.)
 
 **REQ-8.1.3: Chain History Capture Flow**
 - The system shall automatically create chain history sessions at alert processing initiation

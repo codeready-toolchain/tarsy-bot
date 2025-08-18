@@ -4,6 +4,8 @@
 **Created:** 2025-08-11  
 **Requirements:** Multi-stage alert processing workflows  
 
+> **⚠️ Historical Note:** This document describes the original design including iteration strategies `REGULAR`, `REACT_TOOLS`, and `REACT_TOOLS_PARTIAL` which have since been removed from the codebase. The current implementation supports: `REACT`, `REACT_STAGE`, and `REACT_FINAL_ANALYSIS`. See current iteration controllers in `backend/tarsy/agents/iteration_controllers/__init__.py`.
+
 ---
 
 ## Overview
@@ -441,28 +443,22 @@ The chain architecture enables specialized iteration controllers for different s
 ```python
 class IterationStrategy(Enum):
     # Existing strategies
-    REGULAR = "regular"
     REACT = "react"
     
-    # NEW: Tool-focused strategies (data collection only)
-    REACT_TOOLS = "react-tools"           # ReAct pattern, tools only, no analysis
+    # NEW: Stage-focused strategies (for chain stages)
+    REACT_STAGE = "react-stage"           # ReAct pattern for stage-specific analysis within chains
     
     # NEW: Analysis-focused strategies  
-    REACT_TOOLS_PARTIAL = "react-tools-partial"     # ReAct + tools + partial analysis
-    REACT_FINAL_ANALYSIS = "react-final-analysis"   # ReAct final analysis only, no tools
+    REACT_FINAL_ANALYSIS = "react-final-analysis"     # ReAct final analysis only, no tools
 ```
 
 **Strategy Behaviors:**
 
-1. **Tool-Only Strategies** (`react-tools`):
-   - Focus on ReAct-style data collection via MCP tools
-   - No analysis output - just enriched MCP results
-   - Pass accumulated data to next stage
-
-2. **Partial Analysis Strategies** (`react-tools-partial`):
-   - Collect data AND provide ReAct-style stage-specific analysis
+1. **Stage-Specific Strategies** (`react-stage`):
+   - Focus on ReAct-style investigation and stage-specific analysis
+   - Collect data AND provide analysis relevant to this stage
    - Output includes both MCP results and analysis
-   - Good for incremental insights
+   - Good for incremental insights in chain workflows
 
 3. **Final Analysis Strategy** (`react-final-analysis`):
    - No tool calling - pure ReAct-style analysis
@@ -478,10 +474,10 @@ kubernetes-deep-troubleshooting:
   stages:
     - name: "system-data-collection"
       agent: "ConfigurableAgent:k8s"                # K8s agent with k8s tools
-      iteration_strategy: "react-tools"             # Data collection only
+      iteration_strategy: "react-stage"             # Stage-specific data collection and analysis
     - name: "log-analysis"  
       agent: "ConfigurableAgent:k8s-logs"           # K8s agent with logs specific tools
-      iteration_strategy: "react-tools"             # More data collection
+      iteration_strategy: "react-stage"             # More data collection and analysis
     - name: "final-diagnosis"
       agent: "ConfigurableAgent:k8s-analysis"       # Same k8s agent, analysis mode
       iteration_strategy: "react-final-analysis"    # Analysis with full context
@@ -492,13 +488,13 @@ security-incident-investigation:
   stages:
     - name: "evidence-collection"
       agent: "ConfigurableAgent:security"           # Single security agent
-      iteration_strategy: "react-tools-partial"     # Collect + partial analysis of collected data
+      iteration_strategy: "react-stage"             # Collect + stage-specific analysis
     - name: "k8s-data-collection"
       agent: "ConfigurableAgent:k8s"                # K8s agent with k8s tools
-      iteration_strategy: "react-tools-partial"     # Collect + partial analysis of collected data
+      iteration_strategy: "react-stage"             # Collect + stage-specific analysis
     - name: "aws-data-collection"
       agent: "ConfigurableAgent:aws"                # AWS agent
-      iteration_strategy: "react-tools-partial"     # More data + partial analysis of collected data
+      iteration_strategy: "react-stage"             # More data + stage-specific analysis
     - name: "final-report"
       agent: "ConfigurableAgent:security-analysis"  # Security agent, no tools, final analysis only
       iteration_strategy: "react-final-analysis"    # Comprehensive report
@@ -515,8 +511,8 @@ agents:
 
   k8s-logs:
     mcp_servers: ["logs-server"]
-    iteration_strategy: "react-tools"    # Default: Optimized for data collection
-    custom_instructions: "Kubernetes logs data collection expert. Focus on gathering comprehensive logs."
+    iteration_strategy: "react-stage"    # Default: Optimized for stage-specific analysis
+    custom_instructions: "Kubernetes logs expert. Focus on gathering and analyzing logs for this stage."
 
   k8s-analysis:
     # No mcp_servers
@@ -1012,8 +1008,7 @@ class ReactFinalAnalysisController(IterationController):
 ```python
 # Add to existing backend/tarsy/agents/iteration_controllers/__init__.py
 
-from .react_tools_controller import ReactToolsController
-from .react_tools_partial_controller import ReactToolsPartialController  
+from .react_stage_controller import ReactStageController
 from .react_final_analysis_controller import ReactFinalAnalysisController
 
 # Enhanced factory function
@@ -1021,9 +1016,7 @@ def create_iteration_controller(strategy: IterationStrategy) -> IterationControl
     """Create appropriate controller based on strategy."""
     controller_map = {
         IterationStrategy.REACT: SimpleReActController,         # Existing
-        IterationStrategy.REGULAR: RegularIterationController,  # Existing
-        IterationStrategy.REACT_TOOLS: ReactToolsController,             # NEW
-        IterationStrategy.REACT_TOOLS_PARTIAL: ReactToolsPartialController,   # NEW
+        IterationStrategy.REACT_STAGE: ReactStageController,             # NEW
         IterationStrategy.REACT_FINAL_ANALYSIS: ReactFinalAnalysisController, # NEW
     }
     
