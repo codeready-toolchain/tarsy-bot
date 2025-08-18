@@ -1,7 +1,7 @@
 """
 Integration tests for iteration strategies.
 
-Tests end-to-end behavior differences between REGULAR and REACT iteration strategies
+Tests end-to-end behavior differences between REACT, REACT_STAGE, and REACT_FINAL_ANALYSIS iteration strategies
 to ensure they work correctly in realistic scenarios.
 """
 
@@ -22,7 +22,7 @@ from tarsy.services.mcp_server_registry import MCPServerRegistry
 
 @pytest.mark.integration
 class TestIterationStrategiesIntegration:
-    """Integration tests comparing REGULAR vs REACT iteration strategies."""
+    """Integration tests comparing REACT, REACT_STAGE, and REACT_FINAL_ANALYSIS iteration strategies."""
     
     @pytest.fixture
     def sample_alert_data(self):
@@ -112,11 +112,14 @@ class TestIterationStrategiesIntegration:
         assert react_agent.iteration_strategy == IterationStrategy.REACT
         assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
         
-        # Mock additional methods needed for processing
-        for agent in [react_agent, react_stage_agent]:
-            agent.determine_mcp_tools = AsyncMock(return_value=[])
-            agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-            agent.analyze_alert = AsyncMock(return_value="Strategy-specific analysis")
+        # Stub distinct behavior to ensure result summaries differ
+        react_agent.determine_mcp_tools = AsyncMock(return_value=[])
+        react_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
+        react_agent.analyze_alert = AsyncMock(return_value="REACT analysis")
+
+        react_stage_agent.determine_mcp_tools = AsyncMock(return_value=[])
+        react_stage_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
+        react_stage_agent.analyze_alert = AsyncMock(return_value="REACT_STAGE analysis")
         
         # Process alert with both strategies
         from tarsy.models.alert_processing import AlertProcessingData
@@ -186,11 +189,14 @@ class TestIterationStrategiesIntegration:
         assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
         assert react_agent.iteration_strategy == IterationStrategy.REACT
         
-        # Mock processing methods
-        for agent in [react_stage_agent, react_agent]:
-            agent.determine_mcp_tools = AsyncMock(return_value=[])
-            agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-            agent.analyze_alert = AsyncMock(return_value="Configurable agent analysis")
+        # Mock processing methods with distinct outputs
+        react_stage_agent.determine_mcp_tools = AsyncMock(return_value=[])
+        react_stage_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
+        react_stage_agent.analyze_alert = AsyncMock(return_value="Configurable analysis (stage)")
+
+        react_agent.determine_mcp_tools = AsyncMock(return_value=[])
+        react_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
+        react_agent.analyze_alert = AsyncMock(return_value="Configurable analysis (react)")
         
         # Process alerts
         from tarsy.models.alert_processing import AlertProcessingData
@@ -381,10 +387,13 @@ mcp_servers:
             # Mock processing for testing
             mock_llm_client.generate_response.return_value = "YAML config test analysis"
             
-            for agent in [react_stage_agent, react_agent]:
-                agent.determine_mcp_tools = AsyncMock(return_value=[])
-                agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-                agent.analyze_alert = AsyncMock(return_value="YAML test analysis")
+            react_stage_agent.determine_mcp_tools = AsyncMock(return_value=[])
+            react_stage_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
+            react_stage_agent.analyze_alert = AsyncMock(return_value="YAML test analysis (stage)")
+
+            react_agent.determine_mcp_tools = AsyncMock(return_value=[])
+            react_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
+            react_agent.analyze_alert = AsyncMock(return_value="YAML test analysis (react)")
             
             # Process alerts with both agents
             from tarsy.models.alert_processing import AlertProcessingData

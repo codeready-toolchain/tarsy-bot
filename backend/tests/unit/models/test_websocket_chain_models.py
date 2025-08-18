@@ -208,11 +208,11 @@ class TestStageProgressUpdate:
             stage_name="custom-analysis",
             stage_index=0,
             agent="ConfigurableAgent:my-custom-agent",
-            iteration_strategy="regular"
+            iteration_strategy="react"
         )
         
         assert update.agent == "ConfigurableAgent:my-custom-agent"
-        assert update.iteration_strategy == "regular"
+        assert update.iteration_strategy == "react"
     
     def test_serialization_roundtrip(self, model_test_helpers):
         """Test that stage progress update can be serialized and deserialized correctly."""

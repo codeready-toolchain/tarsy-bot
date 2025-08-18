@@ -275,7 +275,7 @@ class TestChainRegistryIntegration:
             assert isinstance(chain.stages[0], ChainStageConfigModel)
             assert chain.stages[0].name == 'data-collection'
             assert chain.stages[0].agent == 'KubernetesAgent'
-            assert chain.stages[0].iteration_strategy == 'regular'
+            assert chain.stages[0].iteration_strategy == 'react'
             
             assert chain.stages[1].name == 'analysis'
             assert chain.stages[1].agent == 'KubernetesAgent'

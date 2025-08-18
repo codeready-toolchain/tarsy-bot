@@ -44,13 +44,16 @@ class ReactStageController(IterationController):
         max_iterations = agent.max_iterations
         react_history = []
         
+        # Get actual stage name from AlertProcessingData (or None for non-chain execution)
+        stage_name = getattr(context.alert_data, 'current_stage_name', None)
+        
         # Create prompt context with chain-specific data
         prompt_context = agent.create_prompt_context(
             alert_data=context.alert_data,
             runbook_content=context.runbook_content,
             mcp_data={},  # Previous stage data handled at chain level
             available_tools={"tools": context.available_tools},
-            stage_name="partial-analysis",
+            stage_name=stage_name,
             previous_stages=None,  # Handled by chain context
             stage_attributed_data=None  # Handled by chain context
         )

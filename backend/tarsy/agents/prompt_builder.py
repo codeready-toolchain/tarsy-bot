@@ -609,7 +609,9 @@ Focus on {task_focus} for human operators to execute."""
                 flattened_history.append(str(item))
         return flattened_history
 
-    def build_standard_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+    def build_standard_react_prompt(
+        self, context: PromptContext, react_history: Optional[List[str]] = None
+    ) -> str:
         """Build standard ReAct prompt for general alert analysis."""
         history_text = ""
         if react_history:
@@ -964,7 +966,9 @@ Be thorough in your investigation before providing the final answer."""
     # Chain-Specific ReAct Prompt Methods
     # ====================================================================
 
-    def build_stage_analysis_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+    def build_stage_analysis_react_prompt(
+        self, context: PromptContext, react_history: Optional[List[str]] = None
+    ) -> str:
         """Build ReAct prompt for stage-specific analysis."""
         history_text = ""
         if react_history:
@@ -1073,9 +1077,7 @@ Do NOT call any tools - use only the provided data.""")
     
     def _build_chain_context_section(self, context: PromptContext) -> str:
         """
-        Build previous stage data section using new AgentExecutionResult-based chain context.
-        
-        Falls back to legacy MCP data formats for backward compatibility.
+        Build previous stage data section using chain context data.
         """
         # Use new ChainExecutionContext if available
         if context.chain_context and context.chain_context.stage_results:

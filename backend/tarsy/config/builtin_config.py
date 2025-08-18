@@ -34,8 +34,8 @@ BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
     # Future agents will be added here:
     # "ArgoCDAgent": {
     #     "import": "tarsy.agents.argocd_agent.ArgoCDAgent",
-    #     "iteration_strategy": IterationStrategy.REGULAR,
-    #     "description": "ArgoCD-specialized agent using regular iteration for quick deployments",
+    #     "iteration_strategy": "react",
+    #     "description": "ArgoCD-specialized agent using ReAct pattern for deployment analysis",
     # },
 }
 

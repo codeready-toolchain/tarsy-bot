@@ -309,7 +309,7 @@ class TestReactFinalAnalysisController:
         assert call_args["runbook_content"] == sample_context.runbook_content
         assert call_args["mcp_data"] == {}  # Final analysis uses empty mcp_data
         assert call_args["available_tools"] is None
-        assert call_args["stage_name"] == "final-analysis"
+        assert call_args["stage_name"] is None  # No stage name in unit test context (plain dict)
         assert call_args["is_final_stage"] is True
         assert call_args["previous_stages"] is None  # Handled by chain context
         assert call_args["stage_attributed_data"] is None  # Handled by chain context
@@ -473,7 +473,7 @@ class TestReactStageController:
         # Verify agent context creation
         mock_agent.create_prompt_context.assert_called_once()
         call_args = mock_agent.create_prompt_context.call_args[1]
-        assert call_args["stage_name"] == "partial-analysis"
+        assert call_args["stage_name"] is None  # No stage name in unit test context (plain dict)
         assert call_args["available_tools"] == {"tools": sample_context.available_tools}
         
         # Verify prompt building
@@ -522,7 +522,7 @@ class TestReactStageController:
         # Should return full ReAct history with tool execution for partial analysis
         assert "Thought: Need to analyze with tools" in result
         assert "Action: analysis-tool" in result
-        assert "Observation: Tool executed successfully" in result
+        assert "Observation: Tool executed successfully for analysis" in result
         assert "Final Answer: Comprehensive partial analysis" in result
         
         # Verify tool was executed

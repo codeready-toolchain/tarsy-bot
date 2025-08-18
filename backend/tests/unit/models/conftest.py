@@ -71,7 +71,7 @@ def sample_chain_definition_data():
             {
                 "name": "data-collection",
                 "agent": "KubernetesAgent",
-                "iteration_strategy": "regular"
+                "iteration_strategy": "react"
             },
             {
                 "name": "analysis",

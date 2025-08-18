@@ -37,13 +37,16 @@ class ReactFinalAnalysisController(IterationController):
         """Execute final analysis - single LLM call, no iterations."""
         logger.info("Starting final analysis (single LLM call, no tools)")
         
+        # Get actual stage name from AlertProcessingData (or None for non-chain execution)
+        stage_name = getattr(context.alert_data, 'current_stage_name', None)
+        
         # Build final analysis prompt (chain context will be handled in prompt builder)
         prompt_context = context.agent.create_prompt_context(
             alert_data=context.alert_data,
             runbook_content=context.runbook_content,
             mcp_data={},  # Final analysis gets previous stage data via chain context in prompt
             available_tools=None,  # No tools available
-            stage_name="final-analysis",
+            stage_name=stage_name,
             is_final_stage=True,
             previous_stages=None,  # Will be handled by chain context
             stage_attributed_data=None  # Will be handled by chain context

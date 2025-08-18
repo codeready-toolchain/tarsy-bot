@@ -164,7 +164,7 @@ class AgentConfigModel(BaseModel):
     )
     iteration_strategy: IterationStrategy = Field(
         default=IterationStrategy.REACT,
-        description="Iteration strategy for alert processing (REGULAR or REACT)"
+        description="Iteration strategy for alert processing (REACT, REACT_STAGE, or REACT_FINAL_ANALYSIS)"
     )
 
 

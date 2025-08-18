@@ -41,12 +41,12 @@ class TestChainStageConfigModel:
         stage = ChainStageConfigModel(
             name="custom-analysis",
             agent="ConfigurableAgent:my-custom-agent",
-            iteration_strategy="regular"
+            iteration_strategy="react"
         )
         
         assert stage.name == "custom-analysis"
         assert stage.agent == "ConfigurableAgent:my-custom-agent"
-        assert stage.iteration_strategy == "regular"
+        assert stage.iteration_strategy == "react"
     
     @pytest.mark.parametrize("stage_data,expected_dict", [
         (
@@ -58,8 +58,8 @@ class TestChainStageConfigModel:
             {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': None}
         ),
         (
-            {"name": "custom-stage", "agent": "ConfigurableAgent:custom", "iteration_strategy": "regular"},
-            {'name': 'custom-stage', 'agent': 'ConfigurableAgent:custom', 'iteration_strategy': 'regular'}
+            {"name": "custom-stage", "agent": "ConfigurableAgent:custom", "iteration_strategy": "react"},
+            {'name': 'custom-stage', 'agent': 'ConfigurableAgent:custom', 'iteration_strategy': 'react'}
         )
     ])
     def test_to_dict_serialization(self, stage_data, expected_dict):
@@ -280,7 +280,7 @@ class TestChainModelComplexScenarios:
             ChainStageConfigModel(
                 name="data-collection",
                 agent="KubernetesAgent",
-                iteration_strategy="regular"
+                iteration_strategy="react"
             ),
             ChainStageConfigModel(
                 name="log-analysis",
@@ -313,7 +313,7 @@ class TestChainModelComplexScenarios:
         # Verify serialization works
         serialized = chain.model_dump()
         assert len(serialized['stages']) == 4
-        assert serialized['stages'][0]['iteration_strategy'] == 'regular'
+        assert serialized['stages'][0]['iteration_strategy'] == 'react'
         assert serialized['stages'][1]['agent'] == 'ConfigurableAgent:log-analyzer'
         assert serialized['stages'][3]['iteration_strategy'] is None
     

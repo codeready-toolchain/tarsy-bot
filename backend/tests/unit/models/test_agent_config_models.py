@@ -100,7 +100,7 @@ class TestAgentConfigModel:
     @pytest.mark.parametrize("invalid_strategy", [
         "invalid_strategy",
         "REACT",  # Wrong case
-        "REGULAR",  # Wrong case
+        "REACT_STAGE",  # Wrong case
         "React",  # Wrong case
     ])
     def test_invalid_iteration_strategies(self, invalid_strategy):
