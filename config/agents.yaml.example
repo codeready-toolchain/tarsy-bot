@@ -72,7 +72,7 @@ mcp_servers:
         - "security"          # Built-in group: api_key, password, token, certificate
       custom_patterns:
         - name: "security_token"
-          pattern: '(?i)(token|jwt|bearer)["\''']?\s*[:=]\s*["\''']?([A-Za-z0-9_\-\.]{40,})["\''']?'
+          pattern: "(?i)(token|jwt|bearer)[\\\"']?\\s*[:=]\\s*[\\\"']?([A-Za-z0-9_\\-\\.]{40,})[\\\"']?"
           replacement: '"security_token": "***MASKED_SECURITY_TOKEN***"'
           description: "Security tokens and JWTs"
           enabled: true
