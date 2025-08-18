@@ -53,9 +53,10 @@ class StageStatus(Enum):
     """Status values for individual stage execution within a chain."""
     
     PENDING = "pending"
-    ACTIVE = "active"
+    ACTIVE = "active" 
     COMPLETED = "completed"
     FAILED = "failed"
+    PARTIAL = "partial"  # Some results but with warnings/issues
 
 
 class ChainStatus(Enum):

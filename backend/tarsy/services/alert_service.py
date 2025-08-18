@@ -18,6 +18,7 @@ from tarsy.integrations.llm.client import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.agent_config import ChainConfigModel
 from tarsy.models.alert_processing import AlertProcessingData
+from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.utils.timestamp import now_us
 from tarsy.services.agent_factory import AgentFactory
@@ -323,19 +324,18 @@ class AlertService:
                     stage_result = await agent.process_alert(alert_processing_data, session_id)
                     
                     # Validate stage result format
-                    if not isinstance(stage_result, dict) or "status" not in stage_result:
-                        raise ValueError(f"Invalid stage result format from agent '{stage.agent}'")
+                    if not isinstance(stage_result, AgentExecutionResult):
+                        raise ValueError(f"Invalid stage result format from agent '{stage.agent}': expected AgentExecutionResult, got {type(stage_result)}")
                     
                     # Add stage result to unified alert model
                     alert_processing_data.add_stage_result(stage.name, stage_result)
                     
-                    total_iterations += stage_result.get('iterations', 0)
                     
                     # Update stage execution as completed
                     await self._update_stage_execution_completed(stage_execution_id, stage_result)
                     
                     successful_stages += 1
-                    logger.info(f"Stage '{stage.name}' completed successfully with {stage_result.get('iterations', 0)} iterations")
+                    logger.info(f"Stage '{stage.name}' completed successfully with agent '{stage_result.agent_name}'")
                     
                 except Exception as e:
                     # Log the error with full context
@@ -397,20 +397,23 @@ class AlertService:
     
     def _extract_final_analysis_from_stages(self, alert_data: AlertProcessingData) -> str:
         """
-        Extract final analysis from stages.
+        Extract final analysis from stages for API consumption.
         
-        Final analysis should come from LLM-based analysis stages.
+        Uses the final_analysis field which contains clean, concise summaries
+        extracted by each agent's iteration controller.
         """
-        # Look for analysis from the last successful stage (typically a final-analysis stage)
+        # Look for final_analysis from the last successful stage (typically a final-analysis stage)
         for stage_name in reversed(list(alert_data.stage_outputs.keys())):
             stage_result = alert_data.stage_outputs[stage_name]
-            if stage_result.get("status") == "success" and "analysis" in stage_result:
-                return stage_result["analysis"]
+            if isinstance(stage_result, AgentExecutionResult):
+                if stage_result.status.value == "completed" and stage_result.final_analysis:
+                    return stage_result.final_analysis
         
-        # Fallback: look for any analysis from any successful stage
+        # Fallback: look for any final_analysis from any successful stage
         for stage_result in alert_data.stage_outputs.values():
-            if stage_result.get("status") == "success" and "analysis" in stage_result:
-                return stage_result["analysis"]
+            if isinstance(stage_result, AgentExecutionResult):
+                if stage_result.status.value == "completed" and stage_result.final_analysis:
+                    return stage_result.final_analysis
         
         # If no analysis found, return a simple summary (this should be rare)
         return f"Chain {alert_data.chain_id} completed with {len(alert_data.stage_outputs)} stages. Use accumulated_data for detailed results."
@@ -757,7 +760,7 @@ class AlertService:
         except Exception as e:
             logger.warning(f"Failed to update session current stage: {str(e)}")
     
-    async def _update_stage_execution_completed(self, stage_execution_id: str, stage_result: dict):
+    async def _update_stage_execution_completed(self, stage_execution_id: str, stage_result: AgentExecutionResult):
         """
         Update stage execution as completed.
         
@@ -776,9 +779,10 @@ class AlertService:
                 return
             
             # Update only the completion-related fields
-            existing_stage.status = StageStatus.COMPLETED.value
-            existing_stage.completed_at_us = stage_result.get('timestamp_us', now_us())
-            existing_stage.stage_output = stage_result
+            existing_stage.status = stage_result.status.value
+            existing_stage.completed_at_us = stage_result.timestamp_us
+            # Serialize AgentExecutionResult to JSON-compatible dict for database storage
+            existing_stage.stage_output = stage_result.model_dump(mode='json')
             existing_stage.error_message = None
             
             # Calculate duration if we have started_at_us

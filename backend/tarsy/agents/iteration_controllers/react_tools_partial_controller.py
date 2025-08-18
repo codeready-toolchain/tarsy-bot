@@ -48,11 +48,11 @@ class ReactToolsPartialController(IterationController):
         prompt_context = agent.create_prompt_context(
             alert_data=context.alert_data,
             runbook_content=context.runbook_content,
-            mcp_data=context.initial_mcp_data,  # Include data from previous stages
+            mcp_data={},  # Previous stage data handled at chain level
             available_tools={"tools": context.available_tools},
             stage_name="partial-analysis",
-            previous_stages=list(context.stage_attributed_data.keys()) if context.stage_attributed_data else None,
-            stage_attributed_data=context.stage_attributed_data
+            previous_stages=None,  # Handled by chain context
+            stage_attributed_data=None  # Handled by chain context
         )
         
         # Execute ReAct loop using EXISTING ReAct format and parsing (same as SimpleReActController)
@@ -88,7 +88,8 @@ class ReactToolsPartialController(IterationController):
                 # Check if complete (partial analysis final answer)
                 if parsed['is_complete'] and parsed['final_answer']:
                     logger.info("Partial analysis completed with final answer")
-                    return parsed['final_answer']
+                    react_history.append(f"Final Answer: {parsed['final_answer']}")
+                    return "\n".join(react_history)
                 
                 # Execute action if present (same tool execution as SimpleReActController)
                 if parsed['action'] and parsed['action_input']:
@@ -100,11 +101,8 @@ class ReactToolsPartialController(IterationController):
                             parsed['action'], parsed['action_input']
                         )
                         
-                        # Execute tool using agent's existing method
+                        # Execute tool using agent's existing method  
                         mcp_data = await agent.execute_mcp_tools([tool_call], context.session_id)
-                        
-                        # Store accumulated data for next stage
-                        context.final_mcp_data = agent.merge_mcp_data(context.final_mcp_data, mcp_data)
                         
                         # REUSE existing observation formatting
                         observation = self.prompt_builder.format_observation(mcp_data)
@@ -131,10 +129,6 @@ class ReactToolsPartialController(IterationController):
                     # Same prompting logic as SimpleReActController
                     logger.warning("ReAct response missing action, adding prompt to continue")
                     react_history.extend(self.prompt_builder.get_react_continuation_prompt("analysis"))
-                    
-                    # Prevent context overflow by truncating history if needed
-                    if len(react_history) > 30:
-                        react_history = self.prompt_builder.truncate_conversation_history(react_history, max_entries=25)
                 
             except Exception as e:
                 logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
@@ -164,8 +158,47 @@ Please provide a final analysis based on what you've discovered, even if the inv
             ]
             
             fallback_response = await self.llm_client.generate_response(messages, context.session_id, agent.get_current_stage_execution_id())
-            return f"Partial analysis completed (reached max iterations):\n\n{fallback_response}"
+            # Include history plus fallback partial analysis
+            react_history.append(f"Partial analysis completed (reached max iterations):\n{fallback_response}")
+            return "\n".join(react_history)
             
         except Exception as e:
             logger.error(f"Failed to generate fallback analysis: {str(e)}")
-            return f"Partial analysis incomplete: reached maximum iterations ({max_iterations}) without final answer. Last investigation steps:\n\n{chr(10).join(react_history[-5:])}"
+            # Return complete history even when incomplete
+            react_history.append(f"Partial analysis incomplete: reached maximum iterations ({max_iterations}) without final answer")
+            return "\n".join(react_history)
+
+    def extract_final_analysis(self, analysis_result: str, context) -> str:
+        """
+        Extract partial analysis from ReAct conversation for API consumption.
+        
+        Similar to full analysis but focused on partial/intermediate findings.
+        """
+        def extract_thoughts_and_observations(lines):
+            """Extract thoughts and observations as fallback, preferring thoughts."""
+            thoughts = []
+            observations = []
+            for line in lines:
+                if line.startswith("Thought:"):
+                    thought = line.replace("Thought:", "").strip()
+                    if thought:
+                        thoughts.append(thought)
+                elif line.startswith("Observation:"):
+                    obs = line.replace("Observation:", "").strip()
+                    if obs and not obs.startswith("Error"):
+                        observations.append(obs)
+            
+            # Prefer thoughts over observations for partial analysis
+            if thoughts:
+                return f"Partial analysis findings: {thoughts[-1][:300]}..."
+            elif observations:
+                return f"Partial investigation results: {observations[-1][:300]}..."
+            return None
+        
+        return self._extract_react_final_analysis(
+            analysis_result=analysis_result,
+            completion_patterns=["Partial analysis completed"],
+            incomplete_patterns=["Partial analysis incomplete:"],
+            fallback_extractor=extract_thoughts_and_observations,
+            fallback_message="Partial analysis stage completed with limited findings"
+        )

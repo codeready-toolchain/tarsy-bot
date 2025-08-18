@@ -7,7 +7,10 @@ and modify prompts without touching business logic in agents.
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tarsy.models.agent_execution_result import ChainExecutionContext
 
 
 @dataclass
@@ -28,7 +31,8 @@ class PromptContext:
     stage_name: Optional[str] = None
     is_final_stage: bool = False
     previous_stages: Optional[List[str]] = None
-    stage_attributed_data: Optional[Dict[str, Any]] = None  # MCP data with stage attribution
+    stage_attributed_data: Optional[Dict[str, Any]] = None  # Legacy MCP data with stage attribution
+    chain_context: Optional['ChainExecutionContext'] = None  # New AgentExecutionResult-based chain context
 
 class PromptBuilder:
     """
@@ -491,6 +495,10 @@ Focus on root cause analysis and sustainable solutions."""
             Complete system message with both instructions and ReAct formatting rules
         """
         react_formatting = f"""
+🚨 WARNING: NEVER GENERATE FAKE OBSERVATIONS! 🚨
+After writing "Action Input:", you MUST stop immediately. The system will provide the "Observation:" for you.
+DO NOT write fake tool results or continue the conversation after "Action Input:"
+
 CRITICAL REACT FORMATTING RULES:
 Follow the ReAct pattern exactly. You must use this structure:
 
@@ -500,26 +508,76 @@ Action: the action to take (choose from available tools)
 Action Input: the input to the action
 Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+Thought: I now have sufficient information to provide my analysis
+Final Answer: [Complete SRE analysis in structured format - see below]
 
-FORMATTING REQUIREMENTS:
+RESPONSE OPTIONS:
+At each step, you have exactly TWO options:
+
+1. Continue investigating: 
+   Thought: [your reasoning about what to investigate next]
+   Action: [tool to use]
+   Action Input: [parameters]
+
+2. OR conclude with your findings:
+   Thought: I now have sufficient information to provide my analysis
+   Final Answer: [your complete response - format depends on the specific task]
+
+WHEN TO CONCLUDE:
+Conclude with "Final Answer:" when you have enough information to fulfill your specific task goals.
+You do NOT need perfect information - focus on actionable insights from the data you've collected.
+
+CRITICAL FORMATTING REQUIREMENTS:
 1. ALWAYS include colons after section headers: "Thought:", "Action:", "Action Input:"
-2. For Action Input, provide ONLY parameter values (no YAML, no code blocks, no triple backticks)
-3. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
-4. NEVER write fake observations or continue the conversation
-5. Either continue with "Thought:" for more investigation OR conclude with "Final Answer:"
+2. Each section must start on a NEW LINE - never continue on the same line
+3. Always add a blank line after "Action Input:" before stopping
+4. For Action Input, provide ONLY parameter values (no YAML, no code blocks, no triple backticks)
 
-EXAMPLE OF CORRECT FORMAT:
+⚠️ ABSOLUTELY CRITICAL: STOP AFTER "Action Input:" ⚠️
+5. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
+6. NEVER write fake observations or continue the conversation
+7. The system will provide the real "Observation:" - you must NOT generate it yourself
+8. After the system provides the observation, then continue with "Thought:" or "Final Answer:"
+
+VIOLATION EXAMPLES (DO NOT DO THIS):
+❌ Action Input: apiVersion=v1, kind=Secret, name=my-secret
+❌ Observation: kubernetes-server.resources_get: {{"result": "..."}} 
+❌ Thought: I have retrieved the data...
+
+CORRECT BEHAVIOR:
+✅ Action Input: apiVersion=v1, kind=Secret, name=my-secret
+✅ [STOP HERE - SYSTEM WILL PROVIDE OBSERVATION]
+
+NEWLINE FORMATTING IS CRITICAL:
+- WRONG: "Thought: I need to check the namespace status first.Action: kubernetes-server.resources_get"
+- CORRECT: 
 Thought: I need to check the namespace status first.
+
 Action: kubernetes-server.resources_get
 Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
 
-INCORRECT FORMATS TO AVOID:
-- "Thought" without colon
-- Action Input with ```yaml or code blocks
-- Adding "Observation:" section yourself
-- Continuing with more Thought/Action pairs after Action Input
+EXAMPLE OF CORRECT INVESTIGATION:
+Thought: I need to check the namespace status first. This will give me details about why the namespace is stuck in terminating state.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
+
+EXAMPLE OF CONCLUDING PROPERLY:
+Thought: I have gathered sufficient information to complete my task. Based on my investigation, I can now provide the requested analysis.
+
+Final Answer: [Provide your complete response in the format appropriate for your specific task - this could be structured analysis, data summary, or stage-specific findings depending on what was requested]
+
+CRITICAL VIOLATIONS TO AVOID:
+❌ GENERATING FAKE OBSERVATIONS: Never write "Observation:" yourself - the system provides it
+❌ CONTINUING AFTER ACTION INPUT: Stop immediately after "Action Input:" - don't add more content
+❌ HALLUCINATING TOOL RESULTS: Don't make up API responses or tool outputs
+❌ "Thought" without colon
+❌ Action Input with ```yaml or code blocks  
+❌ Running sections together on the same line without proper newlines
+❌ Providing analysis in non-ReAct format (you MUST use "Final Answer:" to conclude)
+❌ Abandoning ReAct format and providing direct structured responses
+
+THE #1 MISTAKE: Writing fake observations and continuing the conversation after Action Input
 
 Focus on {task_focus} for human operators to execute."""
         
@@ -554,29 +612,41 @@ Focus on {task_focus} for human operators to execute."""
         return flattened_history
 
     def build_standard_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
-        """Build streamlined ReAct prompt focusing on the task and available tools.
-        
-        ReAct formatting rules are handled in the system message to avoid duplication.
-        """
-        
-        # Build the ReAct history from previous iterations
+        """Build standard ReAct prompt for general alert analysis."""
         history_text = ""
         if react_history:
             flattened_history = self._flatten_react_history(react_history)
             history_text = "\n".join(flattened_history) + "\n"
-        
+
         available_actions = self._format_available_actions(context.available_tools)
         
-        prompt = f"""Answer the following question using the available tools.
+        # Format the alert analysis question directly
+        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
+        question = f"""Analyze this {alert_type} alert and provide actionable recommendations.
 
-Available tools:
-{available_actions}
+{self._build_alert_section(context.alert_data)}
 
-Question: {self._format_react_question(context)}
-{history_text}
+{self._build_runbook_section(context.runbook_content)}
 
-Begin!"""
-        
+## Previous Stage Data
+{self._build_chain_context_section(context)}
+
+## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
+
+Be thorough in your investigation before providing the final answer."""
+
+        prompt = (
+            "Answer the following question using the available tools.\n\n"
+            f"Available tools:\n{available_actions}\n\n"
+            f"Question: {question}\n"
+            f"{history_text}\n"
+            "Begin!"
+        )
         return prompt
 
     def _format_available_actions(self, available_tools: Dict) -> str:
@@ -607,28 +677,6 @@ Begin!"""
         return [f"{tool.get('server', 'unknown')}.{tool.get('name', tool.get('tool', 'unknown'))}" 
                 for tool in available_tools["tools"]]
 
-    def _format_react_question(self, context: PromptContext) -> str:
-        """Format the alert analysis as a ReAct question."""
-        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
-        
-        # Create concise question for ReAct
-        question = f"""Analyze this {alert_type} alert and provide actionable recommendations.
-
-{self._build_alert_section(context.alert_data)}
-
-{self._build_runbook_section(context.runbook_content)}
-
-## Your Task
-Use the available tools to investigate this alert and provide:
-1. Root cause analysis
-2. Current system state assessment  
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
-Be thorough in your investigation before providing the final answer."""
-        
-        return question
-
     # ====================================================================
     # ReAct Response Parsing Methods
     # ====================================================================
@@ -649,8 +697,13 @@ Be thorough in your investigation before providing the final answer."""
         return ""
 
     def _is_section_header(self, line: str, section_type: str, found_sections: set) -> bool:
-        """Check if line is a valid section header that hasn't been processed yet."""
-        if not line or section_type in found_sections:
+        """Check if line is a valid section header."""
+        if not line:
+            return False
+        
+        # For ReAct parsing, allow duplicate actions and thoughts (use latest occurrence)
+        # But prevent duplicate final_answer (first one wins)
+        if section_type == 'final_answer' and section_type in found_sections:
             return False
             
         if section_type == 'thought':
@@ -668,12 +721,34 @@ Be thorough in your investigation before providing the final answer."""
         """Check if we should stop parsing due to fake content markers."""
         if not line:
             return False
-        return line.startswith('Observation:') or line.startswith('[Based on')
+        
+        # Stop parsing on fake/hallucinated observations that LLM generates
+        # But NOT on legitimate continuation prompts that are part of the conversation
+        if line.startswith('[Based on'):
+            return True
+        
+        # Only stop on observations that look like hallucinated tool results
+        # Continuation prompts like "Please specify what Action..." should not stop parsing
+        if line.startswith('Observation:'):
+            # Don't stop if this looks like a continuation prompt
+            if 'Please specify' in line or 'what Action you want to take' in line:
+                return False
+            # Don't stop if this looks like an error continuation 
+            if 'Error in reasoning' in line:
+                return False
+            # This appears to be a real/hallucinated observation - stop parsing
+            return True
+            
+        return False
 
     def _finalize_current_section(self, parsed: Dict[str, Any], current_section: str, content_lines: List[str]) -> None:
         """Safely finalize the current section by joining content lines."""
         if current_section and content_lines is not None:
-            parsed[current_section] = '\n'.join(content_lines).strip()
+            new_content = '\n'.join(content_lines).strip()
+            # Only overwrite existing content if new content is not empty
+            # This handles cases where duplicate sections have empty content
+            if new_content or parsed.get(current_section) is None:
+                parsed[current_section] = new_content
 
     def parse_react_response(self, response: str) -> Dict[str, Any]:
         """Parse structured ReAct response into components with robust error handling."""
@@ -737,6 +812,8 @@ Be thorough in your investigation before providing the final answer."""
                     self._finalize_current_section(parsed, current_section, content_lines)
                     current_section = 'action'
                     found_sections.add('action')
+                    # Clear action_input from found_sections to allow new action_input after new action
+                    found_sections.discard('action_input')
                     content_lines = [self._extract_section_content(line, 'Action:')]
                     
                 # Handle Action Input section
@@ -772,9 +849,9 @@ Be thorough in your investigation before providing the final answer."""
             List of strings to add to react_history for proper continuation
         """
         prompts = {
-            "general": "Observation: Please specify what Action you want to take next, or provide your Final Answer if you have enough information.",
-            "data_collection": "Observation: Please specify what Action you want to take next, or provide your Final Answer if you have collected sufficient data.",
-            "analysis": "Observation: Please specify what Action you want to take next, or provide your Final Answer with both collected data and analysis."
+            "general": "Observation: Choose ONE option: (1) Continue investigating with 'Thought: [reasoning] Action: [tool] Action Input: [params]' then STOP (do NOT generate fake observations) OR (2) Conclude with 'Thought: I have sufficient information Final Answer: [your analysis]'",
+            "data_collection": "Observation: Choose ONE option: (1) Continue data collection with 'Thought: [reasoning] Action: [tool] Action Input: [params]' then STOP (do NOT generate fake observations) OR (2) Conclude with 'Thought: I have sufficient data Final Answer: [data summary]'",
+            "analysis": "Observation: Choose ONE option: (1) Continue investigating with 'Thought: [reasoning] Action: [tool] Action Input: [params]' then STOP (do NOT generate fake observations) OR (2) Conclude with 'Thought: I have sufficient information Final Answer: [complete analysis]'"
         }
         
         continuation_message = prompts.get(context_type, prompts["general"])
@@ -889,10 +966,19 @@ Be thorough in your investigation before providing the final answer."""
     # Chain-Specific ReAct Prompt Methods
     # ====================================================================
 
-    def _format_react_question_for_data_collection(self, context: PromptContext) -> str:
-        """Format ReAct question specifically for data collection stages."""
-        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
+
+
+    def build_data_collection_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+        """Build ReAct prompt for data collection."""
+        history_text = ""
+        if react_history:
+            flattened_history = self._flatten_react_history(react_history)
+            history_text = "\n".join(flattened_history) + "\n"
+
+        available_actions = self._format_available_actions(context.available_tools)
         
+        # Format data collection question directly
+        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
         question = f"""Collect comprehensive data about this {alert_type} alert for the next analysis stage.
 
 {self._build_alert_section(context.alert_data)}
@@ -900,7 +986,7 @@ Be thorough in your investigation before providing the final answer."""
 {self._build_runbook_section(context.runbook_content)}
 
 ## Previous Stage Data
-{self._build_mcp_data_section(context.mcp_data) if context.mcp_data else "No previous stage data available."}
+{self._build_chain_context_section(context)}
 
 ## Your Task: DATA COLLECTION ONLY
 Use available tools to systematically collect information about:
@@ -911,13 +997,28 @@ Use available tools to systematically collect information about:
 
 DO NOT provide analysis or conclusions - focus purely on gathering comprehensive data.
 Your Final Answer should summarize what data was collected, not analyze it."""
-        
-        return question
 
-    def _format_react_question_for_partial_analysis(self, context: PromptContext) -> str:
-        """Format ReAct question for data collection + stage-specific analysis."""
-        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
+        prompt = (
+            "Answer the following question using the available tools.\n\n"
+            f"Available tools:\n{available_actions}\n\n"
+            f"Question: {question}\n"
+            f"{history_text}\n"
+            "Begin!"
+        )
+        return prompt
+
+    def build_partial_analysis_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
+        """Build ReAct prompt for partial analysis."""
+        history_text = ""
+        if react_history:
+            flattened_history = self._flatten_react_history(react_history)
+            history_text = "\n".join(flattened_history) + "\n"
+
+        available_actions = self._format_available_actions(context.available_tools)
         
+        # Format partial analysis question directly
+        alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
+        stage_name = context.stage_name or "analysis"
         question = f"""Investigate this {alert_type} alert and provide stage-specific analysis.
 
 {self._build_alert_section(context.alert_data)}
@@ -925,82 +1026,24 @@ Your Final Answer should summarize what data was collected, not analyze it."""
 {self._build_runbook_section(context.runbook_content)}
 
 ## Previous Stage Data
-{self._build_mcp_data_section(context.mcp_data) if context.mcp_data else "No previous stage data available."}
+{self._build_chain_context_section(context)}
 
-## Your Task: COLLECTION + PARTIAL ANALYSIS
-1. First, collect additional data specific to this analysis stage
-2. Then, provide preliminary analysis of the collected information
-3. Focus on stage-specific insights, not final conclusions
+## Your Task: {stage_name.upper()} STAGE
+Use available tools to:
+1. Collect additional data relevant to this stage
+2. Analyze findings in the context of this specific stage
+3. Provide stage-specific insights and recommendations
 
 Your Final Answer should include both the data collected and your stage-specific analysis."""
-        
-        return question
 
-    def build_data_collection_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
-        """Build ReAct prompt for data collection using existing ReAct infrastructure."""
-        # Create modified context with data collection question (preserve all context fields)
-        data_collection_context = PromptContext(
-            agent_name=context.agent_name,
-            alert_data=context.alert_data,
-            runbook_content=context.runbook_content,
-            mcp_data=context.mcp_data,
-            mcp_servers=context.mcp_servers,
-            server_guidance=context.server_guidance,
-            agent_specific_guidance=context.agent_specific_guidance,
-            available_tools=context.available_tools,
-            iteration_history=context.iteration_history,
-            current_iteration=context.current_iteration,
-            max_iterations=context.max_iterations,
-            stage_name=context.stage_name,
-            is_final_stage=context.is_final_stage,
-            previous_stages=context.previous_stages,
-            stage_attributed_data=context.stage_attributed_data
+        prompt = (
+            "Answer the following question using the available tools.\n\n"
+            f"Available tools:\n{available_actions}\n\n"
+            f"Question: {question}\n"
+            f"{history_text}\n"
+            "Begin!"
         )
-        
-        # Override the question formatting temporarily
-        original_format_method = self._format_react_question
-        self._format_react_question = self._format_react_question_for_data_collection
-        
-        try:
-            # Use existing standard ReAct prompt builder
-            prompt = self.build_standard_react_prompt(data_collection_context, react_history)
-            return prompt
-        finally:
-            # Restore original method
-            self._format_react_question = original_format_method
-
-    def build_partial_analysis_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str:
-        """Build ReAct prompt for partial analysis using existing ReAct infrastructure."""
-        # Create modified context with partial analysis question (preserve all context fields)
-        partial_analysis_context = PromptContext(
-            agent_name=context.agent_name,
-            alert_data=context.alert_data,
-            runbook_content=context.runbook_content,
-            mcp_data=context.mcp_data,
-            mcp_servers=context.mcp_servers,
-            server_guidance=context.server_guidance,
-            agent_specific_guidance=context.agent_specific_guidance,
-            available_tools=context.available_tools,
-            iteration_history=context.iteration_history,
-            current_iteration=context.current_iteration,
-            max_iterations=context.max_iterations,
-            stage_name=context.stage_name,
-            is_final_stage=context.is_final_stage,
-            previous_stages=context.previous_stages,
-            stage_attributed_data=context.stage_attributed_data
-        )
-        
-        # Override the question formatting temporarily
-        original_format_method = self._format_react_question
-        self._format_react_question = self._format_react_question_for_partial_analysis
-        
-        try:
-            # Use existing standard ReAct prompt builder
-            prompt = self.build_standard_react_prompt(partial_analysis_context, react_history)
-            return prompt
-        finally:
-            # Restore original method
-            self._format_react_question = original_format_method
+        return prompt
 
     def build_final_analysis_prompt(self, context: PromptContext) -> str:
         """Build prompt for final analysis without ReAct format (no tools)."""
@@ -1024,14 +1067,8 @@ Your Final Answer should include both the data collected and your stage-specific
             self._build_runbook_section(context.runbook_content)
         ])
         
-        # Include all accumulated data from previous stages
-        if context.stage_attributed_data:
-            # Use stage-attributed format for better clarity
-            formatted_data = self._format_stage_attributed_data(context.stage_attributed_data)
-            sections.append(f"## Complete Investigation Data\n{formatted_data}")
-        elif context.mcp_data:
-            # Fallback to merged format
-            sections.append(f"## Complete Investigation Data\n{json.dumps(context.mcp_data, indent=2)}")
+        # Use unified chain context approach - same as all other strategies
+        sections.append(f"## Previous Stage Data\n{self._build_chain_context_section(context)}")
         
         sections.append("""## Instructions
 Provide comprehensive final analysis based on ALL collected data:
@@ -1076,6 +1113,19 @@ Do NOT call any tools - use only the provided data.""")
                 sections.append("")  # Add spacing between servers
         
         return "\n".join(sections)
+    
+    def _build_chain_context_section(self, context: PromptContext) -> str:
+        """
+        Build previous stage data section using new AgentExecutionResult-based chain context.
+        
+        Falls back to legacy MCP data formats for backward compatibility.
+        """
+        # Use new ChainExecutionContext if available
+        if context.chain_context and context.chain_context.stage_results:
+            return context.chain_context.get_formatted_context()
+       
+        # No previous stage data available
+        return "No previous stage data available."
 
 
 # Shared instance since PromptBuilder is stateless

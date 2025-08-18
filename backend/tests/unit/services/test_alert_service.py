@@ -202,14 +202,17 @@ class TestAlertProcessing:
         service, dependencies = initialized_service
         
         # Mock agent processing success
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        
         mock_agent = AsyncMock()
-        mock_agent.process_alert.return_value = {
-            "status": "success",
-            "agent": "KubernetesAgent", 
-            "analysis": "Test analysis result",
-            "iterations": 1,
-            "timestamp_us": now_us()
-        }
+        mock_agent.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="KubernetesAgent", 
+            timestamp_us=now_us(),
+            result_summary="Test analysis result",
+            final_analysis="Test analysis result"
+        )
         
         # Set up the service with our mocked dependencies
         service.chain_registry = dependencies['chain_registry']

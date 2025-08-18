@@ -120,22 +120,19 @@ Action: valid_action
         assert result['action'] == "valid_action"
         assert result['action_input'] is None
 
-    def test_parse_ignores_duplicate_sections(self, builder):
-        """Test that only the first occurrence of each section is processed."""
+    def test_parse_allows_duplicate_sections_latest_wins(self, builder):
+        """Test that duplicate sections are allowed and latest occurrence takes precedence."""
         response = """
 Thought: First thought
 Action: first_action
-Thought: This duplicate thought should be ignored
-Action: This duplicate action should be ignored
+Thought: Latest thought wins
+Action: latest_action
 """
         result = builder.parse_react_response(response)
         
-        assert result['thought'] == "First thought"
-        # After first action header, subsequent lines become content of the action section
-        expected_action = ("first_action\n"
-                          "Thought: This duplicate thought should be ignored\n"
-                          "Action: This duplicate action should be ignored")
-        assert result['action'] == expected_action
+        # Latest occurrence should win for both thought and action
+        assert result['thought'] == "Latest thought wins"
+        assert result['action'] == "latest_action"
 
     def test_final_answer_can_appear_anytime(self, builder):
         """Test that Final Answer can appear at any time and marks response as complete."""
@@ -276,6 +273,81 @@ Observation: This fake content should be ignored
         assert result['final_answer'] == expected_final
         assert result['is_complete'] is True
 
+    def test_parse_response_with_continuation_prompts(self):
+        """Test ReAct response with continuation prompts should not stop parsing."""
+        builder = PromptBuilder()
+        
+        # This simulates the actual problematic response from the session
+        response = """Thought: I need to check the namespace status first.
+
+Action: kubernetes-server.resources_get
+Observation: Please specify what Action you want to take next, or provide your Final Answer if you have enough information.
+Thought:
+Action: kubernetes-server.resources_get
+Action Input: apiVersion=v1, kind=Namespace, name=superman-dev"""
+        
+        result = builder.parse_react_response(response)
+        
+        # Should parse the first thought
+        assert result['thought'] is not None
+        assert "I need to check the namespace status first" in result['thought']
+        
+        # Should parse the action and action_input from the LAST occurrence
+        assert result['action'] == "kubernetes-server.resources_get"
+        assert result['action_input'] == "apiVersion=v1, kind=Namespace, name=superman-dev"
+        
+        # Should not be marked as complete since there's no Final Answer
+        assert not result['is_complete']
+        assert result['final_answer'] is None
+
+    def test_parse_response_with_error_continuation(self):
+        """Test ReAct response with error continuation prompts should not stop parsing."""
+        builder = PromptBuilder()
+        
+        response = """Thought: I need to try a different approach.
+
+Action: test-server.get_data
+Observation: Error in reasoning: Connection failed. Please try a different approach.
+Thought: Let me try again with better parameters.
+Action: test-server.get_data
+Action Input: retry=true, timeout=30"""
+        
+        result = builder.parse_react_response(response)
+        
+        # Should parse thoughts correctly 
+        assert result['thought'] is not None
+        
+        # Should parse the action and action_input
+        assert result['action'] == "test-server.get_data" 
+        assert result['action_input'] == "retry=true, timeout=30"
+        
+        # Should not be complete
+        assert not result['is_complete']
+
+    def test_parse_stops_at_hallucinated_observation(self):
+        """Test that parser still stops at hallucinated observations (not continuation prompts)."""
+        builder = PromptBuilder()
+        
+        response = """Thought: I need to check the status.
+
+Action: test-server.get_status
+Action Input: target=system
+Observation: kubernetes-server.get_status: {"status": "healthy", "uptime": "24h"}
+Thought: This looks fake, parsing should stop here.
+Action: fake-server.do_something"""
+        
+        result = builder.parse_react_response(response)
+        
+        # Should have parsed up to the observation but stopped there
+        assert result['thought'] is not None
+        assert "I need to check the status" in result['thought']
+        assert result['action'] == "test-server.get_status"
+        assert result['action_input'] == "target=system"
+        
+        # Should not have parsed the fake action that comes after the observation
+        # The parsing should have stopped at the observation that looks like a real tool result
+        # (This is existing behavior we want to preserve)
+
 
 @pytest.mark.unit
 class TestPromptBuilderBasicMethods:
@@ -370,7 +442,7 @@ Custom agent instructions here."""
         assert "Action:" in message
         assert "Action Input:" in message
         assert "FORMATTING REQUIREMENTS:" in message
-        assert "EXAMPLE OF CORRECT FORMAT:" in message
+        assert "EXAMPLE OF CORRECT INVESTIGATION:" in message
         
         # Should contain the task focus
         assert "investigation and providing recommendations" in message
@@ -576,11 +648,11 @@ class TestPromptBuilderUtilityMethods:
         result = builder._is_section_header(line, 'thought', set())
         assert result is True
         
-        # Test already found section
+        # Test already found section - thoughts allow duplicates (use latest occurrence)
         line = "Thought: Some content"
         found_sections = {'thought'}
         result = builder._is_section_header(line, 'thought', found_sections)
-        assert result is False
+        assert result is True  # Changed: thoughts allow duplicates in new implementation
         
         # Test action
         line = "Action: test_action"
@@ -912,21 +984,8 @@ class TestPromptBuilderPrivateMethods:
         assert isinstance(result, str)
         assert "No investigation data from previous stages" in result
 
-    def test_format_react_question_for_data_collection(self, builder, context):
-        """Test _format_react_question_for_data_collection method."""
-        result = builder._format_react_question_for_data_collection(context)
-        
-        assert isinstance(result, str)
-        assert len(result) > 0
-        assert "production" in result  # Should include alert data
-
-    def test_format_react_question_for_partial_analysis(self, builder, context):
-        """Test _format_react_question_for_partial_analysis method."""
-        result = builder._format_react_question_for_partial_analysis(context)
-        
-        assert isinstance(result, str)
-        assert len(result) > 0
-        assert "analysis" in result.lower()
+    # Note: _format_react_question_for_* methods were removed and inlined into 
+    # build_data_collection_react_prompt and build_partial_analysis_react_prompt methods
 
     def test_get_action_names(self, builder, context):
         """Test _get_action_names method."""

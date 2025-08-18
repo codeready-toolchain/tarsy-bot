@@ -732,9 +732,9 @@ class TestKubernetesAgentIntegrationScenarios:
         
         result = await agent.process_alert(alert_processing_data, "test-session-123")
         
-        assert result["status"] == "success"
-        assert "analysis" in result  # Analysis result may vary based on iteration strategy
-        assert result["agent"] == "KubernetesAgent"
+        assert result.status.value == "completed"
+        assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
+        assert result.agent_name == "KubernetesAgent"
 
     def test_tool_selection_with_kubernetes_guidance(self, full_kubernetes_agent_setup):
         """Test that tool selection follows Kubernetes-specific patterns."""
@@ -807,8 +807,8 @@ class TestKubernetesAgentIntegrationScenarios:
         )
         result = await agent.process_alert(alert_processing_data, "test-session-123")
         
-        assert result["status"] == "success"
-        assert "analysis" in result  # Analysis result may vary based on iteration strategy
+        assert result.status.value == "completed"
+        assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
 
     @pytest.mark.asyncio
     async def test_multiple_tool_iterations(self, full_kubernetes_agent_setup):
@@ -855,5 +855,5 @@ class TestKubernetesAgentIntegrationScenarios:
         )
         result = await agent.process_alert(alert_processing_data, "test-session-123")
         
-        assert result["status"] == "success"
-        assert "analysis" in result  # Analysis result may vary based on iteration strategy 
+        assert result.status.value == "completed"
+        assert result.result_summary is not None  # Analysis result may vary based on iteration strategy 

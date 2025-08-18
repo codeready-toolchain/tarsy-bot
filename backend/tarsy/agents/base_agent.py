@@ -15,6 +15,10 @@ from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 
 from tarsy.models.unified_interactions import LLMMessage
+from tarsy.models.agent_execution_result import (
+    AgentExecutionResult
+)
+from tarsy.models.constants import StageStatus
 from tarsy.models.alert_processing import AlertProcessingData
 from .iteration_controllers import (
     IterationController, RegularIterationController, SimpleReActController, 
@@ -235,9 +239,15 @@ class BaseAgent(ABC):
         Returns:
             PromptContext object ready for prompt building
         """
+        # Extract chain context from AlertProcessingData if available
+        chain_context = None
+        if hasattr(alert_data, 'get_chain_execution_context'):
+            # alert_data is AlertProcessingData with chain context
+            chain_context = alert_data.get_chain_execution_context()
+        
         return PromptContext(
             agent_name=self.__class__.__name__,
-            alert_data=alert_data,
+            alert_data=alert_data.get_original_alert_data() if hasattr(alert_data, 'get_original_alert_data') else alert_data,
             runbook_content=runbook_content,
             mcp_data=mcp_data,
             mcp_servers=self.mcp_servers(),
@@ -250,7 +260,8 @@ class BaseAgent(ABC):
             stage_name=stage_name,
             is_final_stage=is_final_stage,
             previous_stages=previous_stages,
-            stage_attributed_data=stage_attributed_data
+            stage_attributed_data=stage_attributed_data,
+            chain_context=chain_context
         )
 
     def _get_server_specific_tool_guidance(self) -> str:
@@ -412,7 +423,7 @@ class BaseAgent(ABC):
         self,
         alert_data: AlertProcessingData,  # Unified alert processing model
         session_id: str
-    ) -> Dict[str, Any]:
+    ) -> AgentExecutionResult:
         """
         Process alert with unified alert processing model using configured iteration strategy.
         
@@ -424,7 +435,7 @@ class BaseAgent(ABC):
             session_id: Session ID for timeline logging
         
         Returns:
-            Dictionary containing analysis result and metadata
+            Structured AgentExecutionResult with rich investigation summary
         """
         # Basic validation
         if not session_id:
@@ -463,57 +474,59 @@ class BaseAgent(ABC):
             
             # Create iteration context for controller
             context = IterationContext(
-                alert_data=original_alert,
+                alert_data=alert_data,  # Pass full AlertProcessingData for chain context
                 runbook_content=runbook_content,
                 available_tools=available_tools,
                 session_id=session_id,
                 agent=self
             )
             
-            # If we have initial MCP data from previous stages, add it to context
-            if initial_mcp_data:
-                context.initial_mcp_data = initial_mcp_data
-                
-            # Add stage-attributed data for enhanced context
-            if stage_attributed_mcp_data:
-                context.stage_attributed_data = stage_attributed_mcp_data
-            
             # Delegate to appropriate iteration controller
             analysis_result = await self._iteration_controller.execute_analysis_loop(context)
             
-            return {
-                "status": "success",
-                "agent": self.__class__.__name__,
-                "analysis": analysis_result,
-                "strategy": self.iteration_strategy.value,
-                "mcp_results": getattr(context, 'final_mcp_data', {}),
-                "timestamp_us": now_us()
-            }
+            # Create strategy-specific execution result summary
+            result_summary = self._iteration_controller.create_result_summary(
+                analysis_result=analysis_result,
+                context=context
+            )
+            
+            # Extract clean final analysis for API consumption
+            final_analysis = self._iteration_controller.extract_final_analysis(
+                analysis_result=analysis_result,
+                context=context
+            )
+            
+            return AgentExecutionResult(
+                status=StageStatus.COMPLETED,
+                agent_name=self.__class__.__name__,
+                timestamp_us=now_us(),
+                result_summary=result_summary,
+                final_analysis=final_analysis
+            )
             
         except AgentError as e:
             # Handle structured agent errors with recovery information
             logger.error(f"Agent processing failed with structured error: {e.to_dict()}", exc_info=True)
             
-            return {
-                "status": "error",
-                "agent": self.__class__.__name__,
-                "error": str(e),
-                "error_details": e.to_dict(),
-                "recoverable": e.recoverable,
-                "timestamp_us": now_us()
-            }
+            return AgentExecutionResult(
+                status=StageStatus.FAILED,
+                agent_name=self.__class__.__name__,
+                timestamp_us=now_us(),
+                result_summary=f"Agent execution failed: {str(e)}",
+                error_message=str(e)
+            )
         except Exception as e:
             # Handle unexpected errors
             error_msg = f"Agent processing failed with unexpected error: {str(e)}"
             logger.error(error_msg, exc_info=True)
             
-            return {
-                "status": "error",
-                "agent": self.__class__.__name__,
-                "error": error_msg,
-                "recoverable": False,
-                "timestamp_us": now_us()
-            }
+            return AgentExecutionResult(
+                status=StageStatus.FAILED,
+                agent_name=self.__class__.__name__,
+                timestamp_us=now_us(),
+                result_summary=f"Agent execution failed with unexpected error: {str(e)}",
+                error_message=error_msg
+            )
     
     def merge_mcp_data(self, existing_data: Dict[str, Any], new_data: Dict[str, Any]) -> Dict[str, Any]:
         """

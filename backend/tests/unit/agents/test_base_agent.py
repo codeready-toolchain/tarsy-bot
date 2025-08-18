@@ -735,8 +735,8 @@ class TestBaseAgentErrorHandling:
         )
         result = await base_agent.process_alert(alert_processing_data, "test-session-123")
         
-        assert result["status"] == "error"
-        assert "MCP config error" in result["error"]
+        assert result.status.value == "failed"
+        assert "MCP config error" in result.error_message
 
 
 
@@ -769,11 +769,10 @@ class TestBaseAgentErrorHandling:
         
         result = await base_agent.process_alert(alert_processing_data, "test-session-success")
         
-        assert result["status"] == "success"
-        assert "Analysis complete" in result["analysis"]
-        assert result["agent"] == "TestConcreteAgent"
-        assert "timestamp_us" in result  # Changed from "timestamp" to "timestamp_us"
-        assert result["strategy"] == "react"
+        assert result.status.value == "completed"
+        assert "Analysis complete" in result.result_summary
+        assert result.agent_name == "TestConcreteAgent"
+        assert result.timestamp_us is not None
 
 @pytest.mark.unit
 class TestBaseAgent:
@@ -848,8 +847,8 @@ class TestBaseAgent:
             session_id="test-session-123"
         )
         
-        assert result["status"] == "success"
-        assert "analysis" in result  # Analysis result may vary based on iteration strategy
+        assert result.status.value == "completed"
+        assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
 
     @pytest.mark.asyncio
     async def test_process_alert_without_session_id_parameter(
@@ -881,8 +880,8 @@ class TestBaseAgent:
             session_id="test-session"
         )
         
-        assert result["status"] == "success"
-        assert "analysis" in result  # Analysis result may vary based on iteration strategy
+        assert result.status.value == "completed"
+        assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
 
     @pytest.mark.asyncio
     async def test_process_alert_with_none_session_id(
@@ -933,8 +932,8 @@ class TestBaseAgent:
             session_id="test-session"
         )
         
-        assert result["status"] == "success"
-        assert "analysis" in result  # Analysis result may vary based on iteration strategy
+        assert result.status.value == "completed"
+        assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
 
     @pytest.mark.asyncio
     async def test_process_alert_error_handling_preserves_session_id_interface(
@@ -957,6 +956,6 @@ class TestBaseAgent:
             session_id="test-session-error"
         )
         
-        assert result["status"] == "error"
-        assert "error" in result
-        assert "MCP error" in result["error"] 
+        assert result.status.value == "failed"
+        assert result.error_message is not None
+        assert "MCP error" in result.error_message 

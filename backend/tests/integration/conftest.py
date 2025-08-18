@@ -14,10 +14,13 @@ from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.config.settings import Settings
 from tarsy.integrations.llm.client import LLMClient, LLMManager
 from tarsy.integrations.mcp.client import MCPClient
+from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.alert import Alert
+from tarsy.models.constants import StageStatus
 from tarsy.models.db_models import AlertSession
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.models.agent_config import MCPServerConfigModel as MCPServerConfig
+from tarsy.utils.timestamp import now_us
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.agent_registry import AgentRegistry
 from tarsy.services.alert_service import AlertService
@@ -520,13 +523,13 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                 
                 analysis_text = " ".join(analysis_parts) + " Analysis includes tool execution results."
                 
-                return {
-                    "status": "success",
-                    "agent": "KubernetesAgent", 
-                    "analysis": analysis_text,
-                    "iterations": 1,
-                    "timestamp_us": 1234567890
-                }
+                return AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="KubernetesAgent",
+                    timestamp_us=now_us(),
+                    result_summary=analysis_text,
+                    final_analysis=analysis_text  # Set final_analysis so alert service can extract it
+                )
             
             mock_agent.process_alert.side_effect = mock_kubernetes_process_alert
             
@@ -736,26 +739,26 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                     Mock(role="user", content=f"analyze alert data: {alert_data}")
                 ], session_id=session_id)
                 
-                return {
-                    "status": "success", 
-                    "agent": "BaseAgent",
-                    "analysis": analysis_content,
-                    "iterations": 1,
-                    "timestamp_us": 1234567890
-                }
+                return AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="BaseAgent",
+                    timestamp_us=now_us(),
+                    result_summary=analysis_content,
+                    final_analysis=analysis_content  # Set final_analysis so alert service can extract it
+                )
             
             mock_agent.process_alert.side_effect = mock_base_process_alert
         
         else:
             # Default mock agent
             mock_agent = Mock()
-            mock_agent.process_alert.return_value = {
-                "status": "success",
-                "agent": agent_class_name,
-                "analysis": f"Analysis completed by {agent_class_name}",
-                "iterations": 1,
-                "timestamp_us": 1234567890
-            }
+            mock_agent.process_alert.return_value = AgentExecutionResult(
+                status=StageStatus.COMPLETED,
+                agent_name=agent_class_name,
+                timestamp_us=now_us(),
+                result_summary=f"Analysis completed by {agent_class_name}",
+                final_analysis=f"Analysis completed by {agent_class_name}"  # Set final_analysis so alert service can extract it
+            )
         
         return mock_agent
     

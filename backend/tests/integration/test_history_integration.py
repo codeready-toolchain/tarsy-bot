@@ -483,13 +483,18 @@ class TestAlertServiceHistoryIntegration:
         service.runbook_service.download_runbook = AsyncMock(return_value="Test runbook content")
         
         # Mock agent registry and agent factory
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
         mock_agent = AsyncMock()
-        mock_agent.process_alert.return_value = {
-            "status": "success",  # Changed to match expected format
-            "analysis": "Test analysis",
-            "actions_taken": ["Test action"],
-            "recommendations": ["Test recommendation"]
-        }
+        mock_agent.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="KubernetesAgent", 
+            timestamp_us=now_us(),
+            result_summary="Test analysis with actions taken and recommendations",
+            final_analysis="Test analysis with actions taken and recommendations"
+        )
         
         # Mock the chain_registry - this is where get_chain_for_alert_type lives  
         service.chain_registry.get_chain_for_alert_type = Mock(return_value=Mock(chain_id="kubernetes-chain", stages=[Mock(name="analysis", agent="KubernetesAgent")]))

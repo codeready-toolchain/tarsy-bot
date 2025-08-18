@@ -7,6 +7,7 @@ layers of the application, providing type safety and validation.
 
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Dict, Any, Optional
+from .agent_execution_result import ChainExecutionContext, AgentExecutionResult
 
 
 class AlertProcessingData(BaseModel):
@@ -90,7 +91,7 @@ class AlertProcessingData(BaseModel):
                     stage_attributed_data[stage_name] = stage_result["mcp_results"]
         return stage_attributed_data
     
-    def add_stage_result(self, stage_name: str, result: Dict[str, Any]):
+    def add_stage_result(self, stage_name: str, result):
         """Add results from a completed stage."""
         self.stage_outputs[stage_name] = result
     
@@ -102,6 +103,23 @@ class AlertProcessingData(BaseModel):
         """Set chain processing context."""
         self.chain_id = chain_id
         self.current_stage_name = current_stage
+
+    def get_chain_execution_context(self) -> ChainExecutionContext:
+        """
+        Create ChainExecutionContext from completed stage outputs.
+        
+        This converts the AgentExecutionResult objects in stage_outputs 
+        into a format suitable for prompt building.
+        """
+        chain_context = ChainExecutionContext()
+        
+        for stage_name, stage_result in self.stage_outputs.items():
+            if isinstance(stage_result, AgentExecutionResult):
+                # Add completed AgentExecutionResult to chain context
+                if stage_result.status.value == "completed":
+                    chain_context.stage_results[stage_name] = stage_result
+        
+        return chain_context
 
 
 class AlertKey(BaseModel):

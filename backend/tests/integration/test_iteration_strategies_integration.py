@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from tarsy.agents.configurable_agent import ConfigurableAgent
-from tarsy.models.constants import IterationStrategy
+from tarsy.models.constants import IterationStrategy, StageStatus
 from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.models.agent_config import AgentConfigModel
@@ -135,12 +135,11 @@ class TestIterationStrategiesIntegration:
         )
         
         # Both should succeed but potentially use different processing paths
-        assert regular_result["status"] == "success"
-        assert react_result["status"] == "success"
+        assert regular_result.status == StageStatus.COMPLETED
+        assert react_result.status == StageStatus.COMPLETED
         
-        # Verify strategy is recorded in results
-        assert regular_result["strategy"] == "regular"
-        assert react_result["strategy"] == "react"
+        # Results should be different (different iteration strategies produce different outputs)
+        assert regular_result.result_summary != react_result.result_summary
     
     @pytest.mark.asyncio
     async def test_configurable_agent_iteration_strategies(
@@ -210,12 +209,11 @@ class TestIterationStrategiesIntegration:
         )
         
         # Verify results
-        assert regular_result["status"] == "success"
-        assert react_result["status"] == "success"
+        assert regular_result.status == StageStatus.COMPLETED
+        assert react_result.status == StageStatus.COMPLETED
         
-        # Verify strategy is recorded correctly
-        assert regular_result["strategy"] == "regular"
-        assert react_result["strategy"] == "react"
+        # Results should be different (different iteration strategies produce different outputs)
+        assert regular_result.result_summary != react_result.result_summary
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
     def test_agent_factory_creates_agents_with_correct_strategies(
@@ -405,12 +403,11 @@ mcp_servers:
             )
             
             # Verify both processed successfully
-            assert regular_result["status"] == "success"
-            assert react_result["status"] == "success"
+            assert regular_result.status == StageStatus.COMPLETED
+            assert react_result.status == StageStatus.COMPLETED
             
-            # Verify correct strategies recorded
-            assert regular_result["strategy"] == "regular"
-            assert react_result["strategy"] == "react"
+            # Results should be different (different iteration strategies produce different outputs)
+            assert regular_result.result_summary != react_result.result_summary
             
         finally:
             os.unlink(temp_path)

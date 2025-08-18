@@ -14,6 +14,7 @@ from tarsy.integrations.mcp.client import MCPClient
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.agent_registry import AgentRegistry
 from tarsy.services.mcp_server_registry import MCPServerRegistry
+from tarsy.models.constants import StageStatus
 
 
 @pytest.mark.asyncio
@@ -466,7 +467,7 @@ class TestErrorPropagationBetweenComponents:
         
         # Assert - Agent should handle MCP errors gracefully
         assert result is not None
-        assert result["status"] == "success" or result["status"] == "error"
+        assert result.status in [StageStatus.COMPLETED, StageStatus.FAILED, StageStatus.PARTIAL]
 
     async def test_llm_error_to_agent(
         self, 
@@ -497,9 +498,12 @@ class TestErrorPropagationBetweenComponents:
         
         # Assert - Agent should handle LLM errors gracefully
         assert result is not None
-        assert isinstance(result, dict)
-        assert result["status"] == "success"  # Process completed despite LLM errors
-        assert "incomplete" in result["analysis"] or "failed" in result["analysis"] or "LLM API failed" in result["analysis"]
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        assert isinstance(result, AgentExecutionResult)
+        assert result.status == StageStatus.COMPLETED  # Process completed despite LLM errors
+        # Check that the result summary or final analysis indicates the issues
+        analysis_text = result.final_analysis or result.result_summary
+        assert "incomplete" in analysis_text or "failed" in analysis_text or "LLM API failed" in analysis_text
 
     def test_registry_misconfiguration_error(
         self, 

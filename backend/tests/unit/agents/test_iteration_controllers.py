@@ -10,6 +10,7 @@ import pytest
 
 from tarsy.agents.iteration_controllers.base_iteration_controller import (
     IterationContext,
+    IterationController,
 )
 from tarsy.agents.iteration_controllers.regular_iteration_controller import RegularIterationController
 from tarsy.agents.iteration_controllers.react_iteration_controller import SimpleReActController
@@ -329,7 +330,9 @@ class TestSimpleReActController:
         """Test successful ReAct analysis loop with final answer."""
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "Analysis complete"
+        # Should return full ReAct history including final answer
+        assert "Thought: Need to analyze the alert" in result
+        assert "Final Answer: Analysis complete" in result
         
         # Verify LLM was called
         mock_llm_client.generate_response.assert_called()
@@ -378,7 +381,11 @@ class TestSimpleReActController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "Complete analysis"
+        # Should return full ReAct history including actions and final answer
+        assert "Thought: Need to get more info" in result
+        assert "Action: test-tool" in result
+        assert "Observation: Tool executed successfully" in result 
+        assert "Final Answer: Complete analysis" in result
         
         # Verify tool was executed
         mock_agent.execute_mcp_tools.assert_called_once()
@@ -438,7 +445,11 @@ class TestSimpleReActController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "Analysis with error"
+        # Should return full ReAct history including error handling and final answer
+        assert "Thought: Need to use tool" in result
+        assert "Action: test-tool" in result
+        assert "Observation: Error executing action" in result
+        assert "Final Answer: Analysis with error" in result
         
         # Verify tool execution was attempted
         mock_agent.execute_mcp_tools.assert_called_once()
@@ -486,9 +497,7 @@ class TestReactFinalAnalysisController:
             runbook_content="Test runbook content",
             available_tools=[{"name": "test-tool"}],
             session_id="test-session-123",
-            agent=mock_agent,
-            initial_mcp_data={"server1": [{"tool": "tool1", "data": "test_data"}]},
-            stage_attributed_data={"stage1": {"key": "value"}}
+            agent=mock_agent
         )
     
     def test_needs_mcp_tools(self, controller):
@@ -507,12 +516,12 @@ class TestReactFinalAnalysisController:
         call_args = mock_agent.create_prompt_context.call_args[1]
         assert call_args["alert_data"] == sample_context.alert_data
         assert call_args["runbook_content"] == sample_context.runbook_content
-        assert call_args["mcp_data"] == sample_context.initial_mcp_data
+        assert call_args["mcp_data"] == {}  # Final analysis uses empty mcp_data
         assert call_args["available_tools"] is None
         assert call_args["stage_name"] == "final-analysis"
         assert call_args["is_final_stage"] is True
-        assert call_args["previous_stages"] == ["stage1"]
-        assert call_args["stage_attributed_data"] == sample_context.stage_attributed_data
+        assert call_args["previous_stages"] is None  # Handled by chain context
+        assert call_args["stage_attributed_data"] is None  # Handled by chain context
         
         # Verify prompt building was called
         mock_prompt_builder.build_final_analysis_prompt.assert_called_once()
@@ -547,44 +556,36 @@ class TestReactFinalAnalysisController:
             await controller.execute_analysis_loop(context)
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_with_initial_mcp_data(self, controller, sample_context, mock_agent, mock_llm_client):
-        """Test final analysis with accumulated MCP data from previous stages."""
-        # Mock additional data sources
-        sample_context.initial_mcp_data = {
-            "server1": [{"tool": "tool1", "data": "data1"}],
-            "server2": [{"tool": "tool2", "data": "data2"}]
-        }
-        
+    async def test_execute_analysis_loop_with_previous_stage_data(self, controller, sample_context, mock_agent, mock_llm_client):
+        """Test final analysis execution (previous stage data handled at chain level)."""        
         result = await controller.execute_analysis_loop(sample_context)
         
         assert result == "Comprehensive final analysis complete"
         
-        # Verify context creation included all MCP data
+        # Verify context creation was called correctly
         call_args = mock_agent.create_prompt_context.call_args[1]
-        assert call_args["mcp_data"] == sample_context.initial_mcp_data
+        assert call_args["mcp_data"] == {}  # Empty for final analysis
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_without_initial_mcp_data(self, controller, mock_agent, mock_llm_client, mock_prompt_builder):
-        """Test final analysis without previous stage data."""
+    async def test_execute_analysis_loop_minimal_context(self, controller, mock_agent, mock_llm_client, mock_prompt_builder):
+        """Test final analysis with minimal context."""
         context = IterationContext(
             alert_data={"alert": "TestAlert"},
             runbook_content="Test runbook",
             available_tools=[],
             session_id="test-session-123",
-            agent=mock_agent,
-            initial_mcp_data=None,
-            stage_attributed_data=None
+            agent=mock_agent
         )
         
         result = await controller.execute_analysis_loop(context)
         
         assert result == "Comprehensive final analysis complete"
         
-        # Verify context creation handled None values
+        # Verify context creation used correct parameters
         call_args = mock_agent.create_prompt_context.call_args[1]
-        assert call_args["mcp_data"] is None
-        assert call_args["previous_stages"] is None
-        assert call_args["stage_attributed_data"] is None
+        assert call_args["mcp_data"] == {}  # Empty for final analysis
+        assert call_args["previous_stages"] is None  # Handled by chain context
+        assert call_args["stage_attributed_data"] is None  # Handled by chain context
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_llm_failure(self, controller, sample_context, mock_llm_client):
@@ -629,7 +630,6 @@ class TestReactToolsController:
         builder.get_react_continuation_prompt.return_value = ["Please continue with data collection..."]
         builder.get_react_error_continuation.return_value = ["Error occurred, continue collecting data..."]
         builder._flatten_react_history.return_value = ["Thought: Need data", "Action: test-tool", "Observation: Data collected"]
-        builder.truncate_conversation_history.return_value = ["Truncated history"]
         return builder
     
     @pytest.fixture
@@ -660,9 +660,6 @@ class TestReactToolsController:
             available_tools=[{"name": "test-tool"}],
             session_id="test-session-456", 
             agent=mock_agent,
-            initial_mcp_data={"server0": [{"tool": "initial", "data": "initial_data"}]},
-            stage_attributed_data={"previous_stage": {"key": "value"}},
-            final_mcp_data={}
         )
     
     def test_needs_mcp_tools(self, controller):
@@ -674,7 +671,9 @@ class TestReactToolsController:
         """Test successful data collection that completes immediately."""
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "Data collection complete"
+        # Should return full ReAct history including final answer
+        assert "Thought: Need to collect data" in result
+        assert "Final Answer: Data collection complete" in result
         
         # Verify agent context creation
         mock_agent.create_prompt_context.assert_called_once()
@@ -725,13 +724,17 @@ class TestReactToolsController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "All data collected"
+        # Should return full ReAct history with tool execution
+        assert "Thought: Need to collect data" in result
+        assert "Action: test-tool" in result
+        assert "Observation: Tool executed successfully" in result
+        assert "Final Answer: All data collected" in result
         
         # Verify tool was executed
         mock_agent.execute_mcp_tools.assert_called_once()
         
-        # Verify data merging
-        mock_agent.merge_mcp_data.assert_called_once()
+        # Verify tool was executed during ReAct loop  
+        mock_agent.execute_mcp_tools.assert_called_once()
         
         # Verify observation formatting
         mock_prompt_builder.format_observation.assert_called_once()
@@ -765,7 +768,11 @@ class TestReactToolsController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "Data collection with errors"
+        # Should return full ReAct history including error handling
+        assert "Thought: Need to collect data" in result
+        assert "Action: test-tool" in result
+        assert "Observation: Error executing action" in result
+        assert "Final Answer: Data collection with errors" in result
         
         # Verify tool execution was attempted
         mock_agent.execute_mcp_tools.assert_called_once()
@@ -819,7 +826,10 @@ class TestReactToolsController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "Data collection done"
+        # Should return full ReAct history with continuation handling
+        assert "Thought: Thinking about data collection" in result
+        assert "Please continue with data collection" in result
+        assert "Final Answer: Data collection done" in result
         
         # Verify continuation prompt was added
         mock_prompt_builder.get_react_continuation_prompt.assert_called_once_with("data_collection")
@@ -857,10 +867,8 @@ class TestReactToolsController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "Data collection complete"
-        
-        # Verify truncation was called due to history length
-        mock_prompt_builder.truncate_conversation_history.assert_called()
+        # Should return full ReAct history including final answer
+        assert "Final Answer: Data collection complete" in result
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_iteration_exception(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
@@ -881,7 +889,9 @@ class TestReactToolsController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "Data collection recovered"
+        # Should return full ReAct history including exception handling
+        assert "Error occurred, continue collecting data" in result
+        assert "Final Answer: Data collection recovered" in result
         
         # Verify error continuation was called
         mock_prompt_builder.get_react_error_continuation.assert_called_once()
@@ -946,7 +956,6 @@ class TestReactToolsPartialController:
         builder.get_react_continuation_prompt.return_value = ["Please continue with analysis..."]
         builder.get_react_error_continuation.return_value = ["Error occurred, continue analysis..."]
         builder._flatten_react_history.return_value = ["Thought: Need analysis", "Action: analysis-tool", "Observation: Analysis done"]
-        builder.truncate_conversation_history.return_value = ["Truncated analysis history"]
         return builder
     
     @pytest.fixture
@@ -977,9 +986,7 @@ class TestReactToolsPartialController:
             available_tools=[{"name": "analysis-tool"}],
             session_id="test-session-789",
             agent=mock_agent,
-            initial_mcp_data={"server0": [{"tool": "initial", "data": "initial_data"}]},
-            stage_attributed_data={"previous_stage": {"key": "value"}},
-            final_mcp_data={}
+
         )
     
     def test_needs_mcp_tools(self, controller):
@@ -991,7 +998,9 @@ class TestReactToolsPartialController:
         """Test successful partial analysis that completes immediately."""
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "Partial analysis complete"
+        # Should return full ReAct history for partial analysis
+        assert "Thought: Need to analyze partially" in result
+        assert "Final Answer: Partial analysis complete" in result
         
         # Verify agent context creation
         mock_agent.create_prompt_context.assert_called_once()
@@ -1042,13 +1051,17 @@ class TestReactToolsPartialController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert result == "Comprehensive partial analysis"
+        # Should return full ReAct history with tool execution for partial analysis
+        assert "Thought: Need to analyze with tools" in result
+        assert "Action: analysis-tool" in result
+        assert "Observation: Tool executed successfully" in result
+        assert "Final Answer: Comprehensive partial analysis" in result
         
         # Verify tool was executed
         mock_agent.execute_mcp_tools.assert_called_once()
         
-        # Verify data merging
-        mock_agent.merge_mcp_data.assert_called_once()
+        # Verify tool was executed during ReAct loop  
+        mock_agent.execute_mcp_tools.assert_called_once()
         
         # Verify observation formatting
         mock_prompt_builder.format_observation.assert_called_once()
@@ -1138,6 +1151,7 @@ class TestIterationControllerFactory:
                 return ["test"]
             def custom_instructions(self):
                 return "test"
+
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', return_value=mock_prompt_builder):
             agent = TestAgent(
@@ -1159,6 +1173,7 @@ class TestIterationControllerFactory:
                 return ["test"]
             def custom_instructions(self):
                 return "test"
+
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', return_value=mock_prompt_builder):
             agent = TestAgent(
@@ -1180,6 +1195,7 @@ class TestIterationControllerFactory:
                 return ["test"]
             def custom_instructions(self):
                 return "test"
+
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', return_value=mock_prompt_builder):
             with pytest.raises(ValueError, match="Unknown iteration strategy"):
@@ -1214,6 +1230,7 @@ class TestIterationControllerIntegration:
                 return ["test"]
             def custom_instructions(self):
                 return "test"
+
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', 
                    return_value=mock_dependencies['prompt_builder']):
@@ -1240,3 +1257,93 @@ class TestIterationControllerIntegration:
             # Verify strategy property works correctly
             assert regular_agent.iteration_strategy == IterationStrategy.REGULAR
             assert react_agent.iteration_strategy == IterationStrategy.REACT
+
+
+@pytest.mark.unit
+class TestFinalAnswerExtraction:
+    """Test final answer extraction from ReAct responses."""
+    
+    def test_multiline_final_answer_extraction(self):
+        """Test extraction of multi-line Final Answer content."""
+        # Create controller for testing (using SimpleReActController which has _extract_react_final_analysis)
+        controller = SimpleReActController(Mock(), Mock())
+        
+        # Test response with multi-line Final Answer
+        test_response = """Thought: I have gathered sufficient information.
+
+Final Answer: ### Analysis Report: Test Alert
+
+#### 1. Root Cause Analysis
+The issue is caused by a stuck finalizer.
+
+#### 2. Current System State  
+- Namespace: test-namespace
+- Status: Terminating
+
+#### 3. Remediation Steps
+1. Check operator status
+2. Remove finalizer if safe
+
+#### 4. Prevention Recommendations
+- Monitor operator health
+- Implement cleanup policies"""
+        
+        result = controller._extract_react_final_analysis(
+            analysis_result=test_response,
+            completion_patterns=["Analysis completed"],
+            incomplete_patterns=["Analysis incomplete:"],
+            fallback_extractor=None,
+            fallback_message="No analysis found"
+        )
+        
+        # Verify the full content was extracted
+        assert "### Analysis Report: Test Alert" in result
+        assert "#### 1. Root Cause Analysis" in result
+        assert "The issue is caused by a stuck finalizer." in result
+        assert "#### 2. Current System State" in result
+        assert "#### 3. Remediation Steps" in result
+        assert "#### 4. Prevention Recommendations" in result
+        assert "- Monitor operator health" in result
+        
+        # Verify proper structure preservation
+        lines = result.split('\n')
+        assert len(lines) >= 10  # Should have multiple lines
+        
+    def test_single_line_final_answer_extraction(self):
+        """Test extraction of single-line Final Answer content."""
+        controller = SimpleReActController(Mock(), Mock())
+        
+        test_response = """Thought: Analysis complete.
+Final Answer: Simple analysis result."""
+        
+        result = controller._extract_react_final_analysis(
+            analysis_result=test_response,
+            completion_patterns=["Analysis completed"],
+            incomplete_patterns=["Analysis incomplete:"],
+            fallback_extractor=None,
+            fallback_message="No analysis found"
+        )
+        
+        assert result == "Simple analysis result."
+        
+    def test_final_answer_with_subsequent_sections(self):
+        """Test that extraction stops at next ReAct section."""
+        controller = SimpleReActController(Mock(), Mock())
+        
+        test_response = """Final Answer: This is the analysis result.
+This continues the analysis.
+
+Thought: This should not be included.
+Action: some-action"""
+        
+        result = controller._extract_react_final_analysis(
+            analysis_result=test_response,
+            completion_patterns=["Analysis completed"],
+            incomplete_patterns=["Analysis incomplete:"],
+            fallback_extractor=None,
+            fallback_message="No analysis found"
+        )
+        
+        assert result == "This is the analysis result.\nThis continues the analysis."
+        assert "This should not be included" not in result
+        assert "Action: some-action" not in result

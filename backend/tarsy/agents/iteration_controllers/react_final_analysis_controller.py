@@ -34,27 +34,19 @@ class ReactFinalAnalysisController(IterationController):
         return False
     
     async def execute_analysis_loop(self, context: IterationContext) -> str:
-        """Execute final analysis using all accumulated data."""
-        logger.info("Starting final analysis (no tools)")
+        """Execute final analysis - single LLM call, no iterations."""
+        logger.info("Starting final analysis (single LLM call, no tools)")
         
-        # Enhanced stage-aware logging
-        if context.initial_mcp_data:
-            logger.info("Enhanced logging: Final analysis stage with accumulated data from previous stages")
-            data_sources = list(context.initial_mcp_data.keys())
-            logger.info(f"Enhanced logging: Data available from sources: {data_sources}")
-        else:
-            logger.info("Enhanced logging: Final analysis stage running independently (no previous stage data)")
-        
-        # Build comprehensive prompt with all stage data
+        # Build final analysis prompt (chain context will be handled in prompt builder)
         prompt_context = context.agent.create_prompt_context(
             alert_data=context.alert_data,
             runbook_content=context.runbook_content,
-            mcp_data=context.initial_mcp_data,  # All data from previous stages (merged)
+            mcp_data={},  # Final analysis gets previous stage data via chain context in prompt
             available_tools=None,  # No tools available
             stage_name="final-analysis",
             is_final_stage=True,
-            previous_stages=list(context.stage_attributed_data.keys()) if context.stage_attributed_data else None,
-            stage_attributed_data=context.stage_attributed_data  # Stage-attributed format for better clarity
+            previous_stages=None,  # Will be handled by chain context
+            stage_attributed_data=None  # Will be handled by chain context
         )
         
         prompt = self.prompt_builder.build_final_analysis_prompt(prompt_context)
@@ -77,3 +69,12 @@ class ReactFinalAnalysisController(IterationController):
         ]
         
         return await self.llm_client.generate_response(messages, context.session_id, context.agent.get_current_stage_execution_id())
+
+    def extract_final_analysis(self, analysis_result: str, context) -> str:
+        """
+        Final analysis controller already generates clean analysis - return as-is.
+        """
+        if not analysis_result:
+            return "No final analysis generated"
+        
+        return analysis_result.strip()
