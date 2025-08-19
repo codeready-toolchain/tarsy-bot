@@ -20,7 +20,8 @@ from tarsy.models.unified_interactions import LLMMessage
 from .base_iteration_controller import IterationController, IterationContext
 
 if TYPE_CHECKING:
-    pass
+    from tarsy.integrations.llm.client import LLMClient
+    from tarsy.agents.prompt_builder import PromptBuilder
 logger = get_module_logger(__name__)
 
 
@@ -39,14 +40,8 @@ class SimpleReActController(IterationController):
     - Clean separation between reasoning and tool execution
     """
     
-    def __init__(self, llm_client, prompt_builder):
-        """
-        Initialize the simple ReAct controller.
-        
-        Args:
-            llm_client: LLM client for generating responses
-            prompt_builder: Prompt builder with ReAct methods
-        """
+    def __init__(self, llm_client: 'LLMClient', prompt_builder: 'PromptBuilder'):
+        """Initialize with proper type annotations."""
         self.llm_client = llm_client
         self.prompt_builder = prompt_builder
     
