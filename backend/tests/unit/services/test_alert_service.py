@@ -246,14 +246,19 @@ class TestAlertProcessing:
         assert "**Processing Chain:** kubernetes-agent-chain" in result  # Chain architecture format
         mock_agent.process_alert.assert_called_once()
         
-        # Verify agent was called with correct parameters
+        # PHASE 5: Verify agent was called with ChainContext (single parameter)
         call_args = mock_agent.process_alert.call_args
-        alert_processing_data = call_args[0][0]  # First positional arg
-        session_id = call_args[0][1]  # Second positional arg
-        assert alert_processing_data.alert_data == alert_dict.alert_data
-        assert alert_processing_data.runbook_content == "Mock runbook content"
-        assert session_id is not None
-    
+        chain_context = call_args[0][0]  # First (and only) positional arg should be ChainContext
+        
+        # Verify ChainContext contains the expected data
+        from tarsy.models.processing_context import ChainContext
+        assert isinstance(chain_context, ChainContext)
+        assert chain_context.alert_data == alert_dict.alert_data
+        assert chain_context.runbook_content == "Mock runbook content"
+        assert chain_context.session_id is not None
+        assert chain_context.alert_type == alert_dict.alert_type
+
+
     @pytest.mark.asyncio
     async def test_process_alert_unsupported_type(self, initialized_service):
         """Test error handling for unsupported alert type."""

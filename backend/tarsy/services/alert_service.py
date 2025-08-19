@@ -13,10 +13,8 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 
 from cachetools import TTLCache
 
-# TEMPORARY PHASE 1: Strategic import of new context models
-# These imports will be used during migration phases
-if TYPE_CHECKING:
-    from tarsy.models.processing_context import ChainContext, StageContext
+# TEMPORARY PHASE 5: Import new context models for AlertService migration
+from tarsy.models.processing_context import ChainContext, StageContext
 from tarsy.config.settings import Settings
 from tarsy.config.agent_config import ConfigurationLoader, ConfigurationError
 from tarsy.integrations.llm.client import LLMManager
@@ -34,6 +32,27 @@ from tarsy.services.runbook_service import RunbookService
 from tarsy.utils.logger import get_module_logger
 
 logger = get_module_logger(__name__)
+
+
+# ============================================================================
+# PHASE 5: API Formatting Functions (moved from processing models)
+# These functions format alert data for API responses only
+# ============================================================================
+
+def _format_alert_severity(alert_data: Dict[str, Any]) -> str:
+    """
+    Format alert severity for API responses.
+    PHASE 5: Moved from AlertProcessingData.get_severity() to AlertService.
+    """
+    return alert_data.get('severity', 'warning')
+
+
+def _format_alert_environment(alert_data: Dict[str, Any]) -> str:
+    """
+    Format alert environment for API responses.  
+    PHASE 5: Moved from AlertProcessingData.get_environment() to AlertService.
+    """
+    return alert_data.get('environment', 'production')
 
 
 class AlertService:
@@ -322,17 +341,30 @@ class AlertService:
                     # Set current stage execution ID for interaction tagging
                     agent.set_current_stage_execution_id(stage_execution_id)
                     
-                    # Update current stage context
-                    alert_processing_data.set_chain_context(chain_definition.chain_id, stage.name)
+                    # PHASE 5: Create ChainContext for new architecture
+                    chain_context = ChainContext(
+                        alert_type=alert_processing_data.alert_type,
+                        alert_data=alert_processing_data.alert_data,
+                        session_id=session_id,  # FIXED: Set session_id during creation
+                        current_stage_name=stage.name,
+                        stage_outputs=alert_processing_data.stage_outputs,  # Preserve existing results
+                        runbook_content=alert_processing_data.runbook_content,
+                        chain_id=chain_definition.chain_id
+                    )
                     
-                    # Execute stage with unified alert model
-                    stage_result = await agent.process_alert(alert_processing_data, session_id)
+                    # PHASE 5: Execute stage with new ChainContext (single parameter)
+                    logger.info(f"PHASE 5: Executing stage '{stage.name}' with ChainContext")
+                    stage_result = await agent.process_alert(chain_context)
                     
                     # Validate stage result format
                     if not isinstance(stage_result, AgentExecutionResult):
                         raise ValueError(f"Invalid stage result format from agent '{stage.agent}': expected AgentExecutionResult, got {type(stage_result)}")
                     
-                    # Add stage result to unified alert model
+                    # PHASE 5: Add stage result to both ChainContext and AlertProcessingData for compatibility
+                    # Update ChainContext with stage result
+                    chain_context.add_stage_result(stage.name, stage_result)
+                    
+                    # Keep AlertProcessingData updated for backward compatibility with other parts of the system
                     alert_processing_data.add_stage_result(stage.name, stage_result)
                     
                     
@@ -455,8 +487,8 @@ class AlertService:
             "",
             f"**Alert Type:** {alert.alert_type}",
             f"**Processing Agent:** {agent_name}",
-            f"**Environment:** {alert.get_environment()}",
-            f"**Severity:** {alert.get_severity()}",
+            f"**Environment:** {_format_alert_environment(alert.alert_data)}",
+            f"**Severity:** {_format_alert_severity(alert.alert_data)}",
             f"**Timestamp:** {timestamp_str}",
             "",
             "## Analysis",
@@ -502,8 +534,8 @@ class AlertService:
             f"**Alert Type:** {alert.alert_type}",
             f"**Processing Chain:** {chain_definition.chain_id}",
             f"**Stages:** {len(chain_definition.stages)}",
-            f"**Environment:** {alert.get_environment()}",
-            f"**Severity:** {alert.get_severity()}",
+            f"**Environment:** {_format_alert_environment(alert.alert_data)}",
+            f"**Severity:** {_format_alert_severity(alert.alert_data)}",
             f"**Timestamp:** {timestamp_str}",
             "",
             "## Analysis",
@@ -537,7 +569,7 @@ class AlertService:
             "# Alert Processing Error",
             "",
             f"**Alert Type:** {alert.alert_type}",
-            f"**Environment:** {alert.get_environment()}",
+            f"**Environment:** {_format_alert_environment(alert.alert_data)}",
             f"**Error:** {error}",
         ]
         
