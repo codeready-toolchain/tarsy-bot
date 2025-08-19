@@ -9,8 +9,8 @@ import json
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from tarsy.utils.logger import get_module_logger
 
-# TEMPORARY PHASE 1: Strategic import of new context models
-# These imports will be used in future migration phases
+# TEMPORARY PHASE 4: Import new context models for prompt system migration
+from typing import Union
 if TYPE_CHECKING:
     from tarsy.models.processing_context import StageContext
 from .components import (
@@ -41,10 +41,99 @@ class PromptBuilder:
         self.runbook_component = RunbookSectionTemplate()
         self.chain_context_component = ChainContextSectionTemplate()
     
+    # ============ TEMPORARY PHASE 4: Context Conversion Utilities ============
+    # These methods will be REMOVED in Phase 6 cleanup
+    
+    def _convert_stage_context_to_prompt_data(self, stage_context: 'StageContext') -> Dict[str, Any]:
+        """
+        TEMPORARY: Convert StageContext to data needed for prompt building.
+        This method will be COMPLETELY REMOVED in Phase 6 cleanup.
+        """
+        return {
+            'agent_name': stage_context.agent_name,
+            'alert_data': stage_context.alert_data,
+            'runbook_content': stage_context.runbook_content,
+            'mcp_servers': stage_context.mcp_servers,
+            'available_tools': {"tools": [tool for tool in stage_context.available_tools.tools]},  # Convert to old format
+            'stage_name': stage_context.stage_name,
+            'is_final_stage': False,  # TODO: Add this to StageContext if needed
+            'previous_stages': None,  # Handled by chain context
+            'chain_context': None,  # TODO: Convert chain context if needed
+            'previous_stages_formatted': stage_context.format_previous_stages_context()
+        }
+    
+    def _create_temp_prompt_context_from_stage(self, stage_context: 'StageContext') -> PromptContext:
+        """
+        TEMPORARY: Create PromptContext from StageContext during migration.
+        This method will be COMPLETELY REMOVED in Phase 6 cleanup.
+        """
+        return PromptContext(
+            agent_name=stage_context.agent_name,
+            alert_data=stage_context.alert_data,
+            runbook_content=stage_context.runbook_content,
+            mcp_servers=stage_context.mcp_servers,
+            available_tools={"tools": [tool for tool in stage_context.available_tools.tools]},
+            stage_name=stage_context.stage_name,
+            is_final_stage=False,  # TODO: Add this property to StageContext if needed
+            previous_stages=None,  # Handled by chain context formatting
+            chain_context=None  # TODO: Extract if needed
+        )
+    
     # ============ Main Prompt Building Methods ============
     
-    def build_standard_react_prompt(self, context: PromptContext, react_history: Optional[List[str]] = None) -> str:
-        """Build standard ReAct prompt using templates. Used by SimpleReActController."""
+    def build_standard_react_prompt(self, context: Union[PromptContext, 'StageContext'], react_history: Optional[List[str]] = None) -> str:
+        """
+        TEMPORARY OVERLOAD: Build standard ReAct prompt supporting both PromptContext and StageContext.
+        This will be cleaned up in Phase 6 to only accept StageContext.
+        """
+        from tarsy.models.processing_context import StageContext
+        
+        if isinstance(context, StageContext):
+            logger.debug("PHASE 4: Building ReAct prompt with StageContext")
+            return self._build_standard_react_prompt_with_stage_context(context, react_history)
+        else:
+            logger.debug("PHASE 4: Building ReAct prompt with legacy PromptContext")
+            return self._build_standard_react_prompt_with_prompt_context(context, react_history)
+    
+    def _build_standard_react_prompt_with_stage_context(self, stage_context: 'StageContext', react_history: Optional[List[str]] = None) -> str:
+        """Build standard ReAct prompt using StageContext (new approach)."""
+        # Build question components using StageContext properties directly
+        alert_section = self.alert_component.format(stage_context.alert_data)
+        runbook_section = self.runbook_component.format(stage_context.runbook_content)
+        
+        # Use StageContext's built-in previous stages formatting
+        previous_stages_context = stage_context.format_previous_stages_context()
+        if previous_stages_context == "No previous stage context available.":
+            chain_context = ""
+        else:
+            chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}"
+        
+        # Build question
+        alert_type = stage_context.alert_data.get('alert_type', stage_context.alert_data.get('alert', 'Unknown Alert'))
+        question = ANALYSIS_QUESTION_TEMPLATE.format(
+            alert_type=alert_type,
+            alert_section=alert_section,
+            runbook_section=runbook_section,
+            chain_context=chain_context
+        )
+        
+        # Build final prompt  
+        history_text = ""
+        if react_history:
+            flattened_history = self._flatten_react_history(react_history)
+            history_text = "\n".join(flattened_history) + "\n"
+        
+        # Format available tools from StageContext
+        available_tools_dict = {"tools": [tool for tool in stage_context.available_tools.tools]}
+        
+        return STANDARD_REACT_PROMPT_TEMPLATE.format(
+            available_actions=self._format_available_actions(available_tools_dict),
+            question=question,
+            history_text=history_text
+        )
+    
+    def _build_standard_react_prompt_with_prompt_context(self, context: PromptContext, react_history: Optional[List[str]] = None) -> str:
+        """Build standard ReAct prompt using legacy PromptContext."""
         # Build question components
         alert_section = self.alert_component.format(context.alert_data)
         runbook_section = self.runbook_component.format(context.runbook_content)
@@ -71,8 +160,61 @@ class PromptBuilder:
             history_text=history_text
         )
     
-    def build_stage_analysis_react_prompt(self, context: PromptContext, react_history: Optional[List[str]] = None) -> str:
-        """Build ReAct prompt for stage-specific analysis. Used by ReactStageController."""
+    def build_stage_analysis_react_prompt(self, context: Union[PromptContext, 'StageContext'], react_history: Optional[List[str]] = None) -> str:
+        """
+        TEMPORARY OVERLOAD: Build stage analysis ReAct prompt supporting both context types.
+        This will be cleaned up in Phase 6 to only accept StageContext.
+        """
+        from tarsy.models.processing_context import StageContext
+        
+        if isinstance(context, StageContext):
+            logger.debug("PHASE 4: Building stage analysis ReAct prompt with StageContext")
+            return self._build_stage_analysis_prompt_with_stage_context(context, react_history)
+        else:
+            logger.debug("PHASE 4: Building stage analysis ReAct prompt with legacy PromptContext")
+            return self._build_stage_analysis_prompt_with_prompt_context(context, react_history)
+    
+    def _build_stage_analysis_prompt_with_stage_context(self, stage_context: 'StageContext', react_history: Optional[List[str]] = None) -> str:
+        """Build stage analysis ReAct prompt using StageContext (new approach)."""
+        # Build question components using StageContext properties directly
+        alert_section = self.alert_component.format(stage_context.alert_data)
+        runbook_section = self.runbook_component.format(stage_context.runbook_content)
+        
+        # Use StageContext's built-in previous stages formatting
+        previous_stages_context = stage_context.format_previous_stages_context()
+        if previous_stages_context == "No previous stage context available.":
+            chain_context = ""
+        else:
+            chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}"
+        
+        # Build question
+        alert_type = stage_context.alert_data.get('alert_type', stage_context.alert_data.get('alert', 'Unknown Alert'))
+        stage_name = stage_context.stage_name or "analysis"
+        question = STAGE_ANALYSIS_QUESTION_TEMPLATE.format(
+            alert_type=alert_type,
+            alert_section=alert_section,
+            runbook_section=runbook_section,
+            chain_context=chain_context,
+            stage_name=stage_name.upper()
+        )
+        
+        # Build final prompt
+        history_text = ""
+        if react_history:
+            flattened_history = self._flatten_react_history(react_history)
+            history_text = "\n".join(flattened_history) + "\n"
+        
+        # Format available tools from StageContext
+        available_tools_dict = {"tools": [tool for tool in stage_context.available_tools.tools]}
+        
+        return STANDARD_REACT_PROMPT_TEMPLATE.format(
+            available_actions=self._format_available_actions(available_tools_dict),
+            question=question,
+            history_text=history_text
+        )
+    
+    def _build_stage_analysis_prompt_with_prompt_context(self, context: PromptContext, react_history: Optional[List[str]] = None) -> str:
+        """Build stage analysis ReAct prompt using legacy PromptContext."""
         # Build question components
         alert_section = self.alert_component.format(context.alert_data)
         runbook_section = self.runbook_component.format(context.runbook_content)
@@ -101,8 +243,55 @@ class PromptBuilder:
             history_text=history_text
         )
     
-    def build_final_analysis_prompt(self, context: PromptContext) -> str:
-        """Build prompt for final analysis without ReAct format. Used by ReactFinalAnalysisController."""
+    def build_final_analysis_prompt(self, context: Union[PromptContext, 'StageContext']) -> str:
+        """
+        TEMPORARY OVERLOAD: Build final analysis prompt supporting both context types.
+        This will be cleaned up in Phase 6 to only accept StageContext.
+        """
+        from tarsy.models.processing_context import StageContext
+        
+        if isinstance(context, StageContext):
+            logger.debug("PHASE 4: Building final analysis prompt with StageContext")
+            return self._build_final_analysis_prompt_with_stage_context(context)
+        else:
+            logger.debug("PHASE 4: Building final analysis prompt with legacy PromptContext")
+            return self._build_final_analysis_prompt_with_prompt_context(context)
+    
+    def _build_final_analysis_prompt_with_stage_context(self, stage_context: 'StageContext') -> str:
+        """Build final analysis prompt using StageContext (new approach)."""
+        stage_info = ""
+        if stage_context.stage_name:
+            stage_info = f"\n**Stage:** {stage_context.stage_name}"
+            stage_info += " (Final Analysis Stage)"  # Could add is_final_stage to StageContext if needed
+            stage_info += "\n"
+        
+        # Build context section manually since we don't have the old helper
+        server_list = ", ".join(stage_context.mcp_servers)
+        context_section = CONTEXT_SECTION_TEMPLATE.format(
+            agent_name=stage_context.agent_name,
+            server_list=server_list
+        )
+        
+        alert_section = self.alert_component.format(stage_context.alert_data)
+        runbook_section = self.runbook_component.format(stage_context.runbook_content)
+        
+        # Use StageContext's built-in previous stages formatting
+        previous_stages_context = stage_context.format_previous_stages_context()
+        if previous_stages_context == "No previous stage context available.":
+            chain_context = ""
+        else:
+            chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}"
+        
+        return FINAL_ANALYSIS_PROMPT_TEMPLATE.format(
+            stage_info=stage_info,
+            context_section=context_section,
+            alert_section=alert_section,
+            runbook_section=runbook_section,
+            chain_context=chain_context
+        )
+    
+    def _build_final_analysis_prompt_with_prompt_context(self, context: PromptContext) -> str:
+        """Build final analysis prompt using legacy PromptContext."""
         stage_info = ""
         if context.stage_name:
             stage_info = f"\n**Stage:** {context.stage_name}"

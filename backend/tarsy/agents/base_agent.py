@@ -7,7 +7,7 @@ It implements common processing logic and defines abstract methods for agent-spe
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
 from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.client import LLMClient
@@ -18,6 +18,8 @@ from tarsy.models.agent_execution_result import (
 )
 from tarsy.models.constants import StageStatus
 from tarsy.models.alert_processing import AlertProcessingData
+# TEMPORARY PHASE 3: Import new context models for overloaded process_alert
+from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
 from .iteration_controllers import (
     IterationController, SimpleReActController, ReactStageController,
     IterationContext
@@ -216,17 +218,128 @@ class BaseAgent(ABC):
 
     async def process_alert(
         self,
+        context: Union[AlertProcessingData, ChainContext],
+        session_id: Optional[str] = None
+    ) -> AgentExecutionResult:
+        """
+        TEMPORARY OVERLOAD: Process alert supporting both old and new context models during migration.
+        
+        This overloaded method will be cleaned up in Phase 6 to only accept ChainContext.
+        
+        Args:
+            context: Either AlertProcessingData (legacy) or ChainContext (new)
+            session_id: Optional session ID (required for AlertProcessingData, ignored for ChainContext)
+        
+        Returns:
+            Structured AgentExecutionResult with rich investigation summary
+        """
+        if isinstance(context, AlertProcessingData):
+            # TEMPORARY: Handle legacy AlertProcessingData
+            if not session_id:
+                raise ValueError("session_id is required when using AlertProcessingData")
+            logger.info("PHASE 3: Using legacy AlertProcessingData path")
+            return await self._process_alert_legacy(context, session_id)
+        else:
+            # Handle new ChainContext
+            if session_id and session_id != context.session_id:
+                logger.warning(
+                    f"session_id parameter ({session_id}) differs from "
+                    f"context.session_id ({context.session_id}). Using context.session_id."
+                )
+            logger.info("PHASE 3: Using new ChainContext path")
+            return await self._process_alert_new(context)
+
+    async def _process_alert_new(self, chain_context: ChainContext) -> AgentExecutionResult:
+        """
+        New implementation using ChainContext and StageContext.
+        
+        This will become the main process_alert implementation in Phase 6.
+        
+        Args:
+            chain_context: ChainContext containing all processing data
+        
+        Returns:
+            Structured AgentExecutionResult with rich investigation summary
+        """
+        try:
+            # Configure MCP client with agent-specific servers
+            await self._configure_mcp_client()
+            
+            # Get available tools only if the iteration strategy needs them
+            if self._iteration_controller.needs_mcp_tools():
+                logger.info(f"Enhanced logging: Strategy {self.iteration_strategy.value} requires MCP tool discovery")
+                available_tools_list = await self._get_available_tools(chain_context.session_id)
+                logger.info(f"Enhanced logging: Retrieved {len(available_tools_list)} tools for {self.iteration_strategy.value}")
+                available_tools = AvailableTools.from_legacy_format(available_tools_list)
+            else:
+                logger.info(f"Enhanced logging: Strategy {self.iteration_strategy.value} skips MCP tool discovery - Final analysis stage")
+                available_tools = AvailableTools()
+            
+            # Create new StageContext
+            stage_context = StageContext(
+                chain_context=chain_context,
+                available_tools=available_tools,
+                agent=self
+            )
+            
+            # Delegate to appropriate iteration controller
+            analysis_result = await self._iteration_controller.execute_analysis_loop(stage_context)
+            
+            # Create strategy-specific execution result summary
+            result_summary = self._iteration_controller.create_result_summary(
+                analysis_result=analysis_result,
+                context=stage_context
+            )
+            
+            # Extract clean final analysis for API consumption
+            final_analysis = self._iteration_controller.extract_final_analysis(
+                analysis_result=analysis_result,
+                context=stage_context
+            )
+            
+            return AgentExecutionResult(
+                status=StageStatus.COMPLETED,
+                agent_name=self.__class__.__name__,
+                timestamp_us=now_us(),
+                result_summary=result_summary,
+                final_analysis=final_analysis
+            )
+            
+        except AgentError as e:
+            # Handle structured agent errors with recovery information
+            logger.error(f"Agent processing failed with structured error: {e.to_dict()}", exc_info=True)
+            
+            return AgentExecutionResult(
+                status=StageStatus.FAILED,
+                agent_name=self.__class__.__name__,
+                timestamp_us=now_us(),
+                result_summary=f"Agent execution failed: {str(e)}",
+                error_message=str(e)
+            )
+        except Exception as e:
+            # Handle unexpected errors
+            error_msg = f"Agent processing failed with unexpected error: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            
+            return AgentExecutionResult(
+                status=StageStatus.FAILED,
+                agent_name=self.__class__.__name__,
+                timestamp_us=now_us(),
+                result_summary=f"Agent execution failed with unexpected error: {str(e)}",
+                error_message=error_msg
+            )
+
+    async def _process_alert_legacy(
+        self,
         alert_data: AlertProcessingData,  # Unified alert processing model
         session_id: str
     ) -> AgentExecutionResult:
         """
-        Process alert with unified alert processing model using configured iteration strategy.
+        TEMPORARY: Legacy implementation for AlertProcessingData.
+        This method will be REMOVED in Phase 6 cleanup.
         
         Args:
-            alert_data: Unified alert processing model containing:
-                       - alert_type, alert_data: Original alert information
-                       - runbook_content: Downloaded runbook content
-                       - stage_outputs: Results from previous chain stages (empty for single-stage)
+            alert_data: AlertProcessingData instance
             session_id: Session ID for timeline logging
         
         Returns:

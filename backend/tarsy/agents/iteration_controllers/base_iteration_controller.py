@@ -96,12 +96,14 @@ class IterationController(ABC):
         pass
     
     @abstractmethod
-    async def execute_analysis_loop(self, context: IterationContext) -> str:
+    async def execute_analysis_loop(self, context: Union[IterationContext, 'StageContext']) -> str:
         """
-        Execute the complete analysis iteration loop.
+        TEMPORARY OVERLOAD: Execute analysis loop supporting both old and new contexts during migration.
+        
+        This will be cleaned up in Phase 6 to only accept StageContext.
         
         Args:
-            context: Iteration context containing all necessary data
+            context: Either IterationContext (legacy) or StageContext (new)
             
         Returns:
             Final analysis result string
@@ -111,17 +113,17 @@ class IterationController(ABC):
     def create_result_summary(
         self, 
         analysis_result: str, 
-        context: IterationContext
+        context: Union[IterationContext, 'StageContext']
     ) -> str:
         """
-        Create result summary from the iteration strategy's execution.
+        TEMPORARY OVERLOAD: Create result summary supporting both old and new contexts during migration.
         
         Default implementation provides simple formatting. Individual strategies
         can override this method to provide specialized formatting.
         
         Args:
             analysis_result: Raw analysis text from execute_analysis_loop
-            context: Iteration context with access to all execution data
+            context: Either IterationContext (legacy) or StageContext (new)
             
         Returns:
             Formatted summary string for this iteration strategy
@@ -134,10 +136,10 @@ class IterationController(ABC):
     def extract_final_analysis(
         self, 
         analysis_result: str, 
-        context: IterationContext
+        context: Union[IterationContext, 'StageContext']
     ) -> str:
         """
-        Extract clean final analysis from the iteration strategy's execution result.
+        TEMPORARY OVERLOAD: Extract final analysis supporting both old and new contexts during migration.
         
         This method should extract a concise, user-friendly final analysis
         from the full analysis result for API consumption.
@@ -147,7 +149,7 @@ class IterationController(ABC):
         
         Args:
             analysis_result: Raw analysis text from execute_analysis_loop
-            context: Iteration context with access to all execution data
+            context: Either IterationContext (legacy) or StageContext (new)
             
         Returns:
             Clean final analysis string for API/dashboard consumption

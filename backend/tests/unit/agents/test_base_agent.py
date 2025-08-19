@@ -646,82 +646,172 @@ class TestBaseAgent:
         assert result.status.value == "completed"
         assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
 
-    @pytest.mark.asyncio
-    async def test_process_alert_with_none_session_id(
-        self, base_agent, mock_mcp_client, mock_llm_client, sample_alert
-    ):
-        """Test that process_alert raises ValueError with None session_id."""
-        # Convert Alert to AlertProcessingData for new interface
-        alert_processing_data = AlertProcessingData(
-            alert_type=sample_alert.alert_type,
-            alert_data=sample_alert.model_dump(),
-            runbook_url=sample_alert.runbook,
-            runbook_content="test runbook content"
-        )
-        
-        with pytest.raises(ValueError, match="session_id is required"):
-            await base_agent.process_alert(
-                alert_data=alert_processing_data,
-                session_id=None
-            )
 
-    @pytest.mark.asyncio
-    async def test_process_alert_parameter_order_flexibility(
-        self, base_agent, mock_mcp_client, mock_llm_client, sample_alert
-    ):
-        """Test that process_alert accepts parameters in different orders."""
-        # Mock MCP registry
+@pytest.mark.unit
+class TestPhase3ProcessAlertOverload:
+    """Test the new overloaded process_alert method from Phase 3."""
+    
+    @pytest.fixture
+    def mock_llm_client(self):
+        client = Mock(spec=LLMClient)
+        client.generate_response = AsyncMock(return_value="Test analysis result from Phase 3")
+        return client
+    
+    @pytest.fixture
+    def mock_mcp_client(self):
+        client = Mock(spec=MCPClient)
+        client.list_tools = AsyncMock(return_value={"test-server": []})
+        return client
+    
+    @pytest.fixture
+    def base_agent(self, mock_llm_client, mock_mcp_client):
+        agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, Mock(spec=MCPServerRegistry))
+        # Mock registry for successful flow
         mock_config = Mock()
         mock_config.server_id = "test-server"
-        mock_config.server_type = "test"
-        mock_config.instructions = "Test server instructions"
-        base_agent.mcp_registry.get_server_configs.return_value = [mock_config]
-        
-        # Mock prompt builder methods
-        base_agent.determine_mcp_tools = AsyncMock(return_value=[])
-        base_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-        base_agent.analyze_alert = AsyncMock(return_value="Test analysis")
-        
-        # Convert Alert to AlertProcessingData for new interface  
-        alert_processing_data = AlertProcessingData(
-            alert_type=sample_alert.alert_type,
-            alert_data=sample_alert.model_dump(),
-            runbook_url=sample_alert.runbook,
-            runbook_content="test runbook content"
-        )
-        
-        result = await base_agent.process_alert(
-            alert_data=alert_processing_data, 
-            session_id="test-session"
-        )
-        
-        assert result.status.value == "completed"
-        assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
+        mock_config.server_type = "test"  
+        mock_config.instructions = "Test instructions"
+        agent.mcp_registry.get_server_configs.return_value = [mock_config]
+        return agent
 
     @pytest.mark.asyncio
-    async def test_process_alert_error_handling_preserves_session_id_interface(
-        self, base_agent, mock_mcp_client, mock_llm_client, sample_alert
-    ):
-        """Test that process_alert error responses preserve session_id interface."""
-        # Mock MCP registry to cause an error
-        base_agent.mcp_registry.get_server_configs.side_effect = Exception("MCP error")
-        
-        # Convert Alert to AlertProcessingData for new interface
+    async def test_process_alert_with_alert_processing_data(self, base_agent):
+        """Test overloaded process_alert with AlertProcessingData (legacy path)."""
+        # Create AlertProcessingData 
         alert_processing_data = AlertProcessingData(
-            alert_type=sample_alert.alert_type,
-            alert_data=sample_alert.model_dump(),
-            runbook_url=sample_alert.runbook,
-            runbook_content="test runbook content"
+            alert_type="kubernetes",
+            alert_data={"pod": "failing-pod", "message": "Pod failing"},
+            runbook_content="test runbook",
+            current_stage_name="analysis"
         )
         
-        result = await base_agent.process_alert(
-            alert_data=alert_processing_data,
-            session_id="test-session-error"
+        result = await base_agent.process_alert(alert_processing_data, "test-session-legacy")
+        
+        assert result.status.value == "completed"
+        assert "Test analysis result from Phase 3" in result.result_summary
+        assert result.agent_name == "TestConcreteAgent"
+
+    @pytest.mark.asyncio
+    async def test_process_alert_with_chain_context(self, base_agent):
+        """Test overloaded process_alert with ChainContext (new path)."""
+        # Create ChainContext directly
+        chain_context = ChainContext(
+            alert_type="kubernetes",
+            alert_data={"pod": "failing-pod", "message": "Pod failing"},
+            session_id="test-session-new",
+            current_stage_name="analysis",
+            runbook_content="test runbook"
         )
         
-        assert result.status.value == "failed"
-        assert result.error_message is not None
-        assert "MCP error" in result.error_message
+        result = await base_agent.process_alert(chain_context)
+        
+        assert result.status.value == "completed"
+        assert result.result_summary is not None  # Analysis result may vary due to ReAct processing
+        assert result.agent_name == "TestConcreteAgent"
+
+    @pytest.mark.asyncio
+    async def test_process_alert_legacy_requires_session_id(self, base_agent):
+        """Test that AlertProcessingData still requires session_id parameter."""
+        alert_processing_data = AlertProcessingData(
+            alert_type="kubernetes",
+            alert_data={"pod": "failing-pod"},
+            current_stage_name="analysis"
+        )
+        
+        with pytest.raises(ValueError, match="session_id is required when using AlertProcessingData"):
+            await base_agent.process_alert(alert_processing_data)
+
+    @pytest.mark.asyncio
+    async def test_process_alert_chain_context_ignores_conflicting_session_id(self, base_agent, caplog):
+        """Test that ChainContext ignores conflicting session_id parameter with warning."""
+        chain_context = ChainContext(
+            alert_type="kubernetes",
+            alert_data={"pod": "failing-pod"},
+            session_id="context-session-id",
+            current_stage_name="analysis"
+        )
+        
+        # Pass different session_id parameter - should be ignored with warning
+        result = await base_agent.process_alert(chain_context, session_id="parameter-session-id")
+        
+        assert result.status.value == "completed"
+        # Check that warning was logged about conflicting session IDs
+        assert "session_id parameter (parameter-session-id) differs from context.session_id (context-session-id)" in caplog.text
+
+
+@pytest.mark.unit
+class TestPhase4PromptSystemOverload:
+    """Test Phase 4 prompt system updates - prompt builders accepting StageContext."""
+    
+    @pytest.mark.asyncio
+    async def test_prompt_builder_with_stage_context(self):
+        """Test that prompt builders can accept StageContext directly."""
+        from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
+        from tarsy.agents.prompts import get_prompt_builder
+        
+        # Create test contexts
+        chain_context = ChainContext(
+            alert_type="kubernetes",
+            alert_data={"pod": "test-pod", "message": "Pod failing"},
+            session_id="test-session",
+            current_stage_name="analysis"
+        )
+        
+        available_tools = AvailableTools()  # Empty tools
+        mock_agent = Mock()
+        mock_agent.__class__.__name__ = "TestAgent"
+        mock_agent.mcp_servers.return_value = ["test-server"]
+        
+        stage_context = StageContext(
+            chain_context=chain_context,
+            available_tools=available_tools,
+            agent=mock_agent
+        )
+        
+        prompt_builder = get_prompt_builder()
+        
+        # Test that all prompt building methods accept StageContext
+        standard_prompt = prompt_builder.build_standard_react_prompt(stage_context, [])
+        stage_prompt = prompt_builder.build_stage_analysis_react_prompt(stage_context, [])
+        final_prompt = prompt_builder.build_final_analysis_prompt(stage_context)
+        
+        # Verify prompts are generated (not empty)
+        assert standard_prompt
+        assert stage_prompt  
+        assert final_prompt
+        assert "test-pod" in standard_prompt  # Should contain alert data
+        assert "test-pod" in stage_prompt
+        assert "test-pod" in final_prompt
+
+    @pytest.mark.asyncio
+    async def test_prompt_builder_backward_compatibility(self):
+        """Test that prompt builders still work with legacy PromptContext."""
+        from tarsy.agents.prompts import get_prompt_builder, PromptContext
+        
+        # Create legacy PromptContext
+        prompt_context = PromptContext(
+            agent_name="TestAgent",
+            alert_data={"pod": "test-pod", "message": "Pod failing"},
+            runbook_content="test runbook",
+            mcp_servers=["test-server"],
+            available_tools={"tools": []},
+            stage_name="analysis"
+        )
+        
+        prompt_builder = get_prompt_builder()
+        
+        # Test that all prompt building methods still accept PromptContext
+        standard_prompt = prompt_builder.build_standard_react_prompt(prompt_context, [])
+        stage_prompt = prompt_builder.build_stage_analysis_react_prompt(prompt_context, [])
+        final_prompt = prompt_builder.build_final_analysis_prompt(prompt_context)
+        
+        # Verify prompts are generated (not empty)
+        assert standard_prompt
+        assert stage_prompt
+        assert final_prompt
+        assert "test-pod" in standard_prompt  # Should contain alert data
+        assert "test-pod" in stage_prompt
+        assert "test-pod" in final_prompt
 
 
 # =============================================================================

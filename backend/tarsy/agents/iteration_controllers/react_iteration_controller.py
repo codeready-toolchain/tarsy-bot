@@ -18,6 +18,11 @@ from typing import TYPE_CHECKING
 from tarsy.utils.logger import get_module_logger
 from tarsy.models.unified_interactions import LLMMessage
 from .base_iteration_controller import IterationController, IterationContext
+# TEMPORARY PHASE 3: Import new context for overloaded methods
+from typing import Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ...models.processing_context import StageContext
 
 if TYPE_CHECKING:
     from tarsy.integrations.llm.client import LLMClient
@@ -49,9 +54,117 @@ class SimpleReActController(IterationController):
         """ReAct iteration requires MCP tool discovery."""
         return True
         
-    async def execute_analysis_loop(self, context: IterationContext) -> str:
-        """Execute simple ReAct loop following the standard pattern."""
-        logger.info("Starting Standard ReAct analysis loop")
+    async def execute_analysis_loop(self, context: Union[IterationContext, 'StageContext']) -> str:
+        """
+        TEMPORARY OVERLOAD: Execute ReAct loop supporting both old and new contexts during migration.
+        """
+        from ...models.processing_context import StageContext
+        
+        if isinstance(context, StageContext):
+            logger.info("PHASE 3: Starting ReAct loop with new StageContext")
+            return await self._execute_with_stage_context(context)
+        else:
+            logger.info("PHASE 3: Starting ReAct loop with legacy IterationContext")
+            return await self._execute_with_iteration_context(context)
+    
+    async def _execute_with_stage_context(self, context: 'StageContext') -> str:
+        """Execute ReAct loop with new StageContext."""
+        logger.info("Starting Standard ReAct analysis loop (StageContext)")
+        
+        agent = context.agent
+        max_iterations = agent.max_iterations
+        react_history = []
+        
+        # PHASE 4: Pass StageContext directly to prompt builder (no conversion needed)
+        session_id = context.session_id
+        
+        for iteration in range(max_iterations):
+            logger.info(f"ReAct iteration {iteration + 1}/{max_iterations}")
+            
+            try:
+                # PHASE 4: Pass StageContext directly - no PromptContext conversion needed!
+                prompt = self.prompt_builder.build_standard_react_prompt(context, react_history)
+                
+                # Use enhanced ReAct system message with MCP server instructions (same as legacy)
+                composed_instructions = agent._compose_instructions()
+                messages = [
+                    LLMMessage(
+                        role="system", 
+                        content=self.prompt_builder.get_enhanced_react_system_message(composed_instructions, "investigation and providing recommendations")
+                    ),
+                    LLMMessage(role="user", content=prompt)
+                ]
+                
+                response = await self.llm_client.generate_response(messages, session_id, agent.get_current_stage_execution_id())
+                logger.debug(f"LLM Response (first 500 chars): {response[:500]}")
+                
+                # Parse ReAct response
+                parsed = self.prompt_builder.parse_react_response(response)
+                logger.debug(f"Parsed ReAct response: {parsed}")
+                
+                # Add thought to history
+                if parsed['thought']:
+                    react_history.append(f"Thought: {parsed['thought']}")
+                    logger.info(f"ReAct Thought: {parsed['thought'][:150]}...")
+                
+                # Check if complete
+                if parsed['is_complete'] and parsed['final_answer']:
+                    logger.info("ReAct analysis completed with final answer")
+                    react_history.append(f"Final Answer: {parsed['final_answer']}")
+                    return "\n".join(react_history)
+                
+                # Execute action if present
+                if parsed['action'] and parsed['action_input']:
+                    try:
+                        logger.debug(f"ReAct Action: {parsed['action']} with input: {parsed['action_input'][:100]}...")
+                        
+                        # Convert to tool call format
+                        tool_call = self.prompt_builder.convert_action_to_tool_call(
+                            parsed['action'], parsed['action_input']
+                        )
+                        
+                        # Execute tool
+                        mcp_data = await agent.execute_mcp_tools([tool_call], session_id)
+                        
+                        # Format observation
+                        observation = self.prompt_builder.format_observation(mcp_data)
+                        
+                        # Add to history
+                        react_history.extend([
+                            f"Action: {parsed['action']}",
+                            f"Action Input: {parsed['action_input']}",
+                            f"Observation: {observation}"
+                        ])
+                        
+                        logger.debug(f"ReAct Observation: {observation[:150]}...")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to execute ReAct action: {str(e)}")
+                        error_obs = f"Error executing action: {str(e)}"
+                        react_history.extend([
+                            f"Action: {parsed['action']}",
+                            f"Action Input: {parsed['action_input']}",
+                            f"Observation: {error_obs}"
+                        ])
+                
+                elif not parsed['is_complete']:
+                    # LLM didn't provide action but also didn't complete - prompt for action
+                    logger.warning("ReAct response missing action, adding prompt to continue")
+                    react_history.extend(self.prompt_builder.get_react_continuation_prompt("general"))
+                
+            except Exception as e:
+                logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
+                # Add error to history and try to continue
+                react_history.extend(self.prompt_builder.get_react_error_continuation(str(e)))
+                continue
+        else:
+            logger.warning(f"ReAct analysis reached max iterations ({max_iterations})")
+        
+        return "\n".join(react_history)
+
+    async def _execute_with_iteration_context(self, context: IterationContext) -> str:
+        """Execute ReAct loop with legacy IterationContext."""
+        logger.info("Starting Standard ReAct analysis loop (IterationContext)")
         
         agent = context.agent
         if not agent:
