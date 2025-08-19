@@ -48,7 +48,7 @@ def alert_to_api_format(alert: Alert) -> ChainContext:
     return ChainContext(
         alert_type=alert.alert_type,
         alert_data=normalized_data,
-        session_id=f"test-session-{alert.id}",  # Generate test session ID
+        session_id=f"test-session-{hash(str(alert.data))}",  # EP-0012: Generate test session ID from alert data
         current_stage_name="initial"  # Default stage for tests
     )
 

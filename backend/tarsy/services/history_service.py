@@ -188,6 +188,7 @@ class HistoryService:
     # Session Lifecycle Operations
     def create_session(
         self,
+        session_id: str,  # Now required - from ChainContext.session_id
         alert_id: str,
         alert_data: Dict[str, Any],
         agent_type: str,
@@ -199,6 +200,7 @@ class HistoryService:
         Create a new alert processing session with retry logic.
         
         Args:
+            session_id: Session identifier from ChainContext (EP-0012 clean architecture)
             alert_id: External alert identifier
             alert_data: Original alert payload
             agent_type: Processing agent type (e.g., 'kubernetes', 'base')
@@ -220,6 +222,7 @@ class HistoryService:
                     return None
                 
                 session = AlertSession(
+                    session_id=session_id,  # Use session_id from ChainContext (EP-0012 clean architecture)
                     alert_id=alert_id,
                     alert_data=alert_data,
                     agent_type=agent_type,

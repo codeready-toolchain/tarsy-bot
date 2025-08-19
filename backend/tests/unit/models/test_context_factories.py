@@ -304,3 +304,25 @@ class StageContextFactory:
         )
 
 
+# EP-0012 Clean Implementation: Convenience functions for backward compatibility with tests
+def create_test_chain_context() -> ChainContext:
+    """Create a test ChainContext instance."""
+    return ChainContextFactory.create_basic()
+
+def create_test_stage_context() -> StageContext:
+    """Create a test StageContext instance.""" 
+    return StageContextFactory.create_basic()
+
+def create_comparable_contexts_pair() -> tuple[ChainContext, ChainContext]:
+    """Create two comparable ChainContext instances for testing."""
+    return (
+        ChainContextFactory.create_basic(),
+        ChainContextFactory.create_with_runbook()
+    )
+
+def create_stage_context_comparison_pair() -> tuple[StageContext, StageContext]:
+    """Create two comparable StageContext instances for testing."""
+    return (
+        StageContextFactory.create_basic(),
+        StageContextFactory.create_with_previous_results()
+    )

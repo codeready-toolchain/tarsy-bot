@@ -287,11 +287,11 @@ class TestChainContext:
                 current_stage_name="test-stage"
             )
         
-        # Test empty alert_data
+        # Test empty alert_data - EP-0012 validation should reject this
         with pytest.raises(ValidationError):
             ChainContext(
                 alert_type="test",
-                alert_data={},
+                alert_data={},  # Empty dict should raise ValidationError
                 session_id="test-session", 
                 current_stage_name="test-stage"
             )

@@ -9,11 +9,11 @@ performance and consistency with the rest of the system.
 """
 
 import uuid
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import Dict, Any, Optional
 
 from cachetools import TTLCache
 
-from tarsy.models.processing_context import ChainContext, StageContext
+from tarsy.models.processing_context import ChainContext
 from tarsy.config.settings import Settings
 from tarsy.config.agent_config import ConfigurationLoader, ConfigurationError
 from tarsy.integrations.llm.client import LLMManager
@@ -591,8 +591,9 @@ class AlertService:
             unique_id = uuid.uuid4().hex[:12]  # Use 12 chars for uniqueness
             alert_id = f"{alert.alert_type}_{unique_id}_{timestamp_us}"
             
-            # Store chain information in session
+            # Store chain information in session using session_id from ChainContext (EP-0012 clean architecture)
             session_id = self.history_service.create_session(
+                session_id=alert.session_id,  # Use session_id from ChainContext
                 alert_id=alert_id,
                 alert_data=alert.alert_data,  # Store all flexible data in JSON field
                 agent_type=f"chain:{chain_definition.chain_id}",  # Mark as chain processing

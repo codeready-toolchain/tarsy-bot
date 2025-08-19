@@ -228,48 +228,9 @@ class TestKubernetesAgentIntegration:
         instructions = agent.custom_instructions()
         assert isinstance(instructions, str)  # May be empty but should be string
 
-    def test_kubernetes_agent_prompt_context_creation(
-        self, 
-        mock_llm_manager, 
-        mock_mcp_client, 
-        mock_mcp_server_registry,
-        sample_alert,
-        sample_runbook_content
-    ):
-        """Test KubernetesAgent prompt context creation with Kubernetes-specific data."""
-        # Arrange
-        agent = KubernetesAgent(
-            llm_client=mock_llm_manager.get_client(),
-            mcp_client=mock_mcp_client,
-            mcp_registry=mock_mcp_server_registry
-        )
-        
-        alert_data = {
-            "alert": sample_alert.alert_type,
-            "namespace": sample_alert.data.get('namespace', ''),
-            "message": sample_alert.data.get('message', '')
-        }
-        
-        available_tools = {
-            "tools": [
-                {"name": "kubectl_get_namespace", "server": "kubernetes-server"},
-                {"name": "kubectl_get_pods", "server": "kubernetes-server"}
-            ]
-        }
-        
-        # Act
-        context = agent.create_prompt_context(
-            alert_data=alert_data, 
-            runbook_content=sample_runbook_content, 
-            available_tools=available_tools
-        )
-        
-        # Assert
-        assert context.agent_name == "KubernetesAgent"
-        assert context.alert_data == alert_data
-        assert context.runbook_content == sample_runbook_content
-        assert context.available_tools == available_tools
-        assert context.mcp_servers == ["kubernetes-server"]
+    # EP-0012 Clean Implementation: create_prompt_context method removed
+    # Context creation now handled by StageContext in the clean architecture
+    # This functionality is tested through the full processing pipeline tests
 
 
 @pytest.mark.asyncio

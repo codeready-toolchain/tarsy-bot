@@ -275,27 +275,8 @@ class TestBaseAgentInstructionComposition:
         assert "General instructions" in instructions
         assert "## Agent-Specific Instructions" not in instructions
 
-    @pytest.mark.unit
-    @patch('tarsy.agents.base_agent.get_prompt_builder')
-    def test_create_prompt_context(self, mock_get_prompt_builder, base_agent):
-        """Test prompt context creation with all parameters."""
-        alert_data = {"alert": "TestAlert", "severity": "high"}
-        runbook_content = "Test runbook"
-        mcp_data = {"test-server": [{"tool": "test", "result": "data"}]}
-        available_tools = {"tools": [{"name": "test-tool"}]}
-        iteration_history = [{"tools_called": [], "mcp_data": {}}]
-        
-        context = base_agent.create_prompt_context(
-            alert_data=alert_data,
-            runbook_content=runbook_content,
-            available_tools=available_tools
-        )
-        
-        assert context.agent_name == "TestConcreteAgent"
-        assert context.alert_data == alert_data
-        assert context.runbook_content == runbook_content
-        assert context.mcp_servers == ["test-server"]
-        assert context.available_tools == available_tools
+    # EP-0012 Clean Implementation: create_prompt_context method removed
+    # Context creation now handled by StageContext in the clean architecture
 
 
 @pytest.mark.unit
@@ -608,10 +589,8 @@ class TestBaseAgent:
             runbook_content="test runbook content"
         )
         
-        result = await base_agent.process_alert(
-            alert_data=alert_processing_data,
-            session_id="test-session-123"
-        )
+        # EP-0012 Clean Implementation: process_alert only accepts ChainContext
+        result = await base_agent.process_alert(alert_processing_data)
         
         assert result.status.value == "completed"
         assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
@@ -642,10 +621,8 @@ class TestBaseAgent:
             runbook_content="test runbook content"
         )
         
-        result = await base_agent.process_alert(
-            alert_data=alert_processing_data,
-            session_id="test-session"
-        )
+        # EP-0012 Clean Implementation: process_alert only accepts ChainContext
+        result = await base_agent.process_alert(alert_processing_data)
         
         assert result.status.value == "completed"
         assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
@@ -710,12 +687,10 @@ class TestPhase3ProcessAlertOverload:
             current_stage_name="analysis"
         )
         
-        # Pass different session_id parameter - should be ignored with warning
-        result = await base_agent.process_alert(chain_context, session_id="parameter-session-id")
+        # EP-0012 Clean Implementation: process_alert only accepts ChainContext
+        result = await base_agent.process_alert(chain_context)
         
         assert result.status.value == "completed"
-        # Check that warning was logged about conflicting session IDs
-        assert "session_id parameter (parameter-session-id) differs from context.session_id (context-session-id)" in caplog.text
 
 
 @pytest.mark.unit

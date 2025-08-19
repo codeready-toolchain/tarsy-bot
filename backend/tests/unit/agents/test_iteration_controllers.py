@@ -65,7 +65,7 @@ class TestSimpleReActController:
         """Create mock agent for ReAct testing."""
         agent = Mock()
         agent.max_iterations = 3
-        agent.create_prompt_context.return_value = Mock()
+        # EP-0012: create_prompt_context method removed, using StageContext directly
         agent.execute_mcp_tools = AsyncMock(return_value={
             "test-server": [{"tool": "test-tool", "result": "success"}]
         })
@@ -115,7 +115,7 @@ class TestSimpleReActController:
         """Test ReAct analysis loop with missing agent reference."""
         chain_context = ChainContext(
             alert_type="test",
-            alert_data={},
+            alert_data={"pod": "test-pod", "namespace": "default"},  # EP-0012: alert_data must not be empty
             session_id="test-session-123",
             current_stage_name="analysis"
         )
@@ -251,7 +251,7 @@ class TestReactFinalAnalysisController:
     def mock_agent(self):
         """Create mock agent for final analysis testing."""
         agent = Mock()
-        agent.create_prompt_context.return_value = Mock()
+        # EP-0012: create_prompt_context method removed, using StageContext directly
         agent.get_current_stage_execution_id.return_value = "stage-exec-123"
         agent._get_general_instructions.return_value = "## General SRE Agent Instructions\nYou are an expert SRE..."
         agent.custom_instructions.return_value = "Custom agent instructions here"
@@ -289,15 +289,9 @@ class TestReactFinalAnalysisController:
         
         assert result == "Comprehensive final analysis complete"
         
-        # Verify agent context creation was called properly
-        mock_agent.create_prompt_context.assert_called_once()
-        call_args = mock_agent.create_prompt_context.call_args[1]
-        assert call_args["alert_data"] == sample_context.alert_data
-        assert call_args["runbook_content"] == sample_context.runbook_content
-        assert call_args["available_tools"] is None
-        assert call_args["stage_name"] is None  # No stage name in unit test context (plain dict)
-        assert call_args["is_final_stage"] is True
-        assert call_args["previous_stages"] is None  # Handled by chain context
+        # EP-0012: Prompt context creation now handled by StageContext and prompt builders
+        # No separate create_prompt_context method in clean implementation
+        # EP-0012: StageContext provides context data directly, no manual context creation needed
         
         # Verify prompt building was called
         mock_prompt_builder.build_final_analysis_prompt.assert_called_once()
@@ -321,7 +315,7 @@ class TestReactFinalAnalysisController:
         """Test final analysis loop with missing agent reference."""
         chain_context = ChainContext(
             alert_type="test",
-            alert_data={},
+            alert_data={"pod": "test-pod", "namespace": "default"},  # EP-0012: alert_data must not be empty
             session_id="test-session-123",
             current_stage_name="analysis"
         )
@@ -343,9 +337,7 @@ class TestReactFinalAnalysisController:
         
         assert result == "Comprehensive final analysis complete"
         
-        # Verify context creation was called correctly
-        call_args = mock_agent.create_prompt_context.call_args[1]
-        assert call_args["available_tools"] is None  # Empty for final analysis
+        # EP-0012: Context creation handled by StageContext directly
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_minimal_context(self, controller, mock_agent, mock_llm_client, mock_prompt_builder):
@@ -367,10 +359,7 @@ class TestReactFinalAnalysisController:
         
         assert result == "Comprehensive final analysis complete"
         
-        # Verify context creation used correct parameters
-        call_args = mock_agent.create_prompt_context.call_args[1]
-        assert call_args["available_tools"] is None  # Empty for final analysis
-        assert call_args["previous_stages"] is None  # Handled by chain context
+        # EP-0012: Context creation handled by StageContext and prompt builders directly
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_llm_failure(self, controller, sample_context, mock_llm_client):
@@ -421,7 +410,7 @@ class TestReactStageController:
         """Create mock agent for partial analysis testing."""
         agent = Mock()
         agent.max_iterations = 3
-        agent.create_prompt_context.return_value = Mock()
+        # EP-0012: create_prompt_context method removed, using StageContext directly
         agent.get_current_stage_execution_id.return_value = "stage-exec-789"
         agent.execute_mcp_tools = AsyncMock(return_value={
             "analysis-server": [{"tool": "analysis-tool", "result": "analysis data"}]
@@ -464,11 +453,7 @@ class TestReactStageController:
         assert "Thought: Need to analyze partially" in result
         assert "Final Answer: Partial analysis complete" in result
         
-        # Verify agent context creation
-        mock_agent.create_prompt_context.assert_called_once()
-        call_args = mock_agent.create_prompt_context.call_args[1]
-        assert call_args["stage_name"] is None  # No stage name in unit test context (plain dict)
-        assert call_args["available_tools"] == {"tools": sample_context.available_tools}
+        # EP-0012: Agent context creation handled by StageContext directly
         
         # Verify prompt building
         mock_prompt_builder.build_stage_analysis_react_prompt.assert_called_once()
@@ -481,7 +466,7 @@ class TestReactStageController:
         """Test partial analysis loop with missing agent reference."""
         chain_context = ChainContext(
             alert_type="test",
-            alert_data={},
+            alert_data={"pod": "test-pod", "namespace": "default"},  # EP-0012: alert_data must not be empty
             session_id="test-session-123",
             current_stage_name="analysis"
         )

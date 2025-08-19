@@ -230,18 +230,22 @@ Focus on root cause analysis and sustainable solutions."""
         return self.chain_context_component.format(context)
     
     def _format_available_actions(self, available_tools: Dict[str, Any]) -> str:
-        """Format available tools as ReAct actions."""
+        """Format available tools as ReAct actions. EP-0012 clean implementation - MCPTool objects only."""
         if not available_tools or not available_tools.get("tools"):
             return "No tools available."
         
         actions = []
         for tool in available_tools["tools"]:
-            action_name = f"{tool.get('server', 'unknown')}.{tool.get('name', tool.get('tool', 'unknown'))}"
-            description = tool.get('description', 'No description available')
+            # EP-0012 clean implementation: only MCPTool objects, no legacy compatibility
+            action_name = f"{tool.server}.{tool.name}"
+            description = tool.description
             
-            parameters = tool.get('input_schema', {}).get('properties', {})
-            if parameters:
-                param_desc = ', '.join([f"{k}: {v.get('description', 'no description')}" for k, v in parameters.items()])
+            if tool.parameters:
+                # MCPTool.parameters is List[Dict[str, Any]]
+                param_desc = ', '.join([
+                    f"{param.get('name', 'param')}: {param.get('description', 'no description')}" 
+                    for param in tool.parameters
+                ])
                 actions.append(f"{action_name}: {description}\n  Parameters: {param_desc}")
             else:
                 actions.append(f"{action_name}: {description}")

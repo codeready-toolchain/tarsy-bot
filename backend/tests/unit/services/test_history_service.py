@@ -135,6 +135,7 @@ class TestHistoryService:
                 mock_get_repo.return_value.__exit__.return_value = None
             
             session_id = history_service.create_session(
+                session_id=expected_session_id or "test-session-id",  # EP-0012: session_id is now the first required parameter
                 alert_id="test-alert-123",
                 alert_data={"alert_type": "test", "environment": "test"},
                 agent_type="TestAgent",

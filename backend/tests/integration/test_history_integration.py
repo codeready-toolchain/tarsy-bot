@@ -122,6 +122,7 @@ class TestHistoryServiceIntegration:
         """Test creating a session and tracking its complete lifecycle."""
         # Create initial session
         session_id = history_service_with_db.create_session(
+            session_id="test-integration-session-123",  # EP-0012: session_id is now first parameter
             alert_id="alert-123",
             alert_data={
                 "alert_type": sample_alert.alert_type,
