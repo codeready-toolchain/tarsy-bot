@@ -82,7 +82,7 @@ class BaseAgent(ABC):
         self._iteration_count = 0
         self._max_iterations = get_settings().max_llm_mcp_iterations
         self._configured_servers: Optional[List[str]] = None
-        self._prompt_builder: 'PromptBuilder' = get_prompt_builder()
+        self._prompt_builder = get_prompt_builder()
         
         # Stage execution tracking for chain processing
         self._current_stage_execution_id: Optional[str] = None

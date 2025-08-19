@@ -1,3 +1,4 @@
+# ruff: noqa: E501  # Long instructional templates intentionally exceed 88 characters
 """
 LangChain template definitions for prompt building.
 

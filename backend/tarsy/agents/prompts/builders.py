@@ -7,13 +7,24 @@ while maintaining backward compatibility with existing APIs.
 
 import json
 from typing import Dict, Any, List, Optional
+from tarsy.utils.logger import get_module_logger
 from .components import (
     AlertSectionTemplate, 
     RunbookSectionTemplate, 
     ChainContextSectionTemplate,
     PromptContext
 )
-from .templates import *
+from .templates import (
+    ANALYSIS_QUESTION_TEMPLATE,
+    CONTEXT_SECTION_TEMPLATE,
+    FINAL_ANALYSIS_PROMPT_TEMPLATE,
+    REACT_SYSTEM_TEMPLATE,
+    STAGE_ANALYSIS_QUESTION_TEMPLATE,
+    STANDARD_REACT_PROMPT_TEMPLATE,
+)
+
+
+logger = get_module_logger(__name__)
 
 
 class PromptBuilder:
@@ -299,7 +310,7 @@ Focus on root cause analysis and sustainable solutions."""
                     break
                 
                 # Handle Final Answer (can appear at any time)
-                if self._is_section_header(line, 'final_answer', set()):  # Always allow final_answer
+                if self._is_section_header(line, 'final_answer', found_sections):  # Use found_sections for duplicate detection
                     self._finalize_current_section(parsed, current_section, content_lines)
                     current_section = 'final_answer'
                     found_sections.add('final_answer')
@@ -341,9 +352,15 @@ Focus on root cause analysis and sustainable solutions."""
             self._finalize_current_section(parsed, current_section, content_lines)
             
         except Exception as e:
-            # Log the error if needed, but return a safe default structure
-            # In a production environment, you might want to add logging here
-            pass
+            # Log the error for debugging purposes while returning partial parse state
+            logger.error(
+                "Exception occurred while parsing ReAct response, returning partial results: %s", 
+                str(e), 
+                exc_info=True
+            )
+            # Return the partial parse state that was built so far rather than nothing.
+            # This allows callers to get best-effort parsing results even when sections fail.
+            return parsed
         
         return parsed
     

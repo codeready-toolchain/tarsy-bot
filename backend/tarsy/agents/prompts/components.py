@@ -54,20 +54,23 @@ class AlertSectionTemplate:
     
     def _format_value(self, value) -> str:
         """Format value with type-appropriate formatting."""
-        if isinstance(value, dict):
-            return f"\n```json\n{json.dumps(value, indent=2)}\n```"
-        elif isinstance(value, list):
-            return f"\n```json\n{json.dumps(value, indent=2)}\n```"
-        elif isinstance(value, str) and (value.startswith('{') or value.startswith('[')):
-            try:
-                parsed = json.loads(value)
-                return f"\n```json\n{json.dumps(parsed, indent=2)}\n```"
-            except json.JSONDecodeError:
-                return str(value)
-        elif isinstance(value, str) and '\n' in value:
-            return f"\n```\n{value}\n```"
+        if isinstance(value, (dict, list)):
+            return f"\n```json\n{json.dumps(value, indent=2, ensure_ascii=False)}\n```"
+        elif isinstance(value, str):
+            if value.startswith(("{", "[")):
+                try:
+                    parsed = json.loads(value)
+                    return f"\n```json\n{json.dumps(parsed, indent=2, ensure_ascii=False)}\n```"
+                except json.JSONDecodeError:
+                    return value
+            elif '\n' in value:
+                return f"\n```\n{value}\n```"
+            else:
+                return value
+        elif value is None:
+            return "N/A"
         else:
-            return str(value) if value is not None else "N/A"
+            return str(value)
 
 
 class RunbookSectionTemplate:

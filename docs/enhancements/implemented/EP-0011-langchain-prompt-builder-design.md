@@ -4,7 +4,7 @@
 
 ## Architecture Overview
 
-Replace current `PromptBuilder` with LangChain-based template system using component composition pattern.
+Replace the current `PromptBuilder` with a LangChain-based template system using a component composition pattern.
 
 ### Dependencies
 ```bash

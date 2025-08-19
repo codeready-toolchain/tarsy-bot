@@ -252,6 +252,7 @@ class TestKubernetesAgentInheritedFunctionality:
         assert isinstance(servers, list)
         assert "kubernetes-server" in servers
     
+    @pytest.mark.asyncio
     async def test_configure_mcp_client_with_kubernetes_server(self, kubernetes_agent):
         """Test that _configure_mcp_client sets up kubernetes-server correctly."""
         await kubernetes_agent._configure_mcp_client()
@@ -259,6 +260,7 @@ class TestKubernetesAgentInheritedFunctionality:
         assert kubernetes_agent._configured_servers == ["kubernetes-server"]
         kubernetes_agent.mcp_registry.get_server_configs.assert_called_once_with(["kubernetes-server"])
     
+    @pytest.mark.asyncio
     async def test_configure_mcp_client_missing_server_config(self, kubernetes_agent):
         """Test error handling when kubernetes-server config is missing."""
         kubernetes_agent.mcp_registry.get_server_configs.return_value = []
@@ -266,6 +268,7 @@ class TestKubernetesAgentInheritedFunctionality:
         with pytest.raises(ConfigurationError, match="Required MCP servers not configured"):
             await kubernetes_agent._configure_mcp_client()
     
+    @pytest.mark.asyncio
     async def test_get_available_tools_from_kubernetes_server(self, kubernetes_agent):
         """Test that _get_available_tools retrieves tools from kubernetes-server."""
         kubernetes_agent._configured_servers = ["kubernetes-server"]
@@ -285,6 +288,7 @@ class TestKubernetesAgentInheritedFunctionality:
         
         kubernetes_agent.mcp_client.list_tools.assert_called_once_with(session_id="test_session", server_name="kubernetes-server", stage_execution_id=None)
     
+    @pytest.mark.asyncio
     async def test_get_available_tools_not_configured(self, kubernetes_agent):
         """Test that unconfigured agent returns empty tools list."""
         kubernetes_agent._configured_servers = None
@@ -367,6 +371,7 @@ class TestKubernetesAgentMCPIntegration:
         agent = KubernetesAgent(mock_llm, mock_mcp, mock_registry)
         return agent, mock_llm, mock_mcp, mock_registry
     
+    @pytest.mark.asyncio
     async def test_execute_mcp_tools_with_kubernetes_server(self, kubernetes_agent_with_mocks):
         """Test executing MCP tools specifically for kubernetes-server."""
         agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_mocks
@@ -402,6 +407,7 @@ class TestKubernetesAgentMCPIntegration:
             None
         )
     
+    @pytest.mark.asyncio
     async def test_execute_mcp_tools_server_validation(self, kubernetes_agent_with_mocks):
         """Test that tool execution validates server is allowed for agent."""
         agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_mocks
@@ -426,6 +432,7 @@ class TestKubernetesAgentMCPIntegration:
         # Should not call MCP client
         mock_mcp.call_tool.assert_not_called()
     
+    @pytest.mark.asyncio
     async def test_execute_mcp_tools_error_handling(self, kubernetes_agent_with_mocks):
         """Test error handling during MCP tool execution."""
         agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_mocks
