@@ -6,6 +6,7 @@ delegation, error handling, progress tracking, and history management.
 """
 
 from unittest.mock import AsyncMock, Mock, patch
+import uuid
 
 import pytest
 
@@ -13,6 +14,7 @@ from tarsy.config.settings import Settings
 from tarsy.models.alert import Alert
 from tarsy.models.alert_processing import AlertKey
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+from tarsy.models.processing_context import ChainContext
 from tarsy.services.alert_service import AlertService
 from tarsy.utils.timestamp import now_us
 from tests.conftest import alert_to_api_format
@@ -188,7 +190,7 @@ class TestAlertProcessing:
         from tarsy.services.history_service import HistoryService
         mock_history_service = Mock(spec=HistoryService)
         mock_history_service.enabled = True
-        mock_history_service.create_session.return_value = "test-session-id"
+        mock_history_service.create_session.return_value = True
         mock_history_service.update_session_status = Mock()
         mock_history_service.log_llm_interaction = Mock()
         mock_history_service.log_mcp_interaction = Mock()
@@ -237,8 +239,17 @@ class TestAlertProcessing:
         # Convert Alert object to dictionary for the new interface
         alert_dict = alert_to_api_format(sample_alert)
         
-        # Process alert
-        result = await service.process_alert(alert_dict)
+        # Create ChainContext from alert_dict for the new interface
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
+        
+        # Process alert with required alert_id parameter
+        result = await service.process_alert(chain_context, "test_alert_123")
         
         # Assertions - check that the analysis result is included in the formatted response
         assert "Test analysis result" in result
@@ -251,7 +262,6 @@ class TestAlertProcessing:
         chain_context = call_args[0][0]  # First (and only) positional arg should be ChainContext
         
         # Verify ChainContext contains the expected data
-        from tarsy.models.processing_context import ChainContext
         assert isinstance(chain_context, ChainContext)
         assert chain_context.alert_data == alert_dict.alert_data
         assert chain_context.runbook_content == "Mock runbook content"
@@ -283,7 +293,14 @@ class TestAlertProcessing:
         
         # Convert to dict and test
         alert_dict = alert_to_api_format(unsupported_alert)
-        result = await service.process_alert(alert_dict)
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
+        result = await service.process_alert(chain_context, "test_alert_123")
         
         assert "No agent for alert type 'UnsupportedAlertType'" in result
 
@@ -307,7 +324,14 @@ class TestAlertProcessing:
         service.agent_factory.create_agent.side_effect = ValueError("Agent creation failed")
         
         alert_dict = alert_to_api_format(sample_alert)
-        result = await service.process_alert(alert_dict)
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
+        result = await service.process_alert(chain_context, "test_alert_123")
         
         # Verify that the system handles agent creation failure gracefully
         # The specific error message may vary due to async mock interactions,
@@ -342,7 +366,14 @@ class TestAlertProcessing:
         service.agent_factory.get_agent.return_value = mock_agent
         
         alert_dict = alert_to_api_format(sample_alert)
-        result = await service.process_alert(alert_dict)
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
+        result = await service.process_alert(chain_context, "test_alert_123")
         
         assert "Chain processing failed" in result  # Chain architecture error format
 
@@ -359,7 +390,14 @@ class TestAlertProcessing:
         dependencies['llm_manager'].is_available.return_value = False
         
         alert_dict = alert_to_api_format(sample_alert)
-        result = await service.process_alert(alert_dict)
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
+        result = await service.process_alert(chain_context, "test_alert_123")
         
         assert "No LLM providers are available" in result
 
@@ -377,7 +415,14 @@ class TestAlertProcessing:
         dependencies['llm_manager'].is_available.return_value = True
         
         alert_dict = alert_to_api_format(sample_alert)
-        result = await service.process_alert(alert_dict)
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
+        result = await service.process_alert(chain_context, "test_alert_123")
         
         assert "Agent factory not initialized" in result
 
@@ -401,7 +446,14 @@ class TestAlertProcessing:
         dependencies['runbook'].download_runbook = AsyncMock(side_effect=Exception("Runbook download failed"))
         
         alert_dict = alert_to_api_format(sample_alert)
-        result = await service.process_alert(alert_dict)
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
+        result = await service.process_alert(chain_context, "test_alert_123")
         
         assert "Runbook download failed" in result
 
@@ -544,9 +596,16 @@ class TestResponseFormatting:
     def test_format_success_response(self, alert_service, sample_alert):
         """Test formatting successful response."""
         alert_dict = alert_to_api_format(sample_alert)
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
         
         result = alert_service._format_success_response(
-            alert=alert_dict,
+            chain_context=chain_context,
             agent_name="KubernetesAgent",
             analysis="Detailed analysis result",
             iterations=3,
@@ -564,9 +623,16 @@ class TestResponseFormatting:
     def test_format_success_response_without_timestamp(self, alert_service, sample_alert):
         """Test formatting successful response without timestamp."""
         alert_dict = alert_to_api_format(sample_alert)
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
         
         result = alert_service._format_success_response(
-            alert=alert_dict,
+            chain_context=chain_context,
             agent_name="KubernetesAgent",
             analysis="Test analysis",
             iterations=1
@@ -579,9 +645,16 @@ class TestResponseFormatting:
     def test_format_error_response_basic(self, alert_service, sample_alert):
         """Test formatting basic error response."""
         alert_dict = alert_to_api_format(sample_alert)
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
         
         result = alert_service._format_error_response(
-            alert=alert_dict,
+            chain_context=chain_context,
             error="Test error occurred"
         )
         
@@ -592,9 +665,16 @@ class TestResponseFormatting:
     def test_format_error_response_with_agent(self, alert_service, sample_alert):
         """Test formatting error response with agent information."""
         alert_dict = alert_to_api_format(sample_alert)
+        chain_context = ChainContext(
+            alert_type=alert_dict.alert_type,
+            alert_data=alert_dict.alert_data,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage",
+            runbook_content=None
+        )
         
         result = alert_service._format_error_response(
-            alert=alert_dict,
+            chain_context=chain_context,
             error="Agent processing failed",
             agent_name="KubernetesAgent"
         )

@@ -6,18 +6,10 @@ layers of the application, providing type safety and validation.
 """
 
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Dict, Any, Optional, TYPE_CHECKING
-from .agent_execution_result import AgentExecutionResult
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .processing_context import ChainContext
-
-
-
-
-
-
-
 
 
 class AlertKey(BaseModel):

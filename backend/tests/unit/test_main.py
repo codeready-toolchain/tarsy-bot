@@ -593,7 +593,7 @@ class TestBackgroundProcessing:
         with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)):
             await process_alert_background("alert-123", mock_alert_data)
         
-        mock_alert_service.process_alert.assert_called_once_with(mock_alert_data, api_alert_id="alert-123")
+        mock_alert_service.process_alert.assert_called_once_with(mock_alert_data, alert_id="alert-123")
 
     @patch('tarsy.main.alert_service')
     @patch('tarsy.main.processing_alert_keys', {"test-key": "alert-123"})

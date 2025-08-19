@@ -115,13 +115,13 @@ class TestHistoryService:
             else:
                 assert repo is None
     
-    @pytest.mark.parametrize("scenario,service_enabled,repo_side_effect,expected_session_id", [
-        ("success", True, None, "test-session-id"),  # Successful creation
-        ("disabled", False, None, None),  # Service disabled
-        ("exception", True, Exception("Database error"), None),  # Database error
+    @pytest.mark.parametrize("scenario,service_enabled,repo_side_effect,expected_result", [
+        ("success", True, None, True),  # Successful creation
+        ("disabled", False, None, False),  # Service disabled
+        ("exception", True, Exception("Database error"), False),  # Database error
     ])
     @pytest.mark.unit
-    def test_create_session_scenarios(self, history_service, scenario, service_enabled, repo_side_effect, expected_session_id):
+    def test_create_session_scenarios(self, history_service, scenario, service_enabled, repo_side_effect, expected_result):
         """Test session creation for various scenarios."""
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
@@ -134,15 +134,15 @@ class TestHistoryService:
                 mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
                 mock_get_repo.return_value.__exit__.return_value = None
             
-            session_id = history_service.create_session(
-                session_id=expected_session_id or "test-session-id",  # EP-0012: session_id is now the first required parameter
+            result = history_service.create_session(
+                session_id="test-session-id",  # EP-0012: session_id is now the first required parameter
                 alert_id="test-alert-123",
                 alert_data={"alert_type": "test", "environment": "test"},
                 agent_type="TestAgent",
                 alert_type="test_alert"
             )
             
-            assert session_id == expected_session_id
+            assert result == expected_result
             if scenario == "success":
                 dependencies['repository'].create_alert_session.assert_called_once()
     
@@ -587,8 +587,8 @@ class TestHistoryServiceErrorHandling:
             mock_get_repo.return_value.__exit__.return_value = None
             
             # All operations should return safe defaults
-            session_id = history_service_with_errors.create_session("test", {}, "agent", "alert")
-            assert session_id is None
+            result = history_service_with_errors.create_session("test-session-id", "test-alert", {}, "agent", "alert")
+            assert result == False
             
             result = history_service_with_errors.update_session_status("test", "completed")
             assert result == False
@@ -603,8 +603,8 @@ class TestHistoryServiceErrorHandling:
             mock_get_repo.side_effect = Exception("Simulated error")
             
             # All operations should handle exceptions gracefully
-            session_id = history_service_with_errors.create_session("test", {}, "agent", "alert")
-            assert session_id is None
+            result = history_service_with_errors.create_session("test-session-id", "test-alert", {}, "agent", "alert")
+            assert result == False
             
             # Create unified interaction model for error test
             from tarsy.models.unified_interactions import LLMInteraction
@@ -766,12 +766,12 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return "session_123"  # First attempt succeeds
+                return True  # First attempt succeeds
             raise Exception("database is locked")  # Shouldn't reach here
         
         result = history_service._retry_database_operation("create_session", operation)
         
-        assert result == "session_123"
+        assert result == True
         assert call_count == 1
     
     def test_retry_operation_create_session_prevents_duplicate_retry(self, history_service):

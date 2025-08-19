@@ -21,7 +21,8 @@ from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.agent_config import ChainConfigModel
 
 from tarsy.models.agent_execution_result import AgentExecutionResult
-from tarsy.models.constants import AlertSessionStatus, StageStatus
+from tarsy.models.constants import AlertSessionStatus, StageStatus, ChainStatus
+from tarsy.models.api_models import ChainExecutionResult
 from tarsy.utils.timestamp import now_us
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.chain_registry import ChainRegistry
@@ -34,7 +35,7 @@ logger = get_module_logger(__name__)
 
 
 # ============================================================================
-# API Formatting Functions (moved from processing models)
+# API Formatting Functions
 # These functions format alert data for API responses only
 # ============================================================================
 
@@ -162,38 +163,19 @@ class AlertService:
     
     async def process_alert(
         self, 
-        alert: ChainContext, 
-        api_alert_id: Optional[str] = None
+        chain_context: ChainContext, 
+        alert_id: str
     ) -> str:
         """
         Process an alert by delegating to the appropriate specialized agent.
         
         Args:
-            alert: Chain context with all processing data
-            api_alert_id: API alert ID for session mapping
+            chain_context: Chain context with all processing data
+            alert_id: API alert ID for session mapping
             
         Returns:
             Analysis result as a string
         """
-        # Process alert directly (duplicate detection handled at API level)
-        return await self._process_alert_internal(alert, api_alert_id)
-    
-    async def _process_alert_internal(
-        self, 
-        alert: ChainContext, 
-        api_alert_id: Optional[str] = None
-    ) -> str:
-        """
-        Internal alert processing logic with all the actual processing steps.
-        
-        Args:
-            alert: Chain context with all processing data
-            api_alert_id: API alert ID for session mapping
-            
-        Returns:
-            Analysis result as a string
-        """
-        session_id = None
         try:
             # Step 1: Validate prerequisites
             if not self.llm_manager.is_available():
@@ -202,110 +184,102 @@ class AlertService:
             if not self.agent_factory:
                 raise Exception("Agent factory not initialized - call initialize() first")
             
-            # Step 2: Get chain for alert type (REPLACES agent selection)
-            alert_type = alert.alert_type
+            # Step 2: Get chain for alert type
             try:
-                chain_definition = self.chain_registry.get_chain_for_alert_type(alert_type)
+                chain_definition = self.chain_registry.get_chain_for_alert_type(chain_context.alert_type)
             except ValueError as e:
                 error_msg = str(e)
                 logger.error(f"Chain selection failed: {error_msg}")
                 
                 # Update history session with error
-                self._update_session_error(session_id, error_msg)
+                self._update_session_error(chain_context.session_id, error_msg)
                     
-                return self._format_error_response(alert, error_msg)
+                return self._format_error_response(chain_context, error_msg)
             
-            logger.info(f"Selected chain '{chain_definition.chain_id}' for alert type '{alert_type}'")
+            logger.info(f"Selected chain '{chain_definition.chain_id}' for alert type '{chain_context.alert_type}'")
             
             # Create history session with chain info
-            session_id = self._create_chain_history_session(alert, chain_definition)
+            session_created = self._create_chain_history_session(chain_context, chain_definition)
             
-            # Store API alert_id to session_id mapping if both are available
-            if api_alert_id and session_id:
-                self.store_alert_session_mapping(api_alert_id, session_id)
+            # Store API alert_id to session_id mapping if session was created
+            if session_created:
+                self.store_alert_session_mapping(alert_id, chain_context.session_id)
             
             # Update history session with processing start
-            self._update_session_status(session_id, AlertSessionStatus.IN_PROGRESS.value)
+            self._update_session_status(chain_context.session_id, AlertSessionStatus.IN_PROGRESS.value)
             
             # Step 3: Extract runbook from alert data and download once per chain
-            runbook = alert.get_runbook_url()
+            runbook = chain_context.get_runbook_url()
             if not runbook:
                 error_msg = "No runbook specified in alert data"
                 logger.error(error_msg)
-                self._update_session_error(session_id, error_msg)
-                return self._format_error_response(alert, error_msg)
+                self._update_session_error(chain_context.session_id, error_msg)
+                return self._format_error_response(chain_context, error_msg)
             
             runbook_content = await self.runbook_service.download_runbook(runbook)
             
             # Step 4: Set up chain context
-            alert.set_chain_context(chain_definition.chain_id)
-            alert.set_runbook_content(runbook_content)
+            chain_context.set_chain_context(chain_definition.chain_id)
+            chain_context.set_runbook_content(runbook_content)
             
             # Step 5: Execute chain stages sequentially  
             chain_result = await self._execute_chain_stages(
                 chain_definition=chain_definition,
-                chain_context=alert,
-                session_id=session_id
+                chain_context=chain_context
             )
             
             # Step 6: Format and return results
-            if chain_result.get('status') == 'success':
-                analysis = chain_result.get('final_analysis', 'No analysis provided')
-                total_iterations = chain_result.get('total_iterations', 0)
+            if chain_result.status == ChainStatus.COMPLETED:
+                analysis = chain_result.final_analysis or 'No analysis provided'
                 
                 # Format final result with chain context
                 final_result = self._format_chain_success_response(
-                    alert,
+                    chain_context,
                     chain_definition,
                     analysis,
-                    total_iterations,
-                    chain_result.get('timestamp_us')
+                    chain_result.timestamp_us
                 )
                 
                 # Mark history session as completed successfully
-                self._update_session_completed(session_id, AlertSessionStatus.COMPLETED.value, final_analysis=final_result)
+                self._update_session_completed(chain_context.session_id, AlertSessionStatus.COMPLETED.value, final_analysis=final_result)
                 
                 return final_result
             else:
                 # Handle chain processing error
-                error_msg = chain_result.get('error', 'Chain processing failed')
+                error_msg = chain_result.error or 'Chain processing failed'
                 logger.error(f"Chain processing failed: {error_msg}")
                 
                 # Update history session with processing error
-                self._update_session_error(session_id, error_msg)
+                self._update_session_error(chain_context.session_id, error_msg)
                 
-                return self._format_error_response(alert, error_msg)
+                return self._format_error_response(chain_context, error_msg)
                 
         except Exception as e:
             error_msg = f"Alert processing failed: {str(e)}"
             logger.error(error_msg)
             
             # Update history session with processing error
-            self._update_session_error(session_id, error_msg)
+            self._update_session_error(chain_context.session_id, error_msg)
             
-            return self._format_error_response(alert, error_msg)
+            return self._format_error_response(chain_context, error_msg)
 
     async def _execute_chain_stages(
         self, 
         chain_definition: ChainConfigModel, 
-        chain_context: ChainContext,
-        session_id: str
-    ) -> Dict[str, Any]:
+        chain_context: ChainContext
+    ) -> ChainExecutionResult:
         """
         Execute chain stages sequentially with accumulated data flow.
         
         Args:
             chain_definition: Chain definition with stages
             chain_context: Chain context with all processing data
-            session_id: History session ID
             
         Returns:
-            Dictionary with execution results
+            ChainExecutionResult with execution results
         """
         try:
-            total_iterations = 0
             timestamp_us = now_us()
-            
             logger.info(f"Starting chain execution '{chain_definition.chain_id}' with {len(chain_definition.stages)} stages")
             
             successful_stages = 0
@@ -316,10 +290,10 @@ class AlertService:
                 logger.info(f"Executing stage {i+1}/{len(chain_definition.stages)}: '{stage.name}' with agent '{stage.agent}'")
                 
                 # Create stage execution record
-                stage_execution_id = await self._create_stage_execution(session_id, stage, i)
+                stage_execution_id = await self._create_stage_execution(chain_context.session_id, stage, i)
                 
                 # Update session current stage
-                await self._update_session_current_stage(session_id, i, stage_execution_id)
+                await self._update_session_current_stage(chain_context.session_id, i, stage_execution_id)
                 
                 try:
                     # Mark stage as started
@@ -347,7 +321,6 @@ class AlertService:
                     
                     # Add stage result to ChainContext
                     chain_context.add_stage_result(stage.name, stage_result)
-                    
                     
                     # Update stage execution as completed
                     await self._update_stage_execution_completed(stage_execution_id, stage_result)
@@ -384,34 +357,28 @@ class AlertService:
             final_analysis = self._extract_final_analysis_from_stages(chain_context)
             
             # Determine overall chain status
-            overall_status = "success"
+            overall_status = ChainStatus.COMPLETED
             if failed_stages == len(chain_definition.stages):
-                overall_status = "error"  # All stages failed
+                overall_status = ChainStatus.FAILED  # All stages failed
             elif failed_stages > 0:
-                overall_status = "partial"  # Some stages failed
+                overall_status = ChainStatus.PARTIAL  # Some stages failed
             
             logger.info(f"Chain execution completed: {successful_stages} successful, {failed_stages} failed")
             
-            return {
-                "status": overall_status,
-                "final_analysis": final_analysis,
-                "chain_id": chain_definition.chain_id,
-                "successful_stages": successful_stages,
-                "failed_stages": failed_stages,
-                "total_stages": len(chain_definition.stages),
-                "total_iterations": total_iterations,
-                "timestamp_us": timestamp_us
-            }
+            return ChainExecutionResult(
+                status=overall_status,
+                final_analysis=final_analysis,
+                timestamp_us=timestamp_us
+            )
             
         except Exception as e:
             error_msg = f'Chain execution failed: {str(e)}'
             logger.error(error_msg)
-            return {
-                "status": "error",
-                "error": error_msg,
-                "total_iterations": total_iterations,
-                "timestamp_us": timestamp_us
-            }
+            return ChainExecutionResult(
+                status=ChainStatus.FAILED,
+                error=error_msg,
+                timestamp_us=timestamp_us
+            )
     
     def _extract_final_analysis_from_stages(self, chain_context: ChainContext) -> str:
         """
@@ -438,7 +405,7 @@ class AlertService:
 
     def _format_success_response(
         self,
-        alert: ChainContext,
+        chain_context: ChainContext,
         agent_name: str,
         analysis: str,
         iterations: int,
@@ -448,7 +415,7 @@ class AlertService:
         Format successful analysis response for alert data.
         
         Args:
-            alert: The alert processing data with validated structure
+            chain_context: The alert processing data with validated structure
             agent_name: Name of the agent that processed the alert
             analysis: Analysis result from the agent
             iterations: Number of iterations performed
@@ -466,10 +433,10 @@ class AlertService:
         response_parts = [
             "# Alert Analysis Report",
             "",
-            f"**Alert Type:** {alert.alert_type}",
+            f"**Alert Type:** {chain_context.alert_type}",
             f"**Processing Agent:** {agent_name}",
-            f"**Environment:** {_format_alert_environment(alert.alert_data)}",
-            f"**Severity:** {_format_alert_severity(alert.alert_data)}",
+            f"**Environment:** {_format_alert_environment(chain_context.alert_data)}",
+            f"**Severity:** {_format_alert_severity(chain_context.alert_data)}",
             f"**Timestamp:** {timestamp_str}",
             "",
             "## Analysis",
@@ -484,20 +451,18 @@ class AlertService:
     
     def _format_chain_success_response(
         self,
-        alert: ChainContext,
+        chain_context: ChainContext,
         chain_definition,
         analysis: str,
-        total_iterations: int,
         timestamp_us: Optional[int] = None
     ) -> str:
         """
         Format successful analysis response for chain processing.
         
         Args:
-            alert: The alert processing data with validated structure
+            chain_context: The alert processing data with validated structure
             chain_definition: Chain definition that was executed
             analysis: Combined analysis result from all stages
-            total_iterations: Total iterations across all stages
             timestamp_us: Processing timestamp in microseconds since epoch UTC
             
         Returns:
@@ -512,11 +477,11 @@ class AlertService:
         response_parts = [
             "# Alert Analysis Report",
             "",
-            f"**Alert Type:** {alert.alert_type}",
+            f"**Alert Type:** {chain_context.alert_type}",
             f"**Processing Chain:** {chain_definition.chain_id}",
             f"**Stages:** {len(chain_definition.stages)}",
-            f"**Environment:** {_format_alert_environment(alert.alert_data)}",
-            f"**Severity:** {_format_alert_severity(alert.alert_data)}",
+            f"**Environment:** {_format_alert_environment(chain_context.alert_data)}",
+            f"**Severity:** {_format_alert_severity(chain_context.alert_data)}",
             f"**Timestamp:** {timestamp_str}",
             "",
             "## Analysis",
@@ -524,14 +489,14 @@ class AlertService:
             analysis,
             "",
             "---",
-            f"*Processed through {len(chain_definition.stages)} stages in {total_iterations} total iterations*"
+            f"*Processed through {len(chain_definition.stages)} stages*"
         ]
         
         return "\n".join(response_parts)
     
     def _format_error_response(
         self,
-        alert: ChainContext,
+        chain_context: ChainContext,
         error: str,
         agent_name: Optional[str] = None
     ) -> str:
@@ -539,7 +504,7 @@ class AlertService:
         Format error response for alert data.
         
         Args:
-            alert: The alert processing data with validated structure
+            chain_context: The alert processing data with validated structure
             error: Error message
             agent_name: Name of the agent if known
             
@@ -549,8 +514,8 @@ class AlertService:
         response_parts = [
             "# Alert Processing Error",
             "",
-            f"**Alert Type:** {alert.alert_type}",
-            f"**Environment:** {_format_alert_environment(alert.alert_data)}",
+            f"**Alert Type:** {chain_context.alert_type}",
+            f"**Environment:** {_format_alert_environment(chain_context.alert_data)}",
             f"**Error:** {error}",
         ]
         
@@ -571,16 +536,16 @@ class AlertService:
 
     # History Session Management Methods
 
-    def _create_chain_history_session(self, alert: ChainContext, chain_definition: ChainConfigModel) -> Optional[str]:
+    def _create_chain_history_session(self, chain_context: ChainContext, chain_definition: ChainConfigModel) -> bool:
         """
         Create a history session for chain processing.
         
         Args:
-            alert: Chain context with all processing data
+            chain_context: Chain context with all processing data
             chain_definition: Chain definition that will be executed
             
         Returns:
-            Session ID if created successfully, None if history service unavailable
+            True if created successfully, False if history service unavailable or creation failed
         """
         try:
             if not self.history_service or not self.history_service.enabled:
@@ -589,43 +554,47 @@ class AlertService:
             # Generate unique alert ID for this processing session
             timestamp_us = now_us()
             unique_id = uuid.uuid4().hex[:12]  # Use 12 chars for uniqueness
-            alert_id = f"{alert.alert_type}_{unique_id}_{timestamp_us}"
+            alert_id = f"{chain_context.alert_type}_{unique_id}_{timestamp_us}"
             
-            # Store chain information in session using session_id from ChainContext (EP-0012 clean architecture)
-            session_id = self.history_service.create_session(
-                session_id=alert.session_id,  # Use session_id from ChainContext
+            # Store chain information in session using session_id from ChainContext
+            created_successfully = self.history_service.create_session(
+                session_id=chain_context.session_id,  # Use session_id from ChainContext
                 alert_id=alert_id,
-                alert_data=alert.alert_data,  # Store all flexible data in JSON field
+                alert_data=chain_context.alert_data,  # Store all flexible data in JSON field
                 agent_type=f"chain:{chain_definition.chain_id}",  # Mark as chain processing
-                alert_type=alert.alert_type,  # Store in separate column for fast routing
+                alert_type=chain_context.alert_type,  # Store in separate column for fast routing
                 chain_id=chain_definition.chain_id,  # Store chain identifier
                 chain_definition=chain_definition.model_dump()  # Store complete chain definition as JSON-serializable dict
             )
             
-            logger.info(f"Created chain history session {session_id} for alert {alert_id} with chain {chain_definition.chain_id}")
-            return session_id
+            if created_successfully:
+                logger.info(f"Created chain history session {chain_context.session_id} for alert {alert_id} with chain {chain_definition.chain_id}")
+                return True
+            else:
+                logger.warning(f"Failed to create chain history session for alert {alert_id} with chain {chain_definition.chain_id}")
+                return False
             
         except Exception as e:
             logger.warning(f"Failed to create chain history session: {str(e)}")
-            return None
+            return False
     
-    def store_alert_session_mapping(self, api_alert_id: str, session_id: str):
+    def store_alert_session_mapping(self, alert_id: str, session_id: str):
         """Store mapping between API alert ID and session ID for dashboard websocket integration."""
-        self.alert_session_mapping[api_alert_id] = session_id
-        logger.debug(f"Stored alert-session mapping: {api_alert_id} -> {session_id}")
+        self.alert_session_mapping[alert_id] = session_id
+        logger.debug(f"Stored alert-session mapping: {alert_id} -> {session_id}")
     
-    def get_session_id_for_alert(self, api_alert_id: str) -> Optional[str]:
+    def get_session_id_for_alert(self, alert_id: str) -> Optional[str]:
         """Get session ID for an API alert ID."""
-        return self.alert_session_mapping.get(api_alert_id)
+        return self.alert_session_mapping.get(alert_id)
     
-    def register_alert_id(self, api_alert_id: str):
+    def register_alert_id(self, alert_id: str):
         """Register a valid alert ID."""
-        self.valid_alert_ids[api_alert_id] = True  # Use cache as a key-only store
-        logger.debug(f"Registered alert ID: {api_alert_id}")
+        self.valid_alert_ids[alert_id] = True  # Use cache as a key-only store
+        logger.debug(f"Registered alert ID: {alert_id}")
     
-    def alert_exists(self, api_alert_id: str) -> bool:
+    def alert_exists(self, alert_id: str) -> bool:
         """Check if an alert ID exists (has been generated)."""
-        return api_alert_id in self.valid_alert_ids
+        return alert_id in self.valid_alert_ids
     
     def _update_session_status(self, session_id: Optional[str], status: str):
         """

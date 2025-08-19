@@ -183,7 +183,6 @@ async def health_check():
             "error": str(e)
         }
 
-
 @app.get("/alert-types", response_model=List[str])
 async def get_alert_types():
     """Get supported alert types for the development/testing web interface.
@@ -194,7 +193,6 @@ async def get_alert_types():
     alert types using the provided runbook and available agent-specific MCP tools.
     """
     return alert_service.chain_registry.list_available_alert_types()
-
 
 @app.post("/alerts", response_model=AlertResponse)
 async def submit_alert(request: Request):
@@ -354,7 +352,7 @@ async def submit_alert(request: Request):
         normalized_data["alert_type"] = alert_data.alert_type
         normalized_data["runbook"] = alert_data.runbook
         
-        # Create alert structure for processing using new ChainContext
+        # Create alert structure for processing using ChainContext
         # Generate unique session ID
         session_id = str(uuid.uuid4())
         
@@ -363,7 +361,7 @@ async def submit_alert(request: Request):
             alert_type=alert_data.alert_type,
             alert_data=normalized_data,
             session_id=session_id,
-            current_stage_name="processing"
+            current_stage_name="initializing"  # Will be updated to actual stage names from config during execution
         )
         
         # Generate alert key for duplicate detection using normalized data
@@ -478,7 +476,6 @@ async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
     finally:
         dashboard_manager.disconnect(user_id)
 
-
 async def process_alert_background(alert_id: str, alert: ChainContext):
     """Background task to process an alert with comprehensive error handling and concurrency control."""
     async with alert_processing_semaphore:
@@ -486,25 +483,14 @@ async def process_alert_background(alert_id: str, alert: ChainContext):
         try:
             logger.info(f"Starting background processing for alert {alert_id}")
             
-            # Validate alert structure before processing (using Pydantic model)
-            if not alert:
-                raise ValueError("Invalid alert structure: alert object is required")
-            
-            if not alert.alert_type:
-                raise ValueError("Invalid alert structure: missing required field 'alert_type'")
-            
-            if not alert.alert_data or not isinstance(alert.alert_data, dict):
-                raise ValueError("Invalid alert structure: missing or invalid 'alert_data' field")
-            
             # Log alert processing start
-            alert_type = alert.alert_type or "unknown"
-            logger.info(f"Processing alert {alert_id} of type '{alert_type}' with {len(alert.alert_data)} data fields")
+            logger.info(f"Processing alert {alert_id} of type '{alert.alert_type}' with {len(alert.alert_data)} data fields")
             
             # Process with timeout to prevent hanging
             try:
                 # Set a reasonable timeout (e.g., 10 minutes for alert processing)
-                result = await asyncio.wait_for(
-                    alert_service.process_alert(alert, api_alert_id=alert_id),
+                await asyncio.wait_for(
+                    alert_service.process_alert(alert, alert_id=alert_id),
                     timeout=600  # 10 minutes
                 )
             except asyncio.TimeoutError:
@@ -528,11 +514,6 @@ async def process_alert_background(alert_id: str, alert: ChainContext):
             # Network or external service errors
             error_msg = f"Connection error during processing: {str(e)}"
             logger.error(f"Alert {alert_id} connection error: {error_msg}")
-            
-        except json.JSONDecodeError as e:
-            # JSON parsing errors in agent processing
-            error_msg = f"JSON parsing error in agent processing: {str(e)}"
-            logger.error(f"Alert {alert_id} JSON error: {error_msg}")
             
         except MemoryError as e:
             # Memory issues with large payloads

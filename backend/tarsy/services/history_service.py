@@ -195,12 +195,12 @@ class HistoryService:
         alert_type: Optional[str] = None,
         chain_id: Optional[str] = None,
         chain_definition: Optional[Dict[str, Any]] = None
-    ) -> Optional[str]:
+    ) -> bool:
         """
         Create a new alert processing session with retry logic.
         
         Args:
-            session_id: Session identifier from ChainContext (EP-0012 clean architecture)
+            session_id: Session identifier from ChainContext
             alert_id: External alert identifier
             alert_data: Original alert payload
             agent_type: Processing agent type (e.g., 'kubernetes', 'base')
@@ -209,20 +209,20 @@ class HistoryService:
             chain_definition: Complete chain definition for chain processing (optional)
             
         Returns:
-            Session ID if created successfully, None if failed
+            True if created successfully, False if failed
         """
         if not self.is_enabled:
             logger.debug("History capture disabled - skipping session creation")
-            return None
+            return False
         
         def _create_session_operation():
             with self.get_repository() as repo:
                 if not repo:
                     logger.warning("History repository unavailable - session not persisted")
-                    return None
+                    return False
                 
                 session = AlertSession(
-                    session_id=session_id,  # Use session_id from ChainContext (EP-0012 clean architecture)
+                    session_id=session_id,  # Use session_id from ChainContext
                     alert_id=alert_id,
                     alert_data=alert_data,
                     agent_type=agent_type,
@@ -235,10 +235,11 @@ class HistoryService:
                 created_session = repo.create_alert_session(session)
                 if created_session:
                     logger.info(f"Created history session {created_session.session_id} for alert {alert_id}")
-                    return created_session.session_id
-                return None
+                    return True
+                return False
         
-        return self._retry_database_operation("create_session", _create_session_operation)
+        result = self._retry_database_operation("create_session", _create_session_operation)
+        return result if result is not None else False
     
     def update_session_status(
         self,
