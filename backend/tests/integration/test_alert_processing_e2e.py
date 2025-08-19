@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from tarsy.main import app
 from tarsy.models.alert import Alert
-from tarsy.models.alert_processing import AlertProcessingData
+from tarsy.models.processing_context import ChainContext
 from tarsy.utils.timestamp import now_us
 from tests.conftest import alert_to_api_format
 
@@ -524,9 +524,9 @@ class TestDataFlowValidation:
         assert any(indicator in result_lower for indicator in analysis_indicators) 
 
 
-def flexible_alert_to_api_format(flexible_alert: dict) -> AlertProcessingData:
+def flexible_alert_to_api_format(flexible_alert: dict) -> ChainContext:
     """
-    Convert flexible alert format to AlertProcessingData that AlertService expects.
+    Convert flexible alert format to ChainContext that AlertService expects.
     """
     normalized_data = flexible_alert.get("data", {}).copy()
     
@@ -539,9 +539,11 @@ def flexible_alert_to_api_format(flexible_alert: dict) -> AlertProcessingData:
     if "environment" not in normalized_data:
         normalized_data["environment"] = "production"
     
-    return AlertProcessingData(
+    return ChainContext(
         alert_type=flexible_alert["alert_type"],
-        alert_data=normalized_data
+        alert_data=normalized_data,
+        session_id="test-session-123",  # Required field for ChainContext
+        current_stage_name="initial"     # Required field for ChainContext
     )
 
 
@@ -743,7 +745,7 @@ data:
                 description=f'Test chain for {alert_type}'
             )
             
-            # Create alert in dictionary format and convert to AlertProcessingData
+            # Create alert in dictionary format and convert to ChainContext
             alert_dict = {
                 "alert_type": alert_type,
                 "runbook": "https://example.com/runbook.md",
@@ -859,28 +861,32 @@ class TestAlertDuplicateDetection:
         assert data1["status"] == "queued"
         
         # The key insight: verify that AlertKey generation works for identical data
-        from tarsy.models.alert_processing import AlertKey, AlertProcessingData
+        from tarsy.models.alert_processing import AlertKey
         
-        # Create identical alert processing data
+        # Create identical chain contexts
         normalized_data = alert_data["data"].copy()
         normalized_data["alert_type"] = alert_data["alert_type"]
         normalized_data["runbook"] = alert_data["runbook"]
         normalized_data["severity"] = "critical"  # Default applied by main.py
         normalized_data["environment"] = "production"  # Default applied by main.py
         
-        alert1 = AlertProcessingData(
+        alert1 = ChainContext(
             alert_type=alert_data["alert_type"],
-            alert_data=normalized_data
+            alert_data=normalized_data,
+            session_id="test-session-1",
+            current_stage_name="initial"
         )
         
-        alert2 = AlertProcessingData(
+        alert2 = ChainContext(
             alert_type=alert_data["alert_type"], 
-            alert_data=normalized_data
+            alert_data=normalized_data,
+            session_id="test-session-2",
+            current_stage_name="initial"
         )
         
         # Verify identical alerts generate identical keys (excluding timestamp)
-        key1 = AlertKey.from_alert_data(alert1)
-        key2 = AlertKey.from_alert_data(alert2)
+        key1 = AlertKey.from_chain_context(alert1)
+        key2 = AlertKey.from_chain_context(alert2)
         assert str(key1) == str(key2), "Identical alerts should generate identical keys"
         
         # This test verifies the core mechanism works

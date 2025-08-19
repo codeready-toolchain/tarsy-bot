@@ -563,15 +563,17 @@ class TestKubernetesAgentIntegrationScenarios:
         
         runbook_content = "# Kubernetes Pod Troubleshooting\\n..."
         
-        # Create AlertProcessingData for new interface
-        from tarsy.models.alert_processing import AlertProcessingData
-        alert_processing_data = AlertProcessingData(
+        # Create ChainContext for new interface
+        from tarsy.models.processing_context import ChainContext
+        chain_context = ChainContext(
             alert_type=pod_crash_alert.alert_type,
             alert_data=pod_crash_alert.data,
+            session_id="test-session-123",
+            current_stage_name="analysis",
             runbook_content=runbook_content
         )
         
-        result = await agent.process_alert(alert_processing_data, "test-session-123")
+        result = await agent.process_alert(chain_context)
         
         assert result.status.value == "completed"
         assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
@@ -640,13 +642,15 @@ class TestKubernetesAgentIntegrationScenarios:
             }
         )
         
-        from tarsy.models.alert_processing import AlertProcessingData
-        alert_processing_data = AlertProcessingData(
+        from tarsy.models.processing_context import ChainContext
+        chain_context = ChainContext(
             alert_type=pod_crash_alert.alert_type,
             alert_data=pod_crash_alert.data,
+            session_id="test-session-123",
+            current_stage_name="analysis",
             runbook_content="runbook"
         )
-        result = await agent.process_alert(alert_processing_data, "test-session-123")
+        result = await agent.process_alert(chain_context)
         
         assert result.status.value == "completed"
         assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
@@ -686,13 +690,15 @@ class TestKubernetesAgentIntegrationScenarios:
             }
         )
         
-        from tarsy.models.alert_processing import AlertProcessingData
-        alert_processing_data = AlertProcessingData(
+        from tarsy.models.processing_context import ChainContext
+        chain_context = ChainContext(
             alert_type=pod_crash_alert.alert_type,
             alert_data=pod_crash_alert.data,
+            session_id="test-session-123",
+            current_stage_name="analysis",
             runbook_content="runbook"
         )
-        result = await agent.process_alert(alert_processing_data, "test-session-123")
+        result = await agent.process_alert(chain_context)
         
         assert result.status.value == "completed"
         assert result.result_summary is not None  # Analysis result may vary based on iteration strategy 

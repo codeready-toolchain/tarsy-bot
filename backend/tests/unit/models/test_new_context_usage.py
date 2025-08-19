@@ -272,89 +272,12 @@ class TestAvailableToolsUsage:
         assert "aws-server.describe_instances" in prompt
         assert "monitoring-server.query_prometheus" in prompt
     
-    def test_legacy_format_compatibility(self):
-        """TEMPORARY: Test AvailableTools with legacy format during migration."""
-        tools = AvailableToolsFactory.create_legacy_format_tools()
-        
-        # Should work with legacy format
-        assert len(tools.tools) == 2
-        
-        # Pydantic should auto-convert to MCPTool format
-        assert all(isinstance(tool, MCPTool) for tool in tools.tools)
-        
-        prompt = tools.to_prompt_format()
-        assert "legacy-server.legacy_tool" in prompt
-        assert "old-server.old_command" in prompt
 
 
-class TestSideBySideCompatibility:
-    """TEMPORARY: Test new and old models side by side during migration."""
+
+
     
-    def test_chain_context_vs_alert_processing_data(self):
-        """TEMPORARY: Compare ChainContext and AlertProcessingData side by side."""
-        new_context, old_context = create_comparable_contexts_pair()
-        
-        # Both should have same basic data
-        assert new_context.alert_type == old_context.alert_type
-        assert new_context.alert_data == old_context.alert_data
-        assert new_context.runbook_content == old_context.runbook_content
-        assert new_context.chain_id == old_context.chain_id
-        assert new_context.current_stage_name == old_context.current_stage_name
-        
-        # New context has session_id, old doesn't
-        assert new_context.session_id == "comparison-session"
-        assert not hasattr(old_context, 'session_id')
-        
-        # Both should provide similar functionality
-        assert new_context.get_runbook_content() == old_context.get_runbook_content()
-        assert new_context.get_original_alert_data() == old_context.get_original_alert_data()
-    
-    def test_stage_context_vs_iteration_context(self):
-        """TEMPORARY: Compare StageContext and IterationContext side by side."""
-        new_context, old_context = create_stage_context_comparison_pair()
-        
-        # Both should provide access to same core data
-        assert new_context.session_id == old_context.session_id
-        assert new_context.runbook_content == old_context.runbook_content
-        assert new_context.agent == old_context.agent
-        
-        # New context provides cleaner property access
-        assert isinstance(new_context.alert_data, dict)
-        assert new_context.alert_data["stage"] == "test"
-        
-        # Old context has direct field access
-        assert old_context.available_tools[0]["server"] == "test"
-        
-        # New context has structured tools
-        assert len(new_context.available_tools.tools) == 1
-        assert new_context.available_tools.tools[0].server == "test"
-    
-    def test_conversion_bidirectional_data_integrity(self):
-        """TEMPORARY: Test that conversions preserve all data correctly."""
-        from tarsy.models.alert_processing import AlertProcessingData
-        
-        # Create original old context
-        original_old = AlertProcessingData(
-            alert_type="bidirectional-test",
-            alert_data={"test": "conversion", "nested": {"data": [1, 2, 3]}},
-            runbook_content="# Bidirectional Test",
-            chain_id="bidirectional-chain"
-        )
-        original_old.current_stage_name = "bidirectional-stage"
-        
-        # Convert to new context
-        new_context = original_old.to_chain_context("bidirectional-session")
-        
-        # Verify all data preserved
-        assert new_context.alert_type == original_old.alert_type
-        assert new_context.alert_data == original_old.alert_data
-        assert new_context.runbook_content == original_old.runbook_content
-        assert new_context.chain_id == original_old.chain_id
-        assert new_context.current_stage_name == original_old.current_stage_name
-        assert new_context.session_id == "bidirectional-session"
-        
-        # Verify complex nested data preserved
-        assert new_context.alert_data["nested"]["data"] == [1, 2, 3]
+
 
 
 class TestNewModelsInRealScenarios:

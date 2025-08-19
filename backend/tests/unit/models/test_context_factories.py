@@ -1,12 +1,8 @@
 """
-TEMPORARY Phase 2: Test factories for new context models.
+Test factories for context models.
 
-This module provides factory functions for creating test instances of the new
-ChainContext and StageContext models during the migration period.
-
-⚠️  IMPORTANT: This test file contains TEMPORARY factories for migration testing.
-Some factories and tests marked TEMPORARY will be REMOVED in Phase 6 cleanup.
-Others will become the permanent test factories for the new architecture.
+This module provides factory functions for creating test instances of the
+ChainContext and StageContext models for use in tests.
 """
 
 from unittest.mock import Mock
@@ -215,17 +211,7 @@ class AvailableToolsFactory:
         
         return AvailableTools(tools=k8s_tools + aws_tools + [monitoring_tool])
     
-    @staticmethod
-    def create_legacy_format_tools() -> AvailableTools:
-        """
-        TEMPORARY: Create AvailableTools from legacy format during migration.
-        This method will be REMOVED in Phase 6 cleanup.
-        """
-        legacy_tools = [
-            {"server": "legacy-server", "name": "legacy_tool", "description": "Legacy tool"},
-            {"server": "old-server", "name": "old_command", "description": "Old command tool"}
-        ]
-        return AvailableTools.from_legacy_format(legacy_tools)
+
 
 
 class MockAgentFactory:
@@ -318,103 +304,3 @@ class StageContextFactory:
         )
 
 
-# =============================================================================
-# TEMPORARY Phase 2: Side-by-side compatibility test functions
-# These will be REMOVED in Phase 6 cleanup
-# =============================================================================
-
-def create_comparable_contexts_pair() -> tuple[ChainContext, Any]:
-    """
-    TEMPORARY: Create comparable new and old contexts for side-by-side testing.
-    This function will be REMOVED in Phase 6 cleanup.
-    """
-    from tarsy.models.alert_processing import AlertProcessingData
-    
-    # Create old AlertProcessingData
-    old_context = AlertProcessingData(
-        alert_type="comparison-test",
-        alert_data={"test": "data", "comparison": True},
-        runbook_content="# Comparison Test Runbook",
-        chain_id="comparison-chain"
-    )
-    old_context.current_stage_name = "comparison-stage"
-    
-    # Create comparable new ChainContext
-    new_context = ChainContext(
-        alert_type="comparison-test",
-        alert_data={"test": "data", "comparison": True},
-        session_id="comparison-session",
-        current_stage_name="comparison-stage",
-        runbook_content="# Comparison Test Runbook",
-        chain_id="comparison-chain"
-    )
-    
-    return new_context, old_context
-
-
-def create_stage_context_comparison_pair() -> tuple[StageContext, Any]:
-    """
-    TEMPORARY: Create comparable StageContext and IterationContext for testing.
-    This function will be REMOVED in Phase 6 cleanup.
-    """
-    from tarsy.agents.iteration_controllers.base_iteration_controller import IterationContext
-    from tarsy.models.alert_processing import AlertProcessingData
-    
-    # Create shared agent instance
-    shared_agent = MockAgentFactory.create_kubernetes_agent()
-    
-    # Create AlertProcessingData for IterationContext
-    alert_data = AlertProcessingData(
-        alert_type="stage-comparison",
-        alert_data={"stage": "test"},
-        current_stage_name="comparison-stage"
-    )
-    
-    # Create old IterationContext
-    old_context = IterationContext(
-        alert_data=alert_data,
-        runbook_content="# Stage Comparison Runbook",
-        available_tools=[
-            {"server": "test", "name": "test_tool", "description": "Test tool"}
-        ],
-        session_id="stage-comparison-session",
-        agent=shared_agent
-    )
-    
-    # Create new StageContext
-    chain_context = ChainContext(
-        alert_type="stage-comparison",
-        alert_data={"stage": "test"},
-        session_id="stage-comparison-session",
-        current_stage_name="comparison-stage",
-        runbook_content="# Stage Comparison Runbook"
-    )
-    available_tools = AvailableTools.from_legacy_format([
-        {"server": "test", "name": "test_tool", "description": "Test tool"}
-    ])
-    new_context = StageContext(
-        chain_context=chain_context,
-        available_tools=available_tools,
-        agent=shared_agent  # Use the same agent instance
-    )
-    
-    return new_context, old_context
-
-
-# =============================================================================
-# Convenience functions for common test scenarios
-# =============================================================================
-
-def create_test_chain_context() -> ChainContext:
-    """Convenience function to create a standard test ChainContext."""
-    return ChainContextFactory.create_basic()
-
-
-def create_test_stage_context() -> StageContext:
-    """Convenience function to create a standard test StageContext."""
-    return StageContextFactory.create_basic()
-
-
-def create_test_available_tools() -> AvailableTools:
-    """Convenience function to create standard test AvailableTools."""
-    return AvailableToolsFactory.create_kubernetes_tools()

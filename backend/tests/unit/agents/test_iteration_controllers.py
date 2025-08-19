@@ -9,45 +9,17 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from tarsy.agents.iteration_controllers.base_iteration_controller import (
-    IterationContext,
+    IterationController,
 )
 from tarsy.agents.iteration_controllers.react_iteration_controller import SimpleReActController
 from tarsy.agents.iteration_controllers.react_final_analysis_controller import ReactFinalAnalysisController
 from tarsy.agents.iteration_controllers.react_stage_controller import ReactStageController
 from tarsy.models.constants import IterationStrategy
+from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
 
 
-@pytest.mark.unit
-class TestIterationContext:
-    """Test IterationContext dataclass functionality."""
-    
-    def test_iteration_context_creation(self):
-        """Test creating iteration context with required fields."""
-        context = IterationContext(
-            alert_data={"alert": "test"},
-            runbook_content="test runbook",
-            available_tools=[{"name": "test-tool"}],
-            session_id="test-session-123"
-        )
-        
-        assert context.alert_data == {"alert": "test"}
-        assert context.runbook_content == "test runbook"
-        assert context.available_tools == [{"name": "test-tool"}]
-        assert context.session_id == "test-session-123"
-        assert context.agent is None  # Default value
-    
-    def test_iteration_context_with_agent(self):
-        """Test creating iteration context with agent reference."""
-        mock_agent = Mock()
-        context = IterationContext(
-            alert_data={"alert": "test"},
-            runbook_content="test runbook",
-            available_tools=[],
-            session_id="test-session-123",
-            agent=mock_agent
-        )
-        
-        assert context.agent == mock_agent
+# TestIterationContext removed - IterationContext class no longer exists
+# It was replaced by StageContext in the EP-0012 context architecture redesign
 
 
 # Removed TestRegularIterationController - REGULAR strategy no longer supported
@@ -107,12 +79,17 @@ class TestSimpleReActController:
     
     @pytest.fixture
     def sample_context(self, mock_agent):
-        """Create sample iteration context for ReAct testing."""
-        return IterationContext(
+        """Create sample stage context for ReAct testing."""
+        chain_context = ChainContext(
+            alert_type="test",
             alert_data={"alert": "TestAlert", "severity": "high"},
-            runbook_content="Test runbook content",
-            available_tools=[{"name": "test-tool"}],
             session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        available_tools = AvailableTools(tools=[])
+        return StageContext(
+            chain_context=chain_context,
+            available_tools=available_tools,
             agent=mock_agent
         )
     
@@ -136,11 +113,16 @@ class TestSimpleReActController:
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_no_agent(self, controller):
         """Test ReAct analysis loop with missing agent reference."""
-        context = IterationContext(
+        chain_context = ChainContext(
+            alert_type="test",
             alert_data={},
-            runbook_content="",
-            available_tools=[],
             session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        available_tools = AvailableTools(tools=[])
+        context = StageContext(
+            chain_context=chain_context,
+            available_tools=available_tools,
             agent=None
         )
         
@@ -282,12 +264,17 @@ class TestReactFinalAnalysisController:
     
     @pytest.fixture
     def sample_context(self, mock_agent):
-        """Create sample iteration context for final analysis testing."""
-        return IterationContext(
+        """Create sample stage context for final analysis testing."""
+        chain_context = ChainContext(
+            alert_type="test",
             alert_data={"alert": "TestAlert", "severity": "high"},
-            runbook_content="Test runbook content",
-            available_tools=[{"name": "test-tool"}],
             session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        available_tools = AvailableTools(tools=[])
+        return StageContext(
+            chain_context=chain_context,
+            available_tools=available_tools,
             agent=mock_agent
         )
     
@@ -332,11 +319,16 @@ class TestReactFinalAnalysisController:
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_no_agent(self, controller):
         """Test final analysis loop with missing agent reference."""
-        context = IterationContext(
+        chain_context = ChainContext(
+            alert_type="test",
             alert_data={},
-            runbook_content="",
-            available_tools=[],
             session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        available_tools = AvailableTools(tools=[])
+        context = StageContext(
+            chain_context=chain_context,
+            available_tools=available_tools,
             agent=None
         )
         
@@ -358,11 +350,16 @@ class TestReactFinalAnalysisController:
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_minimal_context(self, controller, mock_agent, mock_llm_client, mock_prompt_builder):
         """Test final analysis with minimal context."""
-        context = IterationContext(
+        chain_context = ChainContext(
+            alert_type="test",
             alert_data={"alert": "TestAlert"},
-            runbook_content="Test runbook",
-            available_tools=[],
             session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        available_tools = AvailableTools(tools=[])
+        context = StageContext(
+            chain_context=chain_context,
+            available_tools=available_tools,
             agent=mock_agent
         )
         
@@ -440,14 +437,18 @@ class TestReactStageController:
     
     @pytest.fixture
     def sample_context(self, mock_agent):
-        """Create sample iteration context for partial analysis testing."""
-        return IterationContext(
+        """Create sample stage context for partial analysis testing."""
+        chain_context = ChainContext(
+            alert_type="test",
             alert_data={"alert": "TestAlert", "severity": "high"},
-            runbook_content="Test runbook content",
-            available_tools=[{"name": "analysis-tool"}],
             session_id="test-session-789",
-            agent=mock_agent,
-
+            current_stage_name="analysis"
+        )
+        available_tools = AvailableTools(tools=[])
+        return StageContext(
+            chain_context=chain_context,
+            available_tools=available_tools,
+            agent=mock_agent
         )
     
     def test_needs_mcp_tools(self, controller):
@@ -478,11 +479,16 @@ class TestReactStageController:
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_no_agent(self, controller):
         """Test partial analysis loop with missing agent reference."""
-        context = IterationContext(
+        chain_context = ChainContext(
+            alert_type="test",
             alert_data={},
-            runbook_content="",
-            available_tools=[],
             session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        available_tools = AvailableTools(tools=[])
+        context = StageContext(
+            chain_context=chain_context,
+            available_tools=available_tools,
             agent=None
         )
         

@@ -18,7 +18,7 @@ os.environ["TESTING"] = "true"
 
 # Import Alert model for fixtures
 from tarsy.models.alert import Alert
-from tarsy.models.alert_processing import AlertProcessingData
+from tarsy.models.processing_context import ChainContext
 from tarsy.utils.timestamp import now_us
 
 # Import all database models to ensure they're registered with SQLModel.metadata
@@ -26,9 +26,9 @@ import tarsy.models.db_models  # noqa: F401
 import tarsy.models.unified_interactions  # noqa: F401
 
 
-def alert_to_api_format(alert: Alert) -> AlertProcessingData:
+def alert_to_api_format(alert: Alert) -> ChainContext:
     """
-    Convert an Alert object to the AlertProcessingData format that AlertService expects.
+    Convert an Alert object to the ChainContext format that AlertService expects.
     
     This matches the format created in main.py lines 350-353.
     """
@@ -44,10 +44,12 @@ def alert_to_api_format(alert: Alert) -> AlertProcessingData:
     if "environment" not in normalized_data:
         normalized_data["environment"] = "production"
     
-    # Return AlertProcessingData instance that AlertService expects
-    return AlertProcessingData(
+    # Return ChainContext instance that AlertService expects
+    return ChainContext(
         alert_type=alert.alert_type,
-        alert_data=normalized_data
+        alert_data=normalized_data,
+        session_id=f"test-session-{alert.id}",  # Generate test session ID
+        current_stage_name="initial"  # Default stage for tests
     )
 
 

@@ -13,14 +13,13 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 
 from cachetools import TTLCache
 
-# TEMPORARY PHASE 5: Import new context models for AlertService migration
 from tarsy.models.processing_context import ChainContext, StageContext
 from tarsy.config.settings import Settings
 from tarsy.config.agent_config import ConfigurationLoader, ConfigurationError
 from tarsy.integrations.llm.client import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.agent_config import ChainConfigModel
-from tarsy.models.alert_processing import AlertProcessingData
+
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.utils.timestamp import now_us
@@ -35,23 +34,17 @@ logger = get_module_logger(__name__)
 
 
 # ============================================================================
-# PHASE 5: API Formatting Functions (moved from processing models)
+# API Formatting Functions (moved from processing models)
 # These functions format alert data for API responses only
 # ============================================================================
 
 def _format_alert_severity(alert_data: Dict[str, Any]) -> str:
-    """
-    Format alert severity for API responses.
-    PHASE 5: Moved from AlertProcessingData.get_severity() to AlertService.
-    """
+    """Format alert severity for API responses."""
     return alert_data.get('severity', 'warning')
 
 
 def _format_alert_environment(alert_data: Dict[str, Any]) -> str:
-    """
-    Format alert environment for API responses.  
-    PHASE 5: Moved from AlertProcessingData.get_environment() to AlertService.
-    """
+    """Format alert environment for API responses."""
     return alert_data.get('environment', 'production')
 
 
@@ -169,14 +162,14 @@ class AlertService:
     
     async def process_alert(
         self, 
-        alert: AlertProcessingData, 
+        alert: ChainContext, 
         api_alert_id: Optional[str] = None
     ) -> str:
         """
         Process an alert by delegating to the appropriate specialized agent.
         
         Args:
-            alert: Alert processing data with validated structure
+            alert: Chain context with all processing data
             api_alert_id: API alert ID for session mapping
             
         Returns:
@@ -187,14 +180,14 @@ class AlertService:
     
     async def _process_alert_internal(
         self, 
-        alert: AlertProcessingData, 
+        alert: ChainContext, 
         api_alert_id: Optional[str] = None
     ) -> str:
         """
         Internal alert processing logic with all the actual processing steps.
         
         Args:
-            alert: Alert processing data with validated structure
+            alert: Chain context with all processing data
             api_alert_id: API alert ID for session mapping
             
         Returns:
@@ -244,14 +237,14 @@ class AlertService:
             
             runbook_content = await self.runbook_service.download_runbook(runbook)
             
-            # Step 4: Set up alert processing data with chain context
+            # Step 4: Set up chain context
             alert.set_chain_context(chain_definition.chain_id)
             alert.set_runbook_content(runbook_content)
             
             # Step 5: Execute chain stages sequentially  
             chain_result = await self._execute_chain_stages(
                 chain_definition=chain_definition,
-                alert_processing_data=alert,
+                chain_context=alert,
                 session_id=session_id
             )
             
@@ -295,7 +288,7 @@ class AlertService:
     async def _execute_chain_stages(
         self, 
         chain_definition: ChainConfigModel, 
-        alert_processing_data: AlertProcessingData,
+        chain_context: ChainContext,
         session_id: str
     ) -> Dict[str, Any]:
         """
@@ -303,7 +296,7 @@ class AlertService:
         
         Args:
             chain_definition: Chain definition with stages
-            alert_processing_data: Alert processing data with chain context
+            chain_context: Chain context with all processing data
             session_id: History session ID
             
         Returns:
@@ -341,31 +334,19 @@ class AlertService:
                     # Set current stage execution ID for interaction tagging
                     agent.set_current_stage_execution_id(stage_execution_id)
                     
-                    # PHASE 5: Create ChainContext for new architecture
-                    chain_context = ChainContext(
-                        alert_type=alert_processing_data.alert_type,
-                        alert_data=alert_processing_data.alert_data,
-                        session_id=session_id,  # FIXED: Set session_id during creation
-                        current_stage_name=stage.name,
-                        stage_outputs=alert_processing_data.stage_outputs,  # Preserve existing results
-                        runbook_content=alert_processing_data.runbook_content,
-                        chain_id=chain_definition.chain_id
-                    )
+                    # Update chain context for current stage
+                    chain_context.current_stage_name = stage.name
                     
-                    # PHASE 5: Execute stage with new ChainContext (single parameter)
-                    logger.info(f"PHASE 5: Executing stage '{stage.name}' with ChainContext")
+                    # Execute stage with ChainContext
+                    logger.info(f"Executing stage '{stage.name}' with ChainContext")
                     stage_result = await agent.process_alert(chain_context)
                     
                     # Validate stage result format
                     if not isinstance(stage_result, AgentExecutionResult):
                         raise ValueError(f"Invalid stage result format from agent '{stage.agent}': expected AgentExecutionResult, got {type(stage_result)}")
                     
-                    # PHASE 5: Add stage result to both ChainContext and AlertProcessingData for compatibility
-                    # Update ChainContext with stage result
+                    # Add stage result to ChainContext
                     chain_context.add_stage_result(stage.name, stage_result)
-                    
-                    # Keep AlertProcessingData updated for backward compatibility with other parts of the system
-                    alert_processing_data.add_stage_result(stage.name, stage_result)
                     
                     
                     # Update stage execution as completed
@@ -391,7 +372,7 @@ class AlertService:
                         "timestamp_us": now_us(),
                         "recoverable": True  # Next stages can still execute
                     }
-                    alert_processing_data.add_stage_result(stage.name, error_result)
+                    chain_context.add_stage_result(stage.name, error_result)
                     
                     failed_stages += 1
                     
@@ -400,7 +381,7 @@ class AlertService:
                     logger.warning(f"Continuing chain execution despite stage failure: {error_msg}")
             
             # Extract final analysis from stages
-            final_analysis = self._extract_final_analysis_from_stages(alert_processing_data)
+            final_analysis = self._extract_final_analysis_from_stages(chain_context)
             
             # Determine overall chain status
             overall_status = "success"
@@ -432,7 +413,7 @@ class AlertService:
                 "timestamp_us": timestamp_us
             }
     
-    def _extract_final_analysis_from_stages(self, alert_data: AlertProcessingData) -> str:
+    def _extract_final_analysis_from_stages(self, chain_context: ChainContext) -> str:
         """
         Extract final analysis from stages for API consumption.
         
@@ -440,24 +421,24 @@ class AlertService:
         extracted by each agent's iteration controller.
         """
         # Look for final_analysis from the last successful stage (typically a final-analysis stage)
-        for stage_name in reversed(list(alert_data.stage_outputs.keys())):
-            stage_result = alert_data.stage_outputs[stage_name]
+        for stage_name in reversed(list(chain_context.stage_outputs.keys())):
+            stage_result = chain_context.stage_outputs[stage_name]
             if isinstance(stage_result, AgentExecutionResult):
                 if stage_result.status.value == "completed" and stage_result.final_analysis:
                     return stage_result.final_analysis
         
         # Fallback: look for any final_analysis from any successful stage
-        for stage_result in alert_data.stage_outputs.values():
+        for stage_result in chain_context.stage_outputs.values():
             if isinstance(stage_result, AgentExecutionResult):
                 if stage_result.status.value == "completed" and stage_result.final_analysis:
                     return stage_result.final_analysis
         
         # If no analysis found, return a simple summary (this should be rare)
-        return f"Chain {alert_data.chain_id} completed with {len(alert_data.stage_outputs)} stages. Use accumulated_data for detailed results."
+        return f"Chain {chain_context.chain_id} completed with {len(chain_context.stage_outputs)} stages. Use accumulated_data for detailed results."
 
     def _format_success_response(
         self,
-        alert: AlertProcessingData,
+        alert: ChainContext,
         agent_name: str,
         analysis: str,
         iterations: int,
@@ -503,7 +484,7 @@ class AlertService:
     
     def _format_chain_success_response(
         self,
-        alert: AlertProcessingData,
+        alert: ChainContext,
         chain_definition,
         analysis: str,
         total_iterations: int,
@@ -550,7 +531,7 @@ class AlertService:
     
     def _format_error_response(
         self,
-        alert: AlertProcessingData,
+        alert: ChainContext,
         error: str,
         agent_name: Optional[str] = None
     ) -> str:
@@ -590,12 +571,12 @@ class AlertService:
 
     # History Session Management Methods
 
-    def _create_chain_history_session(self, alert: AlertProcessingData, chain_definition: ChainConfigModel) -> Optional[str]:
+    def _create_chain_history_session(self, alert: ChainContext, chain_definition: ChainConfigModel) -> Optional[str]:
         """
         Create a history session for chain processing.
         
         Args:
-            alert: Alert processing data with validated structure
+            alert: Chain context with all processing data
             chain_definition: Chain definition that will be executed
             
         Returns:

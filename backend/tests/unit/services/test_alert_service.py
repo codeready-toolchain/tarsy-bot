@@ -246,7 +246,7 @@ class TestAlertProcessing:
         assert "**Processing Chain:** kubernetes-agent-chain" in result  # Chain architecture format
         mock_agent.process_alert.assert_called_once()
         
-        # PHASE 5: Verify agent was called with ChainContext (single parameter)
+        # Verify agent was called with ChainContext (single parameter)
         call_args = mock_agent.process_alert.call_args
         chain_context = call_args[0][0]  # First (and only) positional arg should be ChainContext
         
@@ -713,7 +713,7 @@ class TestAlertServiceDuplicatePrevention:
         service, _ = alert_service_with_dependencies
         
         alert_dict = alert_to_api_format(sample_alert)
-        alert_key = AlertKey.from_alert_data(alert_dict)
+        alert_key = AlertKey.from_chain_context(alert_dict)
         alert_key_str = str(alert_key)
         
         # Key should be in format: alert_type_hash
@@ -738,7 +738,7 @@ class TestAlertServiceDuplicatePrevention:
         )
         
         alert_dict = alert_to_api_format(long_message_alert)
-        alert_key = AlertKey.from_alert_data(alert_dict)
+        alert_key = AlertKey.from_chain_context(alert_dict)
         alert_key_str = str(alert_key)
         
         # Even with very long messages, key should still be in format: alert_type_hash

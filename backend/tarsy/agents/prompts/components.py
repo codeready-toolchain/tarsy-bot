@@ -6,27 +6,13 @@ to build complex prompts with proper formatting and type handling.
 """
 
 import json
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List
 from langchain_core.prompts import PromptTemplate
 
-if TYPE_CHECKING:
-    from tarsy.models.agent_execution_result import ChainExecutionContext
 
 
-@dataclass
-class PromptContext:
-    """Context data needed for prompt building."""
-    agent_name: str
-    alert_data: Dict[str, Any]
-    runbook_content: str
-    mcp_servers: List[str]
-    available_tools: Optional[Dict] = None
-    # Stage context for chain processing
-    stage_name: Optional[str] = None
-    is_final_stage: bool = False
-    previous_stages: Optional[List[str]] = None
-    chain_context: Optional['ChainExecutionContext'] = None
+
+
 
 
 class AlertSectionTemplate:

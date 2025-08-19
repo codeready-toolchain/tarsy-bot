@@ -7,7 +7,6 @@ with the existing PromptBuilder API.
 """
 
 from .builders import PromptBuilder
-from .components import PromptContext
 
 # Create shared instance
 _shared_prompt_builder = PromptBuilder()
@@ -19,4 +18,4 @@ def get_prompt_builder() -> PromptBuilder:
 
 
 # Re-export for backward compatibility
-__all__ = ['PromptBuilder', 'PromptContext', 'get_prompt_builder']
+__all__ = ['PromptBuilder', 'get_prompt_builder']

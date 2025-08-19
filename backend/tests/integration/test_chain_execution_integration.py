@@ -8,7 +8,7 @@ data flow between stages, complementing the comprehensive unit test coverage.
 import pytest
 from unittest.mock import AsyncMock, Mock
 
-from tarsy.models.alert_processing import AlertProcessingData
+from tarsy.models.processing_context import ChainContext
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 
 
@@ -90,17 +90,18 @@ class TestMultiStageChainExecution:
         # This is a focused integration test that simulates the core chain execution logic
         # without the complexity of full AlertService initialization
         
-        # Create initial alert data
-        alert_data = AlertProcessingData(
+        # Create initial chain context
+        chain_context = ChainContext(
             alert_type="integration-test",
             alert_data={
                 "severity": "high",
                 "cluster": "test-cluster",
                 "namespace": "default"
             },
-            runbook_url="https://example.com/test-runbook.md"
+            session_id="test-session-123",
+            current_stage_name="analysis",
+            runbook_content="Test runbook content"
         )
-        alert_data.set_runbook_content("Test runbook content")
         
         session_id = "test-session-123"
         agents = mock_agents_with_data_flow
@@ -148,9 +149,11 @@ class TestMultiStageChainExecution:
     
     async def test_stage_isolation_and_progression(self, simple_two_stage_chain, mock_agents_with_data_flow):
         """Test that stages are isolated but can access previous stage data."""
-        alert_data = AlertProcessingData(
+        chain_context = ChainContext(
             alert_type="integration-test",
-            alert_data={"test": "isolation"}
+            alert_data={"test": "isolation"},
+            session_id="isolation-test-session",
+            current_stage_name="data-collection"
         )
         
         session_id = "isolation-test-session"
@@ -159,7 +162,8 @@ class TestMultiStageChainExecution:
         # Execute stages sequentially (simulating AlertService behavior)
         for i, stage in enumerate(simple_two_stage_chain.stages):
             # Set stage context
-            alert_data.set_chain_context(simple_two_stage_chain.chain_id, stage.name)
+            chain_context.current_stage_name = stage.name
+            chain_context.chain_id = simple_two_stage_chain.chain_id
             
             # Get appropriate agent
             agent = agents[stage.agent]
@@ -169,8 +173,8 @@ class TestMultiStageChainExecution:
             agent.set_current_stage_execution_id(stage_exec_id)
             
             # Execute stage
-            stage_result = await agent.process_alert(alert_data, session_id)
-            alert_data.add_stage_result(stage.name, stage_result)
+            stage_result = await agent.process_alert(chain_context)
+            chain_context.add_stage_result(stage.name, stage_result)
         
         # Verify stage isolation
         data_collection_agent = agents['DataCollectionAgent']
@@ -202,10 +206,12 @@ class TestChainExecutionErrorHandling:
             ]
         )
         
-        # Create initial alert data
-        alert_data = AlertProcessingData(
+        # Create initial chain context
+        chain_context = ChainContext(
             alert_type="failure-test",
-            alert_data={"test": "failure scenario"}
+            alert_data={"test": "failure scenario"},
+            session_id="failure-test-session",
+            current_stage_name="success-stage"
         )
         session_id = "failure-test-session"
         

@@ -14,18 +14,16 @@ from tarsy.agents.exceptions import ConfigurationError
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert import Alert
-from tarsy.models.alert_processing import AlertProcessingData
+from tarsy.models.processing_context import ChainContext
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.timestamp import now_us
 
-# TEMPORARY Phase 2: Import new context models for side-by-side testing
+# Import new context models
 # These imports will be cleaned up in Phase 6
 from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
 from tests.unit.models.test_context_factories import (
     ChainContextFactory, 
-    StageContextFactory,
-    create_test_chain_context,
-    create_test_stage_context
+    StageContextFactory
 )
 
 
@@ -492,13 +490,15 @@ class TestBaseAgentErrorHandling:
         """Test process_alert with MCP configuration error."""
         base_agent.mcp_registry.get_server_configs.side_effect = Exception("MCP config error")
         
-        from tarsy.models.alert_processing import AlertProcessingData
-        alert_processing_data = AlertProcessingData(
+        from tarsy.models.processing_context import ChainContext
+        alert_processing_data = ChainContext(
             alert_type=sample_alert.alert_type,
             alert_data=sample_alert.data,
+            session_id="test-session-123",
+            current_stage_name="test-stage",
             runbook_content="runbook content"
         )
-        result = await base_agent.process_alert(alert_processing_data, "test-session-123")
+        result = await base_agent.process_alert(alert_processing_data)
         
         assert result.status.value == "failed"
         assert "MCP config error" in result.error_message
@@ -522,15 +522,17 @@ class TestBaseAgentErrorHandling:
         base_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
         base_agent.analyze_alert = AsyncMock(return_value="Success analysis")
         
-        # Create AlertProcessingData for new interface
-        from tarsy.models.alert_processing import AlertProcessingData
-        alert_processing_data = AlertProcessingData(
+        # Create ChainContext for new interface
+        from tarsy.models.processing_context import ChainContext
+        alert_processing_data = ChainContext(
             alert_type=sample_alert.alert_type,
             alert_data=sample_alert.data,
+            session_id="test-session-success",
+            current_stage_name="test-stage",
             runbook_content="runbook content"
         )
         
-        result = await base_agent.process_alert(alert_processing_data, "test-session-success")
+        result = await base_agent.process_alert(alert_processing_data)
         
         assert result.status.value == "completed"
         assert "Analysis complete" in result.result_summary
@@ -597,11 +599,12 @@ class TestBaseAgent:
         base_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
         base_agent.analyze_alert = AsyncMock(return_value="Test analysis")
         
-        # Convert Alert to AlertProcessingData for new interface
-        alert_processing_data = AlertProcessingData(
+        # Convert Alert to ChainContext for new interface
+        alert_processing_data = ChainContext(
             alert_type=sample_alert.alert_type,
             alert_data=sample_alert.model_dump(),
-            runbook_url=sample_alert.runbook,
+            session_id="test-session-123",
+            current_stage_name="test-stage",
             runbook_content="test runbook content"
         )
         
@@ -630,11 +633,12 @@ class TestBaseAgent:
         base_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
         base_agent.analyze_alert = AsyncMock(return_value="Test analysis")
         
-        # Convert Alert to AlertProcessingData for new interface
-        alert_processing_data = AlertProcessingData(
+        # Convert Alert to ChainContext for new interface
+        alert_processing_data = ChainContext(
             alert_type=sample_alert.alert_type,
             alert_data=sample_alert.model_dump(),
-            runbook_url=sample_alert.runbook,
+            session_id="test-session-123",
+            current_stage_name="test-stage",
             runbook_content="test runbook content"
         )
         
@@ -674,22 +678,7 @@ class TestPhase3ProcessAlertOverload:
         agent.mcp_registry.get_server_configs.return_value = [mock_config]
         return agent
 
-    @pytest.mark.asyncio
-    async def test_process_alert_with_alert_processing_data(self, base_agent):
-        """Test overloaded process_alert with AlertProcessingData (legacy path)."""
-        # Create AlertProcessingData 
-        alert_processing_data = AlertProcessingData(
-            alert_type="kubernetes",
-            alert_data={"pod": "failing-pod", "message": "Pod failing"},
-            runbook_content="test runbook",
-            current_stage_name="analysis"
-        )
-        
-        result = await base_agent.process_alert(alert_processing_data, "test-session-legacy")
-        
-        assert result.status.value == "completed"
-        assert "Test analysis result from Phase 3" in result.result_summary
-        assert result.agent_name == "TestConcreteAgent"
+
 
     @pytest.mark.asyncio
     async def test_process_alert_with_chain_context(self, base_agent):
@@ -709,17 +698,7 @@ class TestPhase3ProcessAlertOverload:
         assert result.result_summary is not None  # Analysis result may vary due to ReAct processing
         assert result.agent_name == "TestConcreteAgent"
 
-    @pytest.mark.asyncio
-    async def test_process_alert_legacy_requires_session_id(self, base_agent):
-        """Test that AlertProcessingData still requires session_id parameter."""
-        alert_processing_data = AlertProcessingData(
-            alert_type="kubernetes",
-            alert_data={"pod": "failing-pod"},
-            current_stage_name="analysis"
-        )
-        
-        with pytest.raises(ValueError, match="session_id is required when using AlertProcessingData"):
-            await base_agent.process_alert(alert_processing_data)
+
 
     @pytest.mark.asyncio
     async def test_process_alert_chain_context_ignores_conflicting_session_id(self, base_agent, caplog):
@@ -783,226 +762,8 @@ class TestPhase4PromptSystemOverload:
         assert "test-pod" in stage_prompt
         assert "test-pod" in final_prompt
 
-    @pytest.mark.asyncio
-    async def test_prompt_builder_backward_compatibility(self):
-        """Test that prompt builders still work with legacy PromptContext."""
-        from tarsy.agents.prompts import get_prompt_builder, PromptContext
-        
-        # Create legacy PromptContext
-        prompt_context = PromptContext(
-            agent_name="TestAgent",
-            alert_data={"pod": "test-pod", "message": "Pod failing"},
-            runbook_content="test runbook",
-            mcp_servers=["test-server"],
-            available_tools={"tools": []},
-            stage_name="analysis"
-        )
-        
-        prompt_builder = get_prompt_builder()
-        
-        # Test that all prompt building methods still accept PromptContext
-        standard_prompt = prompt_builder.build_standard_react_prompt(prompt_context, [])
-        stage_prompt = prompt_builder.build_stage_analysis_react_prompt(prompt_context, [])
-        final_prompt = prompt_builder.build_final_analysis_prompt(prompt_context)
-        
-        # Verify prompts are generated (not empty)
-        assert standard_prompt
-        assert stage_prompt
-        assert final_prompt
-        assert "test-pod" in standard_prompt  # Should contain alert data
-        assert "test-pod" in stage_prompt
-        assert "test-pod" in final_prompt
+    
 
 
-# =============================================================================
-# TEMPORARY Phase 2: Tests using new context models alongside existing ones
-# This test class will be cleaned up in Phase 6
-# =============================================================================
 
-@pytest.mark.unit
-class TestBaseAgentWithNewModels:
-    """TEMPORARY: Test BaseAgent functionality using new context models."""
-    
-    @pytest.fixture
-    def mock_llm_client(self):
-        """Create mock LLM client."""
-        client = Mock(spec=LLMClient)
-        client.generate_response = AsyncMock(return_value="New model analysis result")
-        return client
-    
-    @pytest.fixture
-    def mock_mcp_client(self):
-        """Create mock MCP client."""
-        client = Mock(spec=MCPClient)
-        client.list_tools = AsyncMock(return_value={"test-server": []})
-        client.call_tool = AsyncMock(return_value={"result": "test"})
-        return client
-    
-    @pytest.fixture
-    def mock_mcp_registry(self):
-        """Create mock MCP server registry."""
-        registry = Mock(spec=MCPServerRegistry)
-        mock_config = Mock()
-        mock_config.server_id = "test-server"
-        mock_config.server_type = "test"
-        mock_config.instructions = "Test server instructions"
-        registry.get_server_configs.return_value = [mock_config]
-        return registry
-    
-    @pytest.fixture
-    def base_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
-        """Create base agent with mocked dependencies."""
-        agent = TestConcreteAgent(
-            llm_client=mock_llm_client,
-            mcp_client=mock_mcp_client,
-            mcp_registry=mock_mcp_registry
-        )
-        return agent
-    
-    @pytest.mark.unit
-    def test_create_prompt_context_with_new_chain_context(self, base_agent):
-        """TEMPORARY: Test creating PromptContext using data from ChainContext."""
-        # Create ChainContext using new factory
-        chain_context = create_test_chain_context()
-        
-        # Extract data for PromptContext (simulating future migration)
-        prompt_context = base_agent.create_prompt_context(
-            alert_data=chain_context.get_original_alert_data(),
-            runbook_content=chain_context.get_runbook_content(),
-            stage_name=chain_context.current_stage_name
-        )
-        
-        # Verify PromptContext creation works with new model data
-        assert prompt_context.agent_name == "TestConcreteAgent"
-        assert prompt_context.alert_data == chain_context.alert_data
-        assert prompt_context.runbook_content == chain_context.get_runbook_content()
-        assert prompt_context.stage_name == chain_context.current_stage_name
-    
-    @pytest.mark.unit
-    def test_create_prompt_context_with_stage_context_data(self, base_agent):
-        """TEMPORARY: Test creating PromptContext using data from StageContext."""
-        # Create StageContext using factory
-        stage_context = create_test_stage_context()
-        
-        # Extract data for PromptContext (simulating future integration)
-        prompt_context = base_agent.create_prompt_context(
-            alert_data=stage_context.alert_data,
-            runbook_content=stage_context.runbook_content,
-            stage_name=stage_context.stage_name,
-            available_tools={"tools": stage_context.available_tools.to_prompt_format()}
-        )
-        
-        # Verify PromptContext works with StageContext data
-        assert prompt_context.agent_name == "TestConcreteAgent"
-        assert prompt_context.alert_data == stage_context.alert_data
-        assert prompt_context.runbook_content == stage_context.runbook_content
-        assert prompt_context.stage_name == stage_context.stage_name
-    
-    @pytest.mark.unit
-    def test_chain_context_conversion_compatibility(self, base_agent, mock_llm_client):
-        """TEMPORARY: Test that AlertProcessingData → ChainContext conversion works in agent context."""
-        # Create AlertProcessingData (old model)
-        alert_processing_data = AlertProcessingData(
-            alert_type="conversion-test",
-            alert_data={"test": "conversion", "severity": "high"},
-            runbook_content="# Conversion Test Runbook",
-            current_stage_name="conversion-stage"
-        )
-        
-        # Convert to ChainContext (new model)
-        chain_context = alert_processing_data.to_chain_context("conversion-session-123")
-        
-        # Both should provide same data to agent methods
-        old_data = alert_processing_data.get_original_alert_data()
-        new_data = chain_context.get_original_alert_data()
-        assert old_data == new_data
-        
-        old_runbook = alert_processing_data.get_runbook_content()
-        new_runbook = chain_context.get_runbook_content()
-        assert old_runbook == new_runbook
-        
-        # New model has additional session_id
-        assert chain_context.session_id == "conversion-session-123"
-        assert not hasattr(alert_processing_data, 'session_id')
-    
-    @pytest.mark.unit
-    def test_stage_context_provides_agent_data_access(self, base_agent):
-        """TEMPORARY: Test StageContext provides clean access to agent-relevant data."""
-        # Create complex scenario
-        stage_context = StageContextFactory.create_kubernetes_scenario()
-        
-        # Verify StageContext provides clean property access
-        assert stage_context.agent_name == "KubernetesAgent"
-        assert "failing-pod" in stage_context.alert_data["pod"]
-        assert stage_context.alert_data["severity"] == "critical"
-        assert "Check pod logs" in stage_context.runbook_content
-        assert "kubernetes-server" in stage_context.mcp_servers
-        
-        # Test tools are properly formatted
-        tools_format = stage_context.available_tools.to_prompt_format()
-        assert "kubernetes-server.get_pods" in tools_format
-        assert "kubernetes-server.get_pod_logs" in tools_format
-    
-    @pytest.mark.unit 
-    def test_stage_context_previous_stages_formatting(self, base_agent):
-        """TEMPORARY: Test StageContext formats previous stages for agent use."""
-        # Create context with previous stages
-        stage_context = StageContextFactory.create_with_previous_stages()
-        
-        # Test previous stages access
-        assert stage_context.has_previous_stages()
-        previous_stages = stage_context.previous_stages_results
-        assert len(previous_stages) == 2
-        
-        # Test formatted context for prompt building
-        formatted = stage_context.format_previous_stages_context()
-        assert "## Results from 'Data Collection' stage:" in formatted
-        assert "Collected instance metrics" in formatted
-        assert "## Results from 'Root Cause Analysis' stage:" in formatted
-        assert "memory leak" in formatted
-        
-        # This formatted context could be used in agent prompt building
-        assert len(formatted) > 100  # Should be substantial content
-    
-    @pytest.mark.unit
-    def test_new_models_property_access_performance(self, base_agent):
-        """TEMPORARY: Test that new models' property access is performant for agent use."""
-        stage_context = create_test_stage_context()
-        
-        # Property access should be fast - simulate agent accessing data frequently
-        import time
-        start_time = time.time()
-        
-        for _ in range(1000):
-            # Simulate common agent property access patterns
-            _ = stage_context.alert_data
-            _ = stage_context.session_id
-            _ = stage_context.stage_name
-            _ = stage_context.agent_name
-            _ = stage_context.runbook_content
-            _ = stage_context.mcp_servers
-        
-        elapsed = time.time() - start_time
-        
-        # Should complete quickly (under 1 second for 1000 iterations)
-        assert elapsed < 1.0, f"Property access too slow: {elapsed:.3f}s for 1000 iterations"
-    
-    @pytest.mark.unit
-    def test_new_models_data_isolation(self, base_agent):
-        """TEMPORARY: Test that new models properly isolate data for agent safety."""
-        chain_context = create_test_chain_context()
-        
-        # Get alert data - should be a copy
-        alert_data = chain_context.get_original_alert_data()
-        original_pod = alert_data["pod"]
-        
-        # Modify the copy
-        alert_data["pod"] = "modified-pod"
-        alert_data["new_field"] = "added"
-        
-        # Original context should be unchanged
-        fresh_data = chain_context.get_original_alert_data()
-        assert fresh_data["pod"] == original_pod
-        assert "new_field" not in fresh_data
-        
-        # This ensures agents can't accidentally modify context data 
+

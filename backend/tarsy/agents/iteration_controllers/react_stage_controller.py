@@ -9,10 +9,9 @@ from typing import TYPE_CHECKING, Union
 
 from tarsy.utils.logger import get_module_logger
 from tarsy.models.unified_interactions import LLMMessage
-from .base_iteration_controller import IterationController, IterationContext
+from .base_iteration_controller import IterationController
 
 if TYPE_CHECKING:
-    # TEMPORARY PHASE 3: Import new context for overloaded methods
     from ...models.processing_context import StageContext
     from tarsy.integrations.llm.client import LLMClient
     from tarsy.agents.prompt_builder import PromptBuilder
@@ -37,29 +36,21 @@ class ReactStageController(IterationController):
         """ReAct tools partial controller requires MCP tool discovery."""
         return True
     
-    async def execute_analysis_loop(self, context: Union[IterationContext, 'StageContext']) -> str:
-        """
-        TEMPORARY OVERLOAD: Execute ReAct loop supporting both old and new contexts during migration.
-        """
-        from ...models.processing_context import StageContext
-        
-        if isinstance(context, StageContext):
-            logger.info("PHASE 3: Starting ReAct Stage loop with new StageContext")
-            return await self._execute_with_stage_context(context)
-        else:
-            logger.info("PHASE 3: Starting ReAct Stage loop with legacy IterationContext")
-            return await self._execute_with_iteration_context(context)
+    async def execute_analysis_loop(self, context: 'StageContext') -> str:
+        """Execute ReAct loop with StageContext."""
+        logger.info("Starting ReAct Stage loop with StageContext")
+        return await self._execute_with_stage_context(context)
     
     async def _execute_with_stage_context(self, context: 'StageContext') -> str:
         """Execute ReAct loop with new StageContext."""
         logger.info("Starting ReAct Tools + Partial Analysis loop (StageContext)")
         
         agent = context.agent
-        # PHASE 4: Direct StageContext processing - no parameter conversion
+        # Direct StageContext processing
         return await self._execute_react_loop_with_stage_context(agent, context)
 
     async def _execute_react_loop_with_stage_context(self, agent, stage_context: 'StageContext') -> str:
-        """Execute ReAct loop using StageContext directly - PHASE 4 enhancement."""
+        """Execute ReAct loop using StageContext directly."""
         max_iterations = agent.max_iterations
         react_history = []
         session_id = stage_context.session_id
@@ -69,7 +60,7 @@ class ReactStageController(IterationController):
             logger.info(f"Partial analysis iteration {iteration + 1}/{max_iterations}")
             
             try:
-                # PHASE 4: Pass StageContext directly to prompt builder
+                # Pass StageContext directly to prompt builder
                 prompt = self.prompt_builder.build_stage_analysis_react_prompt(stage_context, react_history)
                 
                 # Use enhanced ReAct system message with MCP server instructions
@@ -177,25 +168,7 @@ Please provide a final analysis based on what you've discovered, even if the inv
             react_history.append(f"Analysis incomplete: reached maximum iterations ({max_iterations}) without final answer")
             return "\n".join(react_history)
 
-    async def _execute_with_iteration_context(self, context: IterationContext) -> str:
-        """Execute ReAct loop with legacy IterationContext."""
-        logger.info("Starting ReAct Tools + Partial Analysis loop (IterationContext)")
-        
-        agent = context.agent
-        if not agent:
-            raise ValueError("Agent reference is required in context")
-        
-        # Get actual stage name from AlertProcessingData (or None for non-chain execution)
-        stage_name = getattr(context.alert_data, 'current_stage_name', None)
-        
-        return await self._execute_react_loop(
-            agent=agent,
-            alert_data=context.alert_data,
-            runbook_content=context.runbook_content,
-            available_tools=context.available_tools,
-            stage_name=stage_name,
-            session_id=context.session_id
-        )
+
 
     async def _execute_react_loop(self, agent, alert_data, runbook_content, available_tools, stage_name, session_id) -> str:
         """Common ReAct loop logic for both context types."""
@@ -203,7 +176,7 @@ Please provide a final analysis based on what you've discovered, even if the inv
         max_iterations = agent.max_iterations
         react_history = []
         
-        # PHASE 4: Create context - will be updated to use StageContext directly
+        # Create context using StageContext directly
         prompt_context = agent.create_prompt_context(
             alert_data=alert_data,
             runbook_content=runbook_content,

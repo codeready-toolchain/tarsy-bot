@@ -42,7 +42,7 @@ class TestEdgeCases:
             }
         )
         
-        # Convert to AlertProcessingData format
+        # Convert to API format for processing
         alert_dict = alert_to_api_format(long_alert)
         
         result = await alert_service.process_alert(alert_dict, progress_callback_mock)

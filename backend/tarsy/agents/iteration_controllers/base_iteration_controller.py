@@ -6,75 +6,16 @@ all iteration controller implementations.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..base_agent import BaseAgent
-    from ...models.alert_processing import AlertProcessingData
-    # TEMPORARY PHASE 1: Import new models for compatibility bridge
-    # These imports will be REMOVED in Phase 6 cleanup
-    from ...models.processing_context import StageContext, ChainContext
+    from ...models.processing_context import StageContext
 
 
-@dataclass
-class IterationContext:
-    """
-    Shared context for iterations within a single agent execution.
+
     
-    This context contains only the common information needed between iterations
-    of the same agent - NOT for passing data between different stages/agents.
-    Data flows between iterations via prompts (e.g., ReAct history strings).
-    """
-    alert_data: Union[Dict[str, Any], 'AlertProcessingData']
-    runbook_content: str
-    available_tools: List[Dict[str, Any]]
-    session_id: str
-    agent: Optional['BaseAgent'] = None
-    
-    # =============================================================================
-    # TEMPORARY PHASE 1: Compatibility bridge for migration to new architecture
-    # This method will be COMPLETELY REMOVED in Phase 6 cleanup
-    # =============================================================================
-    
-    def to_stage_context(self) -> 'StageContext':
-        """
-        TEMPORARY: Convert to new StageContext model.
-        
-        This method provides a bridge to the new context architecture during
-        the migration period. It will be COMPLETELY REMOVED in Phase 6.
-        
-        Returns:
-            StageContext created from this IterationContext
-        """
-        # Import here to avoid circular imports during migration
-        from ...models.processing_context import StageContext, ChainContext, AvailableTools
-        from ...models.alert_processing import AlertProcessingData
-        
-        # Create ChainContext from alert_data
-        if isinstance(self.alert_data, AlertProcessingData):
-            # Use the AlertProcessingData's conversion method, but override runbook_content
-            chain_context = self.alert_data.to_chain_context(self.session_id)
-            # FIXED: IterationContext runbook_content takes precedence over AlertProcessingData
-            chain_context.runbook_content = self.runbook_content
-        else:
-            # Create ChainContext from raw dict alert_data
-            chain_context = ChainContext(
-                alert_type="unknown",  # We don't have this info from raw dict
-                alert_data=self.alert_data,
-                session_id=self.session_id,
-                current_stage_name="unknown",
-                runbook_content=self.runbook_content  # FIXED: Preserve runbook content from IterationContext
-            )
-        
-        # Convert available_tools to AvailableTools
-        available_tools = AvailableTools.from_legacy_format(self.available_tools)
-        
-        return StageContext(
-            chain_context=chain_context,
-            available_tools=available_tools,
-            agent=self.agent
-        )
+
 
 
 class IterationController(ABC):
@@ -96,14 +37,12 @@ class IterationController(ABC):
         pass
     
     @abstractmethod
-    async def execute_analysis_loop(self, context: Union[IterationContext, 'StageContext']) -> str:
+    async def execute_analysis_loop(self, context: 'StageContext') -> str:
         """
-        TEMPORARY OVERLOAD: Execute analysis loop supporting both old and new contexts during migration.
-        
-        This will be cleaned up in Phase 6 to only accept StageContext.
+        Execute analysis loop with clean StageContext.
         
         Args:
-            context: Either IterationContext (legacy) or StageContext (new)
+            context: StageContext containing all stage processing data
             
         Returns:
             Final analysis result string
@@ -113,17 +52,17 @@ class IterationController(ABC):
     def create_result_summary(
         self, 
         analysis_result: str, 
-        context: Union[IterationContext, 'StageContext']
+        context: 'StageContext'
     ) -> str:
         """
-        TEMPORARY OVERLOAD: Create result summary supporting both old and new contexts during migration.
+        Create result summary with clean StageContext.
         
         Default implementation provides simple formatting. Individual strategies
         can override this method to provide specialized formatting.
         
         Args:
             analysis_result: Raw analysis text from execute_analysis_loop
-            context: Either IterationContext (legacy) or StageContext (new)
+            context: StageContext containing all stage processing data
             
         Returns:
             Formatted summary string for this iteration strategy
@@ -136,10 +75,10 @@ class IterationController(ABC):
     def extract_final_analysis(
         self, 
         analysis_result: str, 
-        context: Union[IterationContext, 'StageContext']
+        context: 'StageContext'
     ) -> str:
         """
-        TEMPORARY OVERLOAD: Extract final analysis supporting both old and new contexts during migration.
+        Extract final analysis with clean StageContext.
         
         This method should extract a concise, user-friendly final analysis
         from the full analysis result for API consumption.
@@ -149,7 +88,7 @@ class IterationController(ABC):
         
         Args:
             analysis_result: Raw analysis text from execute_analysis_loop
-            context: Either IterationContext (legacy) or StageContext (new)
+            context: StageContext containing all stage processing data
             
         Returns:
             Clean final analysis string for API/dashboard consumption

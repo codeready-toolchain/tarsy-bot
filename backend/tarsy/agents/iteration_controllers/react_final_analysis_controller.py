@@ -9,10 +9,9 @@ from typing import TYPE_CHECKING, Union
 
 from tarsy.utils.logger import get_module_logger
 from tarsy.models.unified_interactions import LLMMessage
-from .base_iteration_controller import IterationController, IterationContext
+from .base_iteration_controller import IterationController
 
 if TYPE_CHECKING:
-    # TEMPORARY PHASE 3: Import new context for overloaded methods
     from ...models.processing_context import StageContext
     from tarsy.integrations.llm.client import LLMClient
     from tarsy.agents.prompt_builder import PromptBuilder
@@ -37,30 +36,22 @@ class ReactFinalAnalysisController(IterationController):
         """Final analysis doesn't need MCP tool discovery."""
         return False
     
-    async def execute_analysis_loop(self, context: Union[IterationContext, 'StageContext']) -> str:
-        """
-        TEMPORARY OVERLOAD: Execute final analysis supporting both old and new contexts during migration.
-        """
-        from ...models.processing_context import StageContext
-        
-        if isinstance(context, StageContext):
-            logger.info("PHASE 3: Starting final analysis with new StageContext")
-            return await self._execute_with_stage_context(context)
-        else:
-            logger.info("PHASE 3: Starting final analysis with legacy IterationContext")
-            return await self._execute_with_iteration_context(context)
+    async def execute_analysis_loop(self, context: 'StageContext') -> str:
+        """Execute final analysis with StageContext."""
+        logger.info("Starting final analysis with StageContext")
+        return await self._execute_with_stage_context(context)
     
     async def _execute_with_stage_context(self, context: 'StageContext') -> str:
         """Execute final analysis with new StageContext."""
         logger.info("Starting final analysis (single LLM call, no tools) (StageContext)")
         
-        # PHASE 4: Pass StageContext directly to prompt builder (no PromptContext conversion)
+        # Pass StageContext directly to prompt builder
         return await self._execute_final_analysis_with_stage_context(context.agent, context)
     
     async def _execute_final_analysis_with_stage_context(self, agent, stage_context: 'StageContext') -> str:
-        """Execute final analysis using StageContext directly - PHASE 4 enhancement."""
+        """Execute final analysis using StageContext directly."""
         
-        # PHASE 4: Pass StageContext directly to prompt builder
+        # Pass StageContext directly to prompt builder
         prompt = self.prompt_builder.build_final_analysis_prompt(stage_context)
         
         # Single comprehensive analysis call with simplified system message
@@ -82,24 +73,7 @@ class ReactFinalAnalysisController(IterationController):
         
         return await self.llm_client.generate_response(messages, stage_context.session_id, agent.get_current_stage_execution_id())
     
-    async def _execute_with_iteration_context(self, context: IterationContext) -> str:
-        """Execute final analysis with legacy IterationContext."""
-        logger.info("Starting final analysis (single LLM call, no tools) (IterationContext)")
-        
-        # Get actual stage name from AlertProcessingData (or None for non-chain execution)
-        stage_name = getattr(context.alert_data, 'current_stage_name', None)
-        
-        # Build final analysis prompt (chain context will be handled in prompt builder)
-        prompt_context = context.agent.create_prompt_context(
-            alert_data=context.alert_data,
-            runbook_content=context.runbook_content,
-            available_tools=None,  # No tools available
-            stage_name=stage_name,
-            is_final_stage=True,
-            previous_stages=None  # Will be handled by chain context
-        )
-        
-        return await self._execute_final_analysis(context.agent, prompt_context, context.session_id)
+
     
     async def _execute_final_analysis(self, agent, prompt_context, session_id) -> str:
         """Common final analysis logic for both context types."""

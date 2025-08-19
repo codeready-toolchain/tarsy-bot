@@ -14,7 +14,7 @@ from unittest.mock import patch, Mock, AsyncMock
 
 from tarsy.config.settings import Settings
 from tarsy.services.alert_service import AlertService
-from tarsy.models.alert_processing import AlertProcessingData
+
 from tarsy.models.constants import IterationStrategy
 
 

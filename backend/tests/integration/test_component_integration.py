@@ -414,16 +414,18 @@ class TestServiceInteractionPatterns:
             mcp_registry=mock_mcp_server_registry
         )
         
-        # Create AlertProcessingData for the new architecture
-        from tarsy.models.alert_processing import AlertProcessingData
-        alert_processing_data = AlertProcessingData(
+        # Create ChainContext for the new architecture
+        from tarsy.models.processing_context import ChainContext
+        chain_context = ChainContext(
             alert_type=sample_alert.alert_type,
             alert_data=sample_alert.data,
+            session_id="test-session-integration",
+            current_stage_name="analysis",
             runbook_content=sample_runbook_content
         )
         
         # Act
-        result = await agent.process_alert(alert_processing_data, "test-session-integration")
+        result = await agent.process_alert(chain_context)
         
         # Assert
         from tarsy.models.agent_execution_result import AgentExecutionResult
@@ -457,13 +459,15 @@ class TestErrorPropagationBetweenComponents:
         )
         
         # Act
-        from tarsy.models.alert_processing import AlertProcessingData
-        alert_processing_data = AlertProcessingData(
+        from tarsy.models.processing_context import ChainContext
+        chain_context = ChainContext(
             alert_type=sample_alert.alert_type,
             alert_data=sample_alert.data,
+            session_id="test-session-integration",
+            current_stage_name="analysis",
             runbook_content=sample_runbook_content
         )
-        result = await agent.process_alert(alert_processing_data, "test-session-integration")
+        result = await agent.process_alert(chain_context)
         
         # Assert - Agent should handle MCP errors gracefully
         assert result is not None
@@ -488,13 +492,15 @@ class TestErrorPropagationBetweenComponents:
         )
         
         # Act
-        from tarsy.models.alert_processing import AlertProcessingData
-        alert_processing_data = AlertProcessingData(
+        from tarsy.models.processing_context import ChainContext
+        chain_context = ChainContext(
             alert_type=sample_alert.alert_type,
             alert_data=sample_alert.data,
+            session_id="test-session-integration",
+            current_stage_name="analysis",
             runbook_content=sample_runbook_content
         )
-        result = await agent.process_alert(alert_processing_data, "test-session-integration")
+        result = await agent.process_alert(chain_context)
         
         # Assert - Agent should handle LLM errors gracefully
         assert result is not None

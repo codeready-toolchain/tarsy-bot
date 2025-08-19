@@ -20,7 +20,8 @@ from pydantic import ValidationError
 # Import the modules we need to test and mock
 from tarsy.main import app, lifespan, process_alert_background, processing_alert_keys, alert_keys_lock
 from tarsy.models.alert import Alert, AlertResponse
-from tarsy.models.alert_processing import AlertProcessingData, AlertKey
+from tarsy.models.alert_processing import AlertKey
+from tarsy.models.processing_context import ChainContext
 from tarsy.models.websocket_models import ConnectionEstablished, ErrorMessage
 from tarsy.services.alert_service import AlertService
 from tarsy.services.dashboard_connection_manager import DashboardConnectionManager
@@ -570,13 +571,15 @@ class TestBackgroundProcessing:
     @pytest.fixture
     def mock_alert_data(self):
         """Mock alert processing data."""
-        return AlertProcessingData(
+        return ChainContext(
             alert_type="kubernetes",
             alert_data={
                 "namespace": "production",
                 "pod": "api-server-123",
                 "severity": "high"
-            }
+            },
+            session_id="test-session-123",
+            current_stage_name="test-stage"
         )
 
     @patch('tarsy.main.alert_service')
@@ -632,18 +635,28 @@ class TestBackgroundProcessing:
             # Test with None alert
             await process_alert_background("alert-123", None)
             
-            # Create minimally valid AlertProcessingData but then mock validation failure
-            valid_alert = AlertProcessingData(alert_type="test", alert_data={"key": "value"})
+            # Create minimally valid ChainContext but then mock validation failure
+            valid_alert = ChainContext(
+                alert_type="test", 
+                alert_data={"key": "value"},
+                session_id="test-session",
+                current_stage_name="test-stage"
+            )
             
             # Test by directly setting invalid attributes after creation
             valid_alert.alert_type = ""  # Make it invalid after creation
             await process_alert_background("alert-123", valid_alert)
             
             # For the None alert_data case, we need to mock the AlertKey creation to avoid the error
-            valid_alert2 = AlertProcessingData(alert_type="test", alert_data={"key": "value"})
+            valid_alert2 = ChainContext(
+                alert_type="test", 
+                alert_data={"key": "value"},
+                session_id="test-session-2",
+                current_stage_name="test-stage"
+            )
             valid_alert2.alert_data = None  # Make it invalid after creation
             
-            with patch('tarsy.main.AlertKey.from_alert_data') as mock_alert_key:
+            with patch('tarsy.main.AlertKey.from_chain_context') as mock_alert_key:
                 mock_key = Mock()
                 mock_key.__str__ = Mock(return_value="test-key-2")
                 mock_alert_key.return_value = mock_key

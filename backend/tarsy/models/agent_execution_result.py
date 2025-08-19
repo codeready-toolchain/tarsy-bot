@@ -39,29 +39,4 @@ class AgentExecutionResult(BaseModel):
     duration_ms: Optional[int] = Field(None, description="Execution duration in milliseconds")
 
 
-class ChainExecutionContext(BaseModel):
-    """
-    Simple accumulated context from all previous stages in a chain.
-    
-    Just collects the agent-provided summaries and passes them through.
-    """
-    model_config = ConfigDict(extra="forbid")
-    
-    stage_results: Dict[str, AgentExecutionResult] = Field(
-        default_factory=dict,
-        description="Results from completed stages, keyed by stage name"
-    )
-    
-    def get_formatted_context(self) -> str:
-        """Get all previous stage summaries formatted for next stage."""
-        if not self.stage_results:
-            return "No previous stage context available."
-        
-        sections = []
-        for stage_name, result in self.stage_results.items():
-            stage_title = result.stage_description or stage_name
-            sections.append(f"## Results from '{stage_title}' stage:")
-            sections.append(result.result_summary)
-            sections.append("")
-        
-        return "\n".join(sections)
+

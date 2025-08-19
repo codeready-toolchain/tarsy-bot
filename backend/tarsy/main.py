@@ -19,7 +19,8 @@ from tarsy.config.settings import get_settings
 from tarsy.controllers.history_controller import router as history_router
 from tarsy.database.init_db import get_database_info, initialize_database
 from tarsy.models.alert import Alert, AlertResponse
-from tarsy.models.alert_processing import AlertProcessingData, AlertKey
+from tarsy.models.alert_processing import AlertKey
+from tarsy.models.processing_context import ChainContext
 from tarsy.services.alert_service import AlertService
 from tarsy.services.dashboard_connection_manager import DashboardConnectionManager
 from tarsy.utils.logger import get_module_logger, setup_logging
@@ -353,14 +354,23 @@ async def submit_alert(request: Request):
         normalized_data["alert_type"] = alert_data.alert_type
         normalized_data["runbook"] = alert_data.runbook
         
-        # Create alert structure for processing using Pydantic model
-        alert = AlertProcessingData(
+        # Create alert structure for processing using new ChainContext
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())
+        
+        # Create ChainContext for processing  
+        alert_context = ChainContext(
             alert_type=alert_data.alert_type,
-            alert_data=normalized_data
+            alert_data=normalized_data,
+            session_id=session_id,
+            current_stage_name="processing"
         )
         
-        # Generate alert key for duplicate detection
-        alert_key = AlertKey.from_alert_data(alert)
+        # Generate alert key for duplicate detection using normalized data
+        alert_key = AlertKey(
+            alert_type=alert_data.alert_type,
+            content_hash=str(hash(str(normalized_data)))[:12]
+        )
         alert_key_str = str(alert_key)
         
         # Check for duplicate alerts already in progress
@@ -385,7 +395,7 @@ async def submit_alert(request: Request):
             processing_alert_keys[alert_key_str] = alert_id
         
         # Start background processing with normalized data
-        asyncio.create_task(process_alert_background(alert_id, alert))
+        asyncio.create_task(process_alert_background(alert_id, alert_context))
         
         logger.info(f"Alert {alert_id} submitted successfully with type: {alert_data.alert_type}")
         
@@ -469,7 +479,7 @@ async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
         dashboard_manager.disconnect(user_id)
 
 
-async def process_alert_background(alert_id: str, alert: AlertProcessingData):
+async def process_alert_background(alert_id: str, alert: ChainContext):
     """Background task to process an alert with comprehensive error handling and concurrency control."""
     async with alert_processing_semaphore:
         start_time = datetime.now()
@@ -541,7 +551,7 @@ async def process_alert_background(alert_id: str, alert: AlertProcessingData):
         finally:
             # Clean up alert key tracking regardless of success or failure
             if alert:
-                alert_key = AlertKey.from_alert_data(alert)
+                alert_key = AlertKey.from_chain_context(alert)
                 alert_key_str = str(alert_key)
                 
                 async with alert_keys_lock:

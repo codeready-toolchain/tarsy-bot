@@ -122,20 +122,26 @@ class TestIterationStrategiesIntegration:
         react_stage_agent.analyze_alert = AsyncMock(return_value="REACT_STAGE analysis")
         
         # Process alert with both strategies
-        from tarsy.models.alert_processing import AlertProcessingData
-        alert_processing_data = AlertProcessingData(
+        from tarsy.models.processing_context import ChainContext
+        chain_context_react = ChainContext(
             alert_type="kubernetes",  # sample_alert_data is dict, not Alert object
             alert_data=sample_alert_data,
+            session_id="test-session-react",
+            current_stage_name="analysis",
             runbook_content=sample_runbook
         )
         
-        react_result = await react_agent.process_alert(
-            alert_processing_data, "test-session-react"
+        chain_context_react_stage = ChainContext(
+            alert_type="kubernetes",
+            alert_data=sample_alert_data,
+            session_id="test-session-react-stage",
+            current_stage_name="analysis",
+            runbook_content=sample_runbook
         )
         
-        react_stage_result = await react_stage_agent.process_alert(
-            alert_processing_data, "test-session-react-stage"
-        )
+        react_result = await react_agent.process_alert(chain_context_react)
+        
+        react_stage_result = await react_stage_agent.process_alert(chain_context_react_stage)
         
         # Both should succeed but potentially use different processing paths
         assert react_result.status == StageStatus.COMPLETED
@@ -199,20 +205,26 @@ class TestIterationStrategiesIntegration:
         react_agent.analyze_alert = AsyncMock(return_value="Configurable analysis (react)")
         
         # Process alerts
-        from tarsy.models.alert_processing import AlertProcessingData
-        alert_processing_data = AlertProcessingData(
+        from tarsy.models.processing_context import ChainContext
+        chain_context_react_stage = ChainContext(
             alert_type="kubernetes",  # sample_alert_data is dict, not Alert object
             alert_data=sample_alert_data,
+            session_id="test-config-react-stage",
+            current_stage_name="analysis",
             runbook_content=sample_runbook
         )
         
-        react_stage_result = await react_stage_agent.process_alert(
-            alert_processing_data, "test-config-react-stage"
+        chain_context_react = ChainContext(
+            alert_type="kubernetes",
+            alert_data=sample_alert_data,
+            session_id="test-config-react",
+            current_stage_name="analysis",
+            runbook_content=sample_runbook
         )
         
-        react_result = await react_agent.process_alert(
-            alert_processing_data, "test-config-react"
-        )
+        react_stage_result = await react_stage_agent.process_alert(chain_context_react_stage)
+        
+        react_result = await react_agent.process_alert(chain_context_react)
         
         # Verify results
         assert react_stage_result.status == StageStatus.COMPLETED
@@ -396,20 +408,26 @@ mcp_servers:
             react_agent.analyze_alert = AsyncMock(return_value="YAML test analysis (react)")
             
             # Process alerts with both agents
-            from tarsy.models.alert_processing import AlertProcessingData
-            alert_processing_data = AlertProcessingData(
+            from tarsy.models.processing_context import ChainContext
+            chain_context_react_stage = ChainContext(
                 alert_type="kubernetes",  # sample_alert_data is dict, not Alert object
                 alert_data=sample_alert_data,
+                session_id="yaml-react-stage-test",
+                current_stage_name="analysis",
                 runbook_content=sample_runbook
             )
             
-            react_stage_result = await react_stage_agent.process_alert(
-                alert_processing_data, "yaml-react-stage-test"
+            chain_context_react = ChainContext(
+                alert_type="kubernetes",
+                alert_data=sample_alert_data,
+                session_id="yaml-react-test",
+                current_stage_name="analysis",
+                runbook_content=sample_runbook
             )
             
-            react_result = await react_agent.process_alert(
-                alert_processing_data, "yaml-react-test"
-            )
+            react_stage_result = await react_stage_agent.process_alert(chain_context_react_stage)
+            
+            react_result = await react_agent.process_alert(chain_context_react)
             
             # Verify both processed successfully
             assert react_stage_result.status == StageStatus.COMPLETED

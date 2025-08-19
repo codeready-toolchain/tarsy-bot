@@ -14,10 +14,7 @@ from tarsy.models.processing_context import (
     MCPTool,
     AvailableTools,
     ChainContext,
-    StageContext,
-    convert_legacy_tools_to_available_tools,
-    create_chain_context_from_alert_processing_data,
-    create_stage_context_from_iteration_context
+    StageContext
 )
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
@@ -61,7 +58,7 @@ class TestMCPTool:
 
 
 class TestAvailableTools:
-    """Test AvailableTools model and migration support."""
+    """Test AvailableTools model."""
     
     def test_available_tools_empty(self):
         """Test empty AvailableTools."""
@@ -84,65 +81,6 @@ class TestAvailableTools:
         
         prompt_format = tools.to_prompt_format()
         assert "k8s.get_pods: Get Kubernetes pods" in prompt_format
-    
-    def test_available_tools_with_legacy_format(self):
-        """Test AvailableTools with legacy Dict format during migration."""
-        legacy_tool = {
-            "server": "aws",
-            "name": "describe_instances",
-            "description": "Describe EC2 instances"
-        }
-        
-        tools = AvailableTools(tools=[legacy_tool])
-        
-        assert len(tools.tools) == 1
-        # Note: Pydantic automatically converts compatible dictionaries to MCPTool objects
-        # This is actually the desired behavior for migration - seamless conversion
-        assert isinstance(tools.tools[0], MCPTool)
-        assert tools.tools[0].server == "aws"
-        assert tools.tools[0].name == "describe_instances"
-        
-        prompt_format = tools.to_prompt_format()
-        assert "aws.describe_instances: Describe EC2 instances" in prompt_format
-    
-    def test_available_tools_mixed_formats(self):
-        """Test AvailableTools with mixed MCPTool and legacy formats."""
-        mcp_tool = MCPTool(server="k8s", name="get_pods", description="Get pods")
-        legacy_tool = {"server": "aws", "name": "describe_instances", "description": "Describe instances"}
-        
-        tools = AvailableTools(tools=[mcp_tool, legacy_tool])
-        
-        assert len(tools.tools) == 2
-        assert isinstance(tools.tools[0], MCPTool)
-        # Both are converted to MCPTool due to Pydantic Union type handling
-        assert isinstance(tools.tools[1], MCPTool)
-        assert tools.tools[1].server == "aws"
-        
-        prompt_format = tools.to_prompt_format()
-        assert "k8s.get_pods: Get pods" in prompt_format
-        assert "aws.describe_instances: Describe instances" in prompt_format
-    
-    def test_from_legacy_format_conversion(self):
-        """Test conversion from legacy tool format."""
-        legacy_tools = [
-            {"server": "k8s", "name": "get_pods", "description": "Get pods"},
-            {"server": "aws", "name": "list_instances", "description": "List instances"}
-        ]
-        
-        tools = AvailableTools.from_legacy_format(legacy_tools)
-        
-        assert len(tools.tools) == 2
-        # Pydantic automatically converts compatible dictionaries to MCPTool objects
-        assert all(isinstance(tool, MCPTool) for tool in tools.tools)
-    
-    def test_legacy_tool_missing_fields(self):
-        """Test handling legacy tools with missing fields."""
-        legacy_tool = {"name": "incomplete_tool"}  # Missing server and description
-        
-        tools = AvailableTools(tools=[legacy_tool])
-        prompt_format = tools.to_prompt_format()
-        
-        assert "unknown.incomplete_tool: No description" in prompt_format
 
 
 class TestChainContext:
@@ -552,92 +490,3 @@ class TestStageContext:
         assert "Stage completed successfully." in formatted
 
 
-class TestMigrationUtilities:
-    """Test temporary migration utilities."""
-    
-    def test_convert_legacy_tools_to_available_tools(self):
-        """Test conversion of legacy tools format."""
-        legacy_tools = [
-            {"server": "k8s", "name": "get_pods", "description": "Get pods"},
-            {"server": "aws", "name": "describe_instances", "description": "Describe instances"}
-        ]
-        
-        available_tools = convert_legacy_tools_to_available_tools(legacy_tools)
-        
-        assert isinstance(available_tools, AvailableTools)
-        assert len(available_tools.tools) == 2
-        # Pydantic automatically converts compatible dictionaries to MCPTool objects
-        assert all(isinstance(tool, MCPTool) for tool in available_tools.tools)
-    
-    def test_create_chain_context_from_alert_processing_data(self):
-        """Test conversion from AlertProcessingData to ChainContext."""
-        # Create mock AlertProcessingData
-        alert_processing_data = Mock()
-        alert_processing_data.alert_type = "kubernetes"
-        alert_processing_data.alert_data = {"pod": "test-pod"}
-        alert_processing_data.current_stage_name = "analysis"
-        alert_processing_data.stage_outputs = {}
-        alert_processing_data.runbook_content = "# Test runbook"
-        alert_processing_data.chain_id = "test-chain"
-        
-        chain_context = create_chain_context_from_alert_processing_data(
-            alert_processing_data,
-            "test-session-123"
-        )
-        
-        assert isinstance(chain_context, ChainContext)
-        assert chain_context.alert_type == "kubernetes"
-        assert chain_context.alert_data == {"pod": "test-pod"}
-        assert chain_context.session_id == "test-session-123"  # Injected session ID
-        assert chain_context.current_stage_name == "analysis"
-        assert chain_context.runbook_content == "# Test runbook"
-        assert chain_context.chain_id == "test-chain"
-    
-    def test_create_chain_context_handles_missing_stage_name(self):
-        """Test conversion handles missing current_stage_name."""
-        alert_processing_data = Mock()
-        alert_processing_data.alert_type = "test"
-        alert_processing_data.alert_data = {"test": "data"}
-        alert_processing_data.current_stage_name = None  # Missing stage name
-        alert_processing_data.stage_outputs = {}
-        alert_processing_data.runbook_content = None
-        alert_processing_data.chain_id = None
-        
-        chain_context = create_chain_context_from_alert_processing_data(
-            alert_processing_data,
-            "test-session"
-        )
-        
-        assert chain_context.current_stage_name == "unknown"
-    
-    def test_create_stage_context_from_iteration_context(self):
-        """Test conversion from IterationContext to StageContext."""
-        # Create test data
-        chain_context = ChainContext(
-            alert_type="test",
-            alert_data={"test": "data"},
-            session_id="test-session",
-            current_stage_name="test-stage"
-        )
-        
-        mock_agent = Mock()
-        mock_agent.__class__.__name__ = "TestAgent"
-        mock_agent.mcp_servers.return_value = ["test-server"]
-        
-        # Create mock IterationContext
-        iteration_context = Mock()
-        iteration_context.available_tools = [
-            {"server": "test", "name": "test_tool", "description": "Test tool"}
-        ]
-        
-        stage_context = create_stage_context_from_iteration_context(
-            iteration_context,
-            chain_context,
-            mock_agent
-        )
-        
-        assert isinstance(stage_context, StageContext)
-        assert stage_context.chain_context == chain_context
-        assert stage_context.agent == mock_agent
-        assert isinstance(stage_context.available_tools, AvailableTools)
-        assert len(stage_context.available_tools.tools) == 1

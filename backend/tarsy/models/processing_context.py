@@ -5,13 +5,12 @@ This module contains the clean context models that will replace the current
 AlertProcessingData, IterationContext, PromptContext, and ChainExecutionContext
 to eliminate duplication and architectural debt.
 
-TEMPORARY MIGRATION PHASE: During migration, this module coexists with old models.
-All TEMPORARY conversion utilities will be DELETED in Phase 6 cleanup.
+This module contains the clean context models for the new alert processing architecture.
 """
 
 from pydantic import BaseModel, Field
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List, Union, TYPE_CHECKING
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from .agent_execution_result import AgentExecutionResult
 
 if TYPE_CHECKING:
@@ -30,45 +29,25 @@ class MCPTool(BaseModel):
 
 class AvailableTools(BaseModel):
     """
-    Available tools with migration safety support.
+    Available tools for agent processing.
     
-    During migration (Phases 1-5), supports both structured MCPTool objects and
-    legacy Dict[str, Any] format. In Phase 6, Union type will be removed and
-    only List[MCPTool] will remain.
+    Clean implementation using only structured MCPTool objects.
     """
     model_config = {"extra": "forbid"}
     
-    tools: List[Union[MCPTool, Dict[str, Any]]] = Field(
+    tools: List[MCPTool] = Field(
         default_factory=list,
-        description="Available tools (supports both MCPTool and legacy format during migration)"
+        description="Available MCP tools"
     )
     
-    @classmethod
-    def from_legacy_format(cls, legacy_tools: List[Dict[str, Any]]) -> 'AvailableTools':
-        """
-        TEMPORARY: Convert legacy List[Dict] to AvailableTools during migration.
-        
-        This method will be COMPLETELY REMOVED in Phase 6 cleanup.
-        """
-        return cls(tools=legacy_tools)
+
     
     def to_prompt_format(self) -> str:
         """Format tools for prompt inclusion."""
         if not self.tools:
             return "No tools available."
         
-        formatted_tools = []
-        for tool in self.tools:
-            if isinstance(tool, MCPTool):
-                # Clean structured format
-                formatted_tools.append(f"{tool.server}.{tool.name}: {tool.description}")
-            else:
-                # Legacy Dict[str, Any] format during migration
-                server = tool.get('server', 'unknown')
-                name = tool.get('name', 'tool')
-                description = tool.get('description', 'No description')
-                formatted_tools.append(f"{server}.{name}: {description}")
-        
+        formatted_tools = [f"{tool.server}.{tool.name}: {tool.description}" for tool in self.tools]
         return "\n".join(formatted_tools)
 
 
@@ -124,6 +103,20 @@ class ChainContext(BaseModel):
     def add_stage_result(self, stage_name: str, result: AgentExecutionResult):
         """Add result from a completed stage."""
         self.stage_outputs[stage_name] = result
+    
+    def get_runbook_url(self) -> Optional[str]:
+        """Extract runbook URL from alert data."""
+        return self.alert_data.get('runbook')
+    
+    def set_chain_context(self, chain_id: str, stage_name: Optional[str] = None):
+        """Set chain context information."""
+        self.chain_id = chain_id
+        if stage_name:
+            self.current_stage_name = stage_name
+    
+    def set_runbook_content(self, content: str):
+        """Set downloaded runbook content."""
+        self.runbook_content = content
     
     # NOTE: get_severity() and get_environment() REMOVED
     # These are API formatting methods that belong in AlertService, not processing models
@@ -204,68 +197,4 @@ class StageContext:
         return "\n".join(sections)
 
 
-# =============================================================================
-# TEMPORARY MIGRATION UTILITIES - WILL BE DELETED IN PHASE 6
-# =============================================================================
 
-def convert_legacy_tools_to_available_tools(legacy_tools: List[Dict[str, Any]]) -> AvailableTools:
-    """
-    TEMPORARY: Convert legacy tools list to AvailableTools.
-    
-    This function will be COMPLETELY REMOVED in Phase 6 cleanup.
-    """
-    return AvailableTools.from_legacy_format(legacy_tools)
-
-
-def create_chain_context_from_alert_processing_data(
-    alert_processing_data: Any,  # AlertProcessingData - avoiding import during migration
-    session_id: str
-) -> ChainContext:
-    """
-    TEMPORARY: Convert AlertProcessingData to ChainContext.
-    
-    This function will be COMPLETELY REMOVED in Phase 6 cleanup.
-    
-    Args:
-        alert_processing_data: AlertProcessingData instance
-        session_id: Session ID to inject into new context
-        
-    Returns:
-        ChainContext with all data from AlertProcessingData
-    """
-    return ChainContext(
-        alert_type=alert_processing_data.alert_type,
-        alert_data=alert_processing_data.alert_data,
-        session_id=session_id,  # FIXED: Inject session_id during conversion
-        current_stage_name=alert_processing_data.current_stage_name or "unknown",
-        stage_outputs=alert_processing_data.stage_outputs,  # Already AgentExecutionResult objects
-        runbook_content=alert_processing_data.runbook_content,
-        chain_id=alert_processing_data.chain_id
-    )
-
-
-def create_stage_context_from_iteration_context(
-    iteration_context: Any,  # IterationContext - avoiding import during migration
-    chain_context: ChainContext,
-    agent: 'BaseAgent'
-) -> StageContext:
-    """
-    TEMPORARY: Convert IterationContext to StageContext.
-    
-    This function will be COMPLETELY REMOVED in Phase 6 cleanup.
-    
-    Args:
-        iteration_context: IterationContext instance
-        chain_context: ChainContext for the stage
-        agent: BaseAgent instance
-        
-    Returns:
-        StageContext with all data from IterationContext
-    """
-    available_tools = convert_legacy_tools_to_available_tools(iteration_context.available_tools)
-    
-    return StageContext(
-        chain_context=chain_context,
-        available_tools=available_tools,
-        agent=agent
-    )

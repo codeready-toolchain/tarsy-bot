@@ -17,12 +17,10 @@ from tarsy.models.agent_execution_result import (
     AgentExecutionResult
 )
 from tarsy.models.constants import StageStatus
-from tarsy.models.alert_processing import AlertProcessingData
-# TEMPORARY PHASE 3: Import new context models for overloaded process_alert
-from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
+
+from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools, MCPTool
 from .iteration_controllers import (
-    IterationController, SimpleReActController, ReactStageController,
-    IterationContext
+    IterationController, SimpleReActController, ReactStageController
 )
 from .exceptions import (
     AgentError, 
@@ -37,11 +35,9 @@ from ..models.constants import IterationStrategy
 
 if TYPE_CHECKING:
     from .prompt_builder import PromptBuilder
-    # TEMPORARY PHASE 1: Strategic import of new context models
-    # These imports will be used during migration phases
     from ..models.processing_context import ChainContext, StageContext
 
-from .prompt_builder import PromptContext, get_prompt_builder
+from .prompt_builder import get_prompt_builder
 
 logger = get_module_logger(__name__)
 
@@ -160,44 +156,7 @@ class BaseAgent(ABC):
         """
         pass
 
-    def create_prompt_context(self, 
-                             alert_data: Dict, 
-                             runbook_content: str,
-                             available_tools: Optional[Dict] = None,
-                             stage_name: Optional[str] = None,
-                             is_final_stage: bool = False,
-                             previous_stages: Optional[List[str]] = None) -> PromptContext:
-        """
-        Create a PromptContext object with all necessary data for prompt building.
-        
-        Args:
-            alert_data: Complete alert data as flexible dictionary
-            runbook_content: The downloaded runbook content
-            available_tools: Available MCP tools (optional)
-            stage_name: Name of current processing stage (optional)
-            is_final_stage: Whether this is the final stage in a chain (optional)
-            previous_stages: List of previous stage names (optional)
-            
-        Returns:
-            PromptContext object ready for prompt building
-        """
-        # Extract chain context from AlertProcessingData if available
-        chain_context = None
-        if hasattr(alert_data, 'get_chain_execution_context'):
-            # alert_data is AlertProcessingData with chain context
-            chain_context = alert_data.get_chain_execution_context()
-        
-        return PromptContext(
-            agent_name=self.__class__.__name__,
-            alert_data=alert_data.get_original_alert_data() if hasattr(alert_data, 'get_original_alert_data') else alert_data,
-            runbook_content=runbook_content,
-            mcp_servers=self.mcp_servers(),
-            available_tools=available_tools,
-            stage_name=stage_name,
-            is_final_stage=is_final_stage,
-            previous_stages=previous_stages,
-            chain_context=chain_context
-        )
+
 
     def _get_server_specific_tool_guidance(self) -> str:
         """Get guidance text specific to this agent's assigned MCP servers."""
@@ -216,38 +175,17 @@ class BaseAgent(ABC):
         
         return "\n\n".join(guidance_parts) if guidance_parts else ""
 
-    async def process_alert(
-        self,
-        context: Union[AlertProcessingData, ChainContext],
-        session_id: Optional[str] = None
-    ) -> AgentExecutionResult:
+    async def process_alert(self, context: ChainContext) -> AgentExecutionResult:
         """
-        TEMPORARY OVERLOAD: Process alert supporting both old and new context models during migration.
-        
-        This overloaded method will be cleaned up in Phase 6 to only accept ChainContext.
+        Process alert using the new ChainContext model.
         
         Args:
-            context: Either AlertProcessingData (legacy) or ChainContext (new)
-            session_id: Optional session ID (required for AlertProcessingData, ignored for ChainContext)
+            context: ChainContext containing all alert processing data
         
         Returns:
             Structured AgentExecutionResult with rich investigation summary
         """
-        if isinstance(context, AlertProcessingData):
-            # TEMPORARY: Handle legacy AlertProcessingData
-            if not session_id:
-                raise ValueError("session_id is required when using AlertProcessingData")
-            logger.info("PHASE 3: Using legacy AlertProcessingData path")
-            return await self._process_alert_legacy(context, session_id)
-        else:
-            # Handle new ChainContext
-            if session_id and session_id != context.session_id:
-                logger.warning(
-                    f"session_id parameter ({session_id}) differs from "
-                    f"context.session_id ({context.session_id}). Using context.session_id."
-                )
-            logger.info("PHASE 3: Using new ChainContext path")
-            return await self._process_alert_new(context)
+        return await self._process_alert_new(context)
 
     async def _process_alert_new(self, chain_context: ChainContext) -> AgentExecutionResult:
         """
@@ -270,7 +208,17 @@ class BaseAgent(ABC):
                 logger.info(f"Enhanced logging: Strategy {self.iteration_strategy.value} requires MCP tool discovery")
                 available_tools_list = await self._get_available_tools(chain_context.session_id)
                 logger.info(f"Enhanced logging: Retrieved {len(available_tools_list)} tools for {self.iteration_strategy.value}")
-                available_tools = AvailableTools.from_legacy_format(available_tools_list)
+                
+                # Convert legacy tools to MCPTool objects
+                mcp_tools = []
+                for tool in available_tools_list:
+                    mcp_tools.append(MCPTool(
+                        server=tool.get('server', 'unknown'),
+                        name=tool.get('name', 'tool'),
+                        description=tool.get('description', 'No description'),
+                        parameters=tool.get('parameters', [])
+                    ))
+                available_tools = AvailableTools(tools=mcp_tools)
             else:
                 logger.info(f"Enhanced logging: Strategy {self.iteration_strategy.value} skips MCP tool discovery - Final analysis stage")
                 available_tools = AvailableTools()
@@ -329,112 +277,7 @@ class BaseAgent(ABC):
                 error_message=error_msg
             )
 
-    async def _process_alert_legacy(
-        self,
-        alert_data: AlertProcessingData,  # Unified alert processing model
-        session_id: str
-    ) -> AgentExecutionResult:
-        """
-        TEMPORARY: Legacy implementation for AlertProcessingData.
-        This method will be REMOVED in Phase 6 cleanup.
-        
-        Args:
-            alert_data: AlertProcessingData instance
-            session_id: Session ID for timeline logging
-        
-        Returns:
-            Structured AgentExecutionResult with rich investigation summary
-        """
-        # Basic validation
-        if not session_id:
-            raise ValueError("session_id is required for alert processing")
-        
-        try:
-            # Extract data using type-safe helper methods
-            runbook_content = alert_data.get_runbook_content()
-            original_alert = alert_data.get_original_alert_data()
-            
-            # Get accumulated MCP data from all previous stages
-            initial_mcp_data = alert_data.get_all_mcp_results()
-            stage_attributed_mcp_data = alert_data.get_stage_attributed_mcp_results()
-            
-            # Log enriched data usage from previous stages
-            if alert_data.get_stage_result("data-collection"):
-                logger.info("Using enriched data from data-collection stage")
-                # MCP results are already merged via get_all_mcp_results()
-            
-            # Enhanced logging for stage attribution
-            if stage_attributed_mcp_data:
-                stages_with_data = list(stage_attributed_mcp_data.keys())
-                logger.info(f"Enhanced logging: Stage-attributed data available from stages: {stages_with_data}")
-            
-            # Configure MCP client with agent-specific servers
-            await self._configure_mcp_client()
-            
-            # Get available tools only if the iteration strategy needs them
-            if self._iteration_controller.needs_mcp_tools():
-                logger.info(f"Enhanced logging: Strategy {self.iteration_strategy.value} requires MCP tool discovery")
-                available_tools = await self._get_available_tools(session_id)
-                logger.info(f"Enhanced logging: Retrieved {len(available_tools)} tools for {self.iteration_strategy.value}")
-            else:
-                logger.info(f"Enhanced logging: Strategy {self.iteration_strategy.value} skips MCP tool discovery - Final analysis stage")
-                available_tools = []
-            
-            # Create iteration context for controller
-            context = IterationContext(
-                alert_data=alert_data,  # Pass full AlertProcessingData for chain context
-                runbook_content=runbook_content,
-                available_tools=available_tools,
-                session_id=session_id,
-                agent=self
-            )
-            
-            # Delegate to appropriate iteration controller
-            analysis_result = await self._iteration_controller.execute_analysis_loop(context)
-            
-            # Create strategy-specific execution result summary
-            result_summary = self._iteration_controller.create_result_summary(
-                analysis_result=analysis_result,
-                context=context
-            )
-            
-            # Extract clean final analysis for API consumption
-            final_analysis = self._iteration_controller.extract_final_analysis(
-                analysis_result=analysis_result,
-                context=context
-            )
-            
-            return AgentExecutionResult(
-                status=StageStatus.COMPLETED,
-                agent_name=self.__class__.__name__,
-                timestamp_us=now_us(),
-                result_summary=result_summary,
-                final_analysis=final_analysis
-            )
-            
-        except AgentError as e:
-            # Handle structured agent errors with recovery information
-            logger.error(f"Agent processing failed with structured error: {e.to_dict()}", exc_info=True)
-            
-            return AgentExecutionResult(
-                status=StageStatus.FAILED,
-                agent_name=self.__class__.__name__,
-                timestamp_us=now_us(),
-                result_summary=f"Agent execution failed: {str(e)}",
-                error_message=str(e)
-            )
-        except Exception as e:
-            # Handle unexpected errors
-            error_msg = f"Agent processing failed with unexpected error: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            
-            return AgentExecutionResult(
-                status=StageStatus.FAILED,
-                agent_name=self.__class__.__name__,
-                timestamp_us=now_us(),
-                result_summary=f"Agent execution failed with unexpected error: {str(e)}",
-                error_message=error_msg
-            )
+
     
     def merge_mcp_data(self, existing_data: Dict[str, Any], new_data: Dict[str, Any]) -> Dict[str, Any]:
         """
