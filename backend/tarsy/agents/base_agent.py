@@ -7,7 +7,7 @@ It implements common processing logic and defines abstract methods for agent-spe
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.client import LLMClient
@@ -32,8 +32,11 @@ from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
 from ..models.constants import IterationStrategy
-from .prompt_builder import PromptContext, get_prompt_builder
 
+if TYPE_CHECKING:
+    from .prompt_builder import PromptBuilder
+
+from .prompt_builder import PromptContext, get_prompt_builder
 
 logger = get_module_logger(__name__)
 
@@ -79,7 +82,7 @@ class BaseAgent(ABC):
         self._iteration_count = 0
         self._max_iterations = get_settings().max_llm_mcp_iterations
         self._configured_servers: Optional[List[str]] = None
-        self._prompt_builder = get_prompt_builder()
+        self._prompt_builder: 'PromptBuilder' = get_prompt_builder()
         
         # Stage execution tracking for chain processing
         self._current_stage_execution_id: Optional[str] = None

@@ -22,6 +22,7 @@
 This design document is a living document that evolves through [Enhancement Proposals (EPs)](enhancements/README.md). All significant architectural changes are documented through the EP process, ensuring traceable evolution and AI-friendly implementation.
 
 ### Recent Changes
+- **EP-0011 (IMPLEMENTED)**: LangChain PromptBuilder - Refactored PromptBuilder to use LangChain templates with clean component composition pattern. Features include template-based prompt composition with AlertSectionTemplate, RunbookSectionTemplate, and ChainContextSectionTemplate, backward compatibility via re-export layer, full type safety with proper annotations, and validated template definitions using LangChain's PromptTemplate.from_template()
 - **EP-0008-1 (IMPLEMENTED)**: Sequential Agent Chains - Added multi-stage alert processing workflows where alerts can flow through multiple specialized agents that build upon each other's work. Key features include unified AlertProcessingData model throughout the pipeline, ChainRegistry for managing chain definitions, new iteration strategies (REACT_STAGE, REACT_FINAL_ANALYSIS) for different chain stage purposes, enhanced database schema with StageExecution tracking, and chain execution logic integrated into AlertService
 - **TYPED HOOK SYSTEM (IMPLEMENTED)**: Type-Safe Interaction Capture - Complete refactoring to typed hook system with unified LLMInteraction and MCPInteraction models, eliminating data contamination and providing clean type-safe interaction capture. Comprehensive test coverage restoration with 49 new tests for hook system, LLM client, and MCP client functionality
 - **INTERACTION MODEL UNIFICATION (IMPLEMENTED)**: Unified Interaction Models - Consolidated interaction data structures into type-safe LLMInteraction and MCPInteraction models with consistent fields, JSON serialization, and proper database persistence. Dashboard integration updated for LLM interaction preview with smart text parsing
@@ -590,34 +591,36 @@ class IterationContext:
 
 ### 6. PromptBuilder
 
-Centralized prompt construction service used by all agents for consistent LLM interactions with support for multiple iteration strategies:
+**Architecture**: Template composition system using LangChain components for validated, reusable prompt construction:
 
 ```
-Interface Pattern:
+backend/tarsy/agents/prompts/
+├── __init__.py            # Main exports and backward compatibility
+├── components.py          # Reusable template components  
+├── builders.py            # LangChain PromptBuilder implementation
+├── templates.py           # LangChain PromptTemplate definitions
+└── (legacy_builder.py removed after migration)
+```
+
+**Implementation Pattern:**
+```python
+from langchain_core.prompts import PromptTemplate
+
 class PromptBuilder:
-    # ReAct iteration strategy methods
-    def build_standard_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str
-    def build_stage_analysis_react_prompt(self, context: PromptContext, react_history: List[str] = None) -> str
+    def build_standard_react_prompt(self, context: PromptContext, react_history: Optional[List[str]] = None) -> str
+    def build_stage_analysis_react_prompt(self, context: PromptContext, react_history: Optional[List[str]] = None) -> str
     def build_final_analysis_prompt(self, context: PromptContext) -> str
-    def parse_react_response(self, response: str) -> Dict[str, Any]
-    def convert_action_to_tool_call(self, action: str, action_input: str) -> Dict[str, Any]
-    def format_observation(self, mcp_data: Dict[str, Any]) -> str
-    
-    # System message methods
-    def get_general_instructions(self) -> str
-    def get_enhanced_react_system_message(self, task_focus: str = "investigation and providing recommendations") -> str
+    def get_enhanced_react_system_message(self, composed_instructions: str, task_focus: str = "investigation and providing recommendations") -> str
+    # ... ReAct parsing and tool conversion methods (unchanged)
 ```
 
 **Core Features:**
-- **Multi-Strategy Support**: Supports REACT, REACT_STAGE, and REACT_FINAL_ANALYSIS iteration patterns with strategy-specific prompts
-- **Template Standardization**: Consistent prompt formats across all agents and strategies
-- **ReAct Pattern Implementation**: Full ReAct prompt building with Think→Action→Observation format
-- **ReAct Response Parsing**: Structured parsing of ReAct responses with thought, action, and completion detection
-- **Context Management**: Structured context data handling via PromptContext dataclass
-- **Iteration History Formatting**: Comprehensive formatting for ReAct conversation history across all strategies
-- **System Message Generation**: Specialized system messages for different LLM interaction types and strategies
-- **Data Formatting**: Intelligent formatting of MCP data and alert information for ReAct patterns
-- **Shared Instance**: Stateless design with global shared instance for efficiency
+- **LangChain Integration**: Uses `PromptTemplate.from_template()` for template validation and composition
+- **Component Architecture**: Reusable `AlertSectionTemplate`, `RunbookSectionTemplate`, `ChainContextSectionTemplate` 
+- **Type Safety**: Full type annotations with `PromptContext` and proper forward references
+- **Template Composition**: Clean separation of template components from business logic
+- **Backward Compatibility**: Existing APIs maintained through re-export layer in `prompt_builder.py`
+- **Validated Templates**: LangChain validates template syntax and variable references at initialization
 
 **PromptContext Data Structure:**
 ```

@@ -6,16 +6,14 @@ while maintaining backward compatibility with existing APIs.
 """
 
 import json
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
+from typing import Dict, Any, List, Optional
 from .components import (
     AlertSectionTemplate, 
     RunbookSectionTemplate, 
-    ChainContextSectionTemplate
+    ChainContextSectionTemplate,
+    PromptContext
 )
 from .templates import *
-
-if TYPE_CHECKING:
-    from tarsy.models.agent_execution_result import ChainExecutionContext
 
 
 class PromptBuilder:
@@ -29,7 +27,7 @@ class PromptBuilder:
     
     # ============ Main Prompt Building Methods ============
     
-    def build_standard_react_prompt(self, context, react_history: Optional[List[str]] = None) -> str:
+    def build_standard_react_prompt(self, context: PromptContext, react_history: Optional[List[str]] = None) -> str:
         """Build standard ReAct prompt using templates. Used by SimpleReActController."""
         # Build question components
         alert_section = self.alert_component.format(context.alert_data)
@@ -57,7 +55,7 @@ class PromptBuilder:
             history_text=history_text
         )
     
-    def build_stage_analysis_react_prompt(self, context, react_history: Optional[List[str]] = None) -> str:
+    def build_stage_analysis_react_prompt(self, context: PromptContext, react_history: Optional[List[str]] = None) -> str:
         """Build ReAct prompt for stage-specific analysis. Used by ReactStageController."""
         # Build question components
         alert_section = self.alert_component.format(context.alert_data)
@@ -87,7 +85,7 @@ class PromptBuilder:
             history_text=history_text
         )
     
-    def build_final_analysis_prompt(self, context) -> str:
+    def build_final_analysis_prompt(self, context: PromptContext) -> str:
         """Build prompt for final analysis without ReAct format. Used by ReactFinalAnalysisController."""
         stage_info = ""
         if context.stage_name:
@@ -141,7 +139,7 @@ Focus on root cause analysis and sustainable solutions."""
     
     # ============ Helper Methods (Keep Current Logic) ============
     
-    def _build_context_section(self, context) -> str:
+    def _build_context_section(self, context: PromptContext) -> str:
         """Build the context section using template."""
         server_list = ", ".join(context.mcp_servers)
         return CONTEXT_SECTION_TEMPLATE.format(
@@ -149,19 +147,19 @@ Focus on root cause analysis and sustainable solutions."""
             server_list=server_list
         )
     
-    def _build_alert_section(self, alert_data) -> str:
+    def _build_alert_section(self, alert_data: Dict[str, Any]) -> str:
         """Backward compatibility method - delegates to alert component."""
         return self.alert_component.format(alert_data)
     
-    def _build_runbook_section(self, runbook_content) -> str:
+    def _build_runbook_section(self, runbook_content: str) -> str:
         """Backward compatibility method - delegates to runbook component."""
         return self.runbook_component.format(runbook_content)
         
-    def _build_chain_context_section(self, context) -> str:
+    def _build_chain_context_section(self, context: PromptContext) -> str:
         """Backward compatibility method - delegates to chain context component."""
         return self.chain_context_component.format(context)
     
-    def _format_available_actions(self, available_tools: Dict) -> str:
+    def _format_available_actions(self, available_tools: Dict[str, Any]) -> str:
         """Format available tools as ReAct actions."""
         if not available_tools or not available_tools.get("tools"):
             return "No tools available."
