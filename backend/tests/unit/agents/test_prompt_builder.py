@@ -6,7 +6,7 @@ and malformed inputs gracefully, as well as system message generation.
 """
 
 import pytest
-from tarsy.agents.prompt_builder import PromptBuilder, PromptContext, get_prompt_builder
+from tarsy.agents.prompt_builder import PromptBuilder, PromptContext
 
 
 @pytest.mark.unit
@@ -463,49 +463,6 @@ Custom agent instructions here."""
         
         assert "No data" in observation
 
-    def test_format_data(self, builder):
-        """Test formatting data method."""
-        # Test dict
-        data = {"key": "value"}
-        result = builder._format_data(data)
-        assert "key" in result
-        assert "value" in result
-        
-        # Test string
-        data = "simple string"
-        result = builder._format_data(data)
-        assert result == "simple string"
-        
-        # Test other types
-        data = 42
-        result = builder._format_data(data)
-        assert "42" in result
-
-    def test_format_available_tools(self, builder):
-        """Test formatting available tools."""
-        tools = {
-            "tool1": {"description": "First tool"},
-            "tool2": {"description": "Second tool"}
-        }
-        result = builder._format_available_tools(tools)
-        assert "tool1" in result
-        assert "First tool" in result
-        assert "tool2" in result
-        assert "Second tool" in result
-
-    def test_format_iteration_history(self, builder):
-        """Test formatting iteration history."""
-        history = [
-            {"tools_called": [{"server": "server1", "tool": "tool1", "reason": "test"}]},
-            {"tools_called": [{"server": "server2", "tool": "tool2", "reason": "test"}]}
-        ]
-        result = builder._format_iteration_history(history)
-        assert "Iteration 1" in result
-        assert "Iteration 2" in result
-        assert "server1.tool1" in result
-        assert "server2.tool2" in result
-
-
 @pytest.mark.unit
 class TestPromptBuilderUtilityMethods:
     """Test suite for PromptBuilder utility and formatting methods."""
@@ -514,55 +471,6 @@ class TestPromptBuilderUtilityMethods:
     def builder(self):
         """Create a PromptBuilder instance for testing."""
         return PromptBuilder()
-
-    def test_format_data_various_types(self, builder):
-        """Test _format_data with various input types."""
-        # Test dict
-        data = {"key": "value", "number": 42, "nested": {"inner": "data"}}
-        result = builder._format_data(data)
-        assert "key" in result and "value" in result and "42" in result
-        
-        # Test list
-        data = ["item1", "item2", {"key": "value"}]
-        result = builder._format_data(data)
-        assert "item1" in result and "item2" in result
-        
-        # Test string
-        data = "simple string"
-        result = builder._format_data(data)
-        assert result == "simple string"
-        
-        # Test number
-        data = 42
-        result = builder._format_data(data)
-        assert result == "42"
-        
-        # Test None
-        data = None
-        result = builder._format_data(data)
-        assert result == "None"
-    
-    def test_format_available_tools(self, builder):
-        """Test _format_available_tools with various scenarios."""
-        # Test empty tools
-        tools = {}
-        result = builder._format_available_tools(tools)
-        assert result == "No tools available."
-        
-        # Test None tools
-        tools = None
-        result = builder._format_available_tools(tools)
-        assert result == "No tools available."
-        
-        # Test with actual tools
-        tools = {
-            "tools": [
-                {"name": "test_tool", "description": "A test tool"},
-                {"name": "another_tool", "description": "Another tool"}
-            ]
-        }
-        result = builder._format_available_tools(tools)
-        assert "test_tool" in result and "another_tool" in result
     
     def test_extract_section_content(self, builder):
         """Test _extract_section_content with various inputs."""
@@ -784,73 +692,6 @@ class TestPromptBuilderPrivateMethods:
         assert "## Runbook Content" in result
         assert "No runbook available" in result
 
-    def test_format_iteration_history_complex(self, builder, context):
-        """Test _format_iteration_history with complex data."""
-        # Create test iteration history data since it's no longer in PromptContext
-        iteration_history = [
-            {
-                "iteration": 1,
-                "tools_called": [
-                    {"server": "kubernetes", "tool": "get_pods", "reason": "Check pod status"}
-                ],
-                "mcp_data": {
-                    "kubernetes-server": [
-                        {"tool": "get_pods", "result": {"status": "Running"}, "parameters": {"namespace": "prod"}}
-                    ]
-                }
-            }
-        ]
-        result = builder._format_iteration_history(iteration_history)
-        
-        assert "### Iteration 1" in result
-        assert "kubernetes.get_pods" in result
-        assert "Check pod status" in result
-        assert "kubernetes-server" in result
-        assert '"status": "Running"' in result
-
-    def test_format_iteration_history_with_long_data(self, builder):
-        """Test _format_iteration_history with data that needs truncation."""
-        long_result = {"data": "x" * 10000}  # Create very long data to trigger truncation
-        iteration_history = [{
-            "iteration": 1,
-            "tools_called": [{"server": "test", "tool": "get_data", "reason": "test"}],
-            "mcp_data": {
-                "test-server": [{"tool": "get_data", "result": long_result}]
-            }
-        }]
-        
-        result = builder._format_iteration_history(iteration_history)
-        assert "[truncated for brevity]" in result
-
-    def test_format_iteration_history_with_errors(self, builder):
-        """Test _format_iteration_history with error cases."""
-        iteration_history = [{
-            "iteration": 1,
-            "tools_called": [{"server": "test", "tool": "fail", "reason": "test error"}],
-            "mcp_data": {
-                "test-server": [{"tool": "fail", "error": "Connection timeout"}]
-            }
-        }]
-        
-        result = builder._format_iteration_history(iteration_history)
-        assert "Connection timeout" in result
-        assert "fail_result_error" in result
-
-    def test_format_iteration_history_legacy_format(self, builder):
-        """Test _format_iteration_history with legacy dict format."""
-        iteration_history = [{
-            "iteration": 1,
-            "tools_called": [{"server": "legacy", "tool": "get_status", "reason": "legacy test"}],
-            "mcp_data": {
-                "legacy-server": {"get_status_result": "OK", "get_logs_result": "No issues"}
-            }
-        }]
-        
-        result = builder._format_iteration_history(iteration_history)
-        assert "get_status_result" in result
-        assert "get_logs_result" in result
-        assert "OK" in result
-
     def test_format_available_actions(self, builder, context):
         """Test _format_available_actions method."""
         result = builder._format_available_actions(context.available_tools)
@@ -931,19 +772,3 @@ class TestPromptBuilderEdgeCases:
         assert isinstance(context_result, str)
         assert isinstance(alert_result, str)
         assert isinstance(runbook_result, str)
-
-    def test_very_long_iteration_history(self, builder):
-        """Test iteration history with many iterations."""
-        long_history = []
-        for i in range(10):
-            long_history.append({
-                "iteration": i + 1,
-                "tools_called": [{"server": f"server-{i}", "tool": f"tool-{i}", "reason": f"reason-{i}"}],
-                "mcp_data": {f"server-{i}": [{"tool": f"tool-{i}", "result": f"result-{i}"}]}
-            })
-        
-        result = builder._format_iteration_history(long_history)
-        
-        assert "Iteration 1" in result
-        assert "Iteration 10" in result
-        assert "server-5" in result

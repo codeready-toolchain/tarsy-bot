@@ -11,11 +11,12 @@ uv add langchain-core
 
 ### File Structure
 ```
-backend/tarsy/agents/prompt_templates/
-├── __init__.py
-├── components.py           # Reusable template components
-├── builders.py            # Main builder classes
-└── templates.py           # LangChain template definitions
+backend/tarsy/agents/prompts/
+├── __init__.py            # Main exports and backward compatibility
+├── components.py          # Reusable template components  
+├── builders.py            # New LangChain PromptBuilder
+├── templates.py           # LangChain template definitions
+└── legacy_builder.py      # Current prompt_builder.py (during migration)
 ```
 
 ## Core Components
@@ -79,7 +80,6 @@ class RunbookSectionTemplate:
     def format(self, runbook_content: str) -> str:
         content = runbook_content if runbook_content else 'No runbook available'
         return self.template.format(runbook_content=content)
-
 
 class ChainContextSectionTemplate:
     """Formats chain context data."""
@@ -226,8 +226,6 @@ Your task is to provide a comprehensive analysis of the incident based on:
 3. Real-time system data from MCP servers
 
 Please provide detailed, actionable insights about what's happening and potential next steps.""")
-
-
 ```
 
 ### 3. Main Builder Class (`builders.py`)
@@ -244,7 +242,7 @@ import json
 if TYPE_CHECKING:
     from tarsy.models.agent_execution_result import ChainExecutionContext
 
-class LangChainPromptBuilder:
+class PromptBuilder:
     """LangChain-based prompt builder with template composition."""
     
     def __init__(self):
@@ -256,7 +254,7 @@ class LangChainPromptBuilder:
     # ============ Main Prompt Building Methods ============
     
     def build_standard_react_prompt(self, context, react_history: Optional[List[str]] = None) -> str:
-        """Build standard ReAct prompt using templates."""
+        """Build standard ReAct prompt using templates. Used by SimpleReActController."""
         # Build question components
         alert_section = self.alert_component.format(context.alert_data)
         runbook_section = self.runbook_component.format(context.runbook_content)
@@ -284,7 +282,7 @@ class LangChainPromptBuilder:
         )
     
     def build_stage_analysis_react_prompt(self, context, react_history: Optional[List[str]] = None) -> str:
-        """Build ReAct prompt for stage-specific analysis."""
+        """Build ReAct prompt for stage-specific analysis. Used by ReactStageController."""
         # Build question components
         alert_section = self.alert_component.format(context.alert_data)
         runbook_section = self.runbook_component.format(context.runbook_content)
@@ -314,7 +312,7 @@ class LangChainPromptBuilder:
         )
     
     def build_final_analysis_prompt(self, context) -> str:
-        """Build prompt for final analysis without ReAct format."""
+        """Build prompt for final analysis without ReAct format. Used by ReactFinalAnalysisController."""
         stage_info = ""
         if context.stage_name:
             stage_info = f"\n**Stage:** {context.stage_name}"
@@ -337,19 +335,17 @@ class LangChainPromptBuilder:
             chain_context=chain_context
         )
     
-
-    
     # ============ System Message Methods ============
     
     def get_enhanced_react_system_message(self, composed_instructions: str, task_focus: str = "investigation and providing recommendations") -> str:
-        """Get enhanced ReAct system message using template."""
+        """Get enhanced ReAct system message using template. Used by ReAct iteration controllers."""
         return REACT_SYSTEM_TEMPLATE.format(
             composed_instructions=composed_instructions,
             task_focus=task_focus
         )
     
     def get_general_instructions(self) -> str:
-        """Get general SRE instructions."""
+        """Get general SRE instructions. Used for system prompts in Final Analysis (simplified) vs ReAct system prompts (complex)."""
         return """## General SRE Agent Instructions
 
 You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
@@ -367,8 +363,6 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions."""
     
-
-    
     # ============ Helper Methods (Keep Current Logic) ============
     
     def _build_context_section(self, context) -> str:
@@ -378,89 +372,6 @@ Focus on root cause analysis and sustainable solutions."""
             agent_name=context.agent_name,
             server_list=server_list
         )
-    
-    def _build_agent_specific_analysis_guidance(self, context) -> str:
-        """Build agent-specific analysis guidance."""
-        guidance_parts = []
-        
-        if context.server_guidance:
-            guidance_parts.append("## Domain-Specific Analysis Guidance")
-            guidance_parts.append(context.server_guidance)
-        
-        if context.agent_specific_guidance:
-            guidance_parts.append("### Agent-Specific Guidance")
-            guidance_parts.append(context.agent_specific_guidance)
-        
-        return "\n\n".join(guidance_parts) if guidance_parts else ""
-    
-    def _build_analysis_instructions(self) -> str:
-        """Build the analysis instructions section."""
-        return """## Analysis Instructions
-
-Please provide your analysis in the following structured format:
-
-# 🚨 1. QUICK SUMMARY
-**Provide a brief, concrete summary (2-3 sentences maximum):**
-- What specific resource is affected (include **name**, **type**, **namespace** if applicable)
-- What exactly is wrong with it
-- Root cause in simple terms
-
----
-
-# ⚡ 2. RECOMMENDED ACTIONS
-
-## 🔧 Immediate Fix Actions (if any):
-**List specific commands that could potentially resolve the issue, in order of priority:**
-- Command 1. Explanation of what this does
-```command
-command here
-```
-- Command 2. Explanation of what this does
-```command
-command here
-```
-
-## 🔍 Investigation Actions (if needed):
-**List commands for further investigation:**
-- Command 1. What information this will provide
-```command
-command here
-```
-- Command 2. What information this will provide
-```command
-command here
-```
-
----
-
-## 3. DETAILED ANALYSIS
-
-### Root Cause Analysis:
-- What is the primary cause of this alert?
-- What evidence from the system data supports this conclusion?
-- Technical details and context
-
-### Current System State:
-- Detailed state of affected systems and resources
-- Any blocked processes or dependencies preventing resolution
-- Related system dependencies and interactions
-
-### Impact Assessment:
-- Current impact on system functionality
-- Potential escalation scenarios
-- Affected services or users
-
-### Prevention Measures:
-- How can this issue be prevented in the future?
-- Monitoring improvements needed
-- Process or automation recommendations
-
-### Additional Context:
-- Related systems that should be monitored
-- Historical patterns or similar incidents
-- Any other relevant technical details
-
-Please be specific and reference the actual data provided. Use exact resource names, namespaces, and status information from the system data."""
     
     def _format_available_actions(self, available_tools: Dict) -> str:
         """Format available tools as ReAct actions."""
@@ -490,157 +401,144 @@ Please be specific and reference the actual data provided. Use exact resource na
             else:
                 flattened_history.append(str(item))
         return flattened_history
-    
-    def _format_data(self, data) -> str:
-        """Format data for display in prompts."""
-        if isinstance(data, (dict, list)):
-            try:
-                return json.dumps(data, indent=2, default=str)
-            except:
-                return str(data)
-        return str(data)
-    
-    def _format_iteration_history(self, iteration_history: List[Dict]) -> str:
-        """Format iteration history for display in prompts."""
-        if not iteration_history:
-            return "No previous iterations."
-        
-        TRUNCATION_THRESHOLD = 3000
-        history_text = ""
-        
-        for i, iteration in enumerate(iteration_history, 1):
-            history_text += f"### Iteration {i}\n"
-            
-            if "tools_called" in iteration and iteration["tools_called"]:
-                history_text += "**Tools Called:**\n"
-                for tool in iteration["tools_called"]:
-                    history_text += f"- {tool.get('server', 'unknown')}.{tool.get('tool', 'unknown')}: {tool.get('reason', 'No reason provided')}\n"
-                history_text += "\n"
-            
-            if "mcp_data" in iteration and iteration["mcp_data"]:
-                history_text += "**Results:**\n"
-                for server_name, server_data in iteration["mcp_data"].items():
-                    data_count = len(server_data) if isinstance(server_data, list) else 1
-                    history_text += f"- **{server_name}**: {data_count} data points collected\n"
-                    
-                    if isinstance(server_data, list):
-                        for item in server_data:
-                            tool_name = item.get('tool', 'unknown_tool')
-                            params = item.get('parameters', {})
-                            
-                            if tool_name == 'resources_list' and 'kind' in params or tool_name == 'resources_get' and 'kind' in params:
-                                result_key = f"{tool_name}_{params['kind']}_result"
-                            else:
-                                result_key = f"{tool_name}_result"
-                            
-                            if 'result' in item:
-                                result = item['result']
-                                if result:
-                                    formatted_data = self._format_data({"result": result})
-                                    if len(formatted_data) > TRUNCATION_THRESHOLD:
-                                        formatted_data = formatted_data[:TRUNCATION_THRESHOLD] + "\n... [truncated for brevity]"
-                                    history_text += f"  - **{result_key}**:\n```\n{formatted_data}\n```\n"
-                            elif 'error' in item:
-                                history_text += f"  - **{result_key}_error**: {item['error']}\n"
-                    elif isinstance(server_data, dict):
-                        for key, value in server_data.items():
-                            formatted_data = self._format_data(value)
-                            if len(formatted_data) > TRUNCATION_THRESHOLD:
-                                formatted_data = formatted_data[:TRUNCATION_THRESHOLD] + "\n... [truncated for brevity]"
-                            history_text += f"  - **{key}**:\n```\n{formatted_data}\n```\n"
-                    else:
-                        formatted_data = self._format_data(server_data)
-                        if len(formatted_data) > TRUNCATION_THRESHOLD:
-                            formatted_data = formatted_data[:TRUNCATION_THRESHOLD] + "\n... [truncated for brevity]"
-                        history_text += f"```\n{formatted_data}\n```\n"
-                history_text += "\n"
-            
-            if "partial_analysis" in iteration:
-                history_text += f"**Partial Analysis:**\n{iteration['partial_analysis']}\n\n"
-            
-            history_text += "---\n\n"
-        
-        return history_text.strip()
-    
+
     # ============ ReAct Response Parsing (Keep Current Logic) ============
     
     def parse_react_response(self, response: str) -> Dict[str, Any]:
         """Parse structured ReAct response into components with robust error handling."""
         # Keep existing implementation from current PromptBuilder
-        # (Lines 753-839 from current file)
+        # Copy exact logic from lines 484-571 in current prompt_builder.py
         pass
     
     def get_react_continuation_prompt(self, context_type: str = "general") -> List[str]:
         """Get ReAct continuation prompts for when LLM provides incomplete responses."""
         # Keep existing implementation from current PromptBuilder
-        # (Lines 841-858 from current file)
+        # Copy exact logic from lines 572-590 in current prompt_builder.py
         pass
     
     def get_react_error_continuation(self, error_message: str) -> List[str]:
         """Get ReAct continuation prompts for error recovery."""
         # Keep existing implementation from current PromptBuilder
-        # (Lines 860-873 from current file)
+        # Copy exact logic from lines 591-605 in current prompt_builder.py
         pass
     
     def convert_action_to_tool_call(self, action: str, action_input: str) -> Dict[str, Any]:
         """Convert ReAct Action/Action Input to MCP tool call format."""
         # Keep existing implementation from current PromptBuilder
-        # (Lines 875-939 from current file)
+        # Copy exact logic from lines 606-671 in current prompt_builder.py
         pass
     
     def format_observation(self, mcp_data: Dict[str, Any]) -> str:
         """Format MCP data as observation text for ReAct."""
         # Keep existing implementation from current PromptBuilder
-        # (Lines 941-963 from current file)
+        # Copy exact logic from lines 672-695 in current prompt_builder.py
         pass
 ```
 
 ### 4. Module Initialization (`__init__.py`)
 ```python
-from .builders import LangChainPromptBuilder
+from .builders import PromptBuilder
 
 # Create shared instance
-_shared_prompt_builder = LangChainPromptBuilder()
+_shared_prompt_builder = PromptBuilder()
 
-def get_prompt_builder() -> LangChainPromptBuilder:
-    """Get the shared LangChainPromptBuilder instance."""
+def get_prompt_builder() -> PromptBuilder:
+    """Get the shared PromptBuilder instance."""
     return _shared_prompt_builder
 
-# Backward compatibility
-PromptBuilder = LangChainPromptBuilder
+# Re-export for backward compatibility
+__all__ = ['PromptBuilder', 'get_prompt_builder']
 ```
 
 ## Migration Implementation
 
-### Step 1: Create New Module Structure
-1. Create `backend/tarsy/agents/prompt_templates/` directory
-2. Implement all classes above in respective files
-3. Copy existing ReAct parsing methods to new builder (keep exact logic)
+### Step 1: Create New Package Structure
+1. Create `backend/tarsy/agents/prompts/` directory
+2. Move existing `prompt_builder.py` to `prompts/legacy_builder.py`  
+3. Implement new LangChain classes in respective files
+4. Copy existing ReAct parsing methods to new builder (keep exact logic)
 
-### Step 2: Replace Current Implementation
-1. Update `backend/tarsy/agents/prompt_builder.py`:
+### Step 2: Create Backward Compatibility Layer
+1. Create new `backend/tarsy/agents/prompt_builder.py` as re-export:
    ```python
-   # Replace entire file content with:
-   from .prompt_templates import get_prompt_builder, PromptBuilder
-   from .prompt_templates.components import PromptContext  # Move PromptContext
+   # Backward compatibility re-exports
+   from .prompts import get_prompt_builder, PromptBuilder, PromptContext
    
-   # Re-export for backward compatibility
    __all__ = ['get_prompt_builder', 'PromptBuilder', 'PromptContext']
    ```
 
-2. Move `PromptContext` dataclass to `prompt_templates/components.py`
+2. Move `PromptContext` dataclass to `prompts/components.py`
 
-### Step 3: Verify API Compatibility
+### Step 3: Implement LangChain Components
+1. **`prompts/components.py`** - Template components and PromptContext
+2. **`prompts/templates.py`** - LangChain template definitions
+3. **`prompts/builders.py`** - New LangChain PromptBuilder
+4. **`prompts/__init__.py`** - Package exports and shared instance
+
+### Step 4: Verify API Compatibility
 All existing USED method signatures must remain identical:
 - `build_standard_react_prompt(context: PromptContext, react_history: Optional[List[str]] = None) -> str`  
 - `build_stage_analysis_react_prompt(context: PromptContext, react_history: Optional[List[str]] = None) -> str`
 - `build_final_analysis_prompt(context: PromptContext) -> str`
-- `build_mcp_tool_selection_prompt(context: PromptContext) -> str`
-- `build_iterative_mcp_tool_selection_prompt(context: PromptContext) -> str`
-- All system message methods
+- `get_enhanced_react_system_message(composed_instructions: str, task_focus: str = "investigation and providing recommendations") -> str`
+- `get_general_instructions() -> str`
 - All ReAct parsing methods
 
-### Step 4: Testing Requirements
+### Step 5: Fix Type Safety Issues
+Update all iteration controllers to have proper type annotations:
+
+1. **Update `react_iteration_controller.py`:**
+   ```python
+   from typing import TYPE_CHECKING
+   
+   if TYPE_CHECKING:
+       from tarsy.integrations.llm.client import LLMClient
+       from tarsy.agents.prompt_builder import PromptBuilder
+   
+   class SimpleReActController(IterationController):
+       def __init__(self, llm_client: 'LLMClient', prompt_builder: 'PromptBuilder'):
+           """Initialize with proper type annotations."""
+           self.llm_client = llm_client
+           self.prompt_builder = prompt_builder
+   ```
+
+2. **Update `react_stage_controller.py`:**
+   ```python
+   from typing import TYPE_CHECKING
+   
+   if TYPE_CHECKING:
+       from tarsy.integrations.llm.client import LLMClient
+       from tarsy.agents.prompt_builder import PromptBuilder
+   
+   class ReactStageController(IterationController):
+       def __init__(self, llm_client: 'LLMClient', prompt_builder: 'PromptBuilder'):
+           """Initialize with proper type annotations."""
+           self.llm_client = llm_client
+           self.prompt_builder = prompt_builder
+   ```
+
+3. **Update `react_final_analysis_controller.py`:**
+   ```python
+   from typing import TYPE_CHECKING
+   
+   if TYPE_CHECKING:
+       from tarsy.integrations.llm.client import LLMClient
+       from tarsy.agents.prompt_builder import PromptBuilder
+   
+   class ReactFinalAnalysisController(IterationController):
+       def __init__(self, llm_client: 'LLMClient', prompt_builder: 'PromptBuilder'):
+           """Initialize with proper type annotations."""
+           self.llm_client = llm_client
+           self.prompt_builder = prompt_builder
+   ```
+
+**Benefits of Type Safety:**
+- IDE support with proper autocomplete and error checking
+- Runtime type validation with mypy
+- Clear contracts between components
+- Future-proof when migrating to new PromptBuilder
+
+### Step 6: Testing Requirements
 ```python
 def test_alert_component_formatting():
     """Test alert section handles all data types correctly."""
@@ -676,11 +574,10 @@ def test_backward_compatibility():
         agent_name="test",
         alert_data={'test': 'data'},
         runbook_content="test runbook",
-        mcp_data={},
         mcp_servers=["test"]
     )
     
-    # All these should work without changes (only the methods actually used)
+    # Only test methods that actually exist
     react_prompt = builder.build_standard_react_prompt(context)
     stage_prompt = builder.build_stage_analysis_react_prompt(context)
     final_prompt = builder.build_final_analysis_prompt(context)
