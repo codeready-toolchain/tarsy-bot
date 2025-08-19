@@ -12,6 +12,9 @@ from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..base_agent import BaseAgent
     from ...models.alert_processing import AlertProcessingData
+    # TEMPORARY PHASE 1: Import new models for compatibility bridge
+    # These imports will be REMOVED in Phase 6 cleanup
+    from ...models.processing_context import StageContext, ChainContext
 
 
 @dataclass
@@ -28,6 +31,50 @@ class IterationContext:
     available_tools: List[Dict[str, Any]]
     session_id: str
     agent: Optional['BaseAgent'] = None
+    
+    # =============================================================================
+    # TEMPORARY PHASE 1: Compatibility bridge for migration to new architecture
+    # This method will be COMPLETELY REMOVED in Phase 6 cleanup
+    # =============================================================================
+    
+    def to_stage_context(self) -> 'StageContext':
+        """
+        TEMPORARY: Convert to new StageContext model.
+        
+        This method provides a bridge to the new context architecture during
+        the migration period. It will be COMPLETELY REMOVED in Phase 6.
+        
+        Returns:
+            StageContext created from this IterationContext
+        """
+        # Import here to avoid circular imports during migration
+        from ...models.processing_context import StageContext, ChainContext, AvailableTools
+        from ...models.alert_processing import AlertProcessingData
+        
+        # Create ChainContext from alert_data
+        if isinstance(self.alert_data, AlertProcessingData):
+            # Use the AlertProcessingData's conversion method, but override runbook_content
+            chain_context = self.alert_data.to_chain_context(self.session_id)
+            # FIXED: IterationContext runbook_content takes precedence over AlertProcessingData
+            chain_context.runbook_content = self.runbook_content
+        else:
+            # Create ChainContext from raw dict alert_data
+            chain_context = ChainContext(
+                alert_type="unknown",  # We don't have this info from raw dict
+                alert_data=self.alert_data,
+                session_id=self.session_id,
+                current_stage_name="unknown",
+                runbook_content=self.runbook_content  # FIXED: Preserve runbook content from IterationContext
+            )
+        
+        # Convert available_tools to AvailableTools
+        available_tools = AvailableTools.from_legacy_format(self.available_tools)
+        
+        return StageContext(
+            chain_context=chain_context,
+            available_tools=available_tools,
+            agent=self.agent
+        )
 
 
 class IterationController(ABC):

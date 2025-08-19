@@ -6,8 +6,13 @@ while maintaining backward compatibility with existing APIs.
 """
 
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from tarsy.utils.logger import get_module_logger
+
+# TEMPORARY PHASE 1: Strategic import of new context models
+# These imports will be used in future migration phases
+if TYPE_CHECKING:
+    from tarsy.models.processing_context import StageContext
 from .components import (
     AlertSectionTemplate, 
     RunbookSectionTemplate, 

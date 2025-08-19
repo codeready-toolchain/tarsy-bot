@@ -35,6 +35,9 @@ from ..models.constants import IterationStrategy
 
 if TYPE_CHECKING:
     from .prompt_builder import PromptBuilder
+    # TEMPORARY PHASE 1: Strategic import of new context models
+    # These imports will be used during migration phases
+    from ..models.processing_context import ChainContext, StageContext
 
 from .prompt_builder import PromptContext, get_prompt_builder
 

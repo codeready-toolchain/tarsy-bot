@@ -9,9 +9,14 @@ performance and consistency with the rest of the system.
 """
 
 import uuid
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 
 from cachetools import TTLCache
+
+# TEMPORARY PHASE 1: Strategic import of new context models
+# These imports will be used during migration phases
+if TYPE_CHECKING:
+    from tarsy.models.processing_context import ChainContext, StageContext
 from tarsy.config.settings import Settings
 from tarsy.config.agent_config import ConfigurationLoader, ConfigurationError
 from tarsy.integrations.llm.client import LLMManager

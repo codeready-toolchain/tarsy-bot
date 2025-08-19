@@ -6,8 +6,13 @@ layers of the application, providing type safety and validation.
 """
 
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from .agent_execution_result import ChainExecutionContext, AgentExecutionResult
+
+# TEMPORARY PHASE 1: Import new models for compatibility bridge
+# This import will be REMOVED in Phase 6 cleanup
+if TYPE_CHECKING:
+    from .processing_context import ChainContext
 
 
 class AlertProcessingData(BaseModel):
@@ -120,6 +125,37 @@ class AlertProcessingData(BaseModel):
                     chain_context.stage_results[stage_name] = stage_result
         
         return chain_context
+
+    # =============================================================================
+    # TEMPORARY PHASE 1: Compatibility bridge for migration to new architecture
+    # This method will be COMPLETELY REMOVED in Phase 6 cleanup
+    # =============================================================================
+    
+    def to_chain_context(self, session_id: str) -> 'ChainContext':
+        """
+        TEMPORARY: Convert to new ChainContext model with session_id injection.
+        
+        This method provides a bridge to the new context architecture during
+        the migration period. It will be COMPLETELY REMOVED in Phase 6.
+        
+        Args:
+            session_id: Session ID to inject into new context
+            
+        Returns:
+            ChainContext with all data from this AlertProcessingData
+        """
+        # Import here to avoid circular imports during migration
+        from .processing_context import ChainContext
+        
+        return ChainContext(
+            alert_type=self.alert_type,
+            alert_data=self.alert_data,
+            session_id=session_id,  # FIXED: Inject session_id during conversion
+            current_stage_name=self.current_stage_name or "unknown",  # Handle None case
+            stage_outputs=self.stage_outputs,  # Should contain AgentExecutionResult objects
+            runbook_content=self.runbook_content,
+            chain_id=self.chain_id
+        )
 
 
 class AlertKey(BaseModel):
