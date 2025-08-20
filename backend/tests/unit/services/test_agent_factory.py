@@ -674,4 +674,254 @@ class TestAgentFactoryIterationStrategies:
         # Should log successful creation with strategy info
         log_messages = [record.message for record in caplog.records]
         creation_logs = [msg for msg in log_messages if "ConfigurableAgent" in msg]
-        assert len(creation_logs) > 0 
+        assert len(creation_logs) > 0
+
+
+@pytest.mark.unit
+class TestAgentFactoryErrorHandling:
+    """Test error handling scenarios in agent creation."""
+    
+    @pytest.fixture
+    def factory_with_mocks(self):
+        """Create factory with all mocked dependencies."""
+        llm_client = Mock()
+        mcp_client = Mock()
+        mcp_registry = Mock()
+        
+        # Mock successful agent config loading
+        agent_configs = {
+            "test-agent": Mock(mcp_servers=["test-server"])
+        }
+        
+        return AgentFactory(llm_client, mcp_client, mcp_registry, agent_configs)
+    
+    def test_create_agent_unknown_agent(self, factory_with_mocks):
+        """Test error when requesting unknown agent."""
+        with pytest.raises(ValueError, match="Unknown agent 'nonexistent-agent'"):
+            factory_with_mocks.create_agent("nonexistent-agent")
+    
+    def test_create_agent_missing_dependencies_llm(self):
+        """Test error when LLM client is missing."""
+        factory = AgentFactory(
+            llm_client=None,  # Missing
+            mcp_client=Mock(),
+            mcp_registry=Mock()
+        )
+        
+        with pytest.raises(ValueError, match="Missing dependencies.*LLM client is not initialized"):
+            factory.create_agent("KubernetesAgent")
+    
+    def test_create_agent_missing_dependencies_mcp_client(self):
+        """Test error when MCP client is missing."""
+        factory = AgentFactory(
+            llm_client=Mock(),
+            mcp_client=None,  # Missing
+            mcp_registry=Mock()
+        )
+        
+        with pytest.raises(ValueError, match="Missing dependencies.*MCP client is not initialized"):
+            factory.create_agent("KubernetesAgent")
+    
+    def test_create_agent_missing_dependencies_mcp_registry(self):
+        """Test error when MCP registry is missing."""
+        factory = AgentFactory(
+            llm_client=Mock(),
+            mcp_client=Mock(),
+            mcp_registry=None  # Missing
+        )
+        
+        with pytest.raises(ValueError, match="Missing dependencies.*MCP registry is not initialized"):
+            factory.create_agent("KubernetesAgent")
+    
+    def test_create_agent_multiple_missing_dependencies(self):
+        """Test error message includes all missing dependencies."""
+        factory = AgentFactory(
+            llm_client=None,
+            mcp_client=None,
+            mcp_registry=Mock()
+        )
+        
+        with pytest.raises(ValueError) as exc_info:
+            factory.create_agent("KubernetesAgent")
+        
+        error_message = str(exc_info.value)
+        assert "LLM client is not initialized" in error_message
+        assert "MCP client is not initialized" in error_message
+    
+    def test_create_configured_agent_missing_in_config(self, factory_with_mocks):
+        """Test error when configured agent is not in agent_configs."""
+        with pytest.raises(ValueError, match="Unknown configured agent 'missing-agent'"):
+            factory_with_mocks._create_configured_agent("missing-agent")
+    
+    def test_create_configured_agent_mcp_server_validation_error(self):
+        """Test error when configured agent references invalid MCP server."""
+        llm_client = Mock()
+        mcp_client = Mock()
+        
+        # Mock MCP registry that raises error for unknown server
+        mcp_registry = Mock()
+        mcp_registry.get_server_config.side_effect = ValueError("Server 'invalid-server' not found")
+        
+        agent_config = Mock()
+        agent_config.mcp_servers = ["invalid-server"]
+        agent_configs = {"test-agent": agent_config}
+        
+        factory = AgentFactory(llm_client, mcp_client, mcp_registry, agent_configs)
+        
+        with pytest.raises(ValueError) as exc_info:
+            factory._create_configured_agent("test-agent")
+        
+        error_message = str(exc_info.value)
+        assert "Dependency issues for configured agent 'test-agent'" in error_message
+        assert "Server 'invalid-server' not found" in error_message
+    
+    def test_create_traditional_agent_constructor_error(self, factory_with_mocks):
+        """Test handling of constructor errors in traditional agents."""
+        # Mock agent class that raises TypeError in constructor
+        mock_agent_class = Mock()
+        mock_agent_class.side_effect = TypeError("Invalid constructor arguments")
+        
+        factory_with_mocks.static_agent_classes["ErrorAgent"] = mock_agent_class
+        
+        with pytest.raises(ValueError, match="Constructor error for 'ErrorAgent': Invalid constructor arguments"):
+            factory_with_mocks._create_traditional_agent("ErrorAgent")
+    
+    def test_create_configured_agent_constructor_error(self):
+        """Test handling of constructor errors in configured agents."""
+        llm_client = Mock()
+        mcp_client = Mock() 
+        mcp_registry = Mock()
+        mcp_registry.get_server_config.return_value = Mock()  # Valid server config
+        
+        agent_config = Mock()
+        agent_config.mcp_servers = ["test-server"]
+        agent_configs = {"test-agent": agent_config}
+        
+        factory = AgentFactory(llm_client, mcp_client, mcp_registry, agent_configs)
+        
+        # Mock ConfigurableAgent to raise TypeError
+        with patch('tarsy.agents.configurable_agent.ConfigurableAgent') as mock_configurable:
+            mock_configurable.side_effect = TypeError("Missing required argument")
+            
+            with pytest.raises(ValueError, match="Constructor error for configured agent 'test-agent': Missing required argument"):
+                factory._create_configured_agent("test-agent")
+    
+    def test_create_traditional_agent_generic_error(self, factory_with_mocks):
+        """Test handling of generic errors in traditional agent creation."""
+        mock_agent_class = Mock()
+        mock_agent_class.side_effect = Exception("Unexpected error during creation")
+        
+        factory_with_mocks.static_agent_classes["FailingAgent"] = mock_agent_class
+        
+        with pytest.raises(ValueError, match="Failed to create 'FailingAgent': Unexpected error during creation"):
+            factory_with_mocks._create_traditional_agent("FailingAgent")
+    
+    def test_create_configured_agent_generic_error(self):
+        """Test handling of generic errors in configured agent creation."""
+        llm_client = Mock()
+        mcp_client = Mock()
+        mcp_registry = Mock()
+        mcp_registry.get_server_config.return_value = Mock()
+        
+        agent_config = Mock()
+        agent_config.mcp_servers = ["test-server"]
+        agent_configs = {"test-agent": agent_config}
+        
+        factory = AgentFactory(llm_client, mcp_client, mcp_registry, agent_configs)
+        
+        with patch('tarsy.agents.configurable_agent.ConfigurableAgent') as mock_configurable:
+            mock_configurable.side_effect = Exception("Unexpected configuration error")
+            
+            with pytest.raises(ValueError, match="Failed to create configured agent 'test-agent': Unexpected configuration error"):
+                factory._create_configured_agent("test-agent")
+    
+    def test_load_builtin_agent_classes_import_error(self):
+        """Test handling of import errors during agent class loading."""
+        with patch('tarsy.config.builtin_config.get_builtin_agent_import_mapping') as mock_mapping, \
+             patch('importlib.import_module') as mock_import:
+            mock_mapping.return_value = {
+                "NonExistentAgent": "nonexistent.module.NonExistentAgent"
+            }
+            mock_import.side_effect = ImportError("No module named 'nonexistent'")
+            
+            with pytest.raises(ValueError, match="Built-in agent '.*' could not be loaded"):
+                AgentFactory(Mock(), Mock(), Mock())
+    
+    def test_load_builtin_agent_classes_attribute_error(self):
+        """Test handling of attribute errors during agent class loading.""" 
+        with patch('tarsy.services.agent_factory.get_builtin_agent_import_mapping') as mock_mapping:
+            # Use a real module path that will import successfully but has no such attribute
+            mock_mapping.return_value = {
+                "MissingClassAgent": "tarsy.utils.logger.NonExistentClass"
+            }
+            
+            with pytest.raises(ValueError, match="Built-in agent '.*' could not be loaded"):
+                AgentFactory(Mock(), Mock(), Mock())
+    
+    def test_legacy_format_handling_success(self):
+        """Test successful legacy format handling."""
+        llm_client = Mock()
+        mcp_client = Mock()
+        mcp_registry = Mock()
+        
+        agent_config = Mock()
+        agent_config.mcp_servers = ["test-server"]
+        mcp_registry.get_server_config.return_value = Mock()
+        agent_configs = {"legacy-agent": agent_config}
+        
+        factory = AgentFactory(llm_client, mcp_client, mcp_registry, agent_configs)
+        
+        with patch('tarsy.agents.configurable_agent.ConfigurableAgent') as mock_configurable:
+            mock_agent = Mock()
+            mock_configurable.return_value = mock_agent
+            
+            # Test legacy format
+            result = factory.create_agent("ConfigurableAgent:legacy-agent")
+            
+            assert result == mock_agent
+            mock_configurable.assert_called_once()
+    
+    def test_legacy_format_unknown_agent(self, factory_with_mocks):
+        """Test legacy format with unknown agent."""
+        with pytest.raises(ValueError, match="Unknown agent 'ConfigurableAgent:unknown-legacy'"):
+            factory_with_mocks.create_agent("ConfigurableAgent:unknown-legacy")
+
+
+@pytest.mark.unit
+class TestAgentFactoryValidation:
+    """Test validation scenarios in agent factory."""
+    
+    def test_validate_dependencies_all_present(self):
+        """Test validation passes when all dependencies are present."""
+        llm_client = Mock()
+        mcp_client = Mock()
+        mcp_registry = Mock()
+        
+        agent_configs = {"test-agent": Mock(mcp_servers=["test-server"])}
+        factory = AgentFactory(llm_client, mcp_client, mcp_registry, agent_configs)
+        mcp_registry.get_server_config.return_value = Mock()  # Mock valid server config
+        
+        # Should not raise any errors
+        factory._validate_dependencies_for_traditional_agent("TestAgent")
+        factory._validate_dependencies_for_configured_agent("test-agent")
+    
+    def test_configured_agent_validation_with_valid_servers(self):
+        """Test configured agent validation with valid MCP servers."""
+        llm_client = Mock()
+        mcp_client = Mock()
+        mcp_registry = Mock()
+        mcp_registry.get_server_config.return_value = Mock()  # Valid config
+        
+        agent_config = Mock()
+        agent_config.mcp_servers = ["valid-server", "another-server"]
+        agent_configs = {"test-agent": agent_config}
+        
+        factory = AgentFactory(llm_client, mcp_client, mcp_registry, agent_configs)
+        
+        # Should validate all servers without errors
+        factory._validate_dependencies_for_configured_agent("test-agent")
+        
+        # Verify all servers were checked
+        assert mcp_registry.get_server_config.call_count == 2
+        mcp_registry.get_server_config.assert_any_call("valid-server")
+        mcp_registry.get_server_config.assert_any_call("another-server") 

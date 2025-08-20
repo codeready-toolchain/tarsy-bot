@@ -320,6 +320,275 @@ class TestLLMProviderMappings:
             mock_anthropic.assert_called_once()
 
 
+@pytest.mark.unit
+class TestLLMClientSSLAndBaseURL:
+    """Test SSL verification and base URL configuration."""
+    
+    def test_initialization_with_ssl_disabled(self):
+        """Test client initialization with SSL verification disabled."""
+        config = {
+            "temperature": 0.7,
+            "api_key": "test-key",
+            "model": "gpt-4",
+            "disable_ssl_verification": True
+        }
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai, \
+             patch('tarsy.integrations.llm.client.httpx.Client') as mock_client, \
+             patch('tarsy.integrations.llm.client.httpx.AsyncClient') as mock_async_client:
+            
+            client = LLMClient("openai", config)
+            
+            # Verify SSL warning was logged
+            assert client.available is True
+            
+            # Verify httpx clients were created with verify=False
+            mock_client.assert_called_with(verify=False)
+            mock_async_client.assert_called_with(verify=False)
+            
+            # Verify the clients were passed to ChatOpenAI
+            call_args = mock_openai.call_args[1]  # keyword arguments
+            assert 'http_client' in call_args
+            assert 'http_async_client' in call_args
+    
+    def test_initialization_with_custom_base_url(self):
+        """Test client initialization with custom base URL."""
+        config = {
+            "temperature": 0.7,
+            "api_key": "test-key", 
+            "model": "gpt-4",
+            "base_url": "https://custom-api.example.com/v1"
+        }
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
+            client = LLMClient("openai", config)
+            
+            # Verify base_url was passed to ChatOpenAI
+            call_args = mock_openai.call_args[1]
+            assert call_args['base_url'] == "https://custom-api.example.com/v1"
+    
+    def test_initialization_google_ignores_base_url(self):
+        """Test Google client ignores base_url parameter."""
+        config = {
+            "type": "google",
+            "temperature": 0.7,
+            "api_key": "test-key",
+            "model": "gemini-pro",
+            "base_url": "https://custom-google.example.com"  # Should be ignored
+        }
+        
+        with patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google:
+            client = LLMClient("google", config)
+            
+            # Verify base_url was not passed to Google client
+            call_args = mock_google.call_args[1]
+            assert 'base_url' not in call_args
+
+
+@pytest.mark.unit
+class TestLLMClientRetryLogic:
+    """Test retry logic for rate limiting and empty responses."""
+    
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Mock LangChain client."""
+        return AsyncMock()
+    
+    @pytest.fixture
+    def client_with_retry(self, mock_llm_client):
+        """Create client for retry testing."""
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", {"api_key": "test"})
+            client.llm_client = mock_llm_client
+            client.available = True
+            return client
+    
+    @pytest.mark.asyncio
+    async def test_retry_on_rate_limit(self, client_with_retry, mock_llm_client):
+        """Test retry logic for rate limiting errors."""
+        # First call fails with rate limit, second succeeds
+        rate_limit_error = Exception("429 Too Many Requests - rate limit exceeded")
+        success_response = Mock()
+        success_response.content = "Success after retry"
+        
+        mock_llm_client.ainvoke.side_effect = [rate_limit_error, success_response]
+        
+        messages = [LLMMessage(role="user", content="Test")]
+        
+        with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+            mock_ctx = AsyncMock()
+            mock_ctx.get_request_id.return_value = "retry-test"
+            mock_context.return_value.__aenter__.return_value = mock_ctx
+            
+            with patch('asyncio.sleep') as mock_sleep:  # Speed up test
+                result = await client_with_retry.generate_response(messages, "test-session")
+                
+                assert result == "Success after retry"
+                assert mock_llm_client.ainvoke.call_count == 2
+                mock_sleep.assert_called_once()  # Should have slept before retry
+    
+    @pytest.mark.asyncio
+    async def test_retry_exhausted_on_rate_limit(self, client_with_retry, mock_llm_client):
+        """Test behavior when rate limit retries are exhausted."""
+        rate_limit_error = Exception("rate_limit_exceeded")
+        mock_llm_client.ainvoke.side_effect = rate_limit_error
+        
+        messages = [LLMMessage(role="user", content="Test")]
+        
+        with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+            mock_ctx = AsyncMock()
+            mock_context.return_value.__aenter__.return_value = mock_ctx
+            
+            with patch('asyncio.sleep'):  # Speed up test
+                with pytest.raises(Exception, match="rate_limit_exceeded"):
+                    await client_with_retry.generate_response(messages, "test-session")
+                
+                # Should have tried max_retries + 1 times
+                assert mock_llm_client.ainvoke.call_count == 4  # 3 retries + 1 initial
+    
+    @pytest.mark.asyncio
+    async def test_empty_response_retry(self, client_with_retry, mock_llm_client):
+        """Test retry logic for empty responses."""
+        # First response empty, second has content
+        empty_response = Mock()
+        empty_response.content = ""
+        success_response = Mock()
+        success_response.content = "Success after empty retry"
+        
+        mock_llm_client.ainvoke.side_effect = [empty_response, success_response]
+        
+        messages = [LLMMessage(role="user", content="Test")]
+        
+        with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+            mock_ctx = AsyncMock()
+            mock_ctx.get_request_id.return_value = "empty-retry-test"
+            mock_context.return_value.__aenter__.return_value = mock_ctx
+            
+            with patch('asyncio.sleep'):  # Speed up test
+                result = await client_with_retry.generate_response(messages, "test-session")
+                
+                assert result == "Success after empty retry"
+                assert mock_llm_client.ainvoke.call_count == 2
+    
+    @pytest.mark.asyncio
+    async def test_empty_response_fallback_message(self, client_with_retry, mock_llm_client):
+        """Test fallback message injection for persistent empty responses."""
+        empty_response = Mock()
+        empty_response.content = ""
+        mock_llm_client.ainvoke.return_value = empty_response
+        
+        messages = [LLMMessage(role="user", content="Test")]
+        
+        with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+            mock_ctx = AsyncMock()
+            mock_context.return_value.__aenter__.return_value = mock_ctx
+            
+            with patch('asyncio.sleep'):
+                result = await client_with_retry.generate_response(messages, "test-session")
+                
+                # Should inject error message
+                assert "LLM Response Error" in result
+                assert "openai LLM returned empty responses" in result
+    
+    @pytest.mark.asyncio
+    async def test_retry_delay_extraction(self, client_with_retry):
+        """Test extraction of retry delay from error message."""
+        # Test the private method
+        error_with_delay = "API error: retry_delay { seconds: 5 }"
+        delay = client_with_retry._extract_retry_delay(error_with_delay)
+        assert delay == 5
+        
+        error_without_delay = "Generic API error"
+        delay = client_with_retry._extract_retry_delay(error_without_delay)
+        assert delay is None
+    
+    @pytest.mark.asyncio
+    async def test_non_rate_limit_error_no_retry(self, client_with_retry, mock_llm_client):
+        """Test that non-rate-limit errors don't trigger retries."""
+        generic_error = Exception("Generic API error")
+        mock_llm_client.ainvoke.side_effect = generic_error
+        
+        messages = [LLMMessage(role="user", content="Test")]
+        
+        with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+            mock_ctx = AsyncMock()
+            mock_context.return_value.__aenter__.return_value = mock_ctx
+            
+            with pytest.raises(Exception, match="Generic API error"):
+                await client_with_retry.generate_response(messages, "test-session")
+            
+            # Should only try once (no retries)
+            assert mock_llm_client.ainvoke.call_count == 1
+
+
+@pytest.mark.unit
+class TestLLMClientErrorHandling:
+    """Test comprehensive error handling and logging."""
+    
+    @pytest.fixture
+    def client_for_errors(self):
+        """Create client for error testing."""
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", {"api_key": "test"})
+            client.available = True
+            return client
+    
+    def test_extract_error_details_basic_exception(self, client_for_errors):
+        """Test error detail extraction for basic exceptions."""
+        try:
+            raise ValueError("Test error message")
+        except Exception as e:
+            details = client_for_errors._extract_error_details(e)
+            
+            assert "Type=ValueError" in details
+            assert "Message=Test error message" in details
+    
+    def test_extract_error_details_with_cause(self, client_for_errors):
+        """Test error detail extraction with exception chain."""
+        try:
+            try:
+                raise ConnectionError("Network failed")
+            except Exception as e:
+                raise ValueError("Wrapper error") from e
+        except Exception as e:
+            details = client_for_errors._extract_error_details(e)
+            
+            assert "Type=ValueError" in details
+            assert "RootCause=ConnectionError: Network failed" in details
+    
+    def test_extract_error_details_with_attributes(self, client_for_errors):
+        """Test error detail extraction with exception attributes."""
+        class CustomException(Exception):
+            def __init__(self, message):
+                super().__init__(message)
+                self.status_code = 500
+                self.error_type = "server_error"
+        
+        try:
+            raise CustomException("Custom error")
+        except Exception as e:
+            details = client_for_errors._extract_error_details(e)
+            
+            assert "status_code=500" in details
+            assert "error_type='server_error'" in details
+    
+    def test_extract_error_details_truncates_long_values(self, client_for_errors):
+        """Test that long attribute values are truncated."""
+        class LongAttributeException(Exception):
+            def __init__(self):
+                super().__init__("Error with long attribute")
+                self.long_data = "x" * 300  # Very long string
+        
+        try:
+            raise LongAttributeException()
+        except Exception as e:
+            details = client_for_errors._extract_error_details(e)
+            
+            # Should truncate long values
+            assert "long_data=" in details
+            assert len(details) < 1000  # Should be truncated
+
+
 @pytest.mark.integration
 class TestLLMClientIntegration:
     """Integration tests for LLM client."""
