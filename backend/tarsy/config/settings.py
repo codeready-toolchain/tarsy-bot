@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     disable_ssl_verification: bool = Field(default=False, description="Disable SSL certificate verification for LLM API calls (use with caution)")
     
     # LLM Configuration File Path
-    llm_config_path: str = Field(default="./config/llm_providers.yaml", description="Path to external LLM providers configuration file")
+    llm_config_path: str = Field(default="../config/llm_providers.yaml", description="Path to external LLM providers configuration file")
     
     # GitHub Configuration
     github_token: Optional[str] = Field(default=None)

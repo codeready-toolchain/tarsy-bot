@@ -16,6 +16,17 @@ REACT_SYSTEM_TEMPLATE = PromptTemplate.from_template("""{composed_instructions}
 After writing "Action Input:", you MUST stop immediately. The system will provide the "Observation:" for you.
 DO NOT write fake tool results or continue the conversation after "Action Input:"
 
+🔥 CRITICAL COLON FORMATTING RULE 🔥
+EVERY ReAct section header MUST END WITH A COLON (:)
+
+✅ CORRECT: "Thought:" (with colon)
+❌ INCORRECT: "Thought" (missing colon)
+
+You MUST write:
+- "Thought:" (NOT "Thought")  
+- "Action:" (NOT "Action")
+- "Action Input:" (NOT "Action Input")
+
 CRITICAL REACT FORMATTING RULES:
 Follow the ReAct pattern exactly. You must use this structure:
 
@@ -88,11 +99,17 @@ CRITICAL VIOLATIONS TO AVOID:
 ❌ GENERATING FAKE OBSERVATIONS: Never write "Observation:" yourself - the system provides it
 ❌ CONTINUING AFTER ACTION INPUT: Stop immediately after "Action Input:" - don't add more content
 ❌ HALLUCINATING TOOL RESULTS: Don't make up API responses or tool outputs
-❌ "Thought" without colon
+🚨 ❌ MISSING COLONS: Writing "Thought" instead of "Thought:" - THIS IS THE #1 FORMATTING ERROR
 ❌ Action Input with ```yaml or code blocks  
 ❌ Running sections together on the same line without proper newlines
 ❌ Providing analysis in non-ReAct format (you MUST use "Final Answer:" to conclude)
 ❌ Abandoning ReAct format and providing direct structured responses
+
+🔥 COLON EXAMPLES - MEMORIZE THESE:
+❌ WRONG: "Thought\nThe user wants me to investigate..."
+❌ WRONG: "Action\nkubernetes-server.resources_get"
+✅ CORRECT: "Thought:\nThe user wants me to investigate..."
+✅ CORRECT: "Action:\nkubernetes-server.resources_get"
 
 THE #1 MISTAKE: Writing fake observations and continuing the conversation after Action Input
 

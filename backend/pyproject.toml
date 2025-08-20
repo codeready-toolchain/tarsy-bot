@@ -61,7 +61,11 @@ build-backend = "hatchling.build"
 packages = ["tarsy"]
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-mock>=3.14.1",
+]
 # uv-specific settings for faster dependency resolution
 resolution = "highest"
 
