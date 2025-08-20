@@ -5,21 +5,17 @@ This module demonstrates how the new ChainContext and StageContext models
 work in actual test scenarios, alongside the existing models.
 """
 
-import pytest
-from typing import Dict, Any
 
-from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools, MCPTool
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
+from tarsy.models.processing_context import ChainContext, MCPTool, StageContext
 from tests.unit.models.test_context_factories import (
-    ChainContextFactory,
-    StageContextFactory,
     AvailableToolsFactory,
+    ChainContextFactory,
     MockAgentFactory,
+    StageContextFactory,
     create_test_chain_context,
     create_test_stage_context,
-    create_comparable_contexts_pair,
-    create_stage_context_comparison_pair
 )
 
 

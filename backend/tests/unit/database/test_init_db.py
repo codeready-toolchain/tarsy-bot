@@ -5,15 +5,16 @@ Tests database table creation, initialization, and connection testing functional
 to ensure the history service database is properly set up.
 """
 
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
 import pytest
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from tarsy.database.init_db import (
     create_database_tables,
+    get_database_info,
     initialize_database,
     test_database_connection,
-    get_database_info
 )
 
 

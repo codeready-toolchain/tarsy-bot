@@ -10,6 +10,7 @@ performance and consistency with the rest of the system.
 import pytest
 from pydantic import ValidationError
 
+from tarsy.models.constants import SystemHealthStatus
 from tarsy.models.websocket_models import (
     ChannelType,
     ConnectionEstablished,
@@ -21,7 +22,6 @@ from tarsy.models.websocket_models import (
     SystemHealthUpdate,
     WebSocketMessage,
 )
-from tarsy.models.constants import SystemHealthStatus
 
 
 class TestWebSocketMessage:

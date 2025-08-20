@@ -9,7 +9,6 @@ from tarsy.models.agent_config import (
     MCPServerConfigModel,
 )
 from tarsy.models.constants import IterationStrategy
-from tests.utils import ModelValidationTester, TestUtils
 
 
 @pytest.mark.unit
@@ -375,7 +374,6 @@ class TestCombinedConfigModel:
 
     def test_valid_configurable_agent_references(self):
         """Test valid configurable agent references in chain stages."""
-        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
         
         config_data = {
             "agents": {
@@ -424,7 +422,6 @@ class TestCombinedConfigModel:
 
     def test_missing_configurable_agent_reference_fails(self):
         """Test that missing configurable agent references fail validation."""
-        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
         
         config_data = {
             "agents": {
@@ -464,7 +461,6 @@ class TestCombinedConfigModel:
 
     def test_non_configurable_agent_references_ignored(self):
         """Test that non-configurable agent references are ignored by validator."""
-        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
         
         config_data = {
             "agents": {},
@@ -494,7 +490,6 @@ class TestCombinedConfigModel:
 
     def test_multiple_chain_validation_errors(self):
         """Test validation errors across multiple chains and stages."""
-        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
         
         config_data = {
             "agents": {

@@ -2,9 +2,10 @@
 Test dashboard broadcaster with simplified immediate-only broadcasting.
 """
 
-import pytest
 from collections import deque
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from tarsy.models.websocket_models import (
     ChannelType,
@@ -200,10 +201,10 @@ class TestDashboardBroadcaster:
     async def test_cleanup_expired_messages(self, broadcaster):
         """Test cleanup of expired buffered messages."""
         from datetime import datetime, timedelta
-        from tarsy.services.dashboard_broadcaster import TimestampedMessage
-        
+
         # Add some messages to buffer (use session channel format)
         from tarsy.models.websocket_models import ChannelType
+        from tarsy.services.dashboard_broadcaster import TimestampedMessage
         channel = ChannelType.session_channel("test_session")
         
         # Add expired message (TTL is 300 seconds)

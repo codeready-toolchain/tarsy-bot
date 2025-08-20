@@ -667,7 +667,7 @@ class HistoryRepository:
             )
             
         except Exception as e:
-            logger.error(f"Failed to build session timeline for session {session_id}: {str(e)}")
+            logger.error(f"Failed to get detailed session {session_id}: {str(e)}")
             return None
 
     def get_filter_options(self) -> FilterOptions:

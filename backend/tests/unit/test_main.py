@@ -6,16 +6,21 @@ Tests lifespan management, endpoints, WebSocket connections, and background proc
 
 import asyncio
 import uuid
-from unittest.mock import AsyncMock, Mock, patch
 from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 from fastapi import WebSocket
-
+from fastapi.testclient import TestClient
 
 # Import the modules we need to test and mock
-from tarsy.main import app, lifespan, process_alert_background, processing_alert_keys, alert_keys_lock
+from tarsy.main import (
+    alert_keys_lock,
+    app,
+    lifespan,
+    process_alert_background,
+    processing_alert_keys,
+)
 from tarsy.models.processing_context import ChainContext
 
 
@@ -337,9 +342,7 @@ class TestSubmitAlertEndpoint:
         """Test alert submission with various invalid inputs."""
         if invalid_input == "invalid json":
             response = client.post("/alerts", data=invalid_input, headers={"content-type": "application/json"})
-        elif invalid_input == "not a dict":
-            response = client.post("/alerts", json=invalid_input)
-        elif invalid_input is None:
+        elif invalid_input == "not a dict" or invalid_input is None:
             response = client.post("/alerts", json=invalid_input)
         else:
             response = client.post("/alerts", json=invalid_input)
@@ -624,7 +627,8 @@ class TestBackgroundProcessing:
         # Make process_alert hang
         mock_alert_service.process_alert = AsyncMock(side_effect=asyncio.sleep(1000))
         
-        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)):
+        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
+             patch('tarsy.main.asyncio.wait_for', side_effect=asyncio.TimeoutError()):
             # Should not raise exception, should handle timeout gracefully
             await process_alert_background("alert-123", mock_alert_data)
 

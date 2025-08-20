@@ -5,8 +5,8 @@ Tests agent class registration, instantiation, dependency injection,
 error handling, and validation of created agent instances.
 """
 
-from unittest.mock import Mock, patch
 from unittest import mock
+from unittest.mock import Mock, patch
 
 import pytest
 

@@ -5,12 +5,13 @@ Tests chain loading from built-in and YAML configurations, validation logic,
 chain lookup functionality, and error handling.
 """
 
-import pytest
 from unittest.mock import Mock, patch
 
-from tarsy.services.chain_registry import ChainRegistry
-from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+import pytest
+
 from tarsy.config.agent_config import ConfigurationLoader
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+from tarsy.services.chain_registry import ChainRegistry
 from tests.utils import ChainFactory
 
 

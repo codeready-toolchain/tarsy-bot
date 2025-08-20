@@ -5,13 +5,18 @@ This module provides factory functions for creating test instances of the
 ChainContext and StageContext models for use in tests.
 """
 
-from unittest.mock import Mock
-from typing import Dict, Any, Optional, List
 import time
+from typing import List
+from unittest.mock import Mock
 
-from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools, MCPTool
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
+from tarsy.models.processing_context import (
+    AvailableTools,
+    ChainContext,
+    MCPTool,
+    StageContext,
+)
 
 
 class ChainContextFactory:
@@ -220,8 +225,7 @@ class MockAgentFactory:
     @staticmethod
     def create_kubernetes_agent() -> Mock:
         """Create a mock Kubernetes agent."""
-        agent = Mock()
-        agent.__class__.__name__ = "KubernetesAgent"
+        agent = type("KubernetesAgent", (Mock,), {})()
         agent.mcp_servers.return_value = ["kubernetes-server", "monitoring-server"]
         agent.custom_instructions.return_value = "Specialized Kubernetes troubleshooting agent"
         return agent
@@ -229,8 +233,7 @@ class MockAgentFactory:
     @staticmethod
     def create_aws_agent() -> Mock:
         """Create a mock AWS agent."""
-        agent = Mock()
-        agent.__class__.__name__ = "AWSAgent"
+        agent = type("AWSAgent", (Mock,), {})()
         agent.mcp_servers.return_value = ["aws-server", "cloudwatch-server"]
         agent.custom_instructions.return_value = "AWS infrastructure analysis agent"
         return agent
@@ -238,8 +241,7 @@ class MockAgentFactory:
     @staticmethod
     def create_configurable_agent(name: str, servers: List[str]) -> Mock:
         """Create a mock configurable agent with custom settings."""
-        agent = Mock()
-        agent.__class__.__name__ = name
+        agent = type(name, (Mock,), {})()
         agent.mcp_servers.return_value = servers
         agent.custom_instructions.return_value = f"Configurable agent: {name}"
         return agent
@@ -324,5 +326,5 @@ def create_stage_context_comparison_pair() -> tuple[StageContext, StageContext]:
     """Create two comparable StageContext instances for testing."""
     return (
         StageContextFactory.create_basic(),
-        StageContextFactory.create_with_previous_results()
+        StageContextFactory.create_with_previous_stages()
     )

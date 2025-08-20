@@ -4,15 +4,12 @@ Unit tests for DashboardConnectionManager.
 
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from tarsy.models.websocket_models import (
-    ChannelType
-)
+from tarsy.models.websocket_models import ChannelType
 from tarsy.services.dashboard_connection_manager import DashboardConnectionManager
-from tests.utils import MockFactory, TestUtils, DashboardConnectionFactory
+from tests.utils import DashboardConnectionFactory, TestUtils
 
 
 @pytest.fixture

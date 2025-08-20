@@ -5,14 +5,15 @@ Tests the MCP client that handles communication with MCP servers
 using the official MCP SDK and the new typed hook system.
 """
 
-import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from contextlib import AsyncExitStack
+from unittest.mock import AsyncMock, Mock, patch
 
-from tarsy.integrations.mcp.client import MCPClient
-from tarsy.services.mcp_server_registry import MCPServerRegistry
-from tarsy.services.data_masking_service import DataMaskingService
+import pytest
+
 from tarsy.config.settings import Settings
+from tarsy.integrations.mcp.client import MCPClient
+from tarsy.services.data_masking_service import DataMaskingService
+from tarsy.services.mcp_server_registry import MCPServerRegistry
 
 
 @pytest.mark.unit

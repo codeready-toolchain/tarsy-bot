@@ -5,8 +5,9 @@ Tests the TypedHookRegistry that manages initialization and registration
 of typed hooks with dependency injection.
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
 
 from tarsy.hooks.hook_registry import TypedHookRegistry, get_typed_hook_registry
 

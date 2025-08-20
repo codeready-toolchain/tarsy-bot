@@ -13,6 +13,7 @@ from tarsy.models.agent_config import MCPServerConfigModel
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tests.utils import MCPServerMaskingFactory
 
+
 @pytest.mark.unit
 class TestMCPServerRegistryMaskingIntegration:
     """Test registry integration with masking configurations."""

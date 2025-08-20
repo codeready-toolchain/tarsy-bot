@@ -6,17 +6,18 @@ and provide the expected processing patterns for agent execution.
 """
 
 from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
 
-from tarsy.agents.iteration_controllers.base_controller import (
-    IterationController,
-)
 from tarsy.agents.iteration_controllers.react_controller import SimpleReActController
-from tarsy.agents.iteration_controllers.react_final_analysis_controller import ReactFinalAnalysisController
-from tarsy.agents.iteration_controllers.react_stage_controller import ReactStageController
+from tarsy.agents.iteration_controllers.react_final_analysis_controller import (
+    ReactFinalAnalysisController,
+)
+from tarsy.agents.iteration_controllers.react_stage_controller import (
+    ReactStageController,
+)
 from tarsy.models.constants import IterationStrategy
-from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
-
+from tarsy.models.processing_context import AvailableTools, ChainContext, StageContext
 
 # TestIterationContext removed - IterationContext class no longer exists
 # It was replaced by StageContext in the EP-0012 context architecture redesign
@@ -732,12 +733,16 @@ The issue is caused by a stuck finalizer.
 - Monitor operator health
 - Implement cleanup policies"""
         
+        # Mock StageContext for testing
+        mock_context = Mock(spec=StageContext)
+        
         result = controller._extract_react_final_analysis(
             analysis_result=test_response,
             completion_patterns=["Analysis completed"],
             incomplete_patterns=["Analysis incomplete:"],
             fallback_extractor=None,
-            fallback_message="No analysis found"
+            fallback_message="No analysis found",
+            context=mock_context
         )
         
         # Verify the full content was extracted
@@ -760,12 +765,16 @@ The issue is caused by a stuck finalizer.
         test_response = """Thought: Analysis complete.
 Final Answer: Simple analysis result."""
         
+        # Mock StageContext for testing
+        mock_context = Mock(spec=StageContext)
+        
         result = controller._extract_react_final_analysis(
             analysis_result=test_response,
             completion_patterns=["Analysis completed"],
             incomplete_patterns=["Analysis incomplete:"],
             fallback_extractor=None,
-            fallback_message="No analysis found"
+            fallback_message="No analysis found",
+            context=mock_context
         )
         
         assert result == "Simple analysis result."
@@ -780,12 +789,16 @@ This continues the analysis.
 Thought: This should not be included.
 Action: some-action"""
         
+        # Mock StageContext for testing
+        mock_context = Mock(spec=StageContext)
+        
         result = controller._extract_react_final_analysis(
             analysis_result=test_response,
             completion_patterns=["Analysis completed"],
             incomplete_patterns=["Analysis incomplete:"],
             fallback_extractor=None,
-            fallback_message="No analysis found"
+            fallback_message="No analysis found",
+            context=mock_context
         )
         
         assert result == "This is the analysis result.\nThis continues the analysis."

@@ -22,8 +22,9 @@
 This design document is a living document that evolves through [Enhancement Proposals (EPs)](enhancements/README.md). All significant architectural changes are documented through the EP process, ensuring traceable evolution and AI-friendly implementation.
 
 ### Recent Changes
+- **EP-0012 (IMPLEMENTED)**: Context Architecture Redesign - Complete redesign of context system with clean 2-level hierarchy: ChainContext (entire processing session) and StageContext (single stage execution). Eliminates field duplication, misleading names, and unnecessary wrapper types. New processing_context.py module contains all context models with proper session ID handling and stage execution order preservation
 - **EP-0011 (IMPLEMENTED)**: LangChain PromptBuilder - Refactored PromptBuilder to use LangChain templates with a clean component composition pattern. Features include template-based prompt composition with AlertSectionTemplate, RunbookSectionTemplate, and ChainContextSectionTemplate, backward compatibility via re-export layer, full type safety with proper annotations, and validated template definitions using LangChain's PromptTemplate.from_template()
-- **EP-0008-1 (IMPLEMENTED)**: Sequential Agent Chains - Added multi-stage alert processing workflows where alerts can flow through multiple specialized agents that build upon each other's work. Key features include unified AlertProcessingData model throughout the pipeline, ChainRegistry for managing chain definitions, new iteration strategies (REACT_STAGE, REACT_FINAL_ANALYSIS) for different chain stage purposes, enhanced database schema with StageExecution tracking, and chain execution logic integrated into AlertService
+- **EP-0008-1 (IMPLEMENTED)**: Sequential Agent Chains - Added multi-stage alert processing workflows where alerts can flow through multiple specialized agents that build upon each other's work. Key features include unified ChainContext model throughout the pipeline, ChainRegistry for managing chain definitions, new iteration strategies (REACT_STAGE, REACT_FINAL_ANALYSIS) for different chain stage purposes, enhanced database schema with StageExecution tracking, and chain execution logic integrated into AlertService
 - **TYPED HOOK SYSTEM (IMPLEMENTED)**: Type-Safe Interaction Capture - Complete refactoring to typed hook system with unified LLMInteraction and MCPInteraction models, eliminating data contamination and providing clean type-safe interaction capture. Comprehensive test coverage restoration with 49 new tests for hook system, LLM client, and MCP client functionality
 - **INTERACTION MODEL UNIFICATION (IMPLEMENTED)**: Unified Interaction Models - Consolidated interaction data structures into type-safe LLMInteraction and MCPInteraction models with consistent fields, JSON serialization, and proper database persistence. Dashboard integration updated for LLM interaction preview with smart text parsing
 - **ITERATION STRATEGIES (IMPLEMENTED)**: Agent Iteration Flow Strategies - Added ReAct vs Regular iteration strategy support allowing agents to use either the standard ReAct pattern (Think→Action→Observation cycles) for systematic analysis or regular iteration pattern for faster processing without reasoning overhead
@@ -53,7 +54,7 @@ Tarsy is a **distributed, event-driven system** designed to automate incident re
 ### Core Design Principles
 
 1. **Chain-Based Processing**: Sequential agent chains enable multi-stage workflows where agents build upon each other's work for comprehensive analysis
-2. **Unified Data Model**: Enhanced AlertProcessingData serves as the single data model throughout the entire processing pipeline, accumulating stage outputs
+2. **Unified Data Model**: Enhanced ChainContext serves as the single data model throughout the entire processing pipeline, accumulating stage outputs
 3. **Agent Specialization**: Domain-specific agents with focused MCP server subsets, specialized instructions, and configurable iteration strategies per stage
 4. **Configuration-Driven Extensibility**: Support for both hardcoded agents and YAML-configured agents with chain definitions without code changes
 5. **Flexible Alert Data Structure**: Agent-agnostic system supporting arbitrary JSON payloads from diverse monitoring sources
@@ -314,7 +315,7 @@ class AlertService:
     def __init__(self, settings: Settings)
     async def initialize(self)
     async def process_alert(self, alert_data: Dict[str, Any]) -> Dict[str, Any]
-    async def _execute_chain_stages(self, chain_definition, alert_processing_data: AlertProcessingData, session_id: str) -> Dict[str, Any]
+    async def _execute_chain_stages(self, chain_definition, chain_context: ChainContext) -> Dict[str, Any]
 ```
 
 **Core Responsibilities:**
@@ -336,7 +337,7 @@ class AlertService:
    - Create stage execution record with database tracking
    - Instantiate agent with stage-specific iteration strategy
    - Execute stage with accumulated data from previous stages
-   - Store stage results in unified AlertProcessingData model
+   - Store stage results in unified ChainContext model
    - Update stage execution status and duration
 6. **Chain Completion**: Extract final analysis from last successful analysis stage
 7. **Result Processing**: Format and return chain execution results with stage metadata
@@ -491,7 +492,7 @@ class BaseAgent(ABC):
     def _create_iteration_controller(self, strategy: IterationStrategy) -> IterationController
     
     # Main processing method with unified alert processing model
-    async def process_alert(self, alert_data: AlertProcessingData, session_id: str) -> Dict[str, Any]
+    async def process_alert(self, context: ChainContext) -> Dict[str, Any]
     
     # Chain processing support methods
     def set_current_stage_execution_id(self, stage_execution_id: str)
@@ -507,7 +508,7 @@ class BaseAgent(ABC):
 **Core Features:**
 - **Inheritance + Composition Design**: Common logic shared across all specialized agents with pluggable iteration strategies
 - **Configurable Iteration Strategies**: Agents can use ReAct, REACT_STAGE, or REACT_FINAL_ANALYSIS processing patterns
-- **Chain Processing Support**: Processes unified AlertProcessingData with access to previous stage outputs and data accumulation
+- **Chain Processing Support**: Processes unified ChainContext with access to previous stage outputs and data accumulation
 - **Stage Execution Tracking**: Links interactions to specific chain stage executions for detailed audit trails
 - **Strategy-Based Processing**: Delegates alert processing to appropriate IterationController based on stage-specific configuration
 - **Three-Tier Instruction Composition**: General + MCP server + agent-specific instructions
@@ -546,30 +547,29 @@ Strategy pattern implementation for different agent processing approaches with c
 Interface Pattern:
 abstract class IterationController:
     @abstractmethod
-    async def execute_analysis_loop(self, context: IterationContext) -> str
+    async def execute_analysis_loop(self, context: StageContext) -> str
 
 class SimpleReActController(IterationController):
     def __init__(self, llm_client: LLMClient, prompt_builder: PromptBuilder)
-    async def execute_analysis_loop(self, context: IterationContext) -> str
+    async def execute_analysis_loop(self, context: StageContext) -> str
         # ReAct Think→Action→Observation cycles with structured reasoning
 
 class ReactStageController(IterationController):
     def __init__(self, llm_client: LLMClient, prompt_builder: PromptBuilder)
-    async def execute_analysis_loop(self, context: IterationContext) -> str
+    async def execute_analysis_loop(self, context: StageContext) -> str
         # ReAct pattern for stage-specific analysis within multi-stage chains
 
 class ReactFinalAnalysisController(IterationController):
     def __init__(self, llm_client: LLMClient, prompt_builder: PromptBuilder)
-    async def execute_analysis_loop(self, context: IterationContext) -> str
+    async def execute_analysis_loop(self, context: StageContext) -> str
         # Comprehensive analysis using all accumulated data, no tool calls
 
 @dataclass
-class IterationContext:
-    alert_data: Dict[str, Any]
-    runbook_content: str
-    available_tools: Dict[str, Any]
-    session_id: str
-    agent: Optional['BaseAgent'] = None
+class StageContext:
+    chain_context: ChainContext
+    available_tools: AvailableTools
+    agent: 'BaseAgent'
+    # Derived properties available via @property methods
 ```
 
 **Core Features:**
@@ -578,7 +578,7 @@ class IterationContext:
 - **Regular Pattern Implementation**: Direct tool iteration without reasoning overhead for fast response
 - **Structured Parsing**: ReAct controller includes specialized LLM response parsing and validation
 - **Error Handling**: Each controller handles strategy-specific errors and edge cases
-- **Context Isolation**: IterationContext provides clean data passing without coupling
+- **Context Isolation**: StageContext provides clean data passing without coupling
 
 **ReAct Strategy Features:**
 - Standard ReAct prompting format with mandatory formatting rules
@@ -607,9 +607,9 @@ backend/tarsy/agents/prompts/
 from langchain_core.prompts import PromptTemplate
 
 class PromptBuilder:
-    def build_standard_react_prompt(self, context: PromptContext, react_history: Optional[List[str]] = None) -> str
-    def build_stage_analysis_react_prompt(self, context: PromptContext, react_history: Optional[List[str]] = None) -> str
-    def build_final_analysis_prompt(self, context: PromptContext) -> str
+    def build_standard_react_prompt(self, context: StageContext, react_history: Optional[List[str]] = None) -> str
+    def build_stage_analysis_react_prompt(self, context: StageContext, react_history: Optional[List[str]] = None) -> str
+    def build_final_analysis_prompt(self, context: StageContext) -> str
     def get_enhanced_react_system_message(self, composed_instructions: str, task_focus: str = "investigation and providing recommendations") -> str
     # ... ReAct parsing and tool conversion methods (unchanged)
 ```
@@ -617,26 +617,30 @@ class PromptBuilder:
 **Core Features:**
 - **LangChain Integration**: Uses `PromptTemplate.from_template()` for template validation and composition
 - **Component Architecture**: Reusable `AlertSectionTemplate`, `RunbookSectionTemplate`, `ChainContextSectionTemplate` 
-- **Type Safety**: Full type annotations with `PromptContext` and proper forward references
+- **Type Safety**: Full type annotations with `StageContext` and proper forward references
 - **Template Composition**: Clean separation of template components from business logic
 - **Backward Compatibility**: Existing APIs maintained through re-export layer in `prompt_builder.py`
 - **Validated Templates**: LangChain validates template syntax and variable references at initialization
 
-**PromptContext Data Structure:**
+**New Context Architecture (EP-0012):**
 ```
-@dataclass
-class PromptContext:
-    agent_name: str
+class ChainContext(BaseModel):
+    """Context for entire chain processing session."""
+    alert_type: str
     alert_data: Dict[str, Any]
-    runbook_content: str
-    mcp_data: Dict[str, Any]
-    mcp_servers: List[str]
-    server_guidance: str = ""
-    agent_specific_guidance: str = ""
-    available_tools: Optional[Dict] = None
-    iteration_history: Optional[List[Dict]] = None
-    current_iteration: Optional[int] = None
-    max_iterations: Optional[int] = None
+    session_id: str
+    current_stage_name: str
+    stage_outputs: Dict[str, AgentExecutionResult] = Field(default_factory=dict)
+    runbook_content: Optional[str] = None
+    chain_id: Optional[str] = None
+
+@dataclass
+class StageContext:
+    """Context for single stage execution - eliminates field duplication."""
+    chain_context: ChainContext
+    available_tools: AvailableTools
+    agent: 'BaseAgent'
+    # Derived properties available via @property methods (alert_data, runbook_content, session_id, etc.)
 ```
 
 ### 7. KubernetesAgent (Specialized Agent)
@@ -1132,7 +1136,7 @@ sequenceDiagram
             AS->>AF: get_agent(stage.agent, stage.iteration_strategy)
             AF-->>AS: Instantiated Agent with stage-specific strategy
             
-            AS->>KA: process_alert(AlertProcessingData, session_id)
+            AS->>KA: process_alert(ChainContext)
             Note over KA: Agent processes with accumulated<br/>data from previous stages
             AS->>HS: update_stage_execution(started)
             HS->>HDB: Update stage as started
@@ -1147,7 +1151,7 @@ sequenceDiagram
                 MCP-->>KA: Agent-specific tool inventory
             end
             
-            KA->>IC: execute_analysis_loop(IterationContext with stage data)
+            KA->>IC: execute_analysis_loop(StageContext with stage data)
             
             alt REACT_STAGE Strategy (Stage-specific Analysis)
                 loop ReAct Data Collection Cycles
@@ -1175,7 +1179,7 @@ sequenceDiagram
             
             IC-->>KA: Stage result
             KA-->>AS: Stage result with metadata
-            AS->>AS: Add stage result to AlertProcessingData
+            AS->>AS: Add stage result to ChainContext
             AS->>HS: update_stage_execution(completed)
             HS->>HDB: Update stage as completed with results
             AS->>WS: Update status (Stage N completed)
@@ -1205,14 +1209,14 @@ Alert Entity:
 - severity: Optional[string]      # Alert severity (defaults to "warning" if not provided)
 - timestamp: Optional[int]        # Alert timestamp in unix microseconds (defaults to current time)
 
-AlertProcessingData Entity (Enhanced for Chain Processing):
+ChainContext Entity (New Context Architecture):
 - alert_type: string              # Alert type for chain selection
 - alert_data: dict                # Complete normalized alert data including defaults and metadata
-- runbook_url: Optional[string]   # URL to runbook for this alert
-- runbook_content: Optional[string] # Downloaded runbook content
-- stage_outputs: Dict[str, Dict[str, Any]] # Results from completed chain stages
+- session_id: string              # Session ID (now required during creation)
+- current_stage_name: string      # Currently executing stage (not Optional)
+- stage_outputs: Dict[str, AgentExecutionResult] # Results from completed chain stages (correct type)
+- runbook_content: Optional[string] # Downloaded runbook content  
 - chain_id: Optional[string]      # ID of chain processing this alert
-- current_stage_name: Optional[string] # Currently executing stage
 
 Chain Data Models:
 ChainStageModel:
@@ -1831,6 +1835,7 @@ backend/tarsy/
 ├── models/                # Data models and schemas
 │   ├── alert.py           # Alert data structures
 │   ├── constants.py       # Iteration strategy enums and constants
+│   ├── processing_context.py # Context models (ChainContext, StageContext, AvailableTools)
 │   ├── history.py         # Audit trail data models (SQLModel)
 │   ├── unified_interactions.py # Type-safe LLM and MCP interaction models
 │   ├── api_models.py      # REST API request/response models

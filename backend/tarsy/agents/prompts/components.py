@@ -67,12 +67,3 @@ class RunbookSectionTemplate:
     def format(self, runbook_content: str) -> str:
         content = runbook_content if runbook_content else 'No runbook available'
         return self.template.format(runbook_content=content)
-
-
-class ChainContextSectionTemplate:
-    """Formats chain context data."""
-    
-    def format(self, context) -> str:
-        if hasattr(context, 'chain_context') and context.chain_context and context.chain_context.stage_results:
-            return context.chain_context.get_formatted_context()
-        return "No previous stage data available."

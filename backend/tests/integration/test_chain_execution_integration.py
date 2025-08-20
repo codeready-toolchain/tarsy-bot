@@ -5,12 +5,13 @@ These tests verify that sequential agent chains work end-to-end with real
 data flow between stages, complementing the comprehensive unit test coverage.
 """
 
-import pytest
 from unittest.mock import AsyncMock, Mock
 
-from tarsy.models.processing_context import ChainContext
+import pytest
+
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 from tarsy.models.constants import StageStatus
+from tarsy.models.processing_context import ChainContext
 
 
 @pytest.mark.asyncio

@@ -5,13 +5,13 @@ Tests the unified LLM client that handles communication with different
 LLM providers using LangChain and the new typed hook system.
 """
 
-import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from unittest.mock import AsyncMock, Mock, patch
 
-from tarsy.integrations.llm.client import LLMClient, LLM_PROVIDERS
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+from tarsy.integrations.llm.client import LLM_PROVIDERS, LLMClient
 from tarsy.models.unified_interactions import LLMMessage
-from tarsy.config.settings import Settings
 
 
 @pytest.mark.unit

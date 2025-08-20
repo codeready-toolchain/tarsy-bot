@@ -242,8 +242,8 @@ class SessionFactory:
     @staticmethod
     def create_test_session(**overrides):
         """Create a test session with sensible defaults."""
-        from tarsy.models.db_models import AlertSession
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
         
         base_data = {
             "session_id": "test-session-123",
@@ -293,8 +293,8 @@ class SessionFactory:
     @staticmethod
     def create_session_overview(**overrides):
         """Create a SessionOverview (type-safe model) for list views."""
-        from tarsy.models.history_models import SessionOverview
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.history_models import SessionOverview
         from tarsy.utils.timestamp import now_us
         
         current_time_us = now_us()
@@ -345,8 +345,15 @@ class SessionFactory:
     @staticmethod  
     def create_detailed_session(**overrides):
         """Create a DetailedSession (type-safe model) with realistic stage and interaction data."""
-        from tarsy.models.history_models import DetailedSession, DetailedStage, LLMInteraction, MCPInteraction, LLMEventDetails, MCPEventDetails
         from tarsy.models.constants import AlertSessionStatus, StageStatus
+        from tarsy.models.history_models import (
+            DetailedSession,
+            DetailedStage,
+            LLMEventDetails,
+            LLMInteraction,
+            MCPEventDetails,
+            MCPInteraction,
+        )
         from tarsy.utils.timestamp import now_us
         
         current_time_us = now_us()
@@ -431,7 +438,7 @@ class SessionFactory:
     @staticmethod
     def create_session_stats(**overrides):
         """Create SessionStats (type-safe model) for summary statistics."""
-        from tarsy.models.history_models import SessionStats, ChainStatistics
+        from tarsy.models.history_models import ChainStatistics, SessionStats
         
         base_data = {
             "total_interactions": 2,
@@ -491,8 +498,8 @@ class StageExecutionFactory:
     @staticmethod
     def create_test_stage_execution(session_id: str, **overrides):
         """Create a basic test stage execution."""
-        from tarsy.models.db_models import StageExecution
         from tarsy.models.constants import StageStatus
+        from tarsy.models.db_models import StageExecution
         
         base_data = {
             "session_id": session_id,
@@ -508,8 +515,9 @@ class StageExecutionFactory:
     @staticmethod
     def create_completed_stage_execution(session_id: str, **overrides):
         """Create a completed test stage execution."""
-        from tarsy.models.constants import StageStatus
         import time
+
+        from tarsy.models.constants import StageStatus
         
         now_ms = int(time.time() * 1000000)  # microseconds
         return StageExecutionFactory.create_test_stage_execution(
@@ -525,8 +533,9 @@ class StageExecutionFactory:
     @staticmethod
     def create_failed_stage_execution(session_id: str, **overrides):
         """Create a failed test stage execution."""
-        from tarsy.models.constants import StageStatus
         import time
+
+        from tarsy.models.constants import StageStatus
         
         now_ms = int(time.time() * 1000000)  # microseconds
         return StageExecutionFactory.create_test_stage_execution(
@@ -776,7 +785,13 @@ class MockFactory:
     def create_mock_history_service_dependencies():
         """Create mock dependencies for HistoryService."""
         from unittest.mock import Mock
-        from tarsy.models.history_models import PaginatedSessions, FilterOptions, PaginationInfo, TimeRangeOption
+
+        from tarsy.models.history_models import (
+            FilterOptions,
+            PaginatedSessions,
+            PaginationInfo,
+            TimeRangeOption,
+        )
         
         # Create mock objects
         mock_db_manager = Mock()
@@ -841,8 +856,8 @@ class MockFactory:
                 stages=[]
             )
         """
-        from tarsy.models.history_models import DetailedSession, DetailedStage
         from tarsy.models.constants import AlertSessionStatus, StageStatus
+        from tarsy.models.history_models import DetailedSession, DetailedStage
         from tarsy.utils.timestamp import now_us
         
         base_data = {
@@ -901,8 +916,8 @@ class MockFactory:
         Returns:
             SessionOverview: Configured SessionOverview for testing
         """
-        from tarsy.models.history_models import SessionOverview
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.history_models import SessionOverview
         from tarsy.utils.timestamp import now_us
         
         base_data = {
@@ -989,7 +1004,7 @@ class MockFactory:
     @staticmethod  
     def create_mock_history_service(**overrides):
         """Create a comprehensive mock HistoryService for API/integration testing."""
-        from unittest.mock import Mock, AsyncMock
+        from unittest.mock import AsyncMock, Mock
         
         service = Mock()
         service.enabled = True
@@ -1219,8 +1234,9 @@ class DashboardFactory:
     @staticmethod
     def create_session_summary(**overrides):
         """Create a SessionSummary with sensible defaults."""
-        from tarsy.services.dashboard_update_service import SessionSummary
         from datetime import datetime
+
+        from tarsy.services.dashboard_update_service import SessionSummary
         
         base_data = {
             "session_id": "test-session-123",
@@ -1310,6 +1326,7 @@ class AgentServiceFactory:
     def create_mock_dependencies():
         """Create mock dependencies for AgentFactory."""
         from unittest.mock import Mock
+
         from tarsy.integrations.llm.client import LLMClient
         from tarsy.integrations.mcp.client import MCPClient
         from tarsy.services.mcp_server_registry import MCPServerRegistry
@@ -1368,6 +1385,7 @@ class RunbookFactory:
     def create_mock_settings(**overrides):
         """Create mock settings for RunbookService."""
         from unittest.mock import Mock
+
         from tarsy.config.settings import Settings
         
         base_data = {
@@ -1410,8 +1428,9 @@ class RunbookFactory:
     @staticmethod
     def create_error_responses():
         """Create various error responses for testing."""
-        import httpx
         from unittest.mock import Mock
+
+        import httpx
         
         return {
             'http_404': httpx.HTTPStatusError("404 Client Error: Not Found", request=Mock(), response=Mock()),

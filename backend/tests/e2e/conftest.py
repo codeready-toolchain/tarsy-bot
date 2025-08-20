@@ -6,15 +6,15 @@ unit or integration tests. All environment variables, database files,
 and global state are properly isolated and cleaned up.
 """
 
+import logging
 import os
+import shutil
+import sys
 import tempfile
 import uuid
-import logging
-import sys
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from unittest.mock import patch
-import shutil
 
 import pytest
 
@@ -243,9 +243,10 @@ def isolated_test_database(e2e_isolation):
     db_url = e2e_isolation.create_temp_database()
     
     # Initialize the database in complete isolation
+    from sqlmodel import Session, SQLModel, create_engine
+
     from tarsy.database.init_db import initialize_database
     from tarsy.repositories.base_repository import DatabaseManager
-    from sqlmodel import Session, SQLModel, create_engine
     
     # Create isolated database engine
     engine = create_engine(db_url, echo=False)
@@ -270,8 +271,6 @@ def isolated_test_database(e2e_isolation):
             # Try direct table creation
             try:
                 # Import all models to ensure they're registered
-                from tarsy.models.db_models import AlertSession, StageExecution
-                from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
                 
                 SQLModel.metadata.create_all(engine)
                 success = True
@@ -332,6 +331,7 @@ def ensure_e2e_isolation(request):
 def e2e_test_client(isolated_e2e_settings):
     """Create an isolated FastAPI test client for e2e tests."""
     from fastapi.testclient import TestClient
+
     from tarsy.main import app
     
     # The isolated settings are already patched globally

@@ -7,10 +7,11 @@ database persistence, and comprehensive API data structures.
 Uses isolated e2e test fixtures to prevent interference with unit/integration tests.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
-import asyncio
 import pytest
+
 
 @pytest.mark.asyncio
 @pytest.mark.e2e
@@ -156,7 +157,10 @@ Action Input: {step['action_input']}"""
                     content = f"""Final Answer: Stage {current_stage} completed after {step_index + 1} steps."""
                 
                 # Create typed response for the context
-                from tarsy.models.unified_interactions import LLMResponse, LLMChoice, LLMMessage as TypedLLMMessage
+                from tarsy.models.unified_interactions import LLMChoice, LLMResponse
+                from tarsy.models.unified_interactions import (
+                    LLMMessage as TypedLLMMessage,
+                )
                 typed_response = LLMResponse(
                     choices=[
                         LLMChoice(

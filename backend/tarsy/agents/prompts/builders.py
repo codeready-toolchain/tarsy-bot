@@ -1,8 +1,8 @@
 """
 LangChain-based prompt builder with template composition.
 
-This module implements the new PromptBuilder using LangChain templates
-while maintaining backward compatibility with existing APIs.
+This module implements the PromptBuilder using LangChain templates
+for clean, composable prompt generation.
 """
 
 import json
@@ -13,8 +13,7 @@ if TYPE_CHECKING:
     from tarsy.models.processing_context import StageContext
 from .components import (
     AlertSectionTemplate, 
-    RunbookSectionTemplate, 
-    ChainContextSectionTemplate
+    RunbookSectionTemplate
 )
 from .templates import (
     ANALYSIS_QUESTION_TEMPLATE,
@@ -35,7 +34,6 @@ class PromptBuilder:
         # Initialize component templates
         self.alert_component = AlertSectionTemplate()
         self.runbook_component = RunbookSectionTemplate()
-        self.chain_context_component = ChainContextSectionTemplate()
     
     # ============ Main Prompt Building Methods ============
     
@@ -186,19 +184,7 @@ Focus on root cause analysis and sustainable solutions."""
             agent_name=context.agent_name,
             server_list=server_list
         )
-    
-    def _build_alert_section(self, alert_data: Dict[str, Any]) -> str:
-        """Backward compatibility method - delegates to alert component."""
-        return self.alert_component.format(alert_data)
-    
-    def _build_runbook_section(self, runbook_content: str) -> str:
-        """Backward compatibility method - delegates to runbook component."""
-        return self.runbook_component.format(runbook_content)
-        
-    def _build_chain_context_section(self, context: 'StageContext') -> str:
-        """Backward compatibility method - delegates to chain context component."""
-        return self.chain_context_component.format(context)
-    
+
     def _format_available_actions(self, available_tools: Dict[str, Any]) -> str:
         """Format available tools as ReAct actions. EP-0012 clean implementation - MCPTool objects only."""
         if not available_tools or not available_tools.get("tools"):

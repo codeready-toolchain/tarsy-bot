@@ -8,12 +8,13 @@ Tests focus on practical functionality without complex mocking:
 - Configuration integration
 """
 
-import pytest
 from unittest.mock import Mock
 
-from tarsy.services.data_masking_service import DataMaskingService
+import pytest
+
 from tarsy.models.agent_config import MaskingConfig, MaskingPattern
-from tests.utils import MockFactory, TestUtils, DataMaskingFactory
+from tarsy.services.data_masking_service import DataMaskingService
+from tests.utils import DataMaskingFactory
 
 # Precomputed factory outputs for test reuse
 TEST_DATA_WITH_SECRETS = DataMaskingFactory.create_test_data_with_secrets()

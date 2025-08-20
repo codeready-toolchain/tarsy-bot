@@ -355,7 +355,7 @@ class BaseAgent(ABC):
                     "session_id": session_id,
                     "original_error": str(e)
                 }
-            )
+            ) from e
 
     async def execute_mcp_tools(self, tools_to_call: List[Dict], session_id: str) -> Dict[str, List[Dict]]:
         """

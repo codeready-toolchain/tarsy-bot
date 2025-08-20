@@ -59,7 +59,7 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
       </TableCell>
       <TableCell>
         <Typography variant="body2">
-          {session.agent_type}
+          {session.chain_id}
         </Typography>
       </TableCell>
       <TableCell>

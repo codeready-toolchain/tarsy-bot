@@ -12,7 +12,7 @@ import pytest
 
 from tarsy.config.settings import Settings
 from tarsy.services.runbook_service import RunbookService
-from tests.utils import MockFactory, TestUtils, RunbookFactory
+from tests.utils import RunbookFactory
 
 
 @pytest.mark.unit

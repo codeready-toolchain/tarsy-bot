@@ -73,7 +73,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
   const sortableColumns = [
     { field: 'status', label: 'Status' },
     { field: 'alert_type', label: 'Type' },
-    { field: 'agent_type', label: 'Agent' },
+    { field: 'agent_type', label: 'Agent Chain' },
     { field: 'started_at_us', label: 'Time' },
     { field: 'duration_ms', label: 'Duration' },
   ];

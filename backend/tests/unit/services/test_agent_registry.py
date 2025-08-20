@@ -6,11 +6,15 @@ lookups, supported types, and edge case handling.
 """
 
 
-import pytest
 from unittest.mock import patch
 
-from tarsy.services.agent_registry import AgentRegistry, _extract_alert_type_mappings_from_chains
-from tests.utils import MockFactory, TestUtils, AgentFactory
+import pytest
+
+from tarsy.services.agent_registry import (
+    AgentRegistry,
+    _extract_alert_type_mappings_from_chains,
+)
+from tests.utils import AgentFactory
 
 
 @pytest.mark.unit

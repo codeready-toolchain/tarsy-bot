@@ -11,10 +11,10 @@ import pytest
 from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.integrations.llm.client import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
+from tarsy.models.constants import StageStatus
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.agent_registry import AgentRegistry
 from tarsy.services.mcp_server_registry import MCPServerRegistry
-from tarsy.models.constants import StageStatus
 
 
 @pytest.mark.asyncio

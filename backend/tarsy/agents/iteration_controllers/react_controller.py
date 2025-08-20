@@ -191,5 +191,6 @@ Please provide a final answer based on what you've discovered, even if the inves
             completion_patterns=["Analysis completed"],
             incomplete_patterns=["Analysis incomplete:"],
             fallback_extractor=extract_thoughts,
-            fallback_message="Analysis completed but no clear final answer was provided"
+            fallback_message="Analysis completed but no clear final answer was provided",
+            context=context
         )

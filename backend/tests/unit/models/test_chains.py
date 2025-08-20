@@ -6,7 +6,8 @@ Tests model creation, validation, serialization, and data access methods.
 
 import pytest
 from pydantic import ValidationError
-from tarsy.models.agent_config import ChainStageConfigModel, ChainConfigModel
+
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 
 
 @pytest.mark.unit

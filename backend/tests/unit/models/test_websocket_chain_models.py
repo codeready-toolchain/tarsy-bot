@@ -7,10 +7,13 @@ for sequential agent chains.
 
 import pytest
 from pydantic import ValidationError
+
+from tarsy.models.constants import ChainStatus, StageStatus
 from tarsy.models.websocket_models import (
-    ChainProgressUpdate, StageProgressUpdate, ChannelType
+    ChainProgressUpdate,
+    ChannelType,
+    StageProgressUpdate,
 )
-from tarsy.models.constants import StageStatus, ChainStatus
 
 
 @pytest.mark.unit

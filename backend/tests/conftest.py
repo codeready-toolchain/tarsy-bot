@@ -17,13 +17,12 @@ from sqlmodel import Session, SQLModel, create_engine
 os.environ["TESTING"] = "true"
 
 # Import Alert model for fixtures
-from tarsy.models.alert import Alert
-from tarsy.models.processing_context import ChainContext
-from tarsy.utils.timestamp import now_us
-
 # Import all database models to ensure they're registered with SQLModel.metadata
 import tarsy.models.db_models  # noqa: F401
 import tarsy.models.unified_interactions  # noqa: F401
+from tarsy.models.alert import Alert
+from tarsy.models.processing_context import ChainContext
+from tarsy.utils.timestamp import now_us
 
 
 def alert_to_api_format(alert: Alert) -> ChainContext:

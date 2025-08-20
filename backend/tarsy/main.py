@@ -8,7 +8,7 @@ import json
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 import re
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
@@ -33,9 +33,9 @@ logger = get_module_logger(__name__)
 processing_alert_keys: Dict[AlertKey, str] = {}  # alert_key -> alert_id mapping
 alert_keys_lock = asyncio.Lock()  # Protect the processing_alert_keys dict
 
-alert_service: AlertService = None
-dashboard_manager: DashboardConnectionManager = None
-alert_processing_semaphore: asyncio.Semaphore = None
+alert_service: Optional[AlertService] = None
+dashboard_manager: Optional[DashboardConnectionManager] = None
+alert_processing_semaphore: Optional[asyncio.Semaphore] = None
 
 
 @asynccontextmanager
@@ -108,9 +108,11 @@ async def lifespan(app: FastAPI):
     logger.info("Tarsy shutting down...")
     
     # Shutdown dashboard broadcaster
-    await dashboard_manager.shutdown_broadcaster()
+    if dashboard_manager is not None:
+        await dashboard_manager.shutdown_broadcaster()
     
-    await alert_service.close()
+    if alert_service is not None:
+        await alert_service.close()
     logger.info("Tarsy shutdown complete")
 
 
@@ -192,6 +194,8 @@ async def get_alert_types():
     (like Alert Manager) can submit any alert type. The system analyzes all
     alert types using the provided runbook and available agent-specific MCP tools.
     """
+    if alert_service is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     return alert_service.chain_registry.list_available_alert_types()
 
 @app.post("/alerts", response_model=AlertResponse)
@@ -383,6 +387,8 @@ async def submit_alert(request: Request):
             alert_id = str(uuid.uuid4())
             
             # Register the alert ID as valid
+            if alert_service is None:
+                raise HTTPException(status_code=503, detail="Service not initialized")
             alert_service.register_alert_id(alert_id)
             
             # Register this alert key as being processed
@@ -420,6 +426,9 @@ async def get_session_id(alert_id: str):
     Needed for dashboard websocket subscription because
     the client which sent the alert request needs to know the session ID (generated later)
     to subscribe to the alert updates."""
+    if alert_service is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    
     # Check if the alert_id exists
     if not alert_service.alert_exists(alert_id):
         raise HTTPException(status_code=404, detail=f"Alert ID '{alert_id}' not found")
@@ -434,6 +443,10 @@ async def get_session_id(alert_id: str):
 @app.websocket("/ws/dashboard/{user_id}")
 async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
     """WebSocket endpoint for dashboard real-time updates."""
+    if dashboard_manager is None:
+        await websocket.close(code=1011, reason="Service not initialized")
+        return
+        
     try:
         logger.info(f"🔌 New WebSocket connection from user: {user_id}")
         await dashboard_manager.connect(websocket, user_id)
@@ -474,6 +487,10 @@ async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
 
 async def process_alert_background(alert_id: str, alert: ChainContext):
     """Background task to process an alert with comprehensive error handling and concurrency control."""
+    if alert_processing_semaphore is None or alert_service is None:
+        logger.error(f"Cannot process alert {alert_id}: services not initialized")
+        return
+        
     async with alert_processing_semaphore:
         start_time = datetime.now()
         try:

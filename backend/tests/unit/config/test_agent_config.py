@@ -6,15 +6,19 @@ Tests cover file loading, validation, error handling, and all private methods.
 
 import os
 import tempfile
+from unittest.mock import Mock, mock_open, patch
+
 import pytest
-from unittest.mock import Mock, patch, mock_open
-from pydantic import ValidationError
 import yaml
+from pydantic import ValidationError
 
 from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.config.exceptions import ConfigurationError
-from tarsy.models.agent_config import CombinedConfigModel, AgentConfigModel, MCPServerConfigModel, ChainConfigModel, ChainStageConfigModel
-from tarsy.models.constants import IterationStrategy
+from tarsy.models.agent_config import (
+    AgentConfigModel,
+    CombinedConfigModel,
+    MCPServerConfigModel,
+)
 
 
 @pytest.mark.unit

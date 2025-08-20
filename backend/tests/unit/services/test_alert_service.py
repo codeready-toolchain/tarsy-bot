@@ -5,20 +5,20 @@ Tests the complete alert processing workflow including agent selection,
 delegation, error handling, progress tracking, and history management.
 """
 
-from unittest.mock import AsyncMock, Mock, patch
 import uuid
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from tarsy.config.settings import Settings
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 from tarsy.models.alert import Alert
 from tarsy.models.alert_processing import AlertKey
-from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.alert_service import AlertService
 from tarsy.utils.timestamp import now_us
 from tests.conftest import alert_to_api_format
-from tests.utils import MockFactory, AlertFactory
+from tests.utils import AlertFactory, MockFactory
 
 
 @pytest.mark.unit
@@ -962,12 +962,12 @@ class TestAlertServiceValidationAndCaching:
         session_ids = ["session-1", "session-2", "session-3", "session-4", "session-5"]
         
         # Register multiple alerts with session mappings
-        for alert_id, session_id in zip(alert_ids, session_ids):
+        for alert_id, session_id in zip(alert_ids, session_ids, strict=False):
             alert_service.register_alert_id(alert_id)
             alert_service.store_alert_session_mapping(alert_id, session_id)
         
         # Verify all alerts exist and have correct mappings
-        for alert_id, expected_session_id in zip(alert_ids, session_ids):
+        for alert_id, expected_session_id in zip(alert_ids, session_ids, strict=False):
             assert alert_service.alert_exists(alert_id)
             assert alert_service.get_session_id_for_alert(alert_id) == expected_session_id
         

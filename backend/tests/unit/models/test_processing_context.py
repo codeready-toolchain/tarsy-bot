@@ -5,19 +5,19 @@ This module tests the clean context architecture that replaces the old
 AlertProcessingData, IterationContext, PromptContext, and ChainExecutionContext.
 """
 
-import pytest
 from unittest.mock import Mock
-from typing import Dict, Any, List
+
+import pytest
 from pydantic import ValidationError
 
-from tarsy.models.processing_context import (
-    MCPTool,
-    AvailableTools,
-    ChainContext,
-    StageContext
-)
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
+from tarsy.models.processing_context import (
+    AvailableTools,
+    ChainContext,
+    MCPTool,
+    StageContext,
+)
 
 
 class TestMCPTool:

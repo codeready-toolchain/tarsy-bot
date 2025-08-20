@@ -12,10 +12,10 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from tarsy.agents.configurable_agent import ConfigurableAgent
-from tarsy.models.constants import IterationStrategy, StageStatus
 from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.models.agent_config import AgentConfigModel
+from tarsy.models.constants import IterationStrategy, StageStatus
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 
@@ -112,14 +112,13 @@ class TestIterationStrategiesIntegration:
         assert react_agent.iteration_strategy == IterationStrategy.REACT
         assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
         
-        # Stub distinct behavior to ensure result summaries differ
-        react_agent.determine_mcp_tools = AsyncMock(return_value=[])
-        react_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-        react_agent.analyze_alert = AsyncMock(return_value="REACT analysis")
-
-        react_stage_agent.determine_mcp_tools = AsyncMock(return_value=[])
-        react_stage_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-        react_stage_agent.analyze_alert = AsyncMock(return_value="REACT_STAGE analysis")
+        # Mock iteration controller behavior to ensure result summaries differ
+        react_agent._iteration_controller.execute_analysis_loop = AsyncMock(
+            return_value="Final Answer: REACT analysis completed with systematic investigation"
+        )
+        react_stage_agent._iteration_controller.execute_analysis_loop = AsyncMock(
+            return_value="Final Answer: REACT_STAGE analysis completed with stage-specific findings"
+        )
         
         # Process alert with both strategies
         from tarsy.models.processing_context import ChainContext
@@ -195,14 +194,13 @@ class TestIterationStrategiesIntegration:
         assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
         assert react_agent.iteration_strategy == IterationStrategy.REACT
         
-        # Mock processing methods with distinct outputs
-        react_stage_agent.determine_mcp_tools = AsyncMock(return_value=[])
-        react_stage_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-        react_stage_agent.analyze_alert = AsyncMock(return_value="Configurable analysis (stage)")
-
-        react_agent.determine_mcp_tools = AsyncMock(return_value=[])
-        react_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-        react_agent.analyze_alert = AsyncMock(return_value="Configurable analysis (react)")
+        # Mock iteration controller behavior with distinct outputs
+        react_stage_agent._iteration_controller.execute_analysis_loop = AsyncMock(
+            return_value="Final Answer: Configurable analysis completed using REACT_STAGE strategy with incremental findings"
+        )
+        react_agent._iteration_controller.execute_analysis_loop = AsyncMock(
+            return_value="Final Answer: Configurable analysis completed using REACT strategy with comprehensive investigation"
+        )
         
         # Process alerts
         from tarsy.models.processing_context import ChainContext
@@ -399,13 +397,13 @@ mcp_servers:
             # Mock processing for testing
             mock_llm_client.generate_response.return_value = "YAML config test analysis"
             
-            react_stage_agent.determine_mcp_tools = AsyncMock(return_value=[])
-            react_stage_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-            react_stage_agent.analyze_alert = AsyncMock(return_value="YAML test analysis (stage)")
-
-            react_agent.determine_mcp_tools = AsyncMock(return_value=[])
-            react_agent.determine_next_mcp_tools = AsyncMock(return_value={"continue": False})
-            react_agent.analyze_alert = AsyncMock(return_value="YAML test analysis (react)")
+            # Mock iteration controller behavior for YAML config test
+            react_stage_agent._iteration_controller.execute_analysis_loop = AsyncMock(
+                return_value="Final Answer: YAML configuration test analysis using REACT_STAGE with staged data collection"
+            )
+            react_agent._iteration_controller.execute_analysis_loop = AsyncMock(
+                return_value="Final Answer: YAML configuration test analysis using REACT with systematic reasoning"
+            )
             
             # Process alerts with both agents
             from tarsy.models.processing_context import ChainContext

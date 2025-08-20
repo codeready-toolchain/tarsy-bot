@@ -6,15 +6,15 @@ to ensure proper request/response handling and API contract compliance.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tarsy.controllers.history_controller import HistoryService, router
-from tarsy.utils.timestamp import now_us
 from tarsy.services.history_service import get_history_service
+from tarsy.utils.timestamp import now_us
 
 
 class TestHistoryControllerEndpoints:
@@ -47,8 +47,12 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_get_sessions_list_success(self, app, client, mock_history_service):
         """Test successful sessions list retrieval."""
-        from tarsy.models.history_models import SessionOverview, PaginatedSessions, PaginationInfo
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.history_models import (
+            PaginatedSessions,
+            PaginationInfo,
+            SessionOverview,
+        )
         
         now_us_time = now_us()
         session1 = SessionOverview(
@@ -234,8 +238,8 @@ class TestHistoryControllerEndpoints:
     def test_get_sessions_list_multiple_status_historical_use_case(self, app, client, mock_history_service):
         """Test the specific use case for historical alerts (completed + failed)."""
         # Arrange
-        from tests.utils import SessionFactory
         from tarsy.models.constants import AlertSessionStatus
+        from tests.utils import SessionFactory
         
         mock_sessions = [
             SessionFactory.create_session_overview(
@@ -289,8 +293,8 @@ class TestHistoryControllerEndpoints:
     def test_get_sessions_list_multiple_status_active_use_case(self, app, client, mock_history_service):
         """Test filtering for active alerts (pending + in_progress)."""
         # Arrange
-        from tests.utils import SessionFactory
         from tarsy.models.constants import AlertSessionStatus
+        from tests.utils import SessionFactory
         
         mock_sessions = [
             SessionFactory.create_session_overview(
@@ -690,8 +694,15 @@ class TestHistoryControllerEndpoints:
     def test_get_session_detail_success(self, app, client, mock_history_service):
         """Test successful session detail retrieval."""
         # Create proper DetailedSession object
-        from tarsy.models.history_models import DetailedSession, DetailedStage, LLMInteraction, MCPInteraction, LLMEventDetails, MCPEventDetails
         from tarsy.models.constants import AlertSessionStatus, StageStatus
+        from tarsy.models.history_models import (
+            DetailedSession,
+            DetailedStage,
+            LLMEventDetails,
+            LLMInteraction,
+            MCPEventDetails,
+            MCPInteraction,
+        )
         from tarsy.models.unified_interactions import LLMMessage
         
         # Create LLM interaction
@@ -790,8 +801,8 @@ class TestHistoryControllerEndpoints:
 
         
         # Mock get_session_summary method (async - used by the controller)
-        from tests.utils import SessionFactory
         from tarsy.models.history_models import ChainStatistics
+        from tests.utils import SessionFactory
         mock_session_stats = SessionFactory.create_session_stats(
             total_interactions=2,
             llm_interactions=1,
@@ -1233,8 +1244,13 @@ class TestHistoryControllerResponseFormat:
         """Test that session detail response matches expected format."""
         
         # Create proper DetailedSession object
-        from tarsy.models.history_models import DetailedSession, DetailedStage, LLMInteraction, LLMEventDetails
         from tarsy.models.constants import AlertSessionStatus, StageStatus
+        from tarsy.models.history_models import (
+            DetailedSession,
+            DetailedStage,
+            LLMEventDetails,
+            LLMInteraction,
+        )
         from tarsy.models.unified_interactions import LLMMessage
         
         # Create LLM interaction
@@ -1322,7 +1338,7 @@ class TestHistoryControllerResponseFormat:
 
         
         # Mock get_session_summary method (async - used by the controller)
-        from tarsy.models.history_models import SessionStats, ChainStatistics
+        from tarsy.models.history_models import ChainStatistics, SessionStats
         mock_session_stats = SessionStats(
             total_interactions=2,
             llm_interactions=1,
@@ -1754,8 +1770,8 @@ class TestDashboardEndpoints:
         session_id = "test-session-123"
         
         # Create SessionStats model using factory
-        from tests.utils import SessionFactory
         from tarsy.models.history_models import ChainStatistics
+        from tests.utils import SessionFactory
         
         session_stats = SessionFactory.create_session_stats(
             total_interactions=13,
@@ -1858,8 +1874,8 @@ class TestDashboardEndpoints:
         session_id = "minimal-session-123"
         
         # Mock service response with minimal data using factory
-        from tests.utils import SessionFactory
         from tarsy.models.history_models import ChainStatistics
+        from tests.utils import SessionFactory
         mock_summary = SessionFactory.create_session_stats(
             total_interactions=2,
             llm_interactions=1,
@@ -1908,8 +1924,8 @@ class TestDashboardEndpoints:
         session_id = "error-session-123"
         
         # Mock service response with errors using factory
-        from tests.utils import SessionFactory
         from tarsy.models.history_models import ChainStatistics
+        from tests.utils import SessionFactory
         mock_summary = SessionFactory.create_session_stats(
             total_interactions=10,
             llm_interactions=6,
@@ -1953,8 +1969,8 @@ class TestDashboardEndpoints:
         session_id = "format-test-session"
         
         # Mock service response using factory
-        from tests.utils import SessionFactory
         from tarsy.models.history_models import ChainStatistics
+        from tests.utils import SessionFactory
         mock_summary = SessionFactory.create_session_stats(
             total_interactions=5,
             llm_interactions=3,

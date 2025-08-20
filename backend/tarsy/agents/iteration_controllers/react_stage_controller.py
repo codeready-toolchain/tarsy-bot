@@ -193,5 +193,6 @@ Please provide a final analysis based on what you've discovered, even if the inv
             completion_patterns=["Partial analysis completed"],
             incomplete_patterns=["Partial analysis incomplete:"],
             fallback_extractor=extract_thoughts_and_observations,
-            fallback_message="Partial analysis stage completed with limited findings"
+            fallback_message="Partial analysis stage completed with limited findings",
+            context=context
         )

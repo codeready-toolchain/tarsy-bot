@@ -5,18 +5,25 @@ Tests the new typed hook infrastructure that provides type-safe
 interaction logging and dashboard updates.
 """
 
-import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime
+from unittest.mock import AsyncMock, Mock
 
-from tarsy.hooks.typed_history_hooks import TypedLLMHistoryHook, TypedMCPHistoryHook, TypedStageExecutionHistoryHook
-from tarsy.hooks.typed_dashboard_hooks import TypedLLMDashboardHook, TypedMCPDashboardHook
+import pytest
+
 from tarsy.hooks.typed_context import BaseTypedHook
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.models.db_models import StageExecution
+from tarsy.hooks.typed_dashboard_hooks import (
+    TypedLLMDashboardHook,
+    TypedMCPDashboardHook,
+)
+from tarsy.hooks.typed_history_hooks import (
+    TypedLLMHistoryHook,
+    TypedMCPHistoryHook,
+    TypedStageExecutionHistoryHook,
+)
 from tarsy.models.constants import StageStatus
-from tarsy.services.history_service import HistoryService
+from tarsy.models.db_models import StageExecution
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
+from tarsy.services.history_service import HistoryService
 
 
 @pytest.mark.unit
@@ -374,8 +381,8 @@ class TestTypedHooksIntegration:
         mock_broadcaster.broadcast_session_update = AsyncMock(return_value=2)
         
         # Create hooks
-        from tarsy.hooks.typed_history_hooks import TypedStageExecutionHistoryHook
         from tarsy.hooks.typed_dashboard_hooks import TypedStageExecutionDashboardHook
+        from tarsy.hooks.typed_history_hooks import TypedStageExecutionHistoryHook
         
         history_hook = TypedStageExecutionHistoryHook(mock_history_service)
         dashboard_hook = TypedStageExecutionDashboardHook(mock_broadcaster)

@@ -8,10 +8,11 @@ to eliminate duplication and architectural debt.
 This module contains the clean context models for the new alert processing architecture.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from .agent_execution_result import AgentExecutionResult
+from .constants import StageStatus
 
 if TYPE_CHECKING:
     from ..agents.base_agent import BaseAgent
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 
 class MCPTool(BaseModel):
     """Structured representation of an MCP tool."""
-    model_config = {"extra": "forbid"}
+    model_config: ConfigDict = ConfigDict(extra="forbid")
     
     server: str = Field(..., description="MCP server name", min_length=1)
     name: str = Field(..., description="Tool name", min_length=1)
@@ -33,7 +34,7 @@ class AvailableTools(BaseModel):
     
     Clean implementation using only structured MCPTool objects.
     """
-    model_config = {"extra": "forbid"}
+    model_config: ConfigDict = ConfigDict(extra="forbid")
     
     tools: List[MCPTool] = Field(
         default_factory=list,
@@ -59,7 +60,7 @@ class ChainContext(BaseModel):
     - API-only methods (get_severity, get_environment) removed
     - Stage execution order preserved via Dict insertion order
     """
-    model_config = {"extra": "forbid", "frozen": False}
+    model_config: ConfigDict = ConfigDict(extra="forbid", frozen=False)
     
     # Core data - session_id is now required field
     alert_type: str = Field(..., description="Type of alert (kubernetes, aws, etc.)", min_length=1)
@@ -95,7 +96,7 @@ class ChainContext(BaseModel):
         return [
             (stage_name, result)
             for stage_name, result in self.stage_outputs.items()
-            if result.status.value == "completed"
+            if isinstance(result, AgentExecutionResult) and result.status is StageStatus.COMPLETED
         ]
     
     def add_stage_result(self, stage_name: str, result: AgentExecutionResult):

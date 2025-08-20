@@ -135,8 +135,11 @@ class TestHistoryService:
                 mock_get_repo.return_value.__exit__.return_value = None
             
             # Create mock ChainContext and ChainConfigModel
+            from tarsy.models.agent_config import (
+                ChainConfigModel,
+                ChainStageConfigModel,
+            )
             from tarsy.models.processing_context import ChainContext
-            from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
             
             chain_context = ChainContext(
                 alert_type="test_alert",
@@ -352,9 +355,10 @@ class TestHistoryService:
     @pytest.mark.unit
     def test_get_session_details_success(self, history_service):
         """Test successful session timeline retrieval."""
-        from tarsy.models.history_models import DetailedSession, DetailedStage, LLMInteraction, MCPInteraction, LLMEventDetails, MCPEventDetails
-        from tarsy.models.constants import AlertSessionStatus, StageStatus
-        from tarsy.models.unified_interactions import LLMMessage
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.history_models import (
+            DetailedSession,
+        )
         
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
@@ -474,11 +478,7 @@ class TestHistoryService:
         def mock_operation():
             nonlocal call_count
             call_count += 1
-            if operation_type == "success_after_retry" and call_count == 1:
-                raise Exception(error_type)
-            elif operation_type == "exhausts_retries":
-                raise Exception(error_type)
-            elif operation_type == "non_retryable":
+            if operation_type == "success_after_retry" and call_count == 1 or operation_type == "exhausts_retries" or operation_type == "non_retryable":
                 raise Exception(error_type)
             return "success"
         
@@ -535,8 +535,8 @@ class TestHistoryServiceStageExecution:
     @pytest.fixture
     def sample_stage_execution(self):
         """Sample stage execution for testing."""
-        from tarsy.models.db_models import StageExecution
         from tarsy.models.constants import StageStatus
+        from tarsy.models.db_models import StageExecution
         return StageExecution(
             execution_id="stage-exec-123",
             session_id="test-session",
@@ -767,8 +767,11 @@ class TestHistoryServiceErrorHandling:
             
             # All operations should raise RuntimeError when repository unavailable
             # Create minimal mock objects for new signature
+            from tarsy.models.agent_config import (
+                ChainConfigModel,
+                ChainStageConfigModel,
+            )
             from tarsy.models.processing_context import ChainContext
-            from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
             
             chain_context = ChainContext(
                 alert_type="alert",
@@ -808,8 +811,11 @@ class TestHistoryServiceErrorHandling:
             
             # All operations should handle exceptions gracefully
             # Create minimal mock objects for new signature
+            from tarsy.models.agent_config import (
+                ChainConfigModel,
+                ChainStageConfigModel,
+            )
             from tarsy.models.processing_context import ChainContext
-            from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
             
             chain_context = ChainContext(
                 alert_type="alert",
@@ -1208,6 +1214,7 @@ async def test_cleanup_orphaned_sessions():
         session_dict.setdefault('alert_data', {})
         session_dict.setdefault('chain_id', 'test-chain')
         session_dict.setdefault('started_at_us', 1640995200000000)
+        session_dict.setdefault('alert_type', 'test')
         
         mock_all_sessions.append(session_dict)
         

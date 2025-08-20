@@ -9,13 +9,13 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from tarsy.models.constants import IterationStrategy
 from tarsy.agents.exceptions import ConfigurationError, ToolSelectionError
 from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
-from tarsy.models.alert import Alert
 from tarsy.models.agent_config import MCPServerConfigModel
+from tarsy.models.alert import Alert
+from tarsy.models.constants import IterationStrategy
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.timestamp import now_us
 

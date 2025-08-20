@@ -7,12 +7,13 @@ and error handling scenarios.
 """
 
 import os
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from tarsy.config.settings import Settings
-from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.models.agent_config import MCPServerConfigModel
+from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tests.utils import MCPServerMaskingFactory
 
 

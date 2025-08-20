@@ -337,14 +337,14 @@ class AlertService:
                     await self._update_stage_execution_failed(stage_execution_id, error_msg)
                     
                     # Add structured error as stage output for next stages
-                    error_result = {
-                        "status": "error",
-                        "error": str(e),
-                        "stage_name": stage.name,
-                        "agent": stage.agent,
-                        "timestamp_us": now_us(),
-                        "recoverable": True  # Next stages can still execute
-                    }
+                    error_result = AgentExecutionResult(
+                        status=StageStatus.FAILED,
+                        agent_name=stage.agent,
+                        stage_name=stage.name,
+                        timestamp_us=now_us(),
+                        result_summary=f"Stage '{stage.name}' failed: {str(e)}",
+                        error_message=str(e),
+                    )
                     chain_context.add_stage_result(stage.name, error_result)
                     
                     failed_stages += 1
@@ -390,18 +390,16 @@ class AlertService:
         # Look for final_analysis from the last successful stage (typically a final-analysis stage)
         for stage_name in reversed(list(chain_context.stage_outputs.keys())):
             stage_result = chain_context.stage_outputs[stage_name]
-            if isinstance(stage_result, AgentExecutionResult):
-                if stage_result.status.value == "completed" and stage_result.final_analysis:
-                    return stage_result.final_analysis
+            if isinstance(stage_result, AgentExecutionResult) and stage_result.status == StageStatus.COMPLETED and stage_result.final_analysis:
+                return stage_result.final_analysis
         
         # Fallback: look for any final_analysis from any successful stage
         for stage_result in chain_context.stage_outputs.values():
-            if isinstance(stage_result, AgentExecutionResult):
-                if stage_result.status.value == "completed" and stage_result.final_analysis:
-                    return stage_result.final_analysis
+            if isinstance(stage_result, AgentExecutionResult) and stage_result.status == StageStatus.COMPLETED and stage_result.final_analysis:
+                return stage_result.final_analysis
         
         # If no analysis found, return a simple summary (this should be rare)
-        return f"Chain {chain_context.chain_id} completed with {len(chain_context.stage_outputs)} stages. Use accumulated_data for detailed results."
+        return f"Chain {chain_context.chain_id} completed with {len(chain_context.stage_outputs)} stage outputs."
 
     def _format_success_response(
         self,
@@ -549,7 +547,7 @@ class AlertService:
         """
         try:
             if not self.history_service or not self.history_service.enabled:
-                return None
+                return False
             
             # Generate unique alert ID for this processing session
             timestamp_us = now_us()

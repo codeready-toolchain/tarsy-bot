@@ -5,17 +5,16 @@ Tests the typed context manager system that ensures proper data flow
 from service methods to hooks without contamination or type mismatches.
 """
 
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
-import asyncio
 
 from tarsy.hooks.typed_context import (
     BaseTypedHook,
-    TypedHookManager,
     InteractionHookContext,
+    TypedHookManager,
     get_typed_hook_manager,
     llm_interaction_context,
-    mcp_interaction_context
+    mcp_interaction_context,
 )
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 

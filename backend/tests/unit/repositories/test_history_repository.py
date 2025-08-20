@@ -1131,8 +1131,8 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_update_stage_execution_success(self, repository, sample_alert_session):
         """Test successful stage execution update."""
-        from tarsy.utils.timestamp import now_us
         from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
         
         # Create session first
         repository.create_alert_session(sample_alert_session)
@@ -1690,7 +1690,7 @@ class TestFlexibleAlertDataPerformance:
             
             # Verify pagination structure works correctly
             assert len(result.sessions) <= 20, f"Page {page} should have at most 20 sessions"
-            assert result.pagination.page == page, f"Page number should match request"
+            assert result.pagination.page == page, "Page number should match request"
             assert result.pagination.page_size == 20, "Page size should match request"
             assert result.pagination.total_items == 100, "Total items should be consistent"
             assert result.pagination.total_pages == 5, "Total pages should be 5 for 100 items with page_size 20"

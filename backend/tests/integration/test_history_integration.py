@@ -16,12 +16,12 @@ from sqlmodel import SQLModel, create_engine
 
 from tarsy.main import app
 from tarsy.models.alert import Alert
-from tarsy.utils.timestamp import now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 
 # Import history models to ensure they're registered with SQLModel.metadata
 from tarsy.services.alert_service import AlertService
 from tarsy.services.history_service import HistoryService
+from tarsy.utils.timestamp import now_us
 from tests.conftest import alert_to_api_format
 
 logger = logging.getLogger(__name__)
@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 def create_test_context_and_chain(alert_type="kubernetes", session_id="test-session", chain_id="test-chain", agent="KubernetesAgent", alert_data=None):
     """Helper function to create test ChainContext and ChainConfigModel for integration tests."""
-    from tarsy.models.processing_context import ChainContext
     from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+    from tarsy.models.processing_context import ChainContext
     
     if alert_data is None:
         alert_data = {
@@ -188,8 +188,9 @@ class TestHistoryServiceIntegration:
         assert result == True
         
         # Create stage execution
-        from tests.utils import StageExecutionFactory
         import asyncio
+
+        from tests.utils import StageExecutionFactory
         stage_execution_id = asyncio.run(StageExecutionFactory.create_and_save_stage_execution(
             history_service_with_db,
             chain_context.session_id,
@@ -265,8 +266,9 @@ class TestHistoryServiceIntegration:
         session_id = chain_context.session_id
         
         # Create stage execution
-        from tests.utils import StageExecutionFactory
         import asyncio
+
+        from tests.utils import StageExecutionFactory
         stage_execution_id = asyncio.run(StageExecutionFactory.create_and_save_stage_execution(
             history_service_with_db,
             session_id,
@@ -587,7 +589,7 @@ class TestAlertServiceHistoryIntegration:
         
         # Use real history service with mocked database
         mock_history_service = Mock()
-        mock_history_service.create_session.return_value = "test-session-123"
+        mock_history_service.create_session.return_value = True
         mock_history_service.update_session_status.return_value = True
         service.history_service = mock_history_service
         
@@ -668,7 +670,7 @@ class TestAlertServiceHistoryIntegration:
         # Verify error was handled
         assert result is not None
         # The result is a formatted string from _format_error_response, not a dict  
-        assert "Chain processing failed" in result  # Chain architecture error format
+        assert "Chain execution failed" in result  # Chain architecture error format
         
         # Verify history service tracked the error
         history_service = alert_service_with_history.history_service
@@ -684,7 +686,7 @@ class TestAlertServiceHistoryIntegration:
         # Should have recorded error message
         error_calls = [call for call in status_calls if call[1].get("error_message")]
         assert len(error_calls) > 0
-        assert "Chain processing failed" in error_calls[0][1]["error_message"]  # Chain architecture error format
+        assert "Chain execution failed" in error_calls[0][1]["error_message"]  # Chain architecture error format
 
 
 class TestHistoryAPIIntegration:
@@ -698,8 +700,9 @@ class TestHistoryAPIIntegration:
     @pytest.fixture
     def mock_history_service_for_api(self):
         """Create mock history service for API testing."""
-        from tests.utils import MockFactory, SessionFactory
         from unittest.mock import AsyncMock
+
+        from tests.utils import MockFactory, SessionFactory
         
         # Create the base mock service with all sensible defaults
         service = MockFactory.create_mock_history_service()
@@ -1033,6 +1036,7 @@ class TestDuplicatePreventionIntegration:
                 
                 # Try to create duplicate session directly
                 duplicate_session = AlertSession(
+                    session_id="test-duplicate-session",  # Different session_id
                     alert_id="constraint_test_alert",  # Same alert_id
                     alert_data={"different": "data"},
                     agent_type="DifferentAgent",
@@ -1097,8 +1101,7 @@ class TestDuplicatePreventionIntegration:
         """Test that retry logic doesn't create duplicate sessions."""
         with patch.object(history_service_with_test_db, '_retry_database_operation') as mock_retry:
             # First call succeeds, second call would create duplicate
-            session_id = "test_session_123"
-            mock_retry.return_value = session_id
+            mock_retry.return_value = True
             
             # Create session
             chain_context, chain_definition = create_test_context_and_chain(
@@ -1114,7 +1117,7 @@ class TestDuplicatePreventionIntegration:
                 alert_id="retry_test_alert"
             )
             
-            assert result_1 == session_id
+            assert result_1 is True
             
             # Verify that create_session operations don't retry after first attempt
             mock_retry.assert_called_once()
@@ -1139,7 +1142,7 @@ class TestDuplicatePreventionIntegration:
             alert_id="performance_test_alert"
         )
         
-        assert initial_session is not None
+        assert initial_session is True
         
         # Measure time for duplicate prevention checks
         start_time = time.time()
@@ -1159,8 +1162,8 @@ class TestDuplicatePreventionIntegration:
                 alert_id="performance_test_alert"  # Same alert_id
             )
             
-            # Should return existing session quickly
-            assert duplicate_session == initial_session
+            # Should return True (duplicate prevention handled internally)
+            assert duplicate_session is True
         
         end_time = time.time()
         total_time = end_time - start_time

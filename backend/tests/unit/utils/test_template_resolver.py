@@ -6,14 +6,15 @@ used for MCP server configurations.
 """
 
 import os
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from tarsy.utils.template_resolver import (
-    TemplateResolver, 
     TemplateResolutionError,
+    TemplateResolver,
     resolve_mcp_server_config,
-    validate_mcp_server_templates
+    validate_mcp_server_templates,
 )
 
 
@@ -342,7 +343,7 @@ class TestVariableNamingRules:
             'VERY_LONG_VARIABLE_NAME_WITH_MANY_PARTS': 'value6'
         }
         
-        config = {var: f"${{{var}}}" for var in valid_vars.keys()}
+        config = {var: f"${{{var}}}" for var in valid_vars}
         
         with patch.dict(os.environ, valid_vars):
             result = self.resolver.resolve_configuration(config)

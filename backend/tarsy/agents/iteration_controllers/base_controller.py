@@ -6,7 +6,7 @@ all iteration controller implementations.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Optional, List
 
 if TYPE_CHECKING:
     from ...models.processing_context import StageContext
@@ -96,8 +96,9 @@ class IterationController(ABC):
         analysis_result: str, 
         completion_patterns: list[str], 
         incomplete_patterns: list[str],
-        fallback_extractor: callable,
-        fallback_message: str
+        fallback_extractor: Optional[Callable[[List[str]], str]],
+        fallback_message: str,
+        context: 'StageContext'
     ) -> str:
         """
         Shared utility for extracting final analysis from ReAct conversations.
@@ -106,8 +107,9 @@ class IterationController(ABC):
             analysis_result: Full ReAct conversation history
             completion_patterns: List of patterns to look for completion messages
             incomplete_patterns: List of patterns for incomplete messages
-            fallback_extractor: Function to extract fallback data from lines
+            fallback_extractor: Function to extract fallback data from list of strings
             fallback_message: Default message if no analysis found
+            context: StageContext containing all stage processing data
             
         Returns:
             Extracted final analysis

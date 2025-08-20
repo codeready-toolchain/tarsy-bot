@@ -6,7 +6,6 @@ across model test files.
 """
 
 import pytest
-from pydantic import ValidationError
 
 from tests.utils import ModelValidationTester
 

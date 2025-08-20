@@ -14,19 +14,18 @@ from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.config.settings import Settings
 from tarsy.integrations.llm.client import LLMClient, LLMManager
 from tarsy.integrations.mcp.client import MCPClient
+from tarsy.models.agent_config import MCPServerConfigModel as MCPServerConfig
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.alert import Alert
 from tarsy.models.constants import StageStatus
 from tarsy.models.db_models import AlertSession
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.models.agent_config import MCPServerConfigModel as MCPServerConfig
-from tarsy.utils.timestamp import now_us
 from tarsy.services.agent_factory import AgentFactory
-from tarsy.services.agent_registry import AgentRegistry
 from tarsy.services.alert_service import AlertService
 from tarsy.services.history_service import HistoryService
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.runbook_service import RunbookService
+from tarsy.utils.timestamp import now_us
 
 
 @pytest.fixture(scope="session")
@@ -389,8 +388,8 @@ def mock_runbook_service(sample_runbook_content):
 @pytest.fixture
 def mock_agent_registry():
     """Mock chain registry (adapted from agent registry)."""
-    from tarsy.services.chain_registry import ChainRegistry
     from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+    from tarsy.services.chain_registry import ChainRegistry
     registry = Mock(spec=ChainRegistry)
     
     # Dynamic chain routing based on alert type

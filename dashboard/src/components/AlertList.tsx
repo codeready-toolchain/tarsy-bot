@@ -100,7 +100,7 @@ const AlertList: React.FC = () => {
                 <TableRow>
                   <TableCell>Status</TableCell>
                   <TableCell>Type</TableCell>
-                  <TableCell>Agent</TableCell>
+                  <TableCell>Agent Chain</TableCell>
                   <TableCell>Time</TableCell>
                   <TableCell>Duration</TableCell>
                 </TableRow>

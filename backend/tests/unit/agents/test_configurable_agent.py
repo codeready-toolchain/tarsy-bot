@@ -440,8 +440,12 @@ class TestConfigurableAgentIterationStrategies:
     
     def test_iteration_strategy_affects_controller_type(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test that different iteration strategies create different controller types."""
-        from tarsy.agents.iteration_controllers.react_stage_controller import ReactStageController
-        from tarsy.agents.iteration_controllers.react_controller import SimpleReActController
+        from tarsy.agents.iteration_controllers.react_controller import (
+            SimpleReActController,
+        )
+        from tarsy.agents.iteration_controllers.react_stage_controller import (
+            ReactStageController,
+        )
         
         # Create agent with REACT_STAGE strategy
         react_stage_config = AgentConfigModel(
