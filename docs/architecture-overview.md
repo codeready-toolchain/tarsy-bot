@@ -1,6 +1,6 @@
 # Tarsy - High-Level Architecture Overview
 
-> **📖 For detailed technical implementation**: See [Technical Design Document](design.md)
+> **📖 For detailed technical implementation**: See [Functional Areas Design Document](functional-areas-design.md)
 
 ## What is Tarsy?
 
@@ -261,5 +261,5 @@ The AI combines all four to make intelligent decisions about investigation appro
 
 ## Next Steps
 
-For detailed technical implementation, API specifications, data models, and deployment information, see the comprehensive [Technical Design Document](design.md).
+For detailed technical implementation, API specifications, data models, and deployment information, see the comprehensive [Functional Areas Design Document](functional-areas-design.md).
 

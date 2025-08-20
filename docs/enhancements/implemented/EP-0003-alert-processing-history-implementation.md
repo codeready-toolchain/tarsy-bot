@@ -626,7 +626,6 @@ python -c "help(tarsy.repositories.history_repository.HistoryRepository)" | grep
 **Goal:** Final system validation, move documents to implemented directory, and update main project documentation
 
 **Files to Create/Modify:**
-- `docs/requirements.md` (modify - add history service requirements)
 - `docs/design.md` (modify - add history service architecture)
 - `backend/README.md` (modify - add history service documentation)
 - `docs/enhancements/implemented/EP-0003-requirements.md` (move)
@@ -733,11 +732,6 @@ Based on design document testing strategy with focus on comprehensive coverage w
 ## Documentation Updates Required
 
 ### Main Documentation Updates
-
-#### requirements.md Updates
-- [ ] **Section 3.2**: Add alert processing history service requirements
-- [ ] **Section 4.3**: Add historical data storage and retrieval capabilities
-- [ ] **New Section 5.4**: History service configuration and management
 
 #### design.md Updates  
 - [ ] **Section 2.1**: Add history service to system architecture diagram

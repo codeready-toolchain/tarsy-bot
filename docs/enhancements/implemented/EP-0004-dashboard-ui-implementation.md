@@ -938,7 +938,6 @@ npm run test:visual-regression
 - `dashboard/docs/DEPLOYMENT.md` (new)
 - `dashboard/docs/API_INTEGRATION.md` (new)
 - `dashboard/docs/UI_GUIDELINES.md` (new)
-- `docs/requirements.md` (update - add dashboard section)
 
 **AI Prompt:** `Implement Step 5.4 of EP-0004: Create comprehensive documentation including README, development guide, deployment instructions, API integration, and UI guidelines documentation`
 
@@ -1052,11 +1051,6 @@ npm run test:performance
 ## Documentation Updates Required
 
 ### Main Documentation Updates
-
-#### requirements.md Updates
-- [ ] **Section 5.2**: Add dashboard UI requirements and specifications
-- [ ] **Section 6.1**: Include dashboard performance requirements
-- [ ] **New Section 7.3**: Dashboard deployment and configuration requirements
 
 #### design.md Updates
 - [ ] **Section 3.4**: Add dashboard architecture to system design

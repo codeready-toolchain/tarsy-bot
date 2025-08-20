@@ -910,7 +910,7 @@ The refactoring addresses existing technical debt:
 
 ### Architecture Documentation
 
-- Updated /docs/requirements.md and /docs/design documentation
+- Updated /docs/design documentation
 
 ---
 

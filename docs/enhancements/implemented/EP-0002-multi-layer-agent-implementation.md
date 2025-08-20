@@ -516,7 +516,6 @@ python -c "import pydoc; pydoc.help('tarsy.agents.kubernetes_agent')" | head -20
 **Goal:** Update project documentation to reflect multi-layer architecture
 
 **Files to Create/Modify:**
-- `docs/requirements.md` (modify)
 - `docs/design.md` (modify)
 - `README.md` (modify)
 
@@ -524,7 +523,6 @@ python -c "import pydoc; pydoc.help('tarsy.agents.kubernetes_agent')" | head -20
 
 **Tasks:**
 - [ ] Update system architecture section in docs/design.md
-- [ ] Add agent configuration examples to docs/requirements.md
 - [ ] Update README.md with new architecture overview
 - [ ] Add configuration documentation for agent registry and MCP server registry
 - [ ] Include examples of adding new agents
@@ -543,7 +541,6 @@ python -c "import pydoc; pydoc.help('tarsy.agents.kubernetes_agent')" | head -20
 ```bash
 # Commands to verify this step
 grep -q "multi-layer agent architecture" docs/design.md
-grep -q "agent_registry" docs/requirements.md
 grep -q "AlertOrchestrator" README.md
 ```
 
@@ -742,12 +739,6 @@ BaseAgent Implementation → KubernetesAgent Creation → AlertOrchestrator Deve
 ## Documentation Updates Required
 
 ### Main Documentation Updates
-
-#### requirements.md Updates
-- [ ] **Section 2.1**: Add multi-layer agent architecture overview
-- [ ] **Section 3.2**: Add agent configuration examples and patterns
-- [ ] **Section 4.1**: Update supported alert types with agent mappings
-- [ ] **New Section**: Agent registry and MCP server registry configuration
 
 #### design.md Updates
 - [ ] **Section 1.1**: Update system architecture diagram with agent layers
