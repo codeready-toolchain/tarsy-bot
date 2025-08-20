@@ -48,10 +48,6 @@ TARSy is an AI-powered incident analysis system that processes alerts through se
 ### Cross-Cutting Concerns
 - [10. Security & Data Protection](#10-security--data-protection)
 
-### Reference
-- [Functional Area Dependencies](#functional-area-dependencies)
-- [Next Steps](#next-steps)
-
 ---
 
 ## Functional Areas
@@ -951,43 +947,3 @@ mcp_servers:
 - **Graceful degradation** if masking service unavailable
 
 ---
-
-## Functional Area Dependencies
-
-```mermaid
-graph TB
-    Alert[1. Alert Processing<br/>& Orchestration] --> Config[2. Configuration<br/>Management]
-    Config --> Chain[3. Chain Management<br/>& Execution]
-    Chain --> Agent[4. Agent Architecture<br/>& Strategy System]
-    Agent --> MCP[5. MCP Integration<br/>& Tool Management]
-    Agent --> LLM[6. LLM Integration<br/>& Multi-Provider Support]
-    
-    MCP --> Hook[7. Hook System &<br/>Event-Driven Architecture]
-    LLM --> Hook
-    Agent --> Hook
-    Chain --> Hook
-    Alert --> Hook
-    
-    Hook --> History[8. History & Audit Trail]
-    Hook --> Dashboard[9. Dashboard & Real-time<br/>Monitoring]
-    
-    History --> Dashboard
-    
-    Config --> MCP
-    Config --> Agent
-    
-    Security[10. Security & Data<br/>Protection] --> MCP
-    Security --> History
-    Security --> LLM
-    
-    style Alert fill:#e1f5fe
-    style Config fill:#f0f8ff
-    style Chain fill:#f3e5f5
-    style Agent fill:#e8f5e8
-    style Hook fill:#fff3e0
-```
-
-This dependency diagram shows how the functional areas interconnect, with Configuration Management serving as the foundation that defines system structure, Alert Processing as the entry point, and the Hook System as the central event capture layer that feeds into History and Dashboard services.
-
----
-
