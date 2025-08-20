@@ -6,6 +6,7 @@ including malformed data, resource constraints, and boundary conditions.
 """
 
 import asyncio
+import uuid
 from datetime import datetime
 from unittest.mock import AsyncMock
 
@@ -43,9 +44,13 @@ class TestEdgeCases:
         )
         
         # Convert to API format for processing
-        alert_dict = alert_to_api_format(long_alert)
+        chain_context = alert_to_api_format(long_alert)
         
-        result = await alert_service.process_alert(alert_dict, progress_callback_mock)
+        # Generate alert_id for new AlertService API
+        import uuid
+        alert_id = str(uuid.uuid4())
+        
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         assert isinstance(result, str)
         assert len(result) > 0
@@ -75,10 +80,14 @@ class TestEdgeCases:
             }
         )
         
-        # Convert to dict for new interface
-        alert_dict = alert_to_api_format(special_alert)
+        # Convert to ChainContext for new interface  
+        chain_context = alert_to_api_format(special_alert)
         
-        result = await alert_service.process_alert(alert_dict, progress_callback_mock)
+        # Generate alert_id for new AlertService API
+        import uuid
+        alert_id = str(uuid.uuid4())
+        
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         assert isinstance(result, str)
         assert len(result) > 0
@@ -95,10 +104,14 @@ class TestEdgeCases:
             data={}  # Empty data
         )
         
-        # Convert to dict for new interface
-        alert_dict = alert_to_api_format(minimal_alert)
+        # Convert to ChainContext for new interface
+        chain_context = alert_to_api_format(minimal_alert)
         
-        result = await alert_service.process_alert(alert_dict, progress_callback_mock)
+        # Generate alert_id for new AlertService API
+        import uuid
+        alert_id = str(uuid.uuid4())
+        
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         assert isinstance(result, str)
         assert len(result) > 0
@@ -123,10 +136,14 @@ class TestEdgeCases:
             }
         )
         
-        # Convert to dict for new interface
-        alert_dict = alert_to_api_format(old_alert)
+        # Convert to ChainContext for new interface
+        chain_context = alert_to_api_format(old_alert)
         
-        result = await alert_service.process_alert(alert_dict)
+        # Generate alert_id for new AlertService API
+        import uuid
+        alert_id = str(uuid.uuid4())
+        
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         assert isinstance(result, str)
         assert len(result) > 0
@@ -149,10 +166,14 @@ class TestEdgeCases:
             }
         )
         
-        # Convert to dict for new interface
-        alert_dict = alert_to_api_format(malformed_alert)
+        # Convert to ChainContext for new interface
+        chain_context = alert_to_api_format(malformed_alert)
         
-        result = await alert_service.process_alert(alert_dict)
+        # Generate alert_id for new AlertService API
+        import uuid
+        alert_id = str(uuid.uuid4())
+        
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         # Should handle the malformed URL gracefully (likely return an error response)
         assert isinstance(result, str)
@@ -168,10 +189,11 @@ class TestEdgeCases:
         num_requests = 5
         
         # Act - Fire off multiple requests simultaneously
-        tasks = [
-            alert_service.process_alert(alert_to_api_format(sample_alert))
-            for _ in range(num_requests)
-        ]
+        tasks = []
+        for _ in range(num_requests):
+            chain_context = alert_to_api_format(sample_alert)
+            alert_id = f"test-alert-{uuid.uuid4()}"
+            tasks.append(alert_service.process_alert(chain_context, alert_id))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Assert - All should complete (may have varying results)
@@ -186,7 +208,9 @@ class TestEdgeCases:
     ):
         """Test processing with None progress callback."""
         # Act - Process with no callback
-        result = await alert_service.process_alert(alert_to_api_format(sample_alert), None)
+        chain_context = alert_to_api_format(sample_alert)
+        alert_id = f"test-alert-{uuid.uuid4()}"
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         # Assert - Should work without callback
         assert result is not None
@@ -221,7 +245,11 @@ class TestStressScenarios:
         
         # Act - Process all concurrently
         start_time = datetime.now()
-        tasks = [alert_service.process_alert(alert_to_api_format(alert)) for alert in alerts]
+        tasks = []
+        for alert in alerts:
+            chain_context = alert_to_api_format(alert)
+            alert_id = f"test-alert-{uuid.uuid4()}"
+            tasks.append(alert_service.process_alert(chain_context, alert_id))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         duration = (datetime.now() - start_time).total_seconds()
         
@@ -248,7 +276,9 @@ class TestStressScenarios:
             # Small delay between starts to simulate rapid but not simultaneous requests
             if i > 0:
                 await asyncio.sleep(0.01)
-            tasks.append(alert_service.process_alert(alert_to_api_format(sample_alert)))
+            chain_context = alert_to_api_format(sample_alert)
+            alert_id = f"test-alert-{uuid.uuid4()}"
+            tasks.append(alert_service.process_alert(chain_context, alert_id))
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
         duration = (datetime.now() - start_time).total_seconds()
@@ -271,7 +301,9 @@ class TestStressScenarios:
         mock_llm_manager.get_client().generate_response.side_effect = Exception("Service unavailable")
         
         # Act - Try to process an alert
-        result = await alert_service.process_alert(alert_to_api_format(sample_alert))
+        chain_context = alert_to_api_format(sample_alert)
+        alert_id = f"test-alert-{uuid.uuid4()}"
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         # Assert - Should handle the failure gracefully
         assert result is not None
@@ -304,7 +336,9 @@ class TestStressScenarios:
         mock_llm_manager.get_client().generate_response.return_value = "**Analysis**: Successfully processed large alert data"
         
         # Act - Process the alert with large data
-        result = await alert_service.process_alert(alert_to_api_format(large_alert))
+        chain_context = alert_to_api_format(large_alert)
+        alert_id = f"test-alert-{uuid.uuid4()}"
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         # Assert - Should handle large data gracefully
         assert result is not None
@@ -351,7 +385,9 @@ class TestBoundaryConditions:
         mock_llm_manager.get_client().generate_response.side_effect = always_continue_response
         
         # Act
-        result = await alert_service.process_alert(alert_to_api_format(sample_alert))
+        chain_context = alert_to_api_format(sample_alert)
+        alert_id = f"test-alert-{uuid.uuid4()}"
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         # Assert - Should stop at max iterations
         assert result is not None
@@ -368,7 +404,9 @@ class TestBoundaryConditions:
         mock_mcp_client.call_tool.return_value = {"status": "success", "output": ""}
         
         # Act
-        result = await alert_service.process_alert(alert_to_api_format(sample_alert))
+        chain_context = alert_to_api_format(sample_alert)
+        alert_id = f"test-alert-{uuid.uuid4()}"
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         # Assert - Should handle empty responses gracefully
         assert result is not None
@@ -396,7 +434,9 @@ class TestBoundaryConditions:
         mock_llm_manager.get_client().generate_response.side_effect = malformed_json_response
         
         # Act
-        result = await alert_service.process_alert(alert_to_api_format(sample_alert))
+        chain_context = alert_to_api_format(sample_alert)
+        alert_id = f"test-alert-{uuid.uuid4()}"
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         # Assert - Should handle malformed JSON gracefully
         assert result is not None
@@ -425,7 +465,9 @@ class TestBoundaryConditions:
         )
         
         # Act
-        result = await alert_service.process_alert(alert_to_api_format(unicode_alert), progress_callback_mock)
+        chain_context = alert_to_api_format(unicode_alert)
+        alert_id = f"test-alert-{uuid.uuid4()}"
+        result = await alert_service.process_alert(chain_context, alert_id)
         
         # Assert - Should handle Unicode correctly
         assert result is not None
@@ -461,8 +503,10 @@ class TestBoundaryConditions:
         
         # Act - Process with timeout
         start_time = datetime.now()
+        chain_context = alert_to_api_format(sample_alert)
+        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await asyncio.wait_for(
-            alert_service.process_alert(alert_to_api_format(sample_alert)),
+            alert_service.process_alert(chain_context, alert_id),
             timeout=10.0  # 10 second timeout
         )
         duration = (datetime.now() - start_time).total_seconds()

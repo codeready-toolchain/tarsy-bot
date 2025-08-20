@@ -326,11 +326,19 @@ class BaseAgent(ABC):
                 server_tools = await self.mcp_client.list_tools(session_id=session_id, server_name=server_name, stage_execution_id=self._current_stage_execution_id)
                 if server_name in server_tools:
                     for tool in server_tools[server_name]:
+                        # Handle MCP tool parameters schema - ensure it's a list
+                        tool_parameters = tool.get('parameters', [])
+                        if isinstance(tool_parameters, dict):
+                            # Convert dict schema to list format expected by MCPTool
+                            tool_parameters = [tool_parameters]
+                        elif not isinstance(tool_parameters, list):
+                            tool_parameters = []
+                        
                         mcp_tools.append(MCPTool(
                             server=server_name,
                             name=tool.get('name', 'tool'),
                             description=tool.get('description', 'No description'),
-                            parameters=tool.get('parameters', [])
+                            parameters=tool_parameters
                         ))
             
             logger.info(f"Agent {self.__class__.__name__} retrieved {len(mcp_tools)} tools from servers: {self._configured_servers}")

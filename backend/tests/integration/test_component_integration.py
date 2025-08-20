@@ -295,8 +295,8 @@ class TestMCPClientIntegration:
         # Arrange - Use the provided mock_mcp_client fixture which already returns 2 tools
         client = mock_mcp_client
         
-        # Act
-        tools = await client.list_tools("kubernetes-server")
+        # Act - Fix: list_tools requires session_id as first parameter
+        tools = await client.list_tools("test-session-123", server_name="kubernetes-server")
         
         # Assert
         assert "kubernetes-server" in tools

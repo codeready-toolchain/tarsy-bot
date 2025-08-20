@@ -320,7 +320,7 @@ def mock_mcp_client():
     client.close = AsyncMock()
     
     # Mock tool listing - use simpler return structure
-    def mock_list_tools_sync(server_name=None):
+    def mock_list_tools_sync(session_id, server_name=None, stage_execution_id=None):
         """Mock tool listing response - synchronous version."""
         if server_name == "kubernetes-server":
             return {
@@ -420,8 +420,8 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
             mock_agent.set_current_stage_execution_id = Mock()
             
             # Mock the process_alert method with NEW signature to match BaseAgent
-            async def mock_kubernetes_process_alert(alert_processing_data, session_id):
-                if not session_id:
+            async def mock_kubernetes_process_alert(chain_context):
+                if not chain_context.session_id:
                     raise ValueError("session_id is required for alert processing")
                 
                 # Simulate calling LLM client multiple times as a real agent would
@@ -431,29 +431,29 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                 await llm_client.generate_response([
                     Mock(role="system", content="You are an expert SRE analyzing Kubernetes namespace issues. Use available MCP tools to diagnose problems."),
                     Mock(role="user", content="select tools for Kubernetes namespace analysis")
-                ], session_id=session_id)
+                ], session_id=chain_context.session_id)
                 
                 # Call for iterative decision
                 await llm_client.generate_response([
                     Mock(role="system", content="You are an expert SRE with Kubernetes expertise. Determine if more analysis is needed."), 
                     Mock(role="user", content="iterative analysis - should we continue?")
-                ], session_id=session_id)
+                ], session_id=chain_context.session_id)
                 
                 # Call for final analysis
                 analysis_result = await llm_client.generate_response([
                     Mock(role="system", content="You are an expert SRE specializing in Kubernetes troubleshooting. Provide actionable analysis."),
                     Mock(role="user", content="final analysis of namespace issue")
-                ], session_id=session_id)
+                ], session_id=chain_context.session_id)
                 
                 # Extract namespace from alert data for tool calls
-                namespace = alert_processing_data.alert_data.get('namespace', 'default')
+                namespace = chain_context.alert_data.get('namespace', 'default')
                 
                 # Simulate calling MCP client for tool listing and execution (iterative analysis)
-                await mock_mcp_client.list_tools(server_name="kubernetes-server")
+                await mock_mcp_client.list_tools(session_id=chain_context.session_id, server_name="kubernetes-server")
                 await mock_mcp_client.call_tool("kubernetes-server", "kubectl_get_namespace", {"namespace": namespace})
                 
                 # Create comprehensive analysis including all relevant data from the alert
-                alert_data = alert_processing_data.alert_data
+                alert_data = chain_context.alert_data
                 analysis_parts = [f"Namespace '{namespace}' analyzed."]
                 
                 # Include service-specific information
@@ -508,7 +508,7 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                                         analysis_parts.append(f"{subkey}: {subvalue}")
                 
                 # Infer context from runbook URL or content
-                runbook_content = alert_processing_data.runbook_content or ""
+                runbook_content = chain_context.runbook_content or ""
                 # Also check if there's a runbook field in the alert data
                 if 'runbook' in alert_data:
                     runbook_content += " " + str(alert_data['runbook'])
@@ -539,8 +539,8 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
             mock_agent.set_current_stage_execution_id = Mock()
             
             # Mock the process_alert method for flexible alerts with NEW signature
-            async def mock_base_process_alert(alert_processing_data, session_id):
-                if not session_id:
+            async def mock_base_process_alert(chain_context):
+                if not chain_context.session_id:
                     raise ValueError("session_id is required for alert processing")
                 
                 # Simulate calling LLM client for flexible alert analysis
@@ -548,7 +548,7 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                 
                 # Generate analysis that includes comprehensive alert data content
                 # Determine service/entity name from different alert types
-                alert_data = alert_processing_data.alert_data
+                alert_data = chain_context.alert_data
                 service_name = "unknown service"
                 if 'service' in alert_data:
                     service_name = alert_data['service']
@@ -737,7 +737,7 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                 await llm_client.generate_response([
                     Mock(role="system", content="You are an expert SRE analyzing monitoring alerts."),
                     Mock(role="user", content=f"analyze alert data: {alert_data}")
-                ], session_id=session_id)
+                ], session_id=chain_context.session_id)
                 
                 return AgentExecutionResult(
                     status=StageStatus.COMPLETED,

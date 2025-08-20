@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock
 
 from tarsy.models.processing_context import ChainContext
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+from tarsy.models.constants import StageStatus
 
 
 @pytest.mark.asyncio
@@ -40,42 +41,34 @@ class TestMultiStageChainExecution:
     def mock_agents_with_data_flow(self):
         """Create mock agents that demonstrate realistic data flow."""
         # First stage: Data Collection Agent
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        
         data_collection_agent = AsyncMock()
-        data_collection_agent.process_alert.return_value = {
-            "status": "success",
-            "collected_data": ["pod_info", "events", "logs"],
-            "data_count": 3,
-            "stage": "data-collection",
-            "mcp_results": {
-                "kubernetes-server": [
-                    {"type": "pods", "count": 5},
-                    {"type": "events", "count": 12}
-                ]
-            }
-        }
+        data_collection_agent.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="DataCollectionAgent",
+            stage_name="data-collection",
+            result_summary="Collected pod_info, events, logs data",
+            timestamp_us=1234567890
+        )
         data_collection_agent.set_current_stage_execution_id = Mock()
         
         # Second stage: Analysis Agent that uses data from first stage
         analysis_agent = AsyncMock()
-        def mock_analysis(alert_data, session_id):
+        def mock_analysis(chain_context):
             # This is the key integration test: verify data flows between stages
-            data_collection_result = alert_data.get_stage_result("data-collection")
+            data_collection_result = chain_context.stage_outputs.get("data-collection")
             assert data_collection_result is not None, "Analysis stage should receive data collection results"
-            assert data_collection_result["collected_data"] == ["pod_info", "events", "logs"]
+            assert data_collection_result.status == StageStatus.COMPLETED
             
-            # Verify MCP results are accessible from previous stages
-            all_mcp = alert_data.get_all_mcp_results()
-            assert "kubernetes-server" in all_mcp
-            assert len(all_mcp["kubernetes-server"]) == 2
-            
-            return {
-                "status": "success", 
-                "root_cause": "Resource exhaustion detected from collected data",
-                "confidence": 0.92,
-                "used_previous_data": len(data_collection_result["collected_data"]),
-                "analysis_based_on_mcp_count": len(all_mcp["kubernetes-server"]),
-                "stage": "analysis"
-            }
+            return AgentExecutionResult(
+                status=StageStatus.COMPLETED,
+                agent_name="AnalysisAgent",
+                stage_name="analysis",
+                result_summary="Resource exhaustion detected from collected data",
+                timestamp_us=1234567890
+            )
         
         analysis_agent.process_alert.side_effect = mock_analysis
         analysis_agent.set_current_stage_execution_id = Mock()
@@ -109,43 +102,39 @@ class TestMultiStageChainExecution:
         # Simulate the chain execution flow that happens in AlertService._execute_chain_stages
         
         # Stage 1: Data Collection
-        alert_data.set_chain_context(simple_two_stage_chain.chain_id, "data-collection")
+        chain_context.set_chain_context(simple_two_stage_chain.chain_id, "data-collection")
         
         data_collection_agent = agents['DataCollectionAgent']
-        stage1_result = await data_collection_agent.process_alert(alert_data, session_id)
-        alert_data.add_stage_result("data-collection", stage1_result)
+        stage1_result = await data_collection_agent.process_alert(chain_context)
+        chain_context.add_stage_result("data-collection", stage1_result)
         
         # Stage 2: Analysis (should receive data from stage 1)
-        alert_data.set_chain_context(simple_two_stage_chain.chain_id, "analysis")
+        chain_context.set_chain_context(simple_two_stage_chain.chain_id, "analysis")
         
         analysis_agent = agents['AnalysisAgent']
-        stage2_result = await analysis_agent.process_alert(alert_data, session_id)  
-        alert_data.add_stage_result("analysis", stage2_result)
+        stage2_result = await analysis_agent.process_alert(chain_context)
+        chain_context.add_stage_result("analysis", stage2_result)
         
         # Verify the chain execution worked correctly
         
         # 1. Both agents were called
-        data_collection_agent.process_alert.assert_called_once_with(alert_data, session_id)
-        analysis_agent.process_alert.assert_called_once_with(alert_data, session_id)
+        data_collection_agent.process_alert.assert_called_once_with(chain_context)
+        analysis_agent.process_alert.assert_called_once_with(chain_context)
         
         # 2. Data flowed between stages - stage 2 received stage 1 results
-        analysis_result = alert_data.get_stage_result("analysis")
-        assert analysis_result["used_previous_data"] == 3  # Used 3 items from data collection
-        assert analysis_result["analysis_based_on_mcp_count"] == 2  # Used 2 MCP results
+        analysis_result = chain_context.stage_outputs.get("analysis")
+        assert analysis_result is not None
+        assert analysis_result.status == StageStatus.COMPLETED
+        assert "Resource exhaustion detected" in analysis_result.result_summary
         
-        # 3. MCP results were merged correctly across stages
-        all_mcp = alert_data.get_all_mcp_results()
-        assert "kubernetes-server" in all_mcp
-        assert len(all_mcp["kubernetes-server"]) == 2
+        # 3. Chain context was maintained
+        assert chain_context.chain_id == simple_two_stage_chain.chain_id
+        assert chain_context.current_stage_name == "analysis"
         
-        # 4. Chain context was maintained
-        assert alert_data.chain_id == "integration-test-chain"
-        assert alert_data.current_stage_name == "analysis"
-        
-        # 5. Both stage results are preserved
-        assert "data-collection" in alert_data.stage_outputs
-        assert "analysis" in alert_data.stage_outputs
-        assert len(alert_data.stage_outputs) == 2
+        # 4. Both stage results are preserved
+        assert "data-collection" in chain_context.stage_outputs
+        assert "analysis" in chain_context.stage_outputs
+        assert len(chain_context.stage_outputs) == 2
     
     async def test_stage_isolation_and_progression(self, simple_two_stage_chain, mock_agents_with_data_flow):
         """Test that stages are isolated but can access previous stage data."""
@@ -185,8 +174,12 @@ class TestMultiStageChainExecution:
         analysis_agent.set_current_stage_execution_id.assert_called_once_with("exec_1_analysis")
         
         # Both stages executed successfully
-        assert alert_data.get_stage_result("data-collection")["status"] == "success"
-        assert alert_data.get_stage_result("analysis")["status"] == "success"
+        data_collection_result = chain_context.stage_outputs.get("data-collection")
+        analysis_result = chain_context.stage_outputs.get("analysis")
+        assert data_collection_result is not None
+        assert analysis_result is not None
+        assert data_collection_result.status == StageStatus.COMPLETED
+        assert analysis_result.status == StageStatus.COMPLETED
 
 
 @pytest.mark.asyncio  
@@ -216,12 +209,17 @@ class TestChainExecutionErrorHandling:
         session_id = "failure-test-session"
         
         # Mock successful first agent
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        
         success_agent = AsyncMock()
-        success_agent.process_alert.return_value = {
-            "status": "success",
-            "result": "first stage completed successfully",
-            "data_collected": ["item1", "item2"]
-        }
+        success_agent.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="SuccessAgent",
+            stage_name="success-stage",
+            result_summary="first stage completed successfully",
+            timestamp_us=1234567890
+        )
         success_agent.set_current_stage_execution_id = Mock()
         
         # Mock failing second agent
@@ -235,18 +233,18 @@ class TestChainExecutionErrorHandling:
         
         try:
             # Stage 1: Should succeed
-            alert_data.set_chain_context(chain.chain_id, "success-stage")
-            stage1_result = await success_agent.process_alert(alert_data, session_id)
-            alert_data.add_stage_result("success-stage", stage1_result)
+            chain_context.set_chain_context(chain.chain_id, "success-stage")
+            stage1_result = await success_agent.process_alert(chain_context)
+            chain_context.add_stage_result("success-stage", stage1_result)
             successful_stages += 1
         except Exception:
             failed_stages += 1
         
         try:
             # Stage 2: Should fail
-            alert_data.set_chain_context(chain.chain_id, "failure-stage")
-            stage2_result = await failure_agent.process_alert(alert_data, session_id)
-            alert_data.add_stage_result("failure-stage", stage2_result)
+            chain_context.set_chain_context(chain.chain_id, "failure-stage")
+            stage2_result = await failure_agent.process_alert(chain_context)
+            chain_context.add_stage_result("failure-stage", stage2_result)
             successful_stages += 1
         except Exception as e:
             # This simulates how AlertService would handle the failure
@@ -258,17 +256,17 @@ class TestChainExecutionErrorHandling:
         assert failed_stages == 1
         
         # Verify first stage completed successfully and data is preserved
-        success_result = alert_data.get_stage_result("success-stage")
+        success_result = chain_context.stage_outputs.get("success-stage")
         assert success_result is not None
-        assert success_result["status"] == "success"
-        assert success_result["result"] == "first stage completed successfully"
+        assert success_result.status == StageStatus.COMPLETED
+        assert "first stage completed successfully" in success_result.result_summary
         
         # Verify second stage failed and no result was stored
-        failure_result = alert_data.get_stage_result("failure-stage")
+        failure_result = chain_context.stage_outputs.get("failure-stage")
         assert failure_result is None  # No result stored due to failure
         
         # Verify chain context reflects the failure point
-        assert alert_data.current_stage_name == "failure-stage"
+        assert chain_context.current_stage_name == "failure-stage"
         
         # Verify both agents were called
         success_agent.process_alert.assert_called_once()
