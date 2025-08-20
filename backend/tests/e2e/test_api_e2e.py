@@ -1107,23 +1107,17 @@ Action Input: {step['action_input']}"""
              patch('tarsy.services.alert_service.LLMManager') as mock_llm_manager_class, \
              patch('tarsy.services.alert_service.MCPClient') as mock_mcp_client_class, \
              patch('tarsy.services.alert_service.MCPServerRegistry') as mock_mcp_server_registry, \
-             patch('tarsy.services.alert_service.RunbookService') as mock_runbook_service, \
-             patch('tarsy.main.alert_processing_semaphore') as mock_semaphore:
+             patch('tarsy.services.alert_service.RunbookService') as mock_runbook_service:
             
             print("🔧 Setting up real AlertService with mocked dependencies...")
         
             # Setup history service settings (use isolated settings)
             mock_history_settings.return_value = isolated_e2e_settings
             
-            # Setup semaphore mock to allow async context management
-            real_semaphore = asyncio.Semaphore()
-            
-            # Patch the semaphore directly in the main module, not just the return value
+            # Setup semaphore directly (avoid complex patching that causes async context issues)
             import tarsy.main
-            tarsy.main.alert_processing_semaphore = real_semaphore
-            
-            # CRITICAL: Also patch the mock to return the real semaphore when needed
-            mock_semaphore.return_value = real_semaphore
+            if tarsy.main.alert_processing_semaphore is None:
+                tarsy.main.alert_processing_semaphore = asyncio.Semaphore(1)
             
             # Database is already initialized by the isolated_test_database fixture
             print(f"✅ Using isolated database: {isolated_test_database}")
