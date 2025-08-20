@@ -951,8 +951,10 @@ def datetime_now_utc():
 def history_service_with_test_db(history_test_database_engine):
     """Create HistoryService with test database engine."""
     from unittest.mock import patch
+    from sqlalchemy.orm import sessionmaker
 
     from tarsy.services.history_service import HistoryService
+    from tarsy.repositories.base_repository import DatabaseManager
     
     # Mock settings for history service
     mock_settings = Mock()
@@ -963,13 +965,17 @@ def history_service_with_test_db(history_test_database_engine):
     with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
         service = HistoryService()
         
-        # Initialize the service properly
-        service.initialize()
+        # CRITICAL: Replace the DatabaseManager's engine with our test engine
+        # that already has the tables created, to avoid separate in-memory databases
+        service.db_manager = DatabaseManager("sqlite:///:memory:")
+        service.db_manager.engine = history_test_database_engine  # Use the same engine with tables
         
-        # Override database engine for testing if db_manager exists
-        if service.db_manager:
-            service.db_manager.engine = history_test_database_engine
-            service.db_manager.SessionLocal = lambda: Session(history_test_database_engine)
+        # Create session factory using the existing engine
+        service.db_manager.session_factory = sessionmaker(
+            bind=history_test_database_engine,
+            class_=Session,
+            expire_on_commit=False
+        )
         
         service._is_healthy = True
         service._initialization_attempted = True

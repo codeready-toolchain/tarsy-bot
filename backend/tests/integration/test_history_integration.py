@@ -75,25 +75,35 @@ class TestHistoryServiceIntegration:
     @pytest.fixture
     def history_service_with_db(self, in_memory_engine):
         """Create history service with test database for testing."""
-        # Get the database file path from the test engine (temporary file)
-        db_path = in_memory_engine.url.database  # Extract the file path
-        test_db_url = f"sqlite:///{db_path}"
+        # For in-memory databases, we need to use the same connection
+        # Multiple connections to :memory: create separate databases!
         
-        logger.info(f"Test database URL: {test_db_url}")
-        
-        # Mock settings to use the EXACT same database file as the test engine
+        # Mock settings to use the same in-memory database
         mock_settings = Mock()
         mock_settings.history_enabled = True  
-        mock_settings.history_database_url = test_db_url  # Use the same database file
+        mock_settings.history_database_url = "sqlite:///:memory:"
         mock_settings.history_retention_days = 90
         
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
             service = HistoryService()
-            # Initialize the service - it will now use the same database file
-            service.initialize()
             
-            logger.info(f"Service database URL: {service.db_manager.database_url}")
-            logger.info(f"Service engine URL: {service.db_manager.engine.url}")
+            # CRITICAL: Replace the DatabaseManager's engine with our test engine
+            # that already has the tables created, to avoid separate in-memory databases
+            from tarsy.repositories.base_repository import DatabaseManager
+            service.db_manager = DatabaseManager("sqlite:///:memory:")
+            service.db_manager.engine = in_memory_engine  # Use the same engine with tables
+            
+            # Create session factory using the existing engine
+            from sqlmodel import Session
+            from sqlalchemy.orm import sessionmaker
+            service.db_manager.session_factory = sessionmaker(
+                bind=in_memory_engine,
+                class_=Session,
+                expire_on_commit=False
+            )
+            service._is_healthy = True  # Mark as healthy since we have a working engine
+            
+            logger.info(f"Using shared in-memory database engine with tables already created")
             
             yield service
     
