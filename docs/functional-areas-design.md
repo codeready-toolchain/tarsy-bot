@@ -138,17 +138,20 @@ TARSy supports both built-in components and YAML-based configuration, enabling s
 graph TB
     ENV[Environment Variables<br/>.env file] --> Template[Template Resolution]
     YAML[agents.yaml] --> Loader[ConfigurationLoader]
+    LLMYaml[llm_providers.yaml<br/>Optional] --> LLMLoader[LLM Config Loader]
     BuiltIn[Built-in Definitions<br/>builtin_config.py] --> Registry[Component Registries]
     
     Template --> Loader
     Loader --> Validation[Pydantic Validation]
     Validation --> Registry
+    LLMLoader --> LLMManager[LLM Manager]
     
     Registry --> Chain[ChainRegistry]
     Registry --> Agent[AgentFactory] 
     Registry --> MCP[MCPServerRegistry]
     
     style YAML fill:#e8f5e8
+    style LLMYaml fill:#fff3e0
     style BuiltIn fill:#f0f8ff
 ```
 
@@ -201,6 +204,40 @@ chains:
         iteration_strategy: "react-final-analysis"
 ```
 
+**📍 LLM Provider Configuration**: `config/llm_providers.yaml` (optional, see `config/llm_providers.yaml.example`)
+- **Built-in default providers** work out-of-the-box with just API keys
+- **Optional YAML overrides** for custom models, proxy configurations, temperature settings
+- **Multi-provider support** with OpenAI, Google Gemini, xAI Grok, Anthropic Claude
+
+**Built-in Default Providers**:
+```python
+# From builtin_config.py - work with just API keys
+BUILTIN_LLM_PROVIDERS = {
+    "openai-default": {"type": "openai", "model": "gpt-5"},
+    "google-default": {"type": "google", "model": "gemini-2.5-flash"},  # DEFAULT
+    "xai-default": {"type": "xai", "model": "grok-4-latest"},
+    "anthropic-default": {"type": "anthropic", "model": "claude-4-sonnet"}
+}
+```
+
+**Example LLM YAML Configuration**:
+```yaml
+llm_providers:
+  # Override built-in provider model
+  openai-default:
+    type: openai
+    model: gpt-4  # Override default gpt-5
+    api_key_env: OPENAI_API_KEY
+    
+  # Custom proxy provider
+  openai-proxy:
+    type: openai
+    model: custom-model
+    api_key_env: OPENAI_API_KEY
+    base_url: https://my-proxy.domain.com/v1
+    temperature: 0.0
+```
+
 #### Configuration Loading Process
 
 **📍 Configuration Loader**: `backend/tarsy/config/agent_config.py`
@@ -212,9 +249,17 @@ chains:
 
 **📍 Settings Management**: `backend/tarsy/config/settings.py`
 - **Environment-based configuration** using Pydantic BaseSettings
+- **LLM provider management** with built-in defaults and YAML merging
 - **API keys, timeouts, concurrency limits**
 - **Database and service configuration**
 - **Template variable defaults**
+
+**📍 LLM Configuration Process**:
+1. **Load built-in providers** from `builtin_config.py`
+2. **Load YAML overrides** if `config/llm_providers.yaml` exists
+3. **Merge configurations** (YAML takes priority over built-ins)
+4. **Validate provider types** and required fields
+5. **Map API keys** based on provider type (google → GOOGLE_API_KEY, etc.)
 
 ### 3. Chain Management & Execution
 **Purpose**: Chain definition, selection, and sequential stage execution  
@@ -532,11 +577,143 @@ class KubernetesAgent(BaseAgent):
 **Purpose**: AI/LLM provider abstraction and management  
 **Key Responsibility**: Unified LLM access across multiple providers
 
-- **Multi-provider support** (OpenAI, Google Gemini, xAI Grok)
-- **LLM client management** (provider availability and failover)
-- **Request/response handling** (unified messaging interface)
-- **Provider configuration** (API key management and model selection)
-- **Communication logging** (detailed LLM interaction tracking)
+TARSy provides comprehensive multi-provider LLM support with built-in defaults for immediate use and optional custom configurations for advanced setups. The system uses LangChain for provider abstraction and includes detailed communication logging.
+
+#### LLM Architecture
+
+```mermaid
+graph TB
+    subgraph "Configuration Layer"
+        BuiltIn[Built-in Providers<br/>builtin_config.py]
+        YAML[llm_providers.yaml<br/>Optional Overrides]
+        ENV[Environment API Keys]
+    end
+    
+    subgraph "LLM Management"
+        Settings[Settings Manager]
+        Manager[LLM Manager]
+        Client[LLM Client]
+    end
+    
+    subgraph "Provider Integration"
+        LC[LangChain Abstraction]
+        OpenAI[OpenAI Provider]
+        Google[Google Gemini]
+        XAI[xAI Grok]
+        Anthropic[Anthropic Claude]
+    end
+    
+    BuiltIn --> Settings
+    YAML --> Settings
+    ENV --> Settings
+    Settings --> Manager
+    Manager --> Client
+    Client --> LC
+    
+    LC --> OpenAI
+    LC --> Google
+    LC --> XAI
+    LC --> Anthropic
+    
+    style Settings fill:#e8f5e8
+    style Manager fill:#fff3e0
+    style LC fill:#f0f8ff
+```
+
+#### Key Components
+
+**📍 Built-in Provider Defaults**: `backend/tarsy/config/builtin_config.py`
+- **Out-of-the-box providers**: OpenAI (gpt-5), Google (gemini-2.5-flash), xAI (grok-4-latest), Anthropic (claude-4-sonnet)
+- **Default selection**: google-default for immediate use with just GOOGLE_API_KEY
+- **Zero configuration required** for basic operation
+
+```python
+BUILTIN_LLM_PROVIDERS = {
+    "openai-default": {
+        "type": "openai", "model": "gpt-5", 
+        "api_key_env": "OPENAI_API_KEY"
+    },
+    "google-default": {  # DEFAULT
+        "type": "google", "model": "gemini-2.5-flash",
+        "api_key_env": "GOOGLE_API_KEY"  
+    },
+    # ... xai-default, anthropic-default
+}
+```
+
+**📍 LLM Manager**: `backend/tarsy/integrations/llm/client.py`
+- **Multi-provider initialization** with automatic availability detection
+- **Provider selection** via LLM_PROVIDER environment variable
+- **Unified client interface** using LangChain abstraction layer
+- **Automatic retry logic** with exponential backoff for rate limiting
+
+**Provider Integration Pattern**:
+```python
+# All providers use unified LangChain integration
+LLM_PROVIDERS = {
+    "openai": _create_openai_client,     # ChatOpenAI
+    "google": _create_google_client,     # ChatGoogleGenerativeAI
+    "xai": _create_xai_client,          # ChatXAI
+    "anthropic": _create_anthropic_client # ChatAnthropic
+}
+```
+
+#### Configuration & Customization
+
+**Three-tier configuration system**:
+
+1. **Built-in defaults** (zero config) - Just set GOOGLE_API_KEY
+2. **Environment overrides** - Set LLM_PROVIDER to use different built-in provider
+3. **YAML customization** - Override models, add proxies, custom base URLs
+
+**Advanced Configuration Examples**:
+```yaml
+# config/llm_providers.yaml
+llm_providers:
+  # Override built-in model
+  openai-default:
+    type: openai
+    model: gpt-4  # Override gpt-5 default
+    
+  # Custom proxy configuration  
+  openai-internal-proxy:
+    type: openai
+    model: gpt-4
+    api_key_env: OPENAI_API_KEY
+    base_url: https://internal-proxy.company.com/v1
+    temperature: 0.1
+```
+
+#### Communication & Error Handling
+
+**📍 LLM Communication Logging**: Separate logger (`llm.communications`) captures all LLM interactions
+**📍 Hook Integration**: All LLM interactions trigger typed hooks for history and dashboard updates
+**📍 Error Handling**: Automatic retry for rate limiting, empty response detection, graceful degradation
+
+#### Provider Support
+
+**All providers use LangChain abstraction** with support for:
+- **Custom base URLs** (OpenAI, xAI) for proxy configurations
+- **SSL verification control** (OpenAI) 
+- **Provider-specific optimizations** (Google Gemini flash models, Anthropic Claude latest models)
+
+#### API Key Management
+
+**Flexible API key configuration**:
+- **Environment variable mapping**: provider type determines API key field
+- **Built-in security**: API keys never logged or stored in plaintext
+- **Validation**: Configuration validates API key presence at startup
+- **Zero-configuration defaults**: GOOGLE_API_KEY works out-of-the-box
+
+```python
+# Automatic API key mapping by provider type
+provider_type_to_key = {
+    "google": settings.google_api_key,      # GOOGLE_API_KEY
+    "openai": settings.openai_api_key,      # OPENAI_API_KEY  
+    "xai": settings.xai_api_key,           # XAI_API_KEY
+    "anthropic": settings.anthropic_api_key # ANTHROPIC_API_KEY
+}
+```
 
 ### 7. Hook System & Event-Driven Architecture
 **Purpose**: Event-driven component decoupling and real-time system coordination  

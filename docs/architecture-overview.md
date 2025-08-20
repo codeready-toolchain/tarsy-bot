@@ -200,6 +200,9 @@ The AI combines all four to make intelligent decisions about investigation appro
   - *Examples: ArgoCD agents, AWS agents, database agents, network agents*
 - **New MCP Servers**: Integrate additional diagnostic tools for deeper analysis capabilities
   - *Examples: Prometheus metrics server, Grafana dashboards server, cloud provider APIs, log aggregation tools*
+- **LLM Provider Configuration**: Built-in support for multiple AI providers with optional custom configurations
+  - *Built-in providers: OpenAI, Google Gemini, xAI Grok, Anthropic Claude*
+  - *Custom providers: Proxy configurations, model overrides via `config/llm_providers.yaml`*
 - **Configurable Chain Definitions**: Deploy new multi-stage workflows via YAML configuration without code changes
   - *Example config/agents.yaml:*
   ```yaml

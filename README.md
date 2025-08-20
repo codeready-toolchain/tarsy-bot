@@ -34,7 +34,7 @@ make setup
 
 # 2. Configure API keys (REQUIRED)
 # Edit backend/.env and set your API keys:
-# - GEMINI_API_KEY (get from https://aistudio.google.com/app/apikey)
+# - GOOGLE_API_KEY (get from https://aistudio.google.com/app/apikey)
 # - GITHUB_TOKEN (get from https://github.com/settings/tokens)
 
 # 3. Ensure Kubernetes/OpenShift access (REQUIRED)
@@ -207,7 +207,7 @@ npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
 - **Alert Types**: Define any alert type in `config/agents.yaml` - no hardcoding required, just create corresponding runbooks
 - **MCP Servers**: Update `mcp_servers` configuration in `settings.py` or define in `config/agents.yaml`
 - **Agents**: Create traditional hardcoded agent classes extending BaseAgent, or define configuration-based agents in `config/agents.yaml`
-- **LLM Providers**: Add new providers by extending the LLM client configuration
+- **LLM Providers**: Built-in providers work out-of-the-box (OpenAI, Google, xAI, Anthropic). Add custom providers via `config/llm_providers.yaml` for proxy configurations or model overrides
 
 > **📖 For detailed extensibility examples**: See [Extensibility section](docs/architecture-overview.md#extensibility) in the Architecture Overview
 
