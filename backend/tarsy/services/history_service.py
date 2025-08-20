@@ -162,6 +162,7 @@ class HistoryService:
             return
             
         session = None
+        repository = None
         try:
             if not self.db_manager:
                 yield None
@@ -178,7 +179,7 @@ class HistoryService:
                     session.rollback()
                 except Exception:
                     pass
-            yield None
+            # Don't yield here - the repository was already yielded above
             
         finally:
             if session:

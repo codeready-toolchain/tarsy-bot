@@ -1287,6 +1287,36 @@ Action Input: {step['action_input']}"""
                     
                 print(f"✅ Processing completed with session: {session_id}")
                 
+                # CRITICAL FIX: Wait for all async hook operations to complete
+                # This prevents race condition where test validation runs before
+                # async hooks finish storing interactions to database
+                print("\n⏱️  STEP 2.1: Ensuring all async operations complete...")
+                await asyncio.sleep(1.0)  # Give async hooks time to complete
+                
+                # Additional synchronization: Check database until interactions appear
+                # This handles cases where async operations take longer than expected
+                interactions_found = False
+                max_retries = 30  # 3 seconds max wait
+                for retry in range(max_retries):
+                    try:
+                        sessions_response = e2e_test_client.get("/api/v1/history/sessions")
+                        if sessions_response.status_code == 200:
+                            sessions_data = sessions_response.json()
+                            if sessions_data.get("sessions"):
+                                session = sessions_data["sessions"][0]
+                                total_interactions = session.get("llm_interaction_count", 0) + session.get("mcp_communication_count", 0)
+                                if total_interactions > 0:
+                                    interactions_found = True
+                                    print(f"   ✅ Found {total_interactions} interactions after {retry * 0.1:.1f}s")
+                                    break
+                    except Exception as e:
+                        print(f"   🔍 Retry {retry}: {e}")
+                    
+                    await asyncio.sleep(0.1)  # Small delay between checks
+                
+                if not interactions_found:
+                    print("   ⚠️  No interactions found after synchronization - this may indicate a deeper issue")
+                
                 # Step 3: Validate Sessions API endpoints
                 print("\n🔍 STEP 3: Validating Sessions API endpoints...")
                 session_data, stage_interaction_counts = await self._validate_sessions_api(e2e_test_client, session_id, e2e_realistic_kubernetes_alert)
