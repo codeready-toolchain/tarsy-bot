@@ -575,7 +575,7 @@ class TestHistoryRepository:
         assert result.pagination.total_items == 0
     
     @pytest.mark.unit
-    def test_get_session_timeline_chronological_order(self, repository, sample_alert_session):
+    def test_get_session_details_chronological_order(self, repository, sample_alert_session):
         """Test session timeline reconstruction with chronological ordering."""
         from tarsy.models.db_models import StageExecution
         from tarsy.utils.timestamp import now_us
@@ -637,7 +637,7 @@ class TestHistoryRepository:
         repository.create_llm_interaction(llm2)
         
         # Get timeline
-        timeline = repository.get_session_timeline(sample_alert_session.session_id)
+        timeline = repository.get_session_details(sample_alert_session.session_id)
         
         assert timeline is not None
         assert timeline.session_id == sample_alert_session.session_id
@@ -662,7 +662,7 @@ class TestHistoryRepository:
             assert all_interactions[i].timestamp_us <= all_interactions[i + 1].timestamp_us
 
     @pytest.mark.unit
-    def test_get_session_timeline_unix_timestamp_precision(self, repository, sample_alert_session):
+    def test_get_session_details_unix_timestamp_precision(self, repository, sample_alert_session):
         """Test session timeline with Unix timestamp precision and chronological ordering."""
         from tarsy.models.db_models import StageExecution
         from tarsy.utils.timestamp import now_us
@@ -727,7 +727,7 @@ class TestHistoryRepository:
         repository.create_llm_interaction(llm_interaction_middle)
         
         # Get timeline
-        timeline = repository.get_session_timeline(sample_alert_session.session_id)
+        timeline = repository.get_session_details(sample_alert_session.session_id)
         
         assert timeline is not None
         
@@ -798,9 +798,9 @@ class TestHistoryRepository:
         assert active_sessions[0].status == "in_progress"
 
     @pytest.mark.unit
-    def test_get_session_timeline_empty_session(self, repository):
+    def test_get_session_details_empty_session(self, repository):
         """Test getting timeline for non-existent session."""
-        result = repository.get_session_timeline("non-existent-session")
+        result = repository.get_session_details("non-existent-session")
         assert result is None
 
     @pytest.mark.unit
@@ -988,7 +988,7 @@ class TestHistoryRepository:
         assert interactions[0].response_json is None
 
     @pytest.mark.unit
-    def test_get_session_timeline_includes_success_error_fields(self, repository, sample_alert_session):
+    def test_get_session_details_includes_success_error_fields(self, repository, sample_alert_session):
         """Test session timeline includes success and error_message fields in LLM interactions."""
         from tarsy.models.db_models import StageExecution
         from tarsy.utils.timestamp import now_us
@@ -1039,7 +1039,7 @@ class TestHistoryRepository:
         repository.create_llm_interaction(failed_interaction)
         
         # Get timeline
-        timeline = repository.get_session_timeline(sample_alert_session.session_id)
+        timeline = repository.get_session_details(sample_alert_session.session_id)
         
         assert timeline is not None
         assert len(timeline.stages) > 0
@@ -1240,9 +1240,9 @@ class TestHistoryRepositoryErrorHandling:
         assert result.pagination.total_items == 0
     
     @pytest.mark.unit
-    def test_get_session_timeline_database_error(self, repository_with_session_error):
+    def test_get_session_details_database_error(self, repository_with_session_error):
         """Test getting session timeline with database error."""
-        result = repository_with_session_error.get_session_timeline("test-session")
+        result = repository_with_session_error.get_session_details("test-session")
         assert result is None
 
     @pytest.mark.unit
@@ -1592,7 +1592,7 @@ class TestFlexibleAlertDataPerformance:
         for session_overview in sessions.sessions:
             session_id = session_overview.session_id
             # Get full session details (includes alert_data)
-            full_session = repository_with_flexible_data.get_session_timeline(session_id)
+            full_session = repository_with_flexible_data.get_session_details(session_id)
             if full_session and full_session.alert_data:
                 alert_data = full_session.alert_data
                 if alert_data.get("severity") == "critical":
@@ -1619,7 +1619,7 @@ class TestFlexibleAlertDataPerformance:
         for session_overview in sessions.sessions:
             session_id = session_overview.session_id
             # Get full session details (includes alert_data)
-            full_session = repository_with_flexible_data.get_session_timeline(session_id)
+            full_session = repository_with_flexible_data.get_session_details(session_id)
             if full_session and full_session.alert_data:
                 alert_data = full_session.alert_data
                 if (alert_data.get("metrics") and
@@ -1648,7 +1648,7 @@ class TestFlexibleAlertDataPerformance:
         for session_overview in sessions.sessions:
             session_id = session_overview.session_id
             # Get full session details (includes alert_data)
-            full_session = repository_with_flexible_data.get_session_timeline(session_id)
+            full_session = repository_with_flexible_data.get_session_details(session_id)
             if full_session and full_session.alert_data:
                 alert_data = full_session.alert_data
                 # Check for any array fields

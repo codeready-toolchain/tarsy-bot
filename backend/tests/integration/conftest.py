@@ -865,10 +865,10 @@ def mock_history_service():
     service.is_enabled = True
     service.create_session.return_value = "mock-session-123"
     service.update_session_status.return_value = True
-    service.log_llm_interaction.return_value = True
-    service.log_mcp_communication.return_value = True
+    service.store_llm_interaction.return_value = True
+    service.store_mcp_interaction.return_value = True
     service.get_sessions_list.return_value = ([], 0)
-    service.get_session_timeline.return_value = None
+    service.get_session_details.return_value = None
     service.test_database_connection.return_value = True
     service.health_check.return_value = {
         "enabled": True,

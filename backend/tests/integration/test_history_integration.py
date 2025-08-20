@@ -27,6 +27,39 @@ from tests.conftest import alert_to_api_format
 logger = logging.getLogger(__name__)
 
 
+def create_test_context_and_chain(alert_type="kubernetes", session_id="test-session", chain_id="test-chain", agent="KubernetesAgent"):
+    """Helper function to create test ChainContext and ChainConfigModel for integration tests."""
+    from tarsy.models.processing_context import ChainContext
+    from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+    
+    chain_context = ChainContext(
+        alert_type=alert_type,
+        alert_data={
+            "alert_type": alert_type,
+            "environment": "test",
+            "cluster": "test-cluster", 
+            "namespace": "test-namespace",
+            "message": "Test alert message"
+        },
+        session_id=session_id,
+        current_stage_name="test_stage"
+    )
+    
+    chain_definition = ChainConfigModel(
+        chain_id=chain_id,
+        alert_types=[alert_type],
+        stages=[
+            ChainStageConfigModel(
+                name="test_stage",
+                agent=agent,
+                description="Test stage"
+            )
+        ]
+    )
+    
+    return chain_context, chain_definition
+
+
 class TestHistoryServiceIntegration:
     """Integration tests for complete history service workflow."""
     
@@ -121,26 +154,33 @@ class TestHistoryServiceIntegration:
     def test_create_session_and_track_lifecycle(self, history_service_with_db, sample_alert):
         """Test creating a session and tracking its complete lifecycle."""
         # Create initial session
-        session_id = history_service_with_db.create_session(
-            session_id="test-integration-session-123",  # EP-0012: session_id is now first parameter
-            alert_id="alert-123",
-            alert_data={
-                "alert_type": sample_alert.alert_type,
-                        "environment": sample_alert.data.get('environment', ''),
-        "cluster": sample_alert.data.get('cluster', ''),
-        "namespace": sample_alert.data.get('namespace', ''),
-        "message": sample_alert.data.get('message', '')
-            },
-            agent_type="KubernetesAgent",
+        chain_context, chain_definition = create_test_context_and_chain(
             alert_type=sample_alert.alert_type,
-            chain_id="test-integration-chain-1"
+            session_id="test-integration-session-123",
+            chain_id="test-integration-chain-1",
+            agent="KubernetesAgent"
         )
         
-        assert session_id is not None
+        # Override alert_data with sample alert data
+        chain_context.alert_data = {
+            "alert_type": sample_alert.alert_type,
+            "environment": sample_alert.data.get('environment', ''),
+            "cluster": sample_alert.data.get('cluster', ''),
+            "namespace": sample_alert.data.get('namespace', ''),
+            "message": sample_alert.data.get('message', '')
+        }
+        
+        result = history_service_with_db.create_session(
+            chain_context=chain_context,
+            chain_definition=chain_definition,
+            alert_id="alert-123"
+        )
+        
+        assert result is True
         
         # Update session to in_progress
         result = history_service_with_db.update_session_status(
-            session_id=session_id,
+            session_id=chain_context.session_id,
             status="in_progress"
         )
         assert result == True
@@ -167,7 +207,7 @@ class TestHistoryServiceIntegration:
             token_usage={"prompt_tokens": 150, "completion_tokens": 50, "total_tokens": 200},
             duration_ms=1500
         )
-        llm_result = history_service_with_db.log_llm_interaction(llm_interaction)
+        llm_result = history_service_with_db.store_llm_interaction(llm_interaction)
         assert llm_result == True
         
         # Log MCP communication
@@ -183,7 +223,7 @@ class TestHistoryServiceIntegration:
             duration_ms=800,
             success=True
         )
-        mcp_result = history_service_with_db.log_mcp_interaction(mcp_interaction)
+        mcp_result = history_service_with_db.store_mcp_interaction(mcp_interaction)
         assert mcp_result == True
         
         # Complete session
@@ -194,7 +234,7 @@ class TestHistoryServiceIntegration:
         assert completion_result == True
         
         # Verify complete timeline
-        timeline = history_service_with_db.get_session_timeline(session_id)
+        timeline = history_service_with_db.get_session_details(session_id)
         assert timeline is not None
         assert timeline.status.value == "completed"  # Access enum status
         # Total interactions from all stages
@@ -240,7 +280,7 @@ class TestHistoryServiceIntegration:
             response_json={"choices": [{"message": {"role": "assistant", "content": "Initial analysis response"}, "finish_reason": "stop"}]},
             duration_ms=1200
         )
-        history_service_with_db.log_llm_interaction(llm_interaction1)
+        history_service_with_db.store_llm_interaction(llm_interaction1)
         
         # Sleep to ensure different timestamp
         import time
@@ -256,7 +296,7 @@ class TestHistoryServiceIntegration:
             step_description="Get namespace info",
             success=True
         )
-        history_service_with_db.log_mcp_interaction(mcp_interaction1)
+        history_service_with_db.store_mcp_interaction(mcp_interaction1)
         
         time.sleep(0.01)
         
@@ -269,10 +309,10 @@ class TestHistoryServiceIntegration:
             request_json={"messages": [{"role": "user", "content": "Follow-up analysis prompt"}]},
             response_json={"choices": [{"message": {"role": "assistant", "content": "Follow-up analysis response"}, "finish_reason": "stop"}]}
         )
-        history_service_with_db.log_llm_interaction(llm_interaction2)
+        history_service_with_db.store_llm_interaction(llm_interaction2)
         
         # Get timeline and verify ordering
-        timeline = history_service_with_db.get_session_timeline(session_id)
+        timeline = history_service_with_db.get_session_details(session_id)
         
         # Collect all interactions from all stages
         all_interactions = []
@@ -345,7 +385,7 @@ class TestHistoryServiceIntegration:
                     request_json={"messages": [{"role": "user", "content": f"Test prompt for {session_id}"}]},
                     response_json={"choices": [{"message": {"role": "assistant", "content": f"Test response for {session_id}"}, "finish_reason": "stop"}]}
                 )
-                history_service_with_db.log_llm_interaction(llm_interaction_variety)
+                history_service_with_db.store_llm_interaction(llm_interaction_variety)
         
         # Test 1: Filter by alert_type + status
         result = history_service_with_db.get_sessions_list(
@@ -404,7 +444,7 @@ class TestHistoryServiceIntegration:
             request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
             response_json={"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]}
         )
-        result = history_service_with_db.log_llm_interaction(llm_interaction_invalid)
+        result = history_service_with_db.store_llm_interaction(llm_interaction_invalid)
         # The service allows logging interactions even for non-existent sessions
         # This is by design for performance and graceful degradation
         assert result == True  # Service handles this gracefully without validation
@@ -417,7 +457,7 @@ class TestHistoryServiceIntegration:
         assert result == False  # Should fail gracefully
         
         # Test timeline retrieval with invalid session ID
-        timeline = history_service_with_db.get_session_timeline("non-existent-session")
+        timeline = history_service_with_db.get_session_details("non-existent-session")
         assert timeline is None  # Should return None for non-existent sessions
     
 
@@ -447,7 +487,7 @@ class TestHistoryServiceIntegration:
         assert result == True, "Status update should succeed with retry logic"
         
         # Verify session was created correctly
-        timeline = history_service_with_db.get_session_timeline(session_id)
+        timeline = history_service_with_db.get_session_details(session_id)
         assert timeline is not None
         assert timeline.status.value == "completed"
         
@@ -618,7 +658,7 @@ class TestHistoryAPIIntegration:
             session_id="api-session-1",
             chain_id="integration-chain-123",  # Match test expectation
         )
-        service.get_session_timeline.return_value = custom_detailed_session
+        service.get_session_details.return_value = custom_detailed_session
         
         # Override session stats to match test expectations
         custom_stats = SessionFactory.create_session_stats(
@@ -838,7 +878,7 @@ class TestDuplicatePreventionIntegration:
         assert session_id_1 == session_id_2
         
         # Verify original session data is preserved
-        session = history_service_with_test_db.get_session_timeline(session_id_1)
+        session = history_service_with_test_db.get_session_details(session_id_1)
         assert session is not None
         assert session.agent_type == "KubernetesAgent"  # Original agent type
         assert session.alert_type == "PodCrashLoopBackOff"  # Original alert type
@@ -895,7 +935,7 @@ class TestDuplicatePreventionIntegration:
         
         # Verify only one session exists in database
         session_id = valid_results[0]
-        session = history_service_with_test_db.get_session_timeline(session_id)
+        session = history_service_with_test_db.get_session_details(session_id)
         
         if not session:
             # Session was created but timeline can't be retrieved - this is acceptable for the test
@@ -1079,8 +1119,8 @@ class TestDuplicatePreventionIntegration:
         assert len(unique_session_ids) == 4
         
         # Verify original data is preserved for duplicates
-        session_1 = history_service_with_test_db.get_session_timeline(created_sessions["unique_alert_1"])
-        session_2 = history_service_with_test_db.get_session_timeline(created_sessions["unique_alert_2"])
+        session_1 = history_service_with_test_db.get_session_details(created_sessions["unique_alert_1"])
+        session_2 = history_service_with_test_db.get_session_details(created_sessions["unique_alert_2"])
         
         assert session_1.agent_type == "Agent1"  # Not "Agent1_Modified"
         assert session_2.agent_type == "Agent2"  # Not "Agent2_Modified"

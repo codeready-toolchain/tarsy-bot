@@ -486,9 +486,9 @@ class HistoryRepository:
                 filters_applied={}
             )
 
-    def get_session_timeline(self, session_id: str) -> Optional[DetailedSession]:
+    def get_session_details(self, session_id: str) -> Optional[DetailedSession]:
         """
-        Reconstruct chronological timeline for a session.
+        Get complete session details including chronological timeline, stages, and all interactions.
         """
         try:
             from collections import defaultdict

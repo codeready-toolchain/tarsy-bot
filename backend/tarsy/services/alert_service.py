@@ -556,15 +556,11 @@ class AlertService:
             unique_id = uuid.uuid4().hex[:12]  # Use 12 chars for uniqueness
             alert_id = f"{chain_context.alert_type}_{unique_id}_{timestamp_us}"
             
-            # Store chain information in session using session_id from ChainContext
+            # Store chain information in session using ChainContext and ChainDefinition
             created_successfully = self.history_service.create_session(
-                session_id=chain_context.session_id,  # Use session_id from ChainContext
-                alert_id=alert_id,
-                alert_data=chain_context.alert_data,  # Store all flexible data in JSON field
-                agent_type=f"chain:{chain_definition.chain_id}",  # Mark as chain processing
-                alert_type=chain_context.alert_type,  # Store in separate column for fast routing
-                chain_id=chain_definition.chain_id,  # Store chain identifier
-                chain_definition=chain_definition.model_dump()  # Store complete chain definition as JSON-serializable dict
+                chain_context=chain_context,
+                chain_definition=chain_definition,
+                alert_id=alert_id
             )
             
             if created_successfully:

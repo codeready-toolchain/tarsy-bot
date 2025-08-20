@@ -21,6 +21,8 @@ from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.db_models import AlertSession, StageExecution
 from tarsy.utils.timestamp import now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.processing_context import ChainContext
+from tarsy.models.agent_config import ChainConfigModel
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository
 
@@ -188,25 +190,17 @@ class HistoryService:
     # Session Lifecycle Operations
     def create_session(
         self,
-        session_id: str,  # Now required - from ChainContext.session_id
-        alert_id: str,
-        alert_data: Dict[str, Any],
-        agent_type: str,
-        alert_type: Optional[str] = None,
-        chain_id: Optional[str] = None,
-        chain_definition: Optional[Dict[str, Any]] = None
+        chain_context: ChainContext,
+        chain_definition: ChainConfigModel,
+        alert_id: str
     ) -> bool:
         """
         Create a new alert processing session with retry logic.
         
         Args:
-            session_id: Session identifier from ChainContext
+            chain_context: Chain processing context containing session data
+            chain_definition: Chain configuration model with chain details
             alert_id: External alert identifier
-            alert_data: Original alert payload
-            agent_type: Processing agent type (e.g., 'kubernetes', 'base')
-            alert_type: Alert type for filtering (e.g., 'pod_crash', 'high_cpu')
-            chain_id: Chain identifier for chain processing (optional)
-            chain_definition: Complete chain definition for chain processing (optional)
             
         Returns:
             True if created successfully, False if failed
@@ -218,18 +212,20 @@ class HistoryService:
         def _create_session_operation():
             with self.get_repository() as repo:
                 if not repo:
-                    logger.warning("History repository unavailable - session not persisted")
-                    return False
+                    raise RuntimeError("History repository unavailable - cannot create session")
+                
+                # Extract data from ChainContext and ChainConfigModel
+                agent_type = f"chain:{chain_definition.chain_id}"  # Construct agent_type internally
                 
                 session = AlertSession(
-                    session_id=session_id,  # Use session_id from ChainContext
+                    session_id=chain_context.session_id,
                     alert_id=alert_id,
-                    alert_data=alert_data,
+                    alert_data=chain_context.alert_data,
                     agent_type=agent_type,
-                    alert_type=alert_type,
+                    alert_type=chain_context.alert_type,
                     status=AlertSessionStatus.PENDING.value,
-                    chain_id=chain_id,
-                    chain_definition=chain_definition
+                    chain_id=chain_definition.chain_id,
+                    chain_definition=chain_definition.model_dump()  # Store as JSON-serializable dict
                 )
                 
                 created_session = repo.create_alert_session(session)
@@ -266,8 +262,7 @@ class HistoryService:
         def _update_status_operation():
             with self.get_repository() as repo:
                 if not repo:
-                    logger.warning("History repository unavailable - status not updated")
-                    return False
+                    raise RuntimeError("History repository unavailable - cannot update session status")
                 
                 session = repo.get_alert_session(session_id)
                 if not session:
@@ -287,6 +282,18 @@ class HistoryService:
                     logger.debug(f"Updated session {session_id} status to {status}")
                     
                     # Notify dashboard update service of session status change
+                    # 
+                    # NOTE: We call dashboard_manager directly instead of using the hook mechanism because:
+                    # 1. No session status hook exists - current hooks handle interaction-level events
+                    #    (LLM calls, MCP tools, stage executions), not session lifecycle events
+                    # 2. Circular import prevention - importing dashboard_manager at module level would
+                    #    create dependency cycles (HistoryService -> DashboardManager -> hooks -> HistoryService)
+                    # 3. DashboardUpdateService has a dedicated process_session_status_change() method
+                    #    designed specifically for session lifecycle events (vs. interaction events)
+                    # 4. Async context handling - this sync method needs to trigger async dashboard updates
+                    #
+                    # To use hooks instead, we'd need: a SessionStatusEvent model, a SessionStatusHook,
+                    # dependency injection refactoring, and hook registry updates for session-level events.
                     try:
                         # Import here to avoid circular imports
                         from tarsy.main import dashboard_manager
@@ -341,8 +348,7 @@ class HistoryService:
         def _update_stage_operation():
             with self.get_repository() as repo:
                 if not repo:
-                    logger.warning("History repository unavailable - stage execution not updated")
-                    return False
+                    raise RuntimeError("History repository unavailable - cannot update stage execution")
                 return repo.update_stage_execution(stage_execution)
         
         result = self._retry_database_operation("update_stage_execution", _update_stage_operation)
@@ -358,162 +364,11 @@ class HistoryService:
         def _update_current_stage_operation():
             with self.get_repository() as repo:
                 if not repo:
-                    logger.warning("History repository unavailable - current stage not updated")
-                    return False
+                    raise RuntimeError("History repository unavailable - cannot update session current stage")
                 return repo.update_session_current_stage(session_id, current_stage_index, current_stage_id)
         
         result = self._retry_database_operation("update_session_current_stage", _update_current_stage_operation)
         return result if result is not None else False
-
-    def get_stage_interaction_counts(self, execution_ids: List[str]) -> Dict[str, Dict[str, int]]:
-        """
-        Get interaction counts for stages using SQL aggregation.
-        
-        Args:
-            execution_ids: List of stage execution IDs to get counts for
-            
-        Returns:
-            Dictionary mapping execution_id to {'llm_interactions': count, 'mcp_communications': count}
-        """
-        def _get_stage_interaction_counts_operation():
-            with self.get_repository() as repo:
-                if not repo:
-                    logger.warning("History repository unavailable - stage interaction counts not retrieved")
-                    return {}
-                return repo.get_stage_interaction_counts(execution_ids)
-        
-        result = self._retry_database_operation("get_stage_interaction_counts", _get_stage_interaction_counts_operation)
-        return result if result is not None else {}
-    
-    def calculate_session_summary(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Calculate summary statistics from session data.
-        
-        Extracts and calculates:
-        - Total interactions, LLM calls, MCP communications, system events
-        - Error counts and total duration
-        - Chain-specific statistics if applicable
-        
-        Args:
-            session_data: Raw session data from get_session_with_stages
-            
-        Returns:
-            Dictionary with calculated summary statistics
-        """
-        if not session_data:
-            return {}
-            
-        # Extract timeline and session info for calculations
-        timeline = session_data.get('chronological_timeline', [])
-        session_info = session_data.get('session', {})
-        
-        # Use pre-calculated counts from repository when available (more efficient)
-        # Fall back to timeline-based calculation for backward compatibility
-        llm_count = session_info.get('llm_interaction_count')
-        if llm_count is None:
-            llm_count = len([event for event in timeline if event.get('type') == 'llm'])
-            
-        mcp_count = session_info.get('mcp_communication_count') 
-        if mcp_count is None:
-            mcp_count = len([event for event in timeline if event.get('type') == 'mcp'])
-        
-        # Calculate basic interaction statistics
-        summary = {
-            'total_interactions': len(timeline),
-            'llm_interactions': llm_count,
-            'mcp_communications': mcp_count,
-            'system_events': len([event for event in timeline if event.get('type') == 'system']),
-            'errors_count': len([event for event in timeline if event.get('status') == 'failed']),
-            'total_duration_ms': sum(event.get('duration_ms') or 0 for event in timeline)
-        }
-        
-        # Add chain-specific statistics if it's a chain execution
-        session_info = session_data.get('session', {})
-        if session_info.get('chain_id'):
-            stage_executions = session_data.get('stages', [])
-            if stage_executions:
-                from tarsy.models.constants import StageStatus
-                # Note: stage_executions are dictionaries here, not model objects
-                completed_stages = [stage for stage in stage_executions if stage.get('status') == StageStatus.COMPLETED.value]
-                failed_stages = [stage for stage in stage_executions if stage.get('status') == StageStatus.FAILED.value]
-                
-                # Calculate stages by agent
-                stages_by_agent = {}
-                for stage in stage_executions:
-                    agent = stage.get('agent')
-                    if agent:
-                        stages_by_agent[agent] = stages_by_agent.get(agent, 0) + 1
-                
-                summary.update({
-                    'chain_statistics': {
-                        'total_stages': len(stage_executions),
-                        'completed_stages': len(completed_stages),
-                        'failed_stages': len(failed_stages),
-                        'stages_by_agent': stages_by_agent
-                    }
-                })
-        
-        return summary
-    
-    def calculate_session_summary_from_model(self, detailed_session: DetailedSession) -> Dict[str, Any]:
-        """
-        Calculate summary statistics from DetailedSession model.
-        
-        This replaces the dict-based calculate_session_summary method for better type safety.
-        
-        Args:
-            detailed_session: DetailedSession model with all session data
-            
-        Returns:
-            Dictionary with calculated summary statistics
-        """
-        # Calculate basic counts from the model
-        total_interactions = detailed_session.total_interactions
-        llm_interactions = detailed_session.llm_interaction_count
-        mcp_communications = detailed_session.mcp_communication_count
-        
-        # Count errors across all stages
-        errors_count = 0
-        system_events = 0  # Currently not tracked in our system
-        
-        # Calculate duration by summing from all interactions across all stages
-        total_duration_ms = 0
-        for stage in detailed_session.stages:
-            for interaction in stage.llm_interactions:
-                total_duration_ms += interaction.duration_ms or 0
-            for interaction in stage.mcp_communications:
-                total_duration_ms += interaction.duration_ms or 0
-        
-        # Calculate chain statistics
-        total_stages = len(detailed_session.stages)
-        completed_stages = len([s for s in detailed_session.stages if s.status.value == 'completed'])
-        failed_stages = len([s for s in detailed_session.stages if s.status.value == 'failed'])
-        
-        # Count errors and calculate stages by agent
-        stages_by_agent = {}
-        for stage in detailed_session.stages:
-            if stage.error_message:
-                errors_count += 1
-            
-            # Count stages by agent
-            agent_name = stage.agent
-            stages_by_agent[agent_name] = stages_by_agent.get(agent_name, 0) + 1
-        
-        return {
-            "total_interactions": total_interactions,
-            "llm_interactions": llm_interactions,
-            "mcp_communications": mcp_communications,
-            "system_events": system_events,
-            "errors_count": errors_count,
-            "total_duration_ms": total_duration_ms,
-            "chain_statistics": {
-                "total_stages": total_stages,
-                "completed_stages": completed_stages,
-                "failed_stages": failed_stages,
-                "stages_by_agent": stages_by_agent
-            }
-        }
-    
 
     async def get_session_summary(self, session_id: str) -> Optional[SessionStats]:
         """
@@ -584,8 +439,7 @@ class HistoryService:
         def _get_stage_execution_operation():
             with self.get_repository() as repo:
                 if not repo:
-                    logger.warning("History repository unavailable - stage execution not retrieved")
-                    return None
+                    raise RuntimeError("History repository unavailable - cannot retrieve stage execution")
                 return repo.get_stage_execution(execution_id)
         
         result = self._retry_database_operation(
@@ -596,9 +450,9 @@ class HistoryService:
         return result
     
     # LLM Interaction Logging
-    def log_llm_interaction(self, interaction: LLMInteraction) -> bool:
+    def store_llm_interaction(self, interaction: LLMInteraction) -> bool:
         """
-        Log an LLM interaction using unified model.
+        Store an LLM interaction to the database using unified model.
         
         Args:
             interaction: LLMInteraction instance with all interaction details
@@ -612,8 +466,7 @@ class HistoryService:
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    logger.warning("History repository unavailable - LLM interaction not logged")
-                    return False
+                    raise RuntimeError("History repository unavailable - cannot store LLM interaction")
                 
                 # Set step description if not already set
                 if not interaction.step_description:
@@ -625,18 +478,17 @@ class HistoryService:
                     interaction.step_description = f"LLM analysis using {model_name}"
                 
                 repo.create_llm_interaction(interaction)
-                logger.debug(f"Logged LLM interaction for session {interaction.session_id}")
+                logger.debug(f"Stored LLM interaction for session {interaction.session_id}")
                 return True
                 
         except Exception as e:
-            logger.error(f"Failed to log LLM interaction for session {interaction.session_id}: {str(e)}")
+            logger.error(f"Failed to store LLM interaction for session {interaction.session_id}: {str(e)}")
             return False
-
     
     # MCP Communication Logging
-    def log_mcp_interaction(self, interaction: MCPInteraction) -> bool:
+    def store_mcp_interaction(self, interaction: MCPInteraction) -> bool:
         """
-        Log an MCP interaction using unified model.
+        Store an MCP interaction to the database using unified model.
         
         Args:
             interaction: MCPInteraction instance with all interaction details
@@ -650,28 +502,25 @@ class HistoryService:
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    logger.warning("History repository unavailable - MCP communication not logged")
-                    return False
+                    raise RuntimeError("History repository unavailable - cannot store MCP interaction")
                 
                 # Set step description if not already set
                 if not interaction.step_description:
                     interaction.step_description = interaction.get_step_description()
                 
                 repo.create_mcp_communication(interaction)
-                logger.debug(f"Logged MCP communication for session {interaction.session_id}")
+                logger.debug(f"Stored MCP interaction for session {interaction.session_id}")
                 return True
                 
         except Exception as e:
-            logger.error(f"Failed to log MCP communication for session {interaction.session_id}: {str(e)}")
+            logger.error(f"Failed to store MCP interaction for session {interaction.session_id}: {str(e)}")
             return False
-
     
     # Properties
     @property
     def enabled(self) -> bool:
         """Check if history service is enabled."""
         return self.is_enabled
-
 
     def get_sessions_list(
         self,
@@ -693,7 +542,7 @@ class HistoryService:
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    return None
+                    raise RuntimeError("History repository unavailable - cannot retrieve sessions list")
                 
                 # Extract filters or use defaults
                 filters = filters or {}
@@ -730,7 +579,7 @@ class HistoryService:
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    return False
+                    raise RuntimeError("History repository unavailable - cannot check health")
                 
                 # Try to perform a simple database operation
                 # This will test both connection and basic functionality
@@ -742,26 +591,26 @@ class HistoryService:
             logger.error(f"Database connection test failed: {str(e)}")
             return False
 
-    def get_session_timeline(self, session_id: str) -> Optional[DetailedSession]:
+    def get_session_details(self, session_id: str) -> Optional[DetailedSession]:
         """
-        Get complete session timeline - returns DetailedSession model directly for controllers.
+        Get complete session details including timeline, stages, and all interactions.
         
         Args:
             session_id: The session identifier
             
         Returns:
-            DetailedSession model or None if not found
+            DetailedSession model with complete session data or None if not found
         """
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    return None
+                    raise RuntimeError("History repository unavailable - cannot retrieve session details")
                 
-                detailed_session = repo.get_session_timeline(session_id)
+                detailed_session = repo.get_session_details(session_id)
                 return detailed_session
                 
         except Exception as e:
-            logger.error(f"Failed to get session timeline for {session_id}: {str(e)}")
+            logger.error(f"Failed to get session details for {session_id}: {str(e)}")
             return None
     
     def get_active_sessions(self) -> List[AlertSession]:
@@ -774,7 +623,7 @@ class HistoryService:
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    return []
+                    raise RuntimeError("History repository unavailable - cannot retrieve active sessions")
                 
                 return repo.get_active_sessions()
                 
@@ -788,44 +637,15 @@ class HistoryService:
         
         Returns:
             FilterOptions model
+            
+        Raises:
+            RuntimeError: If repository is unavailable
         """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    # Create default FilterOptions model
-                    from tarsy.models.history_models import FilterOptions, TimeRangeOption
-                    default_options = FilterOptions(
-                        agent_types=[],
-                        alert_types=[],
-                        status_options=AlertSessionStatus.values(),
-                        time_ranges=[
-                            TimeRangeOption(label="Last Hour", value="1h"),
-                            TimeRangeOption(label="Last 4 Hours", value="4h"),
-                            TimeRangeOption(label="Today", value="today"),
-                            TimeRangeOption(label="This Week", value="week")
-                        ]
-                    )
-                    return default_options
-                
-                filter_options = repo.get_filter_options()
-                return filter_options
-                
-        except Exception as e:
-            logger.error(f"Failed to get filter options: {str(e)}")
-            # Return default options on error
-            from tarsy.models.history_models import FilterOptions, TimeRangeOption
-            default_options = FilterOptions(
-                agent_types=[],
-                alert_types=[],
-                status_options=AlertSessionStatus.values(),
-                time_ranges=[
-                    TimeRangeOption(label="Last Hour", value="1h"),
-                    TimeRangeOption(label="Last 4 Hours", value="4h"),
-                    TimeRangeOption(label="Today", value="today"),
-                    TimeRangeOption(label="This Week", value="week")
-                ]
-            )
-            return default_options
+        with self.get_repository() as repo:
+            if not repo:
+                raise RuntimeError("History repository unavailable - cannot retrieve filter options")
+            
+            return repo.get_filter_options()
 
     # Maintenance Operations
     def cleanup_orphaned_sessions(self) -> int:
@@ -847,8 +667,7 @@ class HistoryService:
         try:
             with self.get_repository() as repo:
                 if not repo:
-                    logger.warning("History repository unavailable - cannot cleanup orphaned sessions")
-                    return 0
+                    raise RuntimeError("History repository unavailable - cannot cleanup orphaned sessions")
                 
                 # Find all sessions in active states (pending or in_progress)
                 active_sessions_result = repo.get_alert_sessions(

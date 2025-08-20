@@ -813,7 +813,7 @@ class MockFactory:
         )
         
         # Add mocks for other repository methods that may be called
-        mock_repository.get_session_timeline.return_value = None
+        mock_repository.get_session_details.return_value = None
         mock_repository.get_session_overview.return_value = None
         
         return {
@@ -1004,9 +1004,9 @@ class MockFactory:
         default_paginated = SessionFactory.create_paginated_sessions()
         service.get_sessions_list.return_value = default_paginated
         
-        # Mock get_session_timeline (returns DetailedSession)
+        # Mock get_session_details (returns DetailedSession)
         default_detailed_session = SessionFactory.create_detailed_session()
-        service.get_session_timeline.return_value = default_detailed_session
+        service.get_session_details.return_value = default_detailed_session
         
         # Mock get_session_summary (async, returns SessionStats)
         default_session_stats = SessionFactory.create_session_stats()

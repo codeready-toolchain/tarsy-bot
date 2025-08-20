@@ -37,8 +37,7 @@ class TypedLLMHistoryHook(BaseTypedHook[LLMInteraction]):
             interaction: Unified LLM interaction data
         """
         try:
-            # Direct unified model conversion - no more parameter extraction!
-            self.history_service.log_llm_interaction(interaction)
+            self.history_service.store_llm_interaction(interaction)
             
             logger.debug(f"Logged LLM interaction {interaction.request_id} to history")
             
@@ -66,8 +65,7 @@ class TypedMCPHistoryHook(BaseTypedHook[MCPInteraction]):
             interaction: Unified MCP interaction data
         """
         try:
-            # Direct unified model conversion - no more parameter extraction!
-            self.history_service.log_mcp_interaction(interaction)
+            self.history_service.store_mcp_interaction(interaction)
             
             logger.debug(f"Logged MCP interaction {interaction.request_id} to history")
             
@@ -95,8 +93,7 @@ class TypedMCPListHistoryHook(BaseTypedHook[MCPInteraction]):
             interaction: Unified MCP tool list data
         """
         try:
-            # Direct unified model conversion - no more parameter extraction!
-            self.history_service.log_mcp_interaction(interaction)
+            self.history_service.store_mcp_interaction(interaction)
             
             logger.debug(f"Logged MCP tool list {interaction.request_id} to history")
             

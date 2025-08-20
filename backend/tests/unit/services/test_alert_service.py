@@ -192,8 +192,8 @@ class TestAlertProcessing:
         mock_history_service.enabled = True
         mock_history_service.create_session.return_value = True
         mock_history_service.update_session_status = Mock()
-        mock_history_service.log_llm_interaction = Mock()
-        mock_history_service.log_mcp_interaction = Mock()
+        mock_history_service.store_llm_interaction = Mock()
+        mock_history_service.store_mcp_interaction = Mock()
         service.history_service = mock_history_service
         
         yield service, dependencies
@@ -784,13 +784,8 @@ class TestAlertServiceDuplicatePrevention:
         
         return service, mock_dependencies
     
-
-
-
-
     def test_alert_key_generation(self, alert_service_with_dependencies, sample_alert):
         """Test alert key generation for duplicate prevention."""
-        service, _ = alert_service_with_dependencies
         
         alert_dict = alert_to_api_format(sample_alert)
         alert_key = AlertKey.from_chain_context(alert_dict)

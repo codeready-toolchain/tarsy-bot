@@ -5,26 +5,18 @@ Tests lifespan management, endpoints, WebSocket connections, and background proc
 """
 
 import asyncio
-import json
 import uuid
-from datetime import datetime
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import AsyncMock, Mock, patch
 from contextlib import asynccontextmanager
 
 import pytest
 from fastapi.testclient import TestClient
 from fastapi import WebSocket
 
-from pydantic import ValidationError
 
 # Import the modules we need to test and mock
 from tarsy.main import app, lifespan, process_alert_background, processing_alert_keys, alert_keys_lock
-from tarsy.models.alert import Alert, AlertResponse
-from tarsy.models.alert_processing import AlertKey
 from tarsy.models.processing_context import ChainContext
-from tarsy.models.websocket_models import ConnectionEstablished, ErrorMessage
-from tarsy.services.alert_service import AlertService
-from tarsy.services.dashboard_connection_manager import DashboardConnectionManager
 
 
 @pytest.mark.unit
