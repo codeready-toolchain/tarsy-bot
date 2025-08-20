@@ -4,13 +4,21 @@ Handles all LLM providers through LangChain's abstraction.
 """
 
 import asyncio
+import httpx
+import pprint
+import traceback
+import urllib3
 from typing import Dict, List, Optional
+
+# Suppress SSL warnings when SSL verification is disabled
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_xai import ChatXAI
+from langchain_anthropic import ChatAnthropic
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import llm_interaction_context
@@ -25,22 +33,63 @@ llm_comm_logger = get_module_logger("llm.communications")
 
 
 # LLM Providers mapping using LangChain
+def _create_openai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
+    """Create ChatOpenAI client with optional SSL verification disable and custom base URL."""
+    client_kwargs = {
+        "model_name": model, 
+        "temperature": temp, 
+        "api_key": api_key
+    }
+    
+    # Only set base_url if explicitly provided, otherwise let LangChain use defaults
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    
+    if disable_ssl_verification:
+        client_kwargs["http_client"] = httpx.Client(verify=False)
+        client_kwargs["http_async_client"] = httpx.AsyncClient(verify=False)
+    
+    return ChatOpenAI(**client_kwargs)
+
+def _create_google_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
+    """Create ChatGoogleGenerativeAI client."""
+    client_kwargs = {
+        "model": model, 
+        "temperature": temp, 
+        "google_api_key": api_key
+    }
+    # Note: ChatGoogleGenerativeAI may not support custom base_url or HTTP clients
+    return ChatGoogleGenerativeAI(**client_kwargs)
+
+def _create_xai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
+    """Create ChatXAI client."""
+    client_kwargs = {
+        "model_name": model, 
+        "api_key": api_key, 
+        "temperature": temp
+    }
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    # Note: ChatXAI may not support custom HTTP clients - would need to verify
+    return ChatXAI(**client_kwargs)
+
+def _create_anthropic_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
+    """Create ChatAnthropic client."""
+    client_kwargs = {
+        "model": model, 
+        "api_key": api_key, 
+        "temperature": temp
+    }
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    # Note: ChatAnthropic may not support custom HTTP clients - would need to verify  
+    return ChatAnthropic(**client_kwargs)
+
 LLM_PROVIDERS = {
-    "openai": lambda temp, api_key, model: ChatOpenAI(
-        model_name=model or "gpt-4-1106-preview", 
-        temperature=temp, 
-        api_key=api_key
-    ),
-    "gemini": lambda temp, api_key, model: ChatGoogleGenerativeAI(
-        model=model or "gemini-2.5-pro-exp-03-25", 
-        temperature=temp, 
-        google_api_key=api_key
-    ),
-    "grok": lambda temp, api_key, model: ChatXAI(
-        model_name=model or "grok-3-latest", 
-        api_key=api_key, 
-        temperature=temp
-    ),
+    "openai": _create_openai_client,
+    "google": _create_google_client,
+    "xai": _create_xai_client,
+    "anthropic": _create_anthropic_client
 }
 
 
@@ -60,7 +109,7 @@ class LLMClient:
         """Initialize the LangChain LLM client."""
         try:
             # Map provider name to provider type for LLM_PROVIDERS
-            provider_type = self._get_provider_type(self.provider_name)
+            provider_type = self.config.get("type", self.provider_name)
             
             if provider_type in LLM_PROVIDERS:
                 if not self.api_key:
@@ -68,10 +117,17 @@ class LLMClient:
                     self.available = False
                     return
                 
+                disable_ssl_verification = self.config.get("disable_ssl_verification", False)
+                if disable_ssl_verification:
+                    logger.warning(f"SSL verification is DISABLED for {self.provider_name} - use with caution!")
+                
+                base_url = self.config.get("base_url")
                 self.llm_client = LLM_PROVIDERS[provider_type](
                     self.temperature, 
                     self.api_key, 
-                    self.model
+                    self.model,
+                    disable_ssl_verification,
+                    base_url
                 )
                 self.available = True
                 logger.info(f"Successfully initialized {self.provider_name} with LangChain")
@@ -81,17 +137,6 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Failed to initialize {self.provider_name}: {str(e)}")
             self.available = False
-    
-    def _get_provider_type(self, provider_name: str) -> str:
-        """Get the provider type for LLM_PROVIDERS mapping."""
-        if provider_name.startswith("gemini"):
-            return "gemini"
-        elif provider_name.startswith("openai") or provider_name.startswith("gpt"):
-            return "openai"
-        elif provider_name.startswith("grok") or provider_name.startswith("xai"):
-            return "grok"
-        else:
-            return provider_name  # Fall back to original name
     
     def _convert_messages(self, messages: List[LLMMessage]) -> List:
         """Convert LLMMessage objects to LangChain message objects."""
@@ -166,9 +211,16 @@ class LLMClient:
                 return response.content
                 
             except Exception as e:
-                # Log the error (hooks will be triggered automatically by context manager)
-                self._log_llm_error(str(e), request_id)
-                raise Exception(f"{self.provider_name} API error: {str(e)}")
+                # Log the detailed error (hooks will be triggered automatically by context manager)
+                self._log_llm_detailed_error(e, request_id)
+                
+                # Create enhanced error message with key attributes
+                error_details = self._extract_error_details(e)
+                enhanced_message = f"{self.provider_name} API error: {str(e)}"
+                if error_details:
+                    enhanced_message += f" | Details: {error_details}"
+                
+                raise Exception(enhanced_message)
     
     def _log_llm_request(self, messages: List[LLMMessage], request_id: str):
         """Log the outgoing LLM request."""
@@ -243,6 +295,10 @@ class LLMClient:
                     await asyncio.sleep(retry_delay)
                     continue
                 else:
+                    # Log detailed error information for debugging
+                    error_details = self._extract_error_details(e)
+                    logger.error(f"LLM execution failed after {attempt + 1} attempts - {error_details}")
+                    
                     # Re-raise the exception for non-rate-limit errors or max retries reached
                     raise e
     
@@ -258,14 +314,69 @@ class LLMClient:
             pass
         return None
     
-    def _log_llm_error(self, error_message: str, request_id: str):
-        """Log LLM communication errors."""
-        llm_comm_logger.error(f"=== LLM ERROR [{self.provider_name}] [ID: {request_id}] ===")
+    def _extract_error_details(self, exception: Exception) -> str:
+        """Extract ALL error details using built-in capabilities."""
+        details = []
+        details.append(f"Type={type(exception).__name__}")
+        details.append(f"Message={str(exception)}")
+        
+        # Get the root cause (walk to the bottom of the exception chain)
+        root_cause = exception
+        while root_cause.__cause__ is not None:
+            root_cause = root_cause.__cause__
+        
+        # If we found a different root cause, include it
+        if root_cause != exception:
+            details.append(f"RootCause={type(root_cause).__name__}: {str(root_cause)}")
+        
+        # Use vars() to dump all instance variables
+        try:
+            exception_vars = vars(exception)
+            if exception_vars:
+                for key, value in exception_vars.items():
+                    str_value = repr(value)
+                    if len(str_value) > 200:
+                        str_value = str_value[:200] + "..."
+                    details.append(f"{key}={str_value}")
+        except:
+            pass
+        
+        return " | ".join(details)
+    
+    def _log_llm_detailed_error(self, exception: Exception, request_id: str):
+        """Log detailed LLM communication errors using built-in capabilities."""
+        llm_comm_logger.error(f"=== FULL LLM ERROR DUMP [{self.provider_name}] [ID: {request_id}] ===")
         llm_comm_logger.error(f"Request ID: {request_id}")
-        llm_comm_logger.error(f"Error: {error_message}")
-        llm_comm_logger.error(f"=== END ERROR [ID: {request_id}] ===")
-
-
+        
+        # Use traceback.format_exception for comprehensive error formatting
+        llm_comm_logger.error("--- FORMATTED EXCEPTION ---")
+        formatted_exception = traceback.format_exception(type(exception), exception, exception.__traceback__)
+        for line in formatted_exception:
+            llm_comm_logger.error(line.rstrip())
+        
+        # Dump all exception variables using vars()
+        llm_comm_logger.error("--- EXCEPTION VARIABLES ---")
+        try:
+            exception_vars = vars(exception)
+            if exception_vars:
+                for key, value in exception_vars.items():
+                    llm_comm_logger.error(f"{key}: {pprint.pformat(value, width=100, depth=3)}")
+            else:
+                llm_comm_logger.error("No instance variables")
+        except Exception as e:
+            llm_comm_logger.error(f"Could not access exception variables: {e}")
+        
+        # Exception chain using traceback utilities
+        llm_comm_logger.error("--- EXCEPTION CHAIN ---")
+        try:
+            for exc in traceback.walk_tb(exception.__traceback__):
+                frame, lineno = exc
+                llm_comm_logger.error(f"File {frame.f_code.co_filename}, line {lineno}, in {frame.f_code.co_name}")
+        except Exception as e:
+            llm_comm_logger.error(f"Could not walk traceback: {e}")
+        
+        llm_comm_logger.error(f"=== END ERROR DUMP [ID: {request_id}] ===")
+    
 class LLMManager:
     """Manages multiple LLM providers using LangChain."""
     
@@ -296,7 +407,7 @@ class LLMManager:
     def get_client(self, provider: str = None) -> Optional[LLMClient]:
         """Get an LLM client by provider name."""
         if not provider:
-            provider = self.settings.default_llm_provider
+            provider = self.settings.llm_provider
         
         return self.clients.get(provider)
     

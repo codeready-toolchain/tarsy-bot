@@ -1,0 +1,60 @@
+# LLM Providers Configuration File
+# This file allows you to override built-in default providers or add custom providers
+# Copy this file to llm_providers.yaml and customize as needed
+
+# Built-in providers are available out-of-the-box:
+# - openai-default (gpt-5) - requires OPENAI_API_KEY
+# - google-default (gemini-2.5-flash) - requires GOOGLE_API_KEY [DEFAULT]
+# - xai-default (grok-4-latest) - requires XAI_API_KEY  
+# - anthropic-default (claude-4-sonnet) - requires ANTHROPIC_API_KEY
+
+llm_providers:
+  # Override built-in openai-default with different model
+  openai-default:
+    type: openai
+    model: gpt-4  # Override default gpt-5
+    api_key_env: OPENAI_API_KEY
+    
+  # Add custom OpenAI proxy provider  
+  openai-gemini-proxy:
+    type: openai
+    model: gemini-2.5-pro
+    api_key_env: OPENAI_API_KEY
+    base_url: https://my-openai-proxy.domain.com:443/v1beta/openai
+    
+  # Add custom provider with specific model
+  gpt-4-turbo:
+    type: openai
+    model: gpt-4-turbo-preview
+    api_key_env: OPENAI_API_KEY
+    temperature: 0.0
+    
+  # Custom Gemini provider
+  gemini-2.5-flash:
+    type: google
+    model: gemini-2.5-flash
+    api_key_env: GOOGLE_API_KEY
+    
+  # Custom Grok provider
+  grok-4:
+    type: xai
+    model: grok-4-latest
+    api_key_env: XAI_API_KEY
+    
+  # Custom Claude provider
+  claude-4.1-opus:
+    type: anthropic
+    model: claude-4.1-opus
+    api_key_env: ANTHROPIC_API_KEY
+
+# Configuration Field Definitions:
+# - type: Provider type (openai, google, xai, anthropic) - maps to LLM_PROVIDERS function
+# - model: Model name to use
+# - api_key_env: Environment variable name containing API key
+# - base_url: (Optional) Custom base URL, if not specified LangChain uses provider defaults
+# - temperature: (Optional) Default temperature override
+
+# Configuration Priority:
+# 1. YAML providers (this file) - highest priority
+# 2. Built-in defaults - fallback for providers not in YAML
+# 3. Hardcoded fallback - if YAML file doesn't exist

@@ -5,10 +5,14 @@ Application settings and configuration management.
 import os
 import sys
 from functools import lru_cache
+from pathlib import Path
 from typing import Dict, List, Optional
 
+import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from tarsy.config.builtin_config import get_builtin_llm_providers
 
 
 def is_testing() -> bool:
@@ -41,47 +45,18 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins_str.split(',') if origin.strip()]
     
     # LLM Provider Configuration
-    gemini_api_key: str = Field(default="")
+    google_api_key: str = Field(default="")
     openai_api_key: str = Field(default="")
-    grok_api_key: str = Field(default="")
-    default_llm_provider: str = Field(default="gemini-2.5-flash")
+    xai_api_key: str = Field(default="")
+    anthropic_api_key: str = Field(default="")
+    llm_provider: str = Field(default="google-default")
+    disable_ssl_verification: bool = Field(default=False, description="Disable SSL certificate verification for LLM API calls (use with caution)")
+    
+    # LLM Configuration File Path
+    llm_config_path: str = Field(default="./config/llm_providers.yaml", description="Path to external LLM providers configuration file")
     
     # GitHub Configuration
     github_token: Optional[str] = Field(default=None)
-    
-    # LLM Providers Configuration
-    llm_providers: Dict = Field(default={
-        "gemini": {
-            "model": "gemini-2.5-pro",
-            "api_key_env": "GEMINI_API_KEY",
-            "type": "gemini"
-        },
-        "gemini-2.5-pro": {
-            "model": "gemini-2.5-pro",
-            "api_key_env": "GEMINI_API_KEY",
-            "type": "gemini"
-        },
-        "gemini-2.5-flash": {
-            "model": "gemini-2.5-flash",
-            "api_key_env": "GEMINI_API_KEY",
-            "type": "gemini"
-        },
-        "openai": {
-            "model": "gpt-4-1106-preview",
-            "api_key_env": "OPENAI_API_KEY", 
-            "type": "openai"
-        },
-        "gpt-4": {
-            "model": "gpt-4-1106-preview",
-            "api_key_env": "OPENAI_API_KEY",
-            "type": "openai"
-        },
-        "grok": {
-            "model": "grok-3",
-            "api_key_env": "GROK_API_KEY",
-            "type": "grok"
-        }
-    })
     
     # Alert Processing Configuration
     max_llm_mcp_iterations: int = Field(
@@ -155,24 +130,109 @@ class Settings(BaseSettings):
     def get_llm_config(self, provider: str) -> Dict:
         """Get LLM configuration for a specific provider."""
         if provider not in self.llm_providers:
-            raise ValueError(f"Unsupported LLM provider: {provider}")
+            available = list(self.llm_providers.keys())
+            raise ValueError(f"Unsupported LLM provider: {provider}. Available: {available}")
         
         config = self.llm_providers[provider].copy()
         
-        # Get API key from the corresponding field
-        # Handle all Gemini variants
-        if provider.startswith("gemini"):
-            config["api_key"] = self.gemini_api_key
-        # Handle all OpenAI variants (openai, gpt-4, gpt-3.5, etc.)
-        elif provider.startswith("openai") or provider.startswith("gpt"):
+        # Get API key based on provider type (not provider name)
+        provider_type = config.get("type", "")
+        
+        if provider_type == "google":
+            config["api_key"] = self.google_api_key
+        elif provider_type == "openai":
             config["api_key"] = self.openai_api_key
-        # Handle all Grok/xAI variants (grok, xai, etc.)
-        elif provider.startswith("grok") or provider.startswith("xai"):
-            config["api_key"] = self.grok_api_key
+        elif provider_type == "xai":
+            config["api_key"] = self.xai_api_key
+        elif provider_type == "anthropic":
+            config["api_key"] = self.anthropic_api_key
         else:
             config["api_key"] = ""
         
+        # Add SSL verification setting
+        config["disable_ssl_verification"] = self.disable_ssl_verification
+        
         return config
+    
+    @property
+    def llm_providers(self) -> Dict:
+        """Get merged LLM providers configuration (built-in defaults + YAML overrides)."""
+        try:
+            # Start with built-in defaults from builtin_config
+            merged_providers = get_builtin_llm_providers()
+            
+            # Load and merge YAML if file exists
+            yaml_providers = self._load_yaml_providers()
+            if yaml_providers:
+                merged_providers.update(yaml_providers)
+            
+            return merged_providers
+        except Exception as e:
+            # Log error and fall back to built-in defaults
+            from tarsy.utils.logger import get_module_logger
+            logger = get_module_logger(__name__)
+            logger.error(f"Failed to load LLM providers configuration: {e}")
+            return get_builtin_llm_providers()
+    
+    def _load_yaml_providers(self) -> Optional[Dict]:
+        """Load LLM providers from YAML configuration file."""
+        try:
+            config_path = Path(self.llm_config_path)
+            if not config_path.exists():
+                return None
+            
+            with open(config_path, 'r', encoding='utf-8') as f:
+                yaml_config = yaml.safe_load(f)
+                
+            if not yaml_config or 'llm_providers' not in yaml_config:
+                return None
+            
+            providers = yaml_config['llm_providers']
+            
+            # Validate YAML providers
+            validated_providers = {}
+            for provider_name, config in providers.items():
+                if self._validate_provider_config(provider_name, config):
+                    validated_providers[provider_name] = config
+            
+            return validated_providers
+            
+        except yaml.YAMLError as e:
+            from tarsy.utils.logger import get_module_logger
+            logger = get_module_logger(__name__)
+            logger.error(f"YAML parsing error in {self.llm_config_path}: {e}")
+            return None
+        except Exception as e:
+            from tarsy.utils.logger import get_module_logger
+            logger = get_module_logger(__name__)
+            logger.error(f"Error loading YAML providers from {self.llm_config_path}: {e}")
+            return None
+    
+    def _validate_provider_config(self, provider_name: str, config: Dict) -> bool:
+        """Validate a provider configuration."""
+        try:
+            from tarsy.utils.logger import get_module_logger
+            logger = get_module_logger(__name__)
+            
+            # Check required fields
+            required_fields = ['type', 'model', 'api_key_env']
+            for field in required_fields:
+                if field not in config:
+                    logger.error(f"Provider '{provider_name}' missing required field: {field}")
+                    return False
+            
+            # Validate provider type
+            valid_types = ['openai', 'google', 'xai', 'anthropic']
+            if config['type'] not in valid_types:
+                logger.error(f"Provider '{provider_name}' has invalid type '{config['type']}'. Valid types: {valid_types}")
+                return False
+            
+            return True
+        except Exception as e:
+            from tarsy.utils.logger import get_module_logger
+            logger = get_module_logger(__name__)
+            logger.error(f"Error validating provider '{provider_name}': {e}")
+            return False
     
     def get_template_default(self, var_name: str) -> Optional[str]:
         """
