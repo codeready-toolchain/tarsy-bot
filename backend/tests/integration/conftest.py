@@ -40,10 +40,13 @@ def event_loop():
 def mock_settings():
     """Mock settings for testing."""
     settings = Mock(spec=Settings)
-    settings.gemini_api_key = "mock-gemini-key"
+    # Updated API keys to match EP-0013 naming conventions
+    settings.google_api_key = "mock-google-key"
     settings.openai_api_key = "mock-openai-key"
+    settings.xai_api_key = "mock-xai-key"
+    settings.anthropic_api_key = "mock-anthropic-key"
     settings.github_token = "mock-github-token"
-    settings.default_llm_provider = "gemini"
+    settings.llm_provider = "google-default"  # Updated to match EP-0013
     settings.max_llm_mcp_iterations = 3
     settings.log_level = "INFO"
     settings.agent_config_path = None  # No agent config for integration tests
@@ -52,17 +55,27 @@ def mock_settings():
     settings.history_enabled = True
     settings.history_database_url = "sqlite:///:memory:"
     
-    # LLM providers configuration that LLMManager expects
+    # Updated LLM providers configuration to match EP-0013
     settings.llm_providers = {
-        "gemini": {
-            "model": "gemini-2.5-pro",
-            "api_key_env": "GEMINI_API_KEY",
-            "type": "gemini"
+        "google-default": {
+            "model": "gemini-2.5-flash",
+            "api_key_env": "GOOGLE_API_KEY",
+            "type": "google"
         },
-        "openai": {
-            "model": "gpt-4-1106-preview",
+        "openai-default": {
+            "model": "gpt-5",
             "api_key_env": "OPENAI_API_KEY", 
             "type": "openai"
+        },
+        "xai-default": {
+            "model": "grok-4-latest",
+            "api_key_env": "XAI_API_KEY",
+            "type": "xai"
+        },
+        "anthropic-default": {
+            "model": "claude-4-sonnet",
+            "api_key_env": "ANTHROPIC_API_KEY",
+            "type": "anthropic"
         }
     }
     
@@ -71,10 +84,16 @@ def mock_settings():
         if provider not in settings.llm_providers:
             raise ValueError(f"Unsupported LLM provider: {provider}")
         config = settings.llm_providers[provider].copy()
-        if provider == "gemini":
-            config["api_key"] = settings.gemini_api_key
-        elif provider == "openai":
+        # Map provider to correct API key based on type
+        provider_type = config.get("type")
+        if provider_type == "google":
+            config["api_key"] = settings.google_api_key
+        elif provider_type == "openai":
             config["api_key"] = settings.openai_api_key
+        elif provider_type == "xai":
+            config["api_key"] = settings.xai_api_key
+        elif provider_type == "anthropic":
+            config["api_key"] = settings.anthropic_api_key
         return config
     
     settings.get_llm_config = mock_get_llm_config

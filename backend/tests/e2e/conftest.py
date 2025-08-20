@@ -219,8 +219,8 @@ current-context: test-context
     settings.history_database_url = test_db_url
     settings.history_enabled = True
     settings.agent_config_path = "tests/e2e/test_agents.yaml"
-    settings.gemini_api_key = "test-key-123"
-    settings.default_llm_provider = "gemini"
+    settings.google_api_key = "test-key-123"
+    settings.llm_provider = "google-default"
     
     # Patch global settings
     e2e_isolation.patch_settings(settings)

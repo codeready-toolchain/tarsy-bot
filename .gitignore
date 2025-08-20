@@ -118,6 +118,7 @@ htmlcov/
 
 # Configuration files (keep .example files)
 config/agents.yaml
+config/llm_providers.yaml
 
 # Temporary files
 tmp/

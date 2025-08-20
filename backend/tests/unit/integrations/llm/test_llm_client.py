@@ -42,16 +42,18 @@ class TestLLMClientInitialization:
                 api_key="test-api-key"
             )
     
-    def test_initialization_gemini_success(self, mock_config):
-        """Test successful Gemini client initialization."""
-        with patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_gemini:
-            mock_gemini.return_value = Mock()
+    def test_initialization_google_success(self, mock_config):
+        """Test successful Google client initialization."""
+        with patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google:
+            mock_google.return_value = Mock()
             
-            client = LLMClient("gemini", mock_config)
+            # Use 'google' as provider name and 'type': 'google' in config
+            mock_config = {**mock_config, "type": "google"}
+            client = LLMClient("google", mock_config)
             
-            assert client.provider_name == "gemini"
+            assert client.provider_name == "google"
             assert client.available == True
-            mock_gemini.assert_called_once_with(
+            mock_google.assert_called_once_with(
                 model="gpt-4",
                 temperature=0.7,
                 google_api_key="test-api-key"
@@ -62,12 +64,31 @@ class TestLLMClientInitialization:
         with patch('tarsy.integrations.llm.client.ChatXAI') as mock_xai:
             mock_xai.return_value = Mock()
             
-            client = LLMClient("grok", mock_config)
+            # Use 'xai' as provider name and 'type': 'xai' in config
+            mock_config = {**mock_config, "type": "xai"}
+            client = LLMClient("xai", mock_config)
             
-            assert client.provider_name == "grok"
+            assert client.provider_name == "xai"
             assert client.available == True
             mock_xai.assert_called_once_with(
                 model_name="gpt-4",
+                api_key="test-api-key",
+                temperature=0.7
+            )
+    
+    def test_initialization_anthropic_success(self, mock_config):
+        """Test successful Anthropic client initialization."""
+        with patch('tarsy.integrations.llm.client.ChatAnthropic') as mock_anthropic:
+            mock_anthropic.return_value = Mock()
+            
+            # Use 'anthropic' as provider name and 'type': 'anthropic' in config
+            mock_config = {**mock_config, "type": "anthropic"}
+            client = LLMClient("anthropic", mock_config)
+            
+            assert client.provider_name == "anthropic"
+            assert client.available == True
+            mock_anthropic.assert_called_once_with(
+                model="gpt-4",
                 api_key="test-api-key",
                 temperature=0.7
             )
@@ -264,7 +285,7 @@ class TestLLMProviderMappings:
     
     def test_all_providers_available(self):
         """Test that all expected providers are available."""
-        expected_providers = ["openai", "gemini", "grok"]
+        expected_providers = ["openai", "google", "xai", "anthropic"]
         
         for provider in expected_providers:
             assert provider in LLM_PROVIDERS
@@ -282,18 +303,21 @@ class TestLLMProviderMappings:
         model = "test-model"
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai, \
-             patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_gemini, \
-             patch('tarsy.integrations.llm.client.ChatXAI') as mock_xai:
+             patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google, \
+             patch('tarsy.integrations.llm.client.ChatXAI') as mock_xai, \
+             patch('tarsy.integrations.llm.client.ChatAnthropic') as mock_anthropic:
             
             # Test each provider function
             LLM_PROVIDERS["openai"](temp, api_key, model)
-            LLM_PROVIDERS["gemini"](temp, api_key, model)
-            LLM_PROVIDERS["grok"](temp, api_key, model)
+            LLM_PROVIDERS["google"](temp, api_key, model)
+            LLM_PROVIDERS["xai"](temp, api_key, model)
+            LLM_PROVIDERS["anthropic"](temp, api_key, model)
             
             # Verify all were called
             mock_openai.assert_called_once()
-            mock_gemini.assert_called_once()
+            mock_google.assert_called_once()
             mock_xai.assert_called_once()
+            mock_anthropic.assert_called_once()
 
 
 @pytest.mark.integration
