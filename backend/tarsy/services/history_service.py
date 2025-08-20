@@ -6,6 +6,7 @@ lifecycle, LLM interaction tracking, MCP communication logging, and timeline
 reconstruction with graceful degradation when database is unavailable.
 """
 
+import asyncio
 import logging
 import random
 import time
@@ -117,6 +118,52 @@ class HistoryService:
                 time.sleep(total_delay)
         
         logger.error(f"Database operation '{operation_name}' failed after all retries. Last error: {str(last_exception)}")
+        return None
+    
+    async def _retry_database_operation_async(
+        self,
+        operation_name: str,
+        operation_func,
+        *,
+        treat_none_as_success: bool = False,
+    ):
+        """
+        Async version of retry database operations with exponential backoff for transient failures.
+        
+        Args:
+            operation_name: Name of the operation for logging
+            operation_func: Function to retry
+            treat_none_as_success: Whether None result is acceptable
+        
+        Returns:
+            Result of the operation, or None if all retries failed
+        """
+        last_exception = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                result = operation_func()
+                if result is not None:
+                    return result
+                if treat_none_as_success:
+                    return None
+                logger.warning(f"Database operation '{operation_name}' returned None on attempt {attempt + 1}")
+            except Exception as e:
+                last_exception = e
+                error_msg = str(e).lower()
+                is_retryable = any(k in error_msg for k in [
+                    'database is locked', 'database disk image is malformed', 'sqlite3.operationalerror',
+                    'connection timeout', 'database table is locked', 'connection pool', 'connection closed'
+                ])
+                if operation_name == "create_session" and attempt > 0:
+                    logger.warning("Not retrying session creation after database error to prevent duplicates: %s", str(e))
+                    return None
+                if not is_retryable or attempt == self.max_retries:
+                    logger.error("Database operation '%s' failed after %d attempts: %s", operation_name, attempt + 1, str(e))
+                    return None
+                delay = min(self.base_delay * (2 ** attempt), self.max_delay)
+                jitter = random.uniform(0, delay * 0.1)
+                await asyncio.sleep(delay + jitter)
+        logger.error("Database operation '%s' failed after all retries. Last error: %s", operation_name, str(last_exception))
         return None
     
     def initialize(self) -> bool:
@@ -340,7 +387,7 @@ class HistoryService:
                     raise RuntimeError("History repository unavailable - cannot create stage execution record")
                 return repo.create_stage_execution(stage_execution)
         
-        result = self._retry_database_operation("create_stage_execution", _create_stage_operation)
+        result = await self._retry_database_operation_async("create_stage_execution", _create_stage_operation)
         if result is None:
             raise RuntimeError(f"Failed to create stage execution record for stage '{stage_execution.stage_name}'. Chain processing cannot continue without proper stage tracking.")
         return result
@@ -353,7 +400,7 @@ class HistoryService:
                     raise RuntimeError("History repository unavailable - cannot update stage execution")
                 return repo.update_stage_execution(stage_execution)
         
-        result = self._retry_database_operation("update_stage_execution", _update_stage_operation)
+        result = await self._retry_database_operation_async("update_stage_execution", _update_stage_operation)
         return result if result is not None else False
     
     async def update_session_current_stage(
@@ -369,7 +416,7 @@ class HistoryService:
                     raise RuntimeError("History repository unavailable - cannot update session current stage")
                 return repo.update_session_current_stage(session_id, current_stage_index, current_stage_id)
         
-        result = self._retry_database_operation("update_session_current_stage", _update_current_stage_operation)
+        result = await self._retry_database_operation_async("update_session_current_stage", _update_current_stage_operation)
         return result if result is not None else False
 
     async def get_session_summary(self, session_id: str) -> Optional[SessionStats]:
@@ -425,7 +472,7 @@ class HistoryService:
                     )
                     return session_stats
             
-            result = self._retry_database_operation(
+            result = await self._retry_database_operation_async(
                 "get_session_summary",
                 _get_session_summary_operation,
                 treat_none_as_success=True,
@@ -444,7 +491,7 @@ class HistoryService:
                     raise RuntimeError("History repository unavailable - cannot retrieve stage execution")
                 return repo.get_stage_execution(execution_id)
         
-        result = self._retry_database_operation(
+        result = await self._retry_database_operation_async(
             "get_stage_execution",
             _get_stage_execution_operation,
             treat_none_as_success=True,

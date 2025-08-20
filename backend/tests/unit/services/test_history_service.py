@@ -567,7 +567,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock the retry mechanism to return None (simulating all retries failed)
-        with patch.object(service, '_retry_database_operation', return_value=None):
+        with patch.object(service, '_retry_database_operation_async', return_value=None):
             # Should raise RuntimeError instead of returning fallback ID  
             with pytest.raises(RuntimeError, match="Failed to create stage execution record"):
                 await service.create_stage_execution(sample_stage_execution)
@@ -578,7 +578,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock successful repository operation
-        with patch.object(service, '_retry_database_operation', return_value="stage-exec-123"):
+        with patch.object(service, '_retry_database_operation_async', return_value="stage-exec-123"):
             result = await service.create_stage_execution(sample_stage_execution)
             assert result == "stage-exec-123"
     
@@ -595,13 +595,13 @@ class TestHistoryServiceStageExecution:
         sample_stage_execution.duration_ms = 5000
         
         # Mock successful repository operation
-        with patch.object(service, '_retry_database_operation', return_value=True):
+        with patch.object(service, '_retry_database_operation_async', return_value=True):
             result = await service.update_stage_execution(sample_stage_execution)
             assert result == True
             
             # Verify retry operation was called with correct operation name
-            service._retry_database_operation.assert_called_once()
-            args, kwargs = service._retry_database_operation.call_args
+            service._retry_database_operation_async.assert_called_once()
+            args, kwargs = service._retry_database_operation_async.call_args
             assert args[0] == "update_stage_execution"
     
     @pytest.mark.asyncio
@@ -610,7 +610,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock failed repository operation
-        with patch.object(service, '_retry_database_operation', return_value=None):
+        with patch.object(service, '_retry_database_operation_async', return_value=None):
             result = await service.update_stage_execution(sample_stage_execution)
             assert result == False
     
@@ -631,11 +631,11 @@ class TestHistoryServiceStageExecution:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
-            with patch.object(service, '_retry_database_operation') as mock_retry:
+            with patch.object(service, '_retry_database_operation_async') as mock_retry:
                 mock_retry.side_effect = lambda name, func: func()
                 
                 # Should call retry operation which should return None/False
-                with patch.object(service, '_retry_database_operation', return_value=None):
+                with patch.object(service, '_retry_database_operation_async', return_value=None):
                     result = await service.update_stage_execution(sample_stage_execution)
                     assert result == False
     
@@ -645,7 +645,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock successful repository operation
-        with patch.object(service, '_retry_database_operation', return_value=True):
+        with patch.object(service, '_retry_database_operation_async', return_value=True):
             result = await service.update_session_current_stage(
                 session_id="test-session",
                 current_stage_index=2,
@@ -654,8 +654,8 @@ class TestHistoryServiceStageExecution:
             assert result == True
             
             # Verify retry operation was called with correct operation name
-            service._retry_database_operation.assert_called_once()
-            args, kwargs = service._retry_database_operation.call_args
+            service._retry_database_operation_async.assert_called_once()
+            args, kwargs = service._retry_database_operation_async.call_args
             assert args[0] == "update_session_current_stage"
     
     @pytest.mark.asyncio
@@ -664,7 +664,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock failed repository operation
-        with patch.object(service, '_retry_database_operation', return_value=None):
+        with patch.object(service, '_retry_database_operation_async', return_value=None):
             result = await service.update_session_current_stage(
                 session_id="test-session",
                 current_stage_index=2,
@@ -682,7 +682,7 @@ class TestHistoryServiceStageExecution:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
-            with patch.object(service, '_retry_database_operation', return_value=None):
+            with patch.object(service, '_retry_database_operation_async', return_value=None):
                 result = await service.update_session_current_stage(
                     session_id="test-session",
                     current_stage_index=2,
@@ -696,7 +696,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock successful repository operation
-        with patch.object(service, '_retry_database_operation', return_value=sample_stage_execution):
+        with patch.object(service, '_retry_database_operation_async', return_value=sample_stage_execution):
             result = await service.get_stage_execution("stage-exec-123")
             
             assert result == sample_stage_execution
@@ -704,8 +704,8 @@ class TestHistoryServiceStageExecution:
             assert result.stage_name == "Test Stage"
             
             # Verify retry operation was called with correct parameters
-            service._retry_database_operation.assert_called_once()
-            args, kwargs = service._retry_database_operation.call_args
+            service._retry_database_operation_async.assert_called_once()
+            args, kwargs = service._retry_database_operation_async.call_args
             assert args[0] == "get_stage_execution"
             assert kwargs.get("treat_none_as_success") == True
     
@@ -715,14 +715,14 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock repository returning None (execution not found)
-        with patch.object(service, '_retry_database_operation', return_value=None):
+        with patch.object(service, '_retry_database_operation_async', return_value=None):
             result = await service.get_stage_execution("non-existent-exec")
             
             assert result is None
             
             # Verify retry operation was called with treat_none_as_success=True
-            service._retry_database_operation.assert_called_once()
-            args, kwargs = service._retry_database_operation.call_args
+            service._retry_database_operation_async.assert_called_once()
+            args, kwargs = service._retry_database_operation_async.call_args
             assert args[0] == "get_stage_execution"
             assert kwargs.get("treat_none_as_success") == True
     
@@ -736,7 +736,7 @@ class TestHistoryServiceStageExecution:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
-            with patch.object(service, '_retry_database_operation', return_value=None):
+            with patch.object(service, '_retry_database_operation_async', return_value=None):
                 result = await service.get_stage_execution("stage-exec-123")
                 assert result is None
 
