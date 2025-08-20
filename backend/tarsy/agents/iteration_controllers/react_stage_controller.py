@@ -5,16 +5,16 @@ This controller implements the ReAct pattern for stage-specific data collection 
 analysis, providing incremental insights during chain processing.
 """
 
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from tarsy.utils.logger import get_module_logger
 from tarsy.models.unified_interactions import LLMMessage
-from .base_iteration_controller import IterationController
+from .base_controller import IterationController
 
 if TYPE_CHECKING:
     from ...models.processing_context import StageContext
     from tarsy.integrations.llm.client import LLMClient
-    from tarsy.agents.prompt_builder import PromptBuilder
+    from tarsy.agents.prompts import PromptBuilder
 
 logger = get_module_logger(__name__)
 
@@ -37,23 +37,16 @@ class ReactStageController(IterationController):
         return True
     
     async def execute_analysis_loop(self, context: 'StageContext') -> str:
-        """Execute ReAct loop with StageContext."""
-        logger.info("Starting ReAct Stage loop with StageContext")
-        return await self._execute_with_stage_context(context)
-    
-    async def _execute_with_stage_context(self, context: 'StageContext') -> str:
-        """Execute ReAct loop with new StageContext."""
-        logger.info("Starting ReAct Tools + Partial Analysis loop (StageContext)")
+        """Execute ReAct Stage loop."""
+        logger.info("Starting ReAct Stage loop")
         
         agent = context.agent
-        # Direct StageContext processing
-        return await self._execute_react_loop_with_stage_context(agent, context)
-
-    async def _execute_react_loop_with_stage_context(self, agent, stage_context: 'StageContext') -> str:
-        """Execute ReAct loop using StageContext directly."""
+        if agent is None:
+            raise ValueError("Agent reference is required in context")
+        
         max_iterations = agent.max_iterations
         react_history = []
-        session_id = stage_context.session_id
+        session_id = context.session_id
         
         # Execute ReAct loop using DIRECT StageContext (no PromptContext conversion)
         for iteration in range(max_iterations):
@@ -61,137 +54,7 @@ class ReactStageController(IterationController):
             
             try:
                 # Pass StageContext directly to prompt builder
-                prompt = self.prompt_builder.build_stage_analysis_react_prompt(stage_context, react_history)
-                
-                # Use enhanced ReAct system message with MCP server instructions
-                composed_instructions = agent._compose_instructions()
-                messages = [
-                    LLMMessage(
-                        role="system", 
-                        content=self.prompt_builder.get_enhanced_react_system_message(composed_instructions, "collecting additional data and providing stage-specific analysis")
-                    ),
-                    LLMMessage(role="user", content=prompt)
-                ]
-                
-                response = await self.llm_client.generate_response(messages, session_id, agent.get_current_stage_execution_id())
-                logger.info(f"LLM Response (first 500 chars): {response[:500]}")
-                
-                # REUSE EXISTING ReAct parsing - same parsing logic as SimpleReActController
-                parsed = self.prompt_builder.parse_react_response(response)
-                logger.info(f"Parsed ReAct response: {parsed}")
-                
-                # Add thought to history (same as SimpleReActController)
-                if parsed['thought']:
-                    react_history.append(f"Thought: {parsed['thought']}")
-                    logger.info(f"ReAct Thought: {parsed['thought'][:150]}...")
-                
-                # Check if complete (partial analysis final answer)
-                if parsed['is_complete'] and parsed['final_answer']:
-                    logger.info("Partial analysis completed with final answer")
-                    react_history.append(f"Final Answer: {parsed['final_answer']}")
-                    return "\n".join(react_history)
-                
-                # Execute action if present (same tool execution as SimpleReActController)
-                if parsed['action'] and parsed['action_input']:
-                    try:
-                        logger.info(f"ReAct Action: {parsed['action']} with input: {parsed['action_input'][:100]}...")
-                        
-                        # REUSE existing action-to-tool conversion
-                        tool_call = self.prompt_builder.convert_action_to_tool_call(
-                            parsed['action'], parsed['action_input']
-                        )
-                        
-                        # Execute tool using agent's existing method  
-                        mcp_data = await agent.execute_mcp_tools([tool_call], session_id)
-                        
-                        # REUSE existing observation formatting
-                        observation = self.prompt_builder.format_observation(mcp_data)
-                        
-                        # Add to history using EXACT format from SimpleReActController
-                        react_history.extend([
-                            f"Action: {parsed['action']}",
-                            f"Action Input: {parsed['action_input']}",
-                            f"Observation: {observation}"
-                        ])
-                        
-                        logger.info(f"ReAct Observation: {observation[:150]}...")
-                        
-                    except Exception as e:
-                        logger.error(f"Failed to execute ReAct action: {str(e)}")
-                        error_obs = f"Error executing action: {str(e)}"
-                        react_history.extend([
-                            f"Action: {parsed['action']}",
-                            f"Action Input: {parsed['action_input']}",
-                            f"Observation: {error_obs}"
-                        ])
-                
-                elif not parsed['is_complete']:
-                    # Same prompting logic as SimpleReActController
-                    logger.warning("ReAct response missing action, adding prompt to continue")
-                    react_history.extend(self.prompt_builder.get_react_continuation_prompt("analysis"))
-                
-            except Exception as e:
-                logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
-                react_history.extend(self.prompt_builder.get_react_error_continuation(str(e)))
-                continue
-        
-        # REUSE fallback logic from SimpleReActController  
-        logger.warning("Partial analysis reached maximum iterations without final answer")
-        
-        # Use utility method to flatten react history
-        flattened_history = self.prompt_builder._flatten_react_history(react_history)
-        
-        final_prompt = f"""Based on the investigation so far, provide your stage-specific analysis.
-
-Investigation History:
-{chr(10).join(flattened_history)}
-
-Please provide a final analysis based on what you've discovered, even if the investigation isn't complete."""
-        
-        try:
-            messages = [
-                LLMMessage(
-                    role="system", 
-                    content="Provide stage-specific analysis based on the available information."
-                ),
-                LLMMessage(role="user", content=final_prompt)
-            ]
-            
-            fallback_response = await self.llm_client.generate_response(messages, session_id, agent.get_current_stage_execution_id())
-            # Include history plus fallback partial analysis
-            react_history.append(f"Partial analysis completed (reached max iterations):\n{fallback_response}")
-            return "\n".join(react_history)
-            
-        except Exception as e:
-            logger.error(f"Failed to generate fallback analysis: {str(e)}")
-            # Return complete history even when incomplete
-            react_history.append(f"Analysis incomplete: reached maximum iterations ({max_iterations}) without final answer")
-            return "\n".join(react_history)
-
-
-
-    async def _execute_react_loop(self, agent, alert_data, runbook_content, available_tools, stage_name, session_id) -> str:
-        """Common ReAct loop logic for both context types."""
-        
-        max_iterations = agent.max_iterations
-        react_history = []
-        
-        # Create context using StageContext directly
-        prompt_context = agent.create_prompt_context(
-            alert_data=alert_data,
-            runbook_content=runbook_content,
-            available_tools={"tools": available_tools},
-            stage_name=stage_name,
-            previous_stages=None  # Handled by chain context
-        )
-        
-        # Execute ReAct loop using EXISTING ReAct format and parsing (same as SimpleReActController)
-        for iteration in range(max_iterations):
-            logger.info(f"Partial analysis iteration {iteration + 1}/{max_iterations}")
-            
-            try:
-                # Use stage analysis prompt but SAME ReAct format
-                prompt = self.prompt_builder.build_stage_analysis_react_prompt(prompt_context, react_history)
+                prompt = self.prompt_builder.build_stage_analysis_react_prompt(context, react_history)
                 
                 # Use enhanced ReAct system message with MCP server instructions
                 composed_instructions = agent._compose_instructions()

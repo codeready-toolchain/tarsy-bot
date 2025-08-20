@@ -25,6 +25,3 @@ class AlertResponse(BaseModel):
     alert_id: str
     status: str
     message: str
-
-
- 

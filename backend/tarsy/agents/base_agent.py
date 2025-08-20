@@ -7,7 +7,7 @@ It implements common processing logic and defines abstract methods for agent-spe
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Dict, List, Optional
 
 from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.client import LLMClient
@@ -24,7 +24,7 @@ from .iteration_controllers import (
 )
 from .exceptions import (
     AgentError, 
-    ToolExecutionError, ConfigurationError,
+    ToolExecutionError, ToolSelectionError, ConfigurationError,
     ErrorRecoveryHandler
 )
 from tarsy.services.mcp_server_registry import MCPServerRegistry
@@ -33,11 +33,7 @@ from tarsy.utils.timestamp import now_us
 
 from ..models.constants import IterationStrategy
 
-if TYPE_CHECKING:
-    from .prompt_builder import PromptBuilder
-    from ..models.processing_context import ChainContext, StageContext
-
-from .prompt_builder import get_prompt_builder
+from .prompts import get_prompt_builder
 
 logger = get_module_logger(__name__)
 
@@ -80,7 +76,6 @@ class BaseAgent(ABC):
         self.llm_client = llm_client
         self.mcp_client = mcp_client
         self.mcp_registry = mcp_registry
-        self._iteration_count = 0
         self._max_iterations = get_settings().max_llm_mcp_iterations
         self._configured_servers: Optional[List[str]] = None
         self._prompt_builder = get_prompt_builder()
@@ -129,7 +124,6 @@ class BaseAgent(ABC):
         """Get the maximum number of iterations allowed for this agent."""
         return self._max_iterations
 
-
     @abstractmethod
     def mcp_servers(self) -> List[str]:
         """
@@ -156,42 +150,9 @@ class BaseAgent(ABC):
         """
         pass
 
-
-
-    def _get_server_specific_tool_guidance(self) -> str:
-        """Get guidance text specific to this agent's assigned MCP servers."""
-        guidance_parts = []
-        
-        # Get server configs for this agent
-        server_configs = self.mcp_registry.get_server_configs(self.mcp_servers())
-        
-        if server_configs:
-            guidance_parts.append("## Server-Specific Tool Selection Guidance")
-            
-            for server_config in server_configs:
-                if server_config.instructions:
-                    guidance_parts.append(f"### {server_config.server_type.title()} Tools")
-                    guidance_parts.append(server_config.instructions)
-        
-        return "\n\n".join(guidance_parts) if guidance_parts else ""
-
     async def process_alert(self, context: ChainContext) -> AgentExecutionResult:
         """
-        Process alert using the new ChainContext model.
-        
-        Args:
-            context: ChainContext containing all alert processing data
-        
-        Returns:
-            Structured AgentExecutionResult with rich investigation summary
-        """
-        return await self._process_alert_new(context)
-
-    async def _process_alert_new(self, chain_context: ChainContext) -> AgentExecutionResult:
-        """
-        New implementation using ChainContext and StageContext.
-        
-        This will become the main process_alert implementation in Phase 6.
+        Process alert.
         
         Args:
             chain_context: ChainContext containing all processing data
@@ -206,26 +167,15 @@ class BaseAgent(ABC):
             # Get available tools only if the iteration strategy needs them
             if self._iteration_controller.needs_mcp_tools():
                 logger.info(f"Enhanced logging: Strategy {self.iteration_strategy.value} requires MCP tool discovery")
-                available_tools_list = await self._get_available_tools(chain_context.session_id)
-                logger.info(f"Enhanced logging: Retrieved {len(available_tools_list)} tools for {self.iteration_strategy.value}")
-                
-                # Convert legacy tools to MCPTool objects
-                mcp_tools = []
-                for tool in available_tools_list:
-                    mcp_tools.append(MCPTool(
-                        server=tool.get('server', 'unknown'),
-                        name=tool.get('name', 'tool'),
-                        description=tool.get('description', 'No description'),
-                        parameters=tool.get('parameters', [])
-                    ))
-                available_tools = AvailableTools(tools=mcp_tools)
+                available_tools = await self._get_available_tools(context.session_id)
+                logger.info(f"Enhanced logging: Retrieved {len(available_tools.tools)} tools for {self.iteration_strategy.value}")
             else:
                 logger.info(f"Enhanced logging: Strategy {self.iteration_strategy.value} skips MCP tool discovery - Final analysis stage")
                 available_tools = AvailableTools()
             
             # Create new StageContext
             stage_context = StageContext(
-                chain_context=chain_context,
+                chain_context=context,
                 available_tools=available_tools,
                 agent=self
             )
@@ -276,33 +226,6 @@ class BaseAgent(ABC):
                 result_summary=f"Agent execution failed with unexpected error: {str(e)}",
                 error_message=error_msg
             )
-
-
-    
-    def merge_mcp_data(self, existing_data: Dict[str, Any], new_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Merge new MCP data with existing data.
-        
-        Handles both list and non-list data formats gracefully.
-        """
-        merged_data = existing_data.copy()
-        
-        for server_name, server_data in new_data.items():
-            if server_name in merged_data:
-                if isinstance(merged_data[server_name], list) and isinstance(server_data, list):
-                    merged_data[server_name].extend(server_data)
-                else:
-                    # Convert to list format if needed
-                    if not isinstance(merged_data[server_name], list):
-                        merged_data[server_name] = [merged_data[server_name]]
-                    if isinstance(server_data, list):
-                        merged_data[server_name].extend(server_data)
-                    else:
-                        merged_data[server_name].append(server_data)
-            else:
-                merged_data[server_name] = server_data
-        
-        return merged_data
 
     def _compose_instructions(self) -> str:
         """
@@ -387,10 +310,10 @@ class BaseAgent(ABC):
         self._configured_servers = mcp_server_ids
         logger.info(f"Configured agent {self.__class__.__name__} with MCP servers: {mcp_server_ids}")
     
-    async def _get_available_tools(self, session_id: str) -> List[Dict[str, Any]]:
+    async def _get_available_tools(self, session_id: str) -> AvailableTools:
         """Get available tools from assigned MCP servers."""
         try:
-            all_tools = []
+            mcp_tools = []
             
             if self._configured_servers is None:
                 # This should never happen now - configuration is required
@@ -403,16 +326,28 @@ class BaseAgent(ABC):
                 server_tools = await self.mcp_client.list_tools(session_id=session_id, server_name=server_name, stage_execution_id=self._current_stage_execution_id)
                 if server_name in server_tools:
                     for tool in server_tools[server_name]:
-                        tool_with_server = tool.copy()
-                        tool_with_server["server"] = server_name
-                        all_tools.append(tool_with_server)
+                        mcp_tools.append(MCPTool(
+                            server=server_name,
+                            name=tool.get('name', 'tool'),
+                            description=tool.get('description', 'No description'),
+                            parameters=tool.get('parameters', [])
+                        ))
             
-            logger.info(f"Agent {self.__class__.__name__} retrieved {len(all_tools)} tools from servers: {self._configured_servers}")
-            return all_tools
+            logger.info(f"Agent {self.__class__.__name__} retrieved {len(mcp_tools)} tools from servers: {self._configured_servers}")
+            return AvailableTools(tools=mcp_tools)
             
         except Exception as e:
-            logger.error(f"Failed to retrieve tools for agent {self.__class__.__name__}: {str(e)}")
-            return []
+            error_msg = f"Failed to retrieve tools for agent {self.__class__.__name__}: {str(e)}"
+            logger.error(error_msg)
+            raise ToolSelectionError(
+                message=error_msg,
+                context={
+                    "agent_class": self.__class__.__name__,
+                    "configured_servers": self._configured_servers,
+                    "session_id": session_id,
+                    "original_error": str(e)
+                }
+            )
 
     async def execute_mcp_tools(self, tools_to_call: List[Dict], session_id: str) -> Dict[str, List[Dict]]:
         """

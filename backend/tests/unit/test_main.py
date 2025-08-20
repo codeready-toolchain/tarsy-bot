@@ -359,15 +359,20 @@ class TestSubmitAlertEndpoint:
         elif expected_error in ["Invalid alert_type", "Invalid runbook"]:
             assert "field" in data["detail"]
 
-    @patch('tarsy.main.processing_alert_keys', {"test-key": "existing-id"})
-    @patch('tarsy.main.alert_keys_lock', asyncio.Lock())
     def test_submit_alert_duplicate_detection(self, client, valid_alert_data):
         """Test duplicate alert detection."""
-        # Mock AlertKey constructor to return a predictable key
-        with patch('tarsy.main.AlertKey') as mock_alert_key_class:
-            mock_key_instance = Mock()
-            mock_key_instance.__str__ = Mock(return_value="test-key")
-            mock_alert_key_class.return_value = mock_key_instance
+        # Create a mock AlertKey instance
+        mock_alert_key = Mock()
+        mock_alert_key.__str__ = Mock(return_value="test-key") 
+        mock_alert_key.__hash__ = Mock(return_value=12345)
+        
+        # Patch with AlertKey object as key instead of string
+        with patch('tarsy.main.processing_alert_keys', {mock_alert_key: "existing-id"}), \
+             patch('tarsy.main.alert_keys_lock', asyncio.Lock()), \
+             patch('tarsy.main.AlertKey.from_chain_context') as mock_from_chain_context:
+            
+            # Mock the factory method to return our test key
+            mock_from_chain_context.return_value = mock_alert_key
             
             response = client.post("/alerts", json=valid_alert_data)
             
@@ -588,23 +593,28 @@ class TestBackgroundProcessing:
         mock_alert_service.process_alert.assert_called_once_with(mock_alert_data, alert_id="alert-123")
 
     @patch('tarsy.main.alert_service')
-    @patch('tarsy.main.processing_alert_keys', {"test-key": "alert-123"})
-    @patch('tarsy.main.alert_keys_lock', asyncio.Lock())
     async def test_process_alert_background_cleanup(self, mock_alert_service, mock_alert_data):
         """Test background processing cleans up alert keys."""
         mock_alert_service.process_alert = AsyncMock(return_value={"status": "success"})
         
-        # Create a mock AlertKey that returns "test-key"
-        with patch('tarsy.main.AlertKey') as mock_alert_key_class:
-            mock_key = Mock()
-            mock_key.__str__ = Mock(return_value="test-key")
-            mock_alert_key_class.from_alert_data.return_value = mock_key
+        # Create a mock AlertKey instance
+        mock_alert_key = Mock()
+        mock_alert_key.__str__ = Mock(return_value="test-key")
+        mock_alert_key.__hash__ = Mock(return_value=12345)
+        
+        # Start with the key in the processing dict
+        with patch('tarsy.main.processing_alert_keys', {mock_alert_key: "alert-123"}) as mock_processing_keys, \
+             patch('tarsy.main.alert_keys_lock', asyncio.Lock()), \
+             patch('tarsy.main.AlertKey.from_chain_context') as mock_from_chain_context:
+            
+            # Mock the factory method to return our test key
+            mock_from_chain_context.return_value = mock_alert_key
             
             with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)):
                 await process_alert_background("alert-123", mock_alert_data)
         
         # Verify the alert key was cleaned up (dict should be empty now)
-        assert "test-key" not in processing_alert_keys
+        assert mock_alert_key not in mock_processing_keys
 
     @patch('tarsy.main.alert_service')
     @patch('tarsy.main.processing_alert_keys', {})
@@ -642,10 +652,11 @@ class TestBackgroundProcessing:
             mock_alert_service.process_alert.side_effect = ValueError("Processing failed")
             
             # Need to mock AlertKey.from_chain_context for cleanup in finally block
-            with patch('tarsy.main.AlertKey.from_chain_context') as mock_alert_key:
+            with patch('tarsy.main.AlertKey.from_chain_context') as mock_from_chain_context:
                 mock_key = Mock()
                 mock_key.__str__ = Mock(return_value="test-key")
-                mock_alert_key.return_value = mock_key
+                mock_key.__hash__ = Mock(return_value=12345)
+                mock_from_chain_context.return_value = mock_key
                 await process_alert_background("alert-124", valid_alert)
         
         # The function should handle errors gracefully and not raise exceptions
@@ -899,13 +910,16 @@ class TestCriticalCoverage:
         }
         
         # Test with existing processing key
-        with patch('tarsy.main.processing_alert_keys', {"test-key": "existing-id"}), \
+        mock_alert_key = Mock()
+        mock_alert_key.__str__ = Mock(return_value="test-key")
+        mock_alert_key.__hash__ = Mock(return_value=12345)
+        
+        with patch('tarsy.main.processing_alert_keys', {mock_alert_key: "existing-id"}), \
              patch('tarsy.main.alert_keys_lock', asyncio.Lock()), \
-             patch('tarsy.main.AlertKey') as mock_alert_key_class:
+             patch('tarsy.main.AlertKey.from_chain_context') as mock_from_chain_context:
             
-            mock_key_instance = Mock()
-            mock_key_instance.__str__ = Mock(return_value="test-key")
-            mock_alert_key_class.return_value = mock_key_instance
+            # Mock the factory method to return our test key
+            mock_from_chain_context.return_value = mock_alert_key
             
             response = client.post("/alerts", json=alert_data)
             assert response.status_code == 200
@@ -929,12 +943,13 @@ class TestCriticalCoverage:
              patch('tarsy.main.asyncio.create_task'), \
              patch('tarsy.main.processing_alert_keys', {}), \
              patch('tarsy.main.alert_keys_lock', asyncio.Lock()), \
-             patch('tarsy.main.AlertKey') as mock_alert_key:
+             patch('tarsy.main.AlertKey.from_chain_context') as mock_from_chain_context:
             
             # Mock AlertKey to return a unique key matching production format: <alert_type>_<12-char hex hash>
             mock_key = Mock()
             mock_key.__str__ = Mock(return_value=f"test_alert_{uuid.uuid4().hex[:12]}")
-            mock_alert_key.from_alert_data.return_value = mock_key
+            mock_key.__hash__ = Mock(return_value=12345)
+            mock_from_chain_context.return_value = mock_key
             
             mock_alert_service.register_alert_id = Mock()
             

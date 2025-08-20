@@ -9,14 +9,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..base_agent import BaseAgent
     from ...models.processing_context import StageContext
-
-
-
-    
-
-
 
 class IterationController(ABC):
     """

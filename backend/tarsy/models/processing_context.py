@@ -40,8 +40,6 @@ class AvailableTools(BaseModel):
         description="Available MCP tools"
     )
     
-
-    
     def to_prompt_format(self) -> str:
         """Format tools for prompt inclusion."""
         if not self.tools:
@@ -117,9 +115,6 @@ class ChainContext(BaseModel):
     def set_runbook_content(self, content: str):
         """Set downloaded runbook content."""
         self.runbook_content = content
-    
-    # NOTE: get_severity() and get_environment() REMOVED
-    # These are API formatting methods that belong in AlertService, not processing models
 
 
 @dataclass
@@ -131,7 +126,7 @@ class StageContext:
     architecture that derives all data from the core references without duplication.
     """
     
-    # Core references (no duplication!)
+    # Core references
     chain_context: ChainContext
     available_tools: AvailableTools
     agent: 'BaseAgent'
@@ -195,6 +190,3 @@ class StageContext:
             sections.append("")
         
         return "\n".join(sections)
-
-
-

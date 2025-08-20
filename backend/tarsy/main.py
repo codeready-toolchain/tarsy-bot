@@ -30,7 +30,7 @@ from tarsy.utils.timestamp import now_us
 logger = get_module_logger(__name__)
 
 # Track currently processing alert keys to prevent duplicates
-processing_alert_keys: Dict[str, str] = {}  # alert_key -> alert_id mapping
+processing_alert_keys: Dict[AlertKey, str] = {}  # alert_key -> alert_id mapping
 alert_keys_lock = asyncio.Lock()  # Protect the processing_alert_keys dict
 
 alert_service: AlertService = None
@@ -365,17 +365,13 @@ async def submit_alert(request: Request):
         )
         
         # Generate alert key for duplicate detection using normalized data
-        alert_key = AlertKey(
-            alert_type=alert_data.alert_type,
-            content_hash=str(hash(str(normalized_data)))[:12]
-        )
-        alert_key_str = str(alert_key)
+        alert_key = AlertKey.from_chain_context(alert_context)
         
         # Check for duplicate alerts already in progress
         async with alert_keys_lock:
-            if alert_key_str in processing_alert_keys:
-                existing_alert_id = processing_alert_keys[alert_key_str]
-                logger.info(f"Duplicate alert detected - same as {existing_alert_id} (key: {alert_key_str})")
+            if alert_key in processing_alert_keys:
+                existing_alert_id = processing_alert_keys[alert_key]
+                logger.info(f"Duplicate alert detected - same as {existing_alert_id} (key: {alert_key})")
                 
                 return AlertResponse(
                     alert_id=existing_alert_id,  # Return the existing alert ID
@@ -390,7 +386,7 @@ async def submit_alert(request: Request):
             alert_service.register_alert_id(alert_id)
             
             # Register this alert key as being processed
-            processing_alert_keys[alert_key_str] = alert_id
+            processing_alert_keys[alert_key] = alert_id
         
         # Start background processing with normalized data
         asyncio.create_task(process_alert_background(alert_id, alert_context))
@@ -533,12 +529,11 @@ async def process_alert_background(alert_id: str, alert: ChainContext):
             # Clean up alert key tracking regardless of success or failure
             if alert:
                 alert_key = AlertKey.from_chain_context(alert)
-                alert_key_str = str(alert_key)
                 
                 async with alert_keys_lock:
-                    if alert_key_str in processing_alert_keys:
-                        del processing_alert_keys[alert_key_str]
-                        logger.debug(f"Cleaned up alert key tracking for {alert_key_str}")
+                    if alert_key in processing_alert_keys:
+                        del processing_alert_keys[alert_key]
+                        logger.debug(f"Cleaned up alert key tracking for {alert_key}")
 
 if __name__ == "__main__":
     import uvicorn

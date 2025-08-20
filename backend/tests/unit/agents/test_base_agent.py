@@ -10,22 +10,13 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from tarsy.agents.base_agent import BaseAgent
-from tarsy.agents.exceptions import ConfigurationError
+from tarsy.agents.exceptions import ConfigurationError, ToolSelectionError
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert import Alert
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.timestamp import now_us
-
-# Import new context models
-# These imports will be cleaned up in Phase 6
-from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
-from tests.unit.models.test_context_factories import (
-    ChainContextFactory, 
-    StageContextFactory
-)
-
 
 class TestConcreteAgent(BaseAgent):
     """Concrete implementation of BaseAgent for testing."""
@@ -105,7 +96,6 @@ class TestBaseAgentAbstractInterface:
         assert agent.llm_client == mock_llm_client
         assert agent.mcp_client == mock_mcp_client
         assert agent.mcp_registry == mock_mcp_registry
-        assert agent._iteration_count == 0
         assert agent._configured_servers is None
         # Verify default iteration strategy
         from tarsy.models.constants import IterationStrategy
@@ -157,53 +147,6 @@ class TestBaseAgentUtilityMethods:
                 "namespace": "test-namespace"
             }
         )
-
-    @pytest.mark.unit
-    @patch('tarsy.agents.base_agent.get_prompt_builder')
-    def test_get_server_specific_tool_guidance(self, mock_get_prompt_builder, base_agent, mock_mcp_registry):
-        """Test server-specific tool guidance generation."""
-        # Setup mock configs
-        mock_config1 = Mock()
-        mock_config1.server_type = "kubernetes"
-        mock_config1.instructions = "Kubernetes tool guidance"
-        
-        mock_config2 = Mock()
-        mock_config2.server_type = "monitoring"
-        mock_config2.instructions = "Monitoring tool guidance"
-        
-        mock_mcp_registry.get_server_configs.return_value = [mock_config1, mock_config2]
-        
-        guidance = base_agent._get_server_specific_tool_guidance()
-        
-        assert "## Server-Specific Tool Selection Guidance" in guidance
-        assert "### Kubernetes Tools" in guidance
-        assert "Kubernetes tool guidance" in guidance
-        assert "### Monitoring Tools" in guidance
-        assert "Monitoring tool guidance" in guidance
-
-    @pytest.mark.unit
-    @patch('tarsy.agents.base_agent.get_prompt_builder')
-    def test_get_server_specific_tool_guidance_empty_instructions(self, mock_get_prompt_builder, base_agent, mock_mcp_registry):
-        """Test server-specific tool guidance with empty instructions."""
-        mock_config = Mock()
-        mock_config.server_type = "test"
-        mock_config.instructions = ""
-        
-        mock_mcp_registry.get_server_configs.return_value = [mock_config]
-        
-        guidance = base_agent._get_server_specific_tool_guidance()
-        # When there are server configs but no instructions, it includes header but no content
-        assert guidance == "## Server-Specific Tool Selection Guidance"
-
-    @pytest.mark.unit
-    @patch('tarsy.agents.base_agent.get_prompt_builder')
-    def test_get_server_specific_tool_guidance_no_configs(self, mock_get_prompt_builder, base_agent, mock_mcp_registry):
-        """Test server-specific tool guidance with no server configs."""
-        mock_mcp_registry.get_server_configs.return_value = []
-        
-        guidance = base_agent._get_server_specific_tool_guidance()
-        # When there are no server configs, it returns empty string
-        assert guidance == ""
 
 @pytest.mark.unit
 class TestBaseAgentInstructionComposition:
@@ -338,9 +281,9 @@ class TestBaseAgentMCPIntegration:
         
         tools = await base_agent._get_available_tools("test_session")
         
-        assert len(tools) == 1
-        assert tools[0]["name"] == "kubectl-get"
-        assert tools[0]["server"] == "test-server"
+        assert len(tools.tools) == 1
+        assert tools.tools[0].name == "kubectl-get"
+        assert tools.tools[0].server == "test-server"
         mock_mcp_client.list_tools.assert_called_once_with(session_id="test_session", server_name="test-server", stage_execution_id=None)
 
     @pytest.mark.unit
@@ -349,9 +292,9 @@ class TestBaseAgentMCPIntegration:
         """Test getting tools when agent not configured."""
         base_agent._configured_servers = None
         
-        # The method catches the ValueError and returns empty list instead
-        tools = await base_agent._get_available_tools("test_session")
-        assert tools == []
+        # The method should raise ToolSelectionError when not configured
+        with pytest.raises(ToolSelectionError, match="Agent TestConcreteAgent has not been properly configured"):
+            await base_agent._get_available_tools("test_session")
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -360,9 +303,9 @@ class TestBaseAgentMCPIntegration:
         base_agent._configured_servers = ["test-server"]
         mock_mcp_client.list_tools.side_effect = Exception("MCP connection failed")
         
-        tools = await base_agent._get_available_tools("test_session")
-        
-        assert tools == []  # Should return empty list on error
+        # The method should raise ToolSelectionError when MCP client fails
+        with pytest.raises(ToolSelectionError, match="Failed to retrieve tools for agent TestConcreteAgent.*MCP connection failed"):
+            await base_agent._get_available_tools("test_session")
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -736,9 +679,3 @@ class TestPhase4PromptSystemOverload:
         assert "test-pod" in standard_prompt  # Should contain alert data
         assert "test-pod" in stage_prompt
         assert "test-pod" in final_prompt
-
-    
-
-
-
-

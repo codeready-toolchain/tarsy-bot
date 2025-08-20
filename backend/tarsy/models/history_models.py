@@ -12,7 +12,7 @@ from typing import List, Dict, Optional, Union, Literal, Any
 from pydantic import BaseModel, Field, model_validator, computed_field
 
 # Import existing enums and models
-from tarsy.models.constants import AlertSessionStatus, StageStatus, ChainStatus
+from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.unified_interactions import LLMMessage
 
 

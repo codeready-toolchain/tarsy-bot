@@ -5,8 +5,8 @@ This module provides clean separation between different agent processing strateg
 allowing BaseAgent to use composition instead of conditional logic throughout.
 """
 
-from .base_iteration_controller import IterationController
-from .react_iteration_controller import SimpleReActController
+from .base_controller import IterationController
+from .react_controller import SimpleReActController
 from .react_stage_controller import ReactStageController
 from .react_final_analysis_controller import ReactFinalAnalysisController
 

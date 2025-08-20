@@ -6,7 +6,7 @@ allowing agents to provide their own summary format as a string.
 """
 
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Dict, Any, Optional
+from typing import Optional
 from tarsy.models.constants import StageStatus
 
 
@@ -37,6 +37,3 @@ class AgentExecutionResult(BaseModel):
     
     # Optional metadata
     duration_ms: Optional[int] = Field(None, description="Execution duration in milliseconds")
-
-
-

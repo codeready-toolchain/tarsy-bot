@@ -9,7 +9,6 @@ import json
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from tarsy.utils.logger import get_module_logger
 
-
 if TYPE_CHECKING:
     from tarsy.models.processing_context import StageContext
 from .components import (
@@ -26,7 +25,6 @@ from .templates import (
     STANDARD_REACT_PROMPT_TEMPLATE,
 )
 
-
 logger = get_module_logger(__name__)
 
 
@@ -39,34 +37,25 @@ class PromptBuilder:
         self.runbook_component = RunbookSectionTemplate()
         self.chain_context_component = ChainContextSectionTemplate()
     
-
-    
     # ============ Main Prompt Building Methods ============
     
     def build_standard_react_prompt(self, context: 'StageContext', react_history: Optional[List[str]] = None) -> str:
-        """Build standard ReAct prompt using StageContext."""
-        from tarsy.models.processing_context import StageContext
-        
-        logger.debug("Building ReAct prompt with StageContext")
-        return self._build_standard_react_prompt_with_stage_context(context, react_history)
-    
-    def _build_standard_react_prompt_with_stage_context(self, stage_context: 'StageContext', react_history: Optional[List[str]] = None) -> str:
-        """Build standard ReAct prompt using StageContext (new approach)."""
+        """Build standard ReAct prompt."""
+        logger.debug("Building ReAct prompt")
         # Build question components using StageContext properties directly
-        alert_section = self.alert_component.format(stage_context.alert_data)
-        runbook_section = self.runbook_component.format(stage_context.runbook_content)
+        alert_section = self.alert_component.format(context.alert_data)
+        runbook_section = self.runbook_component.format(context.runbook_content)
         
         # Use StageContext's built-in previous stages formatting
-        previous_stages_context = stage_context.format_previous_stages_context()
+        previous_stages_context = context.format_previous_stages_context()
         if previous_stages_context == "No previous stage context available.":
             chain_context = ""
         else:
             chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}"
         
         # Build question
-        alert_type = stage_context.alert_data.get('alert_type', stage_context.alert_data.get('alert', 'Unknown Alert'))
         question = ANALYSIS_QUESTION_TEMPLATE.format(
-            alert_type=alert_type,
+            alert_type=context.chain_context.alert_type,
             alert_section=alert_section,
             runbook_section=runbook_section,
             chain_context=chain_context
@@ -79,7 +68,7 @@ class PromptBuilder:
             history_text = "\n".join(flattened_history) + "\n"
         
         # Format available tools from StageContext
-        available_tools_dict = {"tools": [tool for tool in stage_context.available_tools.tools]}
+        available_tools_dict = {"tools": [tool for tool in context.available_tools.tools]}
         
         return STANDARD_REACT_PROMPT_TEMPLATE.format(
             available_actions=self._format_available_actions(available_tools_dict),
@@ -87,33 +76,24 @@ class PromptBuilder:
             history_text=history_text
         )
     
-
-    
     def build_stage_analysis_react_prompt(self, context: 'StageContext', react_history: Optional[List[str]] = None) -> str:
-        """Build stage analysis ReAct prompt using StageContext."""
-        from tarsy.models.processing_context import StageContext
-        
-        logger.debug("Building stage analysis ReAct prompt with StageContext")
-        return self._build_stage_analysis_prompt_with_stage_context(context, react_history)
-    
-    def _build_stage_analysis_prompt_with_stage_context(self, stage_context: 'StageContext', react_history: Optional[List[str]] = None) -> str:
-        """Build stage analysis ReAct prompt using StageContext (new approach)."""
+        """Build stage analysis ReAct prompt."""
+        logger.debug("Building stage analysis ReAct prompt")
         # Build question components using StageContext properties directly
-        alert_section = self.alert_component.format(stage_context.alert_data)
-        runbook_section = self.runbook_component.format(stage_context.runbook_content)
+        alert_section = self.alert_component.format(context.alert_data)
+        runbook_section = self.runbook_component.format(context.runbook_content)
         
         # Use StageContext's built-in previous stages formatting
-        previous_stages_context = stage_context.format_previous_stages_context()
+        previous_stages_context = context.format_previous_stages_context()
         if previous_stages_context == "No previous stage context available.":
             chain_context = ""
         else:
             chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}"
         
         # Build question
-        alert_type = stage_context.alert_data.get('alert_type', stage_context.alert_data.get('alert', 'Unknown Alert'))
-        stage_name = stage_context.stage_name or "analysis"
+        stage_name = context.stage_name or "analysis"
         question = STAGE_ANALYSIS_QUESTION_TEMPLATE.format(
-            alert_type=alert_type,
+            alert_type=context.chain_context.alert_type,
             alert_section=alert_section,
             runbook_section=runbook_section,
             chain_context=chain_context,
@@ -127,7 +107,7 @@ class PromptBuilder:
             history_text = "\n".join(flattened_history) + "\n"
         
         # Format available tools from StageContext
-        available_tools_dict = {"tools": [tool for tool in stage_context.available_tools.tools]}
+        available_tools_dict = {"tools": [tool for tool in context.available_tools.tools]}
         
         return STANDARD_REACT_PROMPT_TEMPLATE.format(
             available_actions=self._format_available_actions(available_tools_dict),
@@ -135,35 +115,27 @@ class PromptBuilder:
             history_text=history_text
         )
     
-
-    
     def build_final_analysis_prompt(self, context: 'StageContext') -> str:
-        """Build final analysis prompt using StageContext."""
-        from tarsy.models.processing_context import StageContext
-        
-        logger.debug("Building final analysis prompt with StageContext")
-        return self._build_final_analysis_prompt_with_stage_context(context)
-    
-    def _build_final_analysis_prompt_with_stage_context(self, stage_context: 'StageContext') -> str:
-        """Build final analysis prompt using StageContext (new approach)."""
+        """Build final analysis prompt."""
+        logger.debug("Building final analysis prompt")
         stage_info = ""
-        if stage_context.stage_name:
-            stage_info = f"\n**Stage:** {stage_context.stage_name}"
+        if context.stage_name:
+            stage_info = f"\n**Stage:** {context.stage_name}"
             stage_info += " (Final Analysis Stage)"  # Could add is_final_stage to StageContext if needed
             stage_info += "\n"
         
         # Build context section manually since we don't have the old helper
-        server_list = ", ".join(stage_context.mcp_servers)
+        server_list = ", ".join(context.mcp_servers)
         context_section = CONTEXT_SECTION_TEMPLATE.format(
-            agent_name=stage_context.agent_name,
+            agent_name=context.agent_name,
             server_list=server_list
         )
         
-        alert_section = self.alert_component.format(stage_context.alert_data)
-        runbook_section = self.runbook_component.format(stage_context.runbook_content)
+        alert_section = self.alert_component.format(context.alert_data)
+        runbook_section = self.runbook_component.format(context.runbook_content)
         
         # Use StageContext's built-in previous stages formatting
-        previous_stages_context = stage_context.format_previous_stages_context()
+        previous_stages_context = context.format_previous_stages_context()
         if previous_stages_context == "No previous stage context available.":
             chain_context = ""
         else:
@@ -176,8 +148,6 @@ class PromptBuilder:
             runbook_section=runbook_section,
             chain_context=chain_context
         )
-    
-
     
     # ============ System Message Methods ============
     

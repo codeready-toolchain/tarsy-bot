@@ -6,13 +6,8 @@ to build complex prompts with proper formatting and type handling.
 """
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict
 from langchain_core.prompts import PromptTemplate
-
-
-
-
-
 
 
 class AlertSectionTemplate:

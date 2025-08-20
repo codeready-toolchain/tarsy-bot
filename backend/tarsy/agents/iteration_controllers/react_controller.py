@@ -1,16 +1,23 @@
 """
 ReAct iteration controller for standard investigation and analysis.
 
-This controller implements the ReAct (Reasoning + Acting) pattern for systematic
-alert investigation using LLM reasoning with MCP tool calls.
+This controller follows the ReAct format:
+- Question: The alert analysis question
+- Thought: Agent reasons about what to do next
+- Action: Agent specifies which tool to use
+- Action Input: Parameters for the tool
+- Observation: Results from the tool execution
+- (repeat until) Final Answer: Complete analysis
+
+This is a true ReAct implementation that follows the established pattern
+that LLMs are specifically trained to handle.
 """
 
-import logging
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 from tarsy.integrations.llm.client import LLMMessage
 from tarsy.utils.logger import get_module_logger
-from .base_iteration_controller import IterationController
+from .base_controller import IterationController
 
 if TYPE_CHECKING:
     from ...models.processing_context import StageContext
@@ -37,20 +44,14 @@ class SimpleReActController(IterationController):
         return True
         
     async def execute_analysis_loop(self, context: 'StageContext') -> str:
-        """Execute ReAct loop with StageContext."""
-        logger.info("Starting ReAct loop with StageContext")
-        return await self._execute_with_stage_context(context)
-    
-    async def _execute_with_stage_context(self, context: 'StageContext') -> str:
-        """Execute ReAct loop with new StageContext."""
-        logger.info("Starting Standard ReAct analysis loop (StageContext)")
-        
+        """Execute ReAct loop."""
+        logger.info("Starting Standard ReAct analysis loop")
         agent = context.agent
+        if agent is None:
+            raise ValueError("Agent reference is required in context")
+
         max_iterations = agent.max_iterations
         react_history = []
-        
-        # Pass StageContext directly to prompt builder
-        session_id = context.session_id
         
         for iteration in range(max_iterations):
             logger.info(f"ReAct iteration {iteration + 1}/{max_iterations}")
@@ -69,7 +70,7 @@ class SimpleReActController(IterationController):
                     LLMMessage(role="user", content=prompt)
                 ]
                 
-                response = await self.llm_client.generate_response(messages, session_id, agent.get_current_stage_execution_id())
+                response = await self.llm_client.generate_response(messages, context.session_id, context.agent.get_current_stage_execution_id())
                 logger.debug(f"LLM Response (first 500 chars): {response[:500]}")
                 
                 # Parse ReAct response
@@ -98,7 +99,7 @@ class SimpleReActController(IterationController):
                         )
                         
                         # Execute tool
-                        mcp_data = await agent.execute_mcp_tools([tool_call], session_id)
+                        mcp_data = await agent.execute_mcp_tools([tool_call], context.session_id)
                         
                         # Format observation
                         observation = self.prompt_builder.format_observation(mcp_data)
@@ -155,7 +156,7 @@ Please provide a final answer based on what you've discovered, even if the inves
                 LLMMessage(role="user", content=final_prompt)
             ]
             
-            fallback_response = await self.llm_client.generate_response(messages, session_id, agent.get_current_stage_execution_id())
+            fallback_response = await self.llm_client.generate_response(messages, context.session_id, context.agent.get_current_stage_execution_id())
             # Include history plus fallback analysis
             react_history.append(f"Analysis completed (reached max iterations):\n{fallback_response}")
             return "\n".join(react_history)

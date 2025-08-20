@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from tarsy.models.constants import IterationStrategy
-from tarsy.agents.exceptions import ConfigurationError
+from tarsy.agents.exceptions import ConfigurationError, ToolSelectionError
 from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
@@ -64,7 +64,6 @@ class TestKubernetesAgentInitialization:
         assert agent.llm_client is mock_llm_client
         assert agent.mcp_client is mock_mcp_client
         assert agent.mcp_registry is mock_mcp_registry
-        assert agent._iteration_count == 0
         assert agent._configured_servers is None
         # Verify default iteration strategy
         assert agent.iteration_strategy == IterationStrategy.REACT
@@ -89,7 +88,6 @@ class TestKubernetesAgentInitialization:
         )
         
         # Check that it has BaseAgent attributes and methods
-        assert hasattr(agent, '_iteration_count')
         assert hasattr(agent, 'max_iterations')
         assert hasattr(agent, 'process_alert')
 
@@ -101,11 +99,11 @@ class TestKubernetesAgentInitialization:
         agent2 = KubernetesAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
         
         assert agent1 is not agent2
-        assert agent1._iteration_count == agent2._iteration_count  # Both start at 0
         
-        # Modify one and verify independence
-        agent1._iteration_count = 5
-        assert agent2._iteration_count == 0
+        # Verify they are independent objects 
+        assert agent1.llm_client is agent2.llm_client  # Same clients (shared)
+        assert agent1.mcp_client is agent2.mcp_client
+        assert agent1._configured_servers is agent2._configured_servers  # Both None initially
 
 @pytest.mark.unit
 class TestKubernetesAgentAbstractMethods:
@@ -280,23 +278,22 @@ class TestKubernetesAgentInheritedFunctionality:
         
         tools = await kubernetes_agent._get_available_tools("test_session")
         
-        assert len(tools) == 2
-        for tool in tools:
-            assert tool["server"] == "kubernetes-server"
-            assert "name" in tool
-            assert "description" in tool
+        assert len(tools.tools) == 2
+        for tool in tools.tools:
+            assert tool.server == "kubernetes-server"
+            assert hasattr(tool, 'name')
+            assert hasattr(tool, 'description')
         
         kubernetes_agent.mcp_client.list_tools.assert_called_once_with(session_id="test_session", server_name="kubernetes-server", stage_execution_id=None)
     
     @pytest.mark.asyncio
     async def test_get_available_tools_not_configured(self, kubernetes_agent):
-        """Test that unconfigured agent returns empty tools list."""
+        """Test that unconfigured agent raises ToolSelectionError."""
         kubernetes_agent._configured_servers = None
         
-        tools = await kubernetes_agent._get_available_tools("test_session")
-        
-        # Should return empty list when not configured (error is caught and logged)
-        assert tools == []
+        # Should raise ToolSelectionError when not configured
+        with pytest.raises(ToolSelectionError, match="Agent KubernetesAgent has not been properly configured"):
+            await kubernetes_agent._get_available_tools("test_session")
     
     def test_compose_instructions_includes_kubernetes_server(self, kubernetes_agent):
         """Test that _compose_instructions includes kubernetes-server instructions."""
@@ -307,13 +304,7 @@ class TestKubernetesAgentInheritedFunctionality:
         assert "Kubernetes Server Instructions" in instructions
         assert "K8s instructions" in instructions  # From the mock server config
     
-    def test_get_server_specific_tool_guidance_includes_kubernetes(self, kubernetes_agent):
-        """Test that server guidance includes kubernetes-server instructions."""
-        guidance = kubernetes_agent._get_server_specific_tool_guidance()
-        
-        assert "Server-Specific Tool Selection Guidance" in guidance
-        assert "Kubernetes Tools" in guidance
-        assert "K8s instructions" in guidance
+
 
 @pytest.mark.unit
 class TestKubernetesAgentLLMIntegration:
@@ -610,7 +601,7 @@ class TestKubernetesAgentIntegrationScenarios:
 
     @pytest.mark.asyncio
     async def test_error_recovery_and_fallback(self, full_kubernetes_agent_setup):
-        """Test graceful error handling and fallback mechanisms."""
+        """Test that agent fails gracefully when MCP connection fails."""
         agent, mock_llm, mock_mcp, mock_registry = full_kubernetes_agent_setup
         
         # Mock MCP configuration error
@@ -652,16 +643,19 @@ class TestKubernetesAgentIntegrationScenarios:
         )
         result = await agent.process_alert(chain_context)
         
-        assert result.status.value == "completed"
-        assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
+        # Agent should fail when it can't list tools since it can't perform its primary function
+        assert result.status.value == "failed"
+        assert "ToolSelectionError" in result.error_message or "Failed to retrieve tools" in result.error_message
 
     @pytest.mark.asyncio
     async def test_multiple_tool_iterations(self, full_kubernetes_agent_setup):
         """Test handling of multiple MCP tool iterations."""
         agent, mock_llm, mock_mcp, mock_registry = full_kubernetes_agent_setup
         
-        # Mock iterative tool calls
-        mock_mcp.list_tools.return_value = {"kubernetes-server": ["kubectl"]}
+        # Mock iterative tool calls with properly structured tool data
+        mock_mcp.list_tools.return_value = {"kubernetes-server": [
+            {"name": "kubectl", "description": "Kubernetes command-line tool", "parameters": []}
+        ]}
         mock_mcp.call_tool.return_value = {"result": "Pod details retrieved"}
         mock_llm.generate_response.return_value = "Comprehensive analysis"
         
