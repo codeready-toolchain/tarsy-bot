@@ -481,8 +481,6 @@ class TestDataFlowValidation:
         # Act
         chain_context = alert_to_api_format(sample_alert)
         alert_id = f"test-alert-{uuid.uuid4()}"
-        chain_context = alert_to_api_format(sample_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await alert_service.process_alert(chain_context, alert_id)
         
         # Assert - Result should contain alert-specific information
@@ -504,8 +502,6 @@ class TestDataFlowValidation:
         # Act
         chain_context = alert_to_api_format(sample_alert)
         alert_id = f"test-alert-{uuid.uuid4()}"
-        chain_context = alert_to_api_format(sample_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await alert_service.process_alert(chain_context, alert_id)
         
         # Assert - MCP tool should have been called and data integrated
@@ -522,8 +518,6 @@ class TestDataFlowValidation:
     ):
         """Test that results follow expected format."""
         # Act
-        chain_context = alert_to_api_format(sample_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         chain_context = alert_to_api_format(sample_alert)
         alert_id = f"test-alert-{uuid.uuid4()}"
         result = await alert_service.process_alert(chain_context, alert_id)

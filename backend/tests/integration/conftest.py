@@ -825,7 +825,7 @@ def alert_service_with_mocks(
     service.agent_factory = mock_agent_factory
     # Create mock history service for proper testing
     mock_history_service = Mock(spec=HistoryService)
-    mock_history_service.enabled = True
+    mock_history_service.is_enabled = True
     mock_history_service.create_session.return_value = "test-session-id"
     mock_history_service.update_session_status = Mock()
     mock_history_service.complete_session = Mock()

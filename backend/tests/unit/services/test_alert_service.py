@@ -189,7 +189,7 @@ class TestAlertProcessing:
         # Create mock history service for proper testing
         from tarsy.services.history_service import HistoryService
         mock_history_service = Mock(spec=HistoryService)
-        mock_history_service.enabled = True
+        mock_history_service.is_enabled = True
         mock_history_service.create_session.return_value = True
         mock_history_service.update_session_status = Mock()
         mock_history_service.store_llm_interaction = Mock()
@@ -477,7 +477,7 @@ class TestHistorySessionManagement:
             
             service = AlertService(mock_settings)
             service.history_service = Mock()
-            service.history_service.enabled = True
+            service.history_service.is_enabled = True
             
             yield service
     
@@ -513,7 +513,7 @@ class TestHistorySessionManagement:
     def test_update_session_status_disabled(self, alert_service_with_history):
         """Test session status update when service is disabled."""
         service = alert_service_with_history
-        service.history_service.enabled = False
+        service.history_service.is_enabled = False
         
         service._update_session_status("session_123", "in_progress")
         

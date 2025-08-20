@@ -957,11 +957,10 @@ Action Input: {step['action_input']}"""
         print(f"📅 Total interaction events across all stages: {total_timeline_events}")
         
         # VALIDATION 8: Verify alert data in session detail matches our submission
-        session_alert_data = detail_data.get("alert_data", {})
-        if session_alert_data:
-            stored_alert_type = session_alert_data.get("alert_type")
-            assert stored_alert_type == expected_alert_type, f"Stored alert type mismatch: expected {expected_alert_type}, got {stored_alert_type}"
-            print("✅ Session detail alert data matches submission")
+        # alert_type is a top-level field in DetailedSession; alert_data only contains the original nested payload
+        stored_alert_type = detail_data.get("alert_type")
+        assert stored_alert_type == expected_alert_type, f"Stored alert type mismatch: expected {expected_alert_type}, got {stored_alert_type}"
+        print("✅ Session detail alert type matches submission")
         
         # VALIDATION 9 - Summary data is now embedded in DetailedSession, validate via summary endpoint
         print("🔍 Validating session summary statistics via dedicated endpoint...")

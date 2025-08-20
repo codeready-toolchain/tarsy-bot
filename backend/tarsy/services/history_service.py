@@ -308,15 +308,16 @@ class HistoryService:
                                 
                             # Process session status change for dashboard updates
                             import asyncio
-                            if asyncio.get_event_loop().is_running():
-                                # If we're in an async context, create a task
-                                asyncio.create_task(
+                            try:
+                                loop = asyncio.get_running_loop()
+                                # In async context: schedule task on current loop
+                                loop.create_task(
                                     dashboard_manager.update_service.process_session_status_change(
                                         session_id, status, details
                                     )
                                 )
-                            else:
-                                # If not in async context, run directly
+                            except RuntimeError:
+                                # No running loop: run synchronously
                                 asyncio.run(
                                     dashboard_manager.update_service.process_session_status_change(
                                         session_id, status, details
@@ -464,27 +465,24 @@ class HistoryService:
         if not self.is_enabled or not interaction.session_id:
             return False
             
-        try:
+        def _store_llm_operation():
             with self.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot store LLM interaction")
-                
                 # Set step description if not already set
                 if not interaction.step_description:
                     model_name = (
-                        getattr(interaction, "model_name", None) or
-                        getattr(getattr(interaction, "details", None), "model_name", None) or
-                        "LLM"
+                        getattr(interaction, "model_name", None)
+                        or getattr(getattr(interaction, "details", None), "model_name", None)
+                        or "LLM"
                     )
                     interaction.step_description = f"LLM analysis using {model_name}"
-                
                 repo.create_llm_interaction(interaction)
                 logger.debug(f"Stored LLM interaction for session {interaction.session_id}")
                 return True
-                
-        except Exception as e:
-            logger.error(f"Failed to store LLM interaction for session {interaction.session_id}: {str(e)}")
-            return False
+
+        result = self._retry_database_operation("store_llm_interaction", _store_llm_operation)
+        return bool(result)
     
     # MCP Communication Logging
     def store_mcp_interaction(self, interaction: MCPInteraction) -> bool:
@@ -500,22 +498,19 @@ class HistoryService:
         if not self.is_enabled or not interaction.session_id:
             return False
             
-        try:
+        def _store_mcp_operation():
             with self.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot store MCP interaction")
-                
                 # Set step description if not already set
                 if not interaction.step_description:
                     interaction.step_description = interaction.get_step_description()
-                
                 repo.create_mcp_communication(interaction)
                 logger.debug(f"Stored MCP interaction for session {interaction.session_id}")
                 return True
-                
-        except Exception as e:
-            logger.error(f"Failed to store MCP interaction for session {interaction.session_id}: {str(e)}")
-            return False
+
+        result = self._retry_database_operation("store_mcp_interaction", _store_mcp_operation)
+        return bool(result)
     
     # Properties
     @property

@@ -285,9 +285,9 @@ def isolated_test_database(e2e_isolation):
         if not success:
             # Try direct table creation
             try:
-                # Import all models to ensure they're registered with SQLModel.metadata
-                import tarsy.models.db_models  # noqa: F401
-                import tarsy.models.unified_interactions  # noqa: F401
+                # Import all models to ensure they're registered
+                from tarsy.models.db_models import AlertSession, StageExecution  # noqa: F401
+                from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction  # noqa: F401
                 
                 SQLModel.metadata.create_all(engine)
                 success = True

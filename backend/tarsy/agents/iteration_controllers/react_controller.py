@@ -15,7 +15,7 @@ that LLMs are specifically trained to handle.
 
 from typing import TYPE_CHECKING
 
-from tarsy.integrations.llm.client import LLMMessage
+from tarsy.models.unified_interactions import LLMMessage
 from tarsy.utils.logger import get_module_logger
 from .base_controller import IterationController
 

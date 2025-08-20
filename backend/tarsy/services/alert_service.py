@@ -278,8 +278,10 @@ class AlertService:
         Returns:
             ChainExecutionResult with execution results
         """
+        # Initialize timestamp to prevent UnboundLocalError in exception cases
+        timestamp_us = None
+        
         try:
-            timestamp_us = now_us()
             logger.info(f"Starting chain execution '{chain_definition.chain_id}' with {len(chain_definition.stages)} stages")
             
             successful_stages = 0
@@ -365,6 +367,9 @@ class AlertService:
             
             logger.info(f"Chain execution completed: {successful_stages} successful, {failed_stages} failed")
             
+            # Set completion timestamp just before returning successful result
+            timestamp_us = now_us()
+            
             return ChainExecutionResult(
                 status=overall_status,
                 final_analysis=final_analysis,
@@ -374,6 +379,10 @@ class AlertService:
         except Exception as e:
             error_msg = f'Chain execution failed: {str(e)}'
             logger.error(error_msg)
+            
+            # Set completion timestamp for error case
+            timestamp_us = now_us()
+            
             return ChainExecutionResult(
                 status=ChainStatus.FAILED,
                 error=error_msg,
@@ -546,7 +555,7 @@ class AlertService:
             True if created successfully, False if history service unavailable or creation failed
         """
         try:
-            if not self.history_service or not self.history_service.enabled:
+            if not self.history_service or not self.history_service.is_enabled:
                 return False
             
             # Generate unique alert ID for this processing session
@@ -599,7 +608,7 @@ class AlertService:
             status: New status
         """
         try:
-            if not session_id or not self.history_service or not self.history_service.enabled:
+            if not session_id or not self.history_service or not self.history_service.is_enabled:
                 return
                 
             self.history_service.update_session_status(
@@ -620,7 +629,7 @@ class AlertService:
             final_analysis: Final formatted analysis if status is completed successfully
         """
         try:
-            if not session_id or not self.history_service or not self.history_service.enabled:
+            if not session_id or not self.history_service or not self.history_service.is_enabled:
                 return
                 
             # The history service automatically sets completed_at_us when status is 'completed' or 'failed'
@@ -642,13 +651,13 @@ class AlertService:
             error_message: Error message
         """
         try:
-            if not session_id or not self.history_service or not self.history_service.enabled:
+            if not session_id or not self.history_service or not self.history_service.is_enabled:
                 return
                 
             # Status 'failed' will automatically set completed_at_us in the history service
             self.history_service.update_session_status(
                 session_id=session_id,
-                status='failed',
+                status=AlertSessionStatus.FAILED.value,
                 error_message=error_message
             )
             
@@ -680,7 +689,7 @@ class AlertService:
         Raises:
             RuntimeError: If stage execution record cannot be created
         """
-        if not self.history_service or not self.history_service.enabled:
+        if not self.history_service or not self.history_service.is_enabled:
             raise RuntimeError(
                 f"Cannot create stage execution for '{stage.name}': History service is disabled. "
                 "All alert processing must be done as chains with proper stage tracking."
@@ -730,7 +739,7 @@ class AlertService:
             stage_execution_id: Current stage execution ID
         """
         try:
-            if not self.history_service or not self.history_service.enabled:
+            if not self.history_service or not self.history_service.is_enabled:
                 return
             
             await self.history_service.update_session_current_stage(

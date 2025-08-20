@@ -275,7 +275,7 @@ async def health_check(
     """
     try:
         # Check if history service is enabled
-        if not history_service.enabled:
+        if not history_service.is_enabled:
             return HealthCheckResponse(
                 service="alert_processing_history",
                 status="disabled",

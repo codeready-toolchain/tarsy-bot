@@ -23,7 +23,7 @@ This design document is a living document that evolves through [Enhancement Prop
 
 ### Recent Changes
 - **EP-0012 (IMPLEMENTED)**: Context Architecture Redesign - Complete redesign of context system with clean 2-level hierarchy: ChainContext (entire processing session) and StageContext (single stage execution). Eliminates field duplication, misleading names, and unnecessary wrapper types. New processing_context.py module contains all context models with proper session ID handling and stage execution order preservation
-- **EP-0011 (IMPLEMENTED)**: LangChain PromptBuilder - Refactored PromptBuilder to use LangChain templates with a clean component composition pattern. Features include template-based prompt composition with AlertSectionTemplate, RunbookSectionTemplate, and ChainContextSectionTemplate, backward compatibility via re-export layer, full type safety with proper annotations, and validated template definitions using LangChain's PromptTemplate.from_template()
+- **EP-0011 (IMPLEMENTED)**: LangChain PromptBuilder - Refactored PromptBuilder to use LangChain templates with a clean component composition pattern. Features include template-based prompt composition with AlertSectionTemplate and RunbookSectionTemplate, backward compatibility via re-export layer, full type safety with proper annotations, and validated template definitions using LangChain's PromptTemplate.from_template()
 - **EP-0008-1 (IMPLEMENTED)**: Sequential Agent Chains - Added multi-stage alert processing workflows where alerts can flow through multiple specialized agents that build upon each other's work. Key features include unified ChainContext model throughout the pipeline, ChainRegistry for managing chain definitions, new iteration strategies (REACT_STAGE, REACT_FINAL_ANALYSIS) for different chain stage purposes, enhanced database schema with StageExecution tracking, and chain execution logic integrated into AlertService
 - **TYPED HOOK SYSTEM (IMPLEMENTED)**: Type-Safe Interaction Capture - Complete refactoring to typed hook system with unified LLMInteraction and MCPInteraction models, eliminating data contamination and providing clean type-safe interaction capture. Comprehensive test coverage restoration with 49 new tests for hook system, LLM client, and MCP client functionality
 - **INTERACTION MODEL UNIFICATION (IMPLEMENTED)**: Unified Interaction Models - Consolidated interaction data structures into type-safe LLMInteraction and MCPInteraction models with consistent fields, JSON serialization, and proper database persistence. Dashboard integration updated for LLM interaction preview with smart text parsing
@@ -616,7 +616,7 @@ class PromptBuilder:
 
 **Core Features:**
 - **LangChain Integration**: Uses `PromptTemplate.from_template()` for template validation and composition
-- **Component Architecture**: Reusable `AlertSectionTemplate`, `RunbookSectionTemplate`, `ChainContextSectionTemplate` 
+- **Component Architecture**: Reusable `AlertSectionTemplate`, `RunbookSectionTemplate` 
 - **Type Safety**: Full type annotations with `StageContext` and proper forward references
 - **Template Composition**: Clean separation of template components from business logic
 - **Backward Compatibility**: Existing APIs maintained through re-export layer in `prompt_builder.py`

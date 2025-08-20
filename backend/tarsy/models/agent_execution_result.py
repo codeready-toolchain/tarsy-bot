@@ -24,7 +24,7 @@ class AgentExecutionResult(BaseModel):
     agent_name: str = Field(..., description="Name of the agent that produced this result")
     stage_name: Optional[str] = Field(None, description="Name of the stage (e.g., 'data-collection')")
     stage_description: Optional[str] = Field(None, description="Human-readable description of what this stage did")
-    timestamp_us: int = Field(..., description="Execution timestamp in microseconds")
+    timestamp_us: int = Field(..., description="Completion timestamp in microseconds")
     
     # The key field - agent decides the format (could be ReAct JSON, markdown, plain text, etc.)
     result_summary: str = Field(..., description="Agent-provided summary in whatever format the agent chooses")

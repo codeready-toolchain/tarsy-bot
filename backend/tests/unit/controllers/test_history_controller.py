@@ -651,7 +651,7 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_get_sessions_list_service_disabled(self, app, client, mock_history_service):
         """Test sessions list when history service is disabled."""
-        mock_history_service.enabled = False
+        mock_history_service.is_enabled = False
         from tarsy.models.history_models import PaginatedSessions, PaginationInfo
         empty_paginated = PaginatedSessions(
             sessions=[],
@@ -900,7 +900,7 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_get_session_detail_service_disabled(self, app, client, mock_history_service):
         """Test session detail when service is disabled."""
-        mock_history_service.enabled = False
+        mock_history_service.is_enabled = False
         mock_history_service.get_session_details.return_value = None
         
         # Override FastAPI dependency
@@ -934,7 +934,7 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_health_check_healthy_service(self, app, client, mock_history_service):
         """Test health check with healthy service."""
-        mock_history_service.enabled = True
+        mock_history_service.is_enabled = True
         mock_history_service.test_database_connection.return_value = True
         
         # Override FastAPI dependency
@@ -961,7 +961,7 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_health_check_disabled_service(self, app, client, mock_history_service):
         """Test health check with disabled service."""
-        mock_history_service.enabled = False
+        mock_history_service.is_enabled = False
         
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
@@ -981,7 +981,7 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_health_check_database_failure(self, app, client, mock_history_service):
         """Test health check with database connection failure."""
-        mock_history_service.enabled = True
+        mock_history_service.is_enabled = True
         mock_history_service.test_database_connection.return_value = False
         
         # Override FastAPI dependency
@@ -1001,7 +1001,7 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_health_check_exception_handling(self, app, client, mock_history_service):
         """Test health check with exception."""
-        mock_history_service.enabled = True
+        mock_history_service.is_enabled = True
         mock_history_service.test_database_connection.side_effect = Exception("Database error")
         
         # Override FastAPI dependency

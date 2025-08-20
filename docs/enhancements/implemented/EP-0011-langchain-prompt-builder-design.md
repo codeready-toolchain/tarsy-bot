@@ -83,13 +83,8 @@ class RunbookSectionTemplate:
         content = runbook_content if runbook_content else 'No runbook available'
         return self.template.format(runbook_content=content)
 
-class ChainContextSectionTemplate:
-    """Formats chain context data."""
-    
-    def format(self, context) -> str:
-        if hasattr(context, 'chain_context') and context.chain_context and context.chain_context.stage_results:
-            return context.chain_context.get_formatted_context()
-        return "No previous stage data available."
+# Chain context formatting is handled directly via StageContext.format_previous_stages_context()
+# No separate template component needed as this logic is built into the context model
 ```
 
 ### 2. LangChain Templates (`templates.py`)
@@ -235,8 +230,7 @@ Please provide detailed, actionable insights about what's happening and potentia
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from .components import (
     AlertSectionTemplate, 
-    RunbookSectionTemplate, 
-    ChainContextSectionTemplate
+    RunbookSectionTemplate
 )
 from .templates import *
 import json
@@ -251,7 +245,7 @@ class PromptBuilder:
         # Initialize component templates
         self.alert_component = AlertSectionTemplate()
         self.runbook_component = RunbookSectionTemplate()
-        self.chain_context_component = ChainContextSectionTemplate()
+        # Chain context formatting handled directly via StageContext.format_previous_stages_context()
     
     # ============ Main Prompt Building Methods ============
     
@@ -260,7 +254,9 @@ class PromptBuilder:
         # Build question components
         alert_section = self.alert_component.format(context.alert_data)
         runbook_section = self.runbook_component.format(context.runbook_content)
-        chain_context = self.chain_context_component.format(context)
+        # Use StageContext's built-in previous stages formatting
+        previous_stages_context = context.format_previous_stages_context()
+        chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}" if previous_stages_context != "No previous stage context available." else ""
         
         # Build question
         alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
@@ -288,7 +284,9 @@ class PromptBuilder:
         # Build question components
         alert_section = self.alert_component.format(context.alert_data)
         runbook_section = self.runbook_component.format(context.runbook_content)
-        chain_context = self.chain_context_component.format(context)
+        # Use StageContext's built-in previous stages formatting
+        previous_stages_context = context.format_previous_stages_context()
+        chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}" if previous_stages_context != "No previous stage context available." else ""
         
         # Build question
         alert_type = context.alert_data.get('alert_type', context.alert_data.get('alert', 'Unknown Alert'))
@@ -327,7 +325,9 @@ class PromptBuilder:
         context_section = self._build_context_section(context)
         alert_section = self.alert_component.format(context.alert_data)
         runbook_section = self.runbook_component.format(context.runbook_content)
-        chain_context = self.chain_context_component.format(context)
+        # Use StageContext's built-in previous stages formatting
+        previous_stages_context = context.format_previous_stages_context()
+        chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}" if previous_stages_context != "No previous stage context available." else ""
         
         return FINAL_ANALYSIS_PROMPT_TEMPLATE.format(
             stage_info=stage_info,

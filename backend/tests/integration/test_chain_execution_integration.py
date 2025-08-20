@@ -57,7 +57,7 @@ class TestMultiStageChainExecution:
         
         # Second stage: Analysis Agent that uses data from first stage
         analysis_agent = AsyncMock()
-        def mock_analysis(chain_context):
+        async def mock_analysis(chain_context):
             # This is the key integration test: verify data flows between stages
             data_collection_result = chain_context.stage_outputs.get("data-collection")
             assert data_collection_result is not None, "Analysis stage should receive data collection results"
