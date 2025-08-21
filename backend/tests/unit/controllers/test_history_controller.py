@@ -699,14 +699,14 @@ class TestHistoryControllerEndpoints:
             DetailedSession,
             DetailedStage,
             LLMEventDetails,
-            LLMInteraction,
+            LLMTimelineEvent,
             MCPEventDetails,
-            MCPInteraction,
+            MCPTimelineEvent,
         )
         from tarsy.models.unified_interactions import LLMMessage
         
         # Create LLM interaction
-        llm_interaction = LLMInteraction(
+        llm_interaction = LLMTimelineEvent(
             id="int-1",
             event_id="int-1", 
             timestamp_us=1705314000000000,
@@ -720,7 +720,7 @@ class TestHistoryControllerEndpoints:
         )
         
         # Create MCP interaction
-        mcp_interaction = MCPInteraction(
+        mcp_interaction = MCPTimelineEvent(
             id="comm-1",
             event_id="comm-1",
             timestamp_us=1705314001000000,
@@ -1249,12 +1249,12 @@ class TestHistoryControllerResponseFormat:
             DetailedSession,
             DetailedStage,
             LLMEventDetails,
-            LLMInteraction,
+            LLMTimelineEvent,
         )
         from tarsy.models.unified_interactions import LLMMessage
         
         # Create LLM interaction
-        llm_interaction = LLMInteraction(
+        llm_interaction = LLMTimelineEvent(
             id="int-1",
             event_id="int-1", 
             timestamp_us=1705314000000000,

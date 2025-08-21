@@ -85,8 +85,8 @@ class BaseInteraction(BaseModel):
     stage_execution_id: str
 
 
-class LLMInteraction(BaseInteraction):
-    """LLM interaction with type-specific details"""
+class LLMTimelineEvent(BaseInteraction):
+    """LLM timeline event with type-specific details"""
     type: Literal["llm"] = "llm"
     details: LLMEventDetails
     
@@ -98,8 +98,8 @@ class LLMInteraction(BaseInteraction):
         return self
 
 
-class MCPInteraction(BaseInteraction):
-    """MCP interaction with type-specific details"""
+class MCPTimelineEvent(BaseInteraction):
+    """MCP timeline event with type-specific details"""
     type: Literal["mcp"] = "mcp"
     details: MCPEventDetails
     
@@ -115,7 +115,7 @@ class MCPInteraction(BaseInteraction):
 
 
 # Union type for timeline events
-Interaction = Union[LLMInteraction, MCPInteraction]
+TimelineEvent = Union[LLMTimelineEvent, MCPTimelineEvent]
 
 
 # =============================================================================
@@ -215,8 +215,8 @@ class DetailedStage(BaseModel):
     error_message: Optional[str] = None
     
     # ALL interactions that happened during this stage (FULL objects with complete details)
-    llm_interactions: List[LLMInteraction] = Field(default_factory=list)  # Complete LLM interactions with full details
-    mcp_communications: List[MCPInteraction] = Field(default_factory=list)  # Complete MCP interactions with full details
+    llm_interactions: List[LLMTimelineEvent] = Field(default_factory=list)  # Complete LLM interactions with full details
+    mcp_communications: List[MCPTimelineEvent] = Field(default_factory=list)  # Complete MCP interactions with full details
     
     # Summary counts for this stage (replaces InteractionSummary)
     llm_interaction_count: int = 0
@@ -236,7 +236,7 @@ class DetailedStage(BaseModel):
     
     @computed_field
     @property
-    def chronological_interactions(self) -> List[Interaction]:
+    def chronological_interactions(self) -> List[TimelineEvent]:
         """
         Get all interactions in chronological order by timestamp.
         
@@ -245,10 +245,10 @@ class DetailedStage(BaseModel):
         which is essential for debugging, dashboards, and understanding agent reasoning flow.
         
         Returns:
-            List[Interaction]: All interactions sorted chronologically
+            List[TimelineEvent]: All interactions sorted chronologically
         """
         # Combine all interactions and sort by timestamp
-        all_interactions: List[Interaction] = [
+        all_interactions: List[TimelineEvent] = [
             *self.llm_interactions,
             *self.mcp_communications
         ]

@@ -7,6 +7,7 @@ and advanced querying capabilities using Unix timestamps for optimal performance
 """
 
 from typing import Dict, List, Optional, Union
+from collections import defaultdict
 
 from sqlmodel import Session, asc, desc, func, select, and_, or_
 
@@ -14,7 +15,8 @@ from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.db_models import AlertSession, StageExecution
 from tarsy.models.history_models import (
     PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo,
-    SessionOverview
+    SessionOverview, DetailedStage, LLMTimelineEvent, MCPTimelineEvent, 
+    LLMEventDetails, MCPEventDetails, LLMMessage
 )
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import BaseRepository
@@ -491,16 +493,6 @@ class HistoryRepository:
         Get complete session details including chronological timeline, stages, and all interactions.
         """
         try:
-            from collections import defaultdict
-            from tarsy.models.history_models import (
-                DetailedStage,
-                LLMInteraction,
-                MCPInteraction,
-                LLMEventDetails,
-                MCPEventDetails,
-                LLMMessage,
-            )
-            
             # Get the session
             session = self.get_alert_session(session_id)
             if not session:
@@ -556,7 +548,7 @@ class HistoryRepository:
                     tool_results=llm_db.tool_results
                 )
                 
-                llm_interaction = LLMInteraction(
+                llm_interaction = LLMTimelineEvent(
                     id=llm_db.interaction_id,
                     event_id=llm_db.interaction_id,
                     timestamp_us=llm_db.timestamp_us,
@@ -581,7 +573,7 @@ class HistoryRepository:
                     success=mcp_db.success
                 )
                 
-                mcp_interaction = MCPInteraction(
+                mcp_interaction = MCPTimelineEvent(
                     id=mcp_db.communication_id,
                     event_id=mcp_db.communication_id,
                     timestamp_us=mcp_db.timestamp_us,
@@ -601,11 +593,11 @@ class HistoryRepository:
                 
                 # Separate LLM and MCP interactions and sort chronologically
                 llm_stage_interactions = sorted(
-                    [i for i in stage_interactions if isinstance(i, LLMInteraction)],
+                    [i for i in stage_interactions if isinstance(i, LLMTimelineEvent)],
                     key=lambda x: x.timestamp_us
                 )
                 mcp_stage_interactions = sorted(
-                    [i for i in stage_interactions if isinstance(i, MCPInteraction)], 
+                    [i for i in stage_interactions if isinstance(i, MCPTimelineEvent)], 
                     key=lambda x: x.timestamp_us
                 )
                 
@@ -751,7 +743,6 @@ class HistoryRepository:
             total_mcp = sum(counts.get('mcp_communications', 0) for counts in stage_interaction_counts.values())
             
             # Calculate stage statistics
-            from tarsy.models.constants import StageStatus
             completed_stages = len([stage for stage in stage_executions_db if stage.status == StageStatus.COMPLETED.value])
             failed_stages = len([stage for stage in stage_executions_db if stage.status == StageStatus.FAILED.value])
             

@@ -10,9 +10,9 @@ from tarsy.config.settings import Settings
 class RunbookService:
     """Service for handling runbook operations."""
     
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, http_client: httpx.AsyncClient = None):
         self.settings = settings
-        self.client = httpx.AsyncClient()
+        self.client = http_client or httpx.AsyncClient()
         
         # GitHub API headers
         self.headers = {

@@ -57,7 +57,7 @@ agent_chains:
         iteration_strategy: "react-stage"
       - name: "verification"
         agent: "KubernetesAgent"     # This is a built-in agent that should to be available
-        iteration_strategy: "react-stage"
+        iteration_strategy: "react"
       - name: "analysis"  
         agent: "AnalysisAgent"
         iteration_strategy: "react-final-analysis"

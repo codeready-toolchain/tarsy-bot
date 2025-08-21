@@ -70,8 +70,8 @@ class TestAlertServiceInitialization:
             
             service = AlertService(mock_settings)
             
-            # Verify RunbookService created with settings
-            mock_runbook.assert_called_once_with(mock_settings)
+            # Verify RunbookService created with settings and None for http_client
+            mock_runbook.assert_called_once_with(mock_settings, None)
             
             # Verify MCP client created with settings and registry
             mock_mcp_client.assert_called_once_with(

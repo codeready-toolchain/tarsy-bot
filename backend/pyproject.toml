@@ -27,6 +27,7 @@ dependencies = [
     "sqlmodel>=0.0.14",
     "sqlalchemy>=2.0.41",
     "cachetools>=5.3.0",
+    "freezegun>=1.5.5",
 ]
 requires-python = ">= 3.11"
 
@@ -37,6 +38,8 @@ test = [
     "pytest-mock>=3.10.0",
     "pytest-cov>=4.1.0",
     "pytest-xdist>=3.3.1",
+    "pytest-timeout>=2.1.0",
+    "freezegun>=1.2.0",
 ]
 dev = [
     "black>=23.0.0",
@@ -153,3 +156,12 @@ strict_equality = true
 module = "tests.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false 
+
+[dependency-groups]
+dev = [
+    "freezegun>=1.5.5",
+]
+test = [
+    "freezegun>=1.5.5",
+    "pytest-timeout>=2.4.0",
+]

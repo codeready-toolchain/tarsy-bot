@@ -350,16 +350,16 @@ class SessionFactory:
             DetailedSession,
             DetailedStage,
             LLMEventDetails,
-            LLMInteraction,
+            LLMTimelineEvent,
             MCPEventDetails,
-            MCPInteraction,
+            MCPTimelineEvent,
         )
         from tarsy.utils.timestamp import now_us
         
         current_time_us = now_us()
         
         # Create realistic interactions
-        llm_interaction = LLMInteraction(
+        llm_interaction = LLMTimelineEvent(
             id="int-1",
             event_id="int-1", 
             timestamp_us=current_time_us - 240000000,
@@ -374,7 +374,7 @@ class SessionFactory:
             )
         )
         
-        mcp_interaction = MCPInteraction(
+        mcp_interaction = MCPTimelineEvent(
             id="int-2",
             event_id="int-2",
             timestamp_us=current_time_us - 180000000, 

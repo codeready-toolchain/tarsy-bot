@@ -11,6 +11,7 @@ performance and consistency with the rest of the system.
 import uuid
 from typing import Dict, Any, Optional
 
+import httpx
 from cachetools import TTLCache
 
 from tarsy.models.processing_context import ChainContext
@@ -57,12 +58,13 @@ class AlertService:
     processing to specialized agents based on alert type.
     """
     
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, runbook_http_client: Optional[httpx.AsyncClient] = None):
         """
         Initialize the alert service with required services.
         
         Args:
             settings: Application settings
+            runbook_http_client: Optional HTTP client for runbook service (for testing)
         """
         self.settings = settings
         
@@ -70,7 +72,7 @@ class AlertService:
         self.parsed_config = self._load_agent_configuration()
 
         # Initialize services
-        self.runbook_service = RunbookService(settings)
+        self.runbook_service = RunbookService(settings, runbook_http_client)
         self.history_service = get_history_service()
         
         # Initialize registries with loaded configuration
