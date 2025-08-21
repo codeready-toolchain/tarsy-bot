@@ -77,7 +77,7 @@ test-verbose: check-test-deps ## Run all tests with verbose output (isolated ses
 .PHONY: test-coverage
 test-coverage: check-test-deps ## Run unit and integration tests with coverage report (no e2e-tests for stability)
 	@echo "$(GREEN)Running unit and integration tests with coverage...$(NC)"
-	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ --cov=tarsy --cov-report=html --cov-report=term-missing --tb=short'
+	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing --tb=short'
 	@echo "$(GREEN)All tests with coverage completed!$(NC)"
 
 .PHONY: test-quick
