@@ -134,7 +134,6 @@ ANALYSIS_QUESTION_TEMPLATE = PromptTemplate.from_template("""Analyze this {alert
 
 {runbook_section}
 
-## Previous Stage Data
 {chain_context}
 
 ## Your Task
@@ -154,7 +153,6 @@ STAGE_ANALYSIS_QUESTION_TEMPLATE = PromptTemplate.from_template("""Investigate t
 
 {runbook_section}
 
-## Previous Stage Data
 {chain_context}
 
 ## Your Task: {stage_name} STAGE
@@ -177,7 +175,6 @@ FINAL_ANALYSIS_PROMPT_TEMPLATE = PromptTemplate.from_template("""# Final Analysi
 
 {runbook_section}
 
-## Previous Stage Data
 {chain_context}
 
 ## Instructions

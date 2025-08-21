@@ -47,9 +47,9 @@ class PromptBuilder:
         # Use StageContext's built-in previous stages formatting
         previous_stages_context = context.format_previous_stages_context()
         if previous_stages_context == "No previous stage context available.":
-            chain_context = ""
+            chain_context = "## Previous Stage Data\nNo previous stage data is available for this alert. This is the first stage of analysis."
         else:
-            chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}"
+            chain_context = f"## Previous Stage Data\n{previous_stages_context}"
         
         # Build question
         question = ANALYSIS_QUESTION_TEMPLATE.format(
@@ -84,9 +84,9 @@ class PromptBuilder:
         # Use StageContext's built-in previous stages formatting
         previous_stages_context = context.format_previous_stages_context()
         if previous_stages_context == "No previous stage context available.":
-            chain_context = ""
+            chain_context = "## Previous Stage Data\nNo previous stage data is available for this alert. This is the first stage of analysis."
         else:
-            chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}"
+            chain_context = f"## Previous Stage Data\n{previous_stages_context}"
         
         # Build question
         stage_name = context.stage_name or "analysis"
@@ -135,9 +135,9 @@ class PromptBuilder:
         # Use StageContext's built-in previous stages formatting
         previous_stages_context = context.format_previous_stages_context()
         if previous_stages_context == "No previous stage context available.":
-            chain_context = ""
+            chain_context = "## Previous Stage Data\nNo previous stage data is available for this alert. This is the first stage of analysis."
         else:
-            chain_context = f"\n## Previous Stage Results\n\n{previous_stages_context}"
+            chain_context = f"## Previous Stage Data\n{previous_stages_context}"
         
         return FINAL_ANALYSIS_PROMPT_TEMPLATE.format(
             stage_info=stage_info,

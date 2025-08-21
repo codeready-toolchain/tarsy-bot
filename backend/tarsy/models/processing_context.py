@@ -186,8 +186,27 @@ class StageContext:
         sections = []
         for stage_name, result in results:  # Iterating over ordered list
             stage_title = result.stage_description or stage_name
-            sections.append(f"## Results from '{stage_title}' stage:")
-            sections.append(result.result_summary)
+            sections.append(f"### Results from '{stage_title}' stage:")
+            sections.append("")
+            sections.append("#### Analysis Result")
+            sections.append("")
+            
+            # Remove existing "## Analysis Result" header from result_summary if present
+            summary = result.result_summary
+            if summary.startswith("## Analysis Result"):
+                # Split by lines and skip the first line and any empty line after it
+                lines = summary.split('\n')
+                # Skip the "## Analysis Result" header line
+                lines = lines[1:]
+                # Skip empty line after header if present
+                if lines and lines[0].strip() == "":
+                    lines = lines[1:]
+                summary = '\n'.join(lines)
+            
+            # Wrap the analysis result content with HTML comment boundaries
+            sections.append("<!-- Analysis Result START -->")
+            sections.append(summary)
+            sections.append("<!-- Analysis Result END -->")
             sections.append("")
         
         return "\n".join(sections)
