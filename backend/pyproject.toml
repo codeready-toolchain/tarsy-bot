@@ -160,6 +160,7 @@ disallow_incomplete_defs = false
 [dependency-groups]
 dev = [
     "freezegun>=1.5.5",
+    "respx>=0.22.0",
 ]
 test = [
     "freezegun>=1.5.5",
