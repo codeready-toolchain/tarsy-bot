@@ -12,6 +12,7 @@ Architecture:
 import asyncio
 import json
 import re
+from typing import Dict, Any, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -49,6 +50,10 @@ For Kubernetes operations:
 - Always prefer namespaced queries when possible
 - Use kubectl explain for resource schema information
 - Check resource quotas before creating new resources
+
+## Custom Server Instructions
+
+Simple data collection server for testing - provides system information gathering tools
 
 ## Agent-Specific Instructions
 
@@ -173,19 +178,9 @@ Focus on collecting additional data and providing stage-specific analysis for hu
 EXPECTED_DATA_COLLECTION_USER_MESSAGE = """Answer the following question using the available tools.
 
 Available tools:
-kubernetes-server.configuration_view: Get the current Kubernetes configuration content as a kubeconfig YAML
-kubernetes-server.events_list: List all the Kubernetes events in the current cluster from all namespaces
-kubernetes-server.helm_list: List all the Helm releases in the current or provided namespace (or in all namespaces if specified)
-kubernetes-server.namespaces_list: List all the Kubernetes namespaces in the current cluster
-kubernetes-server.pods_get: Get a Kubernetes Pod in the current or provided namespace with the provided name
-kubernetes-server.pods_list: List all the Kubernetes pods in the current cluster from all namespaces
-kubernetes-server.pods_list_in_namespace: List all the Kubernetes pods in the specified namespace in the current cluster
-kubernetes-server.pods_log: Get the logs of a Kubernetes Pod in the current or provided namespace with the provided name
-kubernetes-server.pods_top: List the resource consumption (CPU and memory) as recorded by the Kubernetes Metrics Server for the specified Kubernetes Pods in the all namespaces, the provided namespace, or the current namespace
-kubernetes-server.resources_get: Get a Kubernetes resource in the current cluster by providing its apiVersion, kind, optionally the namespace, and its name
-(common apiVersion and kind include: v1 Pod, v1 Service, v1 Node, apps/v1 Deployment, networking.k8s.io/v1 Ingress)
-kubernetes-server.resources_list: List Kubernetes resources and objects in the current cluster by providing their apiVersion and kind and optionally the namespace and label selector
-(common apiVersion and kind include: v1 Pod, v1 Service, v1 Node, apps/v1 Deployment, networking.k8s.io/v1 Ingress)
+kubernetes-server.kubectl_get: Get Kubernetes resources
+kubernetes-server.kubectl_describe: Describe Kubernetes resources
+test-data-server.collect_system_info: Collect basic system information like CPU, memory, and disk usage
 
 Question: Investigate this test-kubernetes alert and provide stage-specific analysis.
 
@@ -219,10 +214,20 @@ Your Final Answer should include both the data collected and your stage-specific
 Thought: I need to get namespace information first.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get error: Tool execution failed: Failed to call tool kubectl_get on kubernetes-server: tool 'kubectl_get' not found: tool not found
+Observation: kubernetes-server.kubectl_get: {
+  "result": "stuck-namespace   Terminating   45m"
+}
 Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: tool 'kubectl_describe' not found: tool not found
+Observation: kubernetes-server.kubectl_describe: {
+  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
+}
+Thought: Let me also collect system information to understand resource constraints.
+Action: test-data-server.collect_system_info
+Action Input: {"detailed": false}
+Observation: test-data-server.collect_system_info: {
+  "result": "{'result': 'System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free'}"
+}
 Begin!"""
 
 EXPECTED_VERIFICATION_SYSTEM_MESSAGE = """## General SRE Agent Instructions
@@ -360,19 +365,8 @@ Focus on investigation and providing recommendations for human operators to exec
 EXPECTED_VERIFICATION_USER_MESSAGE = """Answer the following question using the available tools.
 
 Available tools:
-kubernetes-server.configuration_view: Get the current Kubernetes configuration content as a kubeconfig YAML
-kubernetes-server.events_list: List all the Kubernetes events in the current cluster from all namespaces
-kubernetes-server.helm_list: List all the Helm releases in the current or provided namespace (or in all namespaces if specified)
-kubernetes-server.namespaces_list: List all the Kubernetes namespaces in the current cluster
-kubernetes-server.pods_get: Get a Kubernetes Pod in the current or provided namespace with the provided name
-kubernetes-server.pods_list: List all the Kubernetes pods in the current cluster from all namespaces
-kubernetes-server.pods_list_in_namespace: List all the Kubernetes pods in the specified namespace in the current cluster
-kubernetes-server.pods_log: Get the logs of a Kubernetes Pod in the current or provided namespace with the provided name
-kubernetes-server.pods_top: List the resource consumption (CPU and memory) as recorded by the Kubernetes Metrics Server for the specified Kubernetes Pods in the all namespaces, the provided namespace, or the current namespace
-kubernetes-server.resources_get: Get a Kubernetes resource in the current cluster by providing its apiVersion, kind, optionally the namespace, and its name
-(common apiVersion and kind include: v1 Pod, v1 Service, v1 Node, apps/v1 Deployment, networking.k8s.io/v1 Ingress)
-kubernetes-server.resources_list: List Kubernetes resources and objects in the current cluster by providing their apiVersion and kind and optionally the namespace and label selector
-(common apiVersion and kind include: v1 Pod, v1 Service, v1 Node, apps/v1 Deployment, networking.k8s.io/v1 Ingress)
+kubernetes-server.kubectl_get: Get Kubernetes resources
+kubernetes-server.kubectl_describe: Describe Kubernetes resources
 
 Question: Analyze this test-kubernetes alert and provide actionable recommendations.
 
@@ -401,10 +395,20 @@ Test runbook content
 Thought: I need to get namespace information first.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get error: Tool execution failed: Failed to call tool kubectl_get on kubernetes-server: tool 'kubectl_get' not found: tool not found
+Observation: kubernetes-server.kubectl_get: {
+  "result": "stuck-namespace   Terminating   45m"
+}
 Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: tool 'kubectl_describe' not found: tool not found
+Observation: kubernetes-server.kubectl_describe: {
+  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
+}
+Thought: Let me also collect system information to understand resource constraints.
+Action: test-data-server.collect_system_info
+Action Input: {"detailed": false}
+Observation: test-data-server.collect_system_info: {
+  "result": "{'result': 'System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free'}"
+}
 Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
 <!-- Analysis Result END -->
 
@@ -421,7 +425,9 @@ Be thorough in your investigation before providing the final answer.
 Thought: I need to verify the namespace status.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get error: Tool execution failed: Failed to call tool kubectl_get on kubernetes-server: tool 'kubectl_get' not found: tool not found
+Observation: kubernetes-server.kubectl_get: {
+  "result": "stuck-namespace   Terminating   45m"
+}
 Begin!"""
 
 EXPECTED_ANALYSIS_SYSTEM_MESSAGE = """## General SRE Agent Instructions
@@ -496,10 +502,20 @@ Test runbook content
 Thought: I need to get namespace information first.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get error: Tool execution failed: Failed to call tool kubectl_get on kubernetes-server: tool 'kubectl_get' not found: tool not found
+Observation: kubernetes-server.kubectl_get: {
+  "result": "stuck-namespace   Terminating   45m"
+}
 Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: tool 'kubectl_describe' not found: tool not found
+Observation: kubernetes-server.kubectl_describe: {
+  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
+}
+Thought: Let me also collect system information to understand resource constraints.
+Action: test-data-server.collect_system_info
+Action Input: {"detailed": false}
+Observation: test-data-server.collect_system_info: {
+  "result": "{'result': 'System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free'}"
+}
 Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
 <!-- Analysis Result END -->
 
@@ -511,7 +527,9 @@ Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Te
 Thought: I need to verify the namespace status.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get error: Tool execution failed: Failed to call tool kubectl_get on kubernetes-server: tool 'kubectl_get' not found: tool not found
+Observation: kubernetes-server.kubectl_get: {
+  "result": "stuck-namespace   Terminating   45m"
+}
 Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion.
 <!-- Analysis Result END -->
 
@@ -666,7 +684,7 @@ class TestRealE2E:
                     # Determine response based on interaction count (simple pattern)
                     total_interactions = len(all_llm_interactions)
                     
-                    if total_interactions <= 3:
+                    if total_interactions <= 4:
                         # Data collection stage responses
                         if total_interactions == 1:
                             response_content = """Thought: I need to get namespace information first.
@@ -675,12 +693,16 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
                         elif total_interactions == 2:
                             response_content = """Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}"""
+                        elif total_interactions == 3:
+                            response_content = """Thought: Let me also collect system information to understand resource constraints.
+Action: test-data-server.collect_system_info
+Action Input: {"detailed": false}"""
                         else:
                             response_content = """Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion."""
                     
-                    elif total_interactions <= 5:
+                    elif total_interactions <= 6:
                         # Verification stage responses
-                        if total_interactions == 4:
+                        if total_interactions == 5:
                             response_content = """Thought: I need to verify the namespace status.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
@@ -769,40 +791,79 @@ Finalizers:   kubernetes.io/pv-protection"""
                 return mock_result
             
             async def mock_list_tools():
-                return [
-                    {
-                        "name": "kubectl_get",
-                        "description": "Get Kubernetes resources",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "resource": {"type": "string"},
-                                "namespace": {"type": "string"},
-                                "name": {"type": "string"}
-                            }
-                        }
-                    },
-                    {
-                        "name": "kubectl_describe",
-                        "description": "Describe Kubernetes resources",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "resource": {"type": "string"},
-                                "namespace": {"type": "string"},
-                                "name": {"type": "string"}
-                            }
-                        }
+                # Create mock tool objects with attributes (not dict keys)
+                mock_tool1 = Mock()
+                mock_tool1.name = "kubectl_get"
+                mock_tool1.description = "Get Kubernetes resources"
+                mock_tool1.inputSchema = {
+                    "type": "object",
+                    "properties": {
+                        "resource": {"type": "string"},
+                        "namespace": {"type": "string"},
+                        "name": {"type": "string"}
                     }
-                ]
+                }
+                
+                mock_tool2 = Mock()
+                mock_tool2.name = "kubectl_describe"
+                mock_tool2.description = "Describe Kubernetes resources"
+                mock_tool2.inputSchema = {
+                    "type": "object",
+                    "properties": {
+                        "resource": {"type": "string"},
+                        "namespace": {"type": "string"},
+                        "name": {"type": "string"}
+                    }
+                }
+                
+                # Return object with .tools attribute (matching MCP SDK API)
+                mock_result = Mock()
+                mock_result.tools = [mock_tool1, mock_tool2]
+                return mock_result
             
             mock_session.call_tool.side_effect = mock_call_tool
             mock_session.list_tools.side_effect = mock_list_tools
             
             return mock_session
         
-        # Create the mock MCP session
-        mock_mcp_session = create_mcp_session_mock()
+        def create_custom_mcp_session_mock():
+            """Create a mock MCP session for the custom test-data-server."""
+            mock_session = AsyncMock()
+            
+            async def mock_call_tool(tool_name, parameters):
+                # Create mock result object with content attribute - this must return the exact structure
+                # that MCPClient.call_tool expects after processing
+                if tool_name == 'collect_system_info':
+                    # Return the dictionary format that MCPClient.call_tool produces
+                    return {"result": "System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free"}
+                else:
+                    return {"result": f"Mock response for custom tool: {tool_name}"}
+            
+            async def mock_list_tools():
+                # Create mock tool object with attributes (not dict keys)
+                mock_tool = Mock()
+                mock_tool.name = "collect_system_info"
+                mock_tool.description = "Collect basic system information like CPU, memory, and disk usage"
+                mock_tool.inputSchema = {
+                    "type": "object",
+                    "properties": {
+                        "detailed": {"type": "boolean", "description": "Whether to return detailed system info"}
+                    }
+                }
+                
+                # Return object with .tools attribute (matching MCP SDK API)
+                mock_result = Mock()
+                mock_result.tools = [mock_tool]
+                return mock_result
+            
+            mock_session.call_tool.side_effect = mock_call_tool
+            mock_session.list_tools.side_effect = mock_list_tools
+            
+            return mock_session
+        
+        # Create mock MCP sessions for both servers
+        mock_kubernetes_session = create_mcp_session_mock()
+        mock_custom_session = create_custom_mcp_session_mock()
         
         # Create test MCP server configuration that doesn't launch external processes
         test_mcp_servers = BUILTIN_MCP_SERVERS.copy()
@@ -812,9 +873,20 @@ Finalizers:   kubernetes.io/pv-protection"""
             "enabled": True,
             "connection_params": {
                 "command": "echo",  # Safe command that won't fail
-                "args": ["test-response"]
+                "args": ["kubernetes-mock-server-ready"]
             },
             "instructions": "Test kubernetes server for e2e testing",
+            "data_masking": {"enabled": False}
+        }
+        test_mcp_servers['test-data-server'] = {
+            "server_id": "test-data-server", 
+            "server_type": "test",
+            "enabled": True,
+            "connection_params": {
+                "command": "echo",  # Safe command that won't fail
+                "args": ["test-data-server-ready"]
+            },
+            "instructions": "Test data collection server for e2e testing",
             "data_masking": {"enabled": False}
         }
         
@@ -833,21 +905,33 @@ Finalizers:   kubernetes.io/pv-protection"""
                 return_value=httpx.Response(200, text="# Mock Runbook\nTest runbook content")
             )
             
-            # 3. Mock MCP client initialization to use test server and mock session
-            def mock_mcp_init(self, *args, **kwargs):
-                self.settings = args[0] if args else Mock()
-                self.mcp_registry = Mock()
-                self.data_masking_service = None
-                self.sessions = {'kubernetes-server': mock_mcp_session}
-                self._initialized = True
-                self.exit_stack = Mock()
+            # 3. Mock MCP client by patching sessions after initialization
+            original_list_tools = MCPClient.list_tools
             
-            async def mock_initialize():
-                # Don't actually try to launch external processes
-                pass
+            async def mock_list_tools(self, session_id: str, server_name=None, stage_execution_id=None):
+                """Override list_tools to use our mock sessions."""
+                # Ensure our mock sessions are available
+                self.sessions = {
+                    'kubernetes-server': mock_kubernetes_session,
+                    'test-data-server': mock_custom_session
+                }
+                # Call the original method which will now use our mock sessions
+                return await original_list_tools(self, session_id, server_name, stage_execution_id)
             
-            with patch.object(MCPClient, '__init__', mock_mcp_init), \
-                 patch.object(MCPClient, 'initialize', mock_initialize):
+            original_call_tool = MCPClient.call_tool
+            
+            async def mock_call_tool(self, server_name: str, tool_name: str, parameters, session_id: str, stage_execution_id=None):
+                """Override call_tool to use our mock sessions."""
+                # Ensure our mock sessions are available  
+                self.sessions = {
+                    'kubernetes-server': mock_kubernetes_session,
+                    'test-data-server': mock_custom_session
+                }
+                # Call the original method which will now use our mock sessions
+                return await original_call_tool(self, server_name, tool_name, parameters, session_id, stage_execution_id)
+            
+            with patch.object(MCPClient, 'list_tools', mock_list_tools), \
+                 patch.object(MCPClient, 'call_tool', mock_call_tool):
             
                 print("🔧 Using the real AlertService with test MCP server config and mocking...")
                 # All internal services are real, hooks work perfectly!
@@ -1028,21 +1112,27 @@ Finalizers:   kubernetes.io/pv-protection"""
         # Expected complete interaction structure per stage (from actual test run data)
         expected_stages = {
             'data-collection': {
-                'llm_count': 3,
-                'mcp_count': 3,
+                'llm_count': 4,
+                'mcp_count': 5,  # Tool discovery calls + tool execution calls are all tracked as MCP interactions
                 'interactions': [
-                    # MCP 1 - Tool list discovery (first interaction)
+                    # MCP 1 - Tool list discovery for kubernetes-server (first interaction)
                     {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+                    # MCP 2 - Tool list discovery for test-data-server (returns 1 tool: collect_system_info)
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
                     # LLM 1 - Initial ReAct iteration
                     {'type': 'llm', 'position': 1, 'success': True, 'final_message_role': 'assistant'},
-                    # MCP 2 - Failed kubectl_get attempt
-                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+                    # MCP 3 - Successful kubectl_get attempt
+                    {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
                     # LLM 2 - Second ReAct iteration  
                     {'type': 'llm', 'position': 2, 'success': True, 'final_message_role': 'assistant'},
-                    # MCP 3 - Failed kubectl_describe attempt  
-                    {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
-                    # LLM 3 - Final answer
-                    {'type': 'llm', 'position': 3, 'success': True, 'final_message_role': 'assistant',
+                    # MCP 4 - Successful kubectl_describe attempt  
+                    {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
+                    # LLM 3 - Third ReAct iteration
+                    {'type': 'llm', 'position': 3, 'success': True, 'final_message_role': 'assistant'},
+                    # MCP 5 - Successful collect_system_info call
+                    {'type': 'mcp', 'position': 5, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
+                    # LLM 4 - Final completion
+                    {'type': 'llm', 'position': 4, 'success': True, 'final_message_role': 'assistant',
                      'expected_final_response': "Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.",
                      'verify_exact_llm_content': True}
                 ]
@@ -1055,8 +1145,8 @@ Finalizers:   kubernetes.io/pv-protection"""
                     {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
                     # LLM 1 - Initial ReAct iteration
                     {'type': 'llm', 'position': 1, 'success': True, 'final_message_role': 'assistant'},
-                    # MCP 2 - Failed kubectl_get attempt
-                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+                    # MCP 2 - Successful kubectl_get attempt
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
                     # LLM 2 - Final answer
                     {'type': 'llm', 'position': 2, 'success': True, 'final_message_role': 'assistant',
                      'expected_final_response': "Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion.",

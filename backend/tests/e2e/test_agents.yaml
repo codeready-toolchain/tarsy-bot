@@ -20,6 +20,7 @@ agents:
       Be thorough but efficient. Collect all relevant data before stopping.
     mcp_servers:
       - "kubernetes-server"  # Use built-in kubernetes server for simplicity
+      - "test-data-server"   # Custom server for additional data collection
 
   # Analysis Agent for root cause analysis
   AnalysisAgent:
@@ -42,7 +43,17 @@ agents:
     
 # MCP servers configuration for test environment
 # We use the built-in kubernetes-server for simplicity in testing
-mcp_servers: {}
+mcp_servers:
+  test-data-server:
+    server_id: "test-data-server"
+    server_type: "custom"
+    enabled: true
+    connection_params:
+      command: "echo"
+      args: ["test-data-server-ready"]
+    instructions: "Simple data collection server for testing - provides system information gathering tools"
+    data_masking:
+      enabled: false
 
 # Agent chains configuration - this is the key part for our test
 agent_chains:
