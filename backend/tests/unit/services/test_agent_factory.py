@@ -673,8 +673,11 @@ class TestAgentFactoryIterationStrategies:
             assert agent.agent_name == "test-agent"
         # Should log successful creation with strategy info
         log_messages = [record.message for record in caplog.records]
-        creation_logs = [msg for msg in log_messages if "ConfigurableAgent" in msg]
-        assert len(creation_logs) > 0
+        creation_logs = [
+            msg for msg in log_messages
+            if "Created configured agent instance" in msg and "test-agent" in msg
+        ]
+        assert creation_logs, "Expected configured-agent creation log not found"
 
 
 @pytest.mark.unit
