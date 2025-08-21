@@ -66,19 +66,31 @@ test-e2e: install ## Run end-to-end tests only
 	$(PYTEST) $(TEST_DIR)/e2e/ -v --tb=short -m e2e
 
 .PHONY: test-verbose
-test-verbose: ## Run all tests with verbose output
-	@echo "$(GREEN)Running all tests (verbose)...$(NC)"
-	$(PYTEST) $(TEST_DIR)/ -v
+test-verbose: ## Run all tests with verbose output (isolated sessions for stability)
+	@echo "$(GREEN)Running all tests with verbose output and proper isolation...$(NC)"
+	@echo "$(YELLOW)Running unit and integration tests (verbose)...$(NC)"
+	@$(PYTEST) $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ -v --tb=short
+	@echo "$(YELLOW)Running e2e tests in isolated session (verbose)...$(NC)"  
+	@$(PYTEST) $(TEST_DIR)/e2e/ -v --tb=short -m e2e
+	@echo "$(GREEN)All verbose tests completed!$(NC)"
 
 .PHONY: test-coverage
-test-coverage: ## Run tests with coverage report
-	@echo "$(GREEN)Running tests with coverage...$(NC)"
-	$(PYTEST) $(TEST_DIR)/ --cov=tarsy --cov-report=html --cov-report=term-missing
+test-coverage: ## Run tests with coverage report (isolated sessions for stability)
+	@echo "$(GREEN)Running tests with coverage and proper isolation...$(NC)"
+	@echo "$(YELLOW)Running unit and integration tests with coverage...$(NC)"
+	@$(PYTEST) $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ --cov=tarsy --cov-report=html --cov-report=term-missing --cov-append
+	@echo "$(YELLOW)Running e2e tests with coverage in isolated session...$(NC)"  
+	@$(PYTEST) $(TEST_DIR)/e2e/ --cov=tarsy --cov-append -v --tb=short -m e2e
+	@echo "$(GREEN)All tests with coverage completed!$(NC)"
 
 .PHONY: test-quick
-test-quick: ## Run tests in parallel for faster execution
-	@echo "$(GREEN)Running tests in parallel...$(NC)"
-	$(PYTEST) $(TEST_DIR)/ -n auto
+test-quick: ## Run tests in parallel for faster execution (isolated sessions for stability)
+	@echo "$(GREEN)Running tests in parallel with proper isolation...$(NC)"
+	@echo "$(YELLOW)Running unit and integration tests in parallel...$(NC)"
+	@$(PYTEST) $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ -n auto -v --tb=short
+	@echo "$(YELLOW)Running e2e tests in isolated session...$(NC)"  
+	@$(PYTEST) $(TEST_DIR)/e2e/ -v --tb=short -m e2e
+	@echo "$(GREEN)All parallel tests completed!$(NC)"
 
 # Code Quality
 .PHONY: lint
