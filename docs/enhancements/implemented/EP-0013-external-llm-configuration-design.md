@@ -106,7 +106,7 @@ llm_providers:
 ## Implementation Changes
 
 ### 1. Settings Class (`config/settings.py`)
-- Add `llm_config_path: str = Field(default="./config/llm_providers.yaml")`
+- Add `llm_config_path: str = Field(default="../config/llm_providers.yaml")`
 - Define built-in default providers (openai-default, google-default, xai-default, anthropic-default)
 - Set llm_provider to "google-default" for OOTB experience
 - Add YAML loading method that merges with built-in defaults
