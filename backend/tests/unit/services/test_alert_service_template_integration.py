@@ -16,6 +16,7 @@ import yaml
 from tarsy.config.settings import Settings
 from tarsy.models.constants import IterationStrategy
 from tarsy.services.alert_service import AlertService
+from tarsy.utils.template_resolver import TemplateResolver
 
 
 @pytest.mark.unit
@@ -49,45 +50,82 @@ class TestAlertServiceTemplateIntegration:
     
     def test_alert_service_template_resolution_integration(self):
         """Test that template resolution works through AlertService initialization."""
-        with patch.dict(os.environ, {'KUBECONFIG': '/integration/test/kubeconfig'}):
-            settings = Settings()
+        # Create a test .env file with the desired KUBECONFIG
+        import tempfile
+        import os
+        
+        env_content = "KUBECONFIG=/integration/test/kubeconfig\n"
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
+            f.write(env_content)
+            f.flush()
             
-            # Mock other services to focus on MCP registry
-            with patch('tarsy.services.alert_service.RunbookService'), \
-                 patch('tarsy.services.alert_service.get_history_service'), \
-                 patch('tarsy.services.alert_service.ChainRegistry'), \
-                 patch('tarsy.services.alert_service.MCPClient'), \
-                 patch('tarsy.services.alert_service.LLMManager'):
-                
-                alert_service = AlertService(settings)
-                
-                # Get the actual kubernetes server config through the service
-                k8s_config = alert_service.mcp_server_registry.get_server_config("kubernetes-server")
-                
-                # Verify template was resolved with environment variable
-                assert "/integration/test/kubeconfig" in k8s_config.connection_params["args"]
+            try:
+                # Mock the template resolver to use our test .env file
+                with patch('tarsy.services.mcp_server_registry.TemplateResolver') as mock_resolver_class:
+                    # Create a real resolver with our test .env file
+                    real_resolver = TemplateResolver(env_file_path=f.name)
+                    mock_resolver_class.return_value = real_resolver
+                    
+                    settings = Settings()
+                    
+                    # Mock other services to focus on MCP registry
+                    with patch('tarsy.services.alert_service.RunbookService'), \
+                         patch('tarsy.services.alert_service.get_history_service'), \
+                         patch('tarsy.services.alert_service.ChainRegistry'), \
+                         patch('tarsy.services.alert_service.MCPClient'), \
+                         patch('tarsy.services.alert_service.LLMManager'):
+                        
+                        alert_service = AlertService(settings)
+                        
+                        # Get the actual kubernetes server config through the service
+                        k8s_config = alert_service.mcp_server_registry.get_server_config("kubernetes-server")
+                        
+                        # Verify template was resolved with .env file variable
+                        assert "/integration/test/kubeconfig" in k8s_config.connection_params["args"]
+                        
+            finally:
+                os.unlink(f.name)
     
     def test_alert_service_template_defaults_integration(self):
         """Test that settings defaults work through AlertService."""
-        # Clear environment to force use of defaults
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
+        # Create an empty .env file to prevent loading of real .env values
+        import tempfile
+        import os
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
+            f.write("# Empty .env file for testing defaults\n")
+            f.flush()
             
-            # Mock other services
-            with patch('tarsy.services.alert_service.RunbookService'), \
-                 patch('tarsy.services.alert_service.get_history_service'), \
-                 patch('tarsy.services.alert_service.ChainRegistry'), \
-                 patch('tarsy.services.alert_service.MCPClient'), \
-                 patch('tarsy.services.alert_service.LLMManager'):
-                
-                alert_service = AlertService(settings)
-                
-                # Get kubernetes server config
-                k8s_config = alert_service.mcp_server_registry.get_server_config("kubernetes-server")
-                
-                # Verify expanded default was used (not tilde literal)
-                assert ".kube/config" in str(k8s_config.connection_params["args"])
-                assert "~" not in str(k8s_config.connection_params["args"])
+            try:
+                # Clear environment to force use of defaults
+                with patch.dict(os.environ, {}, clear=True):
+                    # Mock the template resolver to use our empty test .env file
+                    with patch('tarsy.services.mcp_server_registry.TemplateResolver') as mock_resolver_class:
+                        settings = Settings()
+                        
+                        # Create a real resolver with our empty test .env file and settings
+                        real_resolver = TemplateResolver(env_file_path=f.name, settings=settings)
+                        mock_resolver_class.return_value = real_resolver
+                        
+                        # Mock other services
+                        with patch('tarsy.services.alert_service.RunbookService'), \
+                             patch('tarsy.services.alert_service.get_history_service'), \
+                             patch('tarsy.services.alert_service.ChainRegistry'), \
+                             patch('tarsy.services.alert_service.MCPClient'), \
+                             patch('tarsy.services.alert_service.LLMManager'):
+                            
+                            alert_service = AlertService(settings)
+                            
+                            # Get kubernetes server config
+                            k8s_config = alert_service.mcp_server_registry.get_server_config("kubernetes-server")
+                            
+                            # Verify expanded default was used (not tilde literal)
+                            assert ".kube/config" in str(k8s_config.connection_params["args"])
+                            assert "~" not in str(k8s_config.connection_params["args"])
+                            
+            finally:
+                os.unlink(f.name)
     
     @patch('tarsy.services.alert_service.logger')
     def test_alert_service_template_error_handling(self, mock_logger):

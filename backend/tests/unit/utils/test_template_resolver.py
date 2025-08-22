@@ -40,8 +40,9 @@ class TestTemplateResolver:
     
     def test_resolve_multiple_templates_in_string(self):
         """Test resolving multiple template variables in a single string."""
-        with patch.dict(os.environ, {'HOST': 'localhost', 'PORT': '8080'}):
-            config = {"url": "http://${HOST}:${PORT}/api"}
+        # Use unique variable names that don't exist in our .env file
+        with patch.dict(os.environ, {'TEST_HOST_UNIQUE': 'localhost', 'TEST_PORT_UNIQUE': '8080'}):
+            config = {"url": "http://${TEST_HOST_UNIQUE}:${TEST_PORT_UNIQUE}/api"}
             result = self.resolver.resolve_configuration(config)
             assert result == {"url": "http://localhost:8080/api"}
     
@@ -73,7 +74,8 @@ class TestTemplateResolver:
     
     def test_resolve_mcp_server_config_structure(self):
         """Test resolving templates in typical MCP server configuration."""
-        with patch.dict(os.environ, {'KUBECONFIG': '/path/to/config', 'NAMESPACE': 'prod'}):
+        # Use unique variable names that don't exist in our .env file
+        with patch.dict(os.environ, {'TEST_KUBECONFIG_UNIQUE': '/path/to/config', 'TEST_NAMESPACE_UNIQUE': 'prod'}):
             config = {
                 "server_id": "kubernetes-server",
                 "server_type": "kubernetes",
@@ -83,11 +85,11 @@ class TestTemplateResolver:
                     "args": [
                         "-y", 
                         "kubernetes-mcp-server@latest", 
-                        "--kubeconfig", "${KUBECONFIG}",
-                        "--namespace", "${NAMESPACE}"
+                        "--kubeconfig", "${TEST_KUBECONFIG_UNIQUE}",
+                        "--namespace", "${TEST_NAMESPACE_UNIQUE}"
                     ]
                 },
-                "instructions": "Use kubeconfig at ${KUBECONFIG}"
+                "instructions": "Use kubeconfig at ${TEST_KUBECONFIG_UNIQUE}"
             }
             result = self.resolver.resolve_configuration(config)
             assert result["connection_params"]["args"][3] == "/path/to/config"

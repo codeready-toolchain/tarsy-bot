@@ -244,11 +244,19 @@ class Settings(BaseSettings):
         Returns:
             Default value if available, None otherwise
         """
+        # Import logger here to avoid circular imports
+        from tarsy.utils.logger import get_module_logger
+        logger = get_module_logger(__name__)
+        
         # Convert template variable name to settings attribute name
-        # KUBECONFIG -> kubeconfig_default
-        # PROMETHEUS_URL -> prometheus_url_default
+        # VARNAME -> varname_default
+        # VAR_NAME -> var_name_default
         default_attr = f"{var_name.lower()}_default"
-        return getattr(self, default_attr, None)
+        default_value = getattr(self, default_attr, None)
+        
+        logger.debug(f"Template default lookup for '{var_name}': attribute='{default_attr}', value='{default_value}'")
+        
+        return default_value
     
 
 @lru_cache()

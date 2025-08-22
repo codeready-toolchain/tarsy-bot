@@ -65,10 +65,16 @@ class MCPServerRegistry:
         # Convert built-in servers to MCPServerConfig objects with template resolution
         for server_id, server_config in server_configs.items():
             try:
+                logger.debug(f"Resolving templates for MCP server '{server_id}'")
+                logger.debug(f"Original config: {server_config}")
+                
                 # Apply template resolution to built-in server configuration
                 resolved_config = self.template_resolver.resolve_configuration(server_config)
+                
+                logger.debug(f"Resolved config for '{server_id}': {resolved_config}")
+                
                 self.static_servers[server_id] = MCPServerConfig(**resolved_config)
-                logger.debug(f"Added built-in MCP server with template resolution: {server_id}")
+                logger.debug(f"Successfully added built-in MCP server with template resolution: {server_id}")
             except TemplateResolutionError as e:
                 logger.error(f"Template resolution failed for built-in MCP server '{server_id}': {e}")
                 # Use original config without template resolution as fallback

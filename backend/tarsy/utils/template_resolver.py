@@ -8,6 +8,7 @@ for MCP server configuration parameters, supporting the ${VARIABLE_NAME} syntax.
 import os
 import re
 from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
+from pathlib import Path
 from tarsy.utils.logger import get_module_logger
 
 if TYPE_CHECKING:
@@ -28,21 +29,68 @@ class TemplateResolver:
     """
     Utility class for resolving template variables in MCP server configurations.
     
-    Supports ${VARIABLE_NAME} syntax with environment variable expansion.
+    Supports ${VARIABLE_NAME} syntax with multiple sources in priority order:
+    1. .env file variables (highest priority) - project-specific configuration
+    2. System environment variables (medium priority) - global system settings
+    3. Settings defaults (lowest priority) - fallback defaults
+    
     Provides comprehensive error handling, validation, and settings-based defaults.
     """
     
-    def __init__(self, settings: Optional["Settings"] = None):
+    def __init__(self, settings: Optional["Settings"] = None, env_file_path: str = ".env"):
         """
         Initialize the template resolver.
         
         Args:
             settings: Optional Settings instance for template variable defaults.
-                     If None, only environment variables will be used.
+                     If None, only environment variables and .env file will be used.
+            env_file_path: Path to .env file to load variables from. 
+                          Defaults to ".env" in current working directory.
         """
         self.settings = settings
         self._template_cache: Dict[str, str] = {}
         
+        # Load .env file variables into a dictionary for template resolution
+        self.env_file_vars: Dict[str, str] = {}
+        self._load_env_file(env_file_path)
+        
+    def _load_env_file(self, env_file_path: str) -> None:
+        """
+        Load environment variables from .env file into self.env_file_vars.
+        
+        Args:
+            env_file_path: Path to the .env file to load
+        """
+        try:
+            env_path = Path(env_file_path)
+            if not env_path.exists():
+                logger.debug(f"No .env file found at {env_file_path}")
+                return
+                
+            logger.debug(f"Loading template variables from {env_file_path}")
+            
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    # Strip whitespace and skip empty lines and comments
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    # Parse KEY=VALUE format
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        self.env_file_vars[key] = value
+                    else:
+                        logger.warning(f"Skipping malformed line {line_num} in {env_file_path}: {line}")
+            
+            logger.info(f"Loaded {len(self.env_file_vars)} template variables from {env_file_path}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to load .env file {env_file_path}: {e}")
+            # Continue without .env file variables - they're not critical
+            
     def resolve_configuration(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Resolve all template variables in a configuration dictionary.
@@ -138,7 +186,12 @@ class TemplateResolver:
     
     def _resolve_variable(self, var_name: str) -> str:
         """
-        Resolve a single template variable using environment variables and settings defaults.
+        Resolve a single template variable using multiple sources in priority order.
+        
+        Resolution order:
+        1. .env file variables (self.env_file_vars) - highest priority - project-specific  
+        2. System environment variables (os.getenv) - medium priority - global system
+        3. Settings defaults (get_template_default) - lowest priority - fallback defaults
         
         Args:
             var_name: Name of the template variable to resolve
@@ -149,20 +202,36 @@ class TemplateResolver:
         Raises:
             TemplateResolutionError: If variable cannot be resolved
         """
-        # 1. Try environment variable first
+        logger.debug(f"Resolving template variable: {var_name}")
+        
+        # 1. Try .env file variables first (highest priority - project-specific)
+        if var_name in self.env_file_vars:
+            env_file_value = self.env_file_vars[var_name]
+            logger.debug(f"Resolved template variable {var_name} from .env file: {env_file_value}")
+            return env_file_value
+        else:
+            logger.debug(f"Template variable {var_name} not found in .env file")
+        
+        # 2. Try system environment variable (medium priority - global system)
         env_value = os.getenv(var_name)
         if env_value is not None:
-            logger.debug(f"Resolved template variable {var_name} from environment")
+            logger.debug(f"Resolved template variable {var_name} from system environment: {env_value}")
             return env_value
+        else:
+            logger.debug(f"Template variable {var_name} not found in system environment")
         
-        # 2. Try settings default if available
+        # 3. Try settings default if available (lowest priority - fallback defaults)
         if self.settings:
             default_value = self.settings.get_template_default(var_name)
             if default_value is not None:
-                logger.info(f"Using default value for template variable {var_name}: {default_value}")
+                logger.debug(f"Using default value for template variable {var_name}: {default_value}")
                 return default_value
+            else:
+                logger.debug(f"No settings default available for template variable {var_name}")
+        else:
+            logger.debug("No settings instance available for template defaults")
         
-        # 3. Variable not found - this should not happen due to pre-validation
+        # 4. Variable not found - this should not happen due to pre-validation
         raise TemplateResolutionError(f"Template variable {var_name} not found and no default available")
     
     def validate_templates(self, config: Dict[str, Any]) -> List[str]:
@@ -201,7 +270,12 @@ class TemplateResolver:
     
     def _can_resolve_variable(self, var_name: str) -> bool:
         """
-        Check if a template variable can be resolved (either from env or settings default).
+        Check if a template variable can be resolved using any available source.
+        
+        Resolution order:
+        1. .env file variables (self.env_file_vars) - highest priority - project-specific
+        2. System environment variables (os.getenv) - medium priority - global system  
+        3. Settings defaults (get_template_default) - lowest priority - fallback defaults
         
         Args:
             var_name: Name of the template variable
@@ -209,11 +283,15 @@ class TemplateResolver:
         Returns:
             True if variable can be resolved, False otherwise
         """
-        # Check environment variable
+        # 1. Check .env file variable (highest priority)
+        if var_name in self.env_file_vars:
+            return True
+        
+        # 2. Check system environment variable (medium priority)
         if os.getenv(var_name) is not None:
             return True
         
-        # Check settings default
+        # 3. Check settings default (lowest priority)
         if self.settings and self.settings.get_template_default(var_name) is not None:
             return True
         

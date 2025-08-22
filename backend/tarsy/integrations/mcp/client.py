@@ -47,12 +47,21 @@ class MCPClient:
                 continue
                 
             try:
+                logger.debug(f"Initializing MCP server '{server_id}' with configuration:")
+                logger.debug(f"  Server type: {server_config.server_type}")
+                logger.debug(f"  Enabled: {server_config.enabled}")
+                logger.debug(f"  Command: {server_config.connection_params.get('command')}")
+                logger.debug(f"  Args: {server_config.connection_params.get('args', [])}")
+                logger.debug(f"  Env: {server_config.connection_params.get('env', None)}")
+                
                 # Create server parameters for stdio connection
                 server_params = StdioServerParameters(
                     command=server_config.connection_params.get("command"),
                     args=server_config.connection_params.get("args", []),
                     env=server_config.connection_params.get("env", None)
                 )
+                
+                logger.debug(f"Created StdioServerParameters for '{server_id}': command='{server_params.command}', args={server_params.args}, env={server_params.env}")
                 
                 # Connect to the server
                 read_stream, write_stream = await self.exit_stack.enter_async_context(
@@ -68,7 +77,7 @@ class MCPClient:
                 await session.initialize()
                 
                 self.sessions[server_id] = session
-                logger.info(f"Initialized MCP server: {server_id}")
+                logger.info(f"Successfully initialized MCP server: {server_id}")
                 
             except Exception as e:
                 logger.error(f"Failed to initialize MCP server {server_id}: {str(e)}")
