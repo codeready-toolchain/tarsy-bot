@@ -47,12 +47,14 @@ class MCPClient:
                 continue
                 
             try:
-                logger.debug(f"Initializing MCP server '{server_id}' with configuration:")
-                logger.debug(f"  Server type: {server_config.server_type}")
-                logger.debug(f"  Enabled: {server_config.enabled}")
-                logger.debug(f"  Command: {server_config.connection_params.get('command')}")
-                logger.debug(f"  Args: {server_config.connection_params.get('args', [])}")
-                logger.debug(f"  Env: {server_config.connection_params.get('env', None)}")
+                logger.debug("Initializing MCP server '%s' with configuration:", server_id)
+                logger.debug("  Server type: %s", server_config.server_type)
+                logger.debug("  Enabled: %s", server_config.enabled)
+                logger.debug("  Command: %s", server_config.connection_params.get('command'))
+                logger.debug("  Args: %s", server_config.connection_params.get('args', []))
+                # Log env keys only to avoid exposing sensitive values
+                env_keys = sorted(server_config.connection_params.get('env', {}).keys())
+                logger.debug("  Env keys: %s", env_keys)
                 
                 # Create server parameters for stdio connection
                 server_params = StdioServerParameters(
@@ -61,7 +63,12 @@ class MCPClient:
                     env=server_config.connection_params.get("env", None)
                 )
                 
-                logger.debug(f"Created StdioServerParameters for '{server_id}': command='{server_params.command}', args={server_params.args}, env={server_params.env}")
+                # Log server parameters without exposing sensitive env values
+                logger.debug("Created StdioServerParameters for '%s':", server_id)
+                logger.debug("  Command: %s", server_params.command)
+                logger.debug("  Args: %s", server_params.args)
+                env_keys = sorted(server_params.env.keys()) if server_params.env else []
+                logger.debug("  Env keys: %s", env_keys)
                 
                 # Connect to the server
                 read_stream, write_stream = await self.exit_stack.enter_async_context(
@@ -207,13 +214,13 @@ class MCPClient:
                 # Apply data masking if service is available
                 if self.data_masking_service:
                     try:
-                        logger.debug(f"Applying data masking for server: {server_name}")
+                        logger.debug("Applying data masking for server: %s", server_name)
                         response_dict = self.data_masking_service.mask_response(response_dict, server_name)
-                        logger.debug(f"Data masking completed for server: {server_name}")
+                        logger.debug("Data masking completed for server: %s", server_name)
                     except Exception as e:
-                        logger.error(f"Error during data masking for server '{server_name}': {e}")
+                        logger.error("Error during data masking for server '%s': %s", server_name, e)
                         # Continue with unmasked response rather than failing the entire call
-                        logger.warning(f"Continuing with unmasked response for server: {server_name}")
+                        logger.warning("Continuing with unmasked response for server: %s", server_name)
                 
                 # Log the successful response (after masking)
                 self._log_mcp_response(server_name, tool_name, response_dict, request_id)

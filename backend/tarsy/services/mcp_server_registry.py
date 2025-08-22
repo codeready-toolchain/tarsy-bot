@@ -7,7 +7,7 @@ serves as the single source of truth for all MCP server configurations,
 including both built-in and configured servers.
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ..models.agent_config import MCPServerConfigModel as MCPServerConfig
 from ..utils.logger import get_module_logger
@@ -65,21 +65,26 @@ class MCPServerRegistry:
         # Convert built-in servers to MCPServerConfig objects with template resolution
         for server_id, server_config in server_configs.items():
             try:
-                logger.debug(f"Resolving templates for MCP server '{server_id}'")
-                logger.debug(f"Original config: {server_config}")
+                logger.debug("Resolving templates for MCP server '%s'", server_id)
+                
+                # Create sanitized summary for logging (avoid exposing sensitive data)
+                original_summary = self._create_config_summary(server_config, server_id)
+                logger.debug("Original config summary: %s", original_summary)
                 
                 # Apply template resolution to built-in server configuration
                 resolved_config = self.template_resolver.resolve_configuration(server_config)
                 
-                logger.debug(f"Resolved config for '{server_id}': {resolved_config}")
+                # Create sanitized summary of resolved config
+                resolved_summary = self._create_config_summary(resolved_config, server_id)
+                logger.debug("Resolved config summary: %s", resolved_summary)
                 
                 self.static_servers[server_id] = MCPServerConfig(**resolved_config)
-                logger.debug(f"Successfully added built-in MCP server with template resolution: {server_id}")
+                logger.debug("Successfully added built-in MCP server: %s", server_id)
             except TemplateResolutionError as e:
-                logger.error(f"Template resolution failed for built-in MCP server '{server_id}': {e}")
+                logger.error("Template resolution failed for built-in MCP server '%s': %s", server_id, e)
                 # Use original config without template resolution as fallback
                 self.static_servers[server_id] = MCPServerConfig(**server_config)
-                logger.warning(f"Using original configuration for '{server_id}' due to template resolution failure")
+                logger.warning("Using original configuration for '%s' due to template resolution failure", server_id)
         
         # Add configured servers if provided
         if configured_servers:
@@ -89,17 +94,17 @@ class MCPServerRegistry:
                     server_dict = server_config.model_dump()
                     resolved_dict = self.template_resolver.resolve_configuration(server_dict)
                     self.static_servers[server_id] = MCPServerConfig(**resolved_dict)
-                    logger.debug(f"Added configured MCP server with template resolution: {server_id}")
+                    logger.debug("Added configured MCP server with template resolution: %s", server_id)
                 except TemplateResolutionError as e:
-                    logger.error(f"Template resolution failed for configured MCP server '{server_id}': {e}")
+                    logger.error("Template resolution failed for configured MCP server '%s': %s", server_id, e)
                     # Use original config without template resolution as fallback
                     server_dict = server_config.model_dump()
                     self.static_servers[server_id] = MCPServerConfig(**server_dict)
-                    logger.warning(f"Using original configuration for '{server_id}' due to template resolution failure")
+                    logger.warning("Using original configuration for '%s' due to template resolution failure", server_id)
             
-            logger.info(f"Added {len(configured_servers)} configured MCP servers")
+            logger.info("Added %d configured MCP servers", len(configured_servers))
         
-        logger.info(f"Initialized MCP Server Registry with {len(self.static_servers)} total servers")
+        logger.info("Initialized MCP Server Registry with %d total servers", len(self.static_servers))
     
     def get_server_configs(self, server_ids: List[str]) -> List[MCPServerConfig]:
         """
@@ -136,11 +141,13 @@ class MCPServerRegistry:
         if server_config is None:
             # Fail-fast with technical error details
             available_servers = list(self.static_servers.keys())
-            error_msg = f"MCP server '{server_id}' not found. Available: {', '.join(available_servers)}"
-            logger.error(error_msg)
+            available_list = ', '.join(available_servers)
+            error_msg = f"MCP server '{server_id}' not found. Available: {available_list}"
+            logger.error("MCP server '%s' not found. Available: %s", server_id, available_list)
             raise ValueError(error_msg)
         
-        logger.debug(f"Found MCP server config for '{server_id}' (type: {server_config.server_type}, enabled: {server_config.enabled})")
+        logger.debug("Found MCP server config for '%s' (type: %s, enabled: %s)", 
+                     server_id, server_config.server_type, server_config.enabled)
         return server_config
     
     def get_server_config_safe(self, server_id: str) -> Optional[MCPServerConfig]:
@@ -163,4 +170,41 @@ class MCPServerRegistry:
         Returns:
             List of all server IDs
         """
-        return list(self.static_servers.keys()) 
+        return list(self.static_servers.keys())
+    
+    def _create_config_summary(self, config: Dict[str, Any], server_id: str) -> Dict[str, Any]:
+        """
+        Create a sanitized summary of server configuration for logging.
+        
+        Removes sensitive data like environment variable values to prevent
+        secret leakage in debug logs.
+        
+        Args:
+            config: Server configuration dictionary
+            server_id: Server identifier for context
+            
+        Returns:
+            Sanitized configuration summary safe for logging
+        """
+        summary = {
+            "server_id": server_id,
+            "server_type": config.get("server_type", "unknown"),
+            "enabled": config.get("enabled", True)
+        }
+        
+        # Safely include connection_params without sensitive data
+        if "connection_params" in config:
+            conn_params = config["connection_params"]
+            summary["connection_params"] = {
+                "command": conn_params.get("command"),
+                "args": conn_params.get("args", [])
+            }
+            
+            # For env, only show keys to avoid exposing sensitive values
+            if "env" in conn_params and conn_params["env"]:
+                env_keys = sorted(conn_params["env"].keys())
+                summary["connection_params"]["env_keys"] = env_keys
+            else:
+                summary["connection_params"]["env_keys"] = []
+        
+        return summary 

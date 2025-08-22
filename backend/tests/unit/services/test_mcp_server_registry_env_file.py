@@ -51,15 +51,9 @@ class TestMCPServerRegistryEnvFileIntegration:
                     from tarsy.utils.template_resolver import TemplateResolver
                     template_resolver = TemplateResolver(settings=settings, env_file_path=f.name)
                     
-                    registry = MCPServerRegistry(config=test_builtin_servers, settings=settings)
-                    registry.template_resolver = template_resolver
-                    
-                    # Re-process with the custom template resolver
-                    registry.static_servers = {}
-                    for server_id, server_config in test_builtin_servers.items():
-                        resolved_config = template_resolver.resolve_configuration(server_config)
-                        from tarsy.models.agent_config import MCPServerConfigModel
-                        registry.static_servers[server_id] = MCPServerConfigModel(**resolved_config)
+                    with patch("tarsy.services.mcp_server_registry.TemplateResolver") as tr_cls:
+                        tr_cls.return_value = template_resolver
+                        registry = MCPServerRegistry(config=test_builtin_servers, settings=settings)
                     
                     test_config = registry.get_server_config("test-kubernetes-server")
                     
@@ -109,17 +103,12 @@ CUSTOM_SERVER_TIMEOUT=60
                 from tarsy.utils.template_resolver import TemplateResolver
                 template_resolver = TemplateResolver(settings=settings, env_file_path=f.name)
                 
-                registry = MCPServerRegistry(
-                    configured_servers=configured_servers, 
-                    settings=settings
-                )
-                registry.template_resolver = template_resolver
-                
-                # Re-process configured servers with custom template resolver
-                for server_id, server_config in configured_servers.items():
-                    server_dict = server_config.model_dump()
-                    resolved_dict = template_resolver.resolve_configuration(server_dict)
-                    registry.static_servers[server_id] = MCPServerConfigModel(**resolved_dict)
+                with patch("tarsy.services.mcp_server_registry.TemplateResolver") as tr_cls:
+                    tr_cls.return_value = template_resolver
+                    registry = MCPServerRegistry(
+                        configured_servers=configured_servers, 
+                        settings=settings
+                    )
                 
                 # Test resolution
                 custom_config = registry.get_server_config("custom-server")
@@ -172,22 +161,17 @@ CUSTOM_SERVER_TIMEOUT=60
                 with patch.dict(os.environ, {
                     'TEST_HIGH_PRIORITY_VAR': 'system_env_value',  # Should be overridden by .env
                     'TEST_MEDIUM_PRIORITY_VAR': 'system_env_value'  # Should be used
-                }):
+                                }):
                     # Create registry with custom template resolver
                     from tarsy.utils.template_resolver import TemplateResolver
                     template_resolver = TemplateResolver(settings=mock_settings, env_file_path=f.name)
                     
-                    registry = MCPServerRegistry(
-                        configured_servers=configured_servers,
-                        settings=mock_settings
-                    )
-                    registry.template_resolver = template_resolver
-                    
-                    # Re-process with custom template resolver
-                    for server_id, server_config in configured_servers.items():
-                        server_dict = server_config.model_dump()
-                        resolved_dict = template_resolver.resolve_configuration(server_dict)
-                        registry.static_servers[server_id] = MCPServerConfigModel(**resolved_dict)
+                    with patch("tarsy.services.mcp_server_registry.TemplateResolver") as tr_cls:
+                        tr_cls.return_value = template_resolver
+                        registry = MCPServerRegistry(
+                            configured_servers=configured_servers,
+                            settings=mock_settings
+                        )
                     
                     test_config = registry.get_server_config("priority-test-server")
                     
@@ -204,19 +188,18 @@ CUSTOM_SERVER_TIMEOUT=60
         # Test with non-existent .env file
         settings = Settings()
         
-        # This should not raise an error
-        registry = MCPServerRegistry(settings=settings)
-        registry.template_resolver = registry.template_resolver.__class__(
+        # Create template resolver with non-existent .env file
+        from tarsy.utils.template_resolver import TemplateResolver
+        template_resolver = TemplateResolver(
             settings=settings, 
             env_file_path="/nonexistent/.env"
         )
         
         # Should still work with system environment and defaults
         with patch.dict(os.environ, {'KUBECONFIG': '/system/kubeconfig'}):
-            # Re-initialize built-in servers
-            for server_id, server_config in registry._DEFAULT_SERVERS.items():
-                resolved_config = registry.template_resolver.resolve_configuration(server_config)
-                registry.static_servers[server_id] = registry.static_servers[server_id].__class__(**resolved_config)
+            with patch("tarsy.services.mcp_server_registry.TemplateResolver") as tr_cls:
+                tr_cls.return_value = template_resolver
+                registry = MCPServerRegistry(settings=settings)
             
             k8s_config = registry.get_server_config("kubernetes-server")
             
@@ -251,16 +234,21 @@ VALID_VAR2=another_valid
             try:
                 settings = Settings()
                 
+                # Create template resolver with malformed .env file
+                from tarsy.utils.template_resolver import TemplateResolver
+                template_resolver = TemplateResolver(settings=settings, env_file_path=f.name)
+                
                 # Should not raise error despite malformed lines
-                registry = MCPServerRegistry(settings=settings)
-                registry.template_resolver._load_env_file(f.name)
+                with patch("tarsy.services.mcp_server_registry.TemplateResolver") as tr_cls:
+                    tr_cls.return_value = template_resolver
+                    registry = MCPServerRegistry(settings=settings)
                 
                 # Valid variables should be available
-                assert registry.template_resolver.env_file_vars['VALID_VAR'] == 'valid_value'
-                assert registry.template_resolver.env_file_vars['VALID_VAR2'] == 'another_valid'
+                assert template_resolver.env_file_vars['VALID_VAR'] == 'valid_value'
+                assert template_resolver.env_file_vars['VALID_VAR2'] == 'another_valid'
                 
                 # Non-standard variable names are now loaded (no validation)
-                assert registry.template_resolver.env_file_vars['123STARTS_WITH_DIGIT'] == 'invalid'
+                assert template_resolver.env_file_vars['123STARTS_WITH_DIGIT'] == 'invalid'
                 
                 # Registry should still function normally
                 assert len(registry.get_all_server_ids()) > 0

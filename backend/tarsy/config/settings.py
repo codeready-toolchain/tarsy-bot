@@ -254,10 +254,11 @@ class Settings(BaseSettings):
         default_attr = f"{var_name.lower()}_default"
         default_value = getattr(self, default_attr, None)
         
-        logger.debug(f"Template default lookup for '{var_name}': attribute='{default_attr}', value='{default_value}'")
+        # Log presence only, not the actual value to avoid exposing sensitive data
+        presence = "found" if default_value is not None else "not found"
+        logger.debug(f"Template default lookup for '{var_name}': attribute='{default_attr}', {presence}")
         
         return default_value
-    
 
 @lru_cache()
 def get_settings() -> Settings:

@@ -7,6 +7,7 @@ and error handling scenarios.
 """
 
 import os
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,47 +25,87 @@ class TestMCPServerRegistryTemplateResolution:
     
     def test_builtin_kubernetes_server_template_resolution_with_env(self):
         """Test built-in kubernetes-server template resolution with environment variable."""
-        # Note: This test now demonstrates that .env file takes priority over system environment
-        # The actual behavior is that KUBECONFIG from our .env file will be used instead
-        settings = Settings()
-        registry = MCPServerRegistry(settings=settings)
+        import tempfile
+        import os
+        from unittest.mock import patch
         
-        k8s_config = registry.get_server_config("kubernetes-server")
+        # Create temporary .env file with known KUBECONFIG value
+        env_content = "KUBECONFIG=/test/kubeconfig/path\n"
         
-        # Verify template was resolved (will use .env file value due to new priority order)
-        # This demonstrates the new .env file > system env > defaults priority
-        kubeconfig_arg = None
-        args = k8s_config.connection_params["args"]
-        for i, arg in enumerate(args):
-            if arg == "--kubeconfig" and i + 1 < len(args):
-                kubeconfig_arg = args[i + 1]
-                break
-        
-        # Should resolve to some value (either .env file or default)
-        assert kubeconfig_arg is not None
-        assert kubeconfig_arg != "${KUBECONFIG}"  # Should not be unresolved
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
+            f.write(env_content)
+            f.flush()
+            
+            try:
+                settings = Settings()
+                
+                # Create template resolver with our test .env file
+                from tarsy.utils.template_resolver import TemplateResolver
+                template_resolver = TemplateResolver(settings=settings, env_file_path=f.name)
+                
+                # Patch TemplateResolver to use our custom instance
+                with patch("tarsy.services.mcp_server_registry.TemplateResolver") as tr_cls:
+                    tr_cls.return_value = template_resolver
+                    registry = MCPServerRegistry(settings=settings)
+                
+                k8s_config = registry.get_server_config("kubernetes-server")
+                
+                # Verify template was resolved with our known value
+                kubeconfig_arg = None
+                args = k8s_config.connection_params["args"]
+                for i, arg in enumerate(args):
+                    if arg == "--kubeconfig" and i + 1 < len(args):
+                        kubeconfig_arg = args[i + 1]
+                        break
+                
+                # Should resolve to our specific test value
+                assert kubeconfig_arg == "/test/kubeconfig/path"
+                assert kubeconfig_arg != "${KUBECONFIG}"  # Should not be unresolved
+                
+            finally:
+                os.unlink(f.name)
     
     def test_builtin_kubernetes_server_template_resolution_with_default(self):
         """Test built-in kubernetes-server template resolution with settings default."""
-        # Note: With new priority order, this tests the overall resolution process
-        # The actual resolution will use .env file if available, then defaults
-        settings = Settings()
-        registry = MCPServerRegistry(settings=settings)
+        import tempfile
+        import os
+        from unittest.mock import patch
         
-        k8s_config = registry.get_server_config("kubernetes-server")
+        # Save current state
+        original_cwd = os.getcwd()
+        original_kubeconfig = os.environ.pop("KUBECONFIG", None)
         
-        # Verify template was resolved (will use .env file or default)
-        kubeconfig_arg = None
-        args = k8s_config.connection_params["args"]
-        for i, arg in enumerate(args):
-            if arg == "--kubeconfig" and i + 1 < len(args):
-                kubeconfig_arg = args[i + 1]
-                break
-        
-        # Should resolve to some value and not contain tilde
-        assert kubeconfig_arg is not None
-        assert kubeconfig_arg != "${KUBECONFIG}"  # Should not be unresolved
-        assert "~" not in kubeconfig_arg  # Tilde should be expanded
+        try:
+            # Create temporary directory with no .env file
+            with tempfile.TemporaryDirectory() as temp_dir:
+                os.chdir(temp_dir)
+                
+                # Ensure no .env file exists and no KUBECONFIG in environment
+                # This forces the system to use Settings defaults
+                settings = Settings()
+                registry = MCPServerRegistry(settings=settings)
+                
+                k8s_config = registry.get_server_config("kubernetes-server")
+                
+                # Verify template was resolved with Settings default
+                kubeconfig_arg = None
+                args = k8s_config.connection_params["args"]
+                for i, arg in enumerate(args):
+                    if arg == "--kubeconfig" and i + 1 < len(args):
+                        kubeconfig_arg = args[i + 1]
+                        break
+                
+                # Should resolve to Settings default (expanded ~/.kube/config)
+                expected_default = os.path.expanduser("~/.kube/config")
+                assert kubeconfig_arg == expected_default
+                assert kubeconfig_arg != "${KUBECONFIG}"  # Should not be unresolved
+                assert "~" not in kubeconfig_arg  # Tilde should be expanded
+                
+        finally:
+            # Restore original state
+            os.chdir(original_cwd)
+            if original_kubeconfig is not None:
+                os.environ["KUBECONFIG"] = original_kubeconfig
     
     def test_configured_server_template_resolution(self):
         """Test template resolution in configured MCP servers."""
@@ -73,16 +114,24 @@ class TestMCPServerRegistryTemplateResolution:
         }
         
         env_vars = MCPServerMaskingFactory.create_template_environment_vars()
-        with patch.dict(os.environ, env_vars):
-            settings = Settings()
-            registry = MCPServerRegistry(configured_servers=configured_servers, settings=settings)
-            
-            config = registry.get_server_config("template-server")
-            
-            # Verify templates were resolved
-            assert config.connection_params["args"] == [
-                "--token", "secret123", "--url", "http://test.com"
-            ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
+            f.write("")  # ensure .env contributes nothing
+            f.flush()
+            try:
+                with patch.dict(os.environ, env_vars), \
+                     patch("tarsy.services.mcp_server_registry.TemplateResolver") as tr_cls:
+                    settings = Settings()
+                    tr_cls.return_value = TemplateResolver(settings=settings, env_file_path=f.name)
+                    registry = MCPServerRegistry(configured_servers=configured_servers, settings=settings)
+                    
+                    config = registry.get_server_config("template-server")
+                    
+                    # Verify templates were resolved
+                    assert config.connection_params["args"] == [
+                        "--token", "secret123", "--url", "http://test.com"
+                    ]
+            finally:
+                os.unlink(f.name)
     
     def test_template_resolution_with_mixed_variables(self):
         """Test template resolution with both environment and default variables."""

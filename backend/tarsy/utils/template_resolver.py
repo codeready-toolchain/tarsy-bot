@@ -207,7 +207,7 @@ class TemplateResolver:
         # 1. Try .env file variables first (highest priority - project-specific)
         if var_name in self.env_file_vars:
             env_file_value = self.env_file_vars[var_name]
-            logger.debug(f"Resolved template variable {var_name} from .env file: {env_file_value}")
+            logger.debug(f"Resolved template variable {var_name} from .env file")
             return env_file_value
         else:
             logger.debug(f"Template variable {var_name} not found in .env file")
@@ -215,7 +215,7 @@ class TemplateResolver:
         # 2. Try system environment variable (medium priority - global system)
         env_value = os.getenv(var_name)
         if env_value is not None:
-            logger.debug(f"Resolved template variable {var_name} from system environment: {env_value}")
+            logger.debug(f"Resolved template variable {var_name} from system environment")
             return env_value
         else:
             logger.debug(f"Template variable {var_name} not found in system environment")
@@ -224,8 +224,8 @@ class TemplateResolver:
         if self.settings:
             default_value = self.settings.get_template_default(var_name)
             if default_value is not None:
-                logger.debug(f"Using default value for template variable {var_name}: {default_value}")
-                return default_value
+                logger.debug(f"Using default value for template variable {var_name} from settings")
+                return str(default_value)  # Ensure default is cast to str
             else:
                 logger.debug(f"No settings default available for template variable {var_name}")
         else:

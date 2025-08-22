@@ -410,7 +410,9 @@ class TestTemplateResolverEnvFileErrorHandling:
                 try:
                     os.chmod(f.name, 0o644)
                     os.unlink(f.name)
-                except:
+                except Exception:
+                    # Allow KeyboardInterrupt/SystemExit to propagate
+                    # but silently handle other cleanup errors
                     pass
     
     def test_template_cache_with_env_file(self):
