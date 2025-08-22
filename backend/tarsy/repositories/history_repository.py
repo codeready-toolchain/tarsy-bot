@@ -538,7 +538,7 @@ class HistoryRepository:
                 llm_details = LLMEventDetails(
                     messages=messages,
                     model_name=llm_db.model_name,
-                    temperature=llm_db.request_json.get('temperature') if llm_db.request_json else None,
+                    temperature=llm_db.request_json.get('temperature') if isinstance(llm_db.request_json, dict) else None,
                     success=llm_db.success,
                     error_message=llm_db.error_message,
                     input_tokens=tokens_used.get('prompt_tokens'),

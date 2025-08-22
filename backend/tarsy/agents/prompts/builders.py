@@ -386,9 +386,24 @@ Focus on root cause analysis and sustainable solutions."""
     def get_react_continuation_prompt(self, context_type: str = "general") -> List[str]:
         """Get ReAct continuation prompts for when LLM provides incomplete responses."""
         prompts = {
-            "general": "Observation: Choose ONE option: (1) Continue investigating with 'Thought: [reasoning] Action: [tool] Action Input: [params]' then STOP (do NOT generate fake observations) OR (2) Conclude with 'Thought: I have sufficient information Final Answer: [your analysis]'",
-            "data_collection": "Observation: Choose ONE option: (1) Continue data collection with 'Thought: [reasoning] Action: [tool] Action Input: [params]' then STOP (do NOT generate fake observations) OR (2) Conclude with 'Thought: I have sufficient data Final Answer: [data summary]'",
-            "analysis": "Observation: Choose ONE option: (1) Continue investigating with 'Thought: [reasoning] Action: [tool] Action Input: [params]' then STOP (do NOT generate fake observations) OR (2) Conclude with 'Thought: I have sufficient information Final Answer: [complete analysis]'"
+            "general": (
+                "Choose ONE option: (1) Continue investigating with "
+                "'Thought: [reasoning]\n Action: [tool]\n Action Input: [params]' then STOP "
+                "(do NOT generate fake observations) OR (2) Conclude with "
+                "'Thought: I have sufficient information\n Final Answer: [your analysis]'"
+            ),
+            "data_collection": (
+                "Choose ONE option: (1) Continue data collection with "
+                "'Thought: [reasoning]\n Action: [tool]\n Action Input: [params]' then STOP "
+                "(do NOT generate fake observations) OR (2) Conclude with "
+                "'Thought: I have sufficient data\n Final Answer: [data summary]'"
+            ),
+            "analysis": (
+                "Choose ONE option: (1) Continue investigating with "
+                "'Thought: [reasoning]\n Action: [tool]\n Action Input: [params]' then STOP "
+                "(do NOT generate fake observations) OR (2) Conclude with "
+                "'Thought: I have sufficient information\n Final Answer: [complete analysis]'"
+            )
         }
         
         continuation_message = prompts.get(context_type, prompts["general"])

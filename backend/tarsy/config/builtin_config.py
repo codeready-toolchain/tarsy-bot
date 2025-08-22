@@ -16,6 +16,7 @@ Agent classes are imported dynamically by AgentFactory when needed.
 
 import copy
 from typing import Dict, Any
+from tarsy.models import LLMProviderConfig
 
 
 # ==============================================================================
@@ -174,7 +175,7 @@ BUILTIN_PATTERN_GROUPS: Dict[str, list[str]] = {
 
 # Central registry of all built-in LLM provider configurations
 # Format: "provider-name" -> configuration_dict
-BUILTIN_LLM_PROVIDERS: Dict[str, Dict[str, Any]] = {
+BUILTIN_LLM_PROVIDERS: Dict[str, LLMProviderConfig] = {
     "openai-default": {
         "type": "openai",
         "model": "gpt-5",
@@ -187,12 +188,12 @@ BUILTIN_LLM_PROVIDERS: Dict[str, Dict[str, Any]] = {
     },
     "xai-default": {
         "type": "xai",
-        "model": "grok-4-latest", 
+        "model": "grok-4", 
         "api_key_env": "XAI_API_KEY"
     },
     "anthropic-default": {
         "type": "anthropic",
-        "model": "claude-4-sonnet",
+        "model": "claude-sonnet-4-20250514",
         "api_key_env": "ANTHROPIC_API_KEY"
     }
 }

@@ -24,6 +24,7 @@ dependencies = [
     "sqlmodel>=0.0.14",
     "sqlalchemy>=2.0.41",
     "cachetools>=5.3.0",
+    "PyYAML>=6.0",
 ]
 requires-python = ">= 3.11"
 

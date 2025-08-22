@@ -71,7 +71,7 @@ class TestLLMClientInitialization:
             assert client.provider_name == "xai"
             assert client.available == True
             mock_xai.assert_called_once_with(
-                model_name="gpt-4",
+                model="gpt-4",
                 api_key="test-api-key",
                 temperature=0.7
             )

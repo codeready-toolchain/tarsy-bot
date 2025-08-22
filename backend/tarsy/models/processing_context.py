@@ -205,7 +205,8 @@ class StageContext:
             
             # Wrap the analysis result content with HTML comment boundaries
             sections.append("<!-- Analysis Result START -->")
-            sections.append(summary)
+            escaped_summary = summary.replace("-->", "--&gt;").replace("<!--", "&lt;!--")
+            sections.append(escaped_summary)
             sections.append("<!-- Analysis Result END -->")
             sections.append("")
         

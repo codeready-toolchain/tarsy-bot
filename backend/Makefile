@@ -133,7 +133,7 @@ check-venv: ## Check if virtual environment exists and create if needed
 
 .PHONY: check-test-deps
 check-test-deps: check-venv ## Ensure test dependencies are installed
-	@if ! .venv/bin/python -c "import respx" 2>/dev/null; then \
+	@if ! .venv/bin/python -c "import pytest, xdist, respx" 2>/dev/null; then \
 		echo "$(YELLOW)Test dependencies not found. Installing...$(NC)"; \
 		$(UV) sync --extra test; \
 	fi

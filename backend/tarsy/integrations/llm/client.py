@@ -64,7 +64,7 @@ def _create_google_client(temp, api_key, model, disable_ssl_verification=False, 
 def _create_xai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
     """Create ChatXAI client."""
     client_kwargs = {
-        "model_name": model, 
+        "model": model, 
         "api_key": api_key, 
         "temperature": temp
     }
@@ -220,7 +220,7 @@ class LLMClient:
                 if error_details:
                     enhanced_message += f" | Details: {error_details}"
                 
-                raise Exception(enhanced_message)
+                raise Exception(enhanced_message)from e
     
     def _log_llm_request(self, messages: List[LLMMessage], request_id: str):
         """Log the outgoing LLM request."""

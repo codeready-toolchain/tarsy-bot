@@ -2,6 +2,7 @@
 Runbook service for downloading runbooks from GitHub.
 """
 
+from typing import Optional
 import httpx
 
 from tarsy.config.settings import Settings
@@ -10,8 +11,9 @@ from tarsy.config.settings import Settings
 class RunbookService:
     """Service for handling runbook operations."""
     
-    def __init__(self, settings: Settings, http_client: httpx.AsyncClient = None):
+    def __init__(self, settings: Settings, http_client: Optional[httpx.AsyncClient] = None):
         self.settings = settings
+        self._owns_client = http_client is None
         self.client = http_client or httpx.AsyncClient()
         
         # GitHub API headers
@@ -63,5 +65,6 @@ class RunbookService:
         return github_url
     
     async def close(self):
-        """Close the HTTP client."""
-        await self.client.aclose() 
+        """Close the HTTP client only if we own it."""
+        if self._owns_client:
+            await self.client.aclose() 
