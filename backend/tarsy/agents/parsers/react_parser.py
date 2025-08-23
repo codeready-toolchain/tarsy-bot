@@ -1,0 +1,439 @@
+"""
+Type-safe ReAct response parser that consolidates all parsing logic.
+
+This module replaces dict-based parsing from builders.py with proper types,
+providing validation and type safety for ReAct response processing.
+"""
+
+import json
+import logging
+from typing import Optional, Dict, Any
+from enum import Enum
+from pydantic import BaseModel, Field, field_validator
+
+logger = logging.getLogger(__name__)
+
+
+class ResponseType(Enum):
+    """Type of ReAct response parsed from LLM output."""
+    THOUGHT_ACTION = "thought_action"
+    FINAL_ANSWER = "final_answer"
+    MALFORMED = "malformed"
+
+
+class ToolCall(BaseModel):
+    """Type-safe tool call representation with validation."""
+    server: str = Field(..., min_length=1, description="MCP server name")
+    tool: str = Field(..., min_length=1, description="Tool name")
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="Tool parameters")
+    reason: str = Field(..., description="Reason for this tool call")
+
+    @field_validator('server')
+    @classmethod
+    def validate_server_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Server name cannot be empty")
+        return v.strip()
+
+    @field_validator('tool')
+    @classmethod
+    def validate_tool_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Tool name cannot be empty")
+        return v.strip()
+
+
+class ReActResponse(BaseModel):
+    """Type-safe ReAct response representation with validation."""
+    response_type: ResponseType = Field(..., description="Type of response parsed")
+    thought: Optional[str] = Field(None, description="Reasoning thought (optional - LLMs sometimes skip this)")
+    
+    # For THOUGHT_ACTION responses
+    action: Optional[str] = None
+    action_input: Optional[str] = None
+    tool_call: Optional[ToolCall] = None
+    
+    # For FINAL_ANSWER responses
+    final_answer: Optional[str] = None
+    
+    @property
+    def is_final_answer(self) -> bool:
+        """Check if this is a final answer response."""
+        return self.response_type == ResponseType.FINAL_ANSWER
+    
+    @property  
+    def has_action(self) -> bool:
+        """Check if this response contains a valid action."""
+        return self.response_type == ResponseType.THOUGHT_ACTION and self.tool_call is not None
+    
+    @property
+    def is_malformed(self) -> bool:
+        """Check if this response is malformed."""
+        return self.response_type == ResponseType.MALFORMED
+
+
+class ReActParser:
+    """
+    Type-safe ReAct response parser that consolidates all parsing logic.
+    
+    Replaces dict-based parsing from builders.py with proper types.
+    """
+    
+    @staticmethod
+    def parse_response(response: str) -> ReActResponse:
+        """
+        Parse LLM response into type-safe ReActResponse object.
+        
+        Consolidates logic from builders.parse_react_response() with proper validation.
+        
+        Returns:
+            ReActResponse with automatic validation and type checking
+            
+        Raises:
+            ValidationError if response data is malformed during model creation
+        """
+        if not response or not isinstance(response, str):
+            return ReActResponse(response_type=ResponseType.MALFORMED)
+        
+        # Parse sections using existing logic from builders.py
+        sections = ReActParser._extract_sections(response)
+        
+        # Check for final answer first
+        if sections.get('final_answer'):
+            return ReActResponse(
+                response_type=ResponseType.FINAL_ANSWER,
+                thought=sections.get('thought'),
+                final_answer=sections['final_answer']
+            )
+        
+        # Check for action (with or without thought - LLMs sometimes skip thought)
+        if sections.get('action') and sections.get('action_input'):
+            try:
+                tool_call = ReActParser._convert_to_tool_call(
+                    sections['action'], 
+                    sections['action_input']
+                )
+                return ReActResponse(
+                    response_type=ResponseType.THOUGHT_ACTION,
+                    thought=sections.get('thought'),  # Optional - might be None
+                    action=sections['action'],
+                    action_input=sections['action_input'],
+                    tool_call=tool_call
+                )
+            except ValueError as e:
+                # Log the error and return malformed response
+                logger.error(f"Invalid action format: {str(e)}")
+                return ReActResponse(response_type=ResponseType.MALFORMED)
+        
+        # Malformed response
+        return ReActResponse(response_type=ResponseType.MALFORMED)
+    
+    @staticmethod
+    def _extract_sections(response: str) -> Dict[str, str]:
+        """
+        Extract ReAct sections from response text.
+        
+        Moved from builders.py with improved error handling.
+        """
+        if not response or not isinstance(response, str):
+            return {}
+
+        lines = response.strip().split('\n')
+        parsed = {
+            'thought': None,
+            'action': None,
+            'action_input': None,
+            'final_answer': None
+        }
+        
+        current_section = None
+        content_lines = []
+        found_sections = set()
+        
+        try:
+            for line in lines:
+                # Safely strip line, handle None/empty cases
+                line = line.strip() if line else ""
+                
+                # Skip empty lines when not in a section
+                if not line and not current_section:
+                    continue
+                
+                # Check for stop conditions first
+                if ReActParser._should_stop_parsing(line):
+                    ReActParser._finalize_current_section(parsed, current_section, content_lines)
+                    break
+                
+                # Handle Final Answer (can appear at any time)
+                if ReActParser._is_section_header(line, 'final_answer', found_sections):
+                    ReActParser._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'final_answer'
+                    found_sections.add('final_answer')
+                    content_lines = [ReActParser._extract_section_content(line, 'Final Answer:')]
+                    
+                # Handle Thought section  
+                elif ReActParser._is_section_header(line, 'thought', found_sections):
+                    ReActParser._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'thought'
+                    found_sections.add('thought')
+                    if line.startswith('Thought:'):
+                        content_lines = [ReActParser._extract_section_content(line, 'Thought:')]
+                    else:
+                        content_lines = []  # 'Thought' without colon, content on next lines
+                    
+                # Handle Action section
+                elif ReActParser._is_section_header(line, 'action', found_sections):
+                    ReActParser._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'action'
+                    found_sections.add('action')
+                    # Clear action_input from found_sections to allow new action_input after new action
+                    found_sections.discard('action_input')
+                    content_lines = [ReActParser._extract_section_content(line, 'Action:')]
+                    
+                # Handle Action Input section
+                elif ReActParser._is_section_header(line, 'action_input', found_sections):
+                    ReActParser._finalize_current_section(parsed, current_section, content_lines)
+                    current_section = 'action_input'
+                    found_sections.add('action_input')
+                    content_lines = [ReActParser._extract_section_content(line, 'Action Input:')]
+                    
+                else:
+                    # Only add content if we're in a valid section
+                    if current_section and content_lines is not None:
+                        content_lines.append(line)
+            
+            # Handle last section
+            ReActParser._finalize_current_section(parsed, current_section, content_lines)
+            
+        except Exception as e:
+            # Log the error for debugging purposes while returning partial parse state
+            logger.error(
+                f"Exception occurred while parsing ReAct response, returning partial results: {str(e)}", 
+                exc_info=True
+            )
+            # Return the partial parse state that was built so far
+            return parsed
+        
+        return parsed
+    
+    @staticmethod
+    def _extract_section_content(line: str, prefix: str) -> str:
+        """Safely extract content from a line with given prefix, with defensive checks."""
+        if not line or not prefix:
+            return ""
+        
+        # Ensure the line is long enough to contain the prefix plus potential content
+        if len(line) < len(prefix):
+            return ""
+        
+        # Safely extract content after prefix
+        if len(line) > len(prefix):
+            return line[len(prefix):].strip()
+        
+        return ""
+
+    @staticmethod
+    def _is_section_header(line: str, section_type: str, found_sections: set) -> bool:
+        """Check if line is a valid section header."""
+        if not line:
+            return False
+        
+        # For ReAct parsing, allow duplicate actions and thoughts (use latest occurrence)
+        # But prevent duplicate final_answer (first one wins)
+        if section_type == 'final_answer' and section_type in found_sections:
+            return False
+            
+        if section_type == 'thought':
+            return line.startswith('Thought:') or line == 'Thought'
+        elif section_type == 'action':
+            return line.startswith('Action:')
+        elif section_type == 'action_input':
+            return line.startswith('Action Input:')
+        elif section_type == 'final_answer':
+            return line.startswith('Final Answer:')
+        
+        return False
+
+    @staticmethod
+    def _should_stop_parsing(line: str) -> bool:
+        """Check if we should stop parsing due to fake content markers."""
+        if not line:
+            return False
+        
+        # Stop parsing on fake/hallucinated observations that LLM generates
+        # But NOT on legitimate continuation prompts that are part of the conversation
+        if line.startswith('[Based on'):
+            return True
+        
+        # Only stop on observations that look like hallucinated tool results
+        # Continuation prompts like "Please specify what Action..." should not stop parsing
+        if line.startswith('Observation:'):
+            # Don't stop if this looks like a continuation prompt
+            if 'Please specify' in line or 'what Action you want to take' in line:
+                return False
+            # Don't stop if this looks like an error continuation 
+            if 'Error in reasoning' in line:
+                return False
+            # This appears to be a real/hallucinated observation - stop parsing
+            return True
+            
+        return False
+
+    @staticmethod
+    def _finalize_current_section(parsed: Dict[str, Any], current_section: str, content_lines: list) -> None:
+        """Safely finalize the current section by joining content lines."""
+        if current_section and content_lines is not None:
+            new_content = '\n'.join(content_lines).strip()
+            # Only overwrite existing content if new content is not empty
+            # This handles cases where duplicate sections have empty content
+            if new_content or parsed.get(current_section) is None:
+                parsed[current_section] = new_content
+    
+    @staticmethod
+    def _convert_to_tool_call(action: str, action_input: str) -> ToolCall:
+        """
+        Convert action + input to type-safe ToolCall.
+        
+        Moved from builders.convert_action_to_tool_call() with proper return type.
+        """
+        if not action or '.' not in action:
+            raise ValueError(f"Invalid action format: {action}")
+        
+        server, tool = action.split('.', 1)
+        
+        # Parse parameters (moved from builders.py logic)
+        parameters = ReActParser._parse_action_parameters(action_input)
+        
+        return ToolCall(
+            server=server,
+            tool=tool,
+            parameters=parameters,
+            reason=f'ReAct Action: {action}'
+        )
+    
+    @staticmethod
+    def _parse_action_parameters(action_input: str) -> Dict[str, Any]:
+        """
+        Parse action input parameters from various formats.
+        
+        Moved from builders.convert_action_to_tool_call() logic.
+        """
+        parameters = {}
+        action_input = action_input.strip() if action_input else ""
+        
+        if not action_input:
+            return parameters
+        
+        try:
+            # Try JSON first
+            if action_input.startswith('{'):
+                parameters = json.loads(action_input)
+            else:
+                # Handle YAML-like format: "apiVersion: v1, kind: Namespace, name: superman-dev"
+                # or key=value format
+                for part in action_input.split(','):
+                    part = part.strip()
+                    if ':' in part and '=' not in part:
+                        # YAML-like format (key: value)
+                        key, value = part.split(':', 1)
+                        parameters[key.strip()] = value.strip()
+                    elif '=' in part:
+                        # key=value format
+                        key, value = part.split('=', 1)
+                        parameters[key.strip()] = value.strip()
+                    else:
+                        # Single parameter without format
+                        if not parameters:  # Only if we haven't added anything yet
+                            parameters['input'] = action_input
+                            break
+                        
+                # If no structured format detected, treat as single input
+                if not parameters:
+                    parameters['input'] = action_input
+                        
+        except json.JSONDecodeError:
+            # Fallback: try to parse as key: value or key=value
+            for part in action_input.split(','):
+                part = part.strip()
+                if ':' in part:
+                    key, value = part.split(':', 1)
+                    parameters[key.strip()] = value.strip()
+                elif '=' in part:
+                    key, value = part.split('=', 1)
+                    parameters[key.strip()] = value.strip()
+            
+            # Ultimate fallback
+            if not parameters:
+                parameters['input'] = action_input
+        except Exception:
+            # Ultimate fallback
+            parameters['input'] = action_input
+        
+        return parameters
+    
+    @staticmethod
+    def get_continuation_prompt(context_type: str = "general") -> str:
+        """
+        Get continuation prompt for malformed responses.
+        
+        Moved from builders.get_react_continuation_prompt() with simplified return type.
+        """
+        prompts = {
+            "general": (
+                "Choose ONE option: (1) Continue investigating with "
+                "'Thought: [reasoning]\\n Action: [tool]\\n Action Input: [params]' then STOP "
+                "(do NOT generate fake observations) OR (2) Conclude with "
+                "'Thought: I have sufficient information\\n Final Answer: [your analysis]'"
+            ),
+            "data_collection": (
+                "Choose ONE option: (1) Continue data collection with "
+                "'Thought: [reasoning]\\n Action: [tool]\\n Action Input: [params]' then STOP "
+                "(do NOT generate fake observations) OR (2) Conclude with "
+                "'Thought: I have sufficient data\\n Final Answer: [data summary]'"
+            ),
+            "analysis": (
+                "Choose ONE option: (1) Continue investigating with "
+                "'Thought: [reasoning]\\n Action: [tool]\\n Action Input: [params]' then STOP "
+                "(do NOT generate fake observations) OR (2) Conclude with "
+                "'Thought: I have sufficient information\\n Final Answer: [complete analysis]'"
+            )
+        }
+        return prompts.get(context_type, prompts["general"])
+    
+    @staticmethod
+    def get_error_continuation(error_message: str) -> str:
+        """
+        Get error continuation prompt for iteration error recovery.
+        
+        Moved from builders.get_react_error_continuation() with simplified return type.
+        """
+        return f"Observation: Error in reasoning: {error_message}. Please try a different approach."
+    
+    @staticmethod  
+    def format_observation(mcp_data: Dict[str, Any]) -> str:
+        """
+        Format MCP tool results as observation text.
+        
+        Moved from builders.format_observation().
+        """
+        if not mcp_data:
+            return "No data returned from the action."
+        
+        observations = []
+        for server, results in mcp_data.items():
+            if isinstance(results, list):
+                for result in results:
+                    if 'result' in result and result['result']:
+                        # Format the result nicely
+                        if isinstance(result['result'], dict):
+                            formatted_result = json.dumps(result['result'], indent=2)
+                        else:
+                            formatted_result = str(result['result'])
+                        observations.append(f"{server}.{result.get('tool', 'unknown')}: {formatted_result}")
+                    elif 'error' in result:
+                        observations.append(f"{server}.{result.get('tool', 'unknown')} error: {result['error']}")
+            else:
+                # Legacy format
+                observations.append(f"{server}: {json.dumps(results, indent=2)}")
+        
+        return '\n'.join(observations) if observations else "Action completed but no specific data returned."

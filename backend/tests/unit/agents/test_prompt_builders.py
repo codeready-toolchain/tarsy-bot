@@ -1,11 +1,10 @@
 """
-Unit tests for PromptBuilder.
+Unit tests for PromptBuilder prompt building functionality.
 
-Tests ReAct response parsing, action conversion, and error handling.
-Focuses on critical functionality that ensures reliable agent communication.
+Tests prompt construction, template rendering, and helper methods.
+NOTE: ReAct parsing tests are now in test_react_parser.py (EP-0014).
 """
 
-import json
 import pytest
 from unittest.mock import Mock
 
@@ -13,537 +12,366 @@ from tarsy.agents.prompts.builders import PromptBuilder
 
 
 @pytest.mark.unit
-class TestReActResponseParsing:
-    """Test ReAct response parsing with various edge cases."""
+class TestPromptBuilding:
+    """Test core prompt building functionality."""
     
     @pytest.fixture
     def builder(self):
         """Create PromptBuilder instance."""
         return PromptBuilder()
     
-    def test_parse_empty_response(self, builder):
-        """Test parsing empty or None response."""
-        result = builder.parse_react_response("")
+    @pytest.fixture
+    def mock_stage_context(self):
+        """Create mock StageContext for testing."""
+        context = Mock()
+        context.alert_data = {
+            'title': 'Test Alert',
+            'severity': 'critical',
+            'description': 'Test alert description'
+        }
+        context.runbook_content = "Test runbook content"
+        context.format_previous_stages_context.return_value = "No previous stage context available."
+        context.chain_context.alert_type = "kubernetes"
+        # Create proper Mock objects with name attributes
+        get_pods_tool = Mock()
+        get_pods_tool.server = "kubectl"
+        get_pods_tool.name = "get_pods"
+        get_pods_tool.description = "Get pod information"
+        get_pods_tool.parameters = []
         
-        assert result['thought'] is None
-        assert result['action'] is None
-        assert result['action_input'] is None
-        assert result['final_answer'] is None
-        assert result['is_complete'] is False
+        get_namespace_tool = Mock()
+        get_namespace_tool.server = "kubectl"  
+        get_namespace_tool.name = "get_namespace"
+        get_namespace_tool.description = "Get namespace info"
+        get_namespace_tool.parameters = []
+        
+        context.available_tools.tools = [get_pods_tool, get_namespace_tool]
+        context.agent_name = "test-agent"
+        context.mcp_servers = ["kubectl", "monitoring"]
+        context.stage_name = "investigation"
+        return context
     
-    def test_parse_none_response(self, builder):
-        """Test parsing None response."""
-        result = builder.parse_react_response(None)
+    def test_build_standard_react_prompt_basic(self, builder, mock_stage_context):
+        """Test basic standard ReAct prompt building."""
+        result = builder.build_standard_react_prompt(mock_stage_context)
         
-        assert result['thought'] is None
-        assert result['action'] is None
-        assert result['action_input'] is None
-        assert result['final_answer'] is None
-        assert result['is_complete'] is False
+        # Should contain key ReAct elements
+        assert "Test Alert" in result
+        assert "critical" in result
+        assert "Test runbook content" in result
+        assert "kubectl.get_pods: Get pod information" in result
+        assert "kubectl.get_namespace: Get namespace info" in result
+        assert "Previous Stage Data" in result
     
-    def test_parse_non_string_response(self, builder):
-        """Test parsing non-string response."""
-        result = builder.parse_react_response(123)
+    def test_build_standard_react_prompt_with_history(self, builder, mock_stage_context):
+        """Test standard ReAct prompt with history."""
+        react_history = [
+            "Thought: I need to check pods",
+            "Action: kubectl.get_pods",
+            "Action Input: namespace=default"
+        ]
         
-        assert result['thought'] is None
-        assert result['action'] is None
-        assert result['action_input'] is None
-        assert result['final_answer'] is None
-        assert result['is_complete'] is False
+        result = builder.build_standard_react_prompt(mock_stage_context, react_history)
+        
+        # Should contain history elements
+        assert "Thought: I need to check pods" in result
+        assert "Action: kubectl.get_pods" in result
+        assert "Action Input: namespace=default" in result
     
-    def test_parse_response_with_hallucinated_observations(self, builder):
-        """Test that parsing stops at hallucinated observations."""
-        response = """Thought: I need to check the namespace status.
-Action: kubectl.get_namespace
-Action Input: name=test-namespace
-
-Observation: Based on the kubectl command, the namespace shows:
-{
-  "status": "Terminating",
-  "metadata": {
-    "finalizers": ["example.com/finalizer"]
-  }
-}
-
-Thought: I can see the issue is a stuck finalizer."""
+    def test_build_stage_analysis_react_prompt_basic(self, builder, mock_stage_context):
+        """Test basic stage analysis ReAct prompt building."""
+        result = builder.build_stage_analysis_react_prompt(mock_stage_context)
         
-        result = builder.parse_react_response(response)
-        
-        # Should stop parsing at the hallucinated observation
-        assert result['thought'] == "I need to check the namespace status."
-        assert result['action'] == "kubectl.get_namespace"
-        assert result['action_input'] == "name=test-namespace"
-        assert result['final_answer'] is None
-        assert result['is_complete'] is False
+        # Should contain stage-specific elements
+        assert "Test Alert" in result
+        assert "INVESTIGATION" in result  # Stage name in uppercase
+        assert "kubectl.get_pods: Get pod information" in result
+        assert "Previous Stage Data" in result
     
-    def test_parse_response_with_fake_content_marker(self, builder):
-        """Test parsing stops at fake content markers."""
-        response = """Thought: Need to investigate the alert.
-Action: test.action
-Action Input: param=value
-
-[Based on the investigation, I found that...]
-
-Thought: This shouldn't be parsed."""
+    def test_build_stage_analysis_react_prompt_with_history(self, builder, mock_stage_context):
+        """Test stage analysis ReAct prompt with history."""
+        react_history = ["Thought: Previous analysis step"]
         
-        result = builder.parse_react_response(response)
+        result = builder.build_stage_analysis_react_prompt(mock_stage_context, react_history)
         
-        # Should stop at [Based on...
-        assert result['thought'] == "Need to investigate the alert."
-        assert result['action'] == "test.action"
-        assert result['action_input'] == "param=value"
+        # Should contain history
+        assert "Previous analysis step" in result
+        assert "INVESTIGATION" in result
     
-    def test_parse_response_with_duplicate_final_answer(self, builder):
-        """Test that only first Final Answer is used."""
-        response = """Thought: Analysis complete.
-
-Final Answer: First analysis result.
-
-Final Answer: This second one should be ignored."""
+    def test_build_final_analysis_prompt(self, builder, mock_stage_context):
+        """Test final analysis prompt building."""
+        result = builder.build_final_analysis_prompt(mock_stage_context)
         
-        result = builder.parse_react_response(response)
-        
-        # The first final answer should be used
-        assert "First analysis result" in result['final_answer']
-        assert result['is_complete'] is True
+        # Should contain final analysis elements
+        assert "Test Alert" in result
+        assert "test-agent" in result
+        assert "kubectl, monitoring" in result
+        assert "investigation" in result
+        assert "Final Analysis Stage" in result
+        assert "Previous Stage Data" in result
     
-    def test_parse_response_with_duplicate_actions(self, builder):
-        """Test that latest Action/Action Input is used."""
-        response = """Thought: First thought.
-Action: first.action
-Action Input: first=input
-
-Thought: Changed my mind.
-Action: second.action
-Action Input: second=input"""
+    def test_build_final_analysis_prompt_no_stage_name(self, builder, mock_stage_context):
+        """Test final analysis prompt without stage name."""
+        mock_stage_context.stage_name = None
         
-        result = builder.parse_react_response(response)
+        result = builder.build_final_analysis_prompt(mock_stage_context)
         
-        # Should use latest action
-        assert result['action'] == "second.action"
-        assert result['action_input'] == "second=input"
-        assert result['thought'] == "Changed my mind."
-    
-    def test_parse_response_with_thought_only(self, builder):
-        """Test parsing response with only 'Thought' header."""
-        response = """Thought
-I need to analyze this situation carefully.
-This is multi-line thinking."""
-        
-        result = builder.parse_react_response(response)
-        
-        expected_thought = "I need to analyze this situation carefully.\nThis is multi-line thinking."
-        assert result['thought'] == expected_thought
-        assert result['action'] is None
-        assert result['final_answer'] is None
-    
-    def test_parse_response_parsing_exception_returns_partial(self, builder):
-        """Test that parsing exceptions return partial results."""
-        # Mock the _finalize_current_section to raise an exception partway through
-        original_method = builder._finalize_current_section
-        call_count = 0
-        
-        def mock_finalize(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count >= 2:  # Fail on second call
-                raise ValueError("Simulated parsing error")
-            return original_method(*args, **kwargs)
-        
-        builder._finalize_current_section = mock_finalize
-        
-        response = """Thought: This should work.
-Action: test.action
-Action Input: should=fail"""
-        
-        result = builder.parse_react_response(response)
-        
-        # Should return partial results even with exception
-        assert isinstance(result, dict)
-        assert 'thought' in result
-        assert 'action' in result
-        assert 'is_complete' in result
+        # Should still work without stage name
+        assert "Test Alert" in result
+        assert "test-agent" in result
 
 
 @pytest.mark.unit
-class TestActionToToolCallConversion:
-    """Test ReAct action to MCP tool call conversion."""
+class TestSystemMessageGeneration:
+    """Test system message generation methods."""
     
     @pytest.fixture
     def builder(self):
         """Create PromptBuilder instance."""
         return PromptBuilder()
     
-    def test_convert_simple_action(self, builder):
-        """Test converting simple action to tool call."""
-        result = builder.convert_action_to_tool_call(
-            "kubectl.get_pods", 
-            "namespace=default"
-        )
+    def test_get_enhanced_react_system_message(self, builder):
+        """Test enhanced ReAct system message generation."""
+        composed_instructions = "You are a test agent with specific instructions."
         
-        assert result['server'] == 'kubectl'
-        assert result['tool'] == 'get_pods'
-        assert result['parameters']['namespace'] == 'default'
-        assert result['reason'] == 'ReAct Action: kubectl.get_pods'
+        result = builder.get_enhanced_react_system_message(composed_instructions)
+        
+        # Should contain composed instructions and default task focus
+        assert composed_instructions in result
+        assert "investigation and providing recommendations" in result
     
-    def test_convert_action_with_json_input(self, builder):
-        """Test converting action with JSON input."""
-        json_input = '{"namespace": "kube-system", "pod": "coredns"}'
+    def test_get_enhanced_react_system_message_custom_task_focus(self, builder):
+        """Test enhanced ReAct system message with custom task focus."""
+        composed_instructions = "You are a test agent."
+        custom_focus = "data collection and analysis"
         
-        result = builder.convert_action_to_tool_call(
-            "kubectl.describe_pod",
-            json_input
-        )
+        result = builder.get_enhanced_react_system_message(composed_instructions, custom_focus)
         
-        assert result['server'] == 'kubectl'
-        assert result['tool'] == 'describe_pod'
-        assert result['parameters']['namespace'] == 'kube-system'
-        assert result['parameters']['pod'] == 'coredns'
+        # Should contain custom task focus
+        assert composed_instructions in result
+        assert custom_focus in result
     
-    def test_convert_action_with_yaml_like_input(self, builder):
-        """Test converting action with YAML-like input."""
-        yaml_input = "apiVersion: v1, kind: Namespace, name: superman-dev"
+    def test_get_general_instructions(self, builder):
+        """Test general instructions generation."""
+        result = builder.get_general_instructions()
         
-        result = builder.convert_action_to_tool_call(
-            "kubectl.apply",
-            yaml_input
-        )
-        
-        assert result['server'] == 'kubectl'
-        assert result['tool'] == 'apply'
-        assert result['parameters']['apiVersion'] == 'v1'
-        assert result['parameters']['kind'] == 'Namespace'
-        assert result['parameters']['name'] == 'superman-dev'
-    
-    def test_convert_action_with_key_equals_value_input(self, builder):
-        """Test converting action with key=value input."""
-        input_str = "namespace=default, pod=nginx, container=app"
-        
-        result = builder.convert_action_to_tool_call(
-            "kubectl.logs",
-            input_str
-        )
-        
-        assert result['server'] == 'kubectl'
-        assert result['tool'] == 'logs'
-        assert result['parameters']['namespace'] == 'default'
-        assert result['parameters']['pod'] == 'nginx'
-        assert result['parameters']['container'] == 'app'
-    
-    def test_convert_action_with_plain_text_input(self, builder):
-        """Test converting action with plain text input."""
-        result = builder.convert_action_to_tool_call(
-            "search.query",
-            "kubernetes finalizer stuck"
-        )
-        
-        assert result['server'] == 'search'
-        assert result['tool'] == 'query'
-        assert result['parameters']['input'] == 'kubernetes finalizer stuck'
-    
-    def test_convert_action_empty_action_raises_error(self, builder):
-        """Test that empty action raises ValueError."""
-        with pytest.raises(ValueError, match="Action cannot be empty"):
-            builder.convert_action_to_tool_call("", "some input")
-    
-    def test_convert_action_no_dot_raises_error(self, builder):
-        """Test that action without dot raises ValueError."""
-        with pytest.raises(ValueError, match="Action must be in format 'server.tool'"):
-            builder.convert_action_to_tool_call("invalid_action", "some input")
-    
-    def test_convert_action_with_invalid_json_fallback(self, builder):
-        """Test fallback when JSON parsing fails."""
-        invalid_json = '{"namespace": invalid json'
-        
-        result = builder.convert_action_to_tool_call(
-            "test.action",
-            invalid_json
-        )
-        
-        # Should fallback - might parse parts or use as input
-        assert 'parameters' in result
-        assert result['server'] == 'test'
-        assert result['tool'] == 'action'
-    
-    def test_convert_action_with_mixed_format_input(self, builder):
-        """Test converting action with mixed format input."""
-        mixed_input = "namespace: kube-system, pod=coredns-abc, invalid format here"
-        
-        result = builder.convert_action_to_tool_call(
-            "kubectl.logs",
-            mixed_input
-        )
-        
-        assert result['server'] == 'kubectl'
-        assert result['tool'] == 'logs'
-        assert result['parameters']['namespace'] == 'kube-system'
-        assert result['parameters']['pod'] == 'coredns-abc'
-    
-    def test_convert_action_empty_input_fallback(self, builder):
-        """Test converting action with empty input."""
-        result = builder.convert_action_to_tool_call(
-            "test.action",
-            ""
-        )
-        
-        assert result['parameters']['input'] == ""
+        # Should contain key SRE instruction elements
+        assert "Site Reliability Engineer" in result
+        assert "Kubernetes" in result
+        assert "Incident response" in result
+        assert "troubleshooting" in result
+        assert "root cause analysis" in result
 
 
 @pytest.mark.unit
-class TestObservationFormatting:
-    """Test MCP data observation formatting."""
+class TestHelperMethods:
+    """Test helper methods for prompt building."""
     
     @pytest.fixture
     def builder(self):
         """Create PromptBuilder instance."""
         return PromptBuilder()
     
-    def test_format_empty_observation(self, builder):
-        """Test formatting empty MCP data."""
-        result = builder.format_observation({})
-        
-        assert result == "No data returned from the action."
+    @pytest.fixture
+    def mock_stage_context(self):
+        """Create mock StageContext."""
+        context = Mock()
+        context.agent_name = "test-agent"
+        context.mcp_servers = ["kubectl", "monitoring", "logging"]
+        return context
     
-    def test_format_none_observation(self, builder):
-        """Test formatting None MCP data."""
-        result = builder.format_observation(None)
+    def test_build_context_section(self, builder, mock_stage_context):
+        """Test context section building."""
+        result = builder._build_context_section(mock_stage_context)
         
-        assert result == "No data returned from the action."
+        # Should contain agent name and server list
+        assert "test-agent" in result
+        assert "kubectl, monitoring, logging" in result
     
-    def test_format_observation_with_results(self, builder):
-        """Test formatting MCP data with results."""
-        mcp_data = {
-            "kubectl": [
-                {
-                    "tool": "get_pods",
-                    "result": {
-                        "pods": [
-                            {"name": "pod1", "status": "Running"},
-                            {"name": "pod2", "status": "Pending"}
-                        ]
-                    }
-                }
-            ]
+    def test_format_available_actions_with_tools(self, builder):
+        """Test available actions formatting."""
+        # Create proper Mock objects with correct attributes
+        get_pods_tool = Mock()
+        get_pods_tool.server = "kubectl"
+        get_pods_tool.name = "get_pods"
+        get_pods_tool.description = "Get pod information"
+        get_pods_tool.parameters = [
+            {"name": "namespace", "description": "Kubernetes namespace"},
+            {"name": "labels", "description": "Label selector"}
+        ]
+        
+        get_metrics_tool = Mock()
+        get_metrics_tool.server = "monitoring"
+        get_metrics_tool.name = "get_metrics"
+        get_metrics_tool.description = "Get metrics data"
+        get_metrics_tool.parameters = []
+        
+        available_tools = {
+            "tools": [get_pods_tool, get_metrics_tool]
         }
         
-        result = builder.format_observation(mcp_data)
+        result = builder._format_available_actions(available_tools)
         
-        assert "kubectl.get_pods:" in result
-        assert "pod1" in result
-        assert "Running" in result
-        assert "pod2" in result
-        assert "Pending" in result
+        # Should format actions correctly
+        assert "kubectl.get_pods" in result
+        assert "Get pod information" in result
+        assert "namespace: Kubernetes namespace" in result
+        assert "labels: Label selector" in result
+        assert "monitoring.get_metrics" in result
+        assert "Get metrics data" in result
     
-    def test_format_observation_with_errors(self, builder):
-        """Test formatting MCP data with errors."""
-        mcp_data = {
-            "kubectl": [
-                {
-                    "tool": "get_namespace",
-                    "error": "Namespace 'nonexistent' not found"
-                }
-            ]
-        }
+    def test_format_available_actions_empty_tools(self, builder):
+        """Test available actions formatting with no tools."""
+        available_tools = {"tools": []}
         
-        result = builder.format_observation(mcp_data)
+        result = builder._format_available_actions(available_tools)
         
-        assert "kubectl.get_namespace error:" in result
-        assert "Namespace 'nonexistent' not found" in result
+        assert result == "No tools available."
     
-    def test_format_observation_mixed_results_and_errors(self, builder):
-        """Test formatting MCP data with both results and errors."""
-        mcp_data = {
-            "kubectl": [
-                {
-                    "tool": "get_pods",
-                    "result": {"pods": ["pod1"]}
-                },
-                {
-                    "tool": "get_services",
-                    "error": "Permission denied"
-                }
-            ]
-        }
+    def test_format_available_actions_no_tools_key(self, builder):
+        """Test available actions formatting with missing tools key."""
+        available_tools = {}
         
-        result = builder.format_observation(mcp_data)
+        result = builder._format_available_actions(available_tools)
         
-        assert "kubectl.get_pods:" in result
-        assert "kubectl.get_services error:" in result
-        assert "Permission denied" in result
+        assert result == "No tools available."
     
-    def test_format_observation_legacy_format(self, builder):
-        """Test formatting legacy MCP data format."""
-        mcp_data = {
-            "server1": {"some": "data", "status": "success"},
-            "server2": {"error": "failed"}
-        }
+    def test_flatten_react_history_mixed_types(self, builder):
+        """Test flattening react history with mixed types."""
+        react_history = [
+            "Simple string",
+            ["Nested", "list", "items"],
+            123,  # Non-string item
+            None  # None item
+        ]
         
-        result = builder.format_observation(mcp_data)
+        result = builder._flatten_react_history(react_history)
         
-        assert "server1:" in result
-        assert "server2:" in result
-        assert "some" in result
-        assert "failed" in result
+        # Should flatten and convert all to strings
+        expected = ["Simple string", "Nested", "list", "items", "123", "None"]
+        assert result == expected
     
-    def test_format_observation_complex_nested_data(self, builder):
-        """Test formatting complex nested data structures."""
-        mcp_data = {
-            "kubectl": [
-                {
-                    "tool": "describe_pod",
-                    "result": {
-                        "metadata": {
-                            "name": "test-pod",
-                            "labels": {"app": "test", "version": "v1"}
-                        },
-                        "spec": {
-                            "containers": [
-                                {"name": "app", "image": "nginx:1.20"}
-                            ]
-                        },
-                        "status": {
-                            "phase": "Running",
-                            "conditions": [
-                                {"type": "Ready", "status": "True"}
-                            ]
-                        }
-                    }
-                }
-            ]
-        }
+    def test_flatten_react_history_empty(self, builder):
+        """Test flattening empty react history."""
+        react_history = []
         
-        result = builder.format_observation(mcp_data)
+        result = builder._flatten_react_history(react_history)
         
-        # Should format as JSON with proper indentation
-        assert "kubectl.describe_pod:" in result
-        assert '"name": "test-pod"' in result
-        assert '"phase": "Running"' in result
-        assert "nginx:1.20" in result
+        assert result == []
+    
+    def test_flatten_react_history_strings_only(self, builder):
+        """Test flattening react history with strings only."""
+        react_history = ["First", "Second", "Third"]
+        
+        result = builder._flatten_react_history(react_history)
+        
+        assert result == ["First", "Second", "Third"]
 
 
 @pytest.mark.unit
-class TestReActContinuationPrompts:
-    """Test ReAct continuation prompt generation."""
+class TestPromptIntegration:
+    """Test integration scenarios for prompt building."""
     
     @pytest.fixture
     def builder(self):
         """Create PromptBuilder instance."""
         return PromptBuilder()
     
-    def test_get_react_continuation_general(self, builder):
-        """Test general continuation prompt."""
-        result = builder.get_react_continuation_prompt("general")
-        
-        assert len(result) == 2
-        assert result[1] == "Thought:"
-        assert "Choose ONE option" in result[0]
-        assert "do NOT generate fake observations" in result[0]
-    
-    def test_get_react_continuation_data_collection(self, builder):
-        """Test data collection continuation prompt."""
-        result = builder.get_react_continuation_prompt("data_collection")
-        
-        assert len(result) == 2
-        assert "Continue data collection" in result[0]
-        assert "sufficient data" in result[0]
-    
-    def test_get_react_continuation_analysis(self, builder):
-        """Test analysis continuation prompt."""
-        result = builder.get_react_continuation_prompt("analysis")
-        
-        assert len(result) == 2
-        assert "Continue investigating" in result[0]
-        assert "complete analysis" in result[0]
-    
-    def test_get_react_continuation_unknown_context(self, builder):
-        """Test continuation with unknown context defaults to general."""
-        result = builder.get_react_continuation_prompt("unknown_context")
-        
-        # Should default to general prompt
-        general_result = builder.get_react_continuation_prompt("general")
-        assert result == general_result
-    
-    def test_get_react_error_continuation(self, builder):
-        """Test error continuation prompt generation."""
-        error_message = "Tool execution failed: Connection timeout"
-        
-        result = builder.get_react_error_continuation(error_message)
-        
-        assert len(result) == 2
-        assert result[1] == "Thought:"
-        assert "Error in reasoning" in result[0]
-        assert error_message in result[0]
-        assert "try a different approach" in result[0]
-
-
-@pytest.mark.unit
-class TestSectionExtraction:
-    """Test ReAct section extraction helper methods."""
-    
     @pytest.fixture
-    def builder(self):
-        """Create PromptBuilder instance."""
-        return PromptBuilder()
+    def full_mock_context(self):
+        """Create comprehensive mock StageContext."""
+        context = Mock()
+        context.alert_data = {
+            'title': 'Pod CrashLoopBackOff',
+            'severity': 'high',
+            'description': 'Multiple pods crashing in production namespace',
+            'labels': {'env': 'production', 'team': 'platform'}
+        }
+        context.runbook_content = """
+# Pod CrashLoop Investigation Runbook
+
+## Steps:
+1. Check pod status and logs
+2. Verify resource limits
+3. Check recent deployments
+        """.strip()
+        context.format_previous_stages_context.return_value = """
+Stage 1 (Detection): Identified CrashLoopBackOff in prod namespace
+Stage 2 (Initial): Found resource constraints and recent deployment
+        """.strip()
+        context.chain_context.alert_type = "kubernetes-pod"
+        # Create proper Mock objects with correct attributes
+        get_pods_tool = Mock()
+        get_pods_tool.server = "kubectl"
+        get_pods_tool.name = "get_pods"
+        get_pods_tool.description = "List pods in namespace"
+        get_pods_tool.parameters = [{"name": "namespace", "description": "Target namespace"}]
+        
+        describe_pod_tool = Mock()
+        describe_pod_tool.server = "kubectl"
+        describe_pod_tool.name = "describe_pod"
+        describe_pod_tool.description = "Get detailed pod information"
+        describe_pod_tool.parameters = [
+            {"name": "namespace", "description": "Pod namespace"},
+            {"name": "pod_name", "description": "Pod name"}
+        ]
+        
+        get_logs_tool = Mock()
+        get_logs_tool.server = "kubectl"
+        get_logs_tool.name = "get_logs"
+        get_logs_tool.description = "Get pod logs"
+        get_logs_tool.parameters = [
+            {"name": "namespace", "description": "Pod namespace"},
+            {"name": "pod_name", "description": "Pod name"},
+            {"name": "container", "description": "Container name"}
+        ]
+        
+        context.available_tools.tools = [get_pods_tool, describe_pod_tool, get_logs_tool]
+        context.agent_name = "kubernetes-sre-agent"
+        context.mcp_servers = ["kubectl", "monitoring", "logging"]
+        context.stage_name = "deep_investigation"
+        return context
     
-    def test_extract_section_content_normal(self, builder):
-        """Test normal section content extraction."""
-        line = "Action: kubectl.get_pods"
-        result = builder._extract_section_content(line, "Action: ")
+    def test_comprehensive_react_prompt_generation(self, builder, full_mock_context):
+        """Test comprehensive ReAct prompt generation with all elements."""
+        react_history = [
+            "Thought: I need to investigate the CrashLoopBackOff issue",
+            "Action: kubectl.get_pods",
+            "Action Input: namespace: production",
+            "Observation: Found 3 pods in CrashLoopBackOff state"
+        ]
         
-        assert result == "kubectl.get_pods"
+        result = builder.build_standard_react_prompt(full_mock_context, react_history)
+        
+        # Should contain all major elements
+        assert "Pod CrashLoopBackOff" in result
+        assert "Multiple pods crashing" in result
+        assert "Pod CrashLoop Investigation Runbook" in result
+        assert "Stage 1 (Detection)" in result
+        assert "kubectl.get_pods: List pods in namespace" in result
+        assert "kubectl.describe_pod: Get detailed pod information" in result
+        assert "kubectl.get_logs: Get pod logs" in result
+        assert "Thought: I need to investigate" in result
+        assert "Found 3 pods in CrashLoopBackOff state" in result
     
-    def test_extract_section_content_empty_line(self, builder):
-        """Test extraction from empty line."""
-        result = builder._extract_section_content("", "Action: ")
+    def test_stage_analysis_with_comprehensive_context(self, builder, full_mock_context):
+        """Test stage analysis prompt with comprehensive context."""
+        result = builder.build_stage_analysis_react_prompt(full_mock_context)
         
-        assert result == ""
+        # Should contain stage-specific formatting
+        assert "DEEP_INVESTIGATION" in result
+        assert "Pod CrashLoopBackOff" in result
+        assert "kubectl.get_pods: List pods in namespace" in result
+        assert "Stage 1 (Detection)" in result
     
-    def test_extract_section_content_empty_prefix(self, builder):
-        """Test extraction with empty prefix."""
-        result = builder._extract_section_content("some content", "")
+    def test_final_analysis_comprehensive(self, builder, full_mock_context):
+        """Test final analysis prompt with comprehensive context."""
+        result = builder.build_final_analysis_prompt(full_mock_context)
         
-        assert result == ""
-    
-    def test_extract_section_content_line_shorter_than_prefix(self, builder):
-        """Test extraction when line is shorter than prefix."""
-        result = builder._extract_section_content("Act", "Action: ")
-        
-        assert result == ""
-    
-    def test_extract_section_content_exact_prefix_length(self, builder):
-        """Test extraction when line exactly matches prefix."""
-        result = builder._extract_section_content("Action:", "Action:")
-        
-        assert result == ""
-    
-    def test_is_section_header_thought_variations(self, builder):
-        """Test thought section header detection."""
-        found_sections = set()
-        
-        assert builder._is_section_header("Thought:", "thought", found_sections) is True
-        assert builder._is_section_header("Thought", "thought", found_sections) is True
-        assert builder._is_section_header("thinking:", "thought", found_sections) is False
-    
-    def test_is_section_header_duplicate_final_answer(self, builder):
-        """Test that duplicate final answer is rejected."""
-        found_sections = {"final_answer"}
-        
-        # Should reject duplicate final answer
-        assert builder._is_section_header("Final Answer:", "final_answer", found_sections) is False
-        
-        # But allow other duplicates
-        assert builder._is_section_header("Thought:", "thought", found_sections) is True
-    
-    def test_should_stop_parsing_conditions(self, builder):
-        """Test various stop parsing conditions."""
-        # Should stop on fake content markers
-        assert builder._should_stop_parsing("[Based on the investigation") is True
-        
-        # Should stop on hallucinated observations (but not continuation prompts)
-        assert builder._should_stop_parsing("Observation: The pod is running") is True
-        assert builder._should_stop_parsing("Observation: Please specify what Action") is False
-        assert builder._should_stop_parsing("Observation: Error in reasoning") is False
-        
-        # Should not stop on empty lines
-        assert builder._should_stop_parsing("") is False
-        assert builder._should_stop_parsing(None) is False
+        # Should contain final analysis elements
+        assert "kubernetes-sre-agent" in result
+        assert "kubectl, monitoring, logging" in result
+        assert "deep_investigation" in result
+        assert "Final Analysis Stage" in result
+        assert "Pod CrashLoopBackOff" in result
+        assert "Pod CrashLoop Investigation Runbook" in result

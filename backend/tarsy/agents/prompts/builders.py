@@ -23,6 +23,8 @@ from .templates import (
     STAGE_ANALYSIS_QUESTION_TEMPLATE,
     STANDARD_REACT_PROMPT_TEMPLATE,
 )
+# EP-0014: Import new type-safe parser for thin wrapper methods
+from ..parsers.react_parser import ReActParser
 
 logger = get_module_logger(__name__)
 
@@ -218,290 +220,67 @@ Focus on root cause analysis and sustainable solutions."""
                 flattened_history.append(str(item))
         return flattened_history
 
-    # ============ ReAct Response Parsing (Keep Current Logic) ============
-    
-    def _extract_section_content(self, line: str, prefix: str) -> str:
-        """Safely extract content from a line with given prefix, with defensive checks."""
-        if not line or not prefix:
-            return ""
-        
-        # Ensure the line is long enough to contain the prefix plus potential content
-        if len(line) < len(prefix):
-            return ""
-        
-        # Safely extract content after prefix
-        if len(line) > len(prefix):
-            return line[len(prefix):].strip()
-        
-        return ""
-
-    def _is_section_header(self, line: str, section_type: str, found_sections: set) -> bool:
-        """Check if line is a valid section header."""
-        if not line:
-            return False
-        
-        # For ReAct parsing, allow duplicate actions and thoughts (use latest occurrence)
-        # But prevent duplicate final_answer (first one wins)
-        if section_type == 'final_answer' and section_type in found_sections:
-            return False
-            
-        if section_type == 'thought':
-            return line.startswith('Thought:') or line == 'Thought'
-        elif section_type == 'action':
-            return line.startswith('Action:')
-        elif section_type == 'action_input':
-            return line.startswith('Action Input:')
-        elif section_type == 'final_answer':
-            return line.startswith('Final Answer:')
-        
-        return False
-
-    def _should_stop_parsing(self, line: str) -> bool:
-        """Check if we should stop parsing due to fake content markers."""
-        if not line:
-            return False
-        
-        # Stop parsing on fake/hallucinated observations that LLM generates
-        # But NOT on legitimate continuation prompts that are part of the conversation
-        if line.startswith('[Based on'):
-            return True
-        
-        # Only stop on observations that look like hallucinated tool results
-        # Continuation prompts like "Please specify what Action..." should not stop parsing
-        if line.startswith('Observation:'):
-            # Don't stop if this looks like a continuation prompt
-            if 'Please specify' in line or 'what Action you want to take' in line:
-                return False
-            # Don't stop if this looks like an error continuation 
-            if 'Error in reasoning' in line:
-                return False
-            # This appears to be a real/hallucinated observation - stop parsing
-            return True
-            
-        return False
-
-    def _finalize_current_section(self, parsed: Dict[str, Any], current_section: str, content_lines: List[str]) -> None:
-        """Safely finalize the current section by joining content lines."""
-        if current_section and content_lines is not None:
-            new_content = '\n'.join(content_lines).strip()
-            # Only overwrite existing content if new content is not empty
-            # This handles cases where duplicate sections have empty content
-            if new_content or parsed.get(current_section) is None:
-                parsed[current_section] = new_content
+    # ============ ReAct Response Parsing (EP-0014: Moved to ReActParser) ============
     
     def parse_react_response(self, response: str) -> Dict[str, Any]:
-        """Parse structured ReAct response into components with robust error handling."""
-        # Input validation
-        if not response or not isinstance(response, str):
-            return {
-                'thought': None,
-                'action': None,
-                'action_input': None,
-                'final_answer': None,
-                'is_complete': False
-            }
-
-        lines = response.strip().split('\n')
-        parsed = {
-            'thought': None,
-            'action': None,
-            'action_input': None,
-            'final_answer': None,
-            'is_complete': False
+        """
+        Parse structured ReAct response into components with robust error handling.
+        
+        EP-0014: Thin wrapper around type-safe ReActParser for backward compatibility.
+        """
+        # Use the new type-safe parser and convert to legacy format
+        react_response = ReActParser.parse_response(response)
+        
+        # Convert type-safe response back to legacy dict format
+        return {
+            'thought': react_response.thought,
+            'action': react_response.action,
+            'action_input': react_response.action_input,
+            'final_answer': react_response.final_answer,
+            'is_complete': react_response.is_final_answer  # Map to legacy field name
         }
-        
-        current_section = None
-        content_lines = []  # Always initialize as empty list
-        found_sections = set()
-        
-        try:
-            for line in lines:
-                # Safely strip line, handle None/empty cases
-                line = line.strip() if line else ""
-                
-                # Skip empty lines when not in a section
-                if not line and not current_section:
-                    continue
-                
-                # Check for stop conditions first
-                if self._should_stop_parsing(line):
-                    self._finalize_current_section(parsed, current_section, content_lines)
-                    break
-                
-                # Handle Final Answer (can appear at any time)
-                if self._is_section_header(line, 'final_answer', found_sections):  # Use found_sections for duplicate detection
-                    self._finalize_current_section(parsed, current_section, content_lines)
-                    current_section = 'final_answer'
-                    found_sections.add('final_answer')
-                    content_lines = [self._extract_section_content(line, 'Final Answer:')]
-                    parsed['is_complete'] = True
-                    
-                # Handle Thought section  
-                elif self._is_section_header(line, 'thought', found_sections):
-                    self._finalize_current_section(parsed, current_section, content_lines)
-                    current_section = 'thought'
-                    found_sections.add('thought')
-                    if line.startswith('Thought:'):
-                        content_lines = [self._extract_section_content(line, 'Thought:')]
-                    else:
-                        content_lines = []  # 'Thought' without colon, content on next lines
-                    
-                # Handle Action section
-                elif self._is_section_header(line, 'action', found_sections):
-                    self._finalize_current_section(parsed, current_section, content_lines)
-                    current_section = 'action'
-                    found_sections.add('action')
-                    # Clear action_input from found_sections to allow new action_input after new action
-                    found_sections.discard('action_input')
-                    content_lines = [self._extract_section_content(line, 'Action:')]
-                    
-                # Handle Action Input section
-                elif self._is_section_header(line, 'action_input', found_sections):
-                    self._finalize_current_section(parsed, current_section, content_lines)
-                    current_section = 'action_input'
-                    found_sections.add('action_input')
-                    content_lines = [self._extract_section_content(line, 'Action Input:')]
-                    
-                else:
-                    # Only add content if we're in a valid section
-                    if current_section and content_lines is not None:
-                        content_lines.append(line)
-            
-            # Handle last section
-            self._finalize_current_section(parsed, current_section, content_lines)
-            
-        except Exception as e:
-            # Log the error for debugging purposes while returning partial parse state
-            logger.error(
-                "Exception occurred while parsing ReAct response, returning partial results: %s", 
-                str(e), 
-                exc_info=True
-            )
-            # Return the partial parse state that was built so far rather than nothing.
-            # This allows callers to get best-effort parsing results even when sections fail.
-            return parsed
-        
-        return parsed
     
     def get_react_continuation_prompt(self, context_type: str = "general") -> List[str]:
-        """Get ReAct continuation prompts for when LLM provides incomplete responses."""
-        prompts = {
-            "general": (
-                "Choose ONE option: (1) Continue investigating with "
-                "'Thought: [reasoning]\n Action: [tool]\n Action Input: [params]' then STOP "
-                "(do NOT generate fake observations) OR (2) Conclude with "
-                "'Thought: I have sufficient information\n Final Answer: [your analysis]'"
-            ),
-            "data_collection": (
-                "Choose ONE option: (1) Continue data collection with "
-                "'Thought: [reasoning]\n Action: [tool]\n Action Input: [params]' then STOP "
-                "(do NOT generate fake observations) OR (2) Conclude with "
-                "'Thought: I have sufficient data\n Final Answer: [data summary]'"
-            ),
-            "analysis": (
-                "Choose ONE option: (1) Continue investigating with "
-                "'Thought: [reasoning]\n Action: [tool]\n Action Input: [params]' then STOP "
-                "(do NOT generate fake observations) OR (2) Conclude with "
-                "'Thought: I have sufficient information\n Final Answer: [complete analysis]'"
-            )
-        }
+        """
+        Get ReAct continuation prompts for when LLM provides incomplete responses.
         
-        continuation_message = prompts.get(context_type, prompts["general"])
+        EP-0014: Thin wrapper around type-safe ReActParser for backward compatibility.
+        """
+        # Use new parser and convert to legacy list format
+        continuation_message = ReActParser.get_continuation_prompt(context_type)
         return [continuation_message, "Thought:"]
     
     def get_react_error_continuation(self, error_message: str) -> List[str]:
-        """Get ReAct continuation prompts for error recovery."""
-        return [
-            f"Observation: Error in reasoning: {error_message}. Please try a different approach.",
-            "Thought:"
-        ]
+        """
+        Get ReAct continuation prompts for error recovery.
+        
+        EP-0014: Thin wrapper around type-safe ReActParser for backward compatibility.
+        """
+        # Use new parser and convert to legacy list format
+        error_continuation = ReActParser.get_error_continuation(error_message)
+        return [error_continuation, "Thought:"]
     
     def convert_action_to_tool_call(self, action: str, action_input: str) -> Dict[str, Any]:
-        """Convert ReAct Action/Action Input to MCP tool call format."""
-        if not action:
-            raise ValueError("Action cannot be empty")
+        """
+        Convert ReAct Action/Action Input to MCP tool call format.
         
-        if '.' not in action:
-            raise ValueError(f"Action must be in format 'server.tool', got: {action}")
-        
-        server, tool = action.split('.', 1)
-        
-        # Parse action input (could be JSON, YAML-like, or simple parameters)
-        parameters = {}
-        action_input = action_input.strip()
-        
-        try:
-            # Try JSON first
-            if action_input.startswith('{'):
-                parameters = json.loads(action_input)
-            else:
-                # Handle YAML-like format: "apiVersion: v1, kind: Namespace, name: superman-dev"
-                # or key=value format
-                for part in action_input.split(','):
-                    part = part.strip()
-                    if ':' in part and '=' not in part:
-                        # YAML-like format (key: value)
-                        key, value = part.split(':', 1)
-                        parameters[key.strip()] = value.strip()
-                    elif '=' in part:
-                        # key=value format
-                        key, value = part.split('=', 1)
-                        parameters[key.strip()] = value.strip()
-                    else:
-                        # Single parameter without format
-                        if not parameters:  # Only if we haven't added anything yet
-                            parameters['input'] = action_input
-                            break
-                        
-                # If no structured format detected, treat as single input
-                if not parameters:
-                    parameters['input'] = action_input
-                        
-        except json.JSONDecodeError:
-            # Fallback: try to parse as key: value or key=value
-            for part in action_input.split(','):
-                part = part.strip()
-                if ':' in part:
-                    key, value = part.split(':', 1)
-                    parameters[key.strip()] = value.strip()
-                elif '=' in part:
-                    key, value = part.split('=', 1)
-                    parameters[key.strip()] = value.strip()
-            
-            # Ultimate fallback
-            if not parameters:
-                parameters['input'] = action_input
-        except Exception:
-            # Ultimate fallback
-            parameters['input'] = action_input
+        EP-0014: Thin wrapper around type-safe ReActParser for backward compatibility.
+        """
+        # Use new parser and convert ToolCall to legacy dict format
+        tool_call = ReActParser._convert_to_tool_call(action, action_input)
         
         return {
-            'server': server,
-            'tool': tool,
-            'parameters': parameters,
-            'reason': f'ReAct Action: {action}'
+            'server': tool_call.server,
+            'tool': tool_call.tool,
+            'parameters': tool_call.parameters,
+            'reason': tool_call.reason
         }
 
     def format_observation(self, mcp_data: Dict[str, Any]) -> str:
-        """Format MCP data as observation text for ReAct."""
-        if not mcp_data:
-            return "No data returned from the action."
+        """
+        Format MCP data as observation text for ReAct.
         
-        observations = []
-        for server, results in mcp_data.items():
-            if isinstance(results, list):
-                for result in results:
-                    if 'result' in result and result['result']:
-                        # Format the result nicely
-                        if isinstance(result['result'], dict):
-                            formatted_result = json.dumps(result['result'], indent=2)
-                        else:
-                            formatted_result = str(result['result'])
-                        observations.append(f"{server}.{result.get('tool', 'unknown')}: {formatted_result}")
-                    elif 'error' in result:
-                        observations.append(f"{server}.{result.get('tool', 'unknown')} error: {result['error']}")
-            else:
-                # Legacy format
-                observations.append(f"{server}: {json.dumps(results, indent=2)}")
-        
-        return '\n'.join(observations) if observations else "Action completed but no specific data returned."
+        EP-0014: Thin wrapper around type-safe ReActParser for backward compatibility.
+        """
+        # Use new parser directly
+        return ReActParser.format_observation(mcp_data)
