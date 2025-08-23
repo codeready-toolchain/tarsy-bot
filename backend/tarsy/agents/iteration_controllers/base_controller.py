@@ -6,10 +6,13 @@ all iteration controller implementations.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Callable, Optional, List
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ...models.processing_context import StageContext
+    from ...integrations.llm.client import LLMClient
+    from ...agents.prompts import PromptBuilder
+    from ...models.unified_interactions import LLMConversation
 
 class IterationController(ABC):
     """
@@ -96,7 +99,6 @@ class IterationController(ABC):
         analysis_result: str, 
         completion_patterns: list[str], 
         incomplete_patterns: list[str],
-        fallback_extractor: Optional[Callable[[List[str]], str]],
         fallback_message: str,
         context: 'StageContext'
     ) -> str:
@@ -107,7 +109,6 @@ class IterationController(ABC):
             analysis_result: Full ReAct conversation history
             completion_patterns: List of patterns to look for completion messages
             incomplete_patterns: List of patterns for incomplete messages
-            fallback_extractor: Function to extract fallback data from list of strings
             fallback_message: Default message if no analysis found
             context: StageContext containing all stage processing data
             
@@ -161,10 +162,112 @@ class IterationController(ABC):
                 if line.startswith(pattern):
                     return f"{pattern.rstrip(':')} due to iteration limits"
         
-        # Use fallback extractor if provided
-        if fallback_extractor:
-            fallback_result = fallback_extractor(lines)
-            if fallback_result:
-                return fallback_result
-        
         return fallback_message
+
+
+class ReactController(IterationController):
+    """
+    Base class for all ReAct-based controllers with consolidated loop logic.
+    
+    Eliminates code duplication by implementing the complete ReAct loop once.
+    Specific controllers only need to override build_initial_conversation().
+    """
+    
+    def __init__(self, llm_client: 'LLMClient', prompt_builder: 'PromptBuilder'):
+        """Initialize with LLM client and prompt builder."""
+        self.llm_client = llm_client
+        self.prompt_builder = prompt_builder
+        # Import here to avoid circular imports during class definition
+        from tarsy.utils.logger import get_module_logger
+        from tarsy.agents.parsers.react_parser import ReActParser
+        self.logger = get_module_logger(__name__)
+        self.parser = ReActParser
+        
+    def needs_mcp_tools(self) -> bool:
+        """All ReAct controllers use tools."""
+        return True
+    
+    async def execute_analysis_loop(self, context: 'StageContext') -> str:
+        """Consolidated ReAct loop - same for all ReAct controllers."""
+        self.logger.info("Starting ReAct analysis loop")
+        agent = context.agent
+        if agent is None:
+            raise ValueError("Agent reference is required in context")
+        
+        max_iterations = agent.max_iterations
+        
+        # 1. Build initial conversation (controller-specific)
+        conversation = self.build_initial_conversation(context)
+        
+        # 2. ReAct iteration loop with timeout protection  
+        for iteration in range(max_iterations):
+            self.logger.info(f"ReAct iteration {iteration + 1}/{max_iterations}")
+            
+            try:
+                # 3. Call LLM with current conversation
+                conversation = await self.llm_client.generate_response(
+                    conversation=conversation,
+                    session_id=context.session_id,
+                    stage_execution_id=context.agent.get_current_stage_execution_id()
+                )
+                
+                # 4. Extract and parse assistant response
+                assistant_message = conversation.get_latest_assistant_message()
+                if not assistant_message:
+                    raise Exception("No assistant response received from LLM")
+                
+                response = assistant_message.content
+                self.logger.debug(f"LLM Response (first 500 chars): {response[:500]}")
+                
+                parsed_response = self.parser.parse_response(response)
+                
+                # 5. Handle final answer (completion)
+                if parsed_response.is_final_answer:
+                    self.logger.info("ReAct analysis completed with final answer")
+                    return self._build_final_result(conversation, parsed_response.final_answer)
+                    
+                # 6. Handle tool action
+                elif parsed_response.has_action:
+                    try:
+                        self.logger.debug(f"ReAct Action: {parsed_response.action} with input: {parsed_response.action_input[:100] if parsed_response.action_input else 'None'}...")
+                        
+                        # Execute tool using parsed tool call
+                        mcp_data = await agent.execute_mcp_tools([parsed_response.tool_call.model_dump()], context.session_id)
+                        
+                        # Format observation
+                        observation = self.parser.format_observation(mcp_data)
+                        conversation.append_observation(f"Observation: {observation}")
+                        
+                        self.logger.debug(f"ReAct Observation: {observation[:150]}...")
+                        
+                    except Exception as e:
+                        self.logger.error(f"Failed to execute ReAct action: {str(e)}")
+                        error_observation = f"Error executing action: {str(e)}"
+                        conversation.append_observation(f"Observation: {error_observation}")
+                        
+                # 7. Handle malformed response
+                else:
+                    self.logger.warning("ReAct response missing action, adding continuation prompt")
+                    continuation_prompt = self.parser.get_continuation_prompt()
+                    conversation.append_observation(continuation_prompt)
+                    
+            except Exception as e:
+                self.logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
+                # Add error continuation and continue with next iteration
+                error_continuation = self.parser.get_error_continuation(str(e))
+                conversation.append_observation(error_continuation)
+                continue
+                
+        # 8. Timeout handling
+        self.logger.warning("ReAct analysis reached maximum iterations without final answer")
+        return f"Analysis incomplete: reached maximum iterations ({max_iterations}) without final answer"
+
+    @abstractmethod
+    def build_initial_conversation(self, context: 'StageContext') -> 'LLMConversation':
+        """Build controller-specific initial conversation."""
+        pass
+        
+    def _build_final_result(self, conversation, final_answer: str) -> str:
+        """Extract final analysis from conversation."""
+        return final_answer
+    

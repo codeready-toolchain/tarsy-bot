@@ -5,7 +5,6 @@ This module implements the PromptBuilder using LangChain templates
 for clean, composable prompt generation.
 """
 
-import json
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from tarsy.utils.logger import get_module_logger
 
@@ -23,8 +22,6 @@ from .templates import (
     STAGE_ANALYSIS_QUESTION_TEMPLATE,
     STANDARD_REACT_PROMPT_TEMPLATE,
 )
-# EP-0014: Import new type-safe parser for thin wrapper methods
-from ..parsers.react_parser import ReActParser
 
 logger = get_module_logger(__name__)
 
@@ -219,68 +216,3 @@ Focus on root cause analysis and sustainable solutions."""
             else:
                 flattened_history.append(str(item))
         return flattened_history
-
-    # ============ ReAct Response Parsing (EP-0014: Moved to ReActParser) ============
-    
-    def parse_react_response(self, response: str) -> Dict[str, Any]:
-        """
-        Parse structured ReAct response into components with robust error handling.
-        
-        EP-0014: Thin wrapper around type-safe ReActParser for backward compatibility.
-        """
-        # Use the new type-safe parser and convert to legacy format
-        react_response = ReActParser.parse_response(response)
-        
-        # Convert type-safe response back to legacy dict format
-        return {
-            'thought': react_response.thought,
-            'action': react_response.action,
-            'action_input': react_response.action_input,
-            'final_answer': react_response.final_answer,
-            'is_complete': react_response.is_final_answer  # Map to legacy field name
-        }
-    
-    def get_react_continuation_prompt(self, context_type: str = "general") -> List[str]:
-        """
-        Get ReAct continuation prompts for when LLM provides incomplete responses.
-        
-        EP-0014: Thin wrapper around type-safe ReActParser for backward compatibility.
-        """
-        # Use new parser and convert to legacy list format
-        continuation_message = ReActParser.get_continuation_prompt(context_type)
-        return [continuation_message, "Thought:"]
-    
-    def get_react_error_continuation(self, error_message: str) -> List[str]:
-        """
-        Get ReAct continuation prompts for error recovery.
-        
-        EP-0014: Thin wrapper around type-safe ReActParser for backward compatibility.
-        """
-        # Use new parser and convert to legacy list format
-        error_continuation = ReActParser.get_error_continuation(error_message)
-        return [error_continuation, "Thought:"]
-    
-    def convert_action_to_tool_call(self, action: str, action_input: str) -> Dict[str, Any]:
-        """
-        Convert ReAct Action/Action Input to MCP tool call format.
-        
-        EP-0014: Thin wrapper around type-safe ReActParser for backward compatibility.
-        """
-        # Use new parser and convert ToolCall to legacy dict format
-        tool_call = ReActParser._convert_to_tool_call(action, action_input)
-        
-        return {
-            'server': tool_call.server,
-            'tool': tool_call.tool,
-            'parameters': tool_call.parameters,
-            'reason': tool_call.reason
-        }
-
-    def format_observation(self, mcp_data: Dict[str, Any]) -> str:
-        """
-        Format MCP data as observation text for ReAct.
-        
-        EP-0014: Thin wrapper around type-safe ReActParser for backward compatibility.
-        """
-        # Use new parser directly
-        return ReActParser.format_observation(mcp_data)

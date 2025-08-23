@@ -22,7 +22,7 @@ from langchain_anthropic import ChatAnthropic
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import llm_interaction_context
-from tarsy.models.unified_interactions import LLMMessage, LLMResponse, LLMChoice
+from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
 
 # Setup logger for this module
@@ -149,24 +149,39 @@ class LLMClient:
             elif msg.role == "assistant":
                 langchain_messages.append(AIMessage(content=msg.content))
         return langchain_messages
+
+    def _convert_conversation_to_langchain(self, conversation: LLMConversation) -> List:
+        """Convert typed conversation to LangChain message objects."""
+        langchain_messages = []
+        for msg in conversation.messages:
+            if msg.role == MessageRole.SYSTEM:
+                langchain_messages.append(SystemMessage(content=msg.content))
+            elif msg.role == MessageRole.USER:
+                langchain_messages.append(HumanMessage(content=msg.content))
+            elif msg.role == MessageRole.ASSISTANT:
+                langchain_messages.append(AIMessage(content=msg.content))
+        return langchain_messages
     
-    async def generate_response(self, messages: List[LLMMessage], session_id: str, stage_execution_id: Optional[str] = None) -> str:
+    async def generate_response(
+        self, 
+        conversation: LLMConversation, 
+        session_id: str, 
+        stage_execution_id: Optional[str] = None
+    ) -> LLMConversation:
         """
-        Generate a response from the LLM using LangChain with typed interactions.
+        Generate response using type-safe conversation object.
         
-        This is the core method that handles communication with any LLM provider.
-        All business logic should be handled by the calling code.
+        It takes original LLMConversation and returns updated conversation
+        with response assistant message appended.
         
-        Args:
-            messages: List of messages for the conversation
-            session_id: Required session ID for timeline logging and tracking
+        To get the assistant response: conversation.get_latest_assistant_message().content
         """
         if not self.available or not self.llm_client:
             raise Exception(f"{self.provider_name} client not available")
         
         # Prepare request data for typed context (ensure JSON serializable)
         request_data = {
-            'messages': [msg.model_dump() for msg in messages],  # Convert LLMMessage objects to dicts
+            'messages': [msg.model_dump() for msg in conversation.messages],
             'model': self.model,
             'provider': self.provider_name,
             'temperature': self.temperature
@@ -175,40 +190,35 @@ class LLMClient:
         # Use typed hook context for clean data flow
         async with llm_interaction_context(session_id, request_data, stage_execution_id) as ctx:
             
-            # Get request ID for logging
+            # Get request ID for logging  
             request_id = ctx.get_request_id()
-            
-            # Log the outgoing prompt/messages
-            self._log_llm_request(messages, request_id)
-            
+
+            # Log the outgoing conversation
+            llm_comm_logger.debug(f"=== LLM REQUEST [{self.provider_name}] [ID: {request_id}] ===")
+
             try:
-                # Execute the LLM call with retry logic for rate limiting
-                response = await self._execute_with_retry(messages, request_id)
+                # Convert typed conversation to LangChain format  
+                langchain_messages = self._convert_conversation_to_langchain(conversation)
                 
-                # Log the response
-                self._log_llm_response(response.content, request_id)
+                # Execute LLM call with retry logic
+                response = await self._execute_with_retry(langchain_messages)
                 
-                # Create typed response
-                typed_response = LLMResponse(
-                    choices=[
-                        LLMChoice(
-                            message=LLMMessage(role="assistant", content=response.content),
-                            finish_reason="stop"
-                        )
-                    ],
-                    model=self.model,
-                    usage=None  # LangChain doesn't provide usage info by default
-                )
+                # Extract response content
+                response_content = response.content if hasattr(response, 'content') else str(response)
                 
-                # Update the interaction with response data (ensure JSON serializable)
-                ctx.interaction.response_json = typed_response.model_dump()
+                # Add assistant response to conversation
+                conversation.append_assistant_message(response_content)
+                
+                # Update the interaction with conversation data
+                ctx.interaction.conversation = conversation  # Store complete conversation
                 ctx.interaction.provider = self.provider_name
                 ctx.interaction.model_name = self.model
+                ctx.interaction.temperature = self.temperature
                 
                 # Complete the typed context with success
                 await ctx.complete_success({})
                 
-                return response.content
+                return conversation  # Return updated conversation
                 
             except Exception as e:
                 # Log the detailed error (hooks will be triggered automatically by context manager)
@@ -220,37 +230,10 @@ class LLMClient:
                 if error_details:
                     enhanced_message += f" | Details: {error_details}"
                 
-                raise Exception(enhanced_message)from e
+                raise Exception(enhanced_message) from e
     
-    def _log_llm_request(self, messages: List[LLMMessage], request_id: str):
-        """Log the outgoing LLM request."""
-        llm_comm_logger.info(f"=== LLM REQUEST [{self.provider_name}] [ID: {request_id}] ===")
-        llm_comm_logger.info(f"Request ID: {request_id}")
-        llm_comm_logger.info(f"Provider: {self.provider_name}")
-        llm_comm_logger.info(f"Model: {self.model}")
-        llm_comm_logger.info(f"Temperature: {self.temperature}")
-        
-        llm_comm_logger.info("--- MESSAGES ---")
-        for i, msg in enumerate(messages):
-            llm_comm_logger.info(f"Message {i+1} [{msg.role.upper()}]:")
-            llm_comm_logger.info(f"{msg.content}")
-            llm_comm_logger.info("---")
-        
-        llm_comm_logger.info(f"=== END REQUEST [ID: {request_id}] ===")
-    
-    def _log_llm_response(self, response_content: str, request_id: str):
-        """Log the LLM response."""
-        llm_comm_logger.info(f"=== LLM RESPONSE [{self.provider_name}] [ID: {request_id}] ===")
-        llm_comm_logger.info(f"Request ID: {request_id}")
-        llm_comm_logger.info(f"Response length: {len(response_content)} characters")
-        llm_comm_logger.info("--- RESPONSE CONTENT ---")
-        llm_comm_logger.info(response_content)
-        llm_comm_logger.info(f"=== END RESPONSE [ID: {request_id}] ===")
-
-    async def _execute_with_retry(self, messages: List[LLMMessage], request_id: str, max_retries: int = 3):
-        """Execute LLM call with exponential backoff for rate limiting and retry for empty responses."""
-        langchain_messages = self._convert_messages(messages)
-        
+    async def _execute_with_retry(self, langchain_messages: List, max_retries: int = 3):
+        """Execute LLM call with exponential backoff for rate limiting and retry for empty responses."""        
         for attempt in range(max_retries + 1):
             try:
                 response = await self.llm_client.ainvoke(langchain_messages)
@@ -412,24 +395,27 @@ class LLMManager:
         return self.clients.get(provider)
     
     async def generate_response(self, 
-                              messages: List[LLMMessage],
+                              conversation: LLMConversation,
                               session_id: str,
                               stage_execution_id: Optional[str] = None,
-                              provider: str = None) -> str:
+                              provider: str = None) -> LLMConversation:
         """Generate a response using the specified or default LLM provider.
         
         Args:
-            messages: List of messages for the conversation
+            conversation: LLMConversation object containing complete message thread
             session_id: Required session ID for timeline logging and tracking
             stage_execution_id: Optional stage execution ID for tracking
             provider: Optional provider override (uses default if not specified)
+            
+        Returns:
+            Updated LLMConversation with new assistant message appended
         """
         client = self.get_client(provider)
         if not client:
             available = list(self.clients.keys())
             raise Exception(f"LLM provider not available. Available: {available}")
         
-        return await client.generate_response(messages, session_id, stage_execution_id)
+        return await client.generate_response(conversation, session_id, stage_execution_id)
 
     def list_available_providers(self) -> List[str]:
         """List available LLM providers."""
@@ -444,4 +430,4 @@ class LLMManager:
         return {
             provider: client.available 
             for provider, client in self.clients.items()
-        } 
+        }

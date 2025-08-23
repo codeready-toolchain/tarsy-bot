@@ -479,7 +479,6 @@ class LLMInteraction(SQLModel, table=True):
     
     # Existing fields (unchanged)
     interaction_id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
-    step_description: str = Field(description="Human-readable description")
     session_id: str = Field(foreign_key="alert_sessions.session_id", index=True)
     stage_execution_id: Optional[str] = Field(None, foreign_key="stage_executions.execution_id", index=True)
     timestamp_us: int = Field(default_factory=now_us, index=True)
@@ -849,7 +848,7 @@ class LLMClient:
   - Remove legacy fields: `request_json`, `response_json`, `token_usage`, `tool_calls`, `tool_results`, runtime fields
   - Update indexes for conversation-based queries
 - Implement enhanced `LLMMessage` with validation and metadata  
-- Clear development database and let SQLModel auto-recreate schema via `initialize_database()`
+- Clear development database (already done) and let SQLModel auto-recreate schema via `initialize_database()`
 
 ### Phase 3: Controller Integration
 **Enhanced Controller Hierarchy & ReAct Loop Consolidation**
