@@ -61,25 +61,40 @@ class TestHistoryRepository:
     @pytest.fixture
     def sample_llm_interaction(self):
         """Create sample LLMInteraction for testing."""
+        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        
+        # Create conversation with proper message structure
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            LLMMessage(role=MessageRole.USER, content="Analyze the namespace termination issue"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="The namespace is stuck due to finalizers")
+        ])
+        
         return LLMInteraction(
             session_id="test-session-123",
             model_name="gpt-4",
             step_description="Initial analysis",
-            request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "The namespace is stuck due to finalizers"}, "finish_reason": "stop"}]},
+            conversation=conversation,
             duration_ms=1500,
             success=True
         )
     
     @pytest.fixture
     def sample_failed_llm_interaction(self):
-        """Create sample failed LLMInteraction for testing."""
+        """Create sample failed LLM interaction for testing."""
+        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        
+        # Create conversation with request messages only (no assistant response since it failed)
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            LLMMessage(role=MessageRole.USER, content="Analyze the namespace termination issue")
+        ])
+        
         return LLMInteraction(
             session_id="test-session-123",
             model_name="gemini-1.5-pro",
             step_description="Failed analysis due to rate limiting",
-            request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
-            response_json=None,  # Failed interaction has no response
+            conversation=conversation,
             duration_ms=500,
             success=False,
             error_message="Resource has been exhausted (e.g. check quota). Error 429: Quota exceeded for requests"
@@ -963,7 +978,8 @@ class TestHistoryRepository:
         assert len(interactions) == 1
         assert interactions[0].success == True
         assert interactions[0].error_message is None
-        assert interactions[0].response_json is not None
+        assert interactions[0].conversation is not None
+        assert len(interactions[0].conversation.messages) == 3  # system + user + assistant
 
     @pytest.mark.unit
     def test_create_failed_llm_interaction(self, repository, sample_alert_session, sample_failed_llm_interaction):
@@ -985,7 +1001,8 @@ class TestHistoryRepository:
         assert len(interactions) == 1
         assert interactions[0].success == False
         assert interactions[0].error_message == sample_failed_llm_interaction.error_message
-        assert interactions[0].response_json is None
+        assert interactions[0].conversation is not None
+        assert len(interactions[0].conversation.messages) == 2  # system + user only (no assistant response for failed)
 
     @pytest.mark.unit
     def test_get_session_details_includes_success_error_fields(self, repository, sample_alert_session):

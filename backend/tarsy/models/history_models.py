@@ -50,7 +50,7 @@ class LLMEventDetails(BaseModel):
     """LLM-specific event details with structured objects (absorbs useful parts of unused LLMRequest)"""
     messages: List[LLMMessage] = Field(default_factory=list)  # Structured message objects (from LLMRequest design)
     model_name: str  # Renamed from LLMRequest.model for clarity
-    temperature: Optional[float] = None  # From LLMRequest
+    temperature: Optional[float] = None
     success: bool
     error_message: Optional[str] = None
     input_tokens: Optional[int] = None

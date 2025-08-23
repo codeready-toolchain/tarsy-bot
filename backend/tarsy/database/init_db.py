@@ -12,6 +12,10 @@ from sqlmodel import Session, SQLModel, create_engine, text
 
 from tarsy.config.settings import get_settings
 
+# Import all SQLModel table classes to ensure they are registered for schema creation
+from tarsy.models.db_models import AlertSession, StageExecution
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+
 logger = logging.getLogger(__name__)
 
 
