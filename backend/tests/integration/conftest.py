@@ -19,7 +19,7 @@ from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.alert import Alert
 from tarsy.models.constants import StageStatus
 from tarsy.models.db_models import AlertSession
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.alert_service import AlertService
 from tarsy.services.history_service import HistoryService
@@ -934,10 +934,12 @@ def sample_llm_interaction():
         session_id="test-session-123",
         model_name="gpt-4",
         step_description="Initial analysis",
-        request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
-        response_json={"choices": [{"message": {"role": "assistant", "content": "The namespace is stuck due to finalizers"}, "finish_reason": "stop"}]},
-        duration_ms=1500,
-        token_usage={"prompt_tokens": 150, "completion_tokens": 50, "total_tokens": 200}
+        conversation=LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are an expert Kubernetes troubleshooter."),
+            LLMMessage(role=MessageRole.USER, content="Analyze the namespace termination issue"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="The namespace is stuck due to finalizers")
+        ]),
+        duration_ms=1500
     )
 
 

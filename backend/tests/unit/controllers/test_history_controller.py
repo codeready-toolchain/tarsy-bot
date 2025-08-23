@@ -698,24 +698,32 @@ class TestHistoryControllerEndpoints:
         from tarsy.models.history_models import (
             DetailedSession,
             DetailedStage,
-            LLMEventDetails,
             LLMTimelineEvent,
             MCPEventDetails,
             MCPTimelineEvent,
         )
-        from tarsy.models.unified_interactions import LLMMessage
+        from tarsy.models.unified_interactions import LLMMessage, LLMInteraction, LLMConversation, MessageRole
         
         # Create LLM interaction
         llm_interaction = LLMTimelineEvent(
             id="int-1",
             event_id="int-1", 
             timestamp_us=1705314000000000,
-            step_description="Initial analysis",
+            step_description="",  # Skip step_description for LLM interactions as clarified
             stage_execution_id="exec-3",
-            details=LLMEventDetails(
-                messages=[LLMMessage(role="user", content="Analyze the issue")],
+            details=LLMInteraction(
+                interaction_id="int-1",
+                session_id="test-session",
+                stage_execution_id="exec-3",
+                timestamp_us=1705314000000000,
+                duration_ms=500,
+                success=True,
                 model_name="gpt-4",
-                success=True
+                provider="openai",
+                conversation=LLMConversation(messages=[
+                    LLMMessage(role=MessageRole.SYSTEM, content="You are an assistant"),
+                    LLMMessage(role=MessageRole.USER, content="Analyze the issue")
+                ])
             )
         )
         
@@ -1248,22 +1256,30 @@ class TestHistoryControllerResponseFormat:
         from tarsy.models.history_models import (
             DetailedSession,
             DetailedStage,
-            LLMEventDetails,
             LLMTimelineEvent,
         )
-        from tarsy.models.unified_interactions import LLMMessage
+        from tarsy.models.unified_interactions import LLMMessage, LLMInteraction, LLMConversation, MessageRole
         
         # Create LLM interaction
         llm_interaction = LLMTimelineEvent(
             id="int-1",
             event_id="int-1", 
             timestamp_us=1705314000000000,
-            step_description="Test step",
+            step_description="",  # Skip step_description for LLM interactions as clarified
             stage_execution_id="exec-1",
-            details=LLMEventDetails(
-                messages=[LLMMessage(role="user", content="Test prompt")],
+            details=LLMInteraction(
+                interaction_id="int-1",
+                session_id="test-session",
+                stage_execution_id="exec-1",
+                timestamp_us=1705314000000000,
+                duration_ms=500,
+                success=True,
                 model_name="gpt-4",
-                success=True
+                provider="openai",
+                conversation=LLMConversation(messages=[
+                    LLMMessage(role=MessageRole.SYSTEM, content="You are an assistant"),
+                    LLMMessage(role=MessageRole.USER, content="Test prompt")
+                ])
             )
         )
         

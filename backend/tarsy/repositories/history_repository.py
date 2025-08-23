@@ -15,8 +15,7 @@ from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.db_models import AlertSession, StageExecution
 from tarsy.models.history_models import (
     PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo,
-    SessionOverview, DetailedStage, LLMTimelineEvent, MCPTimelineEvent, 
-    LLMEventDetails, MCPEventDetails, LLMMessage
+    SessionOverview, DetailedStage, LLMTimelineEvent, MCPTimelineEvent, MCPEventDetails
 )
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import BaseRepository
@@ -513,24 +512,15 @@ class HistoryRepository:
             # Group interactions by stage_execution_id
             interactions_by_stage = defaultdict(list)
             
-            # Convert LLM DB interaction models to history models
+            # Convert LLM DB interaction models to timeline events using LLMInteraction directly
             for llm_db in llm_interactions_db:
-                llm_details = LLMEventDetails(
-                    messages=llm_db.conversation.messages,
-                    model_name=llm_db.model_name,
-                    temperature=llm_db.temperature,
-                    success=llm_db.success,
-                    error_message=llm_db.error_message
-                )
-                
                 llm_event = LLMTimelineEvent(
                     id=llm_db.interaction_id,
                     event_id=llm_db.interaction_id,
                     timestamp_us=llm_db.timestamp_us,
-                    step_description=llm_db.step_description,
                     duration_ms=llm_db.duration_ms,
                     stage_execution_id=llm_db.stage_execution_id or 'unknown',
-                    details=llm_details
+                    details=llm_db
                 )
                 
                 stage_id = llm_db.stage_execution_id or 'unknown'

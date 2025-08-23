@@ -349,11 +349,11 @@ class SessionFactory:
         from tarsy.models.history_models import (
             DetailedSession,
             DetailedStage,
-            LLMEventDetails,
             LLMTimelineEvent,
             MCPEventDetails,
             MCPTimelineEvent,
         )
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
         from tarsy.utils.timestamp import now_us
         
         current_time_us = now_us()
@@ -363,14 +363,25 @@ class SessionFactory:
             id="int-1",
             event_id="int-1", 
             timestamp_us=current_time_us - 240000000,
-            step_description="Analysis",
+            step_description="",  # Skip step_description for LLM interactions as clarified
             duration_ms=120000,
             stage_execution_id="integration-exec-1",
             type="llm",
-            details=LLMEventDetails(
-                model_name="gpt-4",
+            details=LLMInteraction(
+                interaction_id="int-1",
+                session_id="test-session-id",
+                stage_execution_id="integration-exec-1",
+                timestamp_us=current_time_us - 240000000,
+                duration_ms=120000,
                 success=True,
-                messages=[]
+                error_message=None,
+                model_name="gpt-4",
+                provider="openai",
+                temperature=0.7,
+                conversation=LLMConversation(messages=[
+                    LLMMessage(role=MessageRole.SYSTEM, content="You are an assistant"),
+                    LLMMessage(role=MessageRole.USER, content="Test message")
+                ])
             )
         )
         
@@ -1264,7 +1275,7 @@ class DashboardFactory:
             'success': True,
             'duration_ms': 1500,
             'timestamp': datetime.now().isoformat(),
-            'tool_calls_present': True,
+            'has_tools': False,  # TODO: Derive from conversation if needed
             'error_message': None
         }
         base_data.update(overrides)
@@ -1301,7 +1312,7 @@ class DashboardFactory:
             'success': False,
             'duration_ms': 500,
             'timestamp': datetime.now().isoformat(),
-            'tool_calls_present': False,
+            'has_tools': False,  # TODO: Derive from conversation if needed
             'error_message': 'Connection timeout to LLM service'
         }
         base_data.update(overrides)

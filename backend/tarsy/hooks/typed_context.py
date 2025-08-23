@@ -238,14 +238,10 @@ class InteractionHookContext(Generic[TInteraction]):
         # Type-specific result handling for unified models
         if isinstance(self.interaction, LLMInteraction):
             # LLM-specific result processing
-            if 'response_json' in result_data:
-                self.interaction.response_json = result_data['response_json']
             if 'provider' in result_data:
                 self.interaction.provider = result_data['provider']
             if 'model_name' in result_data:
                 self.interaction.model_name = result_data['model_name']
-            if 'token_usage' in result_data:
-                self.interaction.token_usage = result_data['token_usage']
                 
         elif isinstance(self.interaction, MCPInteraction):
             # MCP-specific result processing
@@ -300,9 +296,8 @@ async def llm_interaction_context(session_id: str, request_data: Dict[str, Any],
         stage_execution_id=stage_execution_id,
         model_name=request_data.get('model', 'unknown'),
         provider=request_data.get('provider', 'unknown'),
-        request_json=request_data,
-        start_time_us=now_us(),
-        step_description=""  # Will be set by history service
+        temperature=request_data.get('temperature')
+        # Note: conversation will be set by LLMClient after successful response
     )
     
     async with InteractionHookContext(interaction, get_typed_hook_manager()) as ctx:

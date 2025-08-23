@@ -263,7 +263,6 @@ class DashboardUpdateService:
             "model_used": interaction_data.get('model_used', 'unknown'),
             "success": interaction_data.get('success', True),
             "duration_ms": interaction_data.get('duration_ms', 0),
-            "has_tools": interaction_data.get('tool_calls_present', False),
             "timestamp": interaction_data.get('timestamp', datetime.now().isoformat()),
             "error_message": interaction_data.get('error_message')
         }

@@ -12,7 +12,7 @@ import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
 from tarsy.models.db_models import AlertSession, StageExecution
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
 from tarsy.repositories.history_repository import HistoryRepository
 
 
@@ -619,8 +619,11 @@ class TestHistoryRepository:
             session_id=sample_alert_session.session_id,
             model_name="gpt-4",
             step_description="First LLM interaction",
-            request_json={"messages": [{"role": "user", "content": "First prompt"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "First response"}, "finish_reason": "stop"}]},
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="First prompt"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="First response")
+            ]),
             timestamp_us=int(base_time.timestamp() * 1_000_000),
             stage_execution_id=stage_execution_id
         )
@@ -641,8 +644,11 @@ class TestHistoryRepository:
             session_id=sample_alert_session.session_id,
             model_name="gpt-4",
             step_description="Second LLM interaction",
-            request_json={"messages": [{"role": "user", "content": "Second prompt"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "Second response"}, "finish_reason": "stop"}]},
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Second prompt"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Second response")
+            ]),
             timestamp_us=int((base_time + timedelta(seconds=2)).timestamp() * 1_000_000),
             stage_execution_id=stage_execution_id
         )
@@ -707,8 +713,11 @@ class TestHistoryRepository:
             session_id=sample_alert_session.session_id,
             model_name="gpt-4",
             step_description="LLM interaction with precise timestamp",
-            request_json={"messages": [{"role": "user", "content": "Precise timestamp prompt"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "Precise timestamp response"}, "finish_reason": "stop"}]},
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Precise timestamp prompt"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Precise timestamp response")
+            ]),
             timestamp_us=base_timestamp_us,
             stage_execution_id=stage_execution_id
         )
@@ -731,8 +740,11 @@ class TestHistoryRepository:
             session_id=sample_alert_session.session_id,
             model_name="gpt-4",
             step_description="LLM interaction in middle",
-            request_json={"messages": [{"role": "user", "content": "Middle timestamp prompt"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "Middle timestamp response"}, "finish_reason": "stop"}]},
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Middle timestamp prompt"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Middle timestamp response")
+            ]),
             timestamp_us=base_timestamp_us + 500_000,  # 500ms later
             stage_execution_id=stage_execution_id
         )
@@ -1032,8 +1044,11 @@ class TestHistoryRepository:
             session_id=sample_alert_session.session_id,
             model_name="gpt-4",
             step_description="Successful analysis",
-            request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]},
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test prompt"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Test response")
+            ]),
             duration_ms=1000,
             success=True,
             stage_execution_id=stage_execution_id
@@ -1044,8 +1059,11 @@ class TestHistoryRepository:
             session_id=sample_alert_session.session_id,
             model_name="gemini-1.5-pro",
             step_description="Failed analysis",
-            request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
-            response_json=None,
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test prompt")
+                # Note: No assistant response for failed interaction
+            ]),
             duration_ms=500,
             success=False,
             error_message="API rate limit exceeded",
@@ -1100,8 +1118,11 @@ class TestHistoryRepository:
                 session_id=sample_alert_session.session_id,
                 model_name="gpt-4",
                 step_description="First attempt - successful",
-                request_json={"messages": [{"role": "user", "content": "Analyze issue"}]},
-                response_json={"choices": [{"message": {"role": "assistant", "content": "Analysis complete"}, "finish_reason": "stop"}]},
+                conversation=LLMConversation(messages=[
+                    LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                    LLMMessage(role=MessageRole.USER, content="Analyze issue"),
+                    LLMMessage(role=MessageRole.ASSISTANT, content="Analysis complete")
+                ]),
                 duration_ms=1200,
                 success=True
             ),
@@ -1109,8 +1130,11 @@ class TestHistoryRepository:
                 session_id=sample_alert_session.session_id,
                 model_name="gemini-1.5-pro",
                 step_description="Second attempt - failed",
-                request_json={"messages": [{"role": "user", "content": "Follow up analysis"}]},
-                response_json=None,
+                conversation=LLMConversation(messages=[
+                    LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                    LLMMessage(role=MessageRole.USER, content="Follow up analysis")
+                    # Note: No assistant response for failed interaction
+                ]),
                 duration_ms=300,
                 success=False,
                 error_message="Connection timeout"
@@ -1119,8 +1143,11 @@ class TestHistoryRepository:
                 session_id=sample_alert_session.session_id,
                 model_name="gpt-4",
                 step_description="Third attempt - successful",
-                request_json={"messages": [{"role": "user", "content": "Final analysis"}]},
-                response_json={"choices": [{"message": {"role": "assistant", "content": "Final conclusion"}, "finish_reason": "stop"}]},
+                conversation=LLMConversation(messages=[
+                    LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                    LLMMessage(role=MessageRole.USER, content="Final analysis"),
+                    LLMMessage(role=MessageRole.ASSISTANT, content="Final conclusion")
+                ]),
                 duration_ms=900,
                 success=True
             )
@@ -1343,8 +1370,11 @@ class TestHistoryRepositoryPerformance:
                     session_id=session.session_id,
                     model_name="gpt-4",
                     step_description=f"Interaction {i}",
-                    request_json={"messages": [{"role": "user", "content": f"Prompt {i}"}]},
-                    response_json={"choices": [{"message": {"role": "assistant", "content": f"Response {i}"}, "finish_reason": "stop"}]},
+                    conversation=LLMConversation(messages=[
+                        LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                        LLMMessage(role=MessageRole.USER, content=f"Prompt {i}"),
+                        LLMMessage(role=MessageRole.ASSISTANT, content=f"Response {i}")
+                    ]),
                     timestamp_us=int((now - timedelta(minutes=i-1)).timestamp() * 1_000_000)
                 )
                 repository.create_llm_interaction(interaction)

@@ -210,14 +210,19 @@ class TestHistoryServiceIntegration:
         
         # Log LLM interaction
         from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+        # Create conversation with proper structure
+        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are an expert Kubernetes troubleshooter."),
+            LLMMessage(role=MessageRole.USER, content="Analyze the namespace termination issue"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="The namespace is stuck due to finalizers")
+        ])
+        
         llm_interaction = LLMInteraction(
             session_id=chain_context.session_id,
             stage_execution_id=stage_execution_id,
             model_name="gpt-4",
-            step_description="Initial analysis",
-            request_json={"messages": [{"role": "user", "content": "Analyze the namespace termination issue"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "The namespace is stuck due to finalizers"}, "finish_reason": "stop"}]},
-            token_usage={"prompt_tokens": 150, "completion_tokens": 50, "total_tokens": 200},
+            conversation=conversation,
             duration_ms=1500
         )
         llm_result = history_service_with_db.store_llm_interaction(llm_interaction)
@@ -295,8 +300,11 @@ class TestHistoryServiceIntegration:
             stage_execution_id=stage_execution_id,
             model_name="gpt-4",
             step_description="Initial analysis",
-            request_json={"messages": [{"role": "user", "content": "Initial analysis prompt"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "Initial analysis response"}, "finish_reason": "stop"}]},
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a Kubernetes expert."),
+                LLMMessage(role=MessageRole.USER, content="Initial analysis prompt"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Initial analysis response")
+            ]),
             duration_ms=1200
         )
         history_service_with_db.store_llm_interaction(llm_interaction1)
@@ -325,8 +333,11 @@ class TestHistoryServiceIntegration:
             stage_execution_id=stage_execution_id,
             model_name="gpt-4",
             step_description="Follow-up analysis",
-            request_json={"messages": [{"role": "user", "content": "Follow-up analysis prompt"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "Follow-up analysis response"}, "finish_reason": "stop"}]}
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a Kubernetes expert."),
+                LLMMessage(role=MessageRole.USER, content="Follow-up analysis prompt"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Follow-up analysis response")
+            ])
         )
         history_service_with_db.store_llm_interaction(llm_interaction2)
         
@@ -412,8 +423,11 @@ class TestHistoryServiceIntegration:
                     session_id=sid,
                     model_name="gpt-4",
                     step_description=f"Analysis for {session_id}",
-                    request_json={"messages": [{"role": "user", "content": f"Test prompt for {session_id}"}]},
-                    response_json={"choices": [{"message": {"role": "assistant", "content": f"Test response for {session_id}"}, "finish_reason": "stop"}]}
+                    conversation=LLMConversation(messages=[
+                        LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                        LLMMessage(role=MessageRole.USER, content=f"Test prompt for {session_id}"),
+                        LLMMessage(role=MessageRole.ASSISTANT, content=f"Test response for {session_id}")
+                    ])
                 )
                 history_service_with_db.store_llm_interaction(llm_interaction_variety)
         
@@ -482,8 +496,11 @@ class TestHistoryServiceIntegration:
             session_id="non-existent-session",
             model_name="gpt-4",
             step_description="Test interaction",
-            request_json={"messages": [{"role": "user", "content": "Test prompt"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]}
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test prompt"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Test response")
+            ])
         )
         result = history_service_with_db.store_llm_interaction(llm_interaction_invalid)
         # The service allows logging interactions even for non-existent sessions
@@ -839,7 +856,7 @@ class TestHistoryAPIIntegration:
             # Verify first interaction (LLM)
             llm_interaction = stage["llm_interactions"][0]
             assert llm_interaction["type"] == "llm"
-            assert llm_interaction["step_description"] == "Analysis"
+            # Note: step_description is not used for LLM interactions - only for MCP
             assert "details" in llm_interaction
             
             # Verify second interaction (MCP)

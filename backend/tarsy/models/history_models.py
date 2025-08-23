@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, model_validator, computed_field
 
 # Import existing enums and models
 from tarsy.models.constants import AlertSessionStatus, StageStatus
-from tarsy.models.unified_interactions import LLMMessage
+from tarsy.models.unified_interactions import LLMInteraction
 
 
 # =============================================================================
@@ -46,20 +46,6 @@ class FilterOptions(BaseModel):
 # EVENT DETAILS MODELS
 # =============================================================================
 
-class LLMEventDetails(BaseModel):
-    """LLM-specific event details with structured objects (absorbs useful parts of unused LLMRequest)"""
-    messages: List[LLMMessage] = Field(default_factory=list)  # Structured message objects (from LLMRequest design)
-    model_name: str  # Renamed from LLMRequest.model for clarity
-    temperature: Optional[float] = None
-    success: bool
-    error_message: Optional[str] = None
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    total_tokens: Optional[int] = None
-    tool_calls: Optional[dict] = None
-    tool_results: Optional[dict] = None
-
-
 class MCPEventDetails(BaseModel):
     """MCP-specific event details with structured objects"""
     tool_name: str
@@ -86,9 +72,9 @@ class BaseInteraction(BaseModel):
 
 
 class LLMTimelineEvent(BaseInteraction):
-    """LLM timeline event with type-specific details"""
+    """LLM timeline event using complete interaction details directly."""
     type: Literal["llm"] = "llm"
-    details: LLMEventDetails
+    details: LLMInteraction
     
     @model_validator(mode='after')
     def validate_llm_details(self):

@@ -873,7 +873,7 @@ class LLMClient:
 **Backend API & History Integration**
 - **Update API models**: Ensure timeline events use new `LLMInteraction` structure directly 
 - **Update API endpoints**: Modify session detail and timeline APIs to expose new conversation data
-- **Regression testing**: Verify all API consumers (dashboard, external clients) receive expected data structure
+- **Regression testing**: Verify all API consumers (dashboard) now use updated API and  receive the data they need
 - **Benefits**: APIs expose richer conversation data, better debugging capabilities
 
 ### Phase 6: Legacy Cleanup  
@@ -883,7 +883,11 @@ class LLMClient:
 - **Remove legacy fields**: Clean up unused `request_json`, `response_json`, `token_usage`, `tool_calls`, `tool_results` 
 - **Benefits**: Clean codebase, no duplicate logic, controllers use parser directly instead of through builders
 
-### Phase 7: Dashboard Updates
+### Phase 7: E2E test
+**Eend-to-end test updates**  
+- Update the e2e tests to fully cover new functionality.
+
+### Phase 8: Dashboard Updates
 **UI Updates**  
 - Update dashboard to display conversation flows clearly
 - Show proper assistant/user message attribution  

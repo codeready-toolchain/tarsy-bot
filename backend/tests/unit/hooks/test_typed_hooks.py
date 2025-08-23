@@ -21,7 +21,7 @@ from tarsy.hooks.typed_history_hooks import (
 )
 from tarsy.models.constants import StageStatus
 from tarsy.models.db_models import StageExecution
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
 from tarsy.services.history_service import HistoryService
 
@@ -69,8 +69,11 @@ class TestTypedLLMHistoryHook:
             session_id="test-session",
             model_name="gpt-4",
             step_description="Test LLM interaction",
-            request_json={"messages": [{"role": "user", "content": "test"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "response"}, "finish_reason": "stop"}]},
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="test"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="response")
+            ]),
             duration_ms=1000
         )
     
@@ -246,8 +249,11 @@ class TestTypedLLMDashboardHook:
             session_id="test-session",
             model_name="gpt-4", 
             step_description="Test LLM interaction",
-            request_json={"messages": [{"role": "user", "content": "test"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "response"}, "finish_reason": "stop"}]},
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="test"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="response")
+            ]),
             duration_ms=1000
         )
     
@@ -355,8 +361,11 @@ class TestTypedHooksIntegration:
             session_id="integration-test",
             model_name="gpt-4",
             step_description="Integration test interaction", 
-            request_json={"messages": [{"role": "user", "content": "test"}]},
-            response_json={"choices": [{"message": {"role": "assistant", "content": "response"}, "finish_reason": "stop"}]},
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="test"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="response")
+            ]),
             duration_ms=1500
         )
         

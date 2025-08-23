@@ -13,6 +13,7 @@ import pytest
 from tarsy.config.settings import Settings
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.db_models import AlertSession
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.history_service import HistoryService, get_history_service
 from tests.utils import MockFactory, SessionFactory
 
@@ -274,8 +275,13 @@ class TestHistoryService:
             "session_id": "test-session-id",
             "model_name": "gpt-4",
             "step_description": "Test LLM call",
-            "request_json": {"messages": [{"role": "user", "content": "Test prompt"}]},
-            "response_json": {"choices": [{"message": {"role": "assistant", "content": "Test response"}, "finish_reason": "stop"}]}
+            "conversation": {
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "Test prompt"},
+                    {"role": "assistant", "content": "Test response"}
+                ]
+            }
         }),
         ("mcp", {
             "session_id": "test-session-id",
@@ -844,8 +850,11 @@ class TestHistoryServiceErrorHandling:
                 session_id="test",
                 model_name="model",
                 step_description="step",
-                request_json={"messages": [{"role": "user", "content": "prompt"}]},
-                response_json={"choices": [{"message": {"role": "assistant", "content": "response"}, "finish_reason": "stop"}]}
+                conversation=LLMConversation(messages=[
+                    LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                    LLMMessage(role=MessageRole.USER, content="prompt"),
+                    LLMMessage(role=MessageRole.ASSISTANT, content="response")
+                ])
             )
             # Test that store methods return False when repository unavailable
             with patch.object(history_service_with_errors, 'get_repository') as mock_get_repo_inner:

@@ -53,7 +53,6 @@ class TypedLLMDashboardHook(BaseTypedHook[LLMInteraction]):
                 "success": interaction.success,
                 "error_message": interaction.error_message,
                 "duration_ms": interaction.duration_ms,
-                "token_usage": interaction.token_usage,
                 "timestamp_us": interaction.timestamp_us,
                 # Chain context for enhanced dashboard visualization
                 "stage_execution_id": interaction.stage_execution_id
