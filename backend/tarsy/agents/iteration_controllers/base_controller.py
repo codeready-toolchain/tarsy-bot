@@ -268,6 +268,30 @@ class ReactController(IterationController):
         pass
         
     def _build_final_result(self, conversation, final_answer: str) -> str:
-        """Extract final analysis from conversation."""
-        return final_answer
+        """
+        Build complete ReAct conversation history for progressive conversation format.
+        
+        This returns the complete conversation history with all Thought/Action/Observation
+        sequences plus the final answer, which is what subsequent stages need to see
+        according to progressive conversation format.
+        """
+        if not hasattr(conversation, 'messages') or not conversation.messages:
+            return final_answer
+        
+        # Extract the complete conversation history from the LLMConversation
+        conversation_parts = []
+        
+        # Skip the system message and initial user message, focus on the ReAct interactions
+        for message in conversation.messages[2:]:  # Skip system and initial user message
+            if message.role == "assistant":
+                # Assistant messages contain Thought/Action sequences
+                conversation_parts.append(message.content)
+            elif message.role == "user" and message.content.startswith("Observation:"):
+                # User messages with observations.
+                # Skip user messages that are not observations (e.g. error-continuation messages)
+                conversation_parts.append(message.content)
+        
+        # Join all the conversation parts
+        complete_conversation = "\n".join(conversation_parts)
+        return complete_conversation
     

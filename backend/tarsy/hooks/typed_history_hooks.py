@@ -42,11 +42,11 @@ class TypedLLMHistoryHook(BaseTypedHook[LLMInteraction]):
             )
             if ok:
                 logger.debug(
-                    f"Stored LLM interaction {interaction.request_id} to history"
+                    f"Stored LLM interaction {interaction.interaction_id} to history"
                 )
             else:
                 logger.warning(
-                    f"History service returned False for LLM interaction {interaction.request_id}"
+                    f"History service returned False for LLM interaction {interaction.interaction_id}"
                 )
             
         except Exception as e:

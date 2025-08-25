@@ -12,7 +12,6 @@ Architecture:
 import asyncio
 import json
 import re
-from typing import Dict, Any, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -22,527 +21,61 @@ from tarsy.integrations.mcp.client import MCPClient
 from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 
 
-# ============================================================================
-# TEST CONSTANTS - Expected LLM Message Content
-# ============================================================================
-
-EXPECTED_DATA_COLLECTION_SYSTEM_MESSAGE = """## General SRE Agent Instructions
-
-You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
-- Kubernetes and container orchestration
-- Cloud infrastructure and services
-- Incident response and troubleshooting
-- System monitoring and alerting
-- GitOps and deployment practices
-
-Analyze alerts thoroughly and provide actionable insights based on:
-1. Alert information and context
-2. Associated runbook procedures
-3. Real-time system data from available tools
-
-Always be specific, reference actual data, and provide clear next steps.
-Focus on root cause analysis and sustainable solutions.
-
-## Kubernetes Server Instructions
-
-For Kubernetes operations:
-- Be careful with cluster-scoped resource listings in large clusters
-- Always prefer namespaced queries when possible
-- Use kubectl explain for resource schema information
-- Check resource quotas before creating new resources
-
-## Custom Server Instructions
-
-Simple data collection server for testing - provides system information gathering tools
-
-## Agent-Specific Instructions
-
-You are a Kubernetes data collection specialist. Your role is to gather comprehensive 
-information about problematic resources using available kubectl tools.
-
-Focus on:
-- Namespace status and finalizers
-- Pod states and termination details  
-- Events showing errors and warnings
-- Resource dependencies that might block cleanup
-
-Be thorough but efficient. Collect all relevant data before stopping.
-
-🚨 WARNING: NEVER GENERATE FAKE OBSERVATIONS! 🚨
-After writing "Action Input:", you MUST stop immediately. The system will provide the "Observation:" for you.
-DO NOT write fake tool results or continue the conversation after "Action Input:"
-
-🔥 CRITICAL COLON FORMATTING RULE 🔥
-EVERY ReAct section header MUST END WITH A COLON (:)
-
-✅ CORRECT: "Thought:" (with colon)
-❌ INCORRECT: "Thought" (missing colon)
-
-You MUST write:
-- "Thought:" (NOT "Thought")  
-- "Action:" (NOT "Action")
-- "Action Input:" (NOT "Action Input")
-
-CRITICAL REACT FORMATTING RULES:
-Follow the ReAct pattern exactly. You must use this structure:
-
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take (choose from available tools)
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now have sufficient information to provide my analysis
-Final Answer: [Complete SRE analysis in structured format - see below]
-
-RESPONSE OPTIONS:
-At each step, you have exactly TWO options:
-
-1. Continue investigating: 
-   Thought: [your reasoning about what to investigate next]
-   Action: [tool to use]
-   Action Input: [parameters]
-
-2. OR conclude with your findings:
-   Thought: I now have sufficient information to provide my analysis
-   Final Answer: [your complete response - format depends on the specific task]
-
-WHEN TO CONCLUDE:
-Conclude with "Final Answer:" when you have enough information to fulfill your specific task goals.
-You do NOT need perfect information - focus on actionable insights from the data you've collected.
-
-CRITICAL FORMATTING REQUIREMENTS:
-1. ALWAYS include colons after section headers: "Thought:", "Action:", "Action Input:"
-2. Each section must start on a NEW LINE - never continue on the same line
-3. Always add a blank line after "Action Input:" before stopping
-4. For Action Input, provide ONLY parameter values (no YAML, no code blocks, no triple backticks)
-
-⚠️ ABSOLUTELY CRITICAL: STOP AFTER "Action Input:" ⚠️
-5. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
-6. NEVER write fake observations or continue the conversation
-7. The system will provide the real "Observation:" - you must NOT generate it yourself
-8. After the system provides the observation, then continue with "Thought:" or "Final Answer:"
-
-VIOLATION EXAMPLES (DO NOT DO THIS):
-❌ Action Input: apiVersion=v1, kind=Secret, name=my-secret
-❌ Observation: kubernetes-server.resources_get: {"result": "..."} 
-❌ Thought: I have retrieved the data...
-
-CORRECT BEHAVIOR:
-✅ Action Input: apiVersion=v1, kind=Secret, name=my-secret
-✅ [STOP HERE - SYSTEM WILL PROVIDE OBSERVATION]
-
-NEWLINE FORMATTING IS CRITICAL:
-- WRONG: "Thought: I need to check the namespace status first.Action: kubernetes-server.resources_get"
-- CORRECT: 
-Thought: I need to check the namespace status first.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
-
-EXAMPLE OF CORRECT INVESTIGATION:
-Thought: I need to check the namespace status first. This will give me details about why the namespace is stuck in terminating state.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
-
-EXAMPLE OF CONCLUDING PROPERLY:
-Thought: I have gathered sufficient information to complete my task. Based on my investigation, I can now provide the requested analysis.
-
-Final Answer: [Provide your complete response in the format appropriate for your specific task - this could be structured analysis, data summary, or stage-specific findings depending on what was requested]
-
-CRITICAL VIOLATIONS TO AVOID:
-❌ GENERATING FAKE OBSERVATIONS: Never write "Observation:" yourself - the system provides it
-❌ CONTINUING AFTER ACTION INPUT: Stop immediately after "Action Input:" - don't add more content
-❌ HALLUCINATING TOOL RESULTS: Don't make up API responses or tool outputs
-🚨 ❌ MISSING COLONS: Writing "Thought" instead of "Thought:" - THIS IS THE #1 FORMATTING ERROR
-❌ Action Input with ```yaml or code blocks  
-❌ Running sections together on the same line without proper newlines
-❌ Providing analysis in non-ReAct format (you MUST use "Final Answer:" to conclude)
-❌ Abandoning ReAct format and providing direct structured responses
-
-🔥 COLON EXAMPLES - MEMORIZE THESE:
-❌ WRONG: "Thought
-The user wants me to investigate..."
-❌ WRONG: "Action
-kubernetes-server.resources_get"
-✅ CORRECT: "Thought:
-The user wants me to investigate..."
-✅ CORRECT: "Action:
-kubernetes-server.resources_get"
-
-THE #1 MISTAKE: Writing fake observations and continuing the conversation after Action Input
-
-Focus on collecting additional data and providing stage-specific analysis for human operators to execute."""
-
-EXPECTED_DATA_COLLECTION_USER_MESSAGE = """Answer the following question using the available tools.
-
-Available tools:
-kubernetes-server.kubectl_get: Get Kubernetes resources
-kubernetes-server.kubectl_describe: Describe Kubernetes resources
-test-data-server.collect_system_info: Collect basic system information like CPU, memory, and disk usage
-
-Question: Investigate this test-kubernetes alert and provide stage-specific analysis.
-
-## Alert Details
-
-**Severity:** warning
-**Timestamp:** {TIMESTAMP}
-**Environment:** production
-**Alert Type:** test-kubernetes
-**Runbook:** https://runbooks.example.com/k8s-namespace-stuck
-
-## Runbook Content
-```markdown
-<!-- RUNBOOK START -->
-# Mock Runbook
-Test runbook content
-<!-- RUNBOOK END -->
-```
-
-## Previous Stage Data
-No previous stage data is available for this alert. This is the first stage of analysis.
-
-## Your Task: DATA-COLLECTION STAGE
-Use available tools to:
-1. Collect additional data relevant to this stage
-2. Analyze findings in the context of this specific stage
-3. Provide stage-specific insights and recommendations
-
-Your Final Answer should include both the data collected and your stage-specific analysis.
-
-Thought: I need to get namespace information first.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get: {
-  "result": "stuck-namespace   Terminating   45m"
-}
-Action: kubernetes-server.kubectl_describe
-Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_describe: {
-  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
-}
-Thought: Let me also collect system information to understand resource constraints.
-Action: test-data-server.collect_system_info
-Action Input: {"detailed": false}
-Observation: test-data-server.collect_system_info: {
-  "result": "{'result': 'System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free'}"
-}
-Begin!"""
-
-EXPECTED_VERIFICATION_SYSTEM_MESSAGE = """## General SRE Agent Instructions
-
-You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
-- Kubernetes and container orchestration
-- Cloud infrastructure and services
-- Incident response and troubleshooting
-- System monitoring and alerting
-- GitOps and deployment practices
-
-Analyze alerts thoroughly and provide actionable insights based on:
-1. Alert information and context
-2. Associated runbook procedures
-3. Real-time system data from available tools
-
-Always be specific, reference actual data, and provide clear next steps.
-Focus on root cause analysis and sustainable solutions.
-
-## Kubernetes Server Instructions
-
-For Kubernetes operations:
-- Be careful with cluster-scoped resource listings in large clusters
-- Always prefer namespaced queries when possible
-- Use kubectl explain for resource schema information
-- Check resource quotas before creating new resources
-
-🚨 WARNING: NEVER GENERATE FAKE OBSERVATIONS! 🚨
-After writing "Action Input:", you MUST stop immediately. The system will provide the "Observation:" for you.
-DO NOT write fake tool results or continue the conversation after "Action Input:"
-
-🔥 CRITICAL COLON FORMATTING RULE 🔥
-EVERY ReAct section header MUST END WITH A COLON (:)
-
-✅ CORRECT: "Thought:" (with colon)
-❌ INCORRECT: "Thought" (missing colon)
-
-You MUST write:
-- "Thought:" (NOT "Thought")  
-- "Action:" (NOT "Action")
-- "Action Input:" (NOT "Action Input")
-
-CRITICAL REACT FORMATTING RULES:
-Follow the ReAct pattern exactly. You must use this structure:
-
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take (choose from available tools)
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now have sufficient information to provide my analysis
-Final Answer: [Complete SRE analysis in structured format - see below]
-
-RESPONSE OPTIONS:
-At each step, you have exactly TWO options:
-
-1. Continue investigating: 
-   Thought: [your reasoning about what to investigate next]
-   Action: [tool to use]
-   Action Input: [parameters]
-
-2. OR conclude with your findings:
-   Thought: I now have sufficient information to provide my analysis
-   Final Answer: [your complete response - format depends on the specific task]
-
-WHEN TO CONCLUDE:
-Conclude with "Final Answer:" when you have enough information to fulfill your specific task goals.
-You do NOT need perfect information - focus on actionable insights from the data you've collected.
-
-CRITICAL FORMATTING REQUIREMENTS:
-1. ALWAYS include colons after section headers: "Thought:", "Action:", "Action Input:"
-2. Each section must start on a NEW LINE - never continue on the same line
-3. Always add a blank line after "Action Input:" before stopping
-4. For Action Input, provide ONLY parameter values (no YAML, no code blocks, no triple backticks)
-
-⚠️ ABSOLUTELY CRITICAL: STOP AFTER "Action Input:" ⚠️
-5. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
-6. NEVER write fake observations or continue the conversation
-7. The system will provide the real "Observation:" - you must NOT generate it yourself
-8. After the system provides the observation, then continue with "Thought:" or "Final Answer:"
-
-VIOLATION EXAMPLES (DO NOT DO THIS):
-❌ Action Input: apiVersion=v1, kind=Secret, name=my-secret
-❌ Observation: kubernetes-server.resources_get: {"result": "..."} 
-❌ Thought: I have retrieved the data...
-
-CORRECT BEHAVIOR:
-✅ Action Input: apiVersion=v1, kind=Secret, name=my-secret
-✅ [STOP HERE - SYSTEM WILL PROVIDE OBSERVATION]
-
-NEWLINE FORMATTING IS CRITICAL:
-- WRONG: "Thought: I need to check the namespace status first.Action: kubernetes-server.resources_get"
-- CORRECT: 
-Thought: I need to check the namespace status first.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
-
-EXAMPLE OF CORRECT INVESTIGATION:
-Thought: I need to check the namespace status first. This will give me details about why the namespace is stuck in terminating state.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
-
-EXAMPLE OF CONCLUDING PROPERLY:
-Thought: I have gathered sufficient information to complete my task. Based on my investigation, I can now provide the requested analysis.
-
-Final Answer: [Provide your complete response in the format appropriate for your specific task - this could be structured analysis, data summary, or stage-specific findings depending on what was requested]
-
-CRITICAL VIOLATIONS TO AVOID:
-❌ GENERATING FAKE OBSERVATIONS: Never write "Observation:" yourself - the system provides it
-❌ CONTINUING AFTER ACTION INPUT: Stop immediately after "Action Input:" - don't add more content
-❌ HALLUCINATING TOOL RESULTS: Don't make up API responses or tool outputs
-🚨 ❌ MISSING COLONS: Writing "Thought" instead of "Thought:" - THIS IS THE #1 FORMATTING ERROR
-❌ Action Input with ```yaml or code blocks  
-❌ Running sections together on the same line without proper newlines
-❌ Providing analysis in non-ReAct format (you MUST use "Final Answer:" to conclude)
-❌ Abandoning ReAct format and providing direct structured responses
-
-🔥 COLON EXAMPLES - MEMORIZE THESE:
-❌ WRONG: "Thought
-The user wants me to investigate..."
-❌ WRONG: "Action
-kubernetes-server.resources_get"
-✅ CORRECT: "Thought:
-The user wants me to investigate..."
-✅ CORRECT: "Action:
-kubernetes-server.resources_get"
-
-THE #1 MISTAKE: Writing fake observations and continuing the conversation after Action Input
-
-Focus on investigation and providing recommendations for human operators to execute."""
-
-EXPECTED_VERIFICATION_USER_MESSAGE = """Answer the following question using the available tools.
-
-Available tools:
-kubernetes-server.kubectl_get: Get Kubernetes resources
-kubernetes-server.kubectl_describe: Describe Kubernetes resources
-
-Question: Analyze this test-kubernetes alert and provide actionable recommendations.
-
-## Alert Details
-
-**Severity:** warning
-**Timestamp:** {TIMESTAMP}
-**Environment:** production
-**Alert Type:** test-kubernetes
-**Runbook:** https://runbooks.example.com/k8s-namespace-stuck
-
-## Runbook Content
-```markdown
-<!-- RUNBOOK START -->
-# Mock Runbook
-Test runbook content
-<!-- RUNBOOK END -->
-```
-
-## Previous Stage Data
-### Results from 'data-collection' stage:
-
-#### Analysis Result
-
-<!-- Analysis Result START -->
-Thought: I need to get namespace information first.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get: {
-  "result": "stuck-namespace   Terminating   45m"
-}
-Action: kubernetes-server.kubectl_describe
-Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_describe: {
-  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
-}
-Thought: Let me also collect system information to understand resource constraints.
-Action: test-data-server.collect_system_info
-Action Input: {"detailed": false}
-Observation: test-data-server.collect_system_info: {
-  "result": "{'result': 'System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free'}"
-}
-Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
-<!-- Analysis Result END -->
-
-
-## Your Task
-Use the available tools to investigate this alert and provide:
-1. Root cause analysis
-2. Current system state assessment  
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
-Be thorough in your investigation before providing the final answer.
-
-Thought: I need to verify the namespace status.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get: {
-  "result": "stuck-namespace   Terminating   45m"
-}
-Begin!"""
-
-EXPECTED_ANALYSIS_SYSTEM_MESSAGE = """## General SRE Agent Instructions
-
-You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
-- Kubernetes and container orchestration
-- Cloud infrastructure and services
-- Incident response and troubleshooting
-- System monitoring and alerting
-- GitOps and deployment practices
-
-Analyze alerts thoroughly and provide actionable insights based on:
-1. Alert information and context
-2. Associated runbook procedures
-3. Real-time system data from available tools
-
-Always be specific, reference actual data, and provide clear next steps.
-Focus on root cause analysis and sustainable solutions.
-
-## Agent-Specific Instructions
-You are a Senior Site Reliability Engineer specializing in Kubernetes troubleshooting.
-Analyze the collected data from previous stages to identify root causes.
-
-Your analysis should:
-- Synthesize information from all data collection activities
-- Identify the specific root cause of the problem
-- Assess the impact and urgency level
-- Provide confidence levels for your conclusions
-
-Be precise and actionable in your analysis."""
-
-EXPECTED_ANALYSIS_USER_MESSAGE = """# Final Analysis Task
-
-
-**Stage:** analysis (Final Analysis Stage)
-
-
-# SRE Alert Analysis Request
-
-You are an expert Site Reliability Engineer (SRE) analyzing a system alert using the ConfigurableAgent.
-This agent specializes in kubernetes-server operations and has access to domain-specific tools and knowledge.
-
-Your task is to provide a comprehensive analysis of the incident based on:
-1. The alert information
-2. The associated runbook
-3. Real-time system data from MCP servers
-
-Please provide detailed, actionable insights about what's happening and potential next steps.
-
-## Alert Details
-
-**Severity:** warning
-**Timestamp:** {TIMESTAMP}
-**Environment:** production
-**Alert Type:** test-kubernetes
-**Runbook:** https://runbooks.example.com/k8s-namespace-stuck
-
-## Runbook Content
-```markdown
-<!-- RUNBOOK START -->
-# Mock Runbook
-Test runbook content
-<!-- RUNBOOK END -->
-```
-
-## Previous Stage Data
-### Results from 'data-collection' stage:
-
-#### Analysis Result
-
-<!-- Analysis Result START -->
-Thought: I need to get namespace information first.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get: {
-  "result": "stuck-namespace   Terminating   45m"
-}
-Action: kubernetes-server.kubectl_describe
-Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_describe: {
-  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
-}
-Thought: Let me also collect system information to understand resource constraints.
-Action: test-data-server.collect_system_info
-Action Input: {"detailed": false}
-Observation: test-data-server.collect_system_info: {
-  "result": "{'result': 'System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free'}"
-}
-Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
-<!-- Analysis Result END -->
-
-### Results from 'verification' stage:
-
-#### Analysis Result
-
-<!-- Analysis Result START -->
-Thought: I need to verify the namespace status.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get: {
-  "result": "stuck-namespace   Terminating   45m"
-}
-Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion.
-<!-- Analysis Result END -->
-
-
-## Instructions
-Provide comprehensive final analysis based on ALL collected data:
-1. Root cause analysis
-2. Impact assessment  
-3. Recommended actions
-4. Prevention strategies
-
-Do NOT call any tools - use only the provided data."""
-
+import re
+from .expected_conversations import (
+    EXPECTED_STAGES,
+    EXPECTED_DATA_COLLECTION_CONVERSATION,
+    EXPECTED_VERIFICATION_CONVERSATION,
+    EXPECTED_ANALYSIS_CONVERSATION
+)
+
+
+def normalize_content(content: str) -> str:
+    """Normalize dynamic content in messages for stable comparison."""
+    # Normalize timestamps (microsecond precision)
+    content = re.sub(r'\*\*Timestamp:\*\* \d+', '**Timestamp:** {TIMESTAMP}', content)
+    content = re.sub(r'Timestamp:\*\* \d+', 'Timestamp:** {TIMESTAMP}', content)
+    
+    # Normalize alert IDs and session IDs (UUIDs)
+    content = re.sub(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '{UUID}', content)
+    
+    # Normalize specific test-generated data keys
+    content = re.sub(r'test-kubernetes_[a-f0-9]+_\d+', 'test-kubernetes_{DATA_KEY}', content)
+    
+    return content
+
+
+def assert_conversation_messages(expected_conversation: dict, actual_messages: list, n: int):
+    """
+    Get the first N messages from expected_conversation['messages'] and compare with actual_messages.
+    
+    Args:
+        expected_conversation: Dictionary with 'messages' key containing expected message list
+        actual_messages: List of actual messages from the LLM interaction 
+        n: Number of messages to extract from expected conversation (0-based, so n=3 means first 3 messages)
+    """
+    expected_messages = expected_conversation.get('messages', [])
+    assert len(actual_messages) == n, "Actual messages count mismatch: expected {n}, got {len(actual_messages)}"
+    
+    # Extract first N messages
+    first_n_expected = expected_messages[:n]
+    
+    # Compare each message
+    for i in range(len(first_n_expected)):
+        assert i < len(actual_messages), f"Missing actual message: Expected {len(first_n_expected)} messages, got {len(actual_messages)}"
+
+        expected_msg = first_n_expected[i]
+        actual_msg = actual_messages[i]
+        
+        # Compare role
+        expected_role = expected_msg.get('role', '')
+        actual_role = actual_msg.get('role', '')
+        assert expected_role == actual_role, f"Role mismatch: expected {expected_role}, got {actual_role}"
+        
+        # Normalize content for comparison
+        expected_content = normalize_content(expected_msg.get('content', ''))
+        actual_content = normalize_content(actual_msg.get('content', ''))
+        assert expected_content == actual_content, f"Content mismatch: expected {expected_content}, got {actual_content}"
 
 @pytest.mark.asyncio
 @pytest.mark.e2e
@@ -559,27 +92,11 @@ class TestRealE2E:
     
     Mocks only external HTTP calls (LLM APIs, runbooks, MCP servers).
     """
-    
-    def _normalize_content(self, content: str) -> str:
-        """Normalize dynamic content in LLM messages for stable comparison."""
-        # Normalize timestamps (microsecond precision)
-        content = re.sub(r'\*\*Timestamp:\*\* \d+', '**Timestamp:** {TIMESTAMP}', content)
-        content = re.sub(r'Timestamp:\*\* \d+', 'Timestamp:** {TIMESTAMP}', content)
-        
-        # Normalize alert IDs and session IDs (UUIDs)
-        content = re.sub(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '{UUID}', content)
-        
-        # Normalize specific test-generated data keys
-        content = re.sub(r'test-kubernetes_[a-f0-9]+_\d+', 'test-kubernetes_{DATA_KEY}', content)
-        
-        return content
 
     async def test_complete_alert_processing_flow(
         self,
         e2e_test_client,
-        e2e_realistic_kubernetes_alert,
-        isolated_e2e_settings,
-        isolated_test_database
+        e2e_realistic_kubernetes_alert
     ):
         """
         Simplified E2E test focusing on core functionality.
@@ -602,9 +119,7 @@ class TestRealE2E:
             print("🚀 Starting test execution...")
             result = await self._execute_test(
                 e2e_test_client,
-                e2e_realistic_kubernetes_alert,
-                isolated_e2e_settings,
-                isolated_test_database
+                e2e_realistic_kubernetes_alert
             )
             print("✅ Test execution completed!")
             return result
@@ -631,9 +146,7 @@ class TestRealE2E:
     async def _execute_test(
         self,
         e2e_test_client,
-        e2e_realistic_kubernetes_alert,
-        isolated_e2e_settings,
-        isolated_test_database
+        e2e_realistic_kubernetes_alert
     ):
         """Minimal test execution with maximum real infrastructure."""
         print("🔧 _execute_test started")
@@ -980,7 +493,7 @@ Finalizers:   kubernetes.io/pv-protection"""
                 print("🔍 Step 4: Comprehensive result verification...")
                 await self._verify_session_metadata(detail_data, e2e_realistic_kubernetes_alert)
                 await self._verify_stage_structure(stages)
-                await self._verify_complete_interaction_flow(stages, captured_llm_requests)
+                await self._verify_complete_interaction_flow(stages)
                 
                 print("✅ COMPREHENSIVE VERIFICATION PASSED!")
                 
@@ -1079,7 +592,7 @@ Finalizers:   kubernetes.io/pv-protection"""
         """Verify stage structure and count."""
         print("  🏗️ Verifying stage structure...")
         
-        # Expected stages for kubernetes-namespace-terminating-chain
+        # Expected stages for kubernetes-namespace-terminating-chain (multi-stage)
         expected_stages = ['data-collection', 'verification', 'analysis']
         
         assert len(stages) == len(expected_stages), \
@@ -1105,241 +618,78 @@ Finalizers:   kubernetes.io/pv-protection"""
         
         print(f"    ✅ Stage structure verified ({len(stages)} stages in correct order)")
 
-    async def _verify_complete_interaction_flow(self, stages, captured_llm_requests):
-        """Verify complete interaction flow with all objects in exact order per stage."""
-        print("  🔄 Verifying complete interaction flow...")
+    async def _verify_complete_interaction_flow(self, stages):
+        """Verify complete interaction flow using progressive conversation format."""
+        print("  🔄 Verifying complete interaction flow with conversation validation...")
         
-        # Expected complete interaction structure per stage (from actual test run data)
-        expected_stages = {
-            'data-collection': {
-                'llm_count': 4,
-                'mcp_count': 5,  # Tool discovery calls + tool execution calls are all tracked as MCP interactions
-                'interactions': [
-                    # MCP 1 - Tool list discovery for kubernetes-server (first interaction)
-                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-                    # MCP 2 - Tool list discovery for test-data-server (returns 1 tool: collect_system_info)
-                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
-                    # LLM 1 - Initial ReAct iteration
-                    {'type': 'llm', 'position': 1, 'success': True, 'final_message_role': 'assistant'},
-                    # MCP 3 - Successful kubectl_get attempt
-                    {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-                    # LLM 2 - Second ReAct iteration  
-                    {'type': 'llm', 'position': 2, 'success': True, 'final_message_role': 'assistant'},
-                    # MCP 4 - Successful kubectl_describe attempt  
-                    {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
-                    # LLM 3 - Third ReAct iteration
-                    {'type': 'llm', 'position': 3, 'success': True, 'final_message_role': 'assistant'},
-                    # MCP 5 - Successful collect_system_info call
-                    {'type': 'mcp', 'position': 5, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
-                    # LLM 4 - Final completion
-                    {'type': 'llm', 'position': 4, 'success': True, 'final_message_role': 'assistant',
-                     'expected_final_response': "Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.",
-                     'verify_exact_llm_content': True}
-                ]
-            },
-            'verification': {
-                'llm_count': 2,
-                'mcp_count': 2,
-                'interactions': [
-                    # MCP 1 - Tool list discovery (first interaction)
-                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-                    # LLM 1 - Initial ReAct iteration
-                    {'type': 'llm', 'position': 1, 'success': True, 'final_message_role': 'assistant'},
-                    # MCP 2 - Successful kubectl_get attempt
-                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-                    # LLM 2 - Final answer
-                    {'type': 'llm', 'position': 2, 'success': True, 'final_message_role': 'assistant',
-                     'expected_final_response': "Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion.",
-                     'verify_exact_llm_content': True}
-                ]
-            },
-            'analysis': {
-                'llm_count': 1,
-                'mcp_count': 0,
-                'interactions': [
-                    # LLM 1 - Final analysis (no tool discovery)
-                    {'type': 'llm', 'position': 1, 'success': True, 'final_message_role': 'assistant',
-                     'expected_final_response': """Based on previous stages, the namespace is stuck due to finalizers.
-## Recommended Actions
-1. Remove finalizers to allow deletion""",
-                     'verify_exact_llm_content': True}
-                ]
-            }
-        }
+        await self._validate_stage(stages[0], EXPECTED_DATA_COLLECTION_CONVERSATION)
+        print(f"    ✅ Stage 'data-collection': Progressive conversation structure validated")  
+        await self._validate_stage(stages[1], EXPECTED_VERIFICATION_CONVERSATION)
+        print(f"    ✅ Stage 'verification': Progressive conversation structure validated")
+        await self._validate_stage(stages[2], EXPECTED_ANALYSIS_CONVERSATION)
+        print(f"    ✅ Stage 'analysis': Progressive conversation structure validated")
+
+        print("  ✅ All stages validated with EP-0014 progressive conversation format")
+
+    async def _validate_stage(self, actual_stage, expected_conversation):
+
+        """
+        Validate data collection stage using expected conversation structure.
         
-        for stage in stages:
-            stage_name = stage['stage_name']
-            expected_stage = expected_stages.get(stage_name)
-            
-            if not expected_stage:
-                continue  # Skip verification for unexpected stages
-                
-            # Verify interaction counts match
-            llm_interactions = stage.get('llm_interactions', [])
-            mcp_interactions = stage.get('mcp_communications', [])
-            
-            assert len(llm_interactions) == expected_stage['llm_count'], \
-                f"Stage '{stage_name}' LLM count mismatch: expected {expected_stage['llm_count']}, got {len(llm_interactions)}"
-            
-            assert len(mcp_interactions) == expected_stage['mcp_count'], \
-                f"Stage '{stage_name}' MCP count mismatch: expected {expected_stage['mcp_count']}, got {len(mcp_interactions)}"
-            
-            # Verify complete interaction flow in chronological order
-            # Get chronological interactions from API (mixed LLM and MCP in actual order)
-            chronological_interactions = stage.get('chronological_interactions', [])
-            assert len(chronological_interactions) == len(expected_stage['interactions']), \
-                f"Stage '{stage_name}' chronological interaction count mismatch: expected {len(expected_stage['interactions'])}, got {len(chronological_interactions)}"
-            
-            llm_counter = 0
-            mcp_counter = 0
-            
-            for i, expected_interaction in enumerate(expected_stage['interactions']):
-                actual_interaction = chronological_interactions[i]
-                interaction_type = expected_interaction['type']
-                
-                # Verify the type matches
-                assert actual_interaction['type'] == interaction_type, \
-                    f"Stage '{stage_name}' interaction {i+1} type mismatch: expected {interaction_type}, got {actual_interaction['type']}"
-                
-                if interaction_type == 'llm':
-                    llm_counter += 1
-                    # Verify basic LLM interaction structure
-                    assert 'details' in actual_interaction, f"Stage '{stage_name}' LLM {llm_counter} missing details"
-                    details = actual_interaction['details']
-                    
-                    assert details['success'] == expected_interaction['success'], \
-                        f"Stage '{stage_name}' LLM {llm_counter} success mismatch"
-                    
-                    # Check final message has expected role
-                    conversation = details['conversation']
-                    assert conversation is not None, f"Stage '{stage_name}' LLM {llm_counter} has no conversation"
-                    messages = conversation['messages']
-                    assert len(messages) > 0, f"Stage '{stage_name}' LLM {llm_counter} has no messages"
-                    final_message = messages[-1]
-                    assert final_message['role'] == expected_interaction['final_message_role'], \
-                        f"Stage '{stage_name}' LLM {llm_counter} final message role mismatch"
-                    
-                    # Verify final response content if specified
-                    if 'expected_final_response' in expected_interaction:
-                        actual_response = final_message['content'].strip()
-                        expected_response = expected_interaction['expected_final_response'].strip()
-                        assert actual_response == expected_response, \
-                            f"Stage '{stage_name}' LLM {llm_counter} response mismatch:\nExpected: {repr(expected_response)}\nActual: {repr(actual_response)}"
-                    
-                    # Verify actual LLM request content using captured requests for exact string matching
-                    if 'verify_exact_llm_content' in expected_interaction and expected_interaction['verify_exact_llm_content']:
-                        # This should be the last LLM interaction in the stage
-                        assert i == len(expected_stage['interactions']) - 1 or all(exp_int['type'] != 'llm' for exp_int in expected_stage['interactions'][i+1:]), \
-                            f"Stage '{stage_name}' verify_exact_llm_content should only be on the last LLM interaction"
-                        
-                        # Get the captured LLM request based on the global LLM interaction count
-                        # Calculate which global LLM request this corresponds to
-                        global_llm_count = 0
-                        for s in stages:
-                            s_name = s['stage_name']
-                            s_llm_interactions = s.get('llm_interactions', [])
-                            if s_name == stage_name:
-                                global_llm_count += llm_counter  # This is the current LLM interaction in this stage
-                                break
-                            else:
-                                global_llm_count += len(s_llm_interactions)
-                        
-                        # LLM requests are 1-indexed in the captured data but global_llm_count is 0-indexed
-                        captured_request = captured_llm_requests.get(global_llm_count)
-                        if not captured_request:
-                            print(f"⚠️ Warning: Could not find captured LLM request for global position {global_llm_count}")
-                            print(f"Available captures: {list(captured_llm_requests.keys())}")
-                            continue
-                        
-                        captured_messages = captured_request['messages']
-                        assert len(captured_messages) >= 2, f"Stage '{stage_name}' LLM {llm_counter} should have at least system and user messages"
-                        
-                        system_message = captured_messages[0]
-                        user_message = captured_messages[1]
-                        
-                        assert system_message.get('role') == 'system', \
-                            f"Stage '{stage_name}' LLM {llm_counter} first message should be system role"
-                        assert user_message.get('role') == 'user', \
-                            f"Stage '{stage_name}' LLM {llm_counter} second message should be user role"
-                        
-                        # Store the exact captured content for use in future test runs
-                        actual_system_content = system_message.get('content', '').strip()
-                        actual_user_content = user_message.get('content', '').strip()
-                        
-                        print(f"📝 Stage '{stage_name}' LLM {llm_counter} EXACT CONTENT CAPTURED:")
-                        print(f"System message length: {len(actual_system_content)} chars")
-                        print(f"User message length: {len(actual_user_content)} chars")
-                        
-                        # Normalize both expected and actual content for comparison
-                        normalized_system = self._normalize_content(actual_system_content)
-                        normalized_user = self._normalize_content(actual_user_content)
-                        
-                        # Verify exact content based on stage 
-                        if stage_name == "data-collection":
-                            # Expected exact content for data-collection stage
-                            expected_system = EXPECTED_DATA_COLLECTION_SYSTEM_MESSAGE
-                            expected_user = EXPECTED_DATA_COLLECTION_USER_MESSAGE
-                            
-                            normalized_expected_system = self._normalize_content(expected_system)
-                            normalized_expected_user = self._normalize_content(expected_user)
-                            
-                            assert normalized_system == normalized_expected_system, \
-                                f"Data-collection system message mismatch:\nExpected length: {len(normalized_expected_system)}\nActual length: {len(normalized_system)}\nFirst 200 chars of diff - Expected: {normalized_expected_system[:200]}\nActual: {normalized_system[:200]}"
-                            assert normalized_user == normalized_expected_user, \
-                                f"Data-collection user message mismatch:\nExpected length: {len(normalized_expected_user)}\nActual length: {len(normalized_user)}\nFirst 200 chars of diff - Expected: {normalized_expected_user[:200]}\nActual: {normalized_user[:200]}"
-                        elif stage_name == "verification":  
-                            # Expected exact content for verification stage
-                            expected_system_verification = EXPECTED_VERIFICATION_SYSTEM_MESSAGE
-                            expected_user_verification = EXPECTED_VERIFICATION_USER_MESSAGE
+        This stage focuses on gathering comprehensive information using 
+        DataCollectionAgent with ReAct pattern and tool calls.
+        """
+        stage_name = actual_stage['stage_name']
+        expected_stage = EXPECTED_STAGES[stage_name]
+        llm_interactions = actual_stage.get('llm_interactions', [])
+        mcp_interactions = actual_stage.get('mcp_communications', [])  # Fixed: use mcp_communications not mcp_interactions
 
-                            normalized_expected_system_verification = self._normalize_content(expected_system_verification)
-                            normalized_expected_user_verification = self._normalize_content(expected_user_verification)
-                            
-                            assert normalized_system == normalized_expected_system_verification, \
-                                f"Verification system message mismatch:\nExpected length: {len(normalized_expected_system_verification)}\nActual length: {len(normalized_system)}"
-                            assert normalized_user == normalized_expected_user_verification, \
-                                f"Verification user message mismatch:\nExpected length: {len(normalized_expected_user_verification)}\nActual length: {len(normalized_user)}"
-                        elif stage_name == "analysis":
-                            # Expected exact content for analysis stage
-                            expected_system_analysis = EXPECTED_ANALYSIS_SYSTEM_MESSAGE
-                            
-                            expected_user_analysis = EXPECTED_ANALYSIS_USER_MESSAGE
+        assert len(llm_interactions) == expected_stage["llm_count"], f"Stage '{stage_name}': Expected {expected_stage['llm_count']} LLM interactions, got {len(llm_interactions)}"
+        assert len(mcp_interactions) == expected_stage["mcp_count"], f"Stage '{stage_name}': Expected {expected_stage['mcp_count']} MCP interactions, got {len(mcp_interactions)}"
 
-                            normalized_expected_system_analysis = self._normalize_content(expected_system_analysis)
-                            normalized_expected_user_analysis = self._normalize_content(expected_user_analysis)
-                            
-                            assert normalized_system == normalized_expected_system_analysis, \
-                                f"Analysis system message mismatch:\nExpected length: {len(normalized_expected_system_analysis)}\nActual length: {len(normalized_system)}"
-                            assert normalized_user == normalized_expected_user_analysis, \
-                                f"Analysis user message mismatch:\nExpected length: {len(normalized_expected_user_analysis)}\nActual length: {len(normalized_user)}"
-                    
-                elif interaction_type == 'mcp':
-                    mcp_counter += 1
-                    # Verify basic MCP interaction structure
-                    assert 'details' in actual_interaction, f"Stage '{stage_name}' MCP {mcp_counter} missing details"
-                    details = actual_interaction['details']
-                    
-                    assert details['success'] == expected_interaction['success'], \
-                        f"Stage '{stage_name}' MCP {mcp_counter} success mismatch"
-                    
-                    assert details['communication_type'] == expected_interaction['communication_type'], \
-                        f"Stage '{stage_name}' MCP {mcp_counter} communication_type mismatch"
-                    
-                    assert details['server_name'] == expected_interaction['server_name'], \
-                        f"Stage '{stage_name}' MCP {mcp_counter} server_name mismatch"
-                    
-                    # Verify tool name for tool_call interactions
-                    if expected_interaction['communication_type'] == 'tool_call':
-                        assert details['tool_name'] == expected_interaction['tool_name'], \
-                            f"Stage '{stage_name}' MCP {mcp_counter} tool_name mismatch"
-                    
-                    # Verify tool_list has available_tools
-                    elif expected_interaction['communication_type'] == 'tool_list':
-                        assert 'available_tools' in details, \
-                            f"Stage '{stage_name}' MCP {mcp_counter} tool_list missing available_tools"
-                        assert len(details['available_tools']) > 0, \
-                            f"Stage '{stage_name}' MCP {mcp_counter} tool_list has no available_tools"
+        # Verify complete interaction flow in chronological order
+        # Get chronological interactions from API (mixed LLM and MCP in actual order)
+        chronological_interactions = actual_stage.get('chronological_interactions', [])
+        assert len(chronological_interactions) == len(expected_stage['interactions']), \
+            f"Stage '{stage_name}' chronological interaction count mismatch: expected {len(expected_stage['interactions'])}, got {len(chronological_interactions)}"
+        
+        for i, expected_interaction in enumerate(expected_stage['interactions']):
+            actual_interaction = chronological_interactions[i]
+            interaction_type = expected_interaction['type']
+            
+            # Verify the type matches
+            assert actual_interaction['type'] == interaction_type, \
+                f"Stage '{stage_name}' interaction {i+1} type mismatch: expected {interaction_type}, got {actual_interaction['type']}"
+
+            # Verify basic interaction structure
+            assert 'details' in actual_interaction, f"Stage '{stage_name}' interaction {i+1} missing details"
+            details = actual_interaction['details']
+            assert details['success'] == expected_interaction['success'], \
+                f"Stage '{stage_name}' interaction {i+1} success mismatch"
+
+            if interaction_type == 'llm':
+                # Verify the actual conversation matches the expected conversation
+                actual_conversation = details['conversation']
+                actual_messages = actual_conversation['messages']
+                expected_conversation_index = expected_interaction['conversation_index']
+                assert_conversation_messages(expected_conversation, actual_messages, expected_conversation_index)
+            elif interaction_type == 'mcp':
+                assert details['communication_type'] == expected_interaction['communication_type'], \
+                    f"Stage '{stage_name}' interaction {i+1} communication_type mismatch"
+                
+                assert details['server_name'] == expected_interaction['server_name'], \
+                    f"Stage '{stage_name}' interaction {i+1} server_name mismatch"
+                
+                # Verify tool name for tool_call interactions
+                if expected_interaction['communication_type'] == 'tool_call':
+                    assert details['tool_name'] == expected_interaction['tool_name'], \
+                        f"Stage '{stage_name}' interaction {i+1} tool_name mismatch"
+                
+                # Verify tool_list has available_tools
+                elif expected_interaction['communication_type'] == 'tool_list':
+                    assert 'available_tools' in details, \
+                        f"Stage '{stage_name}' interaction {i+1} tool_list missing available_tools"
+                    assert len(details['available_tools']) > 0, \
+                        f"Stage '{stage_name}' interaction {i+1} tool_list has no available_tools"
             
             print(f"    ✅ Stage '{stage_name}': Complete interaction flow verified ({len(llm_interactions)} LLM, {len(mcp_interactions)} MCP)")
-        
-        print("  ✅ Complete interaction flow verified for all stages")

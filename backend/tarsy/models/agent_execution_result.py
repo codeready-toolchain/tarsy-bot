@@ -29,6 +29,9 @@ class AgentExecutionResult(BaseModel):
     # The key field - agent decides the format (could be ReAct JSON, markdown, plain text, etc.)
     result_summary: str = Field(..., description="Agent-provided summary in whatever format the agent chooses")
     
+    # Complete conversation history for stage context passing
+    complete_conversation_history: Optional[str] = Field(None, description="Complete ReAct conversation history with all Thought/Action/Observation sequences for progressive conversation format")
+    
     # Optional clean final analysis for end-user consumption
     final_analysis: Optional[str] = Field(None, description="Clean final analysis for end-user, extracted from result_summary")
     

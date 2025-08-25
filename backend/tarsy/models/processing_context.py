@@ -191,22 +191,24 @@ class StageContext:
             sections.append("#### Analysis Result")
             sections.append("")
             
-            # Remove existing "## Analysis Result" header from result_summary if present
-            summary = result.result_summary
-            if summary.startswith("## Analysis Result"):
+            # Use complete conversation history if available, otherwise fall back to result_summary
+            content = result.complete_conversation_history if result.complete_conversation_history else result.result_summary
+            
+            # Remove existing "## Analysis Result" header from content if present
+            if content.startswith("## Analysis Result"):
                 # Split by lines and skip the first line and any empty line after it
-                lines = summary.split('\n')
+                lines = content.split('\n')
                 # Skip the "## Analysis Result" header line
                 lines = lines[1:]
                 # Skip empty line after header if present
                 if lines and lines[0].strip() == "":
                     lines = lines[1:]
-                summary = '\n'.join(lines)
+                content = '\n'.join(lines)
             
             # Wrap the analysis result content with HTML comment boundaries
             sections.append("<!-- Analysis Result START -->")
-            escaped_summary = summary.replace("-->", "--&gt;").replace("<!--", "&lt;!--")
-            sections.append(escaped_summary)
+            escaped_content = content.replace("-->", "--&gt;").replace("<!--", "&lt;!--")
+            sections.append(escaped_content)
             sections.append("<!-- Analysis Result END -->")
             sections.append("")
         

@@ -200,6 +200,7 @@ class BaseAgent(ABC):
                 agent_name=self.__class__.__name__,
                 timestamp_us=now_us(),
                 result_summary=result_summary,
+                complete_conversation_history=analysis_result,
                 final_analysis=final_analysis
             )
             

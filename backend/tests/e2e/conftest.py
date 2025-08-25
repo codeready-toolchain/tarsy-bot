@@ -12,7 +12,7 @@ import shutil
 import sys
 import tempfile
 import uuid
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from pathlib import Path
 from unittest.mock import patch
 
@@ -206,10 +206,14 @@ current-context: test-context
 """
     kubeconfig_path = e2e_isolation.create_temp_file(".yaml", kubeconfig_content)
     
+    # Create absolute path to test agents config
+    current_dir = Path(__file__).parent
+    test_agents_path = current_dir / "test_agents.yaml"
+    
     # Set isolated environment variables
     e2e_isolation.set_isolated_env("HISTORY_DATABASE_URL", test_db_url)
     e2e_isolation.set_isolated_env("HISTORY_ENABLED", "true")
-    e2e_isolation.set_isolated_env("AGENT_CONFIG_PATH", "tests/e2e/test_agents.yaml")
+    e2e_isolation.set_isolated_env("AGENT_CONFIG_PATH", str(test_agents_path))
     e2e_isolation.set_isolated_env("OPENAI_API_KEY", "test-key-123")
     e2e_isolation.set_isolated_env("LLM_PROVIDER", "openai-default")
     e2e_isolation.set_isolated_env("KUBECONFIG", kubeconfig_path)
@@ -220,7 +224,7 @@ current-context: test-context
     # Override specific values after creation to ensure they're isolated
     settings.history_database_url = test_db_url
     settings.history_enabled = True
-    settings.agent_config_path = "tests/e2e/test_agents.yaml"
+    settings.agent_config_path = str(test_agents_path)
     settings.openai_api_key = "test-key-123"
     settings.llm_provider = "openai-default"
     
@@ -228,76 +232,6 @@ current-context: test-context
     e2e_isolation.patch_settings(settings)
     
     return settings
-
-
-@contextmanager
-def isolated_database_cleanup():
-    """Context manager for isolated database cleanup."""
-    created_files = []
-    
-    try:
-        yield created_files
-    finally:
-        # Clean up any database files that were created
-        for file_path in created_files:
-            with suppress(OSError, IOError):
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                # Also clean up SQLite journal files
-                for suffix in ['-shm', '-wal']:
-                    journal_file = file_path + suffix
-                    if os.path.exists(journal_file):
-                        os.remove(journal_file)
-
-
-@pytest.fixture
-def isolated_test_database(e2e_isolation):
-    """Provide an isolated test database that's automatically cleaned up."""
-    db_url = e2e_isolation.create_temp_database()
-    
-    # Initialize the database in complete isolation
-    from sqlmodel import Session, SQLModel, create_engine
-
-    from tarsy.database.init_db import initialize_database
-    from tarsy.repositories.base_repository import DatabaseManager
-    
-    # CRITICAL: Import all models FIRST to ensure they're registered with SQLModel.metadata
-    import tarsy.models.db_models  # noqa: F401
-    import tarsy.models.unified_interactions  # noqa: F401
-    
-    # Create isolated database engine
-    engine = create_engine(db_url, echo=False)
-    
-    # Initialize all tables directly
-    SQLModel.metadata.create_all(engine)
-    
-    # Temporarily patch settings for database initialization
-    temp_settings = type('Settings', (), {})()
-    temp_settings.history_database_url = db_url
-    temp_settings.history_enabled = True
-    
-    # Patch the database manager to use our isolated database
-    isolated_db_manager = DatabaseManager(db_url)
-    isolated_db_manager.engine = engine
-    isolated_db_manager.SessionLocal = lambda: Session(engine)
-    
-    with patch('tarsy.config.settings.get_settings', return_value=temp_settings), \
-         patch('tarsy.repositories.base_repository.DatabaseManager', return_value=isolated_db_manager):
-        success = initialize_database()
-        if not success:
-            # Try direct table creation
-            try:
-                # Import all models to ensure they're registered
-                from tarsy.models.db_models import AlertSession, StageExecution  # noqa: F401
-                from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction  # noqa: F401
-                
-                SQLModel.metadata.create_all(engine)
-                success = True
-            except Exception as e:
-                pytest.fail(f"Failed to initialize isolated test database: {db_url}, error: {e}")
-    
-    return db_url
-
 
 @pytest.fixture(autouse=True, scope="function")
 def ensure_e2e_isolation(request):
