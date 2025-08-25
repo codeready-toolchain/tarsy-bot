@@ -885,7 +885,7 @@ class LLMClient:
 
 ### Phase 7: E2E test
 **Eend-to-end test updates**  
-- Update the e2e tests to fully cover new functionality.
+- Update the tests/e2e/test_api_e2e.py tests to addopt them to the new conversation format.
 
 ### Phase 8: Dashboard Updates
 **UI Updates**  

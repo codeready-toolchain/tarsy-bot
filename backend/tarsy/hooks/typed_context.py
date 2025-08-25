@@ -189,13 +189,17 @@ class InteractionHookContext(Generic[TInteraction]):
     async def __aenter__(self) -> 'InteractionHookContext[TInteraction]':
         """Enter async context - start timing."""
         self.start_time_us = now_us()
-        self.interaction.start_time_us = self.start_time_us
+        # Only set start_time_us if the interaction model has this field (for runtime-only fields)
+        if hasattr(self.interaction, 'start_time_us'):
+            self.interaction.start_time_us = self.start_time_us
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Exit async context - trigger error hooks if needed."""
         end_time_us = now_us()
-        self.interaction.end_time_us = end_time_us
+        # Only set end_time_us if the interaction model has this field (for runtime-only fields)
+        if hasattr(self.interaction, 'end_time_us'):
+            self.interaction.end_time_us = end_time_us
         self.interaction.timestamp_us = end_time_us
         
         if self.start_time_us:
@@ -217,7 +221,9 @@ class InteractionHookContext(Generic[TInteraction]):
             result_data: Either a dict of result data or complete interaction object
         """
         end_time_us = now_us()
-        self.interaction.end_time_us = end_time_us
+        # Only set end_time_us if the interaction model has this field (for runtime-only fields)
+        if hasattr(self.interaction, 'end_time_us'):
+            self.interaction.end_time_us = end_time_us
         self.interaction.timestamp_us = end_time_us
         
         if self.start_time_us:
@@ -265,7 +271,13 @@ class InteractionHookContext(Generic[TInteraction]):
 
     def get_request_id(self) -> str:
         """Get the unique request ID for this operation."""
-        return self.interaction.request_id
+        # LLMInteraction uses interaction_id, MCPInteraction uses request_id
+        if hasattr(self.interaction, 'request_id'):
+            return self.interaction.request_id
+        elif hasattr(self.interaction, 'interaction_id'):
+            return self.interaction.interaction_id
+        else:
+            return f"unknown_{id(self.interaction)}"
 
 
 # Global typed hook manager instance

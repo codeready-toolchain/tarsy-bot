@@ -520,6 +520,7 @@ class HistoryRepository:
                     timestamp_us=llm_db.timestamp_us,
                     duration_ms=llm_db.duration_ms,
                     stage_execution_id=llm_db.stage_execution_id or 'unknown',
+                    step_description=f"LLM analysis using {llm_db.model_name}",
                     details=llm_db
                 )
                 

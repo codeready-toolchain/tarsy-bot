@@ -8,7 +8,7 @@ accumulated data from previous stages to provide comprehensive conclusions.
 from typing import TYPE_CHECKING
 
 from tarsy.utils.logger import get_module_logger
-from tarsy.models.unified_interactions import LLMMessage
+from tarsy.models.unified_interactions import LLMMessage, LLMConversation
 from .base_controller import IterationController
 
 if TYPE_CHECKING:
@@ -60,4 +60,14 @@ class ReactFinalAnalysisController(IterationController):
             LLMMessage(role="user", content=prompt)
         ]
         
-        return await self.llm_client.generate_response(messages, context.session_id, context.agent.get_current_stage_execution_id())
+        # Create LLMConversation object for EP-0014 compatibility
+        conversation = LLMConversation(messages=messages)
+        
+        # Generate response and get the latest assistant message content
+        updated_conversation = await self.llm_client.generate_response(conversation, context.session_id, context.agent.get_current_stage_execution_id())
+        latest_message = updated_conversation.get_latest_assistant_message()
+        
+        if latest_message:
+            return latest_message.content
+        else:
+            return "No response generated from LLM"

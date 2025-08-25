@@ -1211,15 +1211,17 @@ Finalizers:   kubernetes.io/pv-protection"""
                         f"Stage '{stage_name}' LLM {llm_counter} success mismatch"
                     
                     # Check final message has expected role
-                    messages = details.get('messages', [])
+                    conversation = details['conversation']
+                    assert conversation is not None, f"Stage '{stage_name}' LLM {llm_counter} has no conversation"
+                    messages = conversation['messages']
                     assert len(messages) > 0, f"Stage '{stage_name}' LLM {llm_counter} has no messages"
                     final_message = messages[-1]
-                    assert final_message.get('role') == expected_interaction['final_message_role'], \
+                    assert final_message['role'] == expected_interaction['final_message_role'], \
                         f"Stage '{stage_name}' LLM {llm_counter} final message role mismatch"
                     
                     # Verify final response content if specified
                     if 'expected_final_response' in expected_interaction:
-                        actual_response = final_message.get('content', '').strip()
+                        actual_response = final_message['content'].strip()
                         expected_response = expected_interaction['expected_final_response'].strip()
                         assert actual_response == expected_response, \
                             f"Stage '{stage_name}' LLM {llm_counter} response mismatch:\nExpected: {repr(expected_response)}\nActual: {repr(actual_response)}"

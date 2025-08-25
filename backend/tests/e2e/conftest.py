@@ -364,6 +364,13 @@ def e2e_test_client(isolated_e2e_settings):
     """Create an isolated FastAPI test client for e2e tests."""
     from fastapi.testclient import TestClient
 
+    # Ensure settings cache is cleared before importing app
+    # This ensures the app is created with the test configuration
+    from contextlib import suppress
+    with suppress(Exception):
+        import tarsy.config.settings
+        tarsy.config.settings.get_settings.cache_clear()
+
     from tarsy.main import app
     
     # The isolated settings are already patched globally

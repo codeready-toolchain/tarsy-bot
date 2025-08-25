@@ -516,14 +516,7 @@ class HistoryService:
             with self.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot store LLM interaction")
-                # Set step description if not already set
-                if not interaction.step_description:
-                    model_name = (
-                        getattr(interaction, "model_name", None)
-                        or getattr(getattr(interaction, "details", None), "model_name", None)
-                        or "LLM"
-                    )
-                    interaction.step_description = f"LLM analysis using {model_name}"
+                # Step description is handled at the timeline event level, not interaction level
                 repo.create_llm_interaction(interaction)
                 logger.debug(f"Stored LLM interaction for session {interaction.session_id}")
                 return True
