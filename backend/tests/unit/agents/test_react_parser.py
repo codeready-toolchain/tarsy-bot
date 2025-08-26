@@ -41,7 +41,7 @@ class TestReActResponse:
             server="kubectl",
             tool="get_pods",
             parameters={"namespace": "default"},
-            reason="ReAct Action: kubectl.get_pods"
+            reason="ReAct:kubectl.get_pods"
         )
         
         response = ReActResponse(
@@ -90,13 +90,13 @@ class TestToolCall:
             server="kubectl",
             tool="get_pods",
             parameters={"namespace": "default", "status": "all"},
-            reason="ReAct Action: kubectl.get_pods"
+            reason="ReAct:kubectl.get_pods"
         )
         
         assert tool_call.server == "kubectl"
         assert tool_call.tool == "get_pods"
         assert tool_call.parameters["namespace"] == "default"
-        assert tool_call.reason == "ReAct Action: kubectl.get_pods"
+        assert tool_call.reason == "ReAct:kubectl.get_pods"
     
     def test_empty_server_validation_error(self):
         """Test that empty server raises validation error."""
@@ -421,7 +421,7 @@ class TestToolCallConversion:
         assert tool_call.server == "kubectl"
         assert tool_call.tool == "get_pods"
         assert tool_call.parameters["namespace"] == "default"
-        assert tool_call.reason == "ReAct Action: kubectl.get_pods"
+        assert tool_call.reason == "ReAct:kubectl.get_pods"
     
     def test_convert_json_action_input(self):
         """Test converting action with JSON input."""
@@ -505,12 +505,12 @@ class TestToolCallConversion:
     
     def test_convert_empty_action_raises_error(self):
         """Test that empty action raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid action format"):
+        with pytest.raises(ValueError, match="Action cannot be empty or whitespace-only"):
             ReActParser._convert_to_tool_call("", "some input")
     
     def test_convert_action_no_dot_raises_error(self):
         """Test that action without dot raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid action format"):
+        with pytest.raises(ValueError, match="Action must contain a dot separator"):
             ReActParser._convert_to_tool_call("invalid_action", "some input")
     
     def test_convert_invalid_json_fallback(self):
@@ -891,3 +891,54 @@ class TestParameterParsing:
         
         # Should still return a dict
         assert isinstance(result, dict)
+    
+    def test_parse_json_array_wraps_in_input(self):
+        """Test that JSON array gets wrapped in {'input': array}."""
+        json_array = '["item1", "item2", "item3"]'
+        
+        result = ReActParser._parse_action_parameters(json_array)
+        
+        assert result == {'input': ["item1", "item2", "item3"]}
+    
+    def test_parse_json_string_wraps_in_input(self):
+        """Test that JSON string gets wrapped in {'input': string}."""
+        json_string = '"hello world"'
+        
+        result = ReActParser._parse_action_parameters(json_string)
+        
+        assert result == {'input': "hello world"}
+    
+    def test_parse_json_number_wraps_in_input(self):
+        """Test that JSON number gets wrapped in {'input': number}."""
+        json_number = '42'
+        
+        result = ReActParser._parse_action_parameters(json_number)
+        
+        assert result == {'input': 42}
+    
+    def test_parse_json_boolean_wraps_in_input(self):
+        """Test that JSON boolean gets wrapped in {'input': boolean}."""
+        json_true = 'true'
+        json_false = 'false'
+        
+        result_true = ReActParser._parse_action_parameters(json_true)
+        result_false = ReActParser._parse_action_parameters(json_false)
+        
+        assert result_true == {'input': True}
+        assert result_false == {'input': False}
+    
+    def test_parse_json_null_wraps_in_input(self):
+        """Test that JSON null gets wrapped in {'input': None}."""
+        json_null = 'null'
+        
+        result = ReActParser._parse_action_parameters(json_null)
+        
+        assert result == {'input': None}
+    
+    def test_parse_json_dict_unchanged(self):
+        """Test that JSON dict is used as-is without wrapping."""
+        json_dict = '{"key": "value", "number": 123}'
+        
+        result = ReActParser._parse_action_parameters(json_dict)
+        
+        assert result == {"key": "value", "number": 123}

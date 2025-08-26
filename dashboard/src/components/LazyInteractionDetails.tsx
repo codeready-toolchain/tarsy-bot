@@ -215,33 +215,7 @@ const LazyDetailsRenderer = memo(({
     return [];
   };
 
-  // Helper functions (same as original)
-  const extractSystemUserFromRequest = (llm: LLMInteraction) => {
-    // EP-0014: Use helper to get messages from either conversation or legacy field
-    const messages = getMessages(llm);
-    const systemMsg = messages.find((m: any) => m?.role === 'system');
-    const userMsg = messages.find((m: any) => m?.role === 'user');
-    return {
-      system: typeof systemMsg?.content === 'string' ? systemMsg.content : 
-              (systemMsg?.content == null || systemMsg?.content === '') ? '' : 
-              JSON.stringify(systemMsg.content),
-      user: typeof userMsg?.content === 'string' ? userMsg.content : 
-            (userMsg?.content == null || userMsg?.content === '') ? '' : 
-            JSON.stringify(userMsg.content),
-    };
-  };
 
-  const extractResponseText = (llm: LLMInteraction) => {
-    // EP-0014: Use helper to get messages from either conversation or legacy field
-    const messages = getMessages(llm);
-    // Find the LATEST assistant message (for ReAct, we want the most recent reasoning)
-    const assistantMsg = messages.slice().reverse().find((m: any) => m?.role === 'assistant');
-    if (assistantMsg && assistantMsg.content) {
-      if (typeof assistantMsg.content === 'string') return assistantMsg.content;
-      return JSON.stringify(assistantMsg.content);
-    }
-    return '';
-  };
 
   const isToolList = (mcpDetails: MCPInteraction): boolean => {
     return mcpDetails.communication_type === 'tool_list' || 
@@ -280,7 +254,7 @@ const LazyDetailsRenderer = memo(({
         default:
           return {
             bgcolor: 'grey.500',
-            color: 'grey.contrastText',
+            color: 'common.white',
             label: role.charAt(0).toUpperCase() + role.slice(1)
           };
       }
@@ -354,8 +328,6 @@ const LazyDetailsRenderer = memo(({
     );
   };
 
-
-
   const renderLLMDetails = (llmDetails: LLMInteraction) => {
     const isFailed = llmDetails.success === false;
     
@@ -422,7 +394,7 @@ const LazyDetailsRenderer = memo(({
                   if (messages.length === 0) return '';
                   
                   let conversation = `=== LLM CONVERSATION ===\n\n`;
-                  messages.forEach((message, index) => {
+                  messages.forEach((message) => {
                     const role = message.role.toUpperCase();
                     const content = typeof message.content === 'string' ? message.content : 
                                    (message.content == null || message.content === '') ? '' :
@@ -621,7 +593,7 @@ const LazyDetailsRenderer = memo(({
         let conversation = `=== LLM CONVERSATION ===\n\n`;
         
         // Show all messages in order
-        messages.forEach((message, index) => {
+        messages.forEach((message) => {
           const role = message.role.toUpperCase();
           const content = typeof message.content === 'string' ? message.content : 
                          (message.content == null || message.content === '') ? '' :

@@ -282,7 +282,7 @@ function ConversationTimeline({
         <Box display="flex" gap={2} alignItems="center" mb={2}>
           <LinearProgress 
             variant="determinate" 
-            value={(stageStatusCounts.completed / parsedSession.stages.length) * 100}
+            value={parsedSession.stages.length > 0 ? (stageStatusCounts.completed / parsedSession.stages.length) * 100 : 0}
             sx={{ height: 6, borderRadius: 3, flex: 1 }}
           />
           <Typography variant="body2" color="text.secondary">

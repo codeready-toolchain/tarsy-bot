@@ -35,19 +35,19 @@ const getStepStyle = (type: string, success: boolean = true) => {
       return {
         emoji: '🔧',
         color: success ? 'primary.main' : 'error.main',
-        bgColor: success ? 'primary.50' : 'error.50'
+        bgColor: success ? 'primary.light' : 'error.light'
       };
     case 'analysis':
       return {
         emoji: '🎯',
         color: 'success.main',
-        bgColor: 'success.50'
+        bgColor: 'success.light'
       };
     case 'error':
       return {
         emoji: '❌',
         color: 'error.main',
-        bgColor: 'error.50'
+        bgColor: 'error.light'
       };
     default:
       return {
@@ -72,7 +72,11 @@ function ConversationStep({
   
   const style = getStepStyle(step.type, step.success);
   const hasActionDetails = step.type === 'action' && (step.actionName || step.actionResult);
-  const isActionSuccess = step.success && !step.actionResult?.toString().startsWith('Error:');
+  const isActionSuccess = step.success && !(
+    step.actionResult instanceof Error ||
+    (typeof step.actionResult === 'string' && step.actionResult.startsWith('Error:')) ||
+    (step.actionResult != null && typeof step.actionResult !== 'string' && String(step.actionResult).startsWith('Error:'))
+  );
 
   const toggleActionExpansion = () => {
     setIsActionExpanded(prev => !prev);
@@ -112,7 +116,7 @@ function ConversationStep({
       px: 2,
       mb: 1,
       borderRadius: 2,
-      backgroundColor: stepIndex % 2 === 0 ? 'grey.25' : 'background.paper',
+      backgroundColor: stepIndex % 2 === 0 ? 'grey.50' : 'background.paper',
       border: '1px solid',
       borderColor: 'divider',
       '&:hover': {
@@ -271,10 +275,10 @@ function ConversationStep({
             <Box sx={{ 
               mt: 1,
               p: 1,
-              bgcolor: 'error.50',
+              bgcolor: 'error.light',
               borderRadius: 1,
               border: '1px solid',
-              borderColor: 'error.200',
+              borderColor: 'error.main',
               display: 'flex',
               alignItems: 'flex-start',
               gap: 1
@@ -283,7 +287,7 @@ function ConversationStep({
               <Typography 
                 variant="body2" 
                 sx={{ 
-                  color: 'error.dark',
+                  color: 'error.main',
                   fontFamily: 'monospace',
                   fontSize: '0.875rem'
                 }}

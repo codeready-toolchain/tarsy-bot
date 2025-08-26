@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Box, Typography, Chip } from '@mui/material';
-import type { LLMInteraction } from '../types';
+import type { LLMInteraction, LLMMessage } from '../types';
 
 interface LLMInteractionPreviewProps {
   interaction: LLMInteraction;
@@ -17,13 +17,13 @@ function LLMInteractionPreview({
 }: LLMInteractionPreviewProps) {
   
   // EP-0014: Helper to get messages array from either new conversation or legacy messages field
-  const getMessages = (llm: LLMInteraction): any[] => {
+  const getMessages = (llm: LLMInteraction): LLMMessage[] => {
     // Try new conversation field first (EP-0014)
-    if (llm.conversation?.messages) {
+    if (llm.conversation?.messages && Array.isArray(llm.conversation.messages)) {
       return llm.conversation.messages;
     }
     // Fall back to legacy messages field for backward compatibility
-    if (llm.messages) {
+    if (llm.messages && Array.isArray(llm.messages)) {
       return llm.messages;
     }
     return [];
@@ -38,7 +38,7 @@ function LLMInteractionPreview({
     // EP-0014: Use helper to get messages from either conversation or legacy field
     const messages = getMessages(llm);
     // Find the LATEST assistant message (for ReAct, we want the most recent reasoning)
-    const assistantMsg = messages.slice().reverse().find((m: any) => m?.role === 'assistant');
+    const assistantMsg = messages.slice().reverse().find((m: LLMMessage) => m?.role === 'assistant');
     if (assistantMsg) {
       if (typeof assistantMsg.content === 'string') return assistantMsg.content;
       if (assistantMsg.content !== undefined) return JSON.stringify(assistantMsg.content);

@@ -22,7 +22,7 @@ from langchain_anthropic import ChatAnthropic
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import llm_interaction_context
-from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
+from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
 
 # Setup logger for this module
@@ -137,18 +137,6 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Failed to initialize {self.provider_name}: {str(e)}")
             self.available = False
-    
-    def _convert_messages(self, messages: List[LLMMessage]) -> List:
-        """Convert LLMMessage objects to LangChain message objects."""
-        langchain_messages = []
-        for msg in messages:
-            if msg.role == "system":
-                langchain_messages.append(SystemMessage(content=msg.content))
-            elif msg.role == "user":
-                langchain_messages.append(HumanMessage(content=msg.content))
-            elif msg.role == "assistant":
-                langchain_messages.append(AIMessage(content=msg.content))
-        return langchain_messages
 
     def _convert_conversation_to_langchain(self, conversation: LLMConversation) -> List:
         """Convert typed conversation to LangChain message objects."""

@@ -45,32 +45,9 @@ function InteractionDetails({
     return [];
   };
 
-  const extractSystemUserFromRequest = (llm: LLMInteraction) => {
-    // EP-0014: Use helper to get messages from either conversation or legacy field
-    const messages = getMessages(llm);
-    const systemMsg = messages.find((m: any) => m?.role === 'system');
-    const userMsg = messages.find((m: any) => m?.role === 'user');
-    return {
-      system: typeof systemMsg?.content === 'string' ? systemMsg.content : 
-              (systemMsg?.content == null || systemMsg?.content === '') ? '' : 
-              JSON.stringify(systemMsg.content),
-      user: typeof userMsg?.content === 'string' ? userMsg.content : 
-            (userMsg?.content == null || userMsg?.content === '') ? '' : 
-            JSON.stringify(userMsg.content),
-    };
-  };
 
-  const extractResponseText = (llm: LLMInteraction) => {
-    // EP-0014: Use helper to get messages from either conversation or legacy field
-    const messages = getMessages(llm);
-    // Find the LATEST assistant message (for ReAct, we want the most recent reasoning)
-    const assistantMsg = messages.slice().reverse().find((m: any) => m?.role === 'assistant');
-    if (assistantMsg && assistantMsg.content) {
-      if (typeof assistantMsg.content === 'string') return assistantMsg.content;
-      return JSON.stringify(assistantMsg.content);
-    }
-    return '';
-  };
+
+
 
   // EP-0014: New function to render all conversation messages in sequence
   const renderConversationMessages = (llm: LLMInteraction) => {
@@ -104,7 +81,7 @@ function InteractionDetails({
         default:
           return {
             bgcolor: 'grey.500',
-            color: 'grey.contrastText',
+            color: 'common.white',
             label: role.charAt(0).toUpperCase() + role.slice(1)
           };
       }
@@ -240,7 +217,7 @@ function InteractionDetails({
                 if (messages.length === 0) return '';
                 
                 let conversation = `=== LLM CONVERSATION ===\n\n`;
-                messages.forEach((message, index) => {
+                messages.forEach((message) => {
                   const role = message.role.toUpperCase();
                   const content = typeof message.content === 'string' ? message.content : 
                                  (message.content == null || message.content === '') ? '' :
@@ -444,34 +421,22 @@ function InteractionDetails({
     switch (type) {
       case 'llm': {
         const llm = details as LLMInteraction;
-        // Parse and format LLM messages nicely
-        let formatted = '=== LLM INTERACTION ===\n\n';
-        
-        // EP-0010: Format messages directly from the messages array
-        if (llm.messages?.length) {
-          const system = llm.messages.find((m: any) => m?.role === 'system');
-          const user = llm.messages.find((m: any) => m?.role === 'user');
-          if (system) {
-            const s = typeof system.content === 'string' ? system.content : 
-                     (system.content == null || system.content === '') ? '' : 
-                     JSON.stringify(system.content);
-            if (s) formatted += `SYSTEM:\n${s}\n\n`;
-          }
-          if (user) {
-            const u = typeof user.content === 'string' ? user.content : 
-                     (user.content == null || user.content === '') ? '' : 
-                     JSON.stringify(user.content);
-            if (u) formatted += `USER:\n${u}\n\n`;
-          }
-        }
-
-        const resp = extractResponseText(llm);
-        formatted += `RESPONSE:\n${resp}\n\n`;
-        formatted += `MODEL: ${llm.model_name}`;
-        if (llm.total_tokens) formatted += ` | TOKENS: ${llm.total_tokens}`;
-        if (llm.temperature !== undefined) formatted += ` | TEMPERATURE: ${llm.temperature}`;
-        
-        return formatted;
+        const messages = getMessages(llm);
+        let conversation = '=== LLM CONVERSATION ===\n\n';
+        messages.forEach((message) => {
+          const role = message.role.toUpperCase();
+          const content =
+            typeof message.content === 'string'
+              ? message.content
+              : message.content == null || message.content === ''
+              ? ''
+              : JSON.stringify(message.content);
+          conversation += `${role}:\n${content}\n\n`;
+        });
+        conversation += `MODEL: ${llm.model_name}`;
+        if (llm.total_tokens) conversation += ` | TOKENS: ${llm.total_tokens}`;
+        if (llm.temperature !== undefined) conversation += ` | TEMPERATURE: ${llm.temperature}`;
+        return conversation;
       }
       case 'mcp': {
         const mcp = details as MCPInteraction;

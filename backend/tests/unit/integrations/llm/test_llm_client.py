@@ -139,9 +139,11 @@ class TestLLMClientMessageConversion:
     
     def test_convert_system_message(self, client):
         """Test system message conversion."""
-        messages = [LLMMessage(role="system", content="You are a helpful assistant")]
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant")
+        ])
         
-        result = client._convert_messages(messages)
+        result = client._convert_conversation_to_langchain(conversation)
         
         assert len(result) == 1
         assert isinstance(result[0], SystemMessage)
@@ -149,33 +151,41 @@ class TestLLMClientMessageConversion:
     
     def test_convert_user_message(self, client):
         """Test user message conversion."""
-        messages = [LLMMessage(role="user", content="Hello, world!")]
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="System message"),
+            LLMMessage(role=MessageRole.USER, content="Hello, world!")
+        ])
         
-        result = client._convert_messages(messages)
+        result = client._convert_conversation_to_langchain(conversation)
         
-        assert len(result) == 1
-        assert isinstance(result[0], HumanMessage)
-        assert result[0].content == "Hello, world!"
+        assert len(result) == 2
+        assert isinstance(result[0], SystemMessage)
+        assert isinstance(result[1], HumanMessage)
+        assert result[1].content == "Hello, world!"
     
     def test_convert_assistant_message(self, client):
         """Test assistant message conversion."""
-        messages = [LLMMessage(role="assistant", content="Hello! How can I help?")]
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="System message"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Hello! How can I help?")
+        ])
         
-        result = client._convert_messages(messages)
+        result = client._convert_conversation_to_langchain(conversation)
         
-        assert len(result) == 1
-        assert isinstance(result[0], AIMessage)
-        assert result[0].content == "Hello! How can I help?"
+        assert len(result) == 2
+        assert isinstance(result[0], SystemMessage)
+        assert isinstance(result[1], AIMessage)
+        assert result[1].content == "Hello! How can I help?"
     
     def test_convert_multiple_messages(self, client):
         """Test conversion of multiple messages."""
-        messages = [
-            LLMMessage(role="system", content="System prompt"),
-            LLMMessage(role="user", content="User message"),
-            LLMMessage(role="assistant", content="Assistant response")
-        ]
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="System prompt"),
+            LLMMessage(role=MessageRole.USER, content="User message"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Assistant response")
+        ])
         
-        result = client._convert_messages(messages)
+        result = client._convert_conversation_to_langchain(conversation)
         
         assert len(result) == 3
         assert isinstance(result[0], SystemMessage)
@@ -184,8 +194,15 @@ class TestLLMClientMessageConversion:
     
     def test_convert_empty_message_list(self, client):
         """Test conversion of empty message list."""
-        result = client._convert_messages([])
-        assert result == []
+        # Note: LLMConversation requires at least one message (system message)
+        # This test now tests with minimal valid conversation
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="System message")
+        ])
+        
+        result = client._convert_conversation_to_langchain(conversation)
+        assert len(result) == 1
+        assert isinstance(result[0], SystemMessage)
 
 
 @pytest.mark.unit
@@ -263,7 +280,7 @@ class TestLLMClientResponseGeneration:
                 await client.generate_response(conversation, "test-session")
     
     @pytest.mark.asyncio
-    async def test_generate_response_creates_proper_request_data(self, client, mock_llm_client):
+    async def test_generate_response_creates_proper_request_data(self, client):
         """Test that proper request data is created for typed context."""
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="System prompt"),

@@ -7,7 +7,8 @@ import {
   Box,
   Chip,
   Avatar,
-  Alert
+  Alert,
+  alpha
 } from '@mui/material';
 import {
   CheckCircle,
@@ -36,10 +37,10 @@ const getStageStatusConfig = (status: string, stageIndex: number) => {
   switch (status) {
     case 'completed':
       return {
-        color: defaultColor as const,
+        color: defaultColor as 'primary' | 'info' | 'warning' | 'secondary',
         icon: <CheckCircle />,
         label: 'Completed',
-        bgColor: `${defaultColor}.50`,
+        bgColor: (theme: any) => alpha(theme.palette[defaultColor].main, 0.06),
         borderColor: `${defaultColor}.main`
       };
     case 'failed':
@@ -47,7 +48,7 @@ const getStageStatusConfig = (status: string, stageIndex: number) => {
         color: 'error' as const,
         icon: <ErrorIcon />,
         label: 'Failed',
-        bgColor: 'error.50',
+        bgColor: (theme: any) => alpha(theme.palette.error.main, 0.06),
         borderColor: 'error.main'
       };
     case 'active':
@@ -55,7 +56,7 @@ const getStageStatusConfig = (status: string, stageIndex: number) => {
         color: 'primary' as const,
         icon: <PlayArrow />,
         label: 'Active',
-        bgColor: 'primary.50',
+        bgColor: (theme: any) => alpha(theme.palette.primary.main, 0.06),
         borderColor: 'primary.main'
       };
     case 'pending':
@@ -64,7 +65,7 @@ const getStageStatusConfig = (status: string, stageIndex: number) => {
         color: 'default' as const,
         icon: <Schedule />,
         label: 'Pending',
-        bgColor: 'grey.50',
+        bgColor: (theme: any) => alpha(theme.palette.grey[400], 0.06),
         borderColor: 'grey.400'
       };
   }
@@ -298,7 +299,7 @@ function StageConversationCard({
           <Box sx={{ 
             mb: 2, 
             p: 1.5,
-            bgcolor: 'grey.50',
+            bgcolor: (theme) => alpha(theme.palette.grey[400], 0.06),
             borderRadius: 1,
             border: '1px solid',
             borderColor: 'grey.200'
@@ -358,14 +359,38 @@ function StageConversationCard({
   );
 }
 
+// Helper function to create a lightweight fingerprint of the last step
+const createLastStepFingerprint = (steps: any[]) => {
+  if (steps.length === 0) return '';
+  const lastStep = steps[steps.length - 1];
+  return `${lastStep.type || ''}-${lastStep.content?.substring(0, 50) || ''}-${lastStep.timestamp_us || ''}-${lastStep.success || ''}`;
+};
+
 // Wrap with React.memo to prevent unnecessary re-renders of individual stages
 export default React.memo(StageConversationCard, (prevProps, nextProps) => {
   // Custom comparison function to optimize re-renders
+  const prevStage = prevProps.stage;
+  const nextStage = nextProps.stage;
+  
+  // Create fingerprints for the last step to detect content changes
+  const prevLastStepFingerprint = createLastStepFingerprint(prevStage.steps);
+  const nextLastStepFingerprint = createLastStepFingerprint(nextStage.steps);
+  
   return (
-    prevProps.stage.execution_id === nextProps.stage.execution_id &&
-    prevProps.stage.status === nextProps.stage.status &&
-    prevProps.stage.steps.length === nextProps.stage.steps.length &&
+    // Core stage identification
+    prevStage.execution_id === nextStage.execution_id &&
+    prevStage.status === nextStage.status &&
+    prevProps.stageIndex === nextProps.stageIndex &&
     prevProps.isRecentlyUpdated === nextProps.isRecentlyUpdated &&
-    prevProps.stageIndex === nextProps.stageIndex
+    
+    // Step-related comparisons
+    prevStage.steps.length === nextStage.steps.length &&
+    prevLastStepFingerprint === nextLastStepFingerprint &&
+    
+    // Commonly-updated fields that indicate stage changes
+    prevStage.completed_at_us === nextStage.completed_at_us &&
+    prevStage.duration_ms === nextStage.duration_ms &&
+    prevStage.started_at_us === nextStage.started_at_us &&
+    prevStage.errorMessage === nextStage.errorMessage
   );
 });

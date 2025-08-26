@@ -1,7 +1,7 @@
 // EP-0014 Conversation Parser
 // Converts session data with EP-0014 conversation structures into clean conversation flow
 
-import type { DetailedSession, StageExecution, LLMInteraction, LLMMessage } from '../types';
+import type { DetailedSession, StageExecution, LLMMessage, LLMInteractionDetail, LLMEventDetails } from '../types';
 
 export interface ConversationStepData {
   type: 'thought' | 'action' | 'analysis' | 'error';
@@ -87,17 +87,54 @@ function parseReActMessage(content: string): {
 }
 
 /**
- * Get messages from EP-0014 conversation structure or fallback to legacy format
+ * Union type for objects that may contain conversation/messages data
+ * Can be either a full LLMInteractionDetail or just the details (LLMEventDetails)
+ * or any partial object with optional conversation/messages fields
  */
-function getMessages(interaction: LLMInteraction): LLMMessage[] {
-  // Try new conversation field first (EP-0014)
-  if (interaction.conversation?.messages) {
-    return interaction.conversation.messages;
+type InteractionLike = 
+  | LLMInteractionDetail 
+  | LLMEventDetails 
+  | { 
+      details?: { conversation?: { messages?: LLMMessage[] }; messages?: LLMMessage[] }; 
+      conversation?: { messages?: LLMMessage[] }; 
+      messages?: LLMMessage[];
+    }
+  | null 
+  | undefined;
+
+/**
+ * Get messages from EP-0014 conversation structure or fallback to legacy format
+ * Safely handles both full interactions and interaction details with null/undefined guards
+ */
+function getMessages(interactionOrDetails: InteractionLike): LLMMessage[] {
+  // Handle null/undefined input
+  if (!interactionOrDetails) {
+    return [];
   }
-  // Fall back to legacy messages field for backward compatibility
-  if (interaction.messages) {
-    return interaction.messages;
+
+  // Type guard for objects with details property (LLMInteractionDetail or similar)
+  if ('details' in interactionOrDetails && interactionOrDetails.details) {
+    // Try details.conversation.messages first (EP-0014)
+    if (interactionOrDetails.details.conversation?.messages) {
+      return interactionOrDetails.details.conversation.messages;
+    }
+    // Fall back to details.messages (legacy)
+    if (interactionOrDetails.details.messages) {
+      return interactionOrDetails.details.messages;
+    }
   }
+
+  // Type guard for objects with conversation property (LLMEventDetails or similar)
+  if ('conversation' in interactionOrDetails && interactionOrDetails.conversation?.messages) {
+    return interactionOrDetails.conversation.messages;
+  }
+
+  // Type guard for objects with messages property (LLMEventDetails legacy or similar)
+  if ('messages' in interactionOrDetails && interactionOrDetails.messages) {
+    return interactionOrDetails.messages;
+  }
+
+  // Default fallback
   return [];
 }
 
@@ -105,32 +142,38 @@ function getMessages(interaction: LLMInteraction): LLMMessage[] {
  * Find corresponding MCP result for an action
  */
 function findMCPResult(
-  stage: StageExecution, 
-  actionName: string, 
+  stage: StageExecution,
+  actionName: string,
   afterTimestamp: number
-): any {
+): { result: any; success: boolean } | null {
   const mcpCommunications = stage.mcp_communications || [];
-  
-  // Find MCP interaction that matches the action and occurs after the LLM interaction
-  const matchingMCP = mcpCommunications.find(mcp => {
-    const mcpTimestamp = mcp.timestamp_us;
-    const toolMatches = mcp.details?.tool_name === actionName || 
-                       mcp.details?.communication_type === 'tool_call';
-    const timeMatches = mcpTimestamp >= afterTimestamp && 
-                       mcpTimestamp <= afterTimestamp + 30000000; // Within 30 seconds
-    
-    return toolMatches && timeMatches;
+  const [serverPart, toolPart] = actionName.includes('.')
+    ? actionName.split('.', 2)
+    : [undefined, actionName];
+  const windowEnd = afterTimestamp + 30_000_000; // 30s
+
+  const candidates = mcpCommunications.filter((mcp: any) => {
+    const d = mcp.details ?? mcp;
+    const ts = mcp.timestamp_us ?? d.timestamp_us;
+    const typeIsToolCall = (d.communication_type ?? mcp.communication_type) === 'tool_call';
+    const toolMatches = (d.tool_name ?? mcp.tool_name) === toolPart;
+    const serverMatches =
+      serverPart ? (d.server_name ?? mcp.server_name) === serverPart : true;
+    const timeMatches = ts >= afterTimestamp && ts <= windowEnd;
+    return typeIsToolCall && toolMatches && serverMatches && timeMatches;
   });
 
-  if (matchingMCP?.details) {
-    const details = matchingMCP.details;
-    if (details.success === false) {
-      return `Error: Tool execution failed`;
-    }
-    return details.result || details.available_tools || 'Action completed successfully';
-  }
-
-  return null;
+  if (candidates.length === 0) return null;
+  candidates.sort((a: any, b: any) => (a.timestamp_us ?? 0) - (b.timestamp_us ?? 0));
+  const match: any = candidates[0];
+  const details = match.details ?? match;
+  const success = details.success !== false;
+  const result =
+    details.result ??
+    details.tool_result ??
+    details.available_tools ??
+    (success ? 'Action completed successfully' : null);
+  return { result, success };
 }
 
 /**
@@ -229,7 +272,7 @@ export function parseStageConversation(stage: StageExecution): StageConversation
       continue;
     }
 
-    const messages = getMessages(interaction.details);
+    const messages = getMessages(interaction.details ?? interaction);
     
     // Process assistant messages (thoughts, actions, analysis) 
     // Each interaction contains the FULL conversation history, so we need to extract only NEW content
@@ -261,9 +304,9 @@ export function parseStageConversation(stage: StageExecution): StageConversation
           content: `${parsed.action}${parsed.actionInput ? ` ${parsed.actionInput}` : ''}`,
           actionName: parsed.action,
           actionInput: parsed.actionInput || '',
-          actionResult: mcpResult,
+          actionResult: mcpResult?.result || null,
           timestamp_us: timestamp,
-          success: mcpResult ? !mcpResult.toString().startsWith('Error:') : true
+          success: mcpResult?.success ?? true
         });
       }
       

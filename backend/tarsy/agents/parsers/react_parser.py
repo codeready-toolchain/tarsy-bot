@@ -7,8 +7,9 @@ providing validation and type safety for ReAct response processing.
 
 import json
 import logging
-from typing import Optional, Dict, Any
 from enum import Enum
+from typing import Any, Dict, Optional
+
 from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
@@ -30,14 +31,14 @@ class ToolCall(BaseModel):
 
     @field_validator('server')
     @classmethod
-    def validate_server_not_empty(cls, v):
+    def validate_server_not_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("Server name cannot be empty")
         return v.strip()
 
     @field_validator('tool')
     @classmethod
-    def validate_tool_not_empty(cls, v):
+    def validate_tool_not_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("Tool name cannot be empty")
         return v.strip()
@@ -93,7 +94,7 @@ class ReActParser:
             ValidationError if response data is malformed during model creation
         """
         if not response or not isinstance(response, str):
-            return ReActResponse(response_type=ResponseType.MALFORMED)
+            return ReActResponse(response_type=ResponseType.MALFORMED, thought=None)
         
         # Parse sections using existing logic from builders.py
         sections = ReActParser._extract_sections(response)
@@ -107,29 +108,28 @@ class ReActParser:
             )
         
         # Check for action (with or without thought - LLMs sometimes skip thought)
-        if sections.get('action') and sections.get('action_input'):
+        action = sections.get('action')
+        action_input = sections.get('action_input')
+        if action and action_input:
             try:
-                tool_call = ReActParser._convert_to_tool_call(
-                    sections['action'], 
-                    sections['action_input']
-                )
+                tool_call = ReActParser._convert_to_tool_call(action, action_input)
                 return ReActResponse(
                     response_type=ResponseType.THOUGHT_ACTION,
                     thought=sections.get('thought'),  # Optional - might be None
-                    action=sections['action'],
-                    action_input=sections['action_input'],
+                    action=action,
+                    action_input=action_input,
                     tool_call=tool_call
                 )
             except ValueError as e:
                 # Log the error and return malformed response
                 logger.error(f"Invalid action format: {str(e)}")
-                return ReActResponse(response_type=ResponseType.MALFORMED)
+                return ReActResponse(response_type=ResponseType.MALFORMED, thought=None)
         
         # Malformed response
-        return ReActResponse(response_type=ResponseType.MALFORMED)
+        return ReActResponse(response_type=ResponseType.MALFORMED, thought=None)
     
     @staticmethod
-    def _extract_sections(response: str) -> Dict[str, str]:
+    def _extract_sections(response: str) -> Dict[str, Optional[str]]:
         """
         Extract ReAct sections from response text.
         
@@ -139,16 +139,16 @@ class ReActParser:
             return {}
 
         lines = response.strip().split('\n')
-        parsed = {
+        parsed: Dict[str, Optional[str]] = {
             'thought': None,
             'action': None,
             'action_input': None,
             'final_answer': None
         }
         
-        current_section = None
-        content_lines = []
-        found_sections = set()
+        current_section: Optional[str] = None
+        content_lines: list[str] = []
+        found_sections: set[str] = set()
         
         try:
             for line in lines:
@@ -233,7 +233,9 @@ class ReActParser:
         return ""
 
     @staticmethod
-    def _is_section_header(line: str, section_type: str, found_sections: set) -> bool:
+    def _is_section_header(
+        line: str, section_type: str, found_sections: set[str]
+    ) -> bool:
         """Check if line is a valid section header."""
         if not line:
             return False
@@ -280,7 +282,11 @@ class ReActParser:
         return False
 
     @staticmethod
-    def _finalize_current_section(parsed: Dict[str, Any], current_section: str, content_lines: list) -> None:
+    def _finalize_current_section(
+        parsed: Dict[str, Any], 
+        current_section: Optional[str], 
+        content_lines: list[str]
+    ) -> None:
         """Safely finalize the current section by joining content lines."""
         if current_section and content_lines is not None:
             new_content = '\n'.join(content_lines).strip()
@@ -296,10 +302,30 @@ class ReActParser:
         
         Moved from builders.convert_action_to_tool_call() with proper return type.
         """
-        if not action or '.' not in action:
-            raise ValueError(f"Invalid action format: {action}")
+        # Trim whitespace from action string before validation
+        action = action.strip() if action else ""
         
+        # Validate action is not empty and contains a dot
+        if not action:
+            raise ValueError("Action cannot be empty or whitespace-only")
+        
+        if '.' not in action:
+            raise ValueError(f"Action must contain a dot separator (server.tool format): '{action}'")
+        
+        # Split by first dot and validate both parts
         server, tool = action.split('.', 1)
+        
+        # Validate server part is not empty
+        if not server or not server.strip():
+            raise ValueError(f"Server name cannot be empty in action: '{action}'")
+        
+        # Validate tool part is not empty  
+        if not tool or not tool.strip():
+            raise ValueError(f"Tool name cannot be empty in action: '{action}'")
+        
+        # Trim whitespace from server and tool parts
+        server = server.strip()
+        tool = tool.strip()
         
         # Parse parameters (moved from builders.py logic)
         parameters = ReActParser._parse_action_parameters(action_input)
@@ -308,7 +334,7 @@ class ReActParser:
             server=server,
             tool=tool,
             parameters=parameters,
-            reason=f'ReAct Action: {action}'
+            reason=f"ReAct:{server}.{tool}"
         )
     
     @staticmethod
@@ -318,51 +344,40 @@ class ReActParser:
         
         Moved from builders.convert_action_to_tool_call() logic.
         """
-        parameters = {}
+        parameters: Dict[str, Any] = {}
         action_input = action_input.strip() if action_input else ""
         
         if not action_input:
             return parameters
         
         try:
-            # Try JSON first
-            if action_input.startswith('{'):
-                parameters = json.loads(action_input)
+            # Try JSON first - attempt to parse any valid JSON format
+            parsed_json = json.loads(action_input)
+            # Ensure result is always a dict - wrap non-dict JSON in {'input': value}
+            if isinstance(parsed_json, dict):
+                parameters = parsed_json
             else:
-                # Handle YAML-like format: "apiVersion: v1, kind: Namespace, name: superman-dev"
-                # or key=value format
-                for part in action_input.split(','):
-                    part = part.strip()
-                    if ':' in part and '=' not in part:
-                        # YAML-like format (key: value)
-                        key, value = part.split(':', 1)
-                        parameters[key.strip()] = value.strip()
-                    elif '=' in part:
-                        # key=value format
-                        key, value = part.split('=', 1)
-                        parameters[key.strip()] = value.strip()
-                    else:
-                        # Single parameter without format
-                        if not parameters:  # Only if we haven't added anything yet
-                            parameters['input'] = action_input
-                            break
-                        
-                # If no structured format detected, treat as single input
-                if not parameters:
-                    parameters['input'] = action_input
-                        
+                parameters = {'input': parsed_json}
         except json.JSONDecodeError:
-            # Fallback: try to parse as key: value or key=value
+            # Fallback: Handle YAML-like format: "apiVersion: v1, kind: Namespace, name: superman-dev"
+            # or key=value format
             for part in action_input.split(','):
                 part = part.strip()
-                if ':' in part:
+                if ':' in part and '=' not in part:
+                    # YAML-like format (key: value)
                     key, value = part.split(':', 1)
                     parameters[key.strip()] = value.strip()
                 elif '=' in part:
+                    # key=value format
                     key, value = part.split('=', 1)
                     parameters[key.strip()] = value.strip()
-            
-            # Ultimate fallback
+                else:
+                    # Single parameter without format
+                    if not parameters:  # Only if we haven't added anything yet
+                        parameters['input'] = action_input
+                        break
+                    
+            # If no structured format detected, treat as single input
             if not parameters:
                 parameters['input'] = action_input
         except Exception:

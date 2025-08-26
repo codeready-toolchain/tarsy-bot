@@ -299,7 +299,6 @@ class TestHistoryServiceIntegration:
             session_id=session_id,
             stage_execution_id=stage_execution_id,
             model_name="gpt-4",
-            step_description="Initial analysis",
             conversation=LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="You are a Kubernetes expert."),
                 LLMMessage(role=MessageRole.USER, content="Initial analysis prompt"),
@@ -332,7 +331,6 @@ class TestHistoryServiceIntegration:
             session_id=session_id,
             stage_execution_id=stage_execution_id,
             model_name="gpt-4",
-            step_description="Follow-up analysis",
             conversation=LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="You are a Kubernetes expert."),
                 LLMMessage(role=MessageRole.USER, content="Follow-up analysis prompt"),
@@ -419,7 +417,6 @@ class TestHistoryServiceIntegration:
                 llm_interaction_variety = LLMInteraction(
                     session_id=sid,
                     model_name="gpt-4",
-                    step_description=f"Analysis for {session_id}",
                     conversation=LLMConversation(messages=[
                         LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
                         LLMMessage(role=MessageRole.USER, content=f"Test prompt for {session_id}"),
@@ -492,7 +489,6 @@ class TestHistoryServiceIntegration:
         llm_interaction_invalid = LLMInteraction(
             session_id="non-existent-session",
             model_name="gpt-4",
-            step_description="Test interaction",
             conversation=LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
                 LLMMessage(role=MessageRole.USER, content="Test prompt"),

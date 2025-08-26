@@ -71,6 +71,11 @@ export interface DetailedSession extends Session {
   chain_definition: any;
   current_stage_id: string | null;
   
+  // Explicit chain properties (inherited from Session but made explicit for clarity)
+  // These are already in Session interface but listed here for explicit typing
+  chain_id: string;
+  current_stage_index: number | null;
+  
   // Stage executions with all their interactions (EP-0010 improvement)
   stages: StageExecution[];
 }

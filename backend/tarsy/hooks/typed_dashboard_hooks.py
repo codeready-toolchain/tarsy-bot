@@ -43,12 +43,15 @@ class TypedLLMDashboardHook(BaseTypedHook[LLMInteraction]):
             update_data = {
                 "type": "llm_interaction",
                 "session_id": interaction.session_id,
-                "request_id": interaction.interaction_id,  # Use interaction_id instead of removed request_id
+                "interaction_id": interaction.interaction_id,  # Use interaction_id instead of removed request_id
                 "model_name": interaction.model_name,
                 "provider": interaction.provider,
                 "step_description": f"LLM analysis using {interaction.model_name}",
                 # Send complete conversation object instead of individual prompts
-                "conversation": interaction.conversation.model_dump() if interaction.conversation else None,
+                "conversation": (
+                    interaction.conversation.model_dump() 
+                    if interaction.conversation else None
+                ),
                 "success": interaction.success,
                 "error_message": interaction.error_message,
                 "duration_ms": interaction.duration_ms,

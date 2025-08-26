@@ -20,8 +20,6 @@ import httpx
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 
-
-import re
 from .expected_conversations import (
     EXPECTED_STAGES,
     EXPECTED_DATA_COLLECTION_CONVERSATION,
@@ -52,10 +50,10 @@ def assert_conversation_messages(expected_conversation: dict, actual_messages: l
     Args:
         expected_conversation: Dictionary with 'messages' key containing expected message list
         actual_messages: List of actual messages from the LLM interaction 
-        n: Number of messages to extract from expected conversation (0-based, so n=3 means first 3 messages)
+        n: Number of messages to compare (a count)
     """
     expected_messages = expected_conversation.get('messages', [])
-    assert len(actual_messages) == n, "Actual messages count mismatch: expected {n}, got {len(actual_messages)}"
+    assert len(actual_messages) == n, f"Actual messages count mismatch: expected {n}, got {len(actual_messages)}"
     
     # Extract first N messages
     first_n_expected = expected_messages[:n]
@@ -623,11 +621,11 @@ Finalizers:   kubernetes.io/pv-protection"""
         print("  🔄 Verifying complete interaction flow with conversation validation...")
         
         await self._validate_stage(stages[0], EXPECTED_DATA_COLLECTION_CONVERSATION)
-        print(f"    ✅ Stage 'data-collection': Progressive conversation structure validated")  
+        print("    ✅ Stage 'data-collection': Progressive conversation structure validated")  
         await self._validate_stage(stages[1], EXPECTED_VERIFICATION_CONVERSATION)
-        print(f"    ✅ Stage 'verification': Progressive conversation structure validated")
+        print("    ✅ Stage 'verification': Progressive conversation structure validated")
         await self._validate_stage(stages[2], EXPECTED_ANALYSIS_CONVERSATION)
-        print(f"    ✅ Stage 'analysis': Progressive conversation structure validated")
+        print("    ✅ Stage 'analysis': Progressive conversation structure validated")
 
         print("  ✅ All stages validated with EP-0014 progressive conversation format")
 

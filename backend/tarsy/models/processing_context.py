@@ -192,17 +192,21 @@ class StageContext:
             sections.append("")
             
             # Use complete conversation history if available, otherwise fall back to result_summary
-            content = result.complete_conversation_history if result.complete_conversation_history else result.result_summary
+            # Default to empty string to ensure content is never None
+            content = result.complete_conversation_history or result.result_summary or ""
             
             # Remove existing "## Analysis Result" header from content if present
-            if content.startswith("## Analysis Result"):
-                # Split by lines and skip the first line and any empty line after it
+            # Check for header after stripping leading whitespace to handle indented content
+            stripped_content = content.lstrip()
+            if stripped_content.startswith("## Analysis Result"):
+                # Split by lines and skip the header line
                 lines = content.split('\n')
-                # Skip the "## Analysis Result" header line
-                lines = lines[1:]
+                lines = lines[1:]  # Skip the "## Analysis Result" header line
+                
                 # Skip empty line after header if present
                 if lines and lines[0].strip() == "":
                     lines = lines[1:]
+                
                 content = '\n'.join(lines)
             
             # Wrap the analysis result content with HTML comment boundaries

@@ -87,7 +87,7 @@ sequenceDiagram
 
 ### ReAct Processing Detail (Within Chain Stages)
 
-For agents using ReAct strategy within any chain stage, the investigation follows this detailed pattern with structured conversation handling:
+For agents using the ReAct strategy within any chain stage, the investigation follows this detailed pattern with structured conversation handling:
 
 ```mermaid
 sequenceDiagram

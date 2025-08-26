@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { Box, Skeleton, Alert, Typography } from '@mui/material';
 import type { DetailedSession } from '../types';
 
@@ -60,10 +60,11 @@ function TechnicalTimeline({
     );
   }
 
+  // TODO: Remove fallbacks once backend consistently provides chain_id and current_stage_index
   const chainExecution = {
-    chain_id: session.chain_id,
+    chain_id: session.chain_id ?? 'unknown-chain',
     chain_definition: session.chain_definition,
-    current_stage_index: session.current_stage_index,
+    current_stage_index: session.current_stage_index ?? 0,
     current_stage_id: session.current_stage_id,
     stages: session.stages
   };

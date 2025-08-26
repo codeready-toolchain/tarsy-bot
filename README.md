@@ -17,7 +17,7 @@ Inspired by the spirit of sci-fi AI, TARSy is your reliable SRE operations compa
 
 Before running TARSy, ensure you have the following tools installed:
 
-- **Python 3.11+** - Core backend runtime
+- **Python 3.13+** - Core backend runtime
 - **Node.js 18+** - Frontend development and build tools  
 - **npm** - Node.js package manager (comes with Node.js)
 - **uv** - Modern Python package and project manager

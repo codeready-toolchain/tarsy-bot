@@ -18,7 +18,7 @@ from tarsy.agents.iteration_controllers.react_stage_controller import (
 )
 from tarsy.models.constants import IterationStrategy
 from tarsy.models.processing_context import AvailableTools, ChainContext, StageContext
-from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+from tarsy.models.unified_interactions import LLMConversation, MessageRole
 
 # TestIterationContext removed - IterationContext class no longer exists
 # It was replaced by StageContext in the EP-0012 context architecture redesign
