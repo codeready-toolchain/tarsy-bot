@@ -4,10 +4,11 @@ import { CssBaseline } from '@mui/material';
 import { theme } from './theme';
 import DashboardView from './components/DashboardView';
 import OptimizedSessionDetailPage from './components/OptimizedSessionDetailPage';
+import ConversationSessionDetailPage from './components/ConversationSessionDetailPage';
 
 /**
- * Main App component for the Tarsy Dashboard - Phase 3
- * Provides React Router setup with dashboard and session detail routes
+ * Main App component for the Tarsy Dashboard - Enhanced with Conversation View
+ * Provides React Router setup with dual session detail views (conversation + technical)
  */
 function App() {
   return (
@@ -19,8 +20,11 @@ function App() {
           <Route path="/" element={<DashboardView />} />
           <Route path="/dashboard" element={<DashboardView />} />
           
-          {/* Session detail route - Performance Optimized */}
-          <Route path="/sessions/:sessionId" element={<OptimizedSessionDetailPage />} />
+          {/* Session detail routes - Dual View System */}
+          {/* New default: Conversation-focused view */}
+          <Route path="/sessions/:sessionId" element={<ConversationSessionDetailPage />} />
+          {/* Technical detail view (existing optimized view) */}
+          <Route path="/sessions/:sessionId/technical" element={<OptimizedSessionDetailPage />} />
           
           {/* Catch-all route redirects to dashboard */}
           <Route path="*" element={<DashboardView />} />

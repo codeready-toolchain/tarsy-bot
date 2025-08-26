@@ -120,7 +120,7 @@ export const getStageStatusIcon = (status: string) => {
     case 'failed':
       return '✗';
     case 'active':
-      return '⚡';
+      return '🔧';
     default:
       return '⏸';
   }
