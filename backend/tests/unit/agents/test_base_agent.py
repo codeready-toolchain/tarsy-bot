@@ -15,6 +15,7 @@ from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert import Alert
 from tarsy.models.processing_context import ChainContext
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.timestamp import now_us
 
@@ -43,7 +44,14 @@ class TestBaseAgentAbstractInterface:
     def mock_llm_client(self):
         """Create mock LLM client."""
         client = Mock(spec=LLMClient)
-        client.generate_response = AsyncMock(return_value="Test analysis result")
+        
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+            # Create a new conversation with the assistant response added
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Final Answer: Test analysis result")
+            return updated_conversation
+        
+        client.generate_response = AsyncMock(side_effect=mock_generate_response)
         return client
 
     @pytest.fixture
@@ -422,7 +430,16 @@ class TestBaseAgentErrorHandling:
 
     @pytest.fixture
     def mock_llm_client(self):
-        return Mock(spec=LLMClient)
+        client = Mock(spec=LLMClient)
+        
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+            # Create a new conversation with the assistant response added
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Final Answer: Test analysis result")
+            return updated_conversation
+        
+        client.generate_response = AsyncMock(side_effect=mock_generate_response)
+        return client
 
     @pytest.fixture
     def mock_mcp_client(self):
@@ -481,7 +498,6 @@ class TestBaseAgentErrorHandling:
         """Test successful process_alert flow."""
         # Mock successful flow
         mock_mcp_client.list_tools.return_value = {"test-server": []}
-        mock_llm_client.generate_response.return_value = "Analysis complete"
 
         # Mock MCP registry
         mock_config = Mock()
@@ -511,7 +527,7 @@ class TestBaseAgentErrorHandling:
         result = await base_agent.process_alert(alert_processing_data)
 
         assert result.status.value == "completed"
-        assert "Analysis complete" in result.result_summary
+        assert "Test analysis result" in result.result_summary
         assert result.agent_name == "TestConcreteAgent"
         assert result.timestamp_us is not None
 
@@ -524,7 +540,14 @@ class TestBaseAgent:
     def mock_llm_client(self):
         """Create mock LLM client."""
         client = Mock(spec=LLMClient)
-        client.generate_response = AsyncMock(return_value="Test analysis result")
+        
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+            # Create a new conversation with the assistant response added
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Final Answer: Test analysis result")
+            return updated_conversation
+        
+        client.generate_response = AsyncMock(side_effect=mock_generate_response)
         return client
 
     @pytest.fixture
@@ -641,9 +664,14 @@ class TestPhase3ProcessAlertOverload:
     @pytest.fixture
     def mock_llm_client(self):
         client = Mock(spec=LLMClient)
-        client.generate_response = AsyncMock(
-            return_value="Test analysis result from Phase 3"
-        )
+        
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+            # Create a new conversation with the assistant response added
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Final Answer: Test analysis result from Phase 3")
+            return updated_conversation
+        
+        client.generate_response = AsyncMock(side_effect=mock_generate_response)
         return client
 
     @pytest.fixture

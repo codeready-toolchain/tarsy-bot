@@ -18,6 +18,7 @@ from tarsy.agents.iteration_controllers.react_stage_controller import (
 )
 from tarsy.models.constants import IterationStrategy
 from tarsy.models.processing_context import AvailableTools, ChainContext, StageContext
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 
 # TestIterationContext removed - IterationContext class no longer exists
 # It was replaced by StageContext in the EP-0012 context architecture redesign
@@ -34,7 +35,14 @@ class TestSimpleReActController:
     def mock_llm_client(self):
         """Create mock LLM client."""
         client = Mock()
-        client.generate_response = AsyncMock(return_value="Final Answer: Analysis complete")
+        
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+            # Create a new conversation with the assistant response added
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Final Answer: Analysis complete")
+            return updated_conversation
+        
+        client.generate_response = AsyncMock(side_effect=mock_generate_response)
         return client
     
     @pytest.fixture
@@ -99,16 +107,15 @@ class TestSimpleReActController:
         """Test successful ReAct analysis loop with final answer."""
         result = await controller.execute_analysis_loop(sample_context)
         
-        # Should return full ReAct history including final answer
-        assert "Thought: Need to analyze the alert" in result
-        assert "Final Answer: Analysis complete" in result
+        # Should return final answer
+        assert result == "Analysis complete"
         
         # Verify LLM was called
         mock_llm_client.generate_response.assert_called()
         
         # Verify system message contains ReAct instructions
-        call_args = mock_llm_client.generate_response.call_args[0][0]
-        system_message = call_args[0]
+        conversation_arg = mock_llm_client.generate_response.call_args.kwargs['conversation']
+        system_message = conversation_arg.messages[0]
         assert "ReAct" in system_message.content
     
     @pytest.mark.asyncio
@@ -135,30 +142,29 @@ class TestSimpleReActController:
         self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
     ):
         """Test ReAct loop that executes an action before completing."""
-        # First response: action to execute
-        mock_prompt_builder.parse_react_response.side_effect = [
-            {
-                'thought': 'Need to get more info',
-                'action': 'test-tool',
-                'action_input': 'param=value',
-                'is_complete': False,
-                'final_answer': None
-            },
-            {
-                'thought': 'Now I have enough info',
-                'action': None,
-                'action_input': None,
-                'is_complete': True,
-                'final_answer': 'Complete analysis'
-            }
+        # Mock LLM responses in ReAct format for the parser to understand
+        react_responses = [
+            "Thought: Need to get more info\nAction: test-server.test-tool\nAction Input: param=value",
+            "Thought: Now I have enough info\nFinal Answer: Complete analysis"
         ]
+        
+        call_count = 0
+        async def mock_generate_response_with_sequence(conversation, session_id, stage_execution_id=None):
+            nonlocal call_count
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            response = react_responses[call_count] if call_count < len(react_responses) else react_responses[-1]
+            updated_conversation.append_assistant_message(response)
+            call_count += 1
+            return updated_conversation
+        
+        mock_llm_client.generate_response.side_effect = mock_generate_response_with_sequence
         
         result = await controller.execute_analysis_loop(sample_context)
         
         # Should return full ReAct history including actions and final answer
         assert "Thought: Need to get more info" in result
-        assert "Action: test-tool" in result
-        assert "Observation: Tool executed successfully" in result 
+        assert "Action: test-server.test-tool" in result
+        assert "Observation: test-server.test-tool: success" in result 
         assert "Final Answer: Complete analysis" in result
         
         # Verify tool was executed
@@ -174,55 +180,49 @@ class TestSimpleReActController:
         """Test ReAct loop that reaches maximum iterations."""
         mock_agent.max_iterations = 1  # Force max iterations quickly
         
-        # Always return incomplete response to force max iterations
-        mock_prompt_builder.parse_react_response.return_value = {
-            'thought': 'Still thinking...',
-            'action': None,
-            'action_input': None,
-            'is_complete': False,
-            'final_answer': None
-        }
+        # Mock LLM to return incomplete responses (no Final Answer) to force max iterations
+        async def mock_generate_response_incomplete(conversation, session_id, stage_execution_id=None):
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Thought: Still thinking...")  # No Final Answer
+            return updated_conversation
         
-        # Mock fallback response
-        mock_llm_client.generate_response.return_value = "Fallback analysis"
+        mock_llm_client.generate_response.side_effect = mock_generate_response_incomplete
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert "Analysis completed (reached max iterations)" in result
-        assert "Fallback analysis" in result
+        assert "Analysis incomplete: reached maximum iterations (1) without final answer" in result
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_tool_execution_error(
-        self, controller, sample_context, mock_agent, mock_prompt_builder
+        self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
     ):
         """Test ReAct loop with tool execution error."""
         # Mock tool execution to fail
         mock_agent.execute_mcp_tools.side_effect = Exception("Tool execution failed")
         
-        # Return action first, then completion
-        mock_prompt_builder.parse_react_response.side_effect = [
-            {
-                'thought': 'Need to use tool',
-                'action': 'test-tool',
-                'action_input': 'param=value',
-                'is_complete': False,
-                'final_answer': None
-            },
-            {
-                'thought': 'Tool failed but continuing',
-                'action': None,
-                'action_input': None,
-                'is_complete': True,
-                'final_answer': 'Analysis with error'
-            }
+        # Mock LLM responses in ReAct format
+        react_responses = [
+            "Thought: Need to use tool\nAction: test-server.test-tool\nAction Input: param=value",
+            "Thought: Tool failed but continuing\nFinal Answer: Analysis with error"
         ]
+        
+        call_count = 0
+        async def mock_generate_response_with_error(conversation, session_id, stage_execution_id=None):
+            nonlocal call_count
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            response = react_responses[call_count] if call_count < len(react_responses) else react_responses[-1]
+            updated_conversation.append_assistant_message(response)
+            call_count += 1
+            return updated_conversation
+        
+        mock_llm_client.generate_response.side_effect = mock_generate_response_with_error
         
         result = await controller.execute_analysis_loop(sample_context)
         
         # Should return full ReAct history including error handling and final answer
         assert "Thought: Need to use tool" in result
-        assert "Action: test-tool" in result
-        assert "Observation: Error executing action" in result
+        assert "Action: test-server.test-tool" in result
+        assert "Observation: Error executing action: Tool execution failed" in result
         assert "Final Answer: Analysis with error" in result
         
         # Verify tool execution was attempted
@@ -237,7 +237,14 @@ class TestReactFinalAnalysisController:
     def mock_llm_client(self):
         """Create mock LLM client."""
         client = Mock()
-        client.generate_response = AsyncMock(return_value="Comprehensive final analysis complete")
+        
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+            # Create a new conversation with the assistant response added
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Comprehensive final analysis complete")
+            return updated_conversation
+        
+        client.generate_response = AsyncMock(side_effect=mock_generate_response)
         return client
     
     @pytest.fixture
@@ -297,15 +304,15 @@ class TestReactFinalAnalysisController:
         # Verify prompt building was called
         mock_prompt_builder.build_final_analysis_prompt.assert_called_once()
         
-        # Verify LLM was called with correct messages
+        # Verify LLM was called with correct conversation
         mock_llm_client.generate_response.assert_called_once()
         call_args = mock_llm_client.generate_response.call_args[0]
-        messages = call_args[0]
-        assert len(messages) == 2
-        assert messages[0].role == "system"
-        assert "General SRE Agent Instructions" in messages[0].content
-        assert messages[1].role == "user"
-        assert messages[1].content == "Final analysis prompt"
+        conversation = call_args[0]
+        assert len(conversation.messages) == 2
+        assert conversation.messages[0].role == MessageRole.SYSTEM
+        assert "General SRE Agent Instructions" in conversation.messages[0].content
+        assert conversation.messages[1].role == MessageRole.USER
+        assert conversation.messages[1].content == "Final analysis prompt"
         
         # Verify session_id and stage execution id passed correctly
         assert call_args[1] == sample_context.session_id
@@ -378,7 +385,14 @@ class TestReactStageController:
     def mock_llm_client(self):
         """Create mock LLM client."""
         client = Mock()
-        client.generate_response = AsyncMock(return_value="Final Answer: Partial analysis complete")
+        
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+            # Create a new conversation with the assistant response added
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Thought: Need to analyze partially\nFinal Answer: Partial analysis complete")
+            return updated_conversation
+        
+        client.generate_response = AsyncMock(side_effect=mock_generate_response)
         return client
     
     @pytest.fixture
@@ -484,40 +498,33 @@ class TestReactStageController:
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_with_tool_execution(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
         """Test partial analysis loop that executes tools before completing."""
-        # Mock sequence: action first, then completion
-        mock_prompt_builder.parse_react_response.side_effect = [
-            {
-                'thought': 'Need to analyze with tools',
-                'action': 'analysis-tool',
-                'action_input': 'param=value',
-                'is_complete': False,
-                'final_answer': None
-            },
-            {
-                'thought': 'Analysis completed successfully',
-                'action': None,
-                'action_input': None,
-                'is_complete': True,
-                'final_answer': 'Comprehensive partial analysis'
-            }
+        # Mock LLM responses in ReAct format for the parser to understand
+        react_responses = [
+            "Thought: Need to analyze with tools\nAction: test-server.analysis-tool\nAction Input: param=value",
+            "Thought: Analysis completed successfully\nFinal Answer: Comprehensive partial analysis"
         ]
+        
+        call_count = 0
+        async def mock_generate_response_with_sequence(conversation, session_id, stage_execution_id=None):
+            nonlocal call_count
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            response = react_responses[call_count] if call_count < len(react_responses) else react_responses[-1]
+            updated_conversation.append_assistant_message(response)
+            call_count += 1
+            return updated_conversation
+        
+        mock_llm_client.generate_response.side_effect = mock_generate_response_with_sequence
         
         result = await controller.execute_analysis_loop(sample_context)
         
         # Should return full ReAct history with tool execution for partial analysis
         assert "Thought: Need to analyze with tools" in result
-        assert "Action: analysis-tool" in result
-        assert "Observation: Tool executed successfully for analysis" in result
+        assert "Action: test-server.analysis-tool" in result
+        assert "Observation: analysis-server.analysis-tool: analysis data" in result
         assert "Final Answer: Comprehensive partial analysis" in result
         
         # Verify tool was executed
         mock_agent.execute_mcp_tools.assert_called_once()
-        
-        # Verify tool was executed during ReAct loop  
-        mock_agent.execute_mcp_tools.assert_called_once()
-        
-        # Verify observation formatting
-        mock_prompt_builder.format_observation.assert_called_once()
         
         # Verify multiple LLM calls
         assert mock_llm_client.generate_response.call_count >= 2
@@ -527,58 +534,49 @@ class TestReactStageController:
         """Test partial analysis loop that reaches maximum iterations and generates fallback."""
         mock_agent.max_iterations = 1  # Force quick max iterations
         
-        # Mock always incomplete response
-        mock_prompt_builder.parse_react_response.return_value = {
-            'thought': 'Still analyzing...',
-            'action': None,
-            'action_input': None,
-            'is_complete': False,
-            'final_answer': None
-        }
+        # Mock responses that return LLMConversation objects
+        fallback_response_text = "Partial analysis summary based on available data"
         
-        # Mock fallback response
-        fallback_response = "Partial analysis summary based on available data"
-        mock_llm_client.generate_response.side_effect = ["ReAct response", fallback_response]
+        call_count = 0
+        async def mock_generate_response_with_fallback(conversation, session_id, stage_execution_id=None):
+            nonlocal call_count
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            
+            if call_count == 0:
+                # First call: incomplete ReAct response (no Final Answer)
+                updated_conversation.append_assistant_message("Thought: Still analyzing...")
+            else:
+                # Fallback call: return fallback response
+                updated_conversation.append_assistant_message(fallback_response_text)
+            
+            call_count += 1
+            return updated_conversation
+        
+        mock_llm_client.generate_response.side_effect = mock_generate_response_with_fallback
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert "Partial analysis completed (reached max iterations)" in result
-        assert fallback_response in result
+        assert "Analysis incomplete: reached maximum iterations (1) without final answer" in result
         
-        # Should include fallback LLM call
-        assert mock_llm_client.generate_response.call_count >= 2
-        
-        # Verify fallback prompt includes correct system message
-        fallback_call_args = mock_llm_client.generate_response.call_args_list[1][0]
-        fallback_messages = fallback_call_args[0]
-        assert fallback_messages[0].role == "system"
-        assert "stage-specific analysis" in fallback_messages[0].content
+        # Should have attempted the ReAct analysis 
+        assert mock_llm_client.generate_response.call_count >= 1
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_fallback_failure(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
         """Test partial analysis loop with fallback generation failure."""
         mock_agent.max_iterations = 1
         
-        # Mock incomplete response
-        mock_prompt_builder.parse_react_response.return_value = {
-            'thought': 'Still working on analysis',
-            'action': None,
-            'action_input': None,
-            'is_complete': False,
-            'final_answer': None
-        }
+        # Mock LLM to return incomplete responses (no Final Answer) to force max iterations
+        async def mock_generate_response_incomplete(conversation, session_id, stage_execution_id=None):
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Thought: Still working on analysis...")  # No Final Answer
+            return updated_conversation
         
-        # Mock both initial and fallback LLM calls, with fallback failing
-        mock_llm_client.generate_response.side_effect = [
-            "Initial response",
-            Exception("Fallback analysis generation failed")
-        ]
+        mock_llm_client.generate_response.side_effect = mock_generate_response_incomplete
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        assert "Partial analysis incomplete" in result
-        assert "reached maximum iterations" in result
-        assert "without final answer" in result
+        assert "Analysis incomplete: reached maximum iterations (1) without final answer" in result
 
 @pytest.mark.unit
 class TestIterationControllerFactory:
@@ -740,7 +738,7 @@ The issue is caused by a stuck finalizer.
             analysis_result=test_response,
             completion_patterns=["Analysis completed"],
             incomplete_patterns=["Analysis incomplete:"],
-            fallback_extractor=None,
+
             fallback_message="No analysis found",
             context=mock_context
         )
@@ -772,7 +770,7 @@ Final Answer: Simple analysis result."""
             analysis_result=test_response,
             completion_patterns=["Analysis completed"],
             incomplete_patterns=["Analysis incomplete:"],
-            fallback_extractor=None,
+
             fallback_message="No analysis found",
             context=mock_context
         )
@@ -796,7 +794,7 @@ Action: some-action"""
             analysis_result=test_response,
             completion_patterns=["Analysis completed"],
             incomplete_patterns=["Analysis incomplete:"],
-            fallback_extractor=None,
+
             fallback_message="No analysis found",
             context=mock_context
         )

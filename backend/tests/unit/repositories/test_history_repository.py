@@ -17,8 +17,210 @@ from tarsy.repositories.history_repository import HistoryRepository
 
 
 class TestHistoryRepository:
-    """Test suite for HistoryRepository class."""
     
+    def test_get_stage_interaction_counts_empty_list(self, repository):
+        """Test get_stage_interaction_counts with empty execution_ids list."""
+        result = repository.get_stage_interaction_counts([])
+        assert result == {}
+    
+    def test_get_stage_interaction_counts_with_data(self, repository):
+        """Test get_stage_interaction_counts with actual data."""
+        from tarsy.utils.timestamp import now_us
+        from tarsy.models.constants import StageStatus
+        
+        # Create a stage execution
+        stage_execution = StageExecution(
+            execution_id="test-stage-1",
+            session_id="test-session-1",
+            stage_id="analysis-stage",
+            stage_index=0,
+            stage_name="analysis",
+            agent="KubernetesAgent",
+            status=StageStatus.COMPLETED.value
+        )
+        repository.create_stage_execution(stage_execution)
+        
+        # Create some interactions
+        llm_interaction = LLMInteraction(
+            interaction_id="llm-1",
+            session_id="test-session-1",
+            stage_execution_id="test-stage-1",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=now_us()
+        )
+        mcp_interaction = MCPInteraction(
+            communication_id="mcp-1",
+            session_id="test-session-1", 
+            stage_execution_id="test-stage-1",
+            server_name="kubernetes-server",
+            communication_type="tool_call",
+            step_description="Test MCP call",
+            success=True,
+            timestamp_us=now_us()
+        )
+        
+        repository.create_llm_interaction(llm_interaction)
+        repository.create_mcp_communication(mcp_interaction)
+        
+        # Test the method
+        result = repository.get_stage_interaction_counts(["test-stage-1"])
+        
+        assert "test-stage-1" in result
+        assert result["test-stage-1"]["llm_interactions"] == 1
+        assert result["test-stage-1"]["mcp_communications"] == 1
+    
+    def test_get_stage_interaction_counts_multiple_stages(self, repository):
+        """Test get_stage_interaction_counts with multiple stages."""
+        from tarsy.utils.timestamp import now_us
+        from tarsy.models.constants import StageStatus
+        
+        # Create two stage executions
+        stage1 = StageExecution(
+            execution_id="test-stage-1",
+            session_id="test-session-1",
+            stage_id="analysis-stage",
+            stage_index=0,
+            stage_name="analysis",
+            agent="KubernetesAgent",
+            status=StageStatus.COMPLETED.value
+        )
+        stage2 = StageExecution(
+            execution_id="test-stage-2", 
+            session_id="test-session-1",
+            stage_id="resolution-stage",
+            stage_index=1,
+            stage_name="resolution",
+            agent="KubernetesAgent",
+            status=StageStatus.COMPLETED.value
+        )
+        
+        repository.create_stage_execution(stage1)
+        repository.create_stage_execution(stage2)
+        
+        # Create interactions for both stages
+        llm1 = LLMInteraction(
+            interaction_id="llm-1",
+            session_id="test-session-1",
+            stage_execution_id="test-stage-1",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=now_us()
+        )
+        mcp2 = MCPInteraction(
+            communication_id="mcp-2",
+            session_id="test-session-1",
+            stage_execution_id="test-stage-2", 
+            server_name="kubernetes-server",
+            communication_type="tool_call",
+            step_description="Test MCP call 2",
+            success=True,
+            timestamp_us=now_us()
+        )
+        
+        repository.create_llm_interaction(llm1)
+        repository.create_mcp_communication(mcp2)
+        
+        # Test with both stages
+        result = repository.get_stage_interaction_counts(["test-stage-1", "test-stage-2"])
+        
+        assert len(result) == 2
+        assert result["test-stage-1"]["llm_interactions"] == 1
+        assert result["test-stage-1"]["mcp_communications"] == 0
+        assert result["test-stage-2"]["llm_interactions"] == 0
+        assert result["test-stage-2"]["mcp_communications"] == 1
+    
+    def test_get_session_overview_not_found(self, repository):
+        """Test get_session_overview for non-existent session."""
+        result = repository.get_session_overview("non-existent")
+        assert result is None
+    
+    def test_get_session_overview_with_data(self, repository):
+        """Test get_session_overview with session and stage data."""
+        from tarsy.utils.timestamp import now_us
+        from tarsy.models.constants import AlertSessionStatus, StageStatus
+        
+        # Create session
+        session = AlertSession(
+            session_id="test-session-1",
+            alert_id="alert-123",
+            alert_type="kubernetes",
+            agent_type="kubernetes", 
+            status=AlertSessionStatus.COMPLETED.value,
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 1000000,  # 1 second later
+            chain_id="chain-1",
+            current_stage_index=1
+        )
+        repository.create_alert_session(session)
+        
+        # Create stage executions
+        stage1 = StageExecution(
+            execution_id="stage-1",
+            session_id="test-session-1",
+            stage_id="analysis-stage",
+            stage_index=0,
+            stage_name="analysis",
+            agent="KubernetesAgent", 
+            status=StageStatus.COMPLETED.value
+        )
+        stage2 = StageExecution(
+            execution_id="stage-2",
+            session_id="test-session-1",
+            stage_id="resolution-stage", 
+            stage_index=1,
+            stage_name="resolution",
+            agent="KubernetesAgent",
+            status=StageStatus.FAILED.value
+        )
+        
+        repository.create_stage_execution(stage1)
+        repository.create_stage_execution(stage2)
+        
+        # Create some interactions
+        llm_interaction = LLMInteraction(
+            interaction_id="llm-1",
+            session_id="test-session-1",
+            stage_execution_id="stage-1",
+            provider="openai",
+            model_name="gpt-4", 
+            success=True,
+            timestamp_us=now_us()
+        )
+        mcp_interaction = MCPInteraction(
+            communication_id="mcp-1", 
+            session_id="test-session-1",
+            stage_execution_id="stage-1",
+            server_name="kubernetes-server",
+            communication_type="tool_call",
+            step_description="Test MCP call",
+            success=True,
+            timestamp_us=now_us()
+        )
+        
+        repository.create_llm_interaction(llm_interaction)
+        repository.create_mcp_communication(mcp_interaction)
+        
+        # Test get_session_overview
+        overview = repository.get_session_overview("test-session-1")
+        
+        assert overview is not None
+        assert overview.session_id == "test-session-1"
+        assert overview.alert_id == "alert-123"
+        assert overview.alert_type == "kubernetes"
+        assert overview.agent_type == "kubernetes"
+        assert overview.status == AlertSessionStatus.COMPLETED
+        assert overview.chain_id == "chain-1"
+        assert overview.total_stages == 2
+        assert overview.completed_stages == 1
+        assert overview.failed_stages == 1
+        assert overview.current_stage_index == 1
+        assert overview.llm_interaction_count == 1
+        assert overview.mcp_communication_count == 1
+        assert overview.total_interactions == 2
+
     @pytest.fixture
     def in_memory_engine(self):
         """Create in-memory SQLite engine for testing."""
@@ -73,7 +275,6 @@ class TestHistoryRepository:
         return LLMInteraction(
             session_id="test-session-123",
             model_name="gpt-4",
-            step_description="Initial analysis",
             conversation=conversation,
             duration_ms=1500,
             success=True
@@ -93,7 +294,6 @@ class TestHistoryRepository:
         return LLMInteraction(
             session_id="test-session-123",
             model_name="gemini-1.5-pro",
-            step_description="Failed analysis due to rate limiting",
             conversation=conversation,
             duration_ms=500,
             success=False,
@@ -172,7 +372,8 @@ class TestHistoryRepository:
         interactions = repository.get_llm_interactions_for_session(sample_alert_session.session_id)
         assert len(interactions) == 1
         assert interactions[0].model_name == sample_llm_interaction.model_name
-        assert interactions[0].step_description == sample_llm_interaction.step_description
+        assert interactions[0].conversation is not None
+        assert len(interactions[0].conversation.messages) == 3  # System + User + Assistant
     
     @pytest.mark.unit
     def test_create_mcp_communication_success(self, repository, sample_alert_session, sample_mcp_communication):

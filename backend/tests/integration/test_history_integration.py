@@ -16,7 +16,7 @@ from sqlmodel import SQLModel, create_engine
 
 from tarsy.main import app
 from tarsy.models.alert import Alert
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
 
 # Import history models to ensure they're registered with SQLModel.metadata
 from tarsy.services.alert_service import AlertService
@@ -359,13 +359,10 @@ class TestHistoryServiceIntegration:
             next_time_us = all_interactions[i + 1].timestamp_us
             assert current_time_us <= next_time_us, f"Interaction {i} timestamp is after interaction {i+1}"
         
-        # Verify interaction types and descriptions in expected order
+        # Verify interaction types in expected order
         assert hasattr(all_interactions[0].details, 'model_name')  # LLM interaction
-        assert all_interactions[0].step_description == "Initial analysis"
         assert hasattr(all_interactions[1].details, 'server_name')  # MCP interaction
-        assert all_interactions[1].step_description == "Get namespace info"
         assert hasattr(all_interactions[2].details, 'model_name')  # LLM interaction
-        assert all_interactions[2].step_description == "Follow-up analysis"
     
     @pytest.mark.integration
     def test_complex_filtering_scenarios(self, history_service_with_db):

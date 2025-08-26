@@ -293,5 +293,14 @@ class ReactController(IterationController):
         
         # Join all the conversation parts
         complete_conversation = "\n".join(conversation_parts)
+        
+        # If we only have a single "Final Answer:" response with no ReAct interactions,
+        # return just the final answer content for cleaner API consumption
+        if (len(conversation_parts) == 1 and 
+            conversation_parts[0].startswith("Final Answer:") and 
+            "Thought:" not in conversation_parts[0] and 
+            "Action:" not in conversation_parts[0]):
+            return conversation_parts[0].replace("Final Answer:", "").strip()
+        
         return complete_conversation
     

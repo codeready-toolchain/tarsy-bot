@@ -2037,6 +2037,9 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-mock" },
 ]
+test = [
+    { name = "pytest-cov" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -2079,7 +2082,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.1.0" },
     { name = "pytest-mock", specifier = ">=3.14.1" },
 ]
-test = []
+test = [{ name = "pytest-cov", specifier = ">=6.2.1" }]
 
 [[package]]
 name = "tenacity"

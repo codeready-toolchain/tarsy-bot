@@ -155,4 +155,6 @@ disallow_incomplete_defs = false
 
 [dependency-groups]
 dev = []
-test = []
+test = [
+    "pytest-cov>=6.2.1",
+]

@@ -16,6 +16,7 @@ from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.agent_config import MCPServerConfigModel
 from tarsy.models.alert import Alert
 from tarsy.models.constants import IterationStrategy
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.timestamp import now_us
 
@@ -524,7 +525,14 @@ class TestKubernetesAgentIntegrationScenarios:
         
         # Mock the MCP client
         mock_mcp.list_tools.return_value = {"kubernetes-server": []}
-        mock_llm.generate_response.return_value = "Pod analysis completed"
+        
+        # Mock LLM to return proper LLMConversation object
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Final Answer: Pod analysis completed")
+            return updated_conversation
+        
+        mock_llm.generate_response = AsyncMock(side_effect=mock_generate_response)
         
         # Mock agent methods for complete workflow
         agent.analyze_alert = AsyncMock(return_value="Detailed pod analysis")
@@ -657,7 +665,14 @@ class TestKubernetesAgentIntegrationScenarios:
             {"name": "kubectl", "description": "Kubernetes command-line tool", "parameters": []}
         ]}
         mock_mcp.call_tool.return_value = {"result": "Pod details retrieved"}
-        mock_llm.generate_response.return_value = "Comprehensive analysis"
+        
+        # Mock LLM to return proper LLMConversation object
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            updated_conversation.append_assistant_message("Final Answer: Comprehensive analysis")
+            return updated_conversation
+        
+        mock_llm.generate_response = AsyncMock(side_effect=mock_generate_response)
         
         # Mock agent methods for iteration
         agent.analyze_alert = AsyncMock(return_value="Multi-iteration analysis")
