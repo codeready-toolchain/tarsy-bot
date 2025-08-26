@@ -39,7 +39,7 @@ class TypedLLMDashboardHook(BaseTypedHook[LLMInteraction]):
             interaction: Unified LLM interaction data
         """
         try:
-            # Create dashboard update from typed interaction
+            # Create dashboard update with complete conversation object
             update_data = {
                 "type": "llm_interaction",
                 "session_id": interaction.session_id,
@@ -47,9 +47,8 @@ class TypedLLMDashboardHook(BaseTypedHook[LLMInteraction]):
                 "model_name": interaction.model_name,
                 "provider": interaction.provider,
                 "step_description": f"LLM analysis using {interaction.model_name}",
-                "system_prompt": self._extract_system_prompt(interaction.conversation),
-                "user_prompt": self._extract_user_prompt(interaction.conversation),
-                "response_text": self._extract_response_text(interaction.conversation),
+                # Send complete conversation object instead of individual prompts
+                "conversation": interaction.conversation.model_dump() if interaction.conversation else None,
                 "success": interaction.success,
                 "error_message": interaction.error_message,
                 "duration_ms": interaction.duration_ms,
@@ -69,35 +68,6 @@ class TypedLLMDashboardHook(BaseTypedHook[LLMInteraction]):
         except Exception as e:
             logger.error(f"Failed to broadcast LLM interaction to dashboard: {e}")
             raise
-    
-    def _extract_system_prompt(self, conversation) -> Optional[str]:
-        """Extract system prompt from LLM conversation."""
-        if not conversation or not conversation.messages:
-            return None
-        for message in conversation.messages:
-            if message.role == "system":
-                return message.content
-        return None
-    
-    def _extract_user_prompt(self, conversation) -> Optional[str]:
-        """Extract first user prompt from LLM conversation."""
-        if not conversation or not conversation.messages:
-            return None
-        for message in conversation.messages:
-            if message.role == "user":
-                return message.content
-        return None
-    
-    def _extract_response_text(self, conversation) -> Optional[str]:
-        """Extract latest assistant response from LLM conversation."""
-        if not conversation or not conversation.messages:
-            return None
-        # Find the most recent assistant message
-        for message in reversed(conversation.messages):
-            if message.role == "assistant":
-                return message.content
-        return None
-
 
 class TypedMCPDashboardHook(BaseTypedHook[MCPInteraction]):
     """

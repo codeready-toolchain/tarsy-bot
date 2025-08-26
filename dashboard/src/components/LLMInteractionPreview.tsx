@@ -16,14 +16,29 @@ function LLMInteractionPreview({
   showFullPreview = true 
 }: LLMInteractionPreviewProps) {
   
+  // EP-0014: Helper to get messages array from either new conversation or legacy messages field
+  const getMessages = (llm: LLMInteraction): any[] => {
+    // Try new conversation field first (EP-0014)
+    if (llm.conversation?.messages) {
+      return llm.conversation.messages;
+    }
+    // Fall back to legacy messages field for backward compatibility
+    if (llm.messages) {
+      return llm.messages;
+    }
+    return [];
+  };
+
   const extractResponseText = (llm: LLMInteraction): string => {
     // EP-0010: Handle failed interactions
     if (llm.success === false) {
       return '';
     }
     
-    // EP-0010: Look for assistant message in messages array
-    const assistantMsg = llm.messages?.find((m: any) => m?.role === 'assistant');
+    // EP-0014: Use helper to get messages from either conversation or legacy field
+    const messages = getMessages(llm);
+    // Find the LATEST assistant message (for ReAct, we want the most recent reasoning)
+    const assistantMsg = messages.slice().reverse().find((m: any) => m?.role === 'assistant');
     if (assistantMsg) {
       if (typeof assistantMsg.content === 'string') return assistantMsg.content;
       if (assistantMsg.content !== undefined) return JSON.stringify(assistantMsg.content);

@@ -6,7 +6,7 @@ import {
   Divider,
   Stack
 } from '@mui/material';
-import type { LLMInteraction, MCPInteraction, SystemEvent } from '../types';
+import type { LLMInteraction, MCPInteraction, SystemEvent, LLMMessage } from '../types';
 import CopyButton from './CopyButton';
 import JsonDisplay from './JsonDisplay';
 
@@ -32,10 +32,24 @@ function InteractionDetails({
            (mcpDetails.communication_type === 'tool_call' && mcpDetails.tool_name === 'list_tools');
   };
 
+  // EP-0014: Helper to get messages array from either new conversation or legacy messages field
+  const getMessages = (llm: LLMInteraction): LLMMessage[] => {
+    // Try new conversation field first (EP-0014)
+    if (llm.conversation?.messages) {
+      return llm.conversation.messages;
+    }
+    // Fall back to legacy messages field for backward compatibility
+    if (llm.messages) {
+      return llm.messages;
+    }
+    return [];
+  };
+
   const extractSystemUserFromRequest = (llm: LLMInteraction) => {
-    // EP-0010: messages are now directly in LLMEventDetails
-    const systemMsg = llm.messages?.find((m: any) => m?.role === 'system');
-    const userMsg = llm.messages?.find((m: any) => m?.role === 'user');
+    // EP-0014: Use helper to get messages from either conversation or legacy field
+    const messages = getMessages(llm);
+    const systemMsg = messages.find((m: any) => m?.role === 'system');
+    const userMsg = messages.find((m: any) => m?.role === 'user');
     return {
       system: typeof systemMsg?.content === 'string' ? systemMsg.content : 
               (systemMsg?.content == null || systemMsg?.content === '') ? '' : 
@@ -47,13 +61,119 @@ function InteractionDetails({
   };
 
   const extractResponseText = (llm: LLMInteraction) => {
-    // EP-0010: Look for assistant message in the messages array
-    const assistantMsg = llm.messages?.find((m: any) => m?.role === 'assistant');
+    // EP-0014: Use helper to get messages from either conversation or legacy field
+    const messages = getMessages(llm);
+    // Find the LATEST assistant message (for ReAct, we want the most recent reasoning)
+    const assistantMsg = messages.slice().reverse().find((m: any) => m?.role === 'assistant');
     if (assistantMsg && assistantMsg.content) {
       if (typeof assistantMsg.content === 'string') return assistantMsg.content;
       return JSON.stringify(assistantMsg.content);
     }
     return '';
+  };
+
+  // EP-0014: New function to render all conversation messages in sequence
+  const renderConversationMessages = (llm: LLMInteraction) => {
+    const messages = getMessages(llm);
+    
+    if (messages.length === 0) {
+      return null;
+    }
+
+    // Helper function to get message-specific styling
+    const getMessageStyle = (role: string) => {
+      switch (role) {
+        case 'system':
+          return {
+            bgcolor: 'secondary.main',
+            color: 'secondary.contrastText',
+            label: 'System'
+          };
+        case 'user':
+          return {
+            bgcolor: 'primary.main',
+            color: 'primary.contrastText',
+            label: 'User'
+          };
+        case 'assistant':
+          return {
+            bgcolor: 'success.main',
+            color: 'success.contrastText',
+            label: 'Assistant'
+          };
+        default:
+          return {
+            bgcolor: 'grey.500',
+            color: 'grey.contrastText',
+            label: role.charAt(0).toUpperCase() + role.slice(1)
+          };
+      }
+    };
+
+    return (
+      <Stack spacing={2}>
+        {messages.map((message, index) => {
+          const style = getMessageStyle(message.role);
+          const content = typeof message.content === 'string' ? message.content : 
+                         (message.content == null || message.content === '') ? '' :
+                         JSON.stringify(message.content);
+          
+          return (
+            <Box key={index}>
+              <Box sx={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                mb: 1
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{
+                    px: 1,
+                    py: 0.5,
+                    bgcolor: style.bgcolor,
+                    color: style.color,
+                    borderRadius: 1,
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}>
+                    {style.label}
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                    {content.length.toLocaleString()} chars
+                  </Typography>
+                  <CopyButton
+                    text={content}
+                    variant="icon"
+                    size="small"
+                    tooltip={`Copy ${style.label.toLowerCase()} message`}
+                  />
+                </Box>
+              </Box>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  p: 1.5,
+                  bgcolor: 'grey.50',
+                  borderRadius: 1,
+                  border: 1,
+                  borderColor: 'divider',
+                  maxHeight: message.role === 'system' ? 200 : (message.role === 'assistant' ? 300 : 200),
+                  overflow: 'auto'
+                }}
+              >
+                {content}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Stack>
+    );
   };
 
   const renderLLMDetails = (llmDetails: LLMInteraction) => {
@@ -108,175 +228,45 @@ function InteractionDetails({
           </Box>
         )}
 
+        {/* EP-0014: Show conversation messages in sequence */}
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              Prompt
+              Conversation
             </Typography>
             <CopyButton
               text={(() => {
-                const { system, user } = extractSystemUserFromRequest(llmDetails);
-                if (system || user) {
-                  return `System:\n${system}\n\nUser:\n${user}`;
+                const messages = getMessages(llmDetails);
+                if (messages.length === 0) return '';
+                
+                let conversation = `=== LLM CONVERSATION ===\n\n`;
+                messages.forEach((message, index) => {
+                  const role = message.role.toUpperCase();
+                  const content = typeof message.content === 'string' ? message.content : 
+                                 (message.content == null || message.content === '') ? '' :
+                                 JSON.stringify(message.content);
+                  conversation += `${role}:\n${content}\n\n`;
+                });
+                
+                conversation += `--- METADATA ---\n`;
+                conversation += `Model: ${llmDetails.model_name}\n`;
+                if (llmDetails.total_tokens) {
+                  conversation += `Tokens: ${llmDetails.total_tokens.toLocaleString()}\n`;
                 }
-                return '';
+                if (llmDetails.temperature !== undefined) {
+                  conversation += `Temperature: ${llmDetails.temperature}\n`;
+                }
+                
+                return conversation;
               })()}
               variant="icon"
               size="small"
-              tooltip="Copy prompt"
+              tooltip="Copy entire conversation"
             />
           </Box>
-        {(() => {
-          const { system, user } = extractSystemUserFromRequest(llmDetails);
-          if (system || user) {
-            return (
-              <Stack spacing={2}>
-                {system && (
-                  <Box>
-                    <Box sx={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      mb: 1
-                    }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{
-                          px: 1,
-                          py: 0.5,
-                          bgcolor: 'secondary.main',
-                          color: 'secondary.contrastText',
-                          borderRadius: 1,
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px'
-                        }}>
-                          System
-                        </Box>
-                      </Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                        {system.length.toLocaleString()} chars
-                      </Typography>
-                    </Box>
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        p: 1.5,
-                        bgcolor: 'grey.50',
-                        borderRadius: 1,
-                        border: 1,
-                        borderColor: 'divider',
-                        maxHeight: 200,
-                        overflow: 'auto'
-                      }}
-                    >
-                      {system}
-                    </Typography>
-                  </Box>
-                )}
-                {user && (
-                  <Box>
-                    <Box sx={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      mb: 1
-                    }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{
-                          px: 1,
-                          py: 0.5,
-                          bgcolor: 'primary.main',
-                          color: 'primary.contrastText',
-                          borderRadius: 1,
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px'
-                        }}>
-                          User
-                        </Box>
-                      </Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                        {user.length.toLocaleString()} chars
-                      </Typography>
-                    </Box>
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        p: 1.5,
-                        bgcolor: 'grey.50',
-                        borderRadius: 1,
-                        border: 1,
-                        borderColor: 'divider',
-                        maxHeight: 200,
-                        overflow: 'auto'
-                      }}
-                    >
-                      {user}
-                    </Typography>
-                  </Box>
-                )}
-              </Stack>
-            );
-          }
-          return null;
-        })()}
+          {/* Render all conversation messages */}
+          {renderConversationMessages(llmDetails)}
         </Box>
-        
-        {/* Only show Response section for successful interactions */}
-        {!isFailed && (
-          <Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{
-                  px: 1,
-                  py: 0.5,
-                  bgcolor: 'success.main',
-                  color: 'success.contrastText',
-                  borderRadius: 1,
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}>
-                  Response
-                </Box>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  {extractResponseText(llmDetails).length.toLocaleString()} chars
-                </Typography>
-                <CopyButton
-                  text={extractResponseText(llmDetails)}
-                  variant="icon"
-                  size="small"
-                  tooltip="Copy response"
-                />
-              </Box>
-            </Box>
-            <Typography 
-              variant="body2" 
-              sx={{ 
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                p: 1.5,
-                bgcolor: 'grey.50',
-                borderRadius: 1,
-                border: 1,
-                borderColor: 'divider',
-                maxHeight: 300,
-                overflow: 'auto'
-              }}
-            >
-              {extractResponseText(llmDetails)}
-            </Typography>
-          </Box>
-        )}
 
       {/* Model metadata */}
       <Box>

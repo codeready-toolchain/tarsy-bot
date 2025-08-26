@@ -92,15 +92,24 @@ export interface BaseInteraction {
   stage_execution_id?: string | null;
 }
 
-// LLM message structure (from backend)
+// LLM message structure (from backend) - EP-0014 enhanced
 export interface LLMMessage {
-  role: string;
-  content: any;
+  role: 'system' | 'user' | 'assistant';
+  content: string;
 }
 
-// LLM event details (EP-0010 structure)
-export interface LLMEventDetails {
+// LLM conversation structure (EP-0014)
+export interface LLMConversation {
   messages: LLMMessage[];
+}
+
+// LLM event details (EP-0014 structure with conversation field)
+export interface LLMEventDetails {
+  // EP-0014: New conversation field replaces messages array
+  conversation?: LLMConversation;
+  // Legacy messages field for backward compatibility during transition
+  messages?: LLMMessage[];
+  
   model_name: string;
   temperature: number | null;
   success: boolean;

@@ -302,18 +302,11 @@ function OptimizedSessionDetailPage() {
                           // Core LLM fields
                           model_name: update.model_name,
                           provider: update.provider,
-                          system_prompt: update.system_prompt,
-                          user_prompt: update.user_prompt,
-                          response_text: update.response_text,
                           token_usage: update.token_usage,
                           success: update.success,
                           error_message: update.error_message,
-                          // Create messages array for compatibility
-                          messages: [
-                            ...(update.system_prompt ? [{ role: 'system', content: update.system_prompt }] : []),
-                            ...(update.user_prompt ? [{ role: 'user', content: update.user_prompt }] : []),
-                            ...(update.response_text ? [{ role: 'assistant', content: update.response_text }] : [])
-                          ],
+                          // Use complete conversation object
+                          conversation: update.conversation,
                           // Include all other fields from update
                           ...update
                         }
