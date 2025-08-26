@@ -476,8 +476,9 @@ function InteractionDetails({
     switch (type) {
       case 'llm': {
         const llm = details as LLMInteraction;
-        const system = llm.messages?.find((m: any) => m?.role === 'system');
-        const user = llm.messages?.find((m: any) => m?.role === 'user');
+        const messages = getMessages(llm);
+        const system = messages.find((m: any) => m?.role === 'system');
+        const user = messages.find((m: any) => m?.role === 'user');
         const s = system ? (typeof system.content === 'string' ? system.content : 
                           (system.content == null || system.content === '') ? '' : 
                           JSON.stringify(system.content)) : '';
@@ -485,7 +486,7 @@ function InteractionDetails({
                          (user.content == null || user.content === '') ? '' : 
                          JSON.stringify(user.content)) : '';
         // Use the same logic as extractResponseText() and formatInteractionForCopy()
-        const assistant = llm.messages?.find((m: any) => m?.role === 'assistant');
+        const assistant = messages.find((m: any) => m?.role === 'assistant');
         let respStr = '';
         if (assistant && assistant.content) {
           if (typeof assistant.content === 'string') {

@@ -47,7 +47,7 @@ const getStepStyle = (type: string, success: boolean = true) => {
       return {
         emoji: '❌',
         color: 'error.main',
-        bgColor: 'error.light'
+        bgColor: 'transparent'
       };
     default:
       return {
@@ -275,7 +275,7 @@ function ConversationStep({
             <Box sx={{ 
               mt: 1,
               p: 1,
-              bgcolor: 'error.light',
+              bgcolor: 'grey.100',
               borderRadius: 1,
               border: '1px solid',
               borderColor: 'error.main',
@@ -289,7 +289,9 @@ function ConversationStep({
                 sx={{ 
                   color: 'error.main',
                   fontFamily: 'monospace',
-                  fontSize: '0.875rem'
+                  fontSize: '0.875rem',
+                  wordBreak: 'break-word',
+                  whiteSpace: 'pre-wrap'
                 }}
               >
                 {step.errorMessage}

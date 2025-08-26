@@ -106,7 +106,7 @@ type InteractionLike =
  * Get messages from EP-0014 conversation structure or fallback to legacy format
  * Safely handles both full interactions and interaction details with null/undefined guards
  */
-function getMessages(interactionOrDetails: InteractionLike): LLMMessage[] {
+export function getMessages(interactionOrDetails: InteractionLike): LLMMessage[] {
   // Handle null/undefined input
   if (!interactionOrDetails) {
     return [];
@@ -262,7 +262,7 @@ export function parseStageConversation(stage: StageExecution): StageConversation
     if (interaction.details?.success === false) {
       const errorStep: ConversationStepData = {
         type: 'error',
-        content: `LLM Error: ${interaction.details.error_message || 'Request failed'}`,
+        content: 'LLM request failed with error',
         timestamp_us: timestamp,
         success: false,
         errorMessage: interaction.details.error_message ?? undefined

@@ -10,7 +10,7 @@ import logging
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -88,10 +88,9 @@ class ReActParser:
         Consolidates logic from builders.parse_react_response() with proper validation.
         
         Returns:
-            ReActResponse with automatic validation and type checking
-            
-        Raises:
-            ValidationError if response data is malformed during model creation
+            ReActResponse with automatic validation and type checking.
+            For malformed inputs, returns ReActResponse with ResponseType.MALFORMED
+            instead of raising exceptions, providing consistent error handling.
         """
         if not response or not isinstance(response, str):
             return ReActResponse(response_type=ResponseType.MALFORMED, thought=None)
@@ -120,7 +119,7 @@ class ReActParser:
                     action_input=action_input,
                     tool_call=tool_call
                 )
-            except ValueError as e:
+            except (ValueError, ValidationError) as e:
                 # Log the error and return malformed response
                 logger.error(f"Invalid action format: {str(e)}")
                 return ReActResponse(response_type=ResponseType.MALFORMED, thought=None)
