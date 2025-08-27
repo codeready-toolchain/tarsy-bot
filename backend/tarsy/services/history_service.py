@@ -453,6 +453,22 @@ class HistoryService:
                     if session_overview.started_at_us and session_overview.completed_at_us:
                         total_duration_ms = (session_overview.completed_at_us - session_overview.started_at_us) // 1000
                     
+                    # Calculate token usage aggregations from all stages
+                    session_input_tokens = 0
+                    session_output_tokens = 0
+                    session_total_tokens = 0
+
+                    # Get detailed stages to calculate token sums
+                    detailed_session = repo.get_session_details(session_id) 
+                    if detailed_session:
+                        for stage in detailed_session.stages:
+                            if stage.stage_input_tokens:
+                                session_input_tokens += stage.stage_input_tokens
+                            if stage.stage_output_tokens: 
+                                session_output_tokens += stage.stage_output_tokens
+                            if stage.stage_total_tokens:
+                                session_total_tokens += stage.stage_total_tokens
+                    
                     # Create chain statistics from SessionOverview
                     chain_stats = ChainStatistics(
                         total_stages=session_overview.total_stages or 0,
@@ -468,6 +484,9 @@ class HistoryService:
                         system_events=0,  # Not tracked in SessionOverview
                         errors_count=1 if session_overview.error_message else 0,
                         total_duration_ms=total_duration_ms,
+                        session_input_tokens=session_input_tokens,
+                        session_output_tokens=session_output_tokens,
+                        session_total_tokens=session_total_tokens,
                         chain_statistics=chain_stats
                     )
                     return session_stats

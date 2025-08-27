@@ -131,6 +131,11 @@ class LLMInteraction(SQLModel, table=True):
         sa_column=Column(PydanticJSONType),
         description="Complete conversation object with messages and metadata"
     )
+    
+    # NEW: Token usage tracking fields
+    input_tokens: Optional[int] = Field(None, description="Input/prompt tokens")
+    output_tokens: Optional[int] = Field(None, description="Output/completion tokens")  
+    total_tokens: Optional[int] = Field(None, description="Total tokens used")
 
 class MCPInteraction(SQLModel, table=True):
     """
