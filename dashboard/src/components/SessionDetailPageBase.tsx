@@ -125,6 +125,11 @@ function SessionDetailPageBase({
   
   // View toggle state
   const [currentView, setCurrentView] = useState<string>(viewType);
+  
+  // Sync local state with prop changes to prevent desync
+  useEffect(() => {
+    setCurrentView(viewType);
+  }, [viewType]);
 
   // Performance metrics
   const performanceMetrics = useMemo(() => {
@@ -253,17 +258,17 @@ function SessionDetailPageBase({
           
         case 'session_status_change':
           // Update status immediately to prevent UI lag
-          updateSessionStatus(update.new_status, update.error_message);
+          updateSessionStatus(update.status, update.error_message);
           
           // For major status changes, also refresh stages and analysis
-          if (['completed', 'failed'].includes(update.new_status)) {
+          if (['completed', 'failed'].includes(update.status)) {
             console.log('🔄 Major status change, refreshing stages');
             throttledUpdate(() => {
               if (sessionId) {
                 refreshSessionStages(sessionId);
                 
                 // Auto-scroll to final analysis when session completes
-                if (update.new_status === 'completed') {
+                if (update.status === 'completed') {
                   checkAndScrollToFinalAnalysis(800);
                 }
               }
@@ -685,7 +690,7 @@ function SessionDetailPageBase({
             {/* Timeline Content - Conditional based on view type */}
             {session.stages && session.stages.length > 0 ? (
               <Suspense fallback={timelineSkeleton}>
-                {timelineComponent(session, useVirtualization || undefined, autoScrollEnabled)}
+                {timelineComponent(session, useVirtualization ?? undefined, autoScrollEnabled)}
               </Suspense>
             ) : (
               <Alert severity="error" sx={{ mb: 2 }}>

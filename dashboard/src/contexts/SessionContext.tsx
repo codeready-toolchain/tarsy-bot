@@ -14,7 +14,7 @@ interface SessionContextData {
   refreshSessionSummary: (sessionId: string) => Promise<void>;
   refreshSessionStages: (sessionId: string) => Promise<void>;
   updateFinalAnalysis: (analysis: string) => void;
-  updateSessionStatus: (newStatus: string, errorMessage?: string) => void;
+  updateSessionStatus: (newStatus: DetailedSession['status'], errorMessage?: string) => void;
 }
 
 const SessionContext = createContext<SessionContextData | null>(null);
@@ -197,7 +197,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   /**
    * Direct update of session status (no API call needed)
    */
-  const updateSessionStatus = (newStatus: string, errorMessage?: string) => {
+  const updateSessionStatus = (newStatus: DetailedSession['status'], errorMessage?: string) => {
     console.log('🔄 [SessionContext] Updating session status directly:', newStatus);
     setSession(prevSession => {
       if (!prevSession) return prevSession;
@@ -207,7 +207,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       }
       return {
         ...prevSession,
-        status: newStatus as typeof prevSession.status,
+        status: newStatus,
         error_message: errorMessage || prevSession.error_message
       };
     });

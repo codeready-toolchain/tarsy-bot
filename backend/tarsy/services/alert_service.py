@@ -369,21 +369,27 @@ class AlertService:
             # Extract final analysis from stages
             final_analysis = self._extract_final_analysis_from_stages(chain_context)
             
-            # Determine overall chain status
+            # Determine overall chain status and aggregate errors if any stages failed
             # Any stage failure should fail the entire session
             if failed_stages > 0:
                 overall_status = ChainStatus.FAILED  # Any stage failed = session failed
+                # Aggregate stage errors into meaningful chain-level error message
+                chain_error = self._aggregate_stage_errors(chain_context)
+                logger.error(f"Chain execution failed: {failed_stages} of {len(chain_definition.stages)} stages failed")
             else:
                 overall_status = ChainStatus.COMPLETED  # All stages succeeded
+                chain_error = None
+                logger.info(f"Chain execution completed successfully: {successful_stages} stages completed")
             
             logger.info(f"Chain execution completed: {successful_stages} successful, {failed_stages} failed")
             
-            # Set completion timestamp just before returning successful result
+            # Set completion timestamp just before returning result
             timestamp_us = now_us()
             
             return ChainExecutionResult(
                 status=overall_status,
-                final_analysis=final_analysis,
+                final_analysis=final_analysis if overall_status == ChainStatus.COMPLETED else None,
+                error=chain_error if overall_status == ChainStatus.FAILED else None,
                 timestamp_us=timestamp_us
             )
             
@@ -400,6 +406,40 @@ class AlertService:
                 timestamp_us=timestamp_us
             )
     
+    def _aggregate_stage_errors(self, chain_context: ChainContext) -> str:
+        """
+        Aggregate error messages from failed stages into a descriptive chain-level error.
+        
+        Args:
+            chain_context: Chain context with stage outputs and errors
+            
+        Returns:
+            Aggregated error message describing all stage failures
+        """
+        error_messages = []
+        
+        # Collect errors from stage outputs
+        for stage_name, stage_result in chain_context.stage_outputs.items():
+            if hasattr(stage_result, 'status') and stage_result.status == StageStatus.FAILED:
+                stage_agent = getattr(stage_result, 'agent_name', 'unknown')
+                stage_error = getattr(stage_result, 'error_message', None)
+                
+                if stage_error:
+                    error_messages.append(f"Stage '{stage_name}' (agent: {stage_agent}): {stage_error}")
+                else:
+                    error_messages.append(f"Stage '{stage_name}' (agent: {stage_agent}): Failed with no error message")
+        
+        # If we have specific error messages, format them nicely
+        if error_messages:
+            if len(error_messages) == 1:
+                return f"Chain processing failed: {error_messages[0]}"
+            else:
+                numbered_errors = [f"{i+1}. {msg}" for i, msg in enumerate(error_messages)]
+                return f"Chain processing failed with {len(error_messages)} stage failures:\n" + "\n".join(numbered_errors)
+        
+        # Fallback if no specific errors found
+        return "Chain processing failed: One or more stages failed without detailed error messages"
+
     def _extract_final_analysis_from_stages(self, chain_context: ChainContext) -> str:
         """
         Extract final analysis from stages for API consumption.

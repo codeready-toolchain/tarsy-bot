@@ -7,7 +7,7 @@ to reduce duplication and improve maintainability.
 
 import asyncio
 import time
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any, List, Callable
 from unittest.mock import AsyncMock, Mock
 
 import httpx
@@ -139,7 +139,7 @@ class E2ETestUtils:
         )
 
     @staticmethod
-    def create_mcp_client_patches(mock_sessions: Dict[str, AsyncMock]) -> Tuple[callable, callable]:
+    def create_mcp_client_patches(mock_sessions: Dict[str, AsyncMock]) -> Tuple[Callable, Callable]:
         """
         Create MCP client patches for testing.
 
@@ -158,6 +158,7 @@ class E2ETestUtils:
             """Override list_tools to use our mock sessions."""
             # Ensure our mock sessions are available
             self.sessions = mock_sessions.copy()
+            self._initialized = True
             # Call the original method which will now use our mock sessions
             return await original_list_tools(self, session_id, server_name, stage_execution_id)
 
@@ -165,6 +166,7 @@ class E2ETestUtils:
             """Override call_tool to use our mock sessions."""
             # Ensure our mock sessions are available
             self.sessions = mock_sessions.copy()
+            self._initialized = True
             # Call the original method which will now use our mock sessions
             return await original_call_tool(self, server_name, tool_name, parameters, session_id, stage_execution_id)
 

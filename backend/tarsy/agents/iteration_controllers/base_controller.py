@@ -276,7 +276,8 @@ class ReactController(IterationController):
                 max_iterations=max_iterations,
                 context={
                     "session_id": context.session_id,
-                    "stage_execution_id": context.agent.get_current_stage_execution_id()
+                    "stage_execution_id": context.agent.get_current_stage_execution_id(),
+                    "stage_name": context.stage_name
                 }
             )
         else:

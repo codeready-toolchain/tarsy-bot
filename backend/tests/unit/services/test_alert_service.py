@@ -824,6 +824,603 @@ class TestAlertServiceDuplicatePrevention:
 
 
 @pytest.mark.unit
+class TestChainErrorAggregation:
+    """Test chain error aggregation and enhanced error handling."""
+    
+    @pytest.fixture
+    def alert_service(self):
+        """Create basic AlertService for error aggregation tests."""
+        mock_settings = Mock(spec=Settings)
+        mock_settings.agent_config_path = None
+        
+        with patch('tarsy.services.alert_service.RunbookService'), \
+             patch('tarsy.services.alert_service.get_history_service'), \
+             patch('tarsy.services.alert_service.ChainRegistry'), \
+             patch('tarsy.services.alert_service.MCPServerRegistry'), \
+             patch('tarsy.services.alert_service.MCPClient'), \
+             patch('tarsy.services.alert_service.LLMManager'):
+            
+            return AlertService(mock_settings)
+    
+    @pytest.fixture
+    def chain_context_with_failures(self):
+        """Create ChainContext with mixed successful and failed stage results."""
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        chain_context = ChainContext(
+            alert_type="test_alert",
+            alert_data={"test": "data"},
+            session_id="test_session",
+            current_stage_name="test_stage"
+        )
+        
+        # Add successful stage result
+        successful_result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="data-collector",
+            stage_name="data-collection",
+            timestamp_us=now_us(),
+            result_summary="Successfully collected data",
+            final_analysis="Data collection completed"
+        )
+        
+        # Add failed stage results with different error types
+        failed_result_1 = AgentExecutionResult(
+            status=StageStatus.FAILED,
+            agent_name="service-checker",
+            stage_name="service-check",
+            timestamp_us=now_us(),
+            result_summary="Failed to check service",
+            error_message="Connection timeout to external service after 30 seconds"
+        )
+        
+        failed_result_2 = AgentExecutionResult(
+            status=StageStatus.FAILED,
+            agent_name="data-analyzer",
+            stage_name="analysis",
+            timestamp_us=now_us(),
+            result_summary="Failed analysis",
+            error_message="Invalid data format in alert payload: missing required field 'metrics'"
+        )
+        
+        # Failed stage without error message (edge case)
+        failed_result_3 = AgentExecutionResult(
+            status=StageStatus.FAILED,
+            agent_name="notification-sender",
+            stage_name="notification",
+            timestamp_us=now_us(),
+            result_summary="Failed notification"
+            # No error_message field
+        )
+        
+        chain_context.add_stage_result("data-collection", successful_result)
+        chain_context.add_stage_result("service-check", failed_result_1)
+        chain_context.add_stage_result("analysis", failed_result_2)
+        chain_context.add_stage_result("notification", failed_result_3)
+        
+        return chain_context
+    
+    def test_aggregate_stage_errors_multiple_failures(self, alert_service, chain_context_with_failures):
+        """Test error aggregation with multiple stage failures."""
+        aggregated_error = alert_service._aggregate_stage_errors(chain_context_with_failures)
+        
+        # Verify format and content
+        assert "Chain processing failed with 3 stage failures:" in aggregated_error
+        assert "1. Stage 'service-check' (agent: service-checker): Connection timeout to external service after 30 seconds" in aggregated_error
+        assert "2. Stage 'analysis' (agent: data-analyzer): Invalid data format in alert payload: missing required field 'metrics'" in aggregated_error
+        assert "3. Stage 'notification' (agent: notification-sender): Failed with no error message" in aggregated_error
+    
+    def test_aggregate_stage_errors_single_failure(self, alert_service):
+        """Test error aggregation with single stage failure."""
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        chain_context = ChainContext(
+            alert_type="test_alert",
+            alert_data={"test": "data"},
+            session_id="test_session",
+            current_stage_name="test_stage"
+        )
+        
+        # Add single failed result
+        failed_result = AgentExecutionResult(
+            status=StageStatus.FAILED,
+            agent_name="kubernetes-agent",
+            stage_name="pod-analysis",
+            timestamp_us=now_us(),
+            result_summary="Pod analysis failed",
+            error_message="Unable to connect to Kubernetes API server"
+        )
+        
+        chain_context.add_stage_result("pod-analysis", failed_result)
+        
+        aggregated_error = alert_service._aggregate_stage_errors(chain_context)
+        
+        # Should format as single failure, not numbered list
+        assert aggregated_error == "Chain processing failed: Stage 'pod-analysis' (agent: kubernetes-agent): Unable to connect to Kubernetes API server"
+    
+    def test_aggregate_stage_errors_no_failures(self, alert_service):
+        """Test error aggregation when no stage failures exist (edge case)."""
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        chain_context = ChainContext(
+            alert_type="test_alert",
+            alert_data={"test": "data"},
+            session_id="test_session",
+            current_stage_name="test_stage"
+        )
+        
+        # Add only successful results
+        successful_result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="test-agent",
+            stage_name="test-stage",
+            timestamp_us=now_us(),
+            result_summary="Success",
+            final_analysis="All good"
+        )
+        
+        chain_context.add_stage_result("test-stage", successful_result)
+        
+        aggregated_error = alert_service._aggregate_stage_errors(chain_context)
+        
+        # Should return fallback message
+        assert aggregated_error == "Chain processing failed: One or more stages failed without detailed error messages"
+    
+    def test_aggregate_stage_errors_empty_context(self, alert_service):
+        """Test error aggregation with empty stage context."""
+        chain_context = ChainContext(
+            alert_type="test_alert",
+            alert_data={"test": "data"},
+            session_id="test_session",
+            current_stage_name="test_stage"
+        )
+        
+        # No stage results added
+        aggregated_error = alert_service._aggregate_stage_errors(chain_context)
+        
+        # Should return fallback message
+        assert aggregated_error == "Chain processing failed: One or more stages failed without detailed error messages"
+    
+    def test_aggregate_stage_errors_mixed_result_types(self, alert_service):
+        """Test error aggregation handles different result types gracefully."""
+        chain_context = ChainContext(
+            alert_type="test_alert",
+            alert_data={"test": "data"},
+            session_id="test_session",
+            current_stage_name="test_stage"
+        )
+        
+        # Add a non-AgentExecutionResult object (edge case)
+        chain_context.stage_outputs["invalid-result"] = {"not": "an_agent_result"}
+        
+        # Add valid failed result
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        failed_result = AgentExecutionResult(
+            status=StageStatus.FAILED,
+            agent_name="test-agent",
+            stage_name="test-stage",
+            timestamp_us=now_us(),
+            result_summary="Failed",
+            error_message="Test error"
+        )
+        
+        chain_context.add_stage_result("test-stage", failed_result)
+        
+        aggregated_error = alert_service._aggregate_stage_errors(chain_context)
+        
+        # Should handle the valid result and ignore the invalid one
+        assert "Chain processing failed: Stage 'test-stage' (agent: test-agent): Test error" in aggregated_error
+
+
+@pytest.mark.unit
+class TestEnhancedChainExecution:
+    """Test enhanced chain execution with proper error handling."""
+    
+    @pytest.fixture
+    async def initialized_service(self):
+        """Create fully initialized AlertService for chain execution tests."""
+        mock_settings = MockFactory.create_mock_settings(
+            github_token="test_token",
+            history_enabled=True,
+            agent_config_path=None
+        )
+        
+        dependencies = MockFactory.create_mock_alert_service_dependencies()
+        service = AlertService(mock_settings)
+        
+        # Initialize with mocked dependencies
+        service.agent_factory = Mock()
+        service.chain_registry = dependencies['chain_registry']
+        service.runbook_service = dependencies['runbook']
+        service.llm_manager = dependencies['llm_manager']
+        service.history_service = Mock()
+        service.history_service.is_enabled = True
+        service.history_service.create_session.return_value = True
+        service.history_service.update_session_status = Mock()
+        service.history_service.get_stage_execution = AsyncMock()
+        service.history_service.update_session_current_stage = AsyncMock()
+        
+        # Mock stage execution methods
+        service._create_stage_execution = AsyncMock(return_value="stage_exec_123")
+        service._update_stage_execution_started = AsyncMock()
+        service._update_stage_execution_completed = AsyncMock()
+        service._update_stage_execution_failed = AsyncMock()
+        service._update_session_current_stage = AsyncMock()
+        
+        yield service, dependencies
+    
+    @pytest.mark.asyncio
+    async def test_execute_chain_stages_with_failures_returns_aggregated_error(self, initialized_service):
+        """Test _execute_chain_stages returns ChainExecutionResult with aggregated error when stages fail."""
+        service, dependencies = initialized_service
+        
+        # Create chain definition with multiple stages
+        chain_definition = ChainConfigModel(
+            chain_id='test-chain',
+            alert_types=['test'],
+            stages=[
+                ChainStageConfigModel(name='data-collection', agent='DataAgent'),
+                ChainStageConfigModel(name='analysis', agent='AnalysisAgent'),
+                ChainStageConfigModel(name='notification', agent='NotificationAgent')
+            ],
+            description='Test chain with failures'
+        )
+        
+        chain_context = ChainContext(
+            alert_type="test_alert",
+            alert_data={"test": "data"},
+            session_id="test_session",
+            current_stage_name="test_stage"
+        )
+        
+        # Mock agents - some successful, some failing
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        successful_agent = AsyncMock()
+        successful_agent.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="DataAgent",
+            stage_name="data-collection",
+            timestamp_us=now_us(),
+            result_summary="Data collected successfully",
+            final_analysis="Data collection complete"
+        )
+        
+        failed_agent_1 = AsyncMock()
+        failed_agent_1.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.FAILED,
+            agent_name="AnalysisAgent", 
+            stage_name="analysis",
+            timestamp_us=now_us(),
+            result_summary="Analysis failed",
+            error_message="Missing required data fields"
+        )
+        
+        failed_agent_2 = AsyncMock()
+        failed_agent_2.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.FAILED,
+            agent_name="NotificationAgent",
+            stage_name="notification", 
+            timestamp_us=now_us(),
+            result_summary="Notification failed",
+            error_message="SMTP server unreachable"
+        )
+        
+        # Mock get_agent to return appropriate agents
+        def mock_get_agent(agent_identifier, iteration_strategy=None):
+            if agent_identifier == 'DataAgent':
+                agent = successful_agent
+            elif agent_identifier == 'AnalysisAgent': 
+                agent = failed_agent_1
+            else:  # NotificationAgent
+                agent = failed_agent_2
+            
+            agent.set_current_stage_execution_id = Mock()
+            return agent
+        
+        service.agent_factory.get_agent.side_effect = mock_get_agent
+        
+        # Execute chain stages
+        result = await service._execute_chain_stages(chain_definition, chain_context)
+        
+        # Verify result indicates failure with aggregated error
+        from tarsy.models.constants import ChainStatus
+        assert result.status == ChainStatus.FAILED
+        assert result.error is not None
+        assert "Chain processing failed with 2 stage failures:" in result.error
+        assert "Stage 'analysis' (agent: AnalysisAgent): Missing required data fields" in result.error
+        assert "Stage 'notification' (agent: NotificationAgent): SMTP server unreachable" in result.error
+        assert result.final_analysis is None  # Should be None for failed chains
+    
+    @pytest.mark.asyncio
+    async def test_execute_chain_stages_all_success_returns_analysis(self, initialized_service):
+        """Test _execute_chain_stages returns final analysis when all stages succeed."""
+        service, dependencies = initialized_service
+        
+        chain_definition = ChainConfigModel(
+            chain_id='success-chain',
+            alert_types=['test'],
+            stages=[
+                ChainStageConfigModel(name='analysis', agent='TestAgent')
+            ],
+            description='Test chain success'
+        )
+        
+        chain_context = ChainContext(
+            alert_type="test_alert",
+            alert_data={"test": "data"},
+            session_id="test_session",
+            current_stage_name="test_stage"
+        )
+        
+        # Mock successful agent
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        successful_agent = AsyncMock()
+        successful_agent.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="TestAgent",
+            stage_name="analysis", 
+            timestamp_us=now_us(),
+            result_summary="Analysis complete",
+            final_analysis="All systems operational"
+        )
+        
+        def mock_get_agent(agent_identifier, iteration_strategy=None):
+            agent = successful_agent
+            agent.set_current_stage_execution_id = Mock()
+            return agent
+        
+        service.agent_factory.get_agent.side_effect = mock_get_agent
+        
+        # Execute chain stages
+        result = await service._execute_chain_stages(chain_definition, chain_context)
+        
+        # Verify successful result
+        from tarsy.models.constants import ChainStatus
+        assert result.status == ChainStatus.COMPLETED
+        assert result.error is None
+        assert result.final_analysis == "All systems operational"
+    
+    @pytest.mark.asyncio 
+    async def test_execute_chain_stages_exception_handling(self, initialized_service):
+        """Test _execute_chain_stages handles exceptions properly."""
+        service, dependencies = initialized_service
+        
+        chain_definition = ChainConfigModel(
+            chain_id='exception-chain',
+            alert_types=['test'],
+            stages=[
+                ChainStageConfigModel(name='failing-stage', agent='FailingAgent')
+            ],
+            description='Test chain with exception'
+        )
+        
+        chain_context = ChainContext(
+            alert_type="test_alert",
+            alert_data={"test": "data"},
+            session_id="test_session",
+            current_stage_name="test_stage"
+        )
+        
+        # Mock agent that throws exception
+        failing_agent = AsyncMock()
+        failing_agent.process_alert.side_effect = Exception("Unexpected agent failure")
+        
+        def mock_get_agent(agent_identifier, iteration_strategy=None):
+            agent = failing_agent
+            agent.set_current_stage_execution_id = Mock()
+            return agent
+        
+        service.agent_factory.get_agent.side_effect = mock_get_agent
+        
+        # Execute chain stages
+        result = await service._execute_chain_stages(chain_definition, chain_context)
+        
+        # Verify exception is handled and results in failed status with error
+        from tarsy.models.constants import ChainStatus
+        assert result.status == ChainStatus.FAILED
+        assert result.error is not None
+        assert "Chain processing failed: Stage 'failing-stage' (agent: FailingAgent): Unexpected agent failure" in result.error
+        assert result.final_analysis is None
+
+
+@pytest.mark.unit
+class TestFullErrorPropagation:
+    """Test complete error propagation from stage failures through process_alert."""
+    
+    @pytest.fixture
+    async def service_with_failing_stages(self):
+        """Create service setup to simulate stage failures."""
+        mock_settings = MockFactory.create_mock_settings(
+            github_token="test_token", 
+            history_enabled=True,
+            agent_config_path=None
+        )
+        
+        dependencies = MockFactory.create_mock_alert_service_dependencies()
+        service = AlertService(mock_settings)
+        
+        # Setup service with dependencies
+        service.agent_factory = Mock()
+        service.chain_registry = dependencies['chain_registry']
+        service.runbook_service = dependencies['runbook']
+        service.llm_manager = dependencies['llm_manager']
+        service.history_service = Mock()
+        service.history_service.is_enabled = True
+        service.history_service.create_session.return_value = True
+        service.history_service.update_session_status = Mock()
+        
+        # Mock stage execution methods
+        service._create_stage_execution = AsyncMock(return_value="stage_exec_123")
+        service._update_stage_execution_started = AsyncMock()
+        service._update_stage_execution_completed = AsyncMock()
+        service._update_stage_execution_failed = AsyncMock()
+        service._update_session_current_stage = AsyncMock()
+        
+        # Configure chain registry to return test chain
+        dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainConfigModel(
+            chain_id='error-test-chain',
+            alert_types=['error-test'],
+            stages=[
+                ChainStageConfigModel(name='stage1', agent='Agent1'),
+                ChainStageConfigModel(name='stage2', agent='Agent2')
+            ],
+            description='Chain for error testing'
+        )
+        
+        # Configure runbook service
+        dependencies['runbook'].download_runbook = AsyncMock(return_value="Test runbook content")
+        
+        # Configure LLM manager
+        dependencies['llm_manager'].is_available.return_value = True
+        
+        yield service, dependencies
+    
+    @pytest.mark.asyncio
+    async def test_process_alert_propagates_aggregated_chain_errors(self, service_with_failing_stages):
+        """Test that process_alert includes aggregated stage errors in formatted response."""
+        service, dependencies = service_with_failing_stages
+        
+        # Create failing agents
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        failing_agent_1 = AsyncMock()
+        failing_agent_1.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.FAILED,
+            agent_name="Agent1",
+            stage_name="stage1",
+            timestamp_us=now_us(),
+            result_summary="Stage 1 failed",
+            error_message="Database connection lost"
+        )
+        
+        failing_agent_2 = AsyncMock()
+        failing_agent_2.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.FAILED, 
+            agent_name="Agent2",
+            stage_name="stage2",
+            timestamp_us=now_us(),
+            result_summary="Stage 2 failed",
+            error_message="API rate limit exceeded"
+        )
+        
+        def mock_get_agent(agent_identifier, iteration_strategy=None):
+            if agent_identifier == 'Agent1':
+                agent = failing_agent_1
+            else:  # Agent2
+                agent = failing_agent_2
+            
+            agent.set_current_stage_execution_id = Mock()
+            return agent
+        
+        service.agent_factory.get_agent.side_effect = mock_get_agent
+        
+        # Create chain context with runbook URL
+        chain_context = ChainContext(
+            alert_type="error-test",
+            alert_data={
+                "test": "error_data",
+                "runbook": "https://example.com/test-runbook"
+            },
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test_stage"
+        )
+        
+        # Process alert
+        result = await service.process_alert(chain_context, "test_alert_123")
+        
+        # Verify the formatted error response contains aggregated errors
+        assert "# Alert Processing Error" in result
+        assert "Chain processing failed with 2 stage failures:" in result
+        assert "Stage 'stage1' (agent: Agent1): Database connection lost" in result
+        assert "Stage 'stage2' (agent: Agent2): API rate limit exceeded" in result
+        assert "**Alert Type:** error-test" in result
+        
+        # Verify history service was updated with the detailed error
+        service.history_service.update_session_status.assert_called()
+        error_call_args = [call for call in service.history_service.update_session_status.call_args_list 
+                          if call[1].get('status') == 'failed']
+        assert len(error_call_args) > 0
+        
+        # Verify the error message passed to history contains the aggregated error
+        error_message = error_call_args[0][1]['error_message']
+        assert "Chain processing failed with 2 stage failures:" in error_message
+    
+    @pytest.mark.asyncio
+    async def test_process_alert_single_stage_failure_formatting(self, service_with_failing_stages):
+        """Test process_alert formats single stage failure correctly."""
+        service, dependencies = service_with_failing_stages
+        
+        # Update chain to have only one stage
+        dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainConfigModel(
+            chain_id='single-stage-chain',
+            alert_types=['error-test'],
+            stages=[
+                ChainStageConfigModel(name='only-stage', agent='OnlyAgent')
+            ],
+            description='Single stage chain'
+        )
+        
+        # Create single failing agent
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        failing_agent = AsyncMock()
+        failing_agent.process_alert.return_value = AgentExecutionResult(
+            status=StageStatus.FAILED,
+            agent_name="OnlyAgent",
+            stage_name="only-stage",
+            timestamp_us=now_us(),
+            result_summary="Single stage failed",
+            error_message="Critical system error detected"
+        )
+        
+        def mock_get_agent(agent_identifier, iteration_strategy=None):
+            agent = failing_agent
+            agent.set_current_stage_execution_id = Mock()
+            return agent
+        
+        service.agent_factory.get_agent.side_effect = mock_get_agent
+        
+        # Create chain context with runbook URL
+        chain_context = ChainContext(
+            alert_type="error-test",
+            alert_data={
+                "test": "single_error",
+                "runbook": "https://example.com/single-test-runbook"
+            },
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test_stage"
+        )
+        
+        # Process alert
+        result = await service.process_alert(chain_context, "single_alert_123")
+        
+        # Verify single failure format (not numbered list)
+        assert "# Alert Processing Error" in result
+        assert "Chain processing failed: Stage 'only-stage' (agent: OnlyAgent): Critical system error detected" in result
+        # Should NOT contain "with X stage failures:" since it's a single failure
+        assert "stage failures:" not in result
+
+
+@pytest.mark.unit
 class TestAlertServiceValidationAndCaching:
     """Test AlertService alert ID validation and TTL caching functionality."""
     

@@ -720,7 +720,10 @@ function VirtualizedAccordionTimeline({
 
               <AccordionDetails sx={{ pt: 0 }}>
                 {/* Stage Metadata */}
-                <Card variant="outlined" sx={{ mb: 3, bgcolor: 'grey.25' }}>
+                <Card
+                  variant="outlined"
+                  sx={theme => ({ mb: 3, bgcolor: theme.palette.grey[50] })}
+                >
                   <CardContent>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                       <Typography variant="subtitle2">
@@ -764,7 +767,11 @@ function VirtualizedAccordionTimeline({
                     </Box>
                     
                     {stage.error_message && (
-                      <Box mt={2} p={2} bgcolor="error.50" borderRadius={1}>
+                      <Box
+                        mt={2}
+                        p={2}
+                        sx={theme => ({ bgcolor: alpha(theme.palette.error.main, 0.06), borderRadius: 1 })}
+                      >
                         <Typography variant="body2" color="error.main">
                           <strong>Error:</strong> {stage.error_message}
                         </Typography>
