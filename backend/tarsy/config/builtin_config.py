@@ -17,6 +17,7 @@ Agent classes are imported dynamically by AgentFactory when needed.
 import copy
 from typing import Dict, Any
 from tarsy.models import LLMProviderConfig
+from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 
 
 # ==============================================================================
@@ -179,22 +180,26 @@ BUILTIN_LLM_PROVIDERS: Dict[str, LLMProviderConfig] = {
     "openai-default": {
         "type": "openai",
         "model": "gpt-5",
-        "api_key_env": "OPENAI_API_KEY"
+        "api_key_env": "OPENAI_API_KEY",
+        "temperature": DEFAULT_LLM_TEMPERATURE
     },
     "google-default": {
         "type": "google", 
         "model": "gemini-2.5-flash",
-        "api_key_env": "GOOGLE_API_KEY"
+        "api_key_env": "GOOGLE_API_KEY",
+        "temperature": DEFAULT_LLM_TEMPERATURE
     },
     "xai-default": {
         "type": "xai",
         "model": "grok-4", 
-        "api_key_env": "XAI_API_KEY"
+        "api_key_env": "XAI_API_KEY",
+        "temperature": DEFAULT_LLM_TEMPERATURE
     },
     "anthropic-default": {
         "type": "anthropic",
         "model": "claude-sonnet-4-20250514",
-        "api_key_env": "ANTHROPIC_API_KEY"
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "temperature": DEFAULT_LLM_TEMPERATURE
     }
 }
 

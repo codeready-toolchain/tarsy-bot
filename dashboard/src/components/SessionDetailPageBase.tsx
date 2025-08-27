@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -83,7 +83,7 @@ const TimelineSkeleton = () => (
 
 interface SessionDetailPageBaseProps {
   viewType: 'conversation' | 'technical';
-  timelineComponent: (session: DetailedSession, useVirtualization?: boolean) => ReactNode;
+  timelineComponent: (session: DetailedSession, useVirtualization?: boolean, autoScroll?: boolean) => ReactNode;
   timelineSkeleton?: ReactNode;
   onViewChange?: (newView: 'conversation' | 'technical') => void;
 }
@@ -116,6 +116,12 @@ function SessionDetailPageBase({
   // Performance optimization settings
   const [useVirtualization, setUseVirtualization] = useState<boolean | null>(null); // null = auto-detect
   const [showPerformanceMode, setShowPerformanceMode] = useState<boolean>(false);
+  
+  // Auto-scroll settings
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(true);
+  
+  // Refs for auto-scroll targeting
+  const finalAnalysisRef = useRef<HTMLDivElement>(null);
   
   // View toggle state
   const [currentView, setCurrentView] = useState<string>(viewType);
@@ -198,6 +204,26 @@ function SessionDetailPageBase({
     }
   };
 
+  // Helper function to check and scroll to final analysis if it has new content
+  const checkAndScrollToFinalAnalysis = useCallback((delay: number = 500) => {
+    if (!autoScrollEnabled) return;
+    
+    setTimeout(() => {
+      if (finalAnalysisRef.current) {
+        const analysisElement = finalAnalysisRef.current;
+        const content = analysisElement.textContent?.trim() || '';
+        
+        if (content.length > 50) { // Min length check
+          analysisElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+          console.log('🎯 Auto-scrolled to final analysis (live update)');
+        }
+      }
+    }, delay);
+  }, [autoScrollEnabled]);
+
   // Helper functions are now provided by the SessionContext
 
 
@@ -213,7 +239,7 @@ function SessionDetailPageBase({
 
     // Handle granular session updates for better performance
     const handleSessionUpdate = (update: any) => {
-      console.log(`📡 ${viewType} view received update:`, update.type, update);
+      console.log(`📡 ${viewType} view received update:`, update.type);
       
       // Handle different update types with granular updates for optimal performance
       switch (update.type) {
@@ -235,6 +261,11 @@ function SessionDetailPageBase({
             throttledUpdate(() => {
               if (sessionId) {
                 refreshSessionStages(sessionId);
+                
+                // Auto-scroll to final analysis when session completes
+                if (update.new_status === 'completed') {
+                  checkAndScrollToFinalAnalysis(800);
+                }
               }
             }, 200);
           }
@@ -247,6 +278,7 @@ function SessionDetailPageBase({
           
         case 'llm_interaction':
         case 'mcp_communication':
+        case 'mcp_interaction':
           // For ongoing sessions, use lightweight updates
           if (sessionRef.current?.status === 'in_progress') {
             console.log('🔄 Activity update, using partial refresh');
@@ -261,6 +293,8 @@ function SessionDetailPageBase({
             throttledUpdate(() => {
               if (sessionId) {
                 refreshSessionStages(sessionId);
+                // Check for final analysis after interaction updates
+                checkAndScrollToFinalAnalysis(updateDelay + 400);
               }
             }, updateDelay);
           }
@@ -281,6 +315,8 @@ function SessionDetailPageBase({
           throttledUpdate(() => {
             if (sessionId) {
               refreshSessionStages(sessionId);
+              // Check for final analysis after stage updates
+              checkAndScrollToFinalAnalysis(600);
             }
           }, 250);
           break;
@@ -292,16 +328,46 @@ function SessionDetailPageBase({
           if (update.analysis) {
             // Direct update if analysis is provided in update
             updateFinalAnalysis(update.analysis);
+            
+            // Auto-scroll to final analysis if enabled
+            if (autoScrollEnabled && finalAnalysisRef.current) {
+              setTimeout(() => {
+                finalAnalysisRef.current?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start'
+                });
+                console.log('🎯 Auto-scrolled to final analysis');
+              }, 300);
+            }
           } else {
             // Otherwise use partial refresh
             throttledUpdate(() => {
               if (sessionId) {
                 refreshSessionStages(sessionId);
+                
+                // Check if final analysis was added and auto-scroll
+                checkAndScrollToFinalAnalysis(500);
               }
             }, 150);
           }
           break;
           
+        case 'stage_progress':
+          // Stage progress updates - these often coincide with final analysis
+          console.log('🔄 Stage progress update');
+          
+          if (sessionId) {
+            refreshSessionSummary(sessionId);
+            throttledUpdate(() => {
+              if (sessionId) {
+                refreshSessionStages(sessionId);
+                // Check for final analysis after stage progress
+                checkAndScrollToFinalAnalysis(800);
+              }
+            }, 300);
+          }
+          break;
+
         default:
           // Unknown update types - be conservative and update summary
           console.log(`🔄 Unknown update type: ${update.type}, using partial refresh`);
@@ -314,6 +380,8 @@ function SessionDetailPageBase({
             throttledUpdate(() => {
               if (sessionId) {
                 refreshSessionStages(sessionId);
+                // Check for final analysis after unknown updates
+                checkAndScrollToFinalAnalysis(1000);
               }
             }, 800);
           }
@@ -338,6 +406,8 @@ function SessionDetailPageBase({
       }
     };
   }, [sessionId, viewType]);
+
+
 
   // Note: Initial load is now handled by the SessionContext automatically
 
@@ -371,6 +441,10 @@ function SessionDetailPageBase({
 
   const handleVirtualizationToggle = (event: React.ChangeEvent<HTMLInputElement>) => {
     setUseVirtualization(event.target.checked);
+  };
+
+  const handleAutoScrollToggle = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setAutoScrollEnabled(event.target.checked);
   };
 
   return (
@@ -474,6 +548,32 @@ function SessionDetailPageBase({
             </ToggleButton>
           </ToggleButtonGroup>
           
+
+
+          {/* Auto-scroll toggle - only show for active sessions */}
+          {session && (session.status === 'in_progress' || session.status === 'pending') && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={autoScrollEnabled}
+                    onChange={handleAutoScrollToggle}
+                    size="small"
+                    color="default"
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography variant="caption" sx={{ color: 'inherit' }}>
+                      🔄 Auto-scroll
+                    </Typography>
+                  </Box>
+                }
+                sx={{ m: 0, color: 'inherit' }}
+              />
+            </Box>
+          )}
+
           {/* Performance mode toggle */}
           {showPerformanceMode && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
@@ -585,7 +685,7 @@ function SessionDetailPageBase({
             {/* Timeline Content - Conditional based on view type */}
             {session.stages && session.stages.length > 0 ? (
               <Suspense fallback={timelineSkeleton}>
-                {timelineComponent(session, useVirtualization || undefined)}
+                {timelineComponent(session, useVirtualization || undefined, autoScrollEnabled)}
               </Suspense>
             ) : (
               <Alert severity="error" sx={{ mb: 2 }}>
@@ -607,13 +707,15 @@ function SessionDetailPageBase({
             )}
 
             {/* Final AI Analysis - Lazy loaded */}
-            <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
-              <FinalAnalysisCard 
-                analysis={session.final_analysis}
-                sessionStatus={session.status}
-                errorMessage={session.error_message}
-              />
-            </Suspense>
+            <Box ref={finalAnalysisRef} data-final-analysis>
+              <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
+                <FinalAnalysisCard 
+                  analysis={session.final_analysis}
+                  sessionStatus={session.status}
+                  errorMessage={session.error_message}
+                />
+              </Suspense>
+            </Box>
           </Box>
         )}
 

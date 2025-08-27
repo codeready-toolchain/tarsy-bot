@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, lazy, Suspense, useRef } from 'react';
+import React, { useState, useMemo, useCallback, lazy, Suspense, useRef, useEffect } from 'react';
 import { VariableSizeList as List } from 'react-window';
 import {
   Box,
@@ -36,10 +36,8 @@ import type { ChainExecution, TimelineItem, LLMInteraction, MCPInteraction } fro
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import { 
   getStageStatusColor, 
-  getInteractionColor, 
-  formatInteractionForCopy,
+  getInteractionColor,
   formatStageForCopy,
-  getStageStatusIcon,
   getInteractionBackgroundColor
 } from '../utils/timelineHelpers';
 import InteractionCountBadges from './InteractionCountBadges';
@@ -97,6 +95,7 @@ const formatEntireFlowForCopy = (chainExecution: ChainExecution): string => {
 interface VirtualizedAccordionTimelineProps {
   chainExecution: ChainExecution;
   maxVisibleInteractions?: number; // Control virtualization threshold
+  autoScroll?: boolean; // Enable auto-scroll to latest interaction
 }
 
 interface InteractionItemData {
@@ -108,7 +107,6 @@ interface InteractionItemData {
 }
 
 const ITEM_HEIGHT = 200; // Default height per interaction item
-const EXPANDED_ITEM_HEIGHT = 400; // Estimated height when expanded
 const MAX_NON_VIRTUALIZED_ITEMS = 50; // Threshold for enabling virtualization
 
 // Enhanced loading skeleton for interaction items with glowing effect
@@ -339,7 +337,8 @@ const InteractionItem = React.memo(({ index, style, data }: {
  */
 function VirtualizedAccordionTimeline({
   chainExecution,
-  maxVisibleInteractions = MAX_NON_VIRTUALIZED_ITEMS
+  maxVisibleInteractions = MAX_NON_VIRTUALIZED_ITEMS,
+  autoScroll = true
 }: VirtualizedAccordionTimelineProps) {
   const theme = useTheme();
   const [expandedStages, setExpandedStages] = useState<Set<string>>(
@@ -357,6 +356,12 @@ function VirtualizedAccordionTimeline({
   const [expandedInteractionDetails, setExpandedInteractionDetails] = useState<Record<string, boolean>>({});
   const listRef = useRef<List>(null);
   const sizeMapRef = useRef<Map<number, number>>(new Map());
+  
+  // Auto-scroll functionality
+  const nonVirtualizedContainerRef = useRef<HTMLDivElement>(null);
+  const prevInteractionCountsRef = useRef<Map<string, number>>(new Map());
+  const userScrolledAwayRef = useRef<boolean>(false);
+  const prevCurrentStageIndexRef = useRef<number>(chainExecution.current_stage_index ?? 0);
   
   // Helper function to resolve stage status to actual theme colors
   const getResolvedStageStatusColor = useCallback((status: string) => {
@@ -416,6 +421,30 @@ function VirtualizedAccordionTimeline({
       }
     }
   }, []);
+
+  // Auto-scroll to bottom function
+  const scrollToBottom = useCallback((stageId: string, useVirtualization: boolean, interactionCount: number) => {
+    if (!autoScroll || userScrolledAwayRef.current) return;
+    
+    // Small delay to ensure DOM has updated
+    setTimeout(() => {
+      if (useVirtualization && listRef.current) {
+        // For virtualized list, scroll to the last item
+        listRef.current.scrollToItem(interactionCount - 1, 'end');
+        console.log(`🔄 Auto-scrolled virtualized list to interaction ${interactionCount - 1} in stage ${stageId}`);
+      } else {
+        // For non-virtualized content, scroll the last interaction into view using main page scroll
+        const lastInteractionElement = nonVirtualizedContainerRef.current?.lastElementChild as HTMLElement;
+        if (lastInteractionElement) {
+          lastInteractionElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'end'
+          });
+          console.log(`🔄 Auto-scrolled to last interaction in stage ${stageId}`);
+        }
+      }
+    }, 100);
+  }, [autoScroll]);
   
   // Item size resolver for VariableSizeList
   const getItemSize = useCallback((index: number) => {
@@ -456,6 +485,57 @@ function VirtualizedAccordionTimeline({
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
   }, [chainExecution.stages]);
 
+  // Calculate total interactions for performance warnings
+  const totalInteractions = useMemo(() => {
+    return chainExecution.stages.reduce((total, stage) => {
+      return total + (stage.llm_interactions?.length || 0) + (stage.mcp_communications?.length || 0);
+    }, 0);
+  }, [chainExecution.stages]);
+
+  // Effect to automatically expand the current active stage
+  useEffect(() => {
+    if (!autoScroll) return;
+
+    const currentStageIndex = chainExecution.current_stage_index ?? 0;
+    const prevStageIndex = prevCurrentStageIndexRef.current;
+
+    // Check if we moved to a new stage (stage progression)
+    if (currentStageIndex !== prevStageIndex && chainExecution.stages[currentStageIndex]) {
+      const newStage = chainExecution.stages[currentStageIndex];
+      
+      console.log(`🎯 Auto-expanding new active stage: ${newStage.stage_name} (stage ${currentStageIndex + 1})`);
+      
+      // Add the new current stage to expanded stages (keep previous ones expanded)
+      setExpandedStages(prev => new Set([...prev, newStage.execution_id]));
+      setCurrentStageIndex(currentStageIndex);
+      
+      // Update previous stage index
+      prevCurrentStageIndexRef.current = currentStageIndex;
+    }
+  }, [chainExecution.current_stage_index, chainExecution.stages, autoScroll]);
+
+  // Effect to detect new interactions and auto-scroll
+  useEffect(() => {
+    if (!autoScroll) return;
+
+    // Check each expanded stage for new interactions
+    expandedStages.forEach(stageId => {
+      const stageInteractions = getStageInteractions(stageId);
+      const currentCount = stageInteractions.length;
+      const previousCount = prevInteractionCountsRef.current.get(stageId) || 0;
+      
+      // If we have new interactions and this stage is expanded
+      if (currentCount > previousCount && currentCount > 0) {
+        const shouldUseVirtualization = totalInteractions > maxVisibleInteractions && currentCount > 20;
+        console.log(`🆕 Detected ${currentCount - previousCount} new interaction(s) in stage ${stageId}, auto-scrolling...`);
+        scrollToBottom(stageId, shouldUseVirtualization, currentCount);
+      }
+      
+      // Update the count for this stage
+      prevInteractionCountsRef.current.set(stageId, currentCount);
+    });
+  }, [chainExecution, expandedStages, autoScroll, getStageInteractions, totalInteractions, maxVisibleInteractions, scrollToBottom]);
+
   // Helper functions now imported from shared utils
   
   // JSX icon helper (can't be in shared utils as it returns JSX)
@@ -471,13 +551,6 @@ function VirtualizedAccordionTimeline({
         return <Schedule fontSize="small" />;
     }
   };
-
-  // Calculate total interactions for performance warnings
-  const totalInteractions = useMemo(() => {
-    return chainExecution.stages.reduce((total, stage) => {
-      return total + (stage.llm_interactions?.length || 0) + (stage.mcp_communications?.length || 0);
-    }, 0);
-  }, [chainExecution.stages]);
 
   const shouldUseVirtualization = totalInteractions > maxVisibleInteractions;
 
@@ -497,6 +570,7 @@ function VirtualizedAccordionTimeline({
                 </Typography>
               </Alert>
             )}
+
             <Suspense fallback={<CircularProgress size={20} />}>
               <CopyButton
                 text={formatEntireFlowForCopy(chainExecution)}
@@ -732,7 +806,14 @@ function VirtualizedAccordionTimeline({
                     </Box>
                   ) : (
                     // Regular rendering for smaller lists
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box 
+                      ref={nonVirtualizedContainerRef}
+                      sx={{ 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        gap: 2
+                      }}
+                    >
                       {stageInteractions.map((interaction: TimelineItem, interactionIndex: number) => {
                         const itemKey = interaction.event_id || `interaction-${interactionIndex}`;
                         

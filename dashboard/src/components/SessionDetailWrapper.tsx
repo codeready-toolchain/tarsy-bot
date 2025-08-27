@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { SessionProvider } from '../contexts/SessionContext';
 import SessionDetailPageBase from './SessionDetailPageBase';
@@ -35,11 +35,14 @@ function SessionDetailWrapper() {
   };
 
   // Timeline component factory based on current view
-  const renderTimeline = (session: DetailedSession, useVirtualization?: boolean) => {
+  const renderTimeline = (session: DetailedSession, useVirtualization?: boolean, autoScroll?: boolean) => {
+    // Use provided autoScroll preference, or default to enabled for live sessions
+    const shouldAutoScroll = autoScroll !== undefined ? autoScroll : (session.status === 'in_progress' || session.status === 'pending');
+    
     if (currentView === 'technical') {
-      return <TechnicalTimeline session={session} useVirtualization={useVirtualization} />;
+      return <TechnicalTimeline session={session} useVirtualization={useVirtualization} autoScroll={shouldAutoScroll} />;
     } else {
-      return <ConversationTimeline session={session} useVirtualization={useVirtualization} />;
+      return <ConversationTimeline session={session} useVirtualization={useVirtualization} autoScroll={shouldAutoScroll} />;
     }
   };
 

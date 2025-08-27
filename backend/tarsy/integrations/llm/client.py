@@ -22,6 +22,7 @@ from langchain_anthropic import ChatAnthropic
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import llm_interaction_context
+from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
 
@@ -101,7 +102,7 @@ class LLMClient:
         self.config = config
         self.model = config.get("model", "default")
         self.api_key = config.get("api_key", "")
-        self.temperature = config.get("temperature", 0.3)
+        self.temperature = config.get("temperature", DEFAULT_LLM_TEMPERATURE)
         self.llm_client: Optional[BaseChatModel] = None
         self._initialize_client()
     

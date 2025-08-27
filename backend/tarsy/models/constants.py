@@ -89,3 +89,12 @@ class IterationStrategy(str, Enum):
     REACT = "react"
     REACT_STAGE = "react-stage"           # ReAct pattern for stage-specific analysis
     REACT_FINAL_ANALYSIS = "react-final-analysis"   # ReAct final analysis only, no tools
+
+
+# ==============================================================================
+# LLM CONFIGURATION CONSTANTS
+# ==============================================================================
+
+# Default temperature for LLM interactions
+# Lower temperature (0.1) ensures more deterministic and focused responses
+DEFAULT_LLM_TEMPERATURE = 0.1

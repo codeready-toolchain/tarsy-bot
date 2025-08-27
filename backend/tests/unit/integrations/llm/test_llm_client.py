@@ -11,6 +11,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from tarsy.integrations.llm.client import LLM_PROVIDERS, LLMClient
+from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
 
 
@@ -112,7 +113,7 @@ class TestLLMClientInitialization:
             
             mock_openai.assert_called_once_with(
                 model_name="default",  # default model when not specified
-                temperature=0.3,  # default temperature
+                temperature=DEFAULT_LLM_TEMPERATURE,  # default temperature
                 api_key="test-key"
             )
     

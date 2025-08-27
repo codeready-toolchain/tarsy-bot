@@ -12,6 +12,7 @@ const LARGE_SESSION_THRESHOLD = 50; // interactions
 interface TechnicalTimelineProps {
   session: DetailedSession;
   useVirtualization?: boolean;
+  autoScroll?: boolean;
 }
 
 // Loading skeleton for technical timeline
@@ -36,7 +37,8 @@ const TechnicalTimelineSkeleton = () => (
  */
 function TechnicalTimeline({ 
   session, 
-  useVirtualization = false 
+  useVirtualization = false,
+  autoScroll = true
 }: TechnicalTimelineProps) {
   
   if (!session.stages || session.stages.length === 0) {
@@ -75,6 +77,7 @@ function TechnicalTimeline({
         <VirtualizedAccordionTimeline
           chainExecution={chainExecution}
           maxVisibleInteractions={LARGE_SESSION_THRESHOLD}
+          autoScroll={autoScroll}
         />
       ) : (
         <NestedAccordionTimeline

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { 
   Box,
   Typography,
@@ -20,6 +20,7 @@ import CopyButton from './CopyButton';
 interface ConversationTimelineProps {
   session: DetailedSession;
   useVirtualization?: boolean;
+  autoScroll?: boolean;
 }
 
 /**
@@ -29,12 +30,17 @@ interface ConversationTimelineProps {
  */
 function ConversationTimeline({ 
   session, 
-  useVirtualization: _useVirtualization // Not used for conversation view currently
+  useVirtualization: _useVirtualization, // Not used for conversation view currently
+  autoScroll = true
 }: ConversationTimelineProps) {
   const [parsedSession, setParsedSession] = useState<ParsedSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentStageIndex, setCurrentStageIndex] = useState<number>(0);
   const [recentlyUpdatedStages, setRecentlyUpdatedStages] = useState<Set<string>>(new Set());
+  
+  // Auto-scroll functionality
+  const stagesContainerRef = useRef<HTMLDivElement>(null);
+  const previousStepCountsRef = useRef<Map<string, number>>(new Map());
 
   // Memoize conversation stats to prevent recalculation on every render - MOVED BEFORE EARLY RETURNS
   const conversationStats = useMemo(() => {
@@ -163,6 +169,53 @@ function ConversationTimeline({
               setTimeout(() => {
                 setRecentlyUpdatedStages(new Set());
               }, 4000);
+              
+              // Auto-scroll to bottom if new steps were added
+              if (autoScroll) {
+                // Check if new steps were added to any stage
+                let hasNewSteps = false;
+                parsed.stages.forEach(stage => {
+                  const currentStepCount = stage.steps.length;
+                  const previousStepCount = previousStepCountsRef.current.get(stage.execution_id) || 0;
+                  
+                  if (currentStepCount > previousStepCount) {
+                    hasNewSteps = true;
+                    console.log(`🆕 New steps detected in stage ${stage.stage_name}: ${previousStepCount} → ${currentStepCount}`);
+                  }
+                  
+                  previousStepCountsRef.current.set(stage.execution_id, currentStepCount);
+                });
+                
+                if (hasNewSteps && stagesContainerRef.current) {
+                  setTimeout(() => {
+                    // Check if this update includes final analysis
+                    const hasAnalysisNow = parsed.finalAnalysis && parsed.finalAnalysis.length > 50;
+                    if (hasAnalysisNow) {
+                      console.log('🎯 Final analysis detected in conversation update, scrolling to it');
+                      // Scroll to final analysis instead of last conversation step
+                      const finalAnalysisElement = document.querySelector('[data-final-analysis]') as HTMLElement;
+                      if (finalAnalysisElement) {
+                        finalAnalysisElement.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'start'
+                        });
+                        console.log('🎯 Auto-scrolled to final analysis from conversation');
+                        return;
+                      }
+                    }
+                    
+                    // Otherwise scroll to the last stage card
+                    const lastStageElement = stagesContainerRef.current?.lastElementChild as HTMLElement;
+                    if (lastStageElement) {
+                      lastStageElement.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'end'
+                      });
+                      console.log('🔄 Auto-scrolled to last conversation step');
+                    }
+                  }, 200);
+                }
+              }
             }
             
             return parsed;
@@ -341,7 +394,10 @@ function ConversationTimeline({
       </CardContent>
 
       {/* Stage Conversation Cards */}
-      <Box sx={{ p: 3 }}>
+      <Box 
+        ref={stagesContainerRef}
+        sx={{ p: 3 }}
+      >
         {parsedSession.stages.map((stage, stageIndex) => (
           <StageConversationCard
             key={`${stage.execution_id}-${stage.status}-${stage.steps.length}`}
