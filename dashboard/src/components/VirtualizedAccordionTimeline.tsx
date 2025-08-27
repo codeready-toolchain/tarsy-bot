@@ -47,6 +47,7 @@ const LazyInteractionDetails = lazy(() => import('./LazyInteractionDetails'));
 const LLMInteractionPreview = lazy(() => import('./LLMInteractionPreview'));
 const MCPInteractionPreview = lazy(() => import('./MCPInteractionPreview'));
 const CopyButton = lazy(() => import('./CopyButton'));
+const TypingIndicator = lazy(() => import('./TypingIndicator'));
 
 // Helper functions moved to shared utils (timelineHelpers.ts)
 
@@ -848,10 +849,31 @@ function VirtualizedAccordionTimeline({
                     </Typography>
                   </Card>
                 )}
+
+                {/* Show typing indicator for active or pending stages */}
+                {(() => {
+                  const shouldShow = stage.status === 'active' || stage.status === 'pending';
+                  
+                  if (shouldShow) {
+                    return (
+                      <Box sx={{ mt: 2 }}>
+                        <Suspense fallback={null}>
+                          <TypingIndicator
+                            dotsOnly={true}
+                            size="small"
+                          />
+                        </Suspense>
+                      </Box>
+                    );
+                  }
+                  return null;
+                })()}
               </AccordionDetails>
             </Accordion>
           );
         })}
+
+
       </Box>
     </Card>
   );

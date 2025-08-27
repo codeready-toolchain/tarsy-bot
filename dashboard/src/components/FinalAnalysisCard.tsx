@@ -6,8 +6,7 @@ import {
   Button, 
   Alert, 
   AlertTitle,
-  Snackbar,
-  IconButton
+  Snackbar
 } from '@mui/material';
 import { 
   Psychology, 

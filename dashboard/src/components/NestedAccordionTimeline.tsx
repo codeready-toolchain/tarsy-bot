@@ -42,6 +42,7 @@ import LLMInteractionPreview from './LLMInteractionPreview';
 import MCPInteractionPreview from './MCPInteractionPreview';
 import CopyButton from './CopyButton';
 import InteractionCountBadges from './InteractionCountBadges';
+import TypingIndicator from './TypingIndicator';
 
 interface NestedAccordionTimelineProps {
   chainExecution: ChainExecution;
@@ -649,6 +650,23 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                   </Card>
                 )}
 
+                {/* Show typing indicator for active or pending stages */}
+                {(() => {
+                  const shouldShow = stage.status === 'active' || stage.status === 'pending';
+                  
+                  if (shouldShow) {
+                    return (
+                      <Box sx={{ mt: 2 }}>
+                        <TypingIndicator
+                          dotsOnly={true}
+                          size="small"
+                        />
+                      </Box>
+                    );
+                  }
+                  return null;
+                })()}
+
                 {/* Stage Summary/Next Steps */}
                 <Box mt={3} display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2" color="text.secondary">
@@ -674,6 +692,8 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
             </Accordion>
           );
         })}
+
+
       </Box>
 
       {/* Future: Add interaction details modal here */}

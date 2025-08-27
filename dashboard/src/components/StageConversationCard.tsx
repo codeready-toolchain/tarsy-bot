@@ -20,6 +20,7 @@ import {
 import type { StageConversation } from '../utils/conversationParser';
 import ConversationStep from './ConversationStep';
 import CopyButton from './CopyButton';
+import TypingIndicator from './TypingIndicator';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 
 export interface StageConversationCardProps {
@@ -354,6 +355,23 @@ function StageConversationCard({
             </Typography>
           </Box>
         )}
+
+        {/* Show typing indicator for active or pending stages */}
+        {(() => {
+          const shouldShow = stage.status === 'active' || stage.status === 'pending';
+          
+          if (shouldShow) {
+            return (
+              <Box sx={{ mt: 2 }}>
+                <TypingIndicator
+                  dotsOnly={true}
+                  size="small"
+                />
+              </Box>
+            );
+          }
+          return null;
+        })()}
       </CardContent>
     </Card>
   );

@@ -407,6 +407,8 @@ function ConversationTimeline({
           />
         ))}
 
+
+
         {/* Empty state for no stages */}
         {parsedSession.stages.length === 0 && (
           <Box sx={{ textAlign: 'center', py: 4 }}>
