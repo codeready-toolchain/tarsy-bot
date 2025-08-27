@@ -102,7 +102,16 @@ function SessionDetailPageBase({
   const navigate = useNavigate();
   
   // Use shared session context instead of local state
-  const { session, loading, error, refetch, updateSession } = useSession(sessionId);
+  const { 
+    session, 
+    loading, 
+    error, 
+    refetch, 
+    refreshSessionSummary,
+    refreshSessionStages,
+    updateFinalAnalysis,
+    updateSessionStatus 
+  } = useSession(sessionId);
 
   // Performance optimization settings
   const [useVirtualization, setUseVirtualization] = useState<boolean | null>(null); // null = auto-detect
@@ -189,37 +198,7 @@ function SessionDetailPageBase({
     }
   };
 
-  // Helper functions for WebSocket updates using context
-  const updateFinalAnalysis = (analysis: string) => {
-    console.log('🎯 Updating final analysis via context');
-    updateSession(prevSession => {
-      if (!prevSession) return prevSession;
-      if (prevSession.final_analysis === analysis) {
-        console.log('🎯 Analysis unchanged, skipping update');
-        return prevSession;
-      }
-      return {
-        ...prevSession,
-        final_analysis: analysis
-      };
-    });
-  };
-
-  const updateSessionStatus = (newStatus: string, errorMessage?: string) => {
-    console.log('🔄 Updating session status via context:', newStatus);
-    updateSession(prevSession => {
-      if (!prevSession) return prevSession;
-      if (prevSession.status === newStatus && prevSession.error_message === errorMessage) {
-        console.log('🔄 Status unchanged, skipping update');
-        return prevSession;
-      }
-      return {
-        ...prevSession,
-        status: newStatus as typeof prevSession.status,
-        error_message: errorMessage || prevSession.error_message
-      };
-    });
-  };
+  // Helper functions are now provided by the SessionContext
 
 
 
@@ -236,40 +215,52 @@ function SessionDetailPageBase({
     const handleSessionUpdate = (update: any) => {
       console.log(`📡 ${viewType} view received update:`, update.type, update);
       
-      // Handle different update types intelligently with partial updates
+      // Handle different update types with granular updates for optimal performance
       switch (update.type) {
         case 'summary_update':
-          // Quick summary refresh for both views using context
-          console.log('🔄 Summary update, refreshing via context');
-          refetch();
+          // Quick summary refresh - lightweight API call
+          console.log('🔄 Summary update, using lightweight summary refresh');
+          if (sessionId) {
+            refreshSessionSummary(sessionId);
+          }
           break;
           
         case 'session_status_change':
           // Update status immediately to prevent UI lag
           updateSessionStatus(update.new_status, update.error_message);
           
-          // For major status changes, also refresh full session data
+          // For major status changes, also refresh stages and analysis
           if (['completed', 'failed'].includes(update.new_status)) {
-            console.log('🔄 Major status change, refreshing full session');
+            console.log('🔄 Major status change, refreshing stages');
             throttledUpdate(() => {
               if (sessionId) {
-                refetch();
+                refreshSessionStages(sessionId);
               }
             }, 200);
+          }
+          
+          // Always update summary for accurate counts
+          if (sessionId) {
+            refreshSessionSummary(sessionId);
           }
           break;
           
         case 'llm_interaction':
         case 'mcp_communication':
-          // For ongoing sessions, use throttled updates
+          // For ongoing sessions, use lightweight updates
           if (sessionRef.current?.status === 'in_progress') {
-            console.log('🔄 Activity update, using throttled context refresh');
+            console.log('🔄 Activity update, using partial refresh');
             
-            // Use throttled full refresh instead of partial updates
+            // Always update summary for real-time statistics (lightweight)
+            if (sessionId) {
+              refreshSessionSummary(sessionId);
+            }
+            
+            // Use throttled partial stage updates instead of full session refresh
             const updateDelay = viewType === 'conversation' ? 800 : 500;
             throttledUpdate(() => {
               if (sessionId) {
-                refetch();
+                refreshSessionStages(sessionId);
               }
             }, updateDelay);
           }
@@ -278,11 +269,18 @@ function SessionDetailPageBase({
         case 'stage_update':
         case 'stage_completed':
         case 'stage_failed':
-          // Stage events use throttled context refresh
-          console.log('🔄 Stage update, using context refresh');
+          // Stage events use partial updates
+          console.log('🔄 Stage update, using partial refresh');
+          
+          // Update summary immediately
+          if (sessionId) {
+            refreshSessionSummary(sessionId);
+          }
+          
+          // Use throttled partial update for stage content
           throttledUpdate(() => {
             if (sessionId) {
-              refetch();
+              refreshSessionStages(sessionId);
             }
           }, 250);
           break;
@@ -295,29 +293,29 @@ function SessionDetailPageBase({
             // Direct update if analysis is provided in update
             updateFinalAnalysis(update.analysis);
           } else {
-            // Otherwise use context refresh
+            // Otherwise use partial refresh
             throttledUpdate(() => {
               if (sessionId) {
-                refetch();
+                refreshSessionStages(sessionId);
               }
             }, 150);
           }
           break;
           
         default:
-          // Unknown update types - be conservative and use context refresh
-          console.log(`🔄 Unknown update type: ${update.type}, using context refresh`);
+          // Unknown update types - be conservative and update summary
+          console.log(`🔄 Unknown update type: ${update.type}, using partial refresh`);
+          if (sessionId) {
+            refreshSessionSummary(sessionId);
+          }
           
-          // If it contains data that might affect content, use throttled refresh
+          // If it contains data that might affect content, use partial refresh
           if (update.data || update.content) {
             throttledUpdate(() => {
               if (sessionId) {
-                refetch();
+                refreshSessionStages(sessionId);
               }
             }, 800);
-          } else {
-            // Simple refresh for unknown update types
-            refetch();
           }
       }
     };
@@ -575,7 +573,7 @@ function SessionDetailPageBase({
             <Suspense fallback={<HeaderSkeleton />}>
               <SessionHeader 
                 session={session} 
-                onRefresh={() => sessionId && refetch()} 
+                onRefresh={() => sessionId && refreshSessionSummary(sessionId)} 
               />
             </Suspense>
 
