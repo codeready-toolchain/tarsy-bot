@@ -362,6 +362,7 @@ function VirtualizedAccordionTimeline({
   const nonVirtualizedContainerRef = useRef<HTMLDivElement>(null);
   const prevInteractionCountsRef = useRef<Map<string, number>>(new Map());
   const userScrolledAwayRef = useRef<boolean>(false);
+  const isUserAtBottomRef = useRef<boolean>(true);
   const prevCurrentStageIndexRef = useRef<number>(chainExecution.current_stage_index ?? 0);
   
   // Helper function to resolve stage status to actual theme colors
@@ -423,10 +424,29 @@ function VirtualizedAccordionTimeline({
     }
   }, []);
 
+  // Helper function to check if user is at bottom of scrollable area
+  const isAtBottom = useCallback((): boolean => {
+    // Check if user is at bottom of page
+    const documentHeight = document.documentElement.scrollHeight;
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const windowHeight = window.innerHeight;
+
+    // Consider user at bottom if within 50px of the bottom
+    const threshold = 50;
+    return documentHeight - scrollTop - windowHeight <= threshold;
+  }, []);
+
+
+
   // Auto-scroll to bottom function
   const scrollToBottom = useCallback((stageId: string, useVirtualization: boolean, interactionCount: number) => {
-    if (!autoScroll || userScrolledAwayRef.current) return;
-    
+    if (!autoScroll || userScrolledAwayRef.current) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`🔄 Auto-scroll blocked: userScrolledAway=${userScrolledAwayRef.current}`);
+      }
+      return;
+    }
+
     // Small delay to ensure DOM has updated
     setTimeout(() => {
       if (useVirtualization && listRef.current) {
@@ -521,29 +541,47 @@ function VirtualizedAccordionTimeline({
     }
   }, [chainExecution.current_stage_index, chainExecution.stages, autoScroll]);
 
-  // Detect manual scrolling to temporarily disable auto-scroll
+  // Scroll position-based auto-scroll control
   useEffect(() => {
     if (!autoScroll) return;
-    
+
+    // Initialize scroll position on mount
+    isUserAtBottomRef.current = isAtBottom();
+    userScrolledAwayRef.current = !isUserAtBottomRef.current;
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`🚀 Initializing scroll detection: isAtBottom=${isUserAtBottomRef.current}, userScrolledAway=${userScrolledAwayRef.current}`);
+    }
+
     const handleScroll = () => {
-      // Only mark as user-scrolled if we're not at the bottom
-      const scrollElement = window;
-      const isAtBottom = Math.abs(
-        scrollElement.scrollY + scrollElement.innerHeight - document.documentElement.scrollHeight
-      ) < 50; // 50px threshold
-      
-      if (!isAtBottom) {
+      const wasAtBottom = isUserAtBottomRef.current;
+      const isNowAtBottom = isAtBottom();
+
+      // Update our tracking of user's position
+      isUserAtBottomRef.current = isNowAtBottom;
+
+      if (wasAtBottom && !isNowAtBottom) {
+        // User scrolled away from bottom - disable auto-scroll
         userScrolledAwayRef.current = true;
-        console.log(`👆 User scrolled away from bottom - disabling auto-scroll`);
-      } else {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`👆 User scrolled away - auto-scroll disabled`);
+        }
+      } else if (!wasAtBottom && isNowAtBottom) {
+        // User scrolled back to bottom - re-enable auto-scroll
         userScrolledAwayRef.current = false;
-        console.log(`👇 User scrolled back to bottom - re-enabling auto-scroll`);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`👇 User scrolled back to bottom - auto-scroll re-enabled`);
+        }
       }
     };
-    
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [autoScroll]);
+
+    // Listen to scroll events on window
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [autoScroll, isAtBottom]);
 
   // Effect to detect new interactions and auto-scroll
   useEffect(() => {
@@ -904,7 +942,6 @@ function VirtualizedAccordionTimeline({
             </Accordion>
           );
         })}
-
 
       </Box>
     </Card>

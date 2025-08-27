@@ -122,6 +122,10 @@ function SessionDetailPageBase({
   
   // Refs for auto-scroll targeting
   const finalAnalysisRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll state
+  const userScrolledAwayRef = useRef<boolean>(false);
+  const isUserAtBottomRef = useRef<boolean>(true);
   
   // View toggle state
   const [currentView, setCurrentView] = useState<string>(viewType);
@@ -209,15 +213,91 @@ function SessionDetailPageBase({
     }
   };
 
+  // Helper function to check if user is at bottom of scrollable area
+  const isAtBottom = useCallback((): boolean => {
+    // Check if user is at bottom of page
+    const documentHeight = document.documentElement.scrollHeight;
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const windowHeight = window.innerHeight;
+
+    // Consider user at bottom if within 50px of the bottom
+    const threshold = 50;
+    return documentHeight - scrollTop - windowHeight <= threshold;
+  }, []);
+
+  // Scroll position-based auto-scroll control
+  useEffect(() => {
+    if (!autoScrollEnabled) return;
+
+    // Initialize scroll position on mount
+    isUserAtBottomRef.current = isAtBottom();
+    userScrolledAwayRef.current = !isUserAtBottomRef.current;
+
+    const handleScroll = () => {
+      const wasAtBottom = isUserAtBottomRef.current;
+      const isNowAtBottom = isAtBottom();
+
+      // Update our tracking of user's position
+      isUserAtBottomRef.current = isNowAtBottom;
+
+      if (wasAtBottom && !isNowAtBottom) {
+        // User scrolled away from bottom - disable auto-scroll
+        userScrolledAwayRef.current = true;
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`👆 SessionDetail: User scrolled away from bottom - disabling auto-scroll`);
+        }
+      } else if (!wasAtBottom && isNowAtBottom) {
+        // User scrolled back to bottom - re-enable auto-scroll
+        userScrolledAwayRef.current = false;
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`👇 SessionDetail: User scrolled back to bottom - re-enabling auto-scroll`);
+        }
+      }
+    };
+
+    // Listen to scroll events on window
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [autoScrollEnabled, isAtBottom]);
+
   // Helper function to check and scroll to final analysis if it has new content
   const checkAndScrollToFinalAnalysis = useCallback((delay: number = 500) => {
-    if (!autoScrollEnabled) return;
+    if (!autoScrollEnabled) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`🎯 Final analysis auto-scroll blocked: autoScrollEnabled=${autoScrollEnabled}`);
+      }
+      return;
+    }
+
+    // For final analysis, we use a more lenient check
+    // Only skip if user has actively scrolled up significantly (not just minor movements)
+    const documentHeight = document.documentElement.scrollHeight;
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const windowHeight = window.innerHeight;
+    const distanceFromBottom = documentHeight - scrollTop - windowHeight;
     
+    // Allow auto-scroll if user is within 200px of bottom (more lenient than regular 50px)
+    const isNearBottom = distanceFromBottom <= 200;
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`🎯 Final analysis auto-scroll check: distanceFromBottom=${distanceFromBottom}, isNearBottom=${isNearBottom}, userScrolledAway=${userScrolledAwayRef.current}`);
+    }
+
+    if (!isNearBottom) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('🎯 Final analysis auto-scroll skipped - user scrolled too far up');
+      }
+      return;
+    }
+
     setTimeout(() => {
       if (finalAnalysisRef.current) {
         const analysisElement = finalAnalysisRef.current;
         const content = analysisElement.textContent?.trim() || '';
-        
+
         if (content.length > 50) { // Min length check
           analysisElement.scrollIntoView({
             behavior: 'smooth',
@@ -334,15 +414,30 @@ function SessionDetailPageBase({
             // Direct update if analysis is provided in update
             updateFinalAnalysis(update.analysis);
             
-            // Auto-scroll to final analysis if enabled
+            // Auto-scroll to final analysis if enabled and user is near bottom
             if (autoScrollEnabled && finalAnalysisRef.current) {
-              setTimeout(() => {
-                finalAnalysisRef.current?.scrollIntoView({
-                  behavior: 'smooth',
-                  block: 'start'
-                });
-                console.log('🎯 Auto-scrolled to final analysis');
-              }, 300);
+              // Use more lenient distance check for final analysis
+              const documentHeight = document.documentElement.scrollHeight;
+              const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+              const windowHeight = window.innerHeight;
+              const distanceFromBottom = documentHeight - scrollTop - windowHeight;
+              const isNearBottom = distanceFromBottom <= 200;
+
+              if (process.env.NODE_ENV !== 'production') {
+                console.log(`🎯 Final analysis auto-scroll check: distanceFromBottom=${distanceFromBottom}, isNearBottom=${isNearBottom}`);
+              }
+
+              if (isNearBottom) {
+                setTimeout(() => {
+                  finalAnalysisRef.current?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                  });
+                  console.log('🎯 Auto-scrolled to final analysis');
+                }, 300);
+              } else {
+                console.log('🎯 Final analysis auto-scroll skipped - user scrolled too far up');
+              }
             }
           } else {
             // Otherwise use partial refresh

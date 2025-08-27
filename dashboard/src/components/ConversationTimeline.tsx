@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { 
   Box,
   Typography,
@@ -41,6 +41,8 @@ function ConversationTimeline({
   // Auto-scroll functionality
   const stagesContainerRef = useRef<HTMLDivElement>(null);
   const previousStepCountsRef = useRef<Map<string, number>>(new Map());
+  const userScrolledAwayRef = useRef<boolean>(false);
+  const isUserAtBottomRef = useRef<boolean>(true);
 
   // Memoize conversation stats to prevent recalculation on every render - MOVED BEFORE EARLY RETURNS
   const conversationStats = useMemo(() => {
@@ -104,6 +106,64 @@ function ConversationTimeline({
     
     return content;
   }, [parsedSession, conversationStats.totalSteps]);
+
+  // Helper function to check if user is at bottom of scrollable area
+  const isAtBottom = useCallback((): boolean => {
+    // Check if user is at bottom of page
+    const documentHeight = document.documentElement.scrollHeight;
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const windowHeight = window.innerHeight;
+
+    // Consider user at bottom if within 50px of the bottom
+    const threshold = 50;
+    return documentHeight - scrollTop - windowHeight <= threshold;
+  }, []);
+
+  // Scroll position-based auto-scroll control
+  useEffect(() => {
+    if (!autoScroll) return;
+
+    // Initialize scroll position on mount
+    isUserAtBottomRef.current = isAtBottom();
+    userScrolledAwayRef.current = !isUserAtBottomRef.current;
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`🚀 Conversation: Initializing scroll detection: isAtBottom=${isUserAtBottomRef.current}, userScrolledAway=${userScrolledAwayRef.current}`);
+    }
+
+    const handleScroll = () => {
+      const wasAtBottom = isUserAtBottomRef.current;
+      const isNowAtBottom = isAtBottom();
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`📜 Conversation Scroll event: wasAtBottom=${wasAtBottom}, isNowAtBottom=${isNowAtBottom}, userScrolledAway=${userScrolledAwayRef.current}`);
+      }
+
+      // Update our tracking of user's position
+      isUserAtBottomRef.current = isNowAtBottom;
+
+      if (wasAtBottom && !isNowAtBottom) {
+        // User scrolled away from bottom - disable auto-scroll
+        userScrolledAwayRef.current = true;
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`👆 Conversation: User scrolled away from bottom - disabling auto-scroll`);
+        }
+      } else if (!wasAtBottom && isNowAtBottom) {
+        // User scrolled back to bottom - re-enable auto-scroll
+        userScrolledAwayRef.current = false;
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`👇 Conversation: User scrolled back to bottom - re-enabling auto-scroll`);
+        }
+      }
+    };
+
+    // Listen to scroll events on window
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [autoScroll, isAtBottom]);
 
   // Memoize stage status calculations - MOVED BEFORE EARLY RETURNS
   const stageStatusCounts = useMemo(() => {
@@ -187,33 +247,68 @@ function ConversationTimeline({
                 });
                 
                 if (hasNewSteps && stagesContainerRef.current) {
-                  setTimeout(() => {
-                    // Check if this update includes final analysis
-                    const hasAnalysisNow = parsed.finalAnalysis && parsed.finalAnalysis.length > 50;
-                    if (hasAnalysisNow) {
-                      console.log('🎯 Final analysis detected in conversation update, scrolling to it');
-                      // Scroll to final analysis instead of last conversation step
-                      const finalAnalysisElement = document.querySelector('[data-final-analysis]') as HTMLElement;
-                      if (finalAnalysisElement) {
-                        finalAnalysisElement.scrollIntoView({
-                          behavior: 'smooth',
-                          block: 'start'
-                        });
-                        console.log('🎯 Auto-scrolled to final analysis from conversation');
-                        return;
-                      }
+                  // Check if this update includes final analysis - prioritize this over scroll position
+                  const hasAnalysisNow = parsed.finalAnalysis && parsed.finalAnalysis.length > 50;
+                  
+                  if (hasAnalysisNow) {
+                    // For final analysis, use more lenient distance check
+                    const documentHeight = document.documentElement.scrollHeight;
+                    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                    const windowHeight = window.innerHeight;
+                    const distanceFromBottom = documentHeight - scrollTop - windowHeight;
+                    const isNearBottom = distanceFromBottom <= 200;
+
+                    if (process.env.NODE_ENV !== 'production') {
+                      console.log(`🎯 Final analysis detected: distanceFromBottom=${distanceFromBottom}, isNearBottom=${isNearBottom}, userScrolledAway=${userScrolledAwayRef.current}`);
                     }
                     
-                    // Otherwise scroll to the last stage card
-                    const lastStageElement = stagesContainerRef.current?.lastElementChild as HTMLElement;
-                    if (lastStageElement) {
-                      lastStageElement.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'end'
-                      });
-                      console.log('🔄 Auto-scrolled to last conversation step');
+                    if (isNearBottom) {
+                      setTimeout(() => {
+                        const finalAnalysisElement = document.querySelector('[data-final-analysis]') as HTMLElement;
+                        if (finalAnalysisElement) {
+                          finalAnalysisElement.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                          });
+                          console.log('🎯 Auto-scrolled to final analysis from conversation');
+                          return;
+                        } else {
+                          console.log('🎯 Final analysis element not found');
+                        }
+                      }, 200);
+                    } else {
+                      console.log('🎯 Final analysis auto-scroll skipped - user scrolled too far up');
                     }
-                  }, 200);
+                  } else if (!userScrolledAwayRef.current) {
+                    // Regular conversation steps - respect userScrolledAwayRef
+                    if (process.env.NODE_ENV !== 'production') {
+                      console.log(`🔄 Conversation auto-scroll check: userScrolledAway=${userScrolledAwayRef.current}, isAtBottom=${isAtBottom()}`);
+                    }
+
+                    setTimeout(() => {
+                      // Double-check that user hasn't scrolled away during the delay
+                      if (userScrolledAwayRef.current) {
+                        if (process.env.NODE_ENV !== 'production') {
+                          console.log('🔄 Conversation auto-scroll cancelled - user scrolled away during delay');
+                        }
+                        return;
+                      }
+
+                      // Scroll to the last stage card
+                      const lastStageElement = stagesContainerRef.current?.lastElementChild as HTMLElement;
+                      if (lastStageElement) {
+                        lastStageElement.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'end'
+                        });
+                        console.log('🔄 Auto-scrolled to last conversation step');
+                      }
+                    }, 200);
+                  } else {
+                    if (process.env.NODE_ENV !== 'production') {
+                      console.log('🔄 Conversation auto-scroll skipped - user has scrolled away');
+                    }
+                  }
                 }
               }
             }
