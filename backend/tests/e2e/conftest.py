@@ -170,11 +170,6 @@ class E2ETestIsolation:
                     logger.handlers = state['handlers']
                     logger.propagate = state['propagate']
     
-
-    
-
-
-
 @pytest.fixture
 def e2e_isolation():
     """Provide complete e2e test isolation."""
@@ -241,6 +236,9 @@ def ensure_e2e_isolation(request):
         yield
         return
     
+    # Set testing mode for EVERY e2e test
+    os.environ["TESTING"] = "true"
+    
     # CRITICAL: Reset global singletons and caches at the START of each e2e test
     # This ensures e2e tests get fresh instances even when running with other tests
     with suppress(Exception):
@@ -264,11 +262,8 @@ def ensure_e2e_isolation(request):
     for var in e2e_env_vars:
         original_env[var] = os.environ.get(var)
     
-    # Set isolated e2e environment
-    os.environ["TESTING"] = "true"
-    
     yield
-    
+        
     # Restore original environment completely
     for var, original_value in original_env.items():
         if original_value is None:

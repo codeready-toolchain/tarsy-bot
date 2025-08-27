@@ -3,8 +3,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
 import { theme } from './theme';
 import DashboardView from './components/DashboardView';
-import OptimizedSessionDetailPage from './components/OptimizedSessionDetailPage';
-import ConversationSessionDetailPage from './components/ConversationSessionDetailPage';
+import SessionDetailWrapper from './components/SessionDetailWrapper';
 
 /**
  * Main App component for the Tarsy Dashboard - Enhanced with Conversation View
@@ -20,11 +19,9 @@ function App() {
           <Route path="/" element={<DashboardView />} />
           <Route path="/dashboard" element={<DashboardView />} />
           
-          {/* Session detail routes - Dual View System */}
-          {/* New default: Conversation-focused view */}
-          <Route path="/sessions/:sessionId" element={<ConversationSessionDetailPage />} />
-          {/* Technical detail view (existing optimized view) */}
-          <Route path="/sessions/:sessionId/technical" element={<OptimizedSessionDetailPage />} />
+          {/* Session detail routes - Unified wrapper prevents duplicate API calls */}
+          <Route path="/sessions/:sessionId" element={<SessionDetailWrapper />} />
+          <Route path="/sessions/:sessionId/technical" element={<SessionDetailWrapper />} />
           
           {/* Catch-all route redirects to dashboard */}
           <Route path="*" element={<DashboardView />} />

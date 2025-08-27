@@ -388,12 +388,13 @@ class TestServiceInteractionPatterns:
         # Act
         result = await agent.process_alert(chain_context)
         
-        # Assert
+        # Assert - With our new failure detection logic, this correctly fails when all LLM interactions fail
         from tarsy.models.agent_execution_result import AgentExecutionResult
         assert isinstance(result, AgentExecutionResult)
         assert result.result_summary
         assert len(result.result_summary) > 0
-        assert result.status == StageStatus.COMPLETED
+        assert result.status == StageStatus.FAILED  # New failure detection: max iterations + failed interactions = FAILED
+        assert "reached maximum iterations" in result.error_message
         mock_llm_manager.get_client().generate_response.assert_called()
 
 @pytest.mark.asyncio
@@ -463,11 +464,11 @@ class TestErrorPropagationBetweenComponents:
         )
         result = await agent.process_alert(chain_context)
         
-        # Assert - Agent should handle LLM errors gracefully
+        # Assert - Agent should handle LLM errors gracefully and now correctly fails with our new logic
         assert result is not None
         from tarsy.models.agent_execution_result import AgentExecutionResult
         assert isinstance(result, AgentExecutionResult)
-        assert result.status == StageStatus.COMPLETED  # Process completed despite LLM errors
+        assert result.status == StageStatus.FAILED  # New behavior: persistent LLM errors now correctly fail the stage
         # Check that the result summary or final analysis indicates the issues
         analysis_text = result.final_analysis or result.result_summary
         assert "incomplete" in analysis_text or "failed" in analysis_text or "LLM API failed" in analysis_text

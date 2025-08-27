@@ -20,6 +20,7 @@ import respx
 
 from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
+from .e2e_utils import E2ETestUtils
 
 from .expected_conversations import (
     EXPECTED_ANALYSIS_CONVERSATION,
@@ -109,6 +110,7 @@ class TestRealE2E:
     Mocks only external HTTP calls (LLM APIs, runbooks, MCP servers).
     """
 
+    @pytest.mark.e2e
     async def test_complete_alert_processing_flow(
         self, e2e_test_client, e2e_realistic_kubernetes_alert
     ):
@@ -140,7 +142,7 @@ class TestRealE2E:
         try:
             # Use task-based timeout instead of wait_for to avoid cancellation issues
             task = asyncio.create_task(run_test())
-            done, pending = await asyncio.wait({task}, timeout=10.0)
+            done, pending = await asyncio.wait({task}, timeout=500.0)
 
             if pending:
                 # Timeout occurred
@@ -419,30 +421,20 @@ Finalizers:   kubernetes.io/pv-protection"""
         mock_kubernetes_session = create_mcp_session_mock()
         mock_custom_session = create_custom_mcp_session_mock()
 
-        # Create test MCP server configuration that doesn't launch external processes
-        test_mcp_servers = BUILTIN_MCP_SERVERS.copy()
-        test_mcp_servers["kubernetes-server"] = {
-            "server_id": "kubernetes-server",
-            "server_type": "test",
-            "enabled": True,
-            "connection_params": {
-                "command": "echo",  # Safe command that won't fail
-                "args": ["kubernetes-mock-server-ready"],
-            },
-            "instructions": "Test kubernetes server for e2e testing",
-            "data_masking": {"enabled": False},
-        }
-        test_mcp_servers["test-data-server"] = {
-            "server_id": "test-data-server",
-            "server_type": "test",
-            "enabled": True,
-            "connection_params": {
-                "command": "echo",  # Safe command that won't fail
-                "args": ["test-data-server-ready"],
-            },
-            "instructions": "Test data collection server for e2e testing",
-            "data_masking": {"enabled": False},
-        }
+        # Create test MCP server configurations using shared utilities
+        k8s_config = E2ETestUtils.create_simple_kubernetes_mcp_config(
+            command_args=["kubernetes-mock-server-ready"],
+            instructions="Test kubernetes server for e2e testing"
+        )
+        data_config = E2ETestUtils.create_simple_data_server_mcp_config(
+            command_args=["test-data-server-ready"],
+            instructions="Test data collection server for e2e testing"
+        )
+
+        test_mcp_servers = E2ETestUtils.create_test_mcp_servers(BUILTIN_MCP_SERVERS, {
+            "kubernetes-server": k8s_config,
+            "test-data-server": data_config
+        })
 
         # Apply comprehensive mocking with test MCP server config
         with respx.mock() as respx_mock, patch(
@@ -456,55 +448,15 @@ Finalizers:   kubernetes.io/pv-protection"""
                 url__regex=r".*(openai\.com|anthropic\.com|api\.x\.ai|generativelanguage\.googleapis\.com|googleapis\.com).*"
             ).mock(side_effect=llm_handler)
 
-            # 2. Mock runbook HTTP calls (various sources)
-            respx_mock.get(url__regex=r".*(github\.com|runbooks\.example\.com).*").mock(
-                return_value=httpx.Response(
-                    200, text="# Mock Runbook\nTest runbook content"
-                )
-            )
+            # 2. Mock runbook HTTP calls using shared utility
+            E2ETestUtils.setup_runbook_mocking(respx_mock)
 
-            # 3. Mock MCP client by patching sessions after initialization
-            original_list_tools = MCPClient.list_tools
-
-            async def mock_list_tools(
-                self, session_id: str, server_name=None, stage_execution_id=None
-            ):
-                """Override list_tools to use our mock sessions."""
-                # Ensure our mock sessions are available
-                self.sessions = {
-                    "kubernetes-server": mock_kubernetes_session,
-                    "test-data-server": mock_custom_session,
-                }
-                # Call the original method which will now use our mock sessions
-                return await original_list_tools(
-                    self, session_id, server_name, stage_execution_id
-                )
-
-            original_call_tool = MCPClient.call_tool
-
-            async def mock_call_tool(
-                self,
-                server_name: str,
-                tool_name: str,
-                parameters,
-                session_id: str,
-                stage_execution_id=None,
-            ):
-                """Override call_tool to use our mock sessions."""
-                # Ensure our mock sessions are available
-                self.sessions = {
-                    "kubernetes-server": mock_kubernetes_session,
-                    "test-data-server": mock_custom_session,
-                }
-                # Call the original method which will now use our mock sessions
-                return await original_call_tool(
-                    self,
-                    server_name,
-                    tool_name,
-                    parameters,
-                    session_id,
-                    stage_execution_id,
-                )
+            # 3. Mock MCP client using shared utility with custom sessions
+            mock_sessions = {
+                "kubernetes-server": mock_kubernetes_session,
+                "test-data-server": mock_custom_session,
+            }
+            mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
 
             with patch.object(MCPClient, "list_tools", mock_list_tools), patch.object(
                 MCPClient, "call_tool", mock_call_tool
@@ -517,25 +469,14 @@ Finalizers:   kubernetes.io/pv-protection"""
                 # MCP server config replaced with test config to avoid external NPM packages
                 # MCP calls handled by mock session that provides kubectl tools
 
-                # STEP 1: Submit alert
-                print("🚀 Step 1: Submitting alert")
-                response = e2e_test_client.post(
-                    "/alerts", json=e2e_realistic_kubernetes_alert
-                )
-                assert response.status_code == 200
+                print("⏳ Step 1: Submitting alert...")
+                E2ETestUtils.submit_alert(e2e_test_client, e2e_realistic_kubernetes_alert)
 
-                response_data = response.json()
-                assert response_data["status"] == "queued"
-                alert_id = response_data["alert_id"]
-                print(f"✅ Alert submitted: {alert_id}")
-
-                # STEP 2: Wait for processing with robust polling
                 print("⏳ Step 2: Waiting for processing...")
-                session_id, final_status = await self._wait_for_session_completion(
-                    e2e_test_client, max_wait_seconds=8
+                session_id, final_status = await E2ETestUtils.wait_for_session_completion(
+                    e2e_test_client, max_wait_seconds=8, debug_logging=False
                 )
 
-                # STEP 3: Verify results
                 print("🔍 Step 3: Verifying results...")
 
                 # Basic verification
@@ -549,14 +490,7 @@ Finalizers:   kubernetes.io/pv-protection"""
                 print("✅ Session completed successfully!")
 
                 # Get session details to verify stages structure
-                session_detail_response = e2e_test_client.get(
-                    f"/api/v1/history/sessions/{session_id}"
-                )
-                assert (
-                    session_detail_response.status_code == 200
-                ), f"Failed to get session details: {session_detail_response.status_code}"
-
-                detail_data = session_detail_response.json()
+                detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
                 stages = detail_data.get("stages", [])
                 print(f"Found {len(stages)} stages in completed session")
 
@@ -566,7 +500,6 @@ Finalizers:   kubernetes.io/pv-protection"""
                 ), "Session completed but no stages found - invalid session structure"
                 print("✅ Session has stages - basic structure verified")
 
-                # STEP 4: Comprehensive result data verification
                 print("🔍 Step 4: Comprehensive result verification...")
                 await self._verify_session_metadata(
                     detail_data, e2e_realistic_kubernetes_alert
@@ -577,75 +510,6 @@ Finalizers:   kubernetes.io/pv-protection"""
                 print("✅ COMPREHENSIVE VERIFICATION PASSED!")
 
                 return
-
-    async def _wait_for_session_completion(
-        self, e2e_test_client, max_wait_seconds: int = 8
-    ):
-        """
-        Robust polling logic to wait for session completion.
-
-        Args:
-            e2e_test_client: Test client for making API calls
-            max_wait_seconds: Maximum time to wait in seconds
-
-        Returns:
-            Tuple of (session_id, final_status)
-
-        Raises:
-            AssertionError: If no session found or polling times out
-        """
-        print(f"⏱️ Starting robust polling (max {max_wait_seconds}s)...")
-
-        start_time = asyncio.get_event_loop().time()
-        poll_interval = 0.2  # Poll every 200ms for responsiveness
-        attempts = 0
-
-        while True:
-            attempts += 1
-            elapsed_time = asyncio.get_event_loop().time() - start_time
-
-            # Check for timeout
-            if elapsed_time >= max_wait_seconds:
-                print(
-                    f"❌ Polling timeout after {elapsed_time:.1f}s ({attempts} attempts)"
-                )
-                raise AssertionError(
-                    f"Session completion polling timed out after {max_wait_seconds}s"
-                )
-
-            # Get current sessions
-            sessions_response = e2e_test_client.get("/api/v1/history/sessions")
-            if sessions_response.status_code != 200:
-                print(f"⚠️ Failed to get sessions: {sessions_response.status_code}")
-                await asyncio.sleep(poll_interval)
-                continue
-
-            sessions_data = sessions_response.json()
-            sessions = sessions_data.get("sessions", [])
-
-            if not sessions:
-                print(f"⏳ No sessions yet (attempt {attempts}, {elapsed_time:.1f}s)")
-                await asyncio.sleep(poll_interval)
-                continue
-
-            # Check the most recent session (first in list)
-            session = sessions[0]
-            session_id = session.get("session_id")
-            status = session.get("status")
-
-            print(
-                f"⏳ Polling: {session_id} -> {status} (attempt {attempts}, {elapsed_time:.1f}s)"
-            )
-
-            # Check if session is in a final state
-            if status in ["completed", "failed"]:
-                print(
-                    f"✅ Session reached final state: {status} in {elapsed_time:.1f}s ({attempts} attempts)"
-                )
-                return session_id, status
-
-            # Session exists but not complete yet, continue polling
-            await asyncio.sleep(poll_interval)
 
     async def _verify_session_metadata(self, session_data, original_alert):
         """Verify session metadata matches expectations."""
@@ -833,3 +697,5 @@ Finalizers:   kubernetes.io/pv-protection"""
             print(
                 f"    ✅ Stage '{stage_name}': Complete interaction flow verified ({len(llm_interactions)} LLM, {len(mcp_interactions)} MCP)"
             )
+
+

@@ -42,13 +42,7 @@ install-dev: ## Install development dependencies (includes test)
 
 # Testing
 .PHONY: test
-test: check-test-deps ## Run all tests (unit + integration + e2e) with proper isolation
-	@echo "$(GREEN)Running all tests with proper isolation...$(NC)"
-	@echo "$(YELLOW)Running unit and integration tests...$(NC)"
-	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ -v --tb=short'
-	@echo "$(YELLOW)Running e2e tests in isolated session...$(NC)"  
-	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/ -v --tb=short -m e2e'
-	@echo "$(GREEN)All tests completed with proper isolation!$(NC)"
+test: check-test-deps test-unit test-integration test-e2e ## Run all tests (unit + integration + e2e) with proper isolation
 
 .PHONY: test-unit
 test-unit: check-test-deps ## Run unit tests only
@@ -61,33 +55,19 @@ test-integration: check-test-deps ## Run integration tests only
 	bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/integration/ -v --tb=short'
 
 .PHONY: test-e2e
-test-e2e: check-test-deps ## Run end-to-end tests only
-	@echo "$(GREEN)Running end-to-end tests...$(NC)"
-	bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/ -v --tb=short -m e2e'
-
-.PHONY: test-verbose
-test-verbose: check-test-deps ## Run all tests with verbose output (isolated sessions for stability)
-	@echo "$(GREEN)Running all tests with verbose output and proper isolation...$(NC)"
-	@echo "$(YELLOW)Running unit and integration tests (verbose)...$(NC)"
-	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ -v --tb=short'
-	@echo "$(YELLOW)Running e2e tests in isolated session (verbose)...$(NC)"  
-	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/ -v --tb=short -m e2e'
-	@echo "$(GREEN)All verbose tests completed!$(NC)"
+test-e2e: check-test-deps ## Run end-to-end tests only (one by one for isolation)
+	@echo "$(GREEN)Running end-to-end tests sequentially...$(NC)"
+	@echo "$(YELLOW)Running first E2E test...$(NC)"
+	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/test_api_e2e.py -v --tb=short -m e2e' || exit 1
+	@echo "$(YELLOW)Running second E2E test...$(NC)"
+	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/test_stage_failure_detection_e2e.py -v --tb=short -m e2e' || exit 1
+	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
 
 .PHONY: test-coverage
 test-coverage: check-test-deps ## Run unit and integration tests with coverage report (no e2e-tests for stability)
 	@echo "$(GREEN)Running unit and integration tests with coverage...$(NC)"
 	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing --tb=short'
 	@echo "$(GREEN)All tests with coverage completed!$(NC)"
-
-.PHONY: test-quick
-test-quick: check-test-deps ## Run tests in parallel for faster execution (isolated sessions for stability)
-	@echo "$(GREEN)Running tests in parallel with proper isolation...$(NC)"
-	@echo "$(YELLOW)Running unit and integration tests in parallel...$(NC)"
-	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ -n auto -v --tb=short'
-	@echo "$(YELLOW)Running e2e tests in isolated session...$(NC)"  
-	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/ -v --tb=short -m e2e'
-	@echo "$(GREEN)All parallel tests completed!$(NC)"
 
 # Code Quality
 .PHONY: lint

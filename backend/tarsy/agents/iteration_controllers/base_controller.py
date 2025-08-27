@@ -199,7 +199,10 @@ class ReactController(IterationController):
         # 1. Build initial conversation (controller-specific)
         conversation = self.build_initial_conversation(context)
         
-        # 2. ReAct iteration loop with timeout protection  
+        # 2. Track last interaction success for failure detection
+        last_interaction_failed = False
+        
+        # 3. ReAct iteration loop with timeout protection  
         for iteration in range(max_iterations):
             self.logger.info(f"ReAct iteration {iteration + 1}/{max_iterations}")
             
@@ -220,6 +223,9 @@ class ReactController(IterationController):
                 self.logger.debug(f"LLM Response (first 500 chars): {response[:500]}")
                 
                 parsed_response = self.parser.parse_response(response)
+                
+                # Mark this interaction as successful
+                last_interaction_failed = False
                 
                 # 5. Handle final answer (completion)
                 if parsed_response.is_final_answer:
@@ -253,14 +259,30 @@ class ReactController(IterationController):
                     
             except Exception as e:
                 self.logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
+                # Mark this interaction as failed
+                last_interaction_failed = True
                 # Add error continuation and continue with next iteration
                 error_continuation = self.parser.get_error_continuation(str(e))
                 conversation.append_observation(error_continuation)
                 continue
                 
-        # 8. Timeout handling
-        self.logger.warning("ReAct analysis reached maximum iterations without final answer")
-        return f"Analysis incomplete: reached maximum iterations ({max_iterations}) without final answer"
+        # 8. Timeout handling - check if stage should be marked as failed
+        if last_interaction_failed:
+            # Stage failure: reached max iterations with failed last interaction
+            from ..exceptions import MaxIterationsFailureError
+            self.logger.error(f"Stage failed: reached maximum iterations ({max_iterations}) with failed last interaction")
+            raise MaxIterationsFailureError(
+                f"Stage failed: reached maximum iterations ({max_iterations}) and last LLM interaction failed",
+                max_iterations=max_iterations,
+                context={
+                    "session_id": context.session_id,
+                    "stage_execution_id": context.agent.get_current_stage_execution_id()
+                }
+            )
+        else:
+            # Max iterations reached but last interaction was successful - return incomplete result
+            self.logger.warning("ReAct analysis reached maximum iterations without final answer")
+            return f"Analysis incomplete: reached maximum iterations ({max_iterations}) without final answer"
 
     @abstractmethod
     def build_initial_conversation(self, context: 'StageContext') -> 'LLMConversation':

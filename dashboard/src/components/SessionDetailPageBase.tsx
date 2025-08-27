@@ -19,8 +19,8 @@ import {
   ToggleButtonGroup
 } from '@mui/material';
 import { ArrowBack, Speed, Psychology, BugReport } from '@mui/icons-material';
-import { apiClient, handleAPIError } from '../services/api';
 import { webSocketService } from '../services/websocket';
+import { useSession } from '../contexts/SessionContext';
 import type { DetailedSession } from '../types';
 
 // Lazy load shared components
@@ -85,6 +85,7 @@ interface SessionDetailPageBaseProps {
   viewType: 'conversation' | 'technical';
   timelineComponent: (session: DetailedSession, useVirtualization?: boolean) => ReactNode;
   timelineSkeleton?: ReactNode;
+  onViewChange?: (newView: 'conversation' | 'technical') => void;
 }
 
 /**
@@ -94,15 +95,14 @@ interface SessionDetailPageBaseProps {
 function SessionDetailPageBase({ 
   viewType, 
   timelineComponent,
-  timelineSkeleton = <TimelineSkeleton />
+  timelineSkeleton = <TimelineSkeleton />,
+  onViewChange
 }: SessionDetailPageBaseProps) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   
-  // Session detail state
-  const [session, setSession] = useState<DetailedSession | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  // Use shared session context instead of local state
+  const { session, loading, error, refetch, updateSession } = useSession(sessionId);
 
   // Performance optimization settings
   const [useVirtualization, setUseVirtualization] = useState<boolean | null>(null); // null = auto-detect
@@ -189,74 +189,10 @@ function SessionDetailPageBase({
     }
   };
 
-  // Fetch just session summary statistics (lightweight)
-  const refreshSessionSummary = async (id: string) => {
-    try {
-      console.log('🔄 Refreshing session summary statistics for:', id);
-      const summaryData = await apiClient.getSessionSummary(id);
-      
-      setSession(prevSession => {
-        if (!prevSession) return prevSession;
-        
-        console.log('📊 Updating session summary with fresh data:', summaryData);
-        return {
-          ...prevSession,
-          // Update the summary field
-          summary: summaryData,
-          // Update main session count fields that SessionHeader uses
-          llm_interaction_count: summaryData.llm_interactions,
-          mcp_communication_count: summaryData.mcp_communications,
-          total_interactions: summaryData.total_interactions,
-          // Update other relevant fields from summary
-          total_stages: summaryData.chain_statistics?.total_stages || prevSession.total_stages,
-          completed_stages: summaryData.chain_statistics?.completed_stages || prevSession.completed_stages,
-          failed_stages: summaryData.chain_statistics?.failed_stages || prevSession.failed_stages
-        };
-      });
-      
-    } catch (error) {
-      console.error('Failed to refresh session summary:', error);
-    }
-  };
-
-  // Partial update for session stages (avoids full page refresh)
-  const refreshSessionStages = async (id: string) => {
-    try {
-      console.log('🔄 Refreshing session stages for:', id);
-      const sessionData = await apiClient.getSessionDetail(id);
-      
-      setSession(prevSession => {
-        if (!prevSession) return prevSession;
-        
-        // Only update if stages have actually changed
-        const stagesChanged = JSON.stringify(prevSession.stages) !== JSON.stringify(sessionData.stages);
-        const analysisChanged = prevSession.final_analysis !== sessionData.final_analysis;
-        const statusChanged = prevSession.status !== sessionData.status;
-        
-        if (!stagesChanged && !analysisChanged && !statusChanged) {
-          console.log('📊 No stage changes detected, skipping update');
-          return prevSession;
-        }
-        
-        console.log('📊 Updating session stages and analysis:', { stagesChanged, analysisChanged, statusChanged });
-        return {
-          ...prevSession,
-          stages: sessionData.stages,
-          final_analysis: sessionData.final_analysis,
-          status: sessionData.status as typeof prevSession.status,
-          error_message: sessionData.error_message
-        };
-      });
-      
-    } catch (error) {
-      console.error('Failed to refresh session stages:', error);
-    }
-  };
-
-  // Lightweight function to update just final analysis
+  // Helper functions for WebSocket updates using context
   const updateFinalAnalysis = (analysis: string) => {
-    console.log('🎯 Updating final analysis directly');
-    setSession(prevSession => {
+    console.log('🎯 Updating final analysis via context');
+    updateSession(prevSession => {
       if (!prevSession) return prevSession;
       if (prevSession.final_analysis === analysis) {
         console.log('🎯 Analysis unchanged, skipping update');
@@ -269,10 +205,9 @@ function SessionDetailPageBase({
     });
   };
 
-  // Lightweight function to update session status
   const updateSessionStatus = (newStatus: string, errorMessage?: string) => {
-    console.log('🔄 Updating session status directly:', newStatus);
-    setSession(prevSession => {
+    console.log('🔄 Updating session status via context:', newStatus);
+    updateSession(prevSession => {
       if (!prevSession) return prevSession;
       if (prevSession.status === newStatus && prevSession.error_message === errorMessage) {
         console.log('🔄 Status unchanged, skipping update');
@@ -286,46 +221,7 @@ function SessionDetailPageBase({
     });
   };
 
-  // Fetch session detail data with performance tracking
-  const fetchSessionDetail = async (id: string) => {
-    const startTime = performance.now();
-    
-    try {
-      setLoading(true);
-      setError(null);
-      console.log(`🚀 Fetching ${viewType} session detail for ID:`, id);
-      
-      const sessionData = await apiClient.getSessionDetail(id);
-      
-      // Validate and normalize session status
-      const normalizedStatus = ['completed', 'failed', 'in_progress', 'pending'].includes(sessionData.status) 
-        ? sessionData.status 
-        : 'in_progress';
-      
-      const normalizedSession = {
-        ...sessionData,
-        status: normalizedStatus as 'completed' | 'failed' | 'in_progress' | 'pending'
-      };
-      
-      setSession(normalizedSession);
-      
-      const loadTime = performance.now() - startTime;
-      console.log(`✅ ${viewType} session loaded:`, {
-        sessionId: id,
-        loadTime: `${loadTime.toFixed(2)}ms`,
-        stages: normalizedSession.stages?.length || 0,
-        totalInteractions: totalTimelineLength(normalizedSession.stages),
-        status: normalizedSession.status
-      });
-      
-    } catch (err) {
-      const errorMessage = handleAPIError(err);
-      setError(errorMessage);
-      console.error(`❌ Failed to fetch ${viewType} session:`, err);
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   // WebSocket setup for real-time updates
   useEffect(() => {
@@ -343,42 +239,37 @@ function SessionDetailPageBase({
       // Handle different update types intelligently with partial updates
       switch (update.type) {
         case 'summary_update':
-          // Quick summary refresh for both views
-          refreshSessionSummary(sessionId);
+          // Quick summary refresh for both views using context
+          console.log('🔄 Summary update, refreshing via context');
+          refetch();
           break;
           
         case 'session_status_change':
           // Update status immediately to prevent UI lag
           updateSessionStatus(update.new_status, update.error_message);
           
-          // For major status changes, also refresh stages and analysis
+          // For major status changes, also refresh full session data
           if (['completed', 'failed'].includes(update.new_status)) {
-            console.log('🔄 Major status change, refreshing stages');
+            console.log('🔄 Major status change, refreshing full session');
             throttledUpdate(() => {
               if (sessionId) {
-                refreshSessionStages(sessionId);
+                refetch();
               }
             }, 200);
           }
-          
-          // Always update summary for accurate counts
-          refreshSessionSummary(sessionId);
           break;
           
         case 'llm_interaction':
         case 'mcp_communication':
-          // For ongoing sessions, use lightweight updates
+          // For ongoing sessions, use throttled updates
           if (sessionRef.current?.status === 'in_progress') {
-            console.log('🔄 Activity update, using partial refresh');
+            console.log('🔄 Activity update, using throttled context refresh');
             
-            // Always update summary for real-time statistics (lightweight)
-            refreshSessionSummary(sessionId);
-            
-            // Use throttled partial stage updates instead of full session refresh
+            // Use throttled full refresh instead of partial updates
             const updateDelay = viewType === 'conversation' ? 800 : 500;
             throttledUpdate(() => {
               if (sessionId) {
-                refreshSessionStages(sessionId);
+                refetch();
               }
             }, updateDelay);
           }
@@ -387,16 +278,11 @@ function SessionDetailPageBase({
         case 'stage_update':
         case 'stage_completed':
         case 'stage_failed':
-          // Stage events use partial updates
-          console.log('🔄 Stage update, using partial refresh');
-          
-          // Update summary immediately
-          refreshSessionSummary(sessionId);
-          
-          // Use throttled partial update for stage content
+          // Stage events use throttled context refresh
+          console.log('🔄 Stage update, using context refresh');
           throttledUpdate(() => {
             if (sessionId) {
-              refreshSessionStages(sessionId);
+              refetch();
             }
           }, 250);
           break;
@@ -409,27 +295,29 @@ function SessionDetailPageBase({
             // Direct update if analysis is provided in update
             updateFinalAnalysis(update.analysis);
           } else {
-            // Otherwise use partial refresh
+            // Otherwise use context refresh
             throttledUpdate(() => {
               if (sessionId) {
-                refreshSessionStages(sessionId);
+                refetch();
               }
             }, 150);
           }
           break;
           
         default:
-          // Unknown update types - be conservative and update summary
-          console.log(`🔄 Unknown update type: ${update.type}, using partial refresh`);
-          refreshSessionSummary(sessionId);
+          // Unknown update types - be conservative and use context refresh
+          console.log(`🔄 Unknown update type: ${update.type}, using context refresh`);
           
-          // If it contains data that might affect content, use partial refresh
+          // If it contains data that might affect content, use throttled refresh
           if (update.data || update.content) {
             throttledUpdate(() => {
               if (sessionId) {
-                refreshSessionStages(sessionId);
+                refetch();
               }
             }, 800);
+          } else {
+            // Simple refresh for unknown update types
+            refetch();
           }
       }
     };
@@ -453,15 +341,7 @@ function SessionDetailPageBase({
     };
   }, [sessionId, viewType]);
 
-  // Initial load
-  useEffect(() => {
-    if (sessionId) {
-      fetchSessionDetail(sessionId);
-    } else {
-      setError('Session ID not provided');
-      setLoading(false);
-    }
-  }, [sessionId]);
+  // Note: Initial load is now handled by the SessionContext automatically
 
   // Navigation handlers
   const handleBack = () => {
@@ -469,11 +349,17 @@ function SessionDetailPageBase({
   };
 
   const handleViewChange = (_event: React.MouseEvent<HTMLElement>, newView: string) => {
-    if (newView !== null) {
-      if (newView === 'technical' && sessionId) {
-        navigate(`/sessions/${sessionId}/technical`);
-      } else if (newView === 'conversation' && sessionId) {
-        navigate(`/sessions/${sessionId}`);
+    if (newView !== null && (newView === 'conversation' || newView === 'technical')) {
+      if (onViewChange) {
+        // Use external view change handler if provided (for unified wrapper)
+        onViewChange(newView);
+      } else {
+        // Fallback to direct navigation (for legacy usage)
+        if (newView === 'technical' && sessionId) {
+          navigate(`/sessions/${sessionId}/technical`);
+        } else if (newView === 'conversation' && sessionId) {
+          navigate(`/sessions/${sessionId}`);
+        }
       }
       setCurrentView(newView);
     }
@@ -481,7 +367,7 @@ function SessionDetailPageBase({
 
   const handleRetry = () => {
     if (sessionId) {
-      fetchSessionDetail(sessionId);
+      refetch();
     }
   };
 
@@ -689,7 +575,7 @@ function SessionDetailPageBase({
             <Suspense fallback={<HeaderSkeleton />}>
               <SessionHeader 
                 session={session} 
-                onRefresh={() => sessionId && refreshSessionSummary(sessionId)} 
+                onRefresh={() => sessionId && refetch()} 
               />
             </Suspense>
 

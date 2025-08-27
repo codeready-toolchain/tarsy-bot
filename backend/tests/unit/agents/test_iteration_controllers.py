@@ -174,10 +174,10 @@ class TestSimpleReActController:
         assert mock_llm_client.generate_response.call_count >= 2
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_max_iterations_reached(
+    async def test_execute_analysis_loop_max_iterations_with_successful_last_interaction(
         self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
     ):
-        """Test ReAct loop that reaches maximum iterations."""
+        """Test ReAct loop that reaches maximum iterations with successful last interaction."""
         mock_agent.max_iterations = 1  # Force max iterations quickly
         
         # Mock LLM to return incomplete responses (no Final Answer) to force max iterations
@@ -190,7 +190,31 @@ class TestSimpleReActController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
+        # Should return timeout message (last interaction was successful)
         assert "Analysis incomplete: reached maximum iterations (1) without final answer" in result
+    
+    @pytest.mark.asyncio
+    async def test_execute_analysis_loop_max_iterations_with_failed_last_interaction(
+        self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
+    ):
+        """Test ReAct loop that reaches maximum iterations with failed last interaction (NEW BEHAVIOR)."""
+        from tarsy.agents.exceptions import MaxIterationsFailureError
+        
+        mock_agent.max_iterations = 2  # Set max iterations
+        
+        # Mock LLM to fail on all attempts
+        mock_llm_client.generate_response.side_effect = Exception("LLM connection failed")
+        
+        # Should raise MaxIterationsFailureError (new failure detection behavior)
+        with pytest.raises(MaxIterationsFailureError) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
+        
+        error = exc_info.value
+        assert "Stage failed: reached maximum iterations (2) and last LLM interaction failed" in str(error)
+        assert error.max_iterations == 2
+        
+        # Verify all iterations were attempted
+        assert mock_llm_client.generate_response.call_count == 2
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_tool_execution_error(
@@ -371,11 +395,19 @@ class TestReactFinalAnalysisController:
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_llm_failure(self, controller, sample_context, mock_llm_client):
-        """Test final analysis when LLM call fails."""
+        """Test final analysis when LLM call fails (NEW BEHAVIOR - MaxIterationsFailureError)."""
+        from tarsy.agents.exceptions import MaxIterationsFailureError
+        
         mock_llm_client.generate_response.side_effect = Exception("LLM service unavailable")
         
-        with pytest.raises(Exception, match="LLM service unavailable"):
+        # Should now raise MaxIterationsFailureError instead of regular Exception
+        with pytest.raises(MaxIterationsFailureError) as exc_info:
             await controller.execute_analysis_loop(sample_context)
+        
+        error = exc_info.value
+        assert "Final analysis stage failed: LLM service unavailable" in str(error)
+        assert error.max_iterations == 1  # Final analysis has only 1 attempt
+        assert error.context["stage_type"] == "final_analysis"
 
 @pytest.mark.unit
 class TestReactStageController:

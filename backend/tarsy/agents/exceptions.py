@@ -98,6 +98,23 @@ class ConfigurationError(AgentError):
         return result
 
 
+class MaxIterationsFailureError(AgentError):
+    """
+    Error when max iterations is reached and the last interaction failed.
+    
+    Non-recoverable as it indicates stage failure condition.
+    """
+    
+    def __init__(self, message: str, max_iterations: int, context: Optional[Dict[str, Any]] = None):
+        super().__init__(message, context, recoverable=False)
+        self.max_iterations = max_iterations
+        
+    def to_dict(self) -> Dict[str, Any]:
+        result = super().to_dict()
+        result["max_iterations"] = self.max_iterations
+        return result
+
+
 
 # Recovery strategies
 class ErrorRecoveryHandler:

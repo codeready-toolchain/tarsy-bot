@@ -326,11 +326,20 @@ class AlertService:
                     # Add stage result to ChainContext
                     chain_context.add_stage_result(stage.name, stage_result)
                     
-                    # Update stage execution as completed
-                    await self._update_stage_execution_completed(stage_execution_id, stage_result)
-                    
-                    successful_stages += 1
-                    logger.info(f"Stage '{stage.name}' completed successfully with agent '{stage_result.agent_name}'")
+                    # Check if stage actually succeeded or failed based on status
+                    if stage_result.status == StageStatus.COMPLETED:
+                        # Update stage execution as completed
+                        await self._update_stage_execution_completed(stage_execution_id, stage_result)
+                        successful_stages += 1
+                        logger.info(f"Stage '{stage.name}' completed successfully with agent '{stage_result.agent_name}'")
+                    else:
+                        # Stage failed - treat as failed even though no exception was thrown
+                        error_msg = stage_result.error_message or f"Stage '{stage.name}' failed with status {stage_result.status.value}"
+                        logger.error(f"Stage '{stage.name}' failed: {error_msg}")
+                        
+                        # Update stage execution as failed
+                        await self._update_stage_execution_failed(stage_execution_id, error_msg)
+                        failed_stages += 1
                     
                 except Exception as e:
                     # Log the error with full context
@@ -361,11 +370,11 @@ class AlertService:
             final_analysis = self._extract_final_analysis_from_stages(chain_context)
             
             # Determine overall chain status
-            overall_status = ChainStatus.COMPLETED
-            if failed_stages == len(chain_definition.stages):
-                overall_status = ChainStatus.FAILED  # All stages failed
-            elif failed_stages > 0:
-                overall_status = ChainStatus.PARTIAL  # Some stages failed
+            # Any stage failure should fail the entire session
+            if failed_stages > 0:
+                overall_status = ChainStatus.FAILED  # Any stage failed = session failed
+            else:
+                overall_status = ChainStatus.COMPLETED  # All stages succeeded
             
             logger.info(f"Chain execution completed: {successful_stages} successful, {failed_stages} failed")
             
