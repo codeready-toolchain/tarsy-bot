@@ -432,7 +432,9 @@ function VirtualizedAccordionTimeline({
       if (useVirtualization && listRef.current) {
         // For virtualized list, scroll to the last item
         listRef.current.scrollToItem(interactionCount - 1, 'end');
-        console.log(`🔄 Auto-scrolled virtualized list to interaction ${interactionCount - 1} in stage ${stageId}`);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`🔄 Auto-scrolled virtualized list to interaction ${interactionCount - 1} in stage ${stageId}`);
+        }
       } else {
         // For non-virtualized content, scroll the last interaction into view using main page scroll
         const lastInteractionElement = nonVirtualizedContainerRef.current?.lastElementChild as HTMLElement;
@@ -441,7 +443,9 @@ function VirtualizedAccordionTimeline({
             behavior: 'smooth',
             block: 'end'
           });
-          console.log(`🔄 Auto-scrolled to last interaction in stage ${stageId}`);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log(`🔄 Auto-scrolled to last interaction in stage ${stageId}`);
+          }
         }
       }
     }, 100);
@@ -504,7 +508,9 @@ function VirtualizedAccordionTimeline({
     if (currentStageIndex !== prevStageIndex && chainExecution.stages[currentStageIndex]) {
       const newStage = chainExecution.stages[currentStageIndex];
       
-      console.log(`🎯 Auto-expanding new active stage: ${newStage.stage_name} (stage ${currentStageIndex + 1})`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`🎯 Auto-expanding new active stage: ${newStage.stage_name} (stage ${currentStageIndex + 1})`);
+      }
       
       // Add the new current stage to expanded stages (keep previous ones expanded)
       setExpandedStages(prev => new Set([...prev, newStage.execution_id]));
@@ -514,6 +520,30 @@ function VirtualizedAccordionTimeline({
       prevCurrentStageIndexRef.current = currentStageIndex;
     }
   }, [chainExecution.current_stage_index, chainExecution.stages, autoScroll]);
+
+  // Detect manual scrolling to temporarily disable auto-scroll
+  useEffect(() => {
+    if (!autoScroll) return;
+    
+    const handleScroll = () => {
+      // Only mark as user-scrolled if we're not at the bottom
+      const scrollElement = window;
+      const isAtBottom = Math.abs(
+        scrollElement.scrollY + scrollElement.innerHeight - document.documentElement.scrollHeight
+      ) < 50; // 50px threshold
+      
+      if (!isAtBottom) {
+        userScrolledAwayRef.current = true;
+        console.log(`👆 User scrolled away from bottom - disabling auto-scroll`);
+      } else {
+        userScrolledAwayRef.current = false;
+        console.log(`👇 User scrolled back to bottom - re-enabling auto-scroll`);
+      }
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [autoScroll]);
 
   // Effect to detect new interactions and auto-scroll
   useEffect(() => {
@@ -528,7 +558,9 @@ function VirtualizedAccordionTimeline({
       // If we have new interactions and this stage is expanded
       if (currentCount > previousCount && currentCount > 0) {
         const shouldUseVirtualization = totalInteractions > maxVisibleInteractions && currentCount > 20;
-        console.log(`🆕 Detected ${currentCount - previousCount} new interaction(s) in stage ${stageId}, auto-scrolling...`);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`🆕 Detected ${currentCount - previousCount} new interaction(s) in stage ${stageId}, auto-scrolling...`);
+        }
         scrollToBottom(stageId, shouldUseVirtualization, currentCount);
       }
       
