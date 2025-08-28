@@ -58,7 +58,7 @@ function TokenUsageDisplay({
 
   // Get chip color based on token count (for visual feedback)
   const getTokenColor = (tokens: number | null): ChipProps['color'] => {
-    if (!tokens) return 'default';
+    if (tokens == null) return 'default';
     if (tokens > 5000) return 'error';
     if (tokens > 2000) return 'warning';
     if (tokens > 1000) return 'info';
@@ -67,7 +67,7 @@ function TokenUsageDisplay({
 
   // Badge variant - simple chip display
   if (variant === 'badge') {
-    const hasInputOutput = inputTokens || outputTokens;
+    const hasInputOutput = inputTokens != null || outputTokens != null;
     return (
       <Chip
         size={size === 'large' ? 'medium' : size}
@@ -102,7 +102,7 @@ function TokenUsageDisplay({
             {label}:
           </Typography>
         )}
-        {(inputTokens || outputTokens) ? (
+        {(inputTokens != null || outputTokens != null) ? (
           <>
             <Typography 
               variant="caption"
@@ -186,7 +186,7 @@ function TokenUsageDisplay({
             {label}:
           </Typography>
         )}
-        {(inputTokens || outputTokens) ? (
+        {(inputTokens != null || outputTokens != null) ? (
           <>
             <Typography 
               variant="caption"
@@ -234,7 +234,7 @@ function TokenUsageDisplay({
               {formatTokensCompact(totalTokens)}
             </Typography>
           </>
-        ) : totalTokens ? (
+        ) : totalTokens != null ? (
           <Typography
             variant="caption"
             sx={{
@@ -310,7 +310,7 @@ function TokenUsageDisplay({
         </Box>
 
         {/* Input/Output breakdown */}
-        {showBreakdown && (inputTokens || outputTokens) && (
+        {showBreakdown && (inputTokens != null || outputTokens != null) && (
           <>
             {inputTokens !== null && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
