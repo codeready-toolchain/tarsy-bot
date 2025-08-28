@@ -78,6 +78,7 @@ coverage/
 .coverage
 .coverage.*
 htmlcov/
+backend/coverage.*
 
 # ESLint cache
 .eslintcache

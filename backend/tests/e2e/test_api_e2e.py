@@ -219,6 +219,20 @@ class TestRealE2E:
                     # Determine response based on interaction count (simple pattern)
                     total_interactions = len(all_llm_interactions)
 
+                    # Define realistic token usage for each interaction
+                    # These values are used to test token tracking at interaction, stage, and session levels
+                    # Expected stage totals: data-collection=1310, verification=650, analysis=600 
+                    # Expected session total: 2560 tokens (1850 input + 710 output)
+                    token_usage_map = {
+                        1: {"input_tokens": 245, "output_tokens": 85, "total_tokens": 330},   # Data collection - Initial analysis
+                        2: {"input_tokens": 180, "output_tokens": 65, "total_tokens": 245},   # Data collection - kubectl describe
+                        3: {"input_tokens": 220, "output_tokens": 75, "total_tokens": 295},   # Data collection - System info
+                        4: {"input_tokens": 315, "output_tokens": 125, "total_tokens": 440}, # Data collection - Summary
+                        5: {"input_tokens": 190, "output_tokens": 70, "total_tokens": 260},   # Verification - Check
+                        6: {"input_tokens": 280, "output_tokens": 110, "total_tokens": 390}, # Verification - Summary
+                        7: {"input_tokens": 420, "output_tokens": 180, "total_tokens": 600}, # Analysis - Final
+                    }
+
                     if total_interactions <= 4:
                         # Data collection stage responses
                         if total_interactions == 1:
@@ -250,6 +264,15 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
 ## Recommended Actions
 1. Remove finalizers to allow deletion"""
 
+                    # Get realistic token usage for this interaction
+                    # Use correct OpenAI API field names: prompt_tokens, completion_tokens, total_tokens
+                    mock_usage = token_usage_map.get(total_interactions)
+                    usage_data = {
+                        "prompt_tokens": mock_usage["input_tokens"],
+                        "completion_tokens": mock_usage["output_tokens"], 
+                        "total_tokens": mock_usage["total_tokens"]
+                    }
+
                     # Return HTTP response in the format expected by LangChain
                     return httpx.Response(
                         200,
@@ -264,7 +287,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
                                 }
                             ],
                             "model": "gpt-4",
-                            "usage": {"total_tokens": 150},
+                            "usage": usage_data,
                         },
                     )
                 except Exception as e:
@@ -550,6 +573,26 @@ Finalizers:   kubernetes.io/pv-protection"""
             processing_duration_ms < 30000
         ), f"Processing took too long: {processing_duration_ms}ms"
 
+        # Verify session-level token usage totals (sum of all stages)
+        # Expected totals: data-collection(960+350+1310) + verification(470+180+650) + analysis(420+180+600)
+        expected_session_input_tokens = 1850  # 960 + 470 + 420
+        expected_session_output_tokens = 710   # 350 + 180 + 180  
+        expected_session_total_tokens = 2560   # 1310 + 650 + 600
+        
+        actual_session_input_tokens = session_data.get("session_input_tokens")
+        actual_session_output_tokens = session_data.get("session_output_tokens")
+        actual_session_total_tokens = session_data.get("session_total_tokens")
+        
+        assert (
+            actual_session_input_tokens == expected_session_input_tokens
+        ), f"Session input_tokens mismatch: expected {expected_session_input_tokens}, got {actual_session_input_tokens}"
+        assert (
+            actual_session_output_tokens == expected_session_output_tokens
+        ), f"Session output_tokens mismatch: expected {expected_session_output_tokens}, got {actual_session_output_tokens}"
+        assert (
+            actual_session_total_tokens == expected_session_total_tokens
+        ), f"Session total_tokens mismatch: expected {expected_session_total_tokens}, got {actual_session_total_tokens}"
+
         print(
             f"    ✅ Session metadata verified (chain: {session_data['chain_id']}, duration: {processing_duration_ms:.1f}ms)"
         )
@@ -591,7 +634,6 @@ Finalizers:   kubernetes.io/pv-protection"""
             assert (
                 stage["status"] == "completed"
             ), f"Stage {i} ({stage['stage_name']}) not completed: {stage['status']}"
-
         print(
             f"    ✅ Stage structure verified ({len(stages)} stages in correct order)"
         )
@@ -643,6 +685,11 @@ Finalizers:   kubernetes.io/pv-protection"""
             len(chronological_interactions) == len(expected_stage["interactions"])
         ), f"Stage '{stage_name}' chronological interaction count mismatch: expected {len(expected_stage['interactions'])}, got {len(chronological_interactions)}"
 
+        # Track token totals for the stage
+        expected_input_tokens = 0
+        expected_output_tokens = 0
+        expected_total_tokens = 0
+
         for i, expected_interaction in enumerate(expected_stage["interactions"]):
             actual_interaction = chronological_interactions[i]
             interaction_type = expected_interaction["type"]
@@ -669,6 +716,23 @@ Finalizers:   kubernetes.io/pv-protection"""
                 assert_conversation_messages(
                     expected_conversation, actual_messages, expected_conversation_index
                 )
+                
+                # Verify token usage
+                if "input_tokens" in expected_interaction:
+                    assert (
+                        details["input_tokens"] == expected_interaction["input_tokens"]
+                    ), f"Stage '{stage_name}' interaction {i+1} input_tokens mismatch: expected {expected_interaction['input_tokens']}, got {details['input_tokens']}"
+                    assert (
+                        details["output_tokens"] == expected_interaction["output_tokens"]
+                    ), f"Stage '{stage_name}' interaction {i+1} output_tokens mismatch: expected {expected_interaction['output_tokens']}, got {details['output_tokens']}"
+                    assert (
+                        details["total_tokens"] == expected_interaction["total_tokens"]
+                    ), f"Stage '{stage_name}' interaction {i+1} total_tokens mismatch: expected {expected_interaction['total_tokens']}, got {details['total_tokens']}"
+                    
+                    # Accumulate token totals for stage validation
+                    expected_input_tokens += expected_interaction["input_tokens"]
+                    expected_output_tokens += expected_interaction["output_tokens"]
+                    expected_total_tokens += expected_interaction["total_tokens"]
             elif interaction_type == "mcp":
                 assert (
                     details["communication_type"]
@@ -694,8 +758,21 @@ Finalizers:   kubernetes.io/pv-protection"""
                         len(details["available_tools"]) > 0
                     ), f"Stage '{stage_name}' interaction {i+1} tool_list has no available_tools"
 
-            print(
-                f"    ✅ Stage '{stage_name}': Complete interaction flow verified ({len(llm_interactions)} LLM, {len(mcp_interactions)} MCP)"
-            )
+        # Validate stage-level token totals
+        actual_stage_input_tokens = actual_stage.get("stage_input_tokens")
+        actual_stage_output_tokens = actual_stage.get("stage_output_tokens") 
+        actual_stage_total_tokens = actual_stage.get("stage_total_tokens")
+        
+        assert (
+            actual_stage_input_tokens == expected_input_tokens
+        ), f"Stage '{stage_name}' input_tokens total mismatch: expected {expected_input_tokens}, got {actual_stage_input_tokens}"
+        assert (
+            actual_stage_output_tokens == expected_output_tokens
+        ), f"Stage '{stage_name}' output_tokens total mismatch: expected {expected_output_tokens}, got {actual_stage_output_tokens}"
+        assert (
+            actual_stage_total_tokens == expected_total_tokens
+        ), f"Stage '{stage_name}' total_tokens total mismatch: expected {expected_total_tokens}, got {actual_stage_total_tokens}"
 
-
+        print(
+            f"    ✅ Stage '{stage_name}': Complete interaction flow verified ({len(llm_interactions)} LLM, {len(mcp_interactions)} MCP)"
+        )

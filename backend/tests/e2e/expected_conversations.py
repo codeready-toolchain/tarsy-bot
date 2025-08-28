@@ -7,7 +7,7 @@ Format:
     "mcp_count": <number of MCP interactions>,
     "interactions": [
         {"type": "mcp", "position": <position_among_mcp_interactions>, "communication_type": <tool_list or tool_call>, "success": <success>, "server_name": <server_name>},
-        {"type": "llm", "position": <position_among_llm_interactions>, "success": <success>, "conversation_index": <the number of messages from the expected conversation that should be included in the actual conversation, starting from 0>},
+        {"type": "llm", "position": <position_among_llm_interactions>, "success": <success>, "conversation_index": <the number of messages from the expected conversation that should be included in the actual conversation, starting from 0>, "input_tokens": n, "output_tokens": n, "total_tokens": n},
     ]
 }
 """
@@ -22,19 +22,19 @@ EXPECTED_STAGES = {
             # MCP 2 - Tool list discovery for test-data-server (returns 1 tool: collect_system_info)
             {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             # LLM 1 - Initial ReAct iteration
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3}, # first 3 messages from the expected (full) conversation should be included in the actual conversation
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330},
             # MCP 3 - Successful kubectl_get attempt
             {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Second ReAct iteration  
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5},
+            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245},
             # MCP 4 - Successful kubectl_describe attempt  
             {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
             # LLM 3 - Third ReAct iteration
-            {'type': 'llm', 'position': 3, 'success': True, 'conversation_index': 7},
+            {'type': 'llm', 'position': 3, 'success': True, 'conversation_index': 7, 'input_tokens': 220, 'output_tokens': 75, 'total_tokens': 295},
             # MCP 5 - Successful collect_system_info call
             {'type': 'mcp', 'position': 5, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
             # LLM 4 - Final completion
-            {'type': 'llm', 'position': 4, 'success': True, 'conversation_index': 9}
+            {'type': 'llm', 'position': 4, 'success': True, 'conversation_index': 9, 'input_tokens': 315, 'output_tokens': 125, 'total_tokens': 440}
         ]
     },
     'verification': {
@@ -44,11 +44,11 @@ EXPECTED_STAGES = {
             # MCP 1 - Tool list discovery (first interaction)
             {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # LLM 1 - Initial ReAct iteration
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3},
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260},
             # MCP 2 - Successful kubectl_get attempt
             {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Final answer
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5}
+            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 280, 'output_tokens': 110, 'total_tokens': 390}
         ]
     },
     'analysis': {
@@ -56,7 +56,7 @@ EXPECTED_STAGES = {
         'mcp_count': 0,
         'interactions': [
             # LLM 1 - Final analysis (no tool discovery)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3}
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 420, 'output_tokens': 180, 'total_tokens': 600}
         ]
     }
 }
