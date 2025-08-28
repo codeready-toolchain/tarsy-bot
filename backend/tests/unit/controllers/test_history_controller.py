@@ -1232,7 +1232,9 @@ class TestHistoryControllerResponseFormat:
         # Allow additional fields that are actually returned (including chain-based fields)
         optional_fields = {
             "duration_ms", "llm_interaction_count", "mcp_communication_count", "total_interactions",
-            "current_stage_index", "failed_stages", "total_stages", "chain_id", "completed_stages"
+            "current_stage_index", "failed_stages", "total_stages", "chain_id", "completed_stages",
+            # Token usage fields added in EP-0009
+            "session_input_tokens", "session_output_tokens", "session_total_tokens"
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)

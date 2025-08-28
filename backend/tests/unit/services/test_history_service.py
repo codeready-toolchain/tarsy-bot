@@ -1603,3 +1603,196 @@ class TestHistoryAPIResponseStructure:
         # Verify repository method was called once (no retries needed when session not found)
         assert dependencies['repository'].get_session_overview.call_count == 1
         dependencies['repository'].get_session_overview.assert_called_with(session_id)
+
+
+@pytest.mark.unit
+class TestHistoryServiceTokenAggregations:
+    """Test token usage aggregation functionality in HistoryService added in EP-0009."""
+    
+    @pytest.fixture
+    def history_service(self, isolated_test_settings):
+        """Create HistoryService instance for testing."""
+        with patch('tarsy.services.history_service.get_settings', return_value=isolated_test_settings):
+            service = HistoryService()
+            service._initialization_attempted = True
+            service._is_healthy = True
+            return service
+    
+    @pytest.mark.asyncio
+    async def test_get_session_summary_calculates_token_aggregations(self, history_service):
+        """Test that session summary calculates token totals from stages."""
+        # Arrange
+        session_id = "token-test-session"
+        
+        # Create mock session overview
+        mock_session_overview = MockFactory.create_mock_session_overview(
+            session_id=session_id,
+            chain_id="test-chain",
+            total_interactions=3,
+            llm_interaction_count=3
+        )
+        
+        # Create mock detailed session with token data
+        mock_detailed_session = Mock()
+        
+        # Create stages with token data
+        stage1 = Mock()
+        stage1.stage_input_tokens = 100
+        stage1.stage_output_tokens = 30 
+        stage1.stage_total_tokens = 130
+        
+        stage2 = Mock()  
+        stage2.stage_input_tokens = 150
+        stage2.stage_output_tokens = 45
+        stage2.stage_total_tokens = 195
+        
+        stage3 = Mock()  # Stage without token data
+        stage3.stage_input_tokens = None
+        stage3.stage_output_tokens = None
+        stage3.stage_total_tokens = None
+        
+        mock_detailed_session.stages = [stage1, stage2, stage3]
+        
+        # Mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_session_overview.return_value = mock_session_overview
+        dependencies['repository'].get_session_details.return_value = mock_detailed_session
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            summary = await history_service.get_session_summary(session_id)
+        
+        # Assert
+        assert summary is not None
+        assert summary.session_input_tokens == 250  # 100 + 150 + 0
+        assert summary.session_output_tokens == 75   # 30 + 45 + 0  
+        assert summary.session_total_tokens == 325   # 130 + 195 + 0
+        
+        # Verify both repository methods were called
+        dependencies['repository'].get_session_overview.assert_called_once_with(session_id)
+        dependencies['repository'].get_session_details.assert_called_once_with(session_id)
+    
+    @pytest.mark.asyncio
+    async def test_get_session_summary_handles_no_token_data(self, history_service):
+        """Test session summary when no stages have token data."""
+        # Arrange
+        session_id = "no-token-session"
+        
+        mock_session_overview = MockFactory.create_mock_session_overview(
+            session_id=session_id,
+            chain_id="test-chain",
+            llm_interaction_count=0  # No LLM interactions
+        )
+        
+        # Mock detailed session with stages but no token data
+        mock_detailed_session = Mock()
+        stage1 = Mock()
+        stage1.stage_input_tokens = None
+        stage1.stage_output_tokens = None
+        stage1.stage_total_tokens = None
+        
+        mock_detailed_session.stages = [stage1]
+        
+        # Mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_session_overview.return_value = mock_session_overview
+        dependencies['repository'].get_session_details.return_value = mock_detailed_session
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            summary = await history_service.get_session_summary(session_id)
+        
+        # Assert
+        assert summary is not None
+        assert summary.session_input_tokens == 0   # No token data defaults to 0
+        assert summary.session_output_tokens == 0
+        assert summary.session_total_tokens == 0
+    
+    @pytest.mark.asyncio
+    async def test_get_session_summary_handles_missing_detailed_session(self, history_service):
+        """Test session summary when detailed session is not available."""
+        # Arrange
+        session_id = "missing-details-session"
+        
+        mock_session_overview = MockFactory.create_mock_session_overview(
+            session_id=session_id,
+            chain_id="test-chain"
+        )
+        
+        # Mock repository - detailed session not available
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_session_overview.return_value = mock_session_overview
+        dependencies['repository'].get_session_details.return_value = None  # No detailed session
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            summary = await history_service.get_session_summary(session_id)
+        
+        # Assert
+        assert summary is not None
+        # Should default to 0 when detailed session unavailable
+        assert summary.session_input_tokens == 0
+        assert summary.session_output_tokens == 0
+        assert summary.session_total_tokens == 0
+    
+    @pytest.mark.asyncio
+    async def test_get_session_summary_token_aggregation_edge_cases(self, history_service):
+        """Test token aggregation with various edge cases."""
+        # Arrange
+        session_id = "edge-case-session"
+        
+        mock_session_overview = MockFactory.create_mock_session_overview(
+            session_id=session_id,
+            chain_id="test-chain",
+            llm_interaction_count=2
+        )
+        
+        # Create detailed session with edge case token data
+        mock_detailed_session = Mock()
+        
+        # Stage with large token numbers
+        stage1 = Mock()
+        stage1.stage_input_tokens = 5000
+        stage1.stage_output_tokens = 2000
+        stage1.stage_total_tokens = 7000
+        
+        # Stage with very small token numbers
+        stage2 = Mock()
+        stage2.stage_input_tokens = 1
+        stage2.stage_output_tokens = 1  
+        stage2.stage_total_tokens = 2
+        
+        # Stage with mixed token availability
+        stage3 = Mock()
+        stage3.stage_input_tokens = 50
+        stage3.stage_output_tokens = None  # Missing output tokens
+        stage3.stage_total_tokens = 50
+        
+        mock_detailed_session.stages = [stage1, stage2, stage3]
+        
+        # Mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies() 
+        dependencies['repository'].get_session_overview.return_value = mock_session_overview
+        dependencies['repository'].get_session_details.return_value = mock_detailed_session
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            summary = await history_service.get_session_summary(session_id)
+        
+        # Assert
+        assert summary is not None
+        assert summary.session_input_tokens == 5051  # 5000 + 1 + 50
+        assert summary.session_output_tokens == 2001  # 2000 + 1 + 0 (None treated as 0)
+        assert summary.session_total_tokens == 7052   # 7000 + 2 + 50

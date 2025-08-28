@@ -689,3 +689,166 @@ class TestLLMClientIntegration:
                 assert len(invoke_args) == 2
                 assert isinstance(invoke_args[0], SystemMessage)
                 assert isinstance(invoke_args[1], HumanMessage)
+
+
+@pytest.mark.unit
+class TestLLMClientTokenUsageTracking:
+    """Test token usage tracking functionality added in EP-0009."""
+    
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Mock LangChain LLM client."""
+        return AsyncMock()
+    
+    @pytest.fixture
+    def client(self, mock_llm_client):
+        """Create client with mocked LangChain client."""
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", {"api_key": "test"})
+            client.llm_client = mock_llm_client
+            client.available = True
+            return client
+    
+    @pytest.mark.asyncio
+    async def test_generate_response_captures_token_usage(self, client, mock_llm_client):
+        """Test that token usage is captured and stored in interaction context."""
+        # Arrange
+        mock_response = Mock()
+        mock_response.content = "Test response from LLM"
+        
+        # Mock the _execute_with_retry to return usage metadata
+        usage_metadata = {
+            'input_tokens': 120,
+            'output_tokens': 45,
+            'total_tokens': 165
+        }
+        
+        with patch.object(client, '_execute_with_retry', return_value=(mock_response, usage_metadata)) as mock_execute:
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test question")
+            ])
+            
+            with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+                mock_ctx = AsyncMock()
+                mock_ctx.get_request_id.return_value = "req-123"
+                mock_context.return_value.__aenter__.return_value = mock_ctx
+                
+                # Act
+                result = await client.generate_response(conversation, "test-session-123")
+                
+                # Assert
+                assert isinstance(result, LLMConversation)
+                
+                # Verify token usage was stored in context
+                assert mock_ctx.interaction.input_tokens == 120
+                assert mock_ctx.interaction.output_tokens == 45  
+                assert mock_ctx.interaction.total_tokens == 165
+                
+                mock_execute.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_generate_response_handles_missing_token_usage(self, client, mock_llm_client):
+        """Test graceful handling when provider doesn't return usage metadata."""
+        # Arrange
+        mock_response = Mock()
+        mock_response.content = "Test response from LLM"
+        
+        # Mock _execute_with_retry to return None usage metadata
+        with patch.object(client, '_execute_with_retry', return_value=(mock_response, None)):
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test question")
+            ])
+            
+            with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+                mock_ctx = AsyncMock()
+                mock_context.return_value.__aenter__.return_value = mock_ctx
+                
+                # Act
+                result = await client.generate_response(conversation, "test-session")
+                
+                # Assert
+                assert isinstance(result, LLMConversation)
+                
+                # Token fields should not have been set when usage_metadata is None
+                # Since we mocked _execute_with_retry to return None usage_metadata,
+                # the token setting code should not execute
+                # We can verify this by checking that the token assignment code path wasn't taken
+                
+                # The key assertion is that the method completed without error,
+                # meaning it handled None usage_metadata gracefully
+    
+    @pytest.mark.asyncio
+    async def test_generate_response_handles_zero_token_usage(self, client, mock_llm_client):
+        """Test handling of zero token usage values."""
+        # Arrange
+        mock_response = Mock()
+        mock_response.content = "Test response"
+        
+        # Mock usage metadata with zero values
+        usage_metadata = {
+            'input_tokens': 0,
+            'output_tokens': 0,
+            'total_tokens': 0
+        }
+        
+        with patch.object(client, '_execute_with_retry', return_value=(mock_response, usage_metadata)):
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test")
+            ])
+            
+            with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+                mock_ctx = AsyncMock()
+                mock_context.return_value.__aenter__.return_value = mock_ctx
+                
+                # Act
+                await client.generate_response(conversation, "test-session")
+                
+                # Assert - zero values should be stored as None for cleaner database storage
+                assert mock_ctx.interaction.input_tokens is None
+                assert mock_ctx.interaction.output_tokens is None  
+                assert mock_ctx.interaction.total_tokens is None
+    
+    @pytest.mark.asyncio
+    async def test_execute_with_retry_uses_usage_metadata_callback(self, client):
+        """Test that _execute_with_retry properly uses UsageMetadataCallbackHandler."""
+        # Arrange
+        mock_response = Mock()
+        mock_response.content = "Test response"
+        client.llm_client.ainvoke.return_value = mock_response
+        
+        # Mock the callback to return usage data
+        with patch('tarsy.integrations.llm.client.UsageMetadataCallbackHandler') as mock_callback_class:
+            mock_callback_instance = Mock()
+            mock_callback_instance.usage_metadata = {
+                'gpt-4': {
+                    'input_tokens': 100,
+                    'output_tokens': 50,
+                    'total_tokens': 150
+                }
+            }
+            mock_callback_class.return_value = mock_callback_instance
+            
+            # Act
+            response, usage_metadata = await client._execute_with_retry([])
+            
+            # Assert
+            assert response == mock_response
+            assert usage_metadata == {
+                'input_tokens': 100,
+                'output_tokens': 50,
+                'total_tokens': 150
+            }
+            
+            # Verify callback was used
+            mock_callback_class.assert_called_once()
+            client.llm_client.ainvoke.assert_called_once()
+            
+            # Verify callback was passed to ainvoke
+            call_args = client.llm_client.ainvoke.call_args
+            assert 'config' in call_args.kwargs
+            assert 'callbacks' in call_args.kwargs['config']
+            assert call_args.kwargs['config']['callbacks'] == [mock_callback_instance]
+    
