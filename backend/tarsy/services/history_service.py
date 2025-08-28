@@ -458,26 +458,35 @@ class HistoryService:
                     session_output_tokens = 0
                     session_total_tokens = 0
 
-                    # Get detailed session to access either aggregated totals or stage details
-                    detailed_session = repo.get_session_details(session_id) 
-                    if detailed_session:
-                        # Check if aggregated session totals are available
-                        if (detailed_session.session_input_tokens is not None and 
-                            detailed_session.session_output_tokens is not None and 
-                            detailed_session.session_total_tokens is not None):
-                            # Use the repository-provided aggregated session totals
-                            session_input_tokens = detailed_session.session_input_tokens
-                            session_output_tokens = detailed_session.session_output_tokens
-                            session_total_tokens = detailed_session.session_total_tokens
-                        else:
-                            # Fall back to manual per-stage summation if aggregates are missing
-                            for stage in detailed_session.stages:
-                                if stage.stage_input_tokens:
-                                    session_input_tokens += stage.stage_input_tokens
-                                if stage.stage_output_tokens: 
-                                    session_output_tokens += stage.stage_output_tokens
-                                if stage.stage_total_tokens:
-                                    session_total_tokens += stage.stage_total_tokens
+                    # Check if aggregated token totals are already available in session overview
+                    if (session_overview.session_input_tokens is not None and 
+                        session_overview.session_output_tokens is not None and 
+                        session_overview.session_total_tokens is not None):
+                        # Use the already-available aggregated session totals from overview
+                        session_input_tokens = session_overview.session_input_tokens
+                        session_output_tokens = session_overview.session_output_tokens
+                        session_total_tokens = session_overview.session_total_tokens
+                    else:
+                        # Aggregates not available in overview, get detailed session for fallback calculation
+                        detailed_session = repo.get_session_details(session_id)
+                        if detailed_session:
+                            # Check if aggregated session totals are available in detailed session
+                            if (detailed_session.session_input_tokens is not None and 
+                                detailed_session.session_output_tokens is not None and 
+                                detailed_session.session_total_tokens is not None):
+                                # Use the repository-provided aggregated session totals
+                                session_input_tokens = detailed_session.session_input_tokens
+                                session_output_tokens = detailed_session.session_output_tokens
+                                session_total_tokens = detailed_session.session_total_tokens
+                            else:
+                                # Fall back to manual per-stage summation if aggregates are missing
+                                for stage in detailed_session.stages:
+                                    if stage.stage_input_tokens:
+                                        session_input_tokens += stage.stage_input_tokens
+                                    if stage.stage_output_tokens: 
+                                        session_output_tokens += stage.stage_output_tokens
+                                    if stage.stage_total_tokens:
+                                        session_total_tokens += stage.stage_total_tokens
                     
                     # Create chain statistics from SessionOverview
                     chain_stats = ChainStatistics(

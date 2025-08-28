@@ -37,18 +37,20 @@ function MultiLevelTokenDisplay({
     total_tokens: session?.session_total_tokens
   };
 
+  // Type guard to properly narrow LLM interactions
+  const isLLM = (i: InteractionDetail): i is LLMInteractionDetail => i.type === 'llm';
+  
   // Pre-filter LLM interactions to avoid repeated filtering
-  const llmInteractions = interactions.filter(i => i.type === 'llm');
+  const llmInteractions = interactions.filter(isLLM);
 
-  // Check if we have any token data to display with explicit boolean coercion
-  const hasSessionTokens = !!(sessionTokens.total_tokens || sessionTokens.input_tokens || sessionTokens.output_tokens);
-  const hasStageTokens = !!stages.some(stage => 
-    stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens
+  // Check if we have any token data to display using nullish checks
+  const exists = (v: number | null | undefined) => v !== null && v !== undefined;
+  const hasSessionTokens = [sessionTokens.total_tokens, sessionTokens.input_tokens, sessionTokens.output_tokens].some(exists);
+  const hasStageTokens = stages.some((stage) =>
+    [stage.stage_total_tokens, stage.stage_input_tokens, stage.stage_output_tokens].some(exists)
   );
-  const hasInteractionTokens = llmInteractions.some(interaction => 
-    !!(interaction.details.total_tokens || 
-       interaction.details.input_tokens || 
-       interaction.details.output_tokens)
+  const hasInteractionTokens = llmInteractions.some((i) =>
+    [i.details.total_tokens, i.details.input_tokens, i.details.output_tokens].some(exists)
   );
 
   // If no token data anywhere, don't render anything
@@ -88,7 +90,7 @@ function MultiLevelTokenDisplay({
               };
 
               // Only show stages that have token data
-              if (!stageTokens.total_tokens && !stageTokens.input_tokens && !stageTokens.output_tokens) {
+              if (![stageTokens.total_tokens, stageTokens.input_tokens, stageTokens.output_tokens].some(exists)) {
                 return null;
               }
 
@@ -121,7 +123,7 @@ function MultiLevelTokenDisplay({
           <Stack spacing={0.5}>
             {llmInteractions
               .slice(0, maxInteractionsToShow)
-              .map((interaction: LLMInteractionDetail, index: number) => {
+              .map((interaction, index) => {
                 const details = interaction.details;
                 const interactionTokens: TokenUsageData = {
                   input_tokens: details.input_tokens,
@@ -130,7 +132,7 @@ function MultiLevelTokenDisplay({
                 };
 
                 // Only show interactions that have token data
-                if (!interactionTokens.total_tokens && !interactionTokens.input_tokens && !interactionTokens.output_tokens) {
+                if (![interactionTokens.total_tokens, interactionTokens.input_tokens, interactionTokens.output_tokens].some(exists)) {
                   return null;
                 }
 

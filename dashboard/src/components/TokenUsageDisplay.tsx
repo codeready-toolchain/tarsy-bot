@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { Box, Typography, Chip, Stack } from '@mui/material';
+import type { ChipProps } from '@mui/material/Chip';
 
 // Token usage data interface
 export interface TokenUsageData {
@@ -14,7 +15,7 @@ export interface TokenUsageDisplayProps {
   size?: 'small' | 'medium' | 'large';
   showBreakdown?: boolean;
   label?: string;
-  color?: 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'info';
+  color?: ChipProps['color']; // allows 'error'
 }
 
 /**
@@ -36,7 +37,7 @@ function TokenUsageDisplay({
   const outputTokens = tokenData.output_tokens ?? null;
 
   // If no token data available, don't render anything
-  if (!totalTokens && !inputTokens && !outputTokens) {
+  if ([totalTokens, inputTokens, outputTokens].every(v => v == null)) {
     return null;
   }
 
@@ -56,7 +57,7 @@ function TokenUsageDisplay({
   };
 
   // Get chip color based on token count (for visual feedback)
-  const getTokenColor = (tokens: number | null) => {
+  const getTokenColor = (tokens: number | null): ChipProps['color'] => {
     if (!tokens) return 'default';
     if (tokens > 5000) return 'error';
     if (tokens > 2000) return 'warning';
