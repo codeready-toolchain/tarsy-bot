@@ -722,6 +722,75 @@ class HistoryService:
             return repo.get_filter_options()
 
     # Maintenance Operations
+    def _cleanup_orphaned_stages_for_session(self, repo: 'HistoryRepository', session_id: str) -> int:
+        """
+        Mark all non-terminal stages in a session as failed.
+        
+        This is a helper method called when cleaning up orphaned sessions to ensure
+        that all stages that were in progress or pending are also marked as failed.
+        
+        Args:
+            repo: History repository instance 
+            session_id: Session ID to cleanup stages for
+            
+        Returns:
+            Number of stages marked as failed
+        """
+        from sqlmodel import select
+        from tarsy.models.db_models import StageExecution
+        from tarsy.models.constants import StageStatus
+        
+        try:
+            # Get all stages for this session that are not already in terminal states
+            stages_stmt = (
+                select(StageExecution)
+                .where(StageExecution.session_id == session_id)
+                .where(StageExecution.status.in_([
+                    StageStatus.PENDING.value, 
+                    StageStatus.ACTIVE.value
+                ]))
+            )
+            active_stages = repo.session.exec(stages_stmt).all()
+            
+            if not active_stages:
+                logger.debug(f"No active stages found for session {session_id}")
+                return 0
+            
+            stage_cleanup_count = 0
+            current_time = now_us()
+            
+            for stage in active_stages:
+                try:
+                    # Update stage to failed status
+                    stage.status = StageStatus.FAILED.value
+                    stage.error_message = "Session terminated due to backend restart"
+                    stage.completed_at_us = current_time
+                    
+                    # Calculate duration if stage was started
+                    if stage.started_at_us and stage.completed_at_us:
+                        stage.duration_ms = int((stage.completed_at_us - stage.started_at_us) / 1000)
+                    
+                    # Update the stage execution
+                    success = repo.update_stage_execution(stage)
+                    if success:
+                        stage_cleanup_count += 1
+                        logger.debug(f"Marked orphaned stage {stage.stage_id} (index {stage.stage_index}) as failed for session {session_id}")
+                    else:
+                        logger.warning(f"Failed to update orphaned stage {stage.stage_id} for session {session_id}")
+                        
+                except Exception as stage_update_error:
+                    logger.error(f"Error updating stage {stage.stage_id} for session {session_id}: {str(stage_update_error)}")
+                    continue
+            
+            if stage_cleanup_count > 0:
+                logger.debug(f"Cleaned up {stage_cleanup_count} orphaned stages for session {session_id}")
+            
+            return stage_cleanup_count
+            
+        except Exception as e:
+            logger.error(f"Failed to cleanup stages for session {session_id}: {str(e)}")
+            return 0
+
     def cleanup_orphaned_sessions(self) -> int:
         """
         Clean up sessions that were left in active states due to unexpected backend shutdown.
@@ -771,6 +840,13 @@ class HistoryService:
                         
                         success = repo.update_alert_session(session)
                         if success:
+                            # Also mark all stages in this session as failed
+                            try:
+                                self._cleanup_orphaned_stages_for_session(repo, session.session_id)
+                            except Exception as stage_error:
+                                logger.warning(f"Failed to cleanup stages for session {session.session_id}: {str(stage_error)}")
+                                # Continue with session cleanup even if stage cleanup fails
+                            
                             cleanup_count += 1
                             logger.debug(f"Marked orphaned session {session.session_id} as failed")
                         else:

@@ -1267,6 +1267,80 @@ async def test_cleanup_orphaned_sessions():
     )
     mock_repo.update_alert_session.return_value = True
     
+    # Mock stage data for the orphaned sessions
+    from tarsy.models.db_models import StageExecution
+    from tarsy.models.constants import StageStatus
+    
+    mock_orphaned_stages = [
+        # Stages for orphaned-pending-1 session
+        StageExecution(
+            execution_id="stage-1-pending",
+            session_id="orphaned-pending-1",
+            stage_id="initial-analysis",
+            stage_index=0,
+            stage_name="Initial Analysis",
+            agent="KubernetesAgent",
+            status=StageStatus.PENDING.value,
+            started_at_us=None,
+            completed_at_us=None
+        ),
+        # Stages for orphaned-progress-1 session 
+        StageExecution(
+            execution_id="stage-2-active",
+            session_id="orphaned-progress-1",
+            stage_id="initial-analysis",
+            stage_index=0,
+            stage_name="Initial Analysis",
+            agent="KubernetesAgent", 
+            status=StageStatus.ACTIVE.value,
+            started_at_us=1640995200000000,
+            completed_at_us=None
+        ),
+        StageExecution(
+            execution_id="stage-3-pending",
+            session_id="orphaned-progress-1",
+            stage_id="deep-analysis",
+            stage_index=1,
+            stage_name="Deep Analysis",
+            agent="KubernetesAgent",
+            status=StageStatus.PENDING.value,
+            started_at_us=None,
+            completed_at_us=None
+        )
+    ]
+    
+    # Track which session we're currently processing for more targeted stage mocking
+    session_stage_mapping = {
+        "orphaned-pending-1": [stage for stage in mock_orphaned_stages if stage.session_id == "orphaned-pending-1"],
+        "orphaned-progress-1": [stage for stage in mock_orphaned_stages if stage.session_id == "orphaned-progress-1"]
+    }
+    
+    current_session_context = []
+    
+    # Mock repository's session.exec method for stage queries 
+    def mock_session_exec(stmt):
+        mock_result = Mock()
+        # Use a simple approach: return stages for the session being processed
+        # Since the test executes sequentially, we can track the order
+        if len(current_session_context) == 0:
+            # First call - return stages for first session
+            current_session_context.append("orphaned-pending-1")
+            stages = session_stage_mapping["orphaned-pending-1"]
+        elif len(current_session_context) == 1:
+            # Second call - return stages for second session
+            current_session_context.append("orphaned-progress-1")
+            stages = session_stage_mapping["orphaned-progress-1"]
+        else:
+            # No more stages
+            stages = []
+        
+        mock_result.all.return_value = stages
+        return mock_result
+    
+    mock_repo.session = Mock()
+    mock_repo.session.exec.side_effect = mock_session_exec
+    mock_repo.update_stage_execution.return_value = True
+    
     # Mock get_alert_session to return existing AlertSession objects for each session_id
     def mock_get_alert_session(session_id):
         # Find the corresponding session from our test data
@@ -1311,6 +1385,27 @@ async def test_cleanup_orphaned_sessions():
         assert updated_session.status == AlertSessionStatus.FAILED.value
         assert updated_session.error_message == "Backend was restarted - session terminated unexpectedly"
         assert updated_session.completed_at_us is not None
+    
+    # Verify that stages were also updated
+    # We should have 3 stage updates (1 from orphaned-pending-1, 2 from orphaned-progress-1)
+    assert mock_repo.update_stage_execution.call_count == 3
+    
+    # Verify stage update calls - check that all stages were marked as failed
+    stage_update_calls = mock_repo.update_stage_execution.call_args_list
+    updated_stages = [call[0][0] for call in stage_update_calls]
+    
+    for updated_stage in updated_stages:
+        assert updated_stage.status == StageStatus.FAILED.value
+        assert updated_stage.error_message == "Session terminated due to backend restart"
+        assert updated_stage.completed_at_us is not None
+        
+        # Verify duration was calculated for stages that had started_at_us
+        if updated_stage.started_at_us is not None:
+            assert updated_stage.duration_ms is not None
+            assert updated_stage.duration_ms >= 0
+    
+    # Verify the session.exec was called to query stages
+    assert mock_repo.session.exec.call_count == 2  # Once per orphaned session
 
 
 @pytest.mark.asyncio
