@@ -1634,6 +1634,10 @@ class TestHistoryServiceTokenAggregations:
         
         # Create mock detailed session with token data
         mock_detailed_session = Mock()
+        # Set session-level token aggregation properties to None to force stage-level calculation
+        mock_detailed_session.session_input_tokens = None
+        mock_detailed_session.session_output_tokens = None
+        mock_detailed_session.session_total_tokens = None
         
         # Create stages with token data
         stage1 = Mock()
@@ -1689,6 +1693,11 @@ class TestHistoryServiceTokenAggregations:
         
         # Mock detailed session with stages but no token data
         mock_detailed_session = Mock()
+        # Set session-level token aggregation properties to None to force stage-level calculation
+        mock_detailed_session.session_input_tokens = None
+        mock_detailed_session.session_output_tokens = None
+        mock_detailed_session.session_total_tokens = None
+        
         stage1 = Mock()
         stage1.stage_input_tokens = None
         stage1.stage_output_tokens = None
@@ -1758,6 +1767,10 @@ class TestHistoryServiceTokenAggregations:
         
         # Create detailed session with edge case token data
         mock_detailed_session = Mock()
+        # Set session-level token aggregation properties to None to force stage-level calculation
+        mock_detailed_session.session_input_tokens = None
+        mock_detailed_session.session_output_tokens = None
+        mock_detailed_session.session_total_tokens = None
         
         # Stage with large token numbers
         stage1 = Mock()

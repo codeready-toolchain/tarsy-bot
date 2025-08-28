@@ -12,7 +12,13 @@ interface InteractionCountBadgesProps {
  * Extracted to reduce duplication between timeline components
  */
 function InteractionCountBadges({ stage }: InteractionCountBadgesProps) {
-  if (stage.llm_interaction_count === 0 && stage.mcp_communication_count === 0) {
+  const hasTokens =
+    stage.stage_total_tokens != null ||
+    stage.stage_input_tokens != null ||
+    stage.stage_output_tokens != null;
+  if (stage.llm_interaction_count === 0 &&
+      stage.mcp_communication_count === 0 &&
+      !hasTokens) {
     return null;
   }
 
@@ -61,7 +67,7 @@ function InteractionCountBadges({ stage }: InteractionCountBadgesProps) {
       )}
       
       {/* Token usage display */}
-      {(stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens) && (
+      {hasTokens && (
         <Box sx={(theme) => ({ 
           display: 'flex',
           alignItems: 'center',

@@ -10,9 +10,6 @@ import traceback
 import urllib3
 from typing import Any, Dict, List, Optional, Tuple
 
-# Suppress SSL warnings when SSL verification is disabled
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -26,6 +23,9 @@ from tarsy.hooks.typed_context import llm_interaction_context
 from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
+
+# Suppress SSL warnings when SSL verification is disabled
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Setup logger for this module
 logger = get_module_logger(__name__)

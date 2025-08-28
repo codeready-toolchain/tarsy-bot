@@ -70,9 +70,10 @@ function TokenUsageDisplay({
     return (
       <Chip
         size={size === 'large' ? 'medium' : size}
-        label={hasInputOutput ? 
-          `${formatTokensCompact(inputTokens)} • ${formatTokensCompact(outputTokens)} = ${formatTokensCompact(totalTokens)}` : 
-          '—'
+        label={
+          hasInputOutput
+            ? `${formatTokensCompact(inputTokens)} • ${formatTokensCompact(outputTokens)} = ${formatTokensCompact(totalTokens)}`
+            : formatTokensCompact(totalTokens)
         }
         color={color === 'default' ? getTokenColor(totalTokens) : color}
         variant="outlined"
@@ -148,15 +149,19 @@ function TokenUsageDisplay({
               {formatTokensCompact(totalTokens)}
             </Typography>
           </>
-        ) : (
-          <Typography 
-            variant="caption" 
-            color="text.secondary"
-            sx={{ 
+        ) : totalTokens !== null ? (
+          <Typography
+            variant="caption"
+            sx={{
               fontSize: size === 'small' ? '0.7rem' : '0.75rem',
-              fontWeight: 500 
+              fontWeight: 700,
+              color: totalTokens > 5000 ? 'error.main' : totalTokens > 2000 ? 'warning.main' : 'text.primary',
             }}
           >
+            {formatTokensCompact(totalTokens)}
+          </Typography>
+        ) : (
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: size === 'small' ? '0.7rem' : '0.75rem', fontWeight: 500 }}>
             —
           </Typography>
         )}
@@ -228,12 +233,24 @@ function TokenUsageDisplay({
               {formatTokensCompact(totalTokens)}
             </Typography>
           </>
+        ) : totalTokens ? (
+          <Typography
+            variant="caption"
+            sx={{
+              fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+              fontWeight: 700,
+              color: totalTokens > 5000 ? 'error.main' : 
+                     totalTokens > 2000 ? 'warning.main' : 'text.primary'
+            }}
+          >
+            {formatTokensCompact(totalTokens)}
+          </Typography>
         ) : (
           <Typography 
             variant="caption" 
-            color="text.secondary"
+            color="text.secondary" 
             sx={{ 
-              fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+              fontSize: size === 'small' ? '0.7rem' : '0.75rem', 
               fontWeight: 500 
             }}
           >

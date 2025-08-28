@@ -76,16 +76,22 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
       </TableCell>
       <TableCell>
         {/* EP-0009: Display session token totals */}
-        <TokenUsageDisplay
-          tokenData={{
-            input_tokens: session.session_input_tokens,
-            output_tokens: session.session_output_tokens,
-            total_tokens: session.session_total_tokens
-          }}
-          variant="inline"
-          size="small"
-          showBreakdown={false}
-        />
+        {(session.session_total_tokens != null ||
+          session.session_input_tokens != null ||
+          session.session_output_tokens != null) ? (
+          <TokenUsageDisplay
+            tokenData={{
+              input_tokens: session.session_input_tokens,
+              output_tokens: session.session_output_tokens,
+              total_tokens: session.session_total_tokens
+            }}
+            variant="inline"
+            size="small"
+            showBreakdown={false}
+          />
+        ) : (
+          <Typography variant="body2" color="text.secondary">-</Typography>
+        )}
       </TableCell>
       <TableCell sx={{ width: 60, textAlign: 'center' }}>
         <Tooltip title="Open in new tab">

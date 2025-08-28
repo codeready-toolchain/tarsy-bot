@@ -253,7 +253,7 @@ function StageConversationCard({
                 )}
                 
                 {/* Token usage chip */}
-                {(stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens) && (
+                {(stage.stage_total_tokens != null || stage.stage_input_tokens != null || stage.stage_output_tokens != null) && (
                   <TokenUsageDisplay
                     tokenData={{
                       input_tokens: stage.stage_input_tokens,
@@ -424,6 +424,11 @@ export default React.memo(StageConversationCard, (prevProps, nextProps) => {
     prevStage.completed_at_us === nextStage.completed_at_us &&
     prevStage.duration_ms === nextStage.duration_ms &&
     prevStage.started_at_us === nextStage.started_at_us &&
-    prevStage.errorMessage === nextStage.errorMessage
+    prevStage.errorMessage === nextStage.errorMessage &&
+    
+    // Token fields
+    prevStage.stage_total_tokens === nextStage.stage_total_tokens &&
+    prevStage.stage_input_tokens === nextStage.stage_input_tokens &&
+    prevStage.stage_output_tokens === nextStage.stage_output_tokens
   );
 });

@@ -14,6 +14,7 @@ import {
   ListItemIcon,
   Divider,
   Button,
+  alpha,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -90,6 +91,9 @@ const StageCard: React.FC<StageCardProps> = ({
   const stageInteractions = [...(stage.llm_interactions || []), ...(stage.mcp_communications || [])].sort((a, b) => a.timestamp_us - b.timestamp_us);
   const hasInteractions = stageInteractions.length > 0;
   const hasOutput = stage.stage_output !== null && stage.stage_output !== undefined;
+  const hasTokenData =
+    [stage.stage_input_tokens, stage.stage_output_tokens, stage.stage_total_tokens]
+      .some((v) => v !== null && v !== undefined);
   const hasError =
     stage.error_message != null &&
     String(stage.error_message).trim().length > 0;
@@ -196,7 +200,7 @@ const StageCard: React.FC<StageCardProps> = ({
         )}
 
         {/* Quick stats */}
-        {!expanded && (hasInteractions || hasOutput || (stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens)) && (
+        {!expanded && (hasInteractions || hasOutput || hasTokenData) && (
           <Box display="flex" gap={1} mt={1} flexWrap="wrap">
             {hasInteractions && (
               <Chip
@@ -216,7 +220,7 @@ const StageCard: React.FC<StageCardProps> = ({
               />
             )}
             {/* EP-0009: Stage token usage chip in collapsed view */}
-            {(stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens) && (
+            {hasTokenData && (
               <TokenUsageDisplay
                 tokenData={{
                   input_tokens: stage.stage_input_tokens,
@@ -343,19 +347,19 @@ const StageCard: React.FC<StageCardProps> = ({
                     )}
                     
                     {/* EP-0009: Stage token usage display */}
-                    {(stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens) && (
-                      <Box sx={{ 
+                    {hasTokenData && (
+                      <Box sx={(theme) => ({ 
                         display: 'flex',
                         alignItems: 'center',
                         gap: 0.25,
                         px: 0.75,
                         py: 0.25,
-                        backgroundColor: 'success.50',
+                        backgroundColor: alpha(theme.palette.success.main, 0.08),
                         borderRadius: '12px',
                         border: '1px solid',
-                        borderColor: 'success.200'
-                      }}>
-                        <Typography variant="caption" sx={{ fontWeight: 600, color: 'success.main', fontSize: '0.65rem' }}>
+                        borderColor: alpha(theme.palette.success.main, 0.3)
+                      })}>
+                        <Typography variant="caption" sx={(theme) => ({ fontWeight: 600, color: theme.palette.success.main, fontSize: '0.65rem' })}>
                           🪙
                         </Typography>
                         <TokenUsageDisplay

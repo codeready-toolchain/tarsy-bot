@@ -11,7 +11,7 @@ from typing import List, Optional
 from enum import Enum
 from sqlmodel import Column, Field, SQLModel, Index
 from sqlalchemy import JSON, TypeDecorator
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from tarsy.utils.timestamp import now_us
 
 
@@ -133,9 +133,24 @@ class LLMInteraction(SQLModel, table=True):
     )
     
     # NEW: Token usage tracking fields
-    input_tokens: Optional[int] = Field(None, description="Input/prompt tokens")
-    output_tokens: Optional[int] = Field(None, description="Output/completion tokens")  
-    total_tokens: Optional[int] = Field(None, description="Total tokens used")
+    input_tokens: Optional[int] = Field(None, ge=0, description="Input/prompt tokens")
+    output_tokens: Optional[int] = Field(None, ge=0, description="Output/completion tokens")  
+    total_tokens: Optional[int] = Field(None, ge=0, description="Total tokens used")
+    
+    @model_validator(mode="after")
+    def validate_token_consistency(self):
+        """Validate and ensure consistency of token fields."""
+        if self.input_tokens is not None and self.output_tokens is not None:
+            computed_total = self.input_tokens + self.output_tokens
+            
+            if self.total_tokens is None:
+                # Set total_tokens if not provided
+                self.total_tokens = computed_total
+            elif self.total_tokens != computed_total:
+                # Normalize to computed value if inconsistent
+                self.total_tokens = computed_total
+        
+        return self
 
 class MCPInteraction(SQLModel, table=True):
     """

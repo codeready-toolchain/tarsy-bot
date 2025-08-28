@@ -6,11 +6,20 @@ aggregate token usage from LLM interactions.
 """
 
 import pytest
-from unittest.mock import Mock
 
-from tarsy.models.history_models import DetailedStage, SessionStats, ChainStatistics, LLMTimelineEvent
-from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
 from tarsy.models.constants import StageStatus
+from tarsy.models.history_models import (
+    ChainStatistics,
+    DetailedStage,
+    LLMTimelineEvent,
+    SessionStats,
+)
+from tarsy.models.unified_interactions import (
+    LLMConversation,
+    LLMInteraction,
+    LLMMessage,
+    MessageRole,
+)
 
 
 @pytest.mark.unit

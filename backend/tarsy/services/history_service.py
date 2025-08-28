@@ -453,21 +453,31 @@ class HistoryService:
                     if session_overview.started_at_us and session_overview.completed_at_us:
                         total_duration_ms = (session_overview.completed_at_us - session_overview.started_at_us) // 1000
                     
-                    # Calculate token usage aggregations from all stages
+                    # Calculate token usage aggregations - prefer repository-provided session totals
                     session_input_tokens = 0
                     session_output_tokens = 0
                     session_total_tokens = 0
 
-                    # Get detailed stages to calculate token sums
+                    # Get detailed session to access either aggregated totals or stage details
                     detailed_session = repo.get_session_details(session_id) 
                     if detailed_session:
-                        for stage in detailed_session.stages:
-                            if stage.stage_input_tokens:
-                                session_input_tokens += stage.stage_input_tokens
-                            if stage.stage_output_tokens: 
-                                session_output_tokens += stage.stage_output_tokens
-                            if stage.stage_total_tokens:
-                                session_total_tokens += stage.stage_total_tokens
+                        # Check if aggregated session totals are available
+                        if (detailed_session.session_input_tokens is not None and 
+                            detailed_session.session_output_tokens is not None and 
+                            detailed_session.session_total_tokens is not None):
+                            # Use the repository-provided aggregated session totals
+                            session_input_tokens = detailed_session.session_input_tokens
+                            session_output_tokens = detailed_session.session_output_tokens
+                            session_total_tokens = detailed_session.session_total_tokens
+                        else:
+                            # Fall back to manual per-stage summation if aggregates are missing
+                            for stage in detailed_session.stages:
+                                if stage.stage_input_tokens:
+                                    session_input_tokens += stage.stage_input_tokens
+                                if stage.stage_output_tokens: 
+                                    session_output_tokens += stage.stage_output_tokens
+                                if stage.stage_total_tokens:
+                                    session_total_tokens += stage.stage_total_tokens
                     
                     # Create chain statistics from SessionOverview
                     chain_stats = ChainStatistics(

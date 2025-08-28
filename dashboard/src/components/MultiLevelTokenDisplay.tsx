@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { Box, Typography, Card, CardContent, Stack, Divider } from '@mui/material';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import type { TokenUsageData } from './TokenUsageDisplay';
-import type { Session, StageExecution, InteractionDetail } from '../types';
+import type { Session, StageExecution, InteractionDetail, LLMInteractionDetail } from '../types';
 
 export interface MultiLevelTokenDisplayProps {
   session?: Session;
@@ -37,17 +37,18 @@ function MultiLevelTokenDisplay({
     total_tokens: session?.session_total_tokens
   };
 
-  // Check if we have any token data to display
-  const hasSessionTokens = sessionTokens.total_tokens || sessionTokens.input_tokens || sessionTokens.output_tokens;
-  const hasStageTokens = stages.some(stage => 
+  // Pre-filter LLM interactions to avoid repeated filtering
+  const llmInteractions = interactions.filter(i => i.type === 'llm');
+
+  // Check if we have any token data to display with explicit boolean coercion
+  const hasSessionTokens = !!(sessionTokens.total_tokens || sessionTokens.input_tokens || sessionTokens.output_tokens);
+  const hasStageTokens = !!stages.some(stage => 
     stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens
   );
-  const hasInteractionTokens = interactions.some(interaction => 
-    interaction.type === 'llm' && (
-      interaction.details.total_tokens || 
-      interaction.details.input_tokens || 
-      interaction.details.output_tokens
-    )
+  const hasInteractionTokens = llmInteractions.some(interaction => 
+    !!(interaction.details.total_tokens || 
+       interaction.details.input_tokens || 
+       interaction.details.output_tokens)
   );
 
   // If no token data anywhere, don't render anything
@@ -118,15 +119,14 @@ function MultiLevelTokenDisplay({
             Individual Interactions
           </Typography>
           <Stack spacing={0.5}>
-            {interactions
-              .filter(interaction => interaction.type === 'llm')
+            {llmInteractions
               .slice(0, maxInteractionsToShow)
-              .map((interaction, index) => {
-                const llmDetails = interaction.details as any; // Type assertion for LLM details
+              .map((interaction: LLMInteractionDetail, index: number) => {
+                const details = interaction.details;
                 const interactionTokens: TokenUsageData = {
-                  input_tokens: llmDetails.input_tokens,
-                  output_tokens: llmDetails.output_tokens,
-                  total_tokens: llmDetails.total_tokens
+                  input_tokens: details.input_tokens,
+                  output_tokens: details.output_tokens,
+                  total_tokens: details.total_tokens
                 };
 
                 // Only show interactions that have token data
@@ -141,7 +141,7 @@ function MultiLevelTokenDisplay({
                       variant="compact"
                       size="small"
                       showBreakdown={false}
-                      label={`Interaction ${index + 1} (${llmDetails.model_name})`}
+                      label={`Interaction ${index + 1} (${details.model_name})`}
                       color="info"
                     />
                   </Box>
@@ -149,9 +149,9 @@ function MultiLevelTokenDisplay({
               })}
             
             {/* Show indicator if there are more interactions */}
-            {interactions.filter(i => i.type === 'llm').length > maxInteractionsToShow && (
+            {llmInteractions.length > maxInteractionsToShow && (
               <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', mt: 0.5 }}>
-                ... and {interactions.filter(i => i.type === 'llm').length - maxInteractionsToShow} more interactions
+                ... and {llmInteractions.length - maxInteractionsToShow} more interactions
               </Typography>
             )}
           </Stack>

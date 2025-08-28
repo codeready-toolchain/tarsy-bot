@@ -266,7 +266,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
 
                     # Get realistic token usage for this interaction
                     # Use correct OpenAI API field names: prompt_tokens, completion_tokens, total_tokens
-                    mock_usage = token_usage_map.get(total_interactions)
+                    mock_usage = token_usage_map.get(total_interactions, {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0})
                     usage_data = {
                         "prompt_tokens": mock_usage["input_tokens"],
                         "completion_tokens": mock_usage["output_tokens"], 

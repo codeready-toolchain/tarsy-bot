@@ -23,9 +23,9 @@ export interface Session {
   current_stage_index: number | null;
   
   // NEW: Session-level token aggregations (EP-0009)
-  session_input_tokens?: number;
-  session_output_tokens?: number;  
-  session_total_tokens?: number;
+  session_input_tokens: number | null;
+  session_output_tokens: number | null;  
+  session_total_tokens: number | null;
 }
 
 // Phase 5: Interaction summary for stages
@@ -65,9 +65,9 @@ export interface StageExecution {
   chronological_interactions: InteractionDetail[];
   
   // NEW: Stage-level token aggregations (EP-0009)
-  stage_input_tokens?: number;
-  stage_output_tokens?: number;
-  stage_total_tokens?: number;
+  stage_input_tokens?: number | null;
+  stage_output_tokens?: number | null;
+  stage_total_tokens?: number | null;
 }
 
 // Updated detailed session for EP-0010 (DetailedSession model)

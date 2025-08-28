@@ -231,8 +231,7 @@ class DetailedStage(BaseModel):
         """Sum of input tokens from all LLM interactions in this stage"""
         total = sum(
             interaction.details.input_tokens or 0 
-            for interaction in self.llm_interactions 
-            if interaction.details.input_tokens
+            for interaction in self.llm_interactions
         )
         return total if total > 0 else None
 
@@ -242,8 +241,7 @@ class DetailedStage(BaseModel):
         """Sum of output tokens from all LLM interactions in this stage"""
         total = sum(
             interaction.details.output_tokens or 0 
-            for interaction in self.llm_interactions 
-            if interaction.details.output_tokens
+            for interaction in self.llm_interactions
         )
         return total if total > 0 else None
 
@@ -253,8 +251,7 @@ class DetailedStage(BaseModel):
         """Sum of total tokens from all LLM interactions in this stage"""
         total = sum(
             interaction.details.total_tokens or 0 
-            for interaction in self.llm_interactions 
-            if interaction.details.total_tokens
+            for interaction in self.llm_interactions
         )
         return total if total > 0 else None
     
