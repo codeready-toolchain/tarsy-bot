@@ -24,6 +24,10 @@ export interface StageConversation {
   started_at_us?: number;
   completed_at_us?: number;
   errorMessage?: string;
+  // Token usage aggregations
+  stage_input_tokens?: number;
+  stage_output_tokens?: number;
+  stage_total_tokens?: number;
 }
 
 export interface ParsedSession {
@@ -360,7 +364,11 @@ export function parseStageConversation(stage: StageExecution): StageConversation
     duration_ms: stage.duration_ms ?? undefined,
     started_at_us: stage.started_at_us ?? undefined,
     completed_at_us: stage.completed_at_us ?? undefined,
-    errorMessage: stage.error_message ?? undefined
+    errorMessage: stage.error_message ?? undefined,
+    // Token usage aggregations
+    stage_input_tokens: stage.stage_input_tokens ?? undefined,
+    stage_output_tokens: stage.stage_output_tokens ?? undefined,
+    stage_total_tokens: stage.stage_total_tokens ?? undefined
   };
 }
 

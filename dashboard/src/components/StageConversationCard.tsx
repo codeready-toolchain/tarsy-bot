@@ -21,6 +21,7 @@ import type { StageConversation } from '../utils/conversationParser';
 import ConversationStep from './ConversationStep';
 import CopyButton from './CopyButton';
 import TypingIndicator from './TypingIndicator';
+import TokenUsageDisplay from './TokenUsageDisplay';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 
 export interface StageConversationCardProps {
@@ -248,6 +249,20 @@ function StageConversationCard({
                     variant="outlined"
                     color="error"
                     sx={{ height: 22, fontSize: '0.75rem' }}
+                  />
+                )}
+                
+                {/* Token usage chip */}
+                {(stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens) && (
+                  <TokenUsageDisplay
+                    tokenData={{
+                      input_tokens: stage.stage_input_tokens,
+                      output_tokens: stage.stage_output_tokens,
+                      total_tokens: stage.stage_total_tokens
+                    }}
+                    variant="badge"
+                    size="small"
+                    color="success"
                   />
                 )}
               </Box>

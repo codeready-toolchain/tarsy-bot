@@ -27,6 +27,7 @@ import {
   Timeline as TimelineIcon,
   Info,
 } from '@mui/icons-material';
+import TokenUsageDisplay from './TokenUsageDisplay';
 import type { StageCardProps, TimelineItem } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 
@@ -195,8 +196,8 @@ const StageCard: React.FC<StageCardProps> = ({
         )}
 
         {/* Quick stats */}
-        {!expanded && (hasInteractions || hasOutput) && (
-          <Box display="flex" gap={1} mt={1}>
+        {!expanded && (hasInteractions || hasOutput || (stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens)) && (
+          <Box display="flex" gap={1} mt={1} flexWrap="wrap">
             {hasInteractions && (
               <Chip
                 icon={<TimelineIcon />}
@@ -212,6 +213,19 @@ const StageCard: React.FC<StageCardProps> = ({
                 size="small"
                 variant="outlined"
                 color="primary"
+              />
+            )}
+            {/* EP-0009: Stage token usage chip in collapsed view */}
+            {(stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens) && (
+              <TokenUsageDisplay
+                tokenData={{
+                  input_tokens: stage.stage_input_tokens,
+                  output_tokens: stage.stage_output_tokens,
+                  total_tokens: stage.stage_total_tokens
+                }}
+                variant="badge"
+                size="small"
+                color="success"
               />
             )}
           </Box>
@@ -325,6 +339,34 @@ const StageCard: React.FC<StageCardProps> = ({
                         <Typography variant="caption" color="secondary.main" sx={{ fontSize: '0.65rem' }}>
                           MCP
                         </Typography>
+                      </Box>
+                    )}
+                    
+                    {/* EP-0009: Stage token usage display */}
+                    {(stage.stage_total_tokens || stage.stage_input_tokens || stage.stage_output_tokens) && (
+                      <Box sx={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.25,
+                        px: 0.75,
+                        py: 0.25,
+                        backgroundColor: 'success.50',
+                        borderRadius: '12px',
+                        border: '1px solid',
+                        borderColor: 'success.200'
+                      }}>
+                        <Typography variant="caption" sx={{ fontWeight: 600, color: 'success.main', fontSize: '0.65rem' }}>
+                          🪙
+                        </Typography>
+                        <TokenUsageDisplay
+                          tokenData={{
+                            input_tokens: stage.stage_input_tokens,
+                            output_tokens: stage.stage_output_tokens,
+                            total_tokens: stage.stage_total_tokens
+                          }}
+                          variant="inline"
+                          size="small"
+                        />
                       </Box>
                     )}
                   </Box>

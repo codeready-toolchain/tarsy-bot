@@ -76,6 +76,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
     { field: 'agent_type', label: 'Agent Chain' },
     { field: 'started_at_us', label: 'Time' },
     { field: 'duration_ms', label: 'Duration' },
+    { field: 'session_total_tokens', label: 'Tokens' }, // EP-0009: Add token column
   ];
 
   return (
@@ -154,7 +155,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
               <TableBody>
                 {sessions.length === 0 ? (
                   <TableRow key="empty-state">
-                    <TableCell colSpan={6} align="center">
+                    <TableCell colSpan={7} align="center">
                       <Box sx={{ py: 6, textAlign: 'center' }}>
                         {/* Phase 4: Different empty states for filtered vs unfiltered */}
                         {filters && hasActiveFilters(filters) ? (

@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import StatusBadge from './StatusBadge';
 import ProgressIndicator from './ProgressIndicator';
+import TokenUsageDisplay from './TokenUsageDisplay';
 import { formatTimestamp } from '../utils/timestamp';
 import type { SessionHeaderProps } from '../types';
 
@@ -41,7 +42,11 @@ const MAX_SUMMARY_LENGTH = 300;
 /**
  * Renders session summary with proper statistics display or fallback to JSON
  */
-function SessionSummary({ summary, sessionStatus }: { summary: any, sessionStatus: string }) {
+function SessionSummary({ summary, sessionStatus, sessionTokens }: { 
+  summary: any, 
+  sessionStatus: string, 
+  sessionTokens?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } 
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Check if summary is empty or just whitespace
@@ -201,6 +206,28 @@ function SessionSummary({ summary, sessionStatus }: { summary: any, sessionStatu
                </Typography>
                <Typography variant="caption" color="info.main">
                  stages
+               </Typography>
+             </Box>
+           )}
+           
+           {/* EP-0009: Token usage badge */}
+           {sessionTokens && (sessionTokens.total_tokens || sessionTokens.input_tokens || sessionTokens.output_tokens) && (
+             <Box sx={{ 
+               display: 'flex',
+               alignItems: 'center',
+               gap: 0.5,
+               px: 1,
+               py: 0.5,
+               backgroundColor: 'success.50',
+               borderRadius: '16px',
+               border: '1px solid',
+               borderColor: 'success.200'
+             }}>
+               <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.main' }}>
+                 🪙 {isInProgress ? '...' : (sessionTokens.total_tokens?.toLocaleString() || '—')}
+               </Typography>
+               <Typography variant="caption" color="success.main">
+                 tokens
                </Typography>
              </Box>
            )}
@@ -420,8 +447,31 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                   failed_stages: session.failed_stages || 0
                 } : undefined
               }} 
-              sessionStatus={session.status} 
+              sessionStatus={session.status}
+              sessionTokens={{
+                input_tokens: session.session_input_tokens,
+                output_tokens: session.session_output_tokens,
+                total_tokens: session.session_total_tokens
+              }}
             />
+          )}
+          
+          {/* EP-0009: Detailed token breakdown - only show if we have token data */}
+          {(session.session_total_tokens || session.session_input_tokens || session.session_output_tokens) && (
+            <Box sx={{ mt: 2 }}>
+              <TokenUsageDisplay
+                tokenData={{
+                  input_tokens: session.session_input_tokens,
+                  output_tokens: session.session_output_tokens,
+                  total_tokens: session.session_total_tokens
+                }}
+                variant="detailed"
+                size="medium"
+                showBreakdown={true}
+                label="Session Token Usage"
+                color="success"
+              />
+            </Box>
           )}
         </Box>
       </Box>

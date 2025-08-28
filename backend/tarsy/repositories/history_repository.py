@@ -409,11 +409,31 @@ class HistoryRepository:
                 mcp_results = self.session.exec(mcp_count_query).all()
                 mcp_counts = {result.session_id: result.count for result in mcp_results}
                 
+                # Calculate token usage aggregations for each session (EP-0009)
+                token_query = select(
+                    LLMInteraction.session_id,
+                    func.sum(LLMInteraction.input_tokens).label('input_tokens'),
+                    func.sum(LLMInteraction.output_tokens).label('output_tokens'),
+                    func.sum(LLMInteraction.total_tokens).label('total_tokens')
+                ).where(LLMInteraction.session_id.in_(session_ids)).group_by(LLMInteraction.session_id)
+                token_results = self.session.exec(token_query).all()
+                token_sums = {
+                    result.session_id: {
+                        'input_tokens': result.input_tokens,
+                        'output_tokens': result.output_tokens, 
+                        'total_tokens': result.total_tokens
+                    } for result in token_results
+                }
+                
                 # Combine counts for each session
                 for session_id in session_ids:
+                    tokens = token_sums.get(session_id, {})
                     interaction_counts[session_id] = {
                         'llm_interactions': llm_counts.get(session_id, 0),
-                        'mcp_communications': mcp_counts.get(session_id, 0)
+                        'mcp_communications': mcp_counts.get(session_id, 0),
+                        'input_tokens': tokens.get('input_tokens'),
+                        'output_tokens': tokens.get('output_tokens'),
+                        'total_tokens': tokens.get('total_tokens')
                     }
             
             session_overviews = []
@@ -441,6 +461,11 @@ class HistoryRepository:
                     llm_interaction_count=llm_count,
                     mcp_communication_count=mcp_count,
                     total_interactions=llm_count + mcp_count,
+                    
+                    # Token usage aggregations (EP-0009)
+                    session_input_tokens=session_counts.get('input_tokens'),
+                    session_output_tokens=session_counts.get('output_tokens'),
+                    session_total_tokens=session_counts.get('total_tokens'),
                     
                     # Chain progress info
                     chain_id=alert_session.chain_id,
@@ -592,6 +617,24 @@ class HistoryRepository:
             total_llm = len(llm_interactions_db)
             total_mcp = len(mcp_communications_db)
             
+            # Calculate session-level token aggregations from stages
+            session_input_tokens = 0
+            session_output_tokens = 0
+            session_total_tokens = 0
+            
+            for stage in detailed_stages:
+                if stage.stage_input_tokens:
+                    session_input_tokens += stage.stage_input_tokens
+                if stage.stage_output_tokens: 
+                    session_output_tokens += stage.stage_output_tokens
+                if stage.stage_total_tokens:
+                    session_total_tokens += stage.stage_total_tokens
+            
+            # Use None instead of 0 for cleaner display
+            session_input_tokens = session_input_tokens if session_input_tokens > 0 else None
+            session_output_tokens = session_output_tokens if session_output_tokens > 0 else None  
+            session_total_tokens = session_total_tokens if session_total_tokens > 0 else None
+            
             # Create DetailedSession
             return DetailedSession(
                 # Core session data
@@ -619,6 +662,11 @@ class HistoryRepository:
                 total_interactions=total_llm + total_mcp,
                 llm_interaction_count=total_llm,
                 mcp_communication_count=total_mcp,
+                
+                # Token usage aggregations
+                session_input_tokens=session_input_tokens,
+                session_output_tokens=session_output_tokens,
+                session_total_tokens=session_total_tokens,
                 
                 # Complete stage executions with interactions
                 stages=detailed_stages
@@ -708,6 +756,18 @@ class HistoryRepository:
             total_llm = sum(counts.get('llm_interactions', 0) for counts in stage_interaction_counts.values())
             total_mcp = sum(counts.get('mcp_communications', 0) for counts in stage_interaction_counts.values())
             
+            # Calculate token usage aggregations for this session (EP-0009)
+            token_query = select(
+                func.sum(LLMInteraction.input_tokens).label('input_tokens'),
+                func.sum(LLMInteraction.output_tokens).label('output_tokens'),
+                func.sum(LLMInteraction.total_tokens).label('total_tokens')
+            ).where(LLMInteraction.session_id == session_id)
+            token_result = self.session.exec(token_query).first()
+            
+            session_input_tokens = token_result.input_tokens if token_result else None
+            session_output_tokens = token_result.output_tokens if token_result else None
+            session_total_tokens = token_result.total_tokens if token_result else None
+            
             # Calculate stage statistics
             completed_stages = len([stage for stage in stage_executions_db if stage.status == StageStatus.COMPLETED.value])
             failed_stages = len([stage for stage in stage_executions_db if stage.status == StageStatus.FAILED.value])
@@ -732,6 +792,11 @@ class HistoryRepository:
                 llm_interaction_count=total_llm,
                 mcp_communication_count=total_mcp,
                 total_interactions=total_llm + total_mcp,
+                
+                # Token usage aggregations
+                session_input_tokens=session_input_tokens,
+                session_output_tokens=session_output_tokens,
+                session_total_tokens=session_total_tokens,
                 
                 # Chain progress info (for dashboard filtering/display)
                 chain_id=session.chain_id,

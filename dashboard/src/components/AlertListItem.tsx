@@ -2,6 +2,7 @@ import React from 'react';
 import { TableRow, TableCell, Typography, IconButton, Tooltip } from '@mui/material';
 import { OpenInNew } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
+import TokenUsageDisplay from './TokenUsageDisplay';
 import { highlightSearchTermNodes } from '../utils/search';
 import type { AlertListItemProps } from '../types';
 import { formatTimestamp, formatDurationMs, formatDuration } from '../utils/timestamp';
@@ -72,6 +73,19 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
           {typeof duration === 'string' ? duration : 
            duration !== null ? formatDurationMs(duration) : '-'}
         </Typography>
+      </TableCell>
+      <TableCell>
+        {/* EP-0009: Display session token totals */}
+        <TokenUsageDisplay
+          tokenData={{
+            input_tokens: session.session_input_tokens,
+            output_tokens: session.session_output_tokens,
+            total_tokens: session.session_total_tokens
+          }}
+          variant="inline"
+          size="small"
+          showBreakdown={false}
+        />
       </TableCell>
       <TableCell sx={{ width: 60, textAlign: 'center' }}>
         <Tooltip title="Open in new tab">

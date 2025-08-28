@@ -16,7 +16,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.messages.ai import UsageMetadata
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_xai import ChatXAI
@@ -196,9 +195,14 @@ class LLMClient:
                 
                 # Store token usage in dedicated type-safe fields on interaction
                 if usage_metadata:
-                    ctx.interaction.input_tokens = usage_metadata.get('input_tokens')
-                    ctx.interaction.output_tokens = usage_metadata.get('output_tokens')
-                    ctx.interaction.total_tokens = usage_metadata.get('total_tokens')
+                    input_tokens = usage_metadata.get('input_tokens', 0)
+                    output_tokens = usage_metadata.get('output_tokens', 0)
+                    total_tokens = usage_metadata.get('total_tokens', 0)
+                    
+                    # Store token data (use None instead of 0 for cleaner database storage)
+                    ctx.interaction.input_tokens = input_tokens if input_tokens > 0 else None
+                    ctx.interaction.output_tokens = output_tokens if output_tokens > 0 else None
+                    ctx.interaction.total_tokens = total_tokens if total_tokens > 0 else None
                 
                 # Extract response content
                 response_content = response.content if hasattr(response, 'content') else str(response)
@@ -233,7 +237,7 @@ class LLMClient:
         self, 
         langchain_messages: List, 
         max_retries: int = 3
-    ) -> Tuple[Any, Optional[UsageMetadata]]:
+    ) -> Tuple[Any, Optional[Dict[str, Any]]]:
         """Execute LLM call with usage tracking and retry logic."""
         for attempt in range(max_retries + 1):
             try:
@@ -265,8 +269,21 @@ class LLMClient:
                             error_message = f"⚠️ **LLM Response Error**\n\nThe {self.provider_name} LLM returned an empty response on the final attempt (attempt {attempt + 1}/{max_retries + 1}). This may be due to:\n- Temporary provider issues\n- API rate limiting\n- Model overload\n\nPlease try processing this alert again in a few moments."
                             response.content = error_message
                 
-                # Return both response and usage metadata
-                return response, callback.usage_metadata
+                # Return both response and usage metadata from first model
+                usage_metadata = None
+                if callback.usage_metadata:
+                    # Log the entire usage_metadata object for debugging
+                    logger.info(f"Complete usage_metadata object: {pprint.pformat(callback.usage_metadata, width=100, depth=5)}")
+                    
+                    # Extract the first (and likely only) model's usage metadata
+                    first_model_name = next(iter(callback.usage_metadata.keys()), None)
+                    if first_model_name:
+                        model_usage = callback.usage_metadata[first_model_name]
+                        if isinstance(model_usage, dict):
+                            # Create a simple UsageMetadata-like object
+                            usage_metadata = model_usage
+                
+                return response, usage_metadata
                 
             except Exception as e:
                 error_str = str(e).lower()

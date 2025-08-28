@@ -477,12 +477,11 @@ function TokenUsageDisplay({ session, stages, interactions }) {
 ## Implementation Plan
 
 ### Phase 1: Core Token Capture
-1. **Database Migration**: Add `input_tokens`, `output_tokens`, `total_tokens` columns to `llm_interactions` table
-2. **LLM Client Updates**: 
+1. **LLM Client Updates**: 
    - Add imports: `UsageMetadataCallbackHandler`, `UsageMetadata`
    - Update `_execute_with_retry()` to return `Tuple[Any, Optional[UsageMetadata]]`
    - Update `generate_response()` to capture and store token data in `ctx.interaction`
-3. **Model Updates**: Add token fields to `LLMInteraction` in `unified_interactions.py`
+2. **Model Updates**: Add token fields to `LLMInteraction` in `unified_interactions.py`
 
 ### Phase 2: Backend Aggregations  
 1. **Stage Aggregations**: Add computed fields to `DetailedStage` model:

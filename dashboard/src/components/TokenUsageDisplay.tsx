@@ -1,0 +1,351 @@
+import { memo } from 'react';
+import { Box, Typography, Chip, Stack } from '@mui/material';
+
+// Token usage data interface
+export interface TokenUsageData {
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+}
+
+export interface TokenUsageDisplayProps {
+  tokenData: TokenUsageData;
+  variant?: 'compact' | 'detailed' | 'inline' | 'badge';
+  size?: 'small' | 'medium' | 'large';
+  showBreakdown?: boolean;
+  label?: string;
+  color?: 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'info';
+}
+
+/**
+ * TokenUsageDisplay component - EP-0009 Phase 3
+ * Reusable component for displaying token usage at any aggregation level
+ */
+function TokenUsageDisplay({
+  tokenData,
+  variant = 'detailed',
+  size = 'medium',
+  showBreakdown = true,
+  label,
+  color = 'default'
+}: TokenUsageDisplayProps) {
+  
+  // Extract token values, defaulting to null if undefined
+  const totalTokens = tokenData.total_tokens ?? null;
+  const inputTokens = tokenData.input_tokens ?? null;
+  const outputTokens = tokenData.output_tokens ?? null;
+
+  // If no token data available, don't render anything
+  if (!totalTokens && !inputTokens && !outputTokens) {
+    return null;
+  }
+
+  // Format numbers with locale-specific formatting
+  const formatTokens = (tokens: number | null): string => {
+    if (tokens === null || tokens === undefined) return '—';
+    return tokens.toLocaleString();
+  };
+
+  // Format numbers in compact form (K notation) for better readability
+  const formatTokensCompact = (tokens: number | null): string => {
+    if (tokens === null || tokens === undefined) return '—';
+    if (tokens >= 1000) {
+      return (tokens / 1000).toFixed(1) + 'K';
+    }
+    return tokens.toString();
+  };
+
+  // Get chip color based on token count (for visual feedback)
+  const getTokenColor = (tokens: number | null) => {
+    if (!tokens) return 'default';
+    if (tokens > 5000) return 'error';
+    if (tokens > 2000) return 'warning';
+    if (tokens > 1000) return 'info';
+    return 'success';
+  };
+
+  // Badge variant - simple chip display
+  if (variant === 'badge') {
+    const hasInputOutput = inputTokens || outputTokens;
+    return (
+      <Chip
+        size={size === 'large' ? 'medium' : size}
+        label={hasInputOutput ? 
+          `${formatTokensCompact(inputTokens)} • ${formatTokensCompact(outputTokens)} = ${formatTokensCompact(totalTokens)}` : 
+          '—'
+        }
+        color={color === 'default' ? getTokenColor(totalTokens) : color}
+        variant="outlined"
+        sx={{ 
+          fontSize: size === 'small' ? '0.75rem' : undefined,
+          fontWeight: 600 
+        }}
+      />
+    );
+  }
+
+  // Inline variant - minimal text display
+  if (variant === 'inline') {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+        {label && (
+          <Typography 
+            variant="caption" 
+            color="text.secondary"
+            sx={{ 
+              fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+              fontWeight: 500 
+            }}
+          >
+            {label}:
+          </Typography>
+        )}
+        {(inputTokens || outputTokens) ? (
+          <>
+            <Typography 
+              variant="caption"
+              sx={{ 
+                fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+                fontWeight: 600,
+                color: 'info.main'
+              }}
+            >
+              {formatTokensCompact(inputTokens)}
+            </Typography>
+            <Typography 
+              variant="caption" 
+              color="text.disabled"
+              sx={{ fontSize: size === 'small' ? '0.65rem' : '0.7rem' }}
+            >
+              •
+            </Typography>
+            <Typography 
+              variant="caption"
+              sx={{ 
+                fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+                fontWeight: 600,
+                color: 'success.main'
+              }}
+            >
+              {formatTokensCompact(outputTokens)}
+            </Typography>
+            <Typography 
+              variant="caption" 
+              color="text.disabled"
+              sx={{ fontSize: size === 'small' ? '0.65rem' : '0.7rem' }}
+            >
+              =
+            </Typography>
+            <Typography 
+              variant="caption"
+              sx={{ 
+                fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+                fontWeight: 700,
+                color: totalTokens && totalTokens > 5000 ? 'error.main' : 
+                       totalTokens && totalTokens > 2000 ? 'warning.main' : 'text.primary'
+              }}
+            >
+              {formatTokensCompact(totalTokens)}
+            </Typography>
+          </>
+        ) : (
+          <Typography 
+            variant="caption" 
+            color="text.secondary"
+            sx={{ 
+              fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+              fontWeight: 500 
+            }}
+          >
+            —
+          </Typography>
+        )}
+      </Box>
+    );
+  }
+
+  // Compact variant - single line with full breakdown
+  if (variant === 'compact') {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        {label && (
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              fontWeight: 600,
+              fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+              color: 'text.secondary' 
+            }}
+          >
+            {label}:
+          </Typography>
+        )}
+        {(inputTokens || outputTokens) ? (
+          <>
+            <Typography 
+              variant="caption"
+              sx={{ 
+                fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+                fontWeight: 600,
+                color: 'info.main'
+              }}
+            >
+              {formatTokensCompact(inputTokens)}
+            </Typography>
+            <Typography 
+              variant="caption" 
+              color="text.disabled"
+              sx={{ fontSize: size === 'small' ? '0.65rem' : '0.7rem' }}
+            >
+              •
+            </Typography>
+            <Typography 
+              variant="caption"
+              sx={{ 
+                fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+                fontWeight: 600,
+                color: 'success.main'
+              }}
+            >
+              {formatTokensCompact(outputTokens)}
+            </Typography>
+            <Typography 
+              variant="caption" 
+              color="text.disabled"
+              sx={{ fontSize: size === 'small' ? '0.65rem' : '0.7rem' }}
+            >
+              =
+            </Typography>
+            <Typography 
+              variant="caption"
+              sx={{ 
+                fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+                fontWeight: 700,
+                color: totalTokens && totalTokens > 5000 ? 'error.main' : 
+                       totalTokens && totalTokens > 2000 ? 'warning.main' : 'text.primary'
+              }}
+            >
+              {formatTokensCompact(totalTokens)}
+            </Typography>
+          </>
+        ) : (
+          <Typography 
+            variant="caption" 
+            color="text.secondary"
+            sx={{ 
+              fontSize: size === 'small' ? '0.7rem' : '0.75rem',
+              fontWeight: 500 
+            }}
+          >
+            —
+          </Typography>
+        )}
+      </Box>
+    );
+  }
+
+  // Detailed variant - full breakdown with styling
+  return (
+    <Box>
+      {label && (
+        <Typography 
+          variant="subtitle2" 
+          sx={{ 
+            fontWeight: 600, 
+            mb: 1,
+            fontSize: size === 'small' ? '0.8rem' : undefined,
+            color: 'text.secondary'
+          }}
+        >
+          {label}
+        </Typography>
+      )}
+      
+      <Stack 
+        direction={size === 'small' ? 'column' : 'row'} 
+        spacing={size === 'small' ? 0.5 : 2} 
+        flexWrap="wrap"
+        alignItems={size === 'small' ? 'flex-start' : 'center'}
+      >
+        {/* Total tokens - primary display */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography 
+            variant="body2" 
+            color="text.secondary"
+            sx={{ 
+              fontSize: size === 'small' ? '0.75rem' : undefined,
+              fontWeight: 500 
+            }}
+          >
+            <strong>Total:</strong>
+          </Typography>
+          <Typography 
+            variant="body2"
+            sx={{ 
+              fontWeight: 600,
+              fontSize: size === 'small' ? '0.8rem' : '0.875rem',
+              color: totalTokens && totalTokens > 2000 ? 'warning.main' : 'text.primary'
+            }}
+          >
+            {formatTokens(totalTokens)}
+          </Typography>
+        </Box>
+
+        {/* Input/Output breakdown */}
+        {showBreakdown && (inputTokens || outputTokens) && (
+          <>
+            {inputTokens !== null && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{ 
+                    fontSize: size === 'small' ? '0.75rem' : undefined 
+                  }}
+                >
+                  <strong>Input:</strong>
+                </Typography>
+                <Typography 
+                  variant="body2" 
+                  color="info.main"
+                  sx={{ 
+                    fontSize: size === 'small' ? '0.8rem' : undefined,
+                    fontWeight: 500 
+                  }}
+                >
+                  {formatTokens(inputTokens)}
+                </Typography>
+              </Box>
+            )}
+
+            {outputTokens !== null && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{ 
+                    fontSize: size === 'small' ? '0.75rem' : undefined 
+                  }}
+                >
+                  <strong>Output:</strong>
+                </Typography>
+                <Typography 
+                  variant="body2" 
+                  color="success.main"
+                  sx={{ 
+                    fontSize: size === 'small' ? '0.8rem' : undefined,
+                    fontWeight: 500 
+                  }}
+                >
+                  {formatTokens(outputTokens)}
+                </Typography>
+              </Box>
+            )}
+          </>
+        )}
+      </Stack>
+    </Box>
+  );
+}
+
+export default memo(TokenUsageDisplay);

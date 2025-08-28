@@ -9,6 +9,7 @@ import {
 import type { LLMInteraction, MCPInteraction, SystemEvent, LLMMessage } from '../types';
 import CopyButton from './CopyButton';
 import JsonDisplay from './JsonDisplay';
+import TokenUsageDisplay from './TokenUsageDisplay';
 
 interface InteractionDetailsProps {
   type: 'llm' | 'mcp' | 'system';
@@ -17,7 +18,7 @@ interface InteractionDetailsProps {
 }
 
 /**
- * InteractionDetails component - Phase 5
+ * InteractionDetails component
  * Expandable detailed view of LLM/MCP interactions with copy functionality
  */
 function InteractionDetails({ 
@@ -32,7 +33,7 @@ function InteractionDetails({
            (mcpDetails.communication_type === 'tool_call' && mcpDetails.tool_name === 'list_tools');
   };
 
-  // EP-0014: Helper to get messages array from either new conversation or legacy messages field
+  // Helper to get messages array from either new conversation or legacy messages field
   const getMessages = (llm: LLMInteraction): LLMMessage[] => {
     // Try new conversation field first (EP-0014)
     if (llm.conversation?.messages) {
@@ -45,11 +46,7 @@ function InteractionDetails({
     return [];
   };
 
-
-
-
-
-  // EP-0014: New function to render all conversation messages in sequence
+  // Function to render all conversation messages in sequence
   const renderConversationMessages = (llm: LLMInteraction) => {
     const messages = getMessages(llm);
     
@@ -250,21 +247,34 @@ function InteractionDetails({
         <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
           Model Information
         </Typography>
-        <Stack direction="row" spacing={2} flexWrap="wrap">
+        <Stack direction="row" spacing={2} flexWrap="wrap" alignItems="center">
           <Typography variant="body2" color="text.secondary">
             <strong>Model:</strong> {llmDetails.model_name}
           </Typography>
-          {llmDetails.total_tokens && (
-            <Typography variant="body2" color="text.secondary">
-              <strong>Tokens:</strong> {llmDetails.total_tokens.toLocaleString()}
-            </Typography>
-          )}
           {llmDetails.temperature !== undefined && (
             <Typography variant="body2" color="text.secondary">
               <strong>Temperature:</strong> {llmDetails.temperature}
             </Typography>
           )}
         </Stack>
+        
+        {/* EP-0009: Compact token usage display for space efficiency */}
+        {(llmDetails.total_tokens || llmDetails.input_tokens || llmDetails.output_tokens) && (
+          <Box sx={{ mt: 1.5 }}>
+            <TokenUsageDisplay
+              tokenData={{
+                input_tokens: llmDetails.input_tokens,
+                output_tokens: llmDetails.output_tokens,
+                total_tokens: llmDetails.total_tokens
+              }}
+              variant="compact"
+              size="small"
+              showBreakdown={true}
+              label="Tokens"
+              color="info"
+            />
+          </Box>
+        )}
       </Box>
     </Stack>
   );
