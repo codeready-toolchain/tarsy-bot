@@ -4,7 +4,7 @@ MCP client using the official MCP SDK for integration with MCP servers.
 
 import json
 from contextlib import AsyncExitStack
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -14,6 +14,12 @@ from tarsy.hooks.typed_context import mcp_interaction_context, mcp_list_context
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.utils.logger import get_module_logger
+from tarsy.utils.token_counter import TokenCounter
+from tarsy.utils.timestamp import now_us
+
+if TYPE_CHECKING:
+    from tarsy.integrations.mcp.summarizer import MCPResultSummarizer
+    from tarsy.models.unified_interactions import LLMConversation
 
 # Setup logger for this module
 logger = get_module_logger(__name__)
@@ -25,10 +31,13 @@ mcp_comm_logger = get_module_logger("mcp.communications")
 class MCPClient:
     """MCP client using the official MCP SDK."""
     
-    def __init__(self, settings: Settings, mcp_registry: Optional[MCPServerRegistry] = None):
+    def __init__(self, settings: Settings, mcp_registry: Optional[MCPServerRegistry] = None, 
+                 summarizer: Optional['MCPResultSummarizer'] = None):
         self.settings = settings
         self.mcp_registry = mcp_registry or MCPServerRegistry()
         self.data_masking_service = DataMaskingService(self.mcp_registry) if mcp_registry else None
+        self.summarizer = summarizer  # Optional agent-provided summarizer
+        self.token_counter = TokenCounter()  # For size threshold detection
         self.sessions: Dict[str, ClientSession] = {}
         self.exit_stack = AsyncExitStack()
         self._initialized = False
@@ -164,14 +173,87 @@ class MCPClient:
             
             return all_tools
     
-    async def call_tool(self, server_name: str, tool_name: str, parameters: Dict[str, Any], session_id: str, stage_execution_id: Optional[str] = None) -> Dict[str, Any]:
-        """Call a specific tool on an MCP server.
+    async def _maybe_summarize_result(
+        self, 
+        server_name: str, 
+        tool_name: str, 
+        result: Dict[str, Any], 
+        investigation_conversation: 'LLMConversation',
+        session_id: str,
+        stage_execution_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Apply summarization if result exceeds size threshold.
+        
+        Args:
+            server_name: Name of the MCP server
+            tool_name: Name of the tool that produced the result
+            result: The original tool result dictionary
+            investigation_conversation: The ongoing ReAct conversation for context
+            session_id: Session ID for tracking
+            stage_execution_id: Optional stage execution ID
+            
+        Returns:
+            Either the original result or a summarized version if threshold exceeded
+        """
+        
+        if not self.summarizer:
+            return result
+        
+        # Get server-specific configuration
+        server_config = self.mcp_registry.get_server_config_safe(server_name)
+        if not server_config or not hasattr(server_config, 'summarization'):
+            return result
+        
+        summarization_config = getattr(server_config, 'summarization', None)
+        if not summarization_config or not getattr(summarization_config, 'enabled', True):
+            return result
+        
+        # Check size threshold
+        size_threshold = getattr(summarization_config, 'size_threshold_tokens', 2000)
+        estimated_tokens = self.token_counter.estimate_observation_tokens(server_name, tool_name, result)
+        
+        if estimated_tokens <= size_threshold:
+            logger.debug(f"Result size {estimated_tokens} tokens below threshold {size_threshold} for {server_name}.{tool_name}")
+            return result
+        
+        try:
+            # Get max summary tokens from server configuration
+            max_summary_tokens = getattr(summarization_config, 'summary_max_token_limit', 1000)
+            
+            logger.info(f"Summarizing large MCP result: {server_name}.{tool_name} ({estimated_tokens} tokens)")
+            summarized = await self.summarizer.summarize_result(
+                server_name, tool_name, result, investigation_conversation, 
+                session_id, stage_execution_id, max_summary_tokens
+            )
+            
+            # Add metadata about summarization
+            if isinstance(summarized, dict):
+                summarized['_summarized'] = {
+                    'original_tokens': estimated_tokens,
+                    'threshold': size_threshold,
+                    'summarized_at': now_us()
+                }
+            
+            logger.info(f"Successfully summarized {server_name}.{tool_name} from {estimated_tokens} to ~{max_summary_tokens} tokens")
+            return summarized
+            
+        except Exception as e:
+            logger.error(f"Failed to summarize MCP result {server_name}.{tool_name}: {e}")
+            # Return error message as result for graceful degradation
+            return {
+                "result": f"Error: Failed to summarize large result ({estimated_tokens} tokens). Summarization error: {str(e)}"
+            }
+
+    async def call_tool(self, server_name: str, tool_name: str, parameters: Dict[str, Any], session_id: str, stage_execution_id: Optional[str] = None, investigation_conversation: Optional['LLMConversation'] = None) -> Dict[str, Any]:
+        """Call a specific tool on an MCP server with optional investigation context for summarization.
         
         Args:
             server_name: Name of the MCP server
             tool_name: Name of the tool to call
             parameters: Parameters to pass to the tool
             session_id: Required session ID for timeline logging and tracking
+            stage_execution_id: Optional stage execution ID
+            investigation_conversation: Optional ReAct conversation for context-aware summarization
         """
         if not self._initialized:
             await self.initialize()
@@ -222,7 +304,14 @@ class MCPClient:
                         # Continue with unmasked response rather than failing the entire call
                         logger.warning("Continuing with unmasked response for server: %s", server_name)
                 
-                # Log the successful response (after masking)
+                # Apply summarization AFTER data masking (if investigation context available)
+                if investigation_conversation:
+                    response_dict = await self._maybe_summarize_result(
+                        server_name, tool_name, response_dict, investigation_conversation, 
+                        session_id, stage_execution_id
+                    )
+                
+                # Log the successful response (after masking and optional summarization)
                 self._log_mcp_response(server_name, tool_name, response_dict, request_id)
                 
                 # Update the interaction with result data

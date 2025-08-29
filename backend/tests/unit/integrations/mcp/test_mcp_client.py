@@ -12,6 +12,8 @@ import pytest
 
 from tarsy.config.settings import Settings
 from tarsy.integrations.mcp.client import MCPClient
+from tarsy.integrations.mcp.summarizer import MCPResultSummarizer
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 
@@ -428,3 +430,193 @@ class TestMCPClientIntegration:
             mock_registry.get_all_server_ids.assert_called()
             mock_session.list_tools.assert_called_once()
             mock_session.call_tool.assert_called_once_with("integration_tool", {"test": "param"})
+
+
+@pytest.mark.unit
+class TestMCPClientSummarization:
+    """Test MCP client summarization functionality."""
+    
+    @pytest.fixture
+    def mock_settings(self):
+        """Mock settings."""
+        return Mock(spec=Settings)
+    
+    @pytest.fixture
+    def mock_registry_with_summarization(self):
+        """Mock MCP server registry with summarization config."""
+        registry = Mock(spec=MCPServerRegistry)
+        registry.get_all_server_ids.return_value = ["test-server"]
+        
+        # Mock server config with summarization enabled
+        server_config = Mock()
+        server_config.enabled = True
+        server_config.connection_params = {"command": "test", "args": []}
+        
+        # Mock summarization config
+        summarization_config = Mock()
+        summarization_config.enabled = True
+        summarization_config.size_threshold_tokens = 100  # Low threshold for testing
+        summarization_config.summary_max_token_limit = 50
+        server_config.summarization = summarization_config
+        
+        registry.get_server_config_safe.return_value = server_config
+        return registry
+    
+    @pytest.fixture
+    def mock_summarizer(self):
+        """Mock summarizer."""
+        summarizer = Mock(spec=MCPResultSummarizer)
+        # Mock summarizer to return shortened result
+        async def mock_summarize(*args, **kwargs):
+            return {"result": "Summarized: Large data truncated"}
+        
+        summarizer.summarize_result = AsyncMock(side_effect=mock_summarize)
+        return summarizer
+    
+    @pytest.fixture
+    def sample_conversation(self):
+        """Create a sample investigation conversation."""
+        return LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are an SRE investigating alerts"),
+            LLMMessage(role=MessageRole.USER, content="Investigate the pod failures"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="I need to check the pod status")
+        ])
+
+    @pytest.mark.asyncio
+    async def test_call_tool_with_summarization_large_result(self, mock_settings, mock_registry_with_summarization, mock_summarizer, sample_conversation):
+        """Test call_tool applies summarization for large results."""
+        client = MCPClient(mock_settings, mock_registry_with_summarization, mock_summarizer)
+        
+        # Mock data masking service to avoid mocking issues
+        mock_masking = Mock()
+        mock_masking.mask_response.return_value = {"result": "x" * 1000}  # Return large unmasked result
+        client.data_masking_service = mock_masking
+        
+        # Create large result that exceeds the low threshold
+        large_result = {"result": "x" * 1000}  # Large result to trigger summarization
+        
+        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
+             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
+             patch('tarsy.hooks.typed_context.mcp_interaction_context') as mock_interaction_context:
+            
+            # Setup mocks
+            mock_session = AsyncMock()
+            mock_session.call_tool.return_value = Mock(content=large_result["result"])
+            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
+            mock_client_session.return_value.__aenter__.return_value = mock_session
+            
+            mock_ctx = AsyncMock()
+            mock_ctx.get_request_id.return_value = "test-req-123"
+            mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
+            
+            await client.initialize()
+            
+            # Call tool with investigation conversation
+            result = await client.call_tool(
+                "test-server", 
+                "test-tool", 
+                {"param": "value"}, 
+                "test-session",
+                "test-stage",
+                sample_conversation
+            )
+            
+            # Verify summarization was called
+            mock_summarizer.summarize_result.assert_called_once()
+            
+            # Verify result structure includes summarization metadata
+            assert "result" in result
+            assert result["result"] == "Summarized: Large data truncated"
+            assert "_summarized" in result
+            assert "original_tokens" in result["_summarized"]
+            assert "threshold" in result["_summarized"]
+            assert "summarized_at" in result["_summarized"]
+
+    @pytest.mark.asyncio
+    async def test_call_tool_without_summarization_small_result(self, mock_settings, mock_registry_with_summarization, mock_summarizer, sample_conversation):
+        """Test call_tool skips summarization for small results."""
+        client = MCPClient(mock_settings, mock_registry_with_summarization, mock_summarizer)
+        
+        # Mock data masking service to return small result unchanged
+        mock_masking = Mock()
+        mock_masking.mask_response.return_value = {"result": "small"}
+        client.data_masking_service = mock_masking
+        
+        # Create small result that doesn't exceed threshold
+        small_result = {"result": "small"}
+        
+        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
+             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
+             patch('tarsy.hooks.typed_context.mcp_interaction_context') as mock_interaction_context:
+            
+            # Setup mocks
+            mock_session = AsyncMock()
+            mock_session.call_tool.return_value = Mock(content=small_result["result"])
+            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
+            mock_client_session.return_value.__aenter__.return_value = mock_session
+            
+            mock_ctx = AsyncMock()
+            mock_ctx.get_request_id.return_value = "test-req-456"
+            mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
+            
+            await client.initialize()
+            
+            # Call tool with investigation conversation
+            result = await client.call_tool(
+                "test-server", 
+                "test-tool", 
+                {"param": "value"}, 
+                "test-session",
+                "test-stage",
+                sample_conversation
+            )
+            
+            # Verify summarization was NOT called
+            mock_summarizer.summarize_result.assert_not_called()
+            
+            # Verify original result is returned
+            assert result["result"] == "small"
+            assert "_summarized" not in result
+
+    @pytest.mark.asyncio
+    async def test_call_tool_without_investigation_conversation(self, mock_settings, mock_registry_with_summarization, mock_summarizer):
+        """Test call_tool skips summarization without investigation conversation."""
+        client = MCPClient(mock_settings, mock_registry_with_summarization, mock_summarizer)
+        
+        # Mock data masking service to return large result unchanged
+        mock_masking = Mock()
+        mock_masking.mask_response.return_value = {"result": "x" * 1000}
+        client.data_masking_service = mock_masking
+        
+        large_result = {"result": "x" * 1000}  # Large result
+        
+        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
+             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
+             patch('tarsy.hooks.typed_context.mcp_interaction_context') as mock_interaction_context:
+            
+            # Setup mocks
+            mock_session = AsyncMock()
+            mock_session.call_tool.return_value = Mock(content=large_result["result"])
+            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
+            mock_client_session.return_value.__aenter__.return_value = mock_session
+            
+            mock_ctx = AsyncMock()
+            mock_ctx.get_request_id.return_value = "test-req-789"
+            mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
+            
+            await client.initialize()
+            
+            # Call tool WITHOUT investigation conversation
+            result = await client.call_tool(
+                "test-server", 
+                "test-tool", 
+                {"param": "value"}, 
+                "test-session"
+            )
+            
+            # Verify summarization was NOT called
+            mock_summarizer.summarize_result.assert_not_called()
+            
+            # Verify original large result is returned
+            assert result["result"] == "x" * 1000
+            assert "_summarized" not in result

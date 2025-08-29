@@ -894,7 +894,7 @@ def create_agent(self, agent_type: str, **kwargs) -> BaseAgent:
 
 **Verification:** Full test suite passes, performance improvements are measurable, configuration examples work.
 
-### **Phase 6: Performance Monitoring**
+### **Phase 6: Dashboard Integration**
 
 **Dashboard Integration**
  - Ensure summarization interactions appear in timeline
