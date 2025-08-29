@@ -7,6 +7,7 @@ from tarsy.models.agent_config import (
     AgentConfigModel,
     CombinedConfigModel,
     MCPServerConfigModel,
+    SummarizationConfig,
 )
 from tarsy.models.constants import IterationStrategy
 
@@ -535,4 +536,110 @@ class TestCombinedConfigModel:
         error_msg = str(errors[0]["msg"])
         # Should reference the first missing agent found
         assert "missing configurable agent" in error_msg
-        assert ("missing-agent-1" in error_msg or "missing-agent-2" in error_msg) 
+        assert ("missing-agent-1" in error_msg or "missing-agent-2" in error_msg)
+
+
+@pytest.mark.unit 
+class TestSummarizationConfig:
+    """Test cases for SummarizationConfig validation."""
+    
+    def test_valid_summarization_config_defaults(self):
+        """Test valid summarization config with default values."""
+        config = SummarizationConfig()
+        
+        assert config.enabled is True
+        assert config.size_threshold_tokens == 2000
+        assert config.summary_max_token_limit == 1000
+    
+    def test_valid_summarization_config_custom_values(self):
+        """Test valid summarization config with custom values."""
+        config_data = {
+            "enabled": False,
+            "size_threshold_tokens": 5000,
+            "summary_max_token_limit": 500
+        }
+        
+        config = SummarizationConfig(**config_data)
+        
+        assert config.enabled is False
+        assert config.size_threshold_tokens == 5000
+        assert config.summary_max_token_limit == 500
+    
+    def test_summarization_config_minimum_thresholds(self):
+        """Test that minimum threshold validation works."""
+        # Test minimum size_threshold_tokens
+        config = SummarizationConfig(size_threshold_tokens=100)
+        assert config.size_threshold_tokens == 100
+        
+        # Test minimum summary_max_token_limit
+        config = SummarizationConfig(summary_max_token_limit=50)
+        assert config.summary_max_token_limit == 50
+    
+    def test_summarization_config_below_minimum_thresholds(self):
+        """Test validation errors for values below minimum thresholds."""
+        with pytest.raises(ValidationError) as exc_info:
+            SummarizationConfig(size_threshold_tokens=50)  # Below minimum of 100
+        
+        errors = exc_info.value.errors()
+        assert len(errors) == 1
+        assert "greater than or equal to 100" in str(errors[0]["msg"])
+        
+        with pytest.raises(ValidationError) as exc_info:
+            SummarizationConfig(summary_max_token_limit=25)  # Below minimum of 50
+            
+        errors = exc_info.value.errors()
+        assert len(errors) == 1
+        assert "greater than or equal to 50" in str(errors[0]["msg"])
+    
+    def test_summarization_config_serialization(self):
+        """Test that summarization config can be serialized and deserialized."""
+        original_config = SummarizationConfig(
+            enabled=True,
+            size_threshold_tokens=3000,
+            summary_max_token_limit=800
+        )
+        
+        # Serialize to dict and back
+        config_dict = original_config.model_dump()
+        reconstructed_config = SummarizationConfig(**config_dict)
+        
+        assert reconstructed_config.enabled == original_config.enabled
+        assert reconstructed_config.size_threshold_tokens == original_config.size_threshold_tokens
+        assert reconstructed_config.summary_max_token_limit == original_config.summary_max_token_limit
+    
+    def test_mcp_server_config_with_summarization(self):
+        """Test MCPServerConfigModel includes summarization config with defaults."""
+        server_config_data = {
+            "server_id": "test-server",
+            "server_type": "monitoring", 
+            "connection_params": {"command": "test"},
+        }
+        
+        config = MCPServerConfigModel(**server_config_data)
+        
+        # Should have default summarization config
+        assert config.summarization is not None
+        assert isinstance(config.summarization, SummarizationConfig)
+        assert config.summarization.enabled is True
+        assert config.summarization.size_threshold_tokens == 2000
+        assert config.summarization.summary_max_token_limit == 1000
+    
+    def test_mcp_server_config_with_custom_summarization(self):
+        """Test MCPServerConfigModel with custom summarization config."""
+        server_config_data = {
+            "server_id": "test-server",
+            "server_type": "monitoring",
+            "connection_params": {"command": "test"},
+            "summarization": {
+                "enabled": False,
+                "size_threshold_tokens": 5000,
+                "summary_max_token_limit": 2000
+            }
+        }
+        
+        config = MCPServerConfigModel(**server_config_data)
+        
+        assert config.summarization is not None
+        assert config.summarization.enabled is False
+        assert config.summarization.size_threshold_tokens == 5000
+        assert config.summarization.summary_max_token_limit == 2000 

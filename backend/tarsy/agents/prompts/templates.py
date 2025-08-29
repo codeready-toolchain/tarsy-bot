@@ -10,8 +10,7 @@ from langchain_core.prompts import PromptTemplate
 
 
 # ReAct formatting instructions constant
-REACT_FORMATTING_INSTRUCTIONS = """
-🚨 WARNING: NEVER GENERATE FAKE OBSERVATIONS! 🚨
+REACT_FORMATTING_INSTRUCTIONS = """🚨 WARNING: NEVER GENERATE FAKE OBSERVATIONS! 🚨
 After writing "Action Input:", you MUST stop immediately. The system will provide the "Observation:" for you.
 DO NOT write fake tool results or continue the conversation after "Action Input:"
 
@@ -68,7 +67,7 @@ CRITICAL FORMATTING REQUIREMENTS:
 
 VIOLATION EXAMPLES (DO NOT DO THIS):
 ❌ Action Input: apiVersion=v1, kind=Secret, name=my-secret
-❌ Observation: kubernetes-server.resources_get: {{"result": "..."}} 
+❌ Observation: kubernetes-server.resources_get: {"result": "..."} 
 ❌ Thought: I have retrieved the data...
 
 CORRECT BEHAVIOR:

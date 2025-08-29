@@ -1,5 +1,14 @@
 # EP-0015: MCP Server Tool Call Result Summarization
 
+## Implementation Status 🚧
+
+**✅ COMPLETE: Phase 1** - Prompt System Integration  
+**✅ COMPLETE: Phase 2** - Foundation Components
+**🔄 PENDING: Phase 3** - MCP Client Integration  
+**🔄 PENDING: Phase 4** - Agent Integration  
+**🔄 PENDING: Phase 5** - Configuration and Testing  
+**🔄 PENDING: Phase 6** - Performance Monitoring  
+
 ## Problem Statement
 
 Large MCP Server tool call results cause system bottlenecks in the **conversation flow**:
@@ -23,17 +32,19 @@ Implement **agent-provided summarization** of large MCP results after data maski
 2. **Security-First**: Data masking applied before summarization to protect sensitive data
 3. **Pre-Storage Summarization**: MCP Client calls summarizer for large masked results before hooks save to database
 4. **Context-Aware**: Summarizer has access to investigation conversation and agent's LLM client
-5. **Clean Architecture**: MCP Client remains LLM-agnostic
+5. **Provider-Level Token Control**: Uses LangChain's native `max_tokens` parameter for guaranteed length limits
+6. **Clean Architecture**: MCP Client remains LLM-agnostic
 
 **Target Flow**:
 ```
-Agent → [Pass Summarizer] → MCP Client → [Tool Execution] → [Data Masking] → [Size Check] → [Agent Summarizer] → [Hook System: Summary to DB] → format_observation() → Condensed Observation → LLM Context
+Agent → [Pass Summarizer] → MCP Client → [Tool Execution] → [Data Masking] → [Size Check] → [Agent Summarizer + max_tokens] → [Hook System: Summary to DB] → format_observation() → Condensed Observation → LLM Context
 ```
 
 ## Key Implementation Points
 
-### **1. Size Detection Strategy**
-- **Token-based threshold**: Estimate tokens in MCP result using tiktoken or similar
+### **1. Size Detection & Token Control Strategy**
+- **Token-based threshold**: Estimate tokens in MCP result using tiktoken with model-specific encoding
+- **Provider-level enforcement**: Use LangChain's native `max_tokens` parameter for guaranteed length control
 - **Context window awareness**: Trigger based on actual LLM context consumption
 - **Server-specific configuration**: Different thresholds per MCP server based on output characteristics
 
@@ -117,6 +128,9 @@ class MCPResultSummarizer:
         """
         Summarize a large MCP tool result using LLM with investigation conversation context.
         
+        Uses LangChain's max_tokens parameter to enforce token limits at the provider level,
+        ensuring reliable summarization length control beyond prompt suggestions.
+        
         Args:
             server_name: Name of the MCP server
             tool_name: Name of the tool that produced the result
@@ -124,6 +138,7 @@ class MCPResultSummarizer:
             investigation_conversation: The ongoing ReAct conversation for context
             session_id: Session ID for tracking
             stage_execution_id: Optional stage execution ID
+            max_summary_tokens: Maximum tokens enforced at LLM provider level via max_tokens
             
         Returns:
             Summarized result dictionary with same structure as original
@@ -136,25 +151,26 @@ class MCPResultSummarizer:
             else:
                 result_text = str(result_content)
             
-            # Create new conversation specifically for summarization
-            summarization_conversation = LLMConversation()
-            
             # Use prompt builder to create summarization prompts
             system_prompt = self.prompt_builder.build_mcp_summarization_system_prompt(
                 server_name, tool_name, max_summary_tokens
             )
-            summarization_conversation.append_message(MessageRole.SYSTEM, system_prompt)
+            system_message = LLMMessage(role=MessageRole.SYSTEM, content=system_prompt)
             
             # Serialize conversation context and build user prompt
             conversation_context = self._serialize_conversation_context(investigation_conversation)
             user_prompt = self.prompt_builder.build_mcp_summarization_user_prompt(
                 conversation_context, server_name, tool_name, result_text
             )
-            summarization_conversation.append_message(MessageRole.USER, user_prompt)
+            user_message = LLMMessage(role=MessageRole.USER, content=user_prompt)
             
-            # Generate summary using LLM client (ensures proper hook integration)
+            # Create conversation with both messages (required to start with system message)
+            summarization_conversation = LLMConversation(messages=[system_message, user_message])
+            
+            # Generate summary using LLM client with max_tokens limit (ensures proper hook integration)
+            llm_config = {"max_tokens": max_summary_tokens}
             response_conversation = await self.llm_client.generate_response(
-                summarization_conversation, session_id, stage_execution_id
+                summarization_conversation, session_id, stage_execution_id, llm_config
             )
             
             # Extract summary from response
@@ -405,13 +421,52 @@ def build_mcp_summarization_user_prompt(self, conversation_context: str, server_
     )
 ```
 
-### **3. Token Counting Utility**
+### **3. Enhanced LLM Client for max_tokens Support**
+
+**Location**: `backend/tarsy/integrations/llm/client.py` (enhanced existing file)
+
+**Key Enhancement**: Added optional `llm_config` parameter to enable provider-level token control:
+
+```python
+async def generate_response(
+    self, 
+    conversation: LLMConversation, 
+    session_id: str, 
+    stage_execution_id: Optional[str] = None,
+    llm_config: Optional[Dict[str, Any]] = None  # NEW: Optional LLM configuration
+) -> LLMConversation:
+    """Enhanced with optional LLM configuration for max_tokens and other provider parameters."""
+    
+    # Enhanced _execute_with_retry method:
+    # Build config with callbacks and optional LLM parameters
+    config = {"callbacks": [callback]}
+    if llm_config:
+        config.update(llm_config)  # Add max_tokens and other params
+    
+    response = await self.llm_client.ainvoke(
+        langchain_messages, 
+        config=config  # Provider-level enforcement
+    )
+```
+
+**Benefits:**
+- **Guaranteed Token Limits**: Provider enforces max_tokens, not just prompt suggestions
+- **Universal Support**: Works with OpenAI, Anthropic, XAI, Google providers via LangChain
+- **Cost Control**: Prevents excessive token generation and associated costs
+- **Backward Compatibility**: Existing code unaffected (optional parameter)
+
+### **4. Token Counting Utility**
 
 **Location**: `backend/tarsy/utils/token_counter.py` (new file)
+
+**Dependency**: Added `tiktoken>=0.7.0` to `backend/pyproject.toml` dependencies
 
 ```python
 import tiktoken
 from typing import Any, Dict
+from tarsy.utils.logger import get_module_logger
+
+logger = get_module_logger(__name__)
 
 class TokenCounter:
     """Utility for estimating token counts in text data."""
@@ -719,10 +774,11 @@ def create_agent(self, agent_type: str, **kwargs) -> BaseAgent:
 ### **Phase 2: Foundation Components**
 
 **Deliverables:**
-- Token counting utility
-- MCP result summarizer core implementation
-- Basic configuration models
-- Unit tests for core components
+- Token counting utility with tiktoken integration
+- MCP result summarizer core implementation with LLM max_tokens support
+- Enhanced configuration models with validation
+- Comprehensive unit tests for all components
+- **ENHANCEMENT**: LLM Client max_tokens support for provider-level token control
 
 **Tasks:**
 1. **Create Token Counter Utility** (`backend/tarsy/utils/token_counter.py`)
@@ -746,7 +802,13 @@ def create_agent(self, agent_type: str, **kwargs) -> BaseAgent:
    - Mock LLM client for summarizer testing
    - Configuration validation tests
 
-**Verification:** All new components have isolated unit tests and can be imported without errors.
+5. **Enhanced LLM Client Integration** (`backend/tarsy/integrations/llm/client.py`)
+   - Add optional `llm_config` parameter to `generate_response()` method
+   - Implement provider-level `max_tokens` enforcement via LangChain config
+   - Maintain backward compatibility with existing method signatures
+   - **Depends on**: Existing LLM client infrastructure
+
+**Verification:** All new components have isolated unit tests and can be imported without errors. Enhanced LLM client provides provider-level token control for reliable summarization.
 
 ### **Phase 3: MCP Client Integration**
 
@@ -845,3 +907,4 @@ def create_agent(self, agent_type: str, **kwargs) -> BaseAgent:
 4. **Clean Architecture**: MCP Client remains LLM-agnostic, agents control summarization policy
 5. **Complete Audit Trail**: All summarization LLM interactions properly stored and linked to their MCP interactions
 6. **Transparent Operation**: No breaking changes to existing functionality
+7. **🚀 ENHANCED: Provider-Level Token Control**: Guaranteed token limits via LangChain's native `max_tokens` parameter for precise cost and length control

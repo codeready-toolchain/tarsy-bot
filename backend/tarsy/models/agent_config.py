@@ -132,6 +132,29 @@ class MaskingConfig(BaseModel):
 
 
 # =============================================================================
+# MCP RESULT SUMMARIZATION CONFIGURATION MODELS 
+# =============================================================================
+
+class SummarizationConfig(BaseModel):
+    """Configuration for MCP result summarization."""
+    
+    enabled: bool = Field(
+        default=True,
+        description="Whether summarization is enabled for this server"
+    )
+    size_threshold_tokens: int = Field(
+        default=2000,
+        description="Token threshold above which results will be summarized",
+        ge=100
+    )
+    summary_max_token_limit: int = Field(
+        default=1000,
+        description="Maximum tokens allowed in summary",
+        ge=50
+    )
+
+
+# =============================================================================
 # AGENT CONFIGURATION MODELS
 # =============================================================================
 
@@ -205,6 +228,10 @@ class MCPServerConfigModel(BaseModel):
     data_masking: Optional[MaskingConfig] = Field(
         default=None,
         description="Optional data masking configuration for sensitive server data"
+    )
+    summarization: Optional[SummarizationConfig] = Field(
+        default_factory=lambda: SummarizationConfig(),
+        description="Summarization configuration for large results"
     )
 
 
