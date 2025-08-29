@@ -131,7 +131,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
           // Update other relevant fields from summary
           total_stages: summaryData.chain_statistics?.total_stages || prevSession.total_stages,
           completed_stages: summaryData.chain_statistics?.completed_stages || prevSession.completed_stages,
-          failed_stages: summaryData.chain_statistics?.failed_stages || prevSession.failed_stages
+          failed_stages: summaryData.chain_statistics?.failed_stages || prevSession.failed_stages,
+          // Update token usage fields
+          session_input_tokens: summaryData.session_input_tokens || prevSession.session_input_tokens,
+          session_output_tokens: summaryData.session_output_tokens || prevSession.session_output_tokens,
+          session_total_tokens: summaryData.session_total_tokens || prevSession.session_total_tokens
         };
       });
       
@@ -167,7 +171,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
           stages: sessionData.stages,
           final_analysis: sessionData.final_analysis,
           status: sessionData.status as typeof prevSession.status,
-          error_message: sessionData.error_message
+          error_message: sessionData.error_message,
+          // Update token usage fields from full session data
+          session_input_tokens: sessionData.session_input_tokens ?? prevSession.session_input_tokens,
+          session_output_tokens: sessionData.session_output_tokens ?? prevSession.session_output_tokens,
+          session_total_tokens: sessionData.session_total_tokens ?? prevSession.session_total_tokens
         };
       });
       
