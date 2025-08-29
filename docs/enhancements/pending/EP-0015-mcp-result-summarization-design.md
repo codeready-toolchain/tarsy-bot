@@ -455,6 +455,7 @@ class TokenCounter:
 from tarsy.integrations.mcp.summarizer import MCPResultSummarizer
 from tarsy.utils.token_counter import TokenCounter
 from tarsy.agents.prompts.templates import MCP_SUMMARIZATION_SYSTEM_TEMPLATE, MCP_SUMMARIZATION_USER_TEMPLATE
+from tarsy.utils.timestamp import now_us
 ```
 
 **Changes to `__init__` method**:
@@ -487,11 +488,11 @@ async def _maybe_summarize_result(
         return result
     
     summarization_config = getattr(server_config, 'summarization', None)
-    if not summarization_config or not summarization_config.get('enabled', True):
+    if not summarization_config or not getattr(summarization_config, 'enabled', True):
         return result
     
     # Check size threshold
-    size_threshold = summarization_config.get('size_threshold_tokens', 2000)
+    size_threshold = getattr(summarization_config, 'size_threshold_tokens', 2000)
     estimated_tokens = self.token_counter.estimate_observation_tokens(server_name, tool_name, result)
     
     if estimated_tokens <= size_threshold:
@@ -499,7 +500,7 @@ async def _maybe_summarize_result(
     
     try:
         # Get max summary tokens from server configuration
-        max_summary_tokens = summarization_config.get('summary_max_token_limit', 1000)
+        max_summary_tokens = getattr(summarization_config, 'summary_max_token_limit', 1000)
         
         logger.info(f"Summarizing large MCP result: {server_name}.{tool_name} ({estimated_tokens} tokens)")
         summarized = await self.summarizer.summarize_result(
@@ -512,7 +513,7 @@ async def _maybe_summarize_result(
             summarized['_summarized'] = {
                 'original_tokens': estimated_tokens,
                 'threshold': size_threshold,
-                'summarized_at': f"{datetime.now(UTC).isoformat()}"
+                'summarized_at': now_us()
             }
         
         return summarized
@@ -637,7 +638,7 @@ async def execute_mcp_tools(self, tools_to_call: List[Dict], session_id: str,
                 "tool": tool_name,
                 "parameters": tool_params,
                 "result": result,
-                "timestamp": datetime.now(UTC).isoformat()
+                "timestamp": now_us()
             })
             
         except Exception as e:
