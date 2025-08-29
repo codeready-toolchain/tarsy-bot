@@ -387,4 +387,27 @@ class TestMCPServerRegistryExtended:
         registry = MCPServerRegistry(configured_servers=configured_servers)
         
         server_config = registry.get_server_config("complex-server_v2.0-beta")
-        assert server_config.server_type == "complex" 
+        assert server_config.server_type == "complex"
+
+    def test_builtin_kubernetes_server_default_summarization_config(self):
+        """Test that built-in kubernetes server gets correct default summarization configuration."""
+        # Use real builtin config (not mocked) to test actual default behavior
+        registry = MCPServerRegistry()
+        
+        # Get the kubernetes server configuration
+        server_config = registry.get_server_config("kubernetes-server")
+        
+        # Verify the server is configured correctly
+        assert server_config.server_id == "kubernetes-server"
+        assert server_config.server_type == "kubernetes"
+        assert server_config.enabled is True
+        
+        # Verify summarization gets the expected default configuration
+        assert server_config.summarization is not None, "Summarization config should be present"
+        assert server_config.summarization.enabled is True, "Summarization should be enabled by default"
+        assert server_config.summarization.size_threshold_tokens == 2000, "Default threshold should be 2000 tokens"
+        assert server_config.summarization.summary_max_token_limit == 1000, "Default max summary should be 1000 tokens"
+        
+        # Verify data masking is also configured as expected
+        assert server_config.data_masking is not None
+        assert server_config.data_masking.enabled is True 

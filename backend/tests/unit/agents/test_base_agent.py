@@ -781,3 +781,131 @@ class TestPhase4PromptSystemOverload:
         assert "test-pod" in standard_prompt  # Should contain alert data
         assert "test-pod" in stage_prompt
         assert "test-pod" in final_prompt
+
+
+@pytest.mark.unit
+class TestBaseAgentSummarization:
+    """Test BaseAgent summarization integration (EP-0015)."""
+    
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Create mock LLM client."""
+        client = Mock(spec=LLMClient)
+        client.generate_response = AsyncMock()
+        return client
+    
+    @pytest.fixture
+    def mock_mcp_client(self):
+        """Create mock MCP client."""
+        client = Mock(spec=MCPClient)
+        client.list_tools = AsyncMock(return_value={"test-server": []})
+        client.call_tool = AsyncMock(return_value={"result": "success"})
+        return client
+    
+    @pytest.fixture
+    def mock_mcp_registry(self):
+        """Create mock MCP registry."""
+        registry = Mock(spec=MCPServerRegistry)
+        mock_config = Mock()
+        mock_config.server_id = "test-server"
+        mock_config.server_type = "test"
+        mock_config.instructions = "Test server instructions"
+        registry.get_server_configs.return_value = [mock_config]
+        return registry
+    
+    @pytest.mark.asyncio
+    async def test_execute_mcp_tools_with_investigation_conversation(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Test execute_mcp_tools passes investigation conversation for summarization."""
+        agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        agent._configured_servers = ["test-server"]
+        
+        # Create sample investigation conversation
+        investigation_conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are an expert SRE"),
+            LLMMessage(role=MessageRole.USER, content="Investigate the alert"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="I need to check system status")
+        ])
+        
+        tools_to_call = [
+            {
+                "server": "test-server",
+                "tool": "kubectl-get",
+                "parameters": {"resource": "pods"},
+                "reason": "Check pod status with context",
+            }
+        ]
+        
+        results = await agent.execute_mcp_tools(
+            tools_to_call, 
+            "test-session-summarization",
+            investigation_conversation
+        )
+        
+        assert "test-server" in results
+        assert len(results["test-server"]) == 1
+        assert results["test-server"][0]["tool"] == "kubectl-get"
+        
+        # Verify MCP client was called with investigation conversation
+        mock_mcp_client.call_tool.assert_called_once_with(
+            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-summarization", None, investigation_conversation
+        )
+
+    @pytest.mark.asyncio
+    async def test_configure_mcp_client_creates_summarizer(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Test that configure_mcp_client creates and injects summarizer when LLM client available."""
+        agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        
+        # Act
+        await agent._configure_mcp_client()
+        
+        # Assert - Should configure servers and inject summarizer
+        assert agent._configured_servers == ["test-server"]
+        
+        # Verify summarizer was injected into MCP client
+        assert hasattr(agent.mcp_client, 'summarizer')
+        assert agent.mcp_client.summarizer is not None
+
+    @pytest.mark.asyncio
+    async def test_configure_mcp_client_no_summarizer_without_llm(self, mock_mcp_client, mock_mcp_registry):
+        """Test that configure_mcp_client works without LLM client (no summarizer injection)."""
+        # Create agent without LLM client
+        agent = TestConcreteAgent(
+            llm_client=None,  # No LLM client
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry
+        )
+        
+        await agent._configure_mcp_client()
+        
+        # Should still configure servers but not inject summarizer
+        assert agent._configured_servers == ["test-server"]
+        # Summarizer should remain None or not be set
+        summarizer = getattr(agent.mcp_client, 'summarizer', None)
+        assert summarizer is None
+
+    @pytest.mark.asyncio
+    async def test_execute_mcp_tools_backward_compatibility_no_conversation(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Test execute_mcp_tools maintains backward compatibility without investigation conversation."""
+        agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        agent._configured_servers = ["test-server"]
+        
+        tools_to_call = [
+            {
+                "server": "test-server",
+                "tool": "kubectl-get", 
+                "parameters": {"resource": "nodes"},
+                "reason": "Check node status",
+            }
+        ]
+        
+        # Act - Call without investigation conversation (backward compatibility)
+        results = await agent.execute_mcp_tools(tools_to_call, "test-session-compat")
+        
+        # Assert
+        assert "test-server" in results
+        assert len(results["test-server"]) == 1
+        
+        # Verify MCP client was called without investigation conversation (None)
+        mock_mcp_client.call_tool.assert_called_once_with(
+            "test-server", "kubectl-get", {"resource": "nodes"}, "test-session-compat", None, None
+        )

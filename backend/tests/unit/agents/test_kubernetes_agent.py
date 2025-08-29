@@ -711,4 +711,117 @@ class TestKubernetesAgentIntegrationScenarios:
         result = await agent.process_alert(chain_context)
         
         assert result.status.value == "completed"
-        assert result.result_summary is not None  # Analysis result may vary based on iteration strategy 
+        assert result.result_summary is not None  # Analysis result may vary based on iteration strategy
+
+
+@pytest.mark.unit
+class TestKubernetesAgentSummarization:
+    """Test KubernetesAgent summarization integration (EP-0015)."""
+    
+    @pytest.fixture
+    def kubernetes_agent_with_summarization(self):
+        """Create KubernetesAgent with summarization-capable MCP client."""
+        # Use the existing fixtures from the file
+        mock_llm_client = Mock(spec=LLMClient)
+        mock_llm_client.generate_response = AsyncMock(return_value="Test analysis result")
+        
+        mock_mcp_client = Mock(spec=MCPClient)
+        mock_mcp_client.list_tools = AsyncMock(return_value={"kubernetes-server": []})
+        mock_mcp_client.call_tool = AsyncMock()
+        
+        mock_mcp_registry = Mock(spec=MCPServerRegistry)
+        server_config = MCPServerConfigModel(
+            server_id="kubernetes-server",
+            server_type="kubernetes",
+            enabled=True,
+            connection_params={"command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"]},
+            instructions="Kubernetes server instructions"
+        )
+        mock_mcp_registry.get_server_configs.return_value = [server_config]
+        
+        agent = KubernetesAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        return agent, mock_llm_client, mock_mcp_client, mock_mcp_registry
+    
+    @pytest.mark.asyncio
+    async def test_execute_mcp_tools_with_summarization_context(self, kubernetes_agent_with_summarization):
+        """Test KubernetesAgent execute_mcp_tools passes investigation conversation for summarization."""
+        agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_summarization
+        agent._configured_servers = ["kubernetes-server"]
+        
+        # Mock large result from MCP client that would trigger summarization
+        mock_mcp.call_tool = AsyncMock(return_value={
+            "result": "SUMMARY: Critical namespace issue - 25 pods stuck in Terminating state due to finalizers on worker-node-03",
+            "_summarized": {
+                "original_tokens": 4500,
+                "threshold": 2000,
+                "summarized_at": 1704110400000000
+            }
+        })
+        
+        # Create Kubernetes-specific investigation conversation
+        investigation_conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="""You are a Kubernetes expert investigating cluster issues.
+
+DOMAIN KNOWLEDGE:
+- Production cluster with 50+ microservices
+- Known issues with finalizer cleanup in production namespace  
+- Escalation required for namespace stuck >30min
+- Critical services: payment, auth, notifications"""),
+            LLMMessage(role=MessageRole.USER, content="Namespace 'production' stuck in Terminating state for 45 minutes"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="I need to investigate the namespace status and identify blocking resources")
+        ])
+        
+        tools_to_call = [
+            {
+                "server": "kubernetes-server",
+                "tool": "kubectl_describe",
+                "parameters": {"resource": "namespace", "name": "production"},
+                "reason": "Analyze namespace termination blocking issue"
+            }
+        ]
+        
+        # Act
+        result = await agent.execute_mcp_tools(
+            tools_to_call,
+            session_id="test-k8s-summarization", 
+            investigation_conversation=investigation_conversation
+        )
+        
+        # Assert
+        assert "kubernetes-server" in result
+        assert len(result["kubernetes-server"]) == 1
+        
+        tool_result = result["kubernetes-server"][0]
+        assert tool_result["tool"] == "kubectl_describe"
+        assert "SUMMARY:" in str(tool_result["result"])
+        assert "_summarized" in tool_result["result"]  # Should contain summarization metadata
+        
+        # Verify MCP client was called with Kubernetes investigation conversation
+        mock_mcp.call_tool.assert_called_once_with(
+            "kubernetes-server",
+            "kubectl_describe", 
+            {"resource": "namespace", "name": "production"},
+            "test-k8s-summarization",
+            None,
+            investigation_conversation  # Investigation conversation should be passed
+        )
+
+    @pytest.mark.asyncio
+    async def test_configure_mcp_client_injects_kubernetes_summarizer(self, kubernetes_agent_with_summarization):
+        """Test that configure_mcp_client creates and injects summarizer for KubernetesAgent."""
+        agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_summarization
+        
+        # Ensure agent has required attributes for summarizer creation
+        agent.llm_client = mock_llm
+        
+        # Mock the prompt builder that should exist
+        with patch.object(agent, '_prompt_builder') as mock_prompt_builder:
+            # Act
+            await agent._configure_mcp_client()
+        
+        # Assert
+        assert agent._configured_servers == ["kubernetes-server"]
+        
+        # Verify summarizer was injected into MCP client
+        assert hasattr(agent.mcp_client, 'summarizer')
+        assert agent.mcp_client.summarizer is not None 

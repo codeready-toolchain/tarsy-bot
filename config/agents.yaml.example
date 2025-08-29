@@ -39,6 +39,18 @@
 # - Masking is applied to MCP server responses before reaching the LLM or logs
 # - Set enabled: false to disable masking for specific servers
 #
+# RESULT SUMMARIZATION
+# - MCP servers can include optional summarization configuration to handle large tool outputs
+# - Summarization reduces context window bloat in ReAct conversations and database storage
+# - Agent-provided summarizers use investigation conversation context for intelligent summarization
+# - Configuration options:
+#   - enabled: true/false (default: true) - Enable or disable summarization for this server
+#   - size_threshold_tokens: integer (default: 2000) - Token count threshold for triggering summarization
+#   - summary_max_token_limit: integer (default: 1000) - Maximum tokens allowed in summary (enforced at LLM provider level)
+# - When disabled (enabled: false), all MCP tool results pass through unchanged regardless of size
+# - Different servers may need different thresholds: security data often needs higher thresholds, filesystem operations often disabled
+# - Summarization uses LLM provider's max_tokens parameter for guaranteed length control and cost management
+#
 
 # =============================================================================
 # MCP SERVER CONFIGURATIONS
@@ -81,6 +93,11 @@ mcp_servers:
           replacement: "***MASKED_SSH_KEY***"
           description: "SSH public keys"
           enabled: true
+    # Result Summarization Configuration
+    summarization:
+      enabled: true                    # Enable summarization for security tool output
+      size_threshold_tokens: 2500      # Higher threshold for security data (needs detailed analysis)
+      summary_max_token_limit: 1200    # Allow longer summaries for security context
 
   # Monitoring and observability MCP server for performance analysis
   monitoring-server:
@@ -105,6 +122,11 @@ mcp_servers:
       enabled: true
       pattern_groups:
         - "basic"             # Built-in group: api_key, password
+    # Result Summarization Configuration
+    summarization:
+      enabled: true                    # Enable summarization for monitoring tool output
+      size_threshold_tokens: 3000      # Higher threshold for metrics data (can be voluminous)
+      summary_max_token_limit: 800     # Concise summaries for metrics and performance data
 
   # Custom cloud provider MCP server (example for AWS-specific operations)
   aws-server:
@@ -126,6 +148,9 @@ mcp_servers:
       - Ensure proper IAM permissions and security groups
     data_masking:
       enabled: false          # No masking for raw AWS data - handled by AWS IAM permissions
+    # Result Summarization Configuration
+    summarization:
+      enabled: false                    # Disable summarization for AWS tool output
 
 # =============================================================================
 # AGENT CONFIGURATIONS
@@ -379,9 +404,12 @@ agent_chains:
 # 7. □ Verify no alert type conflicts with existing built-in agents or chains
 # 8. □ Configure agent chains for multi-stage workflows if needed
 # 9. □ Verify all agents referenced in chains exist and are properly configured
-# 10. □ Set AGENT_CONFIG_PATH in .env if using a different location
-# 11. □ Test configuration validation: python -c "from tarsy.config.agent_config import ConfigurationLoader; ConfigurationLoader('./config/agents.yaml').load_and_validate()"
-# 12. □ Monitor application startup logs for configuration errors
-# 13. □ Verify agents and chains are properly registered in the ChainRegistry
+# 10. □ Configure MCP result summarization thresholds for your server output patterns (EP-0015)
+# 11. □ Test summarization behavior with large MCP tool outputs in development
+# 12. □ Set AGENT_CONFIG_PATH in .env if using a different location
+# 13. □ Test configuration validation: python -c "from tarsy.config.agent_config import ConfigurationLoader; ConfigurationLoader('./config/agents.yaml').load_and_validate()"
+# 14. □ Monitor application startup logs for configuration errors
+# 15. □ Verify agents and chains are properly registered in the ChainRegistry
+# 16. □ Verify summarization interactions appear correctly in dashboard timeline
 #
 # ============================================================================= 
