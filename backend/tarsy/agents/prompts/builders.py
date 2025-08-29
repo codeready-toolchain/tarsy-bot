@@ -18,6 +18,9 @@ from .templates import (
     ANALYSIS_QUESTION_TEMPLATE,
     CONTEXT_SECTION_TEMPLATE,
     FINAL_ANALYSIS_PROMPT_TEMPLATE,
+    MCP_SUMMARIZATION_SYSTEM_TEMPLATE,
+    MCP_SUMMARIZATION_USER_TEMPLATE,
+    REACT_FORMATTING_INSTRUCTIONS,
     REACT_SYSTEM_TEMPLATE,
     STAGE_ANALYSIS_QUESTION_TEMPLATE,
     STANDARD_REACT_PROMPT_TEMPLATE,
@@ -152,6 +155,7 @@ class PromptBuilder:
         """Get enhanced ReAct system message using template. Used by ReAct iteration controllers."""
         return REACT_SYSTEM_TEMPLATE.format(
             composed_instructions=composed_instructions,
+            react_formatting_instructions=REACT_FORMATTING_INSTRUCTIONS,  # Use the constant
             task_focus=task_focus
         )
     
@@ -173,6 +177,24 @@ Analyze alerts thoroughly and provide actionable insights based on:
 
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions."""
+    
+    def build_mcp_summarization_system_prompt(self, server_name: str, tool_name: str, max_summary_tokens: int) -> str:
+        """Build system prompt for MCP result summarization."""
+        return MCP_SUMMARIZATION_SYSTEM_TEMPLATE.format(
+            server_name=server_name,
+            tool_name=tool_name,
+            max_summary_tokens=max_summary_tokens
+        )
+
+    def build_mcp_summarization_user_prompt(self, conversation_context: str, server_name: str, 
+                                           tool_name: str, result_text: str) -> str:
+        """Build user prompt for MCP result summarization with investigation context."""
+        return MCP_SUMMARIZATION_USER_TEMPLATE.format(
+            conversation_context=conversation_context,
+            server_name=server_name,
+            tool_name=tool_name,
+            result_text=result_text
+        )
     
     # ============ Helper Methods (Keep Current Logic) ============
     

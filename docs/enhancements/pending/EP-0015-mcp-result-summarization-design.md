@@ -332,11 +332,7 @@ Focus on {task_focus} for human operators to execute.""")
 **Add new summarization templates to templates.py**:
 ```python
 # MCP Result Summarization Templates
-MCP_SUMMARIZATION_SYSTEM_TEMPLATE = PromptTemplate.from_template("""{base_instructions}
-
-## Current Task: Technical Output Summarization
-
-You are an expert at summarizing technical output from system administration and monitoring tools for ongoing incident investigation.
+MCP_SUMMARIZATION_SYSTEM_TEMPLATE = PromptTemplate.from_template("""You are an expert at summarizing technical output from system administration and monitoring tools for ongoing incident investigation.
 
 Your specific task is to summarize output from **{server_name}.{tool_name}** in a way that:
 
@@ -392,9 +388,7 @@ def get_enhanced_react_system_message(self, composed_instructions: str, task_foc
 
 def build_mcp_summarization_system_prompt(self, server_name: str, tool_name: str, max_summary_tokens: int) -> str:
     """Build system prompt for MCP result summarization."""
-    base_instructions = self.get_general_instructions()
     return MCP_SUMMARIZATION_SYSTEM_TEMPLATE.format(
-        base_instructions=base_instructions,
         server_name=server_name,
         tool_name=tool_name,
         max_summary_tokens=max_summary_tokens
