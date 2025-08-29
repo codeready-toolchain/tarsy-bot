@@ -449,9 +449,9 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               }} 
               sessionStatus={session.status}
               sessionTokens={{
-                input_tokens: session.session_input_tokens,
-                output_tokens: session.session_output_tokens,
-                total_tokens: session.session_total_tokens
+                input_tokens: session.session_input_tokens ?? undefined,
+                output_tokens: session.session_output_tokens ?? undefined,
+                total_tokens: session.session_total_tokens ?? undefined
               }}
             />
           )}

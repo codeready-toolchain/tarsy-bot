@@ -82,6 +82,7 @@ function TechnicalTimeline({
       ) : (
         <NestedAccordionTimeline
           chainExecution={chainExecution}
+          autoScroll={autoScroll}
         />
       )}
     </Suspense>

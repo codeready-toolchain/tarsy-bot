@@ -106,30 +106,9 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage }: FinalAnaly
     );
   }
 
-  // Show empty state if no analysis available
+  // Hide entirely if no analysis available - don't show empty state
   if (!analysis) {
-    return (
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Psychology color="primary" />
-          Final AI Analysis
-        </Typography>
-        
-        {sessionStatus === 'in_progress' ? (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="body2" color="text.secondary">
-              Analysis will be available when session completes
-            </Typography>
-          </Box>
-        ) : (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="body2" color="text.secondary">
-              No analysis available for this session
-            </Typography>
-          </Box>
-        )}
-      </Paper>
-    );
+    return null;
   }
 
   const isLongAnalysis = analysis.length > 1000;

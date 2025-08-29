@@ -43,9 +43,11 @@ import MCPInteractionPreview from './MCPInteractionPreview';
 import CopyButton from './CopyButton';
 import InteractionCountBadges from './InteractionCountBadges';
 import TypingIndicator from './TypingIndicator';
+// Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface NestedAccordionTimelineProps {
   chainExecution: ChainExecution;
+  autoScroll?: boolean; // Kept for compatibility, but auto-scroll is now centralized
 }
 
 // Helper function to get stage status icon
@@ -129,6 +131,7 @@ const formatEntireFlowForCopy = (chainExecution: ChainExecution): string => {
 
 const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
   chainExecution,
+  autoScroll: _autoScroll = true, // Kept for compatibility, but not used
 }) => {
   const [expandedStages, setExpandedStages] = useState<Set<string>>(
     new Set(
@@ -143,6 +146,8 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
     chainExecution.current_stage_index ?? 0
   );
   const [expandedInteractionDetails, setExpandedInteractionDetails] = useState<Record<string, boolean>>({});
+
+  // Auto-scroll is now handled by the centralized system
 
 
   const handleStageToggle = (stageId: string, stageIndex: number) => {
@@ -173,6 +178,8 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
     }));
   };
 
+  // Auto-scroll setup is now handled by the centralized system
+
   const getStageInteractions = (stageId: string) => {
     const stage = chainExecution.stages.find(s => s.execution_id === stageId);
     if (!stage) return [];
@@ -200,6 +207,8 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
     return [...llmInteractions, ...mcpInteractions]
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
   };
+
+  // Auto-scroll detection is now handled by the centralized system
 
   return (
     <Card>

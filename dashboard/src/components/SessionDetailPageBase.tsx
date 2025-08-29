@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -22,6 +22,7 @@ import { ArrowBack, Speed, Psychology, BugReport } from '@mui/icons-material';
 import { webSocketService } from '../services/websocket';
 import { useSession } from '../contexts/SessionContext';
 import type { DetailedSession } from '../types';
+import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
 
 // Lazy load shared components
 const SessionHeader = lazy(() => import('./SessionHeader'));
@@ -120,12 +121,14 @@ function SessionDetailPageBase({
   // Auto-scroll settings
   const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(true);
   
-  // Refs for auto-scroll targeting
-  const finalAnalysisRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll state
-  const userScrolledAwayRef = useRef<boolean>(false);
-  const isUserAtBottomRef = useRef<boolean>(true);
+  // Advanced centralized auto-scroll
+  useAdvancedAutoScroll({
+    enabled: autoScrollEnabled,
+    threshold: 10,
+    scrollDelay: 300,
+    observeSelector: '[data-autoscroll-container]',
+    debug: process.env.NODE_ENV !== 'production'
+  });
   
   // View toggle state
   const [currentView, setCurrentView] = useState<string>(viewType);
@@ -213,101 +216,9 @@ function SessionDetailPageBase({
     }
   };
 
-  // Helper function to check if user is at bottom of scrollable area
-  const isAtBottom = useCallback((): boolean => {
-    // Check if user is at bottom of page
-    const documentHeight = document.documentElement.scrollHeight;
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const windowHeight = window.innerHeight;
 
-    // Consider user at bottom if within 50px of the bottom
-    const threshold = 50;
-    return documentHeight - scrollTop - windowHeight <= threshold;
-  }, []);
 
-  // Scroll position-based auto-scroll control
-  useEffect(() => {
-    if (!autoScrollEnabled) return;
-
-    // Initialize scroll position on mount
-    isUserAtBottomRef.current = isAtBottom();
-    userScrolledAwayRef.current = !isUserAtBottomRef.current;
-
-    const handleScroll = () => {
-      const wasAtBottom = isUserAtBottomRef.current;
-      const isNowAtBottom = isAtBottom();
-
-      // Update our tracking of user's position
-      isUserAtBottomRef.current = isNowAtBottom;
-
-      if (wasAtBottom && !isNowAtBottom) {
-        // User scrolled away from bottom - disable auto-scroll
-        userScrolledAwayRef.current = true;
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`👆 SessionDetail: User scrolled away from bottom - disabling auto-scroll`);
-        }
-      } else if (!wasAtBottom && isNowAtBottom) {
-        // User scrolled back to bottom - re-enable auto-scroll
-        userScrolledAwayRef.current = false;
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`👇 SessionDetail: User scrolled back to bottom - re-enabling auto-scroll`);
-        }
-      }
-    };
-
-    // Listen to scroll events on window
-    window.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-    };
-  }, [autoScrollEnabled, isAtBottom]);
-
-  // Helper function to check and scroll to final analysis if it has new content
-  const checkAndScrollToFinalAnalysis = useCallback((delay: number = 500) => {
-    if (!autoScrollEnabled) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`🎯 Final analysis auto-scroll blocked: autoScrollEnabled=${autoScrollEnabled}`);
-      }
-      return;
-    }
-
-    // For final analysis, we use a more lenient check
-    // Only skip if user has actively scrolled up significantly (not just minor movements)
-    const documentHeight = document.documentElement.scrollHeight;
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const windowHeight = window.innerHeight;
-    const distanceFromBottom = documentHeight - scrollTop - windowHeight;
-    
-    // Allow auto-scroll if user is within 200px of bottom (more lenient than regular 50px)
-    const isNearBottom = distanceFromBottom <= 200;
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`🎯 Final analysis auto-scroll check: distanceFromBottom=${distanceFromBottom}, isNearBottom=${isNearBottom}, userScrolledAway=${userScrolledAwayRef.current}`);
-    }
-
-    if (!isNearBottom) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('🎯 Final analysis auto-scroll skipped - user scrolled too far up');
-      }
-      return;
-    }
-
-    setTimeout(() => {
-      if (finalAnalysisRef.current) {
-        const analysisElement = finalAnalysisRef.current;
-        const content = analysisElement.textContent?.trim() || '';
-
-        if (content.length > 50) { // Min length check
-          analysisElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'start'
-          });
-          console.log('🎯 Auto-scrolled to final analysis (live update)');
-        }
-      }
-    }, delay);
-  }, [autoScrollEnabled]);
+  // No need for manual setup - the hook handles everything automatically
 
   // Helper functions are now provided by the SessionContext
 
@@ -347,10 +258,8 @@ function SessionDetailPageBase({
               if (sessionId) {
                 refreshSessionStages(sessionId);
                 
-                // Auto-scroll to final analysis when session completes
-                if (update.status === 'completed') {
-                  checkAndScrollToFinalAnalysis(800);
-                }
+                // Auto-scroll when session completes (MutationObserver will handle this automatically)
+                // tryAutoScroll is no longer needed here
               }
             }, 200);
           }
@@ -378,8 +287,7 @@ function SessionDetailPageBase({
             throttledUpdate(() => {
               if (sessionId) {
                 refreshSessionStages(sessionId);
-                // Check for final analysis after interaction updates
-                checkAndScrollToFinalAnalysis(updateDelay + 400);
+                // MutationObserver will detect content changes and auto-scroll automatically
               }
             }, updateDelay);
           }
@@ -400,8 +308,7 @@ function SessionDetailPageBase({
           throttledUpdate(() => {
             if (sessionId) {
               refreshSessionStages(sessionId);
-              // Check for final analysis after stage updates
-              checkAndScrollToFinalAnalysis(600);
+              // MutationObserver will detect content changes and auto-scroll automatically
             }
           }, 250);
           break;
@@ -414,39 +321,14 @@ function SessionDetailPageBase({
             // Direct update if analysis is provided in update
             updateFinalAnalysis(update.analysis);
             
-            // Auto-scroll to final analysis if enabled and user is near bottom
-            if (autoScrollEnabled && finalAnalysisRef.current) {
-              // Use more lenient distance check for final analysis
-              const documentHeight = document.documentElement.scrollHeight;
-              const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-              const windowHeight = window.innerHeight;
-              const distanceFromBottom = documentHeight - scrollTop - windowHeight;
-              const isNearBottom = distanceFromBottom <= 200;
-
-              if (process.env.NODE_ENV !== 'production') {
-                console.log(`🎯 Final analysis auto-scroll check: distanceFromBottom=${distanceFromBottom}, isNearBottom=${isNearBottom}`);
-              }
-
-              if (isNearBottom) {
-                setTimeout(() => {
-                  finalAnalysisRef.current?.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                  });
-                  console.log('🎯 Auto-scrolled to final analysis');
-                }, 300);
-              } else {
-                console.log('🎯 Final analysis auto-scroll skipped - user scrolled too far up');
-              }
-            }
+            // MutationObserver will detect the analysis change and auto-scroll automatically
           } else {
             // Otherwise use partial refresh
             throttledUpdate(() => {
               if (sessionId) {
                 refreshSessionStages(sessionId);
                 
-                // Check if final analysis was added and auto-scroll
-                checkAndScrollToFinalAnalysis(500);
+                // MutationObserver will detect content changes and auto-scroll automatically
               }
             }, 150);
           }
@@ -458,13 +340,12 @@ function SessionDetailPageBase({
           
           if (sessionId) {
             refreshSessionSummary(sessionId);
-            throttledUpdate(() => {
-              if (sessionId) {
-                refreshSessionStages(sessionId);
-                // Check for final analysis after stage progress
-                checkAndScrollToFinalAnalysis(800);
-              }
-            }, 300);
+                          throttledUpdate(() => {
+                if (sessionId) {
+                  refreshSessionStages(sessionId);
+                  // MutationObserver will detect content changes and auto-scroll automatically
+                }
+              }, 300);
           }
           break;
 
@@ -480,8 +361,7 @@ function SessionDetailPageBase({
             throttledUpdate(() => {
               if (sessionId) {
                 refreshSessionStages(sessionId);
-                // Check for final analysis after unknown updates
-                checkAndScrollToFinalAnalysis(1000);
+                // MutationObserver will detect content changes and auto-scroll automatically
               }
             }, 800);
           }
@@ -718,7 +598,7 @@ function SessionDetailPageBase({
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ mt: 2 }}>
+      <Box sx={{ mt: 2 }} data-autoscroll-container>
         {/* Loading state with progressive skeletons */}
         {loading && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -807,15 +687,13 @@ function SessionDetailPageBase({
             )}
 
             {/* Final AI Analysis - Lazy loaded */}
-            <Box ref={finalAnalysisRef} data-final-analysis>
-              <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
-                <FinalAnalysisCard 
-                  analysis={session.final_analysis}
-                  sessionStatus={session.status}
-                  errorMessage={session.error_message}
-                />
-              </Suspense>
-            </Box>
+            <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
+              <FinalAnalysisCard 
+                analysis={session.final_analysis}
+                sessionStatus={session.status}
+                errorMessage={session.error_message}
+              />
+            </Suspense>
           </Box>
         )}
 

@@ -41,6 +41,7 @@ import {
   getInteractionBackgroundColor
 } from '../utils/timelineHelpers';
 import InteractionCountBadges from './InteractionCountBadges';
+// Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 // Lazy load heavy components
 const LazyInteractionDetails = lazy(() => import('./LazyInteractionDetails'));
@@ -358,12 +359,8 @@ function VirtualizedAccordionTimeline({
   const listRef = useRef<List>(null);
   const sizeMapRef = useRef<Map<number, number>>(new Map());
   
-  // Auto-scroll functionality
-  const nonVirtualizedContainerRef = useRef<HTMLDivElement>(null);
-  const prevInteractionCountsRef = useRef<Map<string, number>>(new Map());
-  const userScrolledAwayRef = useRef<boolean>(false);
-  const isUserAtBottomRef = useRef<boolean>(true);
-  const prevCurrentStageIndexRef = useRef<number>(chainExecution.current_stage_index ?? 0);
+  // Auto-scroll is now handled by the centralized system via MutationObserver
+  // No need for local auto-scroll logic
   
   // Helper function to resolve stage status to actual theme colors
   const getResolvedStageStatusColor = useCallback((status: string) => {
@@ -424,52 +421,11 @@ function VirtualizedAccordionTimeline({
     }
   }, []);
 
-  // Helper function to check if user is at bottom of scrollable area
-  const isAtBottom = useCallback((): boolean => {
-    // Check if user is at bottom of page
-    const documentHeight = document.documentElement.scrollHeight;
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const windowHeight = window.innerHeight;
-
-    // Consider user at bottom if within 50px of the bottom
-    const threshold = 50;
-    return documentHeight - scrollTop - windowHeight <= threshold;
-  }, []);
 
 
 
-  // Auto-scroll to bottom function
-  const scrollToBottom = useCallback((stageId: string, useVirtualization: boolean, interactionCount: number) => {
-    if (!autoScroll || userScrolledAwayRef.current) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`🔄 Auto-scroll blocked: userScrolledAway=${userScrolledAwayRef.current}`);
-      }
-      return;
-    }
 
-    // Small delay to ensure DOM has updated
-    setTimeout(() => {
-      if (useVirtualization && listRef.current) {
-        // For virtualized list, scroll to the last item
-        listRef.current.scrollToItem(interactionCount - 1, 'end');
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`🔄 Auto-scrolled virtualized list to interaction ${interactionCount - 1} in stage ${stageId}`);
-        }
-      } else {
-        // For non-virtualized content, scroll the last interaction into view using main page scroll
-        const lastInteractionElement = nonVirtualizedContainerRef.current?.lastElementChild as HTMLElement;
-        if (lastInteractionElement) {
-          lastInteractionElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'end'
-          });
-          if (process.env.NODE_ENV !== 'production') {
-            console.log(`🔄 Auto-scrolled to last interaction in stage ${stageId}`);
-          }
-        }
-      }
-    }, 100);
-  }, [autoScroll]);
+
   
   // Item size resolver for VariableSizeList
   const getItemSize = useCallback((index: number) => {
@@ -522,90 +478,22 @@ function VirtualizedAccordionTimeline({
     if (!autoScroll) return;
 
     const currentStageIndex = chainExecution.current_stage_index ?? 0;
-    const prevStageIndex = prevCurrentStageIndexRef.current;
-
-    // Check if we moved to a new stage (stage progression)
-    if (currentStageIndex !== prevStageIndex && chainExecution.stages[currentStageIndex]) {
+    
+    // Auto-expand the current active stage
+    if (chainExecution.stages[currentStageIndex]) {
       const newStage = chainExecution.stages[currentStageIndex];
       
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`🎯 Auto-expanding new active stage: ${newStage.stage_name} (stage ${currentStageIndex + 1})`);
+        console.log(`🎯 Auto-expanding active stage: ${newStage.stage_name} (stage ${currentStageIndex + 1})`);
       }
       
-      // Add the new current stage to expanded stages (keep previous ones expanded)
+      // Add the current stage to expanded stages (keep previous ones expanded)
       setExpandedStages(prev => new Set([...prev, newStage.execution_id]));
       setCurrentStageIndex(currentStageIndex);
-      
-      // Update previous stage index
-      prevCurrentStageIndexRef.current = currentStageIndex;
     }
   }, [chainExecution.current_stage_index, chainExecution.stages, autoScroll]);
 
-  // Scroll position-based auto-scroll control
-  useEffect(() => {
-    if (!autoScroll) return;
-
-    // Initialize scroll position on mount
-    isUserAtBottomRef.current = isAtBottom();
-    userScrolledAwayRef.current = !isUserAtBottomRef.current;
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`🚀 Initializing scroll detection: isAtBottom=${isUserAtBottomRef.current}, userScrolledAway=${userScrolledAwayRef.current}`);
-    }
-
-    const handleScroll = () => {
-      const wasAtBottom = isUserAtBottomRef.current;
-      const isNowAtBottom = isAtBottom();
-
-      // Update our tracking of user's position
-      isUserAtBottomRef.current = isNowAtBottom;
-
-      if (wasAtBottom && !isNowAtBottom) {
-        // User scrolled away from bottom - disable auto-scroll
-        userScrolledAwayRef.current = true;
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`👆 User scrolled away - auto-scroll disabled`);
-        }
-      } else if (!wasAtBottom && isNowAtBottom) {
-        // User scrolled back to bottom - re-enable auto-scroll
-        userScrolledAwayRef.current = false;
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`👇 User scrolled back to bottom - auto-scroll re-enabled`);
-        }
-      }
-    };
-
-    // Listen to scroll events on window
-    window.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-    };
-  }, [autoScroll, isAtBottom]);
-
-  // Effect to detect new interactions and auto-scroll
-  useEffect(() => {
-    if (!autoScroll) return;
-
-    // Check each expanded stage for new interactions
-    expandedStages.forEach(stageId => {
-      const stageInteractions = getStageInteractions(stageId);
-      const currentCount = stageInteractions.length;
-      const previousCount = prevInteractionCountsRef.current.get(stageId) || 0;
-      
-      // If we have new interactions and this stage is expanded
-      if (currentCount > previousCount && currentCount > 0) {
-        const shouldUseVirtualization = totalInteractions > maxVisibleInteractions && currentCount > 20;
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`🆕 Detected ${currentCount - previousCount} new interaction(s) in stage ${stageId}, auto-scrolling...`);
-        }
-        scrollToBottom(stageId, shouldUseVirtualization, currentCount);
-      }
-      
-      // Update the count for this stage
-      prevInteractionCountsRef.current.set(stageId, currentCount);
-    });
-  }, [chainExecution, expandedStages, autoScroll, getStageInteractions, totalInteractions, maxVisibleInteractions, scrollToBottom]);
+  // Auto-scroll is now handled by the centralized system - no setup needed
 
   // Helper functions now imported from shared utils
   
@@ -885,7 +773,6 @@ function VirtualizedAccordionTimeline({
                   ) : (
                     // Regular rendering for smaller lists
                     <Box 
-                      ref={nonVirtualizedContainerRef}
                       sx={{ 
                         display: 'flex', 
                         flexDirection: 'column', 
