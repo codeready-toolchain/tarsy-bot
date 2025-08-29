@@ -237,8 +237,8 @@ class ReactController(IterationController):
                     try:
                         self.logger.debug(f"ReAct Action: {parsed_response.action} with input: {parsed_response.action_input[:100] if parsed_response.action_input else 'None'}...")
                         
-                        # Execute tool using parsed tool call
-                        mcp_data = await agent.execute_mcp_tools([parsed_response.tool_call.model_dump()], context.session_id)
+                        # Execute tool using parsed tool call, passing conversation context for summarization
+                        mcp_data = await agent.execute_mcp_tools([parsed_response.tool_call.model_dump()], context.session_id, conversation)
                         
                         # Format observation
                         observation = self.parser.format_observation(mcp_data)

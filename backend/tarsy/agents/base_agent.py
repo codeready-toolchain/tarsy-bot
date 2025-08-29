@@ -7,7 +7,7 @@ It implements common processing logic and defines abstract methods for agent-spe
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.client import LLMClient
@@ -19,6 +19,9 @@ from tarsy.models.agent_execution_result import (
 from tarsy.models.constants import StageStatus
 
 from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools, MCPTool
+
+if TYPE_CHECKING:
+    from tarsy.models.unified_interactions import LLMConversation
 from .iteration_controllers import (
     IterationController, SimpleReActController, ReactStageController
 )
@@ -283,7 +286,7 @@ class BaseAgent(ABC):
         return self._current_stage_execution_id
     
     async def _configure_mcp_client(self):
-        """Configure MCP client with agent-specific server subset."""
+        """Configure MCP client with agent-specific server subset and summarizer."""
         mcp_server_ids = self.mcp_servers()
         
         # Get configurations for this agent's servers
@@ -306,6 +309,13 @@ class BaseAgent(ABC):
             )
             logger.error(f"Missing MCP server configurations: {config_error.to_dict()}")
             raise config_error
+        
+        # Create and inject summarizer if LLM client is available
+        if hasattr(self, 'llm_client') and self.llm_client:
+            from tarsy.integrations.mcp.summarizer import MCPResultSummarizer
+            summarizer = MCPResultSummarizer(self.llm_client, self._prompt_builder)
+            # Update MCP client with summarizer
+            self.mcp_client.summarizer = summarizer
         
         # Configure agent to use only the assigned servers
         self._configured_servers = mcp_server_ids
@@ -358,7 +368,8 @@ class BaseAgent(ABC):
                 }
             ) from e
 
-    async def execute_mcp_tools(self, tools_to_call: List[Dict], session_id: str) -> Dict[str, List[Dict]]:
+    async def execute_mcp_tools(self, tools_to_call: List[Dict], session_id: str, 
+                          investigation_conversation: Optional['LLMConversation'] = None) -> Dict[str, List[Dict]]:
         """
         Execute a list of MCP tool calls and return organized results.
         
@@ -368,6 +379,7 @@ class BaseAgent(ABC):
         Args:
             tools_to_call: List of tool call dictionaries with server, tool, parameters
             session_id: Session ID for tracking and logging
+            investigation_conversation: Optional investigation context for summarization
             
         Returns:
             Dictionary organized by server containing tool execution results
@@ -384,7 +396,11 @@ class BaseAgent(ABC):
                 if self._configured_servers and server_name not in self._configured_servers:
                     raise ValueError(f"Tool '{tool_name}' from server '{server_name}' not allowed for agent {self.__class__.__name__}")
                 
-                result = await self.mcp_client.call_tool(server_name, tool_name, tool_params, session_id, self._current_stage_execution_id)
+                # Pass investigation conversation for context-aware summarization
+                result = await self.mcp_client.call_tool(
+                    server_name, tool_name, tool_params, session_id, 
+                    self._current_stage_execution_id, investigation_conversation
+                )
                 
                 # Organize results by server
                 if server_name not in results:

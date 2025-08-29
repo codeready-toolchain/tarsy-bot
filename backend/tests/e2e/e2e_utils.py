@@ -162,13 +162,13 @@ class E2ETestUtils:
             # Call the original method which will now use our mock sessions
             return await original_list_tools(self, session_id, server_name, stage_execution_id)
 
-        async def mock_call_tool(self, server_name: str, tool_name: str, parameters, session_id: str, stage_execution_id=None):
+        async def mock_call_tool(self, server_name: str, tool_name: str, parameters, session_id: str, stage_execution_id=None, investigation_conversation=None):
             """Override call_tool to use our mock sessions."""
             # Ensure our mock sessions are available
             self.sessions = mock_sessions.copy()
             self._initialized = True
             # Call the original method which will now use our mock sessions
-            return await original_call_tool(self, server_name, tool_name, parameters, session_id, stage_execution_id)
+            return await original_call_tool(self, server_name, tool_name, parameters, session_id, stage_execution_id, investigation_conversation)
 
         return mock_list_tools, mock_call_tool
 

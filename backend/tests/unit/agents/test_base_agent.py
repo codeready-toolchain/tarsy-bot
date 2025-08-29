@@ -379,7 +379,7 @@ class TestBaseAgentMCPIntegration:
         assert results["test-server"][0]["result"] == {"result": "success"}
 
         mock_mcp_client.call_tool.assert_called_once_with(
-            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-123", None
+            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-123", None, None
         )
 
     @pytest.mark.unit

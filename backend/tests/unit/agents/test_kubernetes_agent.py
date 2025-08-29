@@ -396,6 +396,7 @@ class TestKubernetesAgentMCPIntegration:
             "get_pod_status",
             {"namespace": "production", "pod": "app-pod"},
             "test-session-123",
+            None,
             None
         )
     
