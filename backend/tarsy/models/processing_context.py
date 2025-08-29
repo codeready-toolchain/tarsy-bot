@@ -1,11 +1,7 @@
 """
 New context architecture for alert processing.
 
-This module contains the clean context models that will replace the current
-AlertProcessingData, IterationContext, PromptContext, and ChainExecutionContext
-to eliminate duplication and architectural debt.
-
-This module contains the clean context models for the new alert processing architecture.
+This module contains the context models.
 """
 
 from pydantic import BaseModel, Field, ConfigDict
@@ -52,9 +48,8 @@ class AvailableTools(BaseModel):
 
 class ChainContext(BaseModel):
     """
-    Context for entire chain processing session.
+    Context for entire chain processing session:
     
-    This replaces AlertProcessingData with cleaner architecture:
     - session_id is always included (no separate parameter passing)
     - stage_outputs has correct type annotation (AgentExecutionResult, not Dict)
     - API-only methods (get_severity, get_environment) removed
@@ -121,10 +116,7 @@ class ChainContext(BaseModel):
 @dataclass
 class StageContext:
     """
-    Context for single stage execution - eliminates all field duplication.
-    
-    This replaces IterationContext and PromptContext with clean property-based
-    architecture that derives all data from the core references without duplication.
+    Context for single stage execution.
     """
     
     # Core references
@@ -175,9 +167,6 @@ class StageContext:
     def format_previous_stages_context(self) -> str:
         """
         Format previous stage results for prompts in execution order.
-        
-        This replaces ChainExecutionContext.get_formatted_context() with
-        proper execution order preservation.
         """
         results = self.previous_stages_results
         if not results:

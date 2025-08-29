@@ -145,7 +145,7 @@ class ChainStatistics(BaseModel):
 # =============================================================================
 
 class SessionOverview(BaseModel):
-    """Session overview for lists, filtering, and pagination - dashboard use (will eventually replace api_models.SessionSummary)"""
+    """Session overview for lists, filtering, and pagination - dashboard use"""
     # Core identification
     session_id: str
     alert_id: str
@@ -188,7 +188,7 @@ class SessionOverview(BaseModel):
 
 
 class DetailedStage(BaseModel):
-    """Complete stage execution with all interactions - for detailed view (replaces api_models.StageExecution)"""
+    """Complete stage execution with all interactions - for detailed view"""
     # Stage identification
     execution_id: str
     session_id: str
@@ -209,12 +209,12 @@ class DetailedStage(BaseModel):
     llm_interactions: List[LLMTimelineEvent] = Field(default_factory=list)  # Complete LLM interactions with full details
     mcp_communications: List[MCPTimelineEvent] = Field(default_factory=list)  # Complete MCP interactions with full details
     
-    # Summary counts for this stage (replaces InteractionSummary)
+    # Summary counts for this stage
     llm_interaction_count: int = 0
     mcp_communication_count: int = 0
     total_interactions: int = 0
     
-    # Calculated properties (replaces InteractionSummary functionality)
+    # Calculated properties
     @computed_field
     @property
     def stage_interactions_duration_ms(self) -> Optional[int]:
@@ -279,7 +279,7 @@ class DetailedStage(BaseModel):
 
 
 class DetailedSession(BaseModel):
-    """Complete session with EVERYTHING - for detailed session page (replaces api_models.SessionDetailResponse and ChainExecution)"""
+    """Complete session with EVERYTHING - for detailed session page"""
     # Core session data (everything from SessionOverview)
     session_id: str
     alert_id: str
@@ -325,7 +325,7 @@ class DetailedSession(BaseModel):
 
 
 class SessionStats(BaseModel):
-    """Lightweight statistics and metrics - for headers and quick stats (will eventually replace api_models.SessionSummary statistics functionality)"""
+    """Lightweight statistics and metrics - for headers and quick stats"""
     # Basic counts
     total_interactions: int
     llm_interactions: int
@@ -344,7 +344,7 @@ class SessionStats(BaseModel):
 
 
 class PaginatedSessions(BaseModel):
-    """Paginated session results for dashboard list view (replaces api_models.SessionsListResponse)"""
+    """Paginated session results for dashboard list view"""
     sessions: List[SessionOverview]  # Session overviews for list display
     pagination: PaginationInfo
     filters_applied: Dict[str, Any] = Field(default_factory=dict)  # Applied filters for this query
