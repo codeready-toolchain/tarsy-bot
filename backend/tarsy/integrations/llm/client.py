@@ -258,18 +258,13 @@ class LLMClient:
                 # Build config with callbacks only
                 config = {"callbacks": [callback]}
                 
-                # Pass max_tokens as direct kwarg if provided
                 if max_tokens is not None:
-                    response = await self.llm_client.ainvoke(
-                        langchain_messages,
-                        config=config,
-                        max_tokens=max_tokens
-                    )
-                else:
-                    response = await self.llm_client.ainvoke(
-                        langchain_messages,
-                        config=config
-                    )
+                    config["max_tokens"] = max_tokens
+
+                response = await self.llm_client.ainvoke(
+                    langchain_messages,
+                    config=config
+                )
                 
                 # Check for empty response content
                 if response and hasattr(response, 'content'):
