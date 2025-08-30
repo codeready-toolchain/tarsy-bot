@@ -298,19 +298,38 @@ export function parseStageConversation(stage: StageExecution): StageConversation
     // Check if this is a summarization interaction
     const isSummarization = isSummarizationInteraction(messages);
     
-    for (const message of assistantMessages) {
-      const candidateSteps: ConversationStepData[] = [];
-      
-      if (isSummarization) {
-        // This is a summarization interaction - treat assistant message as summarization
+    if (isSummarization) {
+      // For summarization interactions, only process the last assistant message
+      const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
+      if (lastAssistantMessage) {
+        const candidateSteps: ConversationStepData[] = [];
+        
+        // Create summarization step from the last assistant message
         candidateSteps.push({
           type: 'summarization',
-          content: message.content,
+          content: lastAssistantMessage.content,
           timestamp_us: timestamp,
           success: true
         });
-        console.log(`📝 Found summarization content in stage "${stage.stage_name}": ${message.content.length} characters`);
-      } else {
+        console.log(`📝 Found summarization content in stage "${stage.stage_name}" (last message): ${lastAssistantMessage.content.length} characters`);
+        
+        // Only add steps that are truly new (not seen before in any previous interaction within this stage)
+        for (const candidateStep of candidateSteps) {
+          const isDuplicate = stageSeenSteps.some(seenStep => 
+            areStepsSimilar(candidateStep, seenStep)
+          );
+          
+          if (!isDuplicate) {
+            steps.push(candidateStep);
+            stageSeenSteps.push(candidateStep);
+          }
+        }
+      }
+    } else {
+      // Regular ReAct interactions - process all assistant messages
+      for (const message of assistantMessages) {
+        const candidateSteps: ConversationStepData[] = [];
+        
         // Regular ReAct interaction - parse for thoughts, actions, analysis
         const parsed = parseReActMessage(message.content);
         
@@ -350,22 +369,17 @@ export function parseStageConversation(stage: StageExecution): StageConversation
             success: true
           });
         }
-      }
-      
-      // Only add steps that are truly new (not seen before in any previous interaction within this stage)
-      for (const candidateStep of candidateSteps) {
-        const isDuplicate = stageSeenSteps.some(seenStep => 
-          areStepsSimilar(candidateStep, seenStep)
-        );
         
-        if (!isDuplicate) {
-          steps.push(candidateStep);
-          stageSeenSteps.push(candidateStep);
-          if (candidateStep.type === 'analysis') {
-            console.log(`✅ Added analysis step with markdown content`);
+        // Only add steps that are truly new (not seen before in any previous interaction within this stage)
+        for (const candidateStep of candidateSteps) {
+          const isDuplicate = stageSeenSteps.some(seenStep => 
+            areStepsSimilar(candidateStep, seenStep)
+          );
+          
+          if (!isDuplicate) {
+            steps.push(candidateStep);
+            stageSeenSteps.push(candidateStep);
           }
-        } else {
-          console.log(`🔍 Filtered duplicate ${candidateStep.type}: "${candidateStep.content.substring(0, 50)}..."`);
         }
       }
     }

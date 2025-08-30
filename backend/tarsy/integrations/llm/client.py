@@ -255,14 +255,21 @@ class LLMClient:
                 # Add callback handler to capture token usage
                 callback = UsageMetadataCallbackHandler()
                 
-                # Build config with callbacks and optional max_tokens
+                # Build config with callbacks only
                 config = {"callbacks": [callback]}
+                
+                # Pass max_tokens as direct kwarg if provided
                 if max_tokens is not None:
-                    config["max_tokens"] = max_tokens
-                response = await self.llm_client.ainvoke(
-                    langchain_messages,
-                    config=config
-                )
+                    response = await self.llm_client.ainvoke(
+                        langchain_messages,
+                        config=config,
+                        max_tokens=max_tokens
+                    )
+                else:
+                    response = await self.llm_client.ainvoke(
+                        langchain_messages,
+                        config=config
+                    )
                 
                 # Check for empty response content
                 if response and hasattr(response, 'content'):

@@ -34,7 +34,7 @@ class MCPClient:
                  summarizer: Optional['MCPResultSummarizer'] = None):
         self.settings = settings
         self.mcp_registry = mcp_registry or MCPServerRegistry()
-        self.data_masking_service = DataMaskingService(self.mcp_registry) if mcp_registry else None
+        self.data_masking_service = DataMaskingService(self.mcp_registry)
         self.summarizer = summarizer  # Optional agent-provided summarizer
         self.token_counter = TokenCounter()  # For size threshold detection
         self.sessions: Dict[str, ClientSession] = {}

@@ -57,7 +57,7 @@ class TestMCPClientInitialization:
         
         assert client.settings == mock_settings
         assert isinstance(client.mcp_registry, MCPServerRegistry)
-        assert client.data_masking_service is None
+        assert isinstance(client.data_masking_service, DataMaskingService)
     
     @pytest.mark.asyncio
     async def test_initialize_servers_success(self, mock_settings, mock_registry):
@@ -497,7 +497,7 @@ class TestMCPClientSummarization:
         
         with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
              patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
-             patch('tarsy.hooks.typed_context.mcp_interaction_context') as mock_interaction_context:
+             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
             # Setup mocks
             mock_session = AsyncMock()
@@ -543,7 +543,7 @@ class TestMCPClientSummarization:
         
         with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
              patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
-             patch('tarsy.hooks.typed_context.mcp_interaction_context') as mock_interaction_context:
+             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
             # Setup mocks
             mock_session = AsyncMock()
@@ -588,7 +588,7 @@ class TestMCPClientSummarization:
         
         with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
              patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
-             patch('tarsy.hooks.typed_context.mcp_interaction_context') as mock_interaction_context:
+             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
             # Setup mocks
             mock_session = AsyncMock()
@@ -646,7 +646,7 @@ class TestMCPClientSummarization:
         
         with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
              patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
-             patch('tarsy.hooks.typed_context.mcp_interaction_context') as mock_interaction_context:
+             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
             # Setup mocks
             mock_session = AsyncMock()
@@ -695,7 +695,7 @@ class TestMCPClientSummarization:
         
         with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
              patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
-             patch('tarsy.hooks.typed_context.mcp_interaction_context') as mock_interaction_context:
+             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
             # Setup mocks
             mock_session = AsyncMock()
@@ -740,7 +740,7 @@ class TestMCPClientSummarization:
         
         with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
              patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
-             patch('tarsy.hooks.typed_context.mcp_interaction_context') as mock_interaction_context:
+             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
             # Setup mocks  
             mock_session = AsyncMock()
@@ -803,7 +803,7 @@ class TestMCPClientSummarization:
         
         with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
              patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
-             patch('tarsy.hooks.typed_context.mcp_interaction_context') as mock_interaction_context:
+             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
             # Setup mocks
             mock_session = AsyncMock()

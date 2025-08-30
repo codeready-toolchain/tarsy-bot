@@ -138,6 +138,11 @@ class MaskingConfig(BaseModel):
 class SummarizationConfig(BaseModel):
     """Configuration for MCP result summarization."""
     
+    model_config = ConfigDict(
+        extra='forbid',
+        str_strip_whitespace=True
+    )
+    
     enabled: bool = Field(
         default=True,
         description="Whether summarization is enabled for this server"

@@ -885,10 +885,13 @@ class TestLLMClientTokenUsageTracking:
         assert 'config' in call_args.kwargs
         config = call_args.kwargs['config']
 
-        # Should include callbacks and max_tokens
+        # Config should only contain callbacks, not max_tokens
         assert 'callbacks' in config
-        assert 'max_tokens' in config
-        assert config['max_tokens'] == 500
+        assert 'max_tokens' not in config
+        
+        # max_tokens should be passed as top-level keyword arg
+        assert 'max_tokens' in call_args.kwargs
+        assert call_args.kwargs['max_tokens'] == 500
     
     @pytest.mark.asyncio
     async def test_generate_response_without_llm_config(self, client, mock_llm_client):
@@ -918,10 +921,12 @@ class TestLLMClientTokenUsageTracking:
         assert 'config' in call_args.kwargs
         config = call_args.kwargs['config']
         
-        # Should only have callbacks, no extra LLM parameters
+        # Should only have callbacks in config, no extra LLM parameters as kwargs
         assert 'callbacks' in config
         assert 'max_tokens' not in config
         assert 'temperature' not in config
+        # Verify max_tokens is not passed as direct kwarg
+        assert 'max_tokens' not in call_args.kwargs
     
     @pytest.mark.asyncio
     async def test_execute_with_retry_with_llm_config(self, client):
@@ -945,8 +950,6 @@ class TestLLMClientTokenUsageTracking:
             # Verify config was properly created
             call_args = client.llm_client.ainvoke.call_args
             config = call_args.kwargs['config']
-
             assert 'callbacks' in config
             assert config['callbacks'] == [mock_callback_instance]
-            assert 'max_tokens' in config
-            assert config['max_tokens'] == 1000
+            assert call_args.kwargs.get('max_tokens') == 1000

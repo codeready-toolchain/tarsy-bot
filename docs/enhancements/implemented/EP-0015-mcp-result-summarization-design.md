@@ -425,7 +425,7 @@ def build_mcp_summarization_user_prompt(self, conversation_context: str, server_
 
 **Location**: `backend/tarsy/integrations/llm/client.py` (enhanced existing file)
 
-**Key Enhancement**: Added optional `llm_config` parameter to enable provider-level token control:
+**Key Enhancement**: Added optional `max_tokens` parameter to enable provider-level token control:
 
 ```python
 async def generate_response(
@@ -433,20 +433,26 @@ async def generate_response(
     conversation: LLMConversation, 
     session_id: str, 
     stage_execution_id: Optional[str] = None,
-    llm_config: Optional[Dict[str, Any]] = None  # NEW: Optional LLM configuration
+    max_tokens: Optional[int] = None  # NEW: Optional max tokens configuration
 ) -> LLMConversation:
-    """Enhanced with optional LLM configuration for max_tokens and other provider parameters."""
+    """Enhanced with optional max_tokens configuration for provider-level token control."""
     
     # Enhanced _execute_with_retry method:
-    # Build config with callbacks and optional LLM parameters
+    # Build config with callbacks
     config = {"callbacks": [callback]}
-    if llm_config:
-        config.update(llm_config)  # Add max_tokens and other params
     
-    response = await self.llm_client.ainvoke(
-        langchain_messages, 
-        config=config  # Provider-level enforcement
-    )
+    # Pass max_tokens as direct kwarg if provided
+    if max_tokens is not None:
+        response = await self.llm_client.ainvoke(
+            langchain_messages,
+            config=config,
+            max_tokens=max_tokens  # Provider-level enforcement
+        )
+    else:
+        response = await self.llm_client.ainvoke(
+            langchain_messages,
+            config=config
+        )
 ```
 
 **Benefits:**
