@@ -43,6 +43,12 @@ const getStepStyle = (type: string, success: boolean = true) => {
         color: 'success.main',
         bgColor: 'success.light'
       };
+    case 'summarization':
+      return {
+        emoji: '📋',
+        color: 'info.main',
+        bgColor: 'info.light'
+      };
     case 'error':
       return {
         emoji: '❌',
@@ -69,6 +75,7 @@ function ConversationStep({
 }: ConversationStepProps) {
   const [isActionExpanded, setIsActionExpanded] = useState(false);
   const [isAnalysisExpanded, setIsAnalysisExpanded] = useState(false);
+  const [isSummarizationExpanded, setIsSummarizationExpanded] = useState(false);
   
   const style = getStepStyle(step.type, step.success);
   const hasActionDetails = step.type === 'action' && (step.actionName || step.actionResult);
@@ -84,6 +91,10 @@ function ConversationStep({
 
   const toggleAnalysisExpansion = () => {
     setIsAnalysisExpanded(prev => !prev);
+  };
+
+  const toggleSummarizationExpansion = () => {
+    setIsSummarizationExpanded(prev => !prev);
   };
 
   const formatActionResult = (result: any): string => {
@@ -143,7 +154,7 @@ function ConversationStep({
         <Box sx={{ flex: 1, minWidth: 0 }}>
           {/* Main Content */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-            {/* Conditionally render markdown for analysis steps, plain text for others */}
+            {/* Conditionally render based on step type */}
             {step.type === 'analysis' ? (
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 {/* Analysis Summary with Expand/Collapse */}
@@ -246,10 +257,113 @@ function ConversationStep({
                   </Box>
                 </Collapse>
               </Box>
+            ) : step.type === 'summarization' ? (
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                {/* Summarized Result Summary with Expand/Collapse */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography
+                    variant="body1"
+                    sx={{
+                      lineHeight: 1.6,
+                      fontSize: '0.95rem',
+                      color: style.color,
+                      flex: 1,
+                      fontWeight: 'medium'
+                    }}
+                  >
+                    {isSummarizationExpanded ? 'Summarized Result' : `Summarized Result (${Math.round(step.content.length / 100) / 10}k chars)`}
+                  </Typography>
+                  
+                  <IconButton
+                    onClick={toggleSummarizationExpansion}
+                    size="small"
+                    sx={{ 
+                      color: style.color,
+                      '&:hover': { backgroundColor: `${style.color}15` }
+                    }}
+                  >
+                    {isSummarizationExpanded ? <ExpandLess /> : <ExpandMore />}
+                  </IconButton>
+                </Box>
+
+                {/* Collapsible Summarized Content */}
+                <Collapse in={isSummarizationExpanded}>
+                  <Box sx={{ mt: 1 }}>
+                <Box>
+                  <ReactMarkdown
+                    components={{
+                      h1: ({ children }) => (
+                        <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, color: style.color }}>
+                          {children}
+                        </Typography>
+                      ),
+                      h2: ({ children }) => (
+                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, color: style.color }}>
+                          {children}
+                        </Typography>
+                      ),
+                      h3: ({ children }) => (
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, color: style.color }}>
+                          {children}
+                        </Typography>
+                      ),
+                      p: ({ children }) => (
+                        <Typography 
+                          variant="body1" 
+                          sx={{ 
+                            lineHeight: 1.6,
+                            fontSize: '0.9rem',
+                            color: style.color,
+                            mb: 1
+                          }}
+                        >
+                          {children}
+                        </Typography>
+                      ),
+                      ul: ({ children }) => (
+                        <Box component="ul" sx={{ pl: 2, mb: 1, color: style.color }}>
+                          {children}
+                        </Box>
+                      ),
+                      li: ({ children }) => (
+                        <Typography component="li" variant="body1" sx={{ fontSize: '0.9rem', lineHeight: 1.6, mb: 0.5 }}>
+                          {children}
+                        </Typography>
+                      ),
+                      code: ({ children, className }) => (
+                        <Typography
+                          component={className?.includes('language-') ? 'pre' : 'code'}
+                          sx={{
+                            fontFamily: 'monospace',
+                            fontSize: '0.8rem',
+                            backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                            padding: className?.includes('language-') ? 1 : 0.5,
+                            borderRadius: 1,
+                            display: className?.includes('language-') ? 'block' : 'inline',
+                            whiteSpace: className?.includes('language-') ? 'pre' : 'pre-wrap',
+                            overflow: 'auto'
+                          }}
+                        >
+                          {children}
+                        </Typography>
+                      ),
+                      strong: ({ children }) => (
+                        <Typography component="strong" sx={{ fontWeight: 'bold', color: style.color }}>
+                          {children}
+                        </Typography>
+                      )
+                    }}
+                  >
+                    {step.content}
+                  </ReactMarkdown>
+                </Box>
+                  </Box>
+                </Collapse>
+              </Box>
             ) : (
-              <Typography 
-                variant="body1" 
-                sx={{ 
+              <Typography
+                variant="body1"
+                sx={{
                   whiteSpace: 'pre-wrap',
                   lineHeight: 1.6,
                   fontSize: '0.95rem',

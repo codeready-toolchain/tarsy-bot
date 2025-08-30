@@ -4,7 +4,7 @@
 import type { DetailedSession, StageExecution, LLMMessage, LLMInteractionDetail, LLMEventDetails } from '../types';
 
 export interface ConversationStepData {
-  type: 'thought' | 'action' | 'analysis' | 'error';
+  type: 'thought' | 'action' | 'analysis' | 'summarization' | 'error';
   content: string;
   actionName?: string;
   actionInput?: string;
@@ -37,6 +37,19 @@ export interface ParsedSession {
   finalAnalysis?: string;
   alert_type?: string;
   chain_id?: string;
+}
+
+/**
+ * Check if an LLM interaction is a summarization interaction based on system message
+ */
+function isSummarizationInteraction(messages: LLMMessage[]): boolean {
+  const systemMessage = messages.find(msg => msg.role === 'system');
+  if (!systemMessage) return false;
+  
+  const content = systemMessage.content.toLowerCase();
+  return content.includes('summarizing technical output') ||
+         content.includes('your specific task is to summarize') ||
+         content.includes('expert at summarizing technical output');
 }
 
 /**
@@ -282,46 +295,61 @@ export function parseStageConversation(stage: StageExecution): StageConversation
     // Each interaction contains the FULL conversation history, so we need to extract only NEW content
     const assistantMessages = messages.filter(msg => msg.role === 'assistant');
     
+    // Check if this is a summarization interaction
+    const isSummarization = isSummarizationInteraction(messages);
+    
     for (const message of assistantMessages) {
-      const parsed = parseReActMessage(message.content);
       const candidateSteps: ConversationStepData[] = [];
       
-      // Debug logging for parsing (only for analysis steps)
-      if (parsed.finalAnswer) {
-        console.log(`🔍 Found analysis content in stage "${stage.stage_name}": ${parsed.finalAnswer.length} characters`);
-      }
-      
-      // Build candidate steps from this message
-      if (parsed.thought) {
+      if (isSummarization) {
+        // This is a summarization interaction - treat assistant message as summarization
         candidateSteps.push({
-          type: 'thought',
-          content: parsed.thought,
+          type: 'summarization',
+          content: message.content,
           timestamp_us: timestamp,
           success: true
         });
-      }
-      
-      if (parsed.action) {
-        const mcpResult = findMCPResult(stage, parsed.action, timestamp);
-        candidateSteps.push({
-          type: 'action',
-          content: `${parsed.action}${parsed.actionInput ? ` ${parsed.actionInput}` : ''}`,
-          actionName: parsed.action,
-          actionInput: parsed.actionInput || '',
-          actionResult: mcpResult?.result || null,
-          timestamp_us: timestamp,
-          success: mcpResult?.success ?? true
-        });
-      }
-      
-      if (parsed.finalAnswer) {
-        candidateSteps.push({
-          type: 'analysis',
-          content: parsed.finalAnswer,
-          timestamp_us: timestamp,
-          success: true
-        });
-
+        console.log(`📝 Found summarization content in stage "${stage.stage_name}": ${message.content.length} characters`);
+      } else {
+        // Regular ReAct interaction - parse for thoughts, actions, analysis
+        const parsed = parseReActMessage(message.content);
+        
+        // Debug logging for parsing (only for analysis steps)
+        if (parsed.finalAnswer) {
+          console.log(`🔍 Found analysis content in stage "${stage.stage_name}": ${parsed.finalAnswer.length} characters`);
+        }
+        
+        // Build candidate steps from this message
+        if (parsed.thought) {
+          candidateSteps.push({
+            type: 'thought',
+            content: parsed.thought,
+            timestamp_us: timestamp,
+            success: true
+          });
+        }
+        
+        if (parsed.action) {
+          const mcpResult = findMCPResult(stage, parsed.action, timestamp);
+          candidateSteps.push({
+            type: 'action',
+            content: `${parsed.action}${parsed.actionInput ? ` ${parsed.actionInput}` : ''}`,
+            actionName: parsed.action,
+            actionInput: parsed.actionInput || '',
+            actionResult: mcpResult?.result || null,
+            timestamp_us: timestamp,
+            success: mcpResult?.success ?? true
+          });
+        }
+        
+        if (parsed.finalAnswer) {
+          candidateSteps.push({
+            type: 'analysis',
+            content: parsed.finalAnswer,
+            timestamp_us: timestamp,
+            success: true
+          });
+        }
       }
       
       // Only add steps that are truly new (not seen before in any previous interaction within this stage)

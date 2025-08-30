@@ -74,7 +74,7 @@ function ConversationTimeline({
       stage.steps.forEach((step, stepIndex) => {
         const emoji = step.type === 'thought' ? '💭' : 
                      step.type === 'action' ? '🔧' : 
-                     step.type === 'analysis' ? '🎯' : '❌';
+                     step.type === 'analysis' ? '🎯' : step.type === 'summarization' ? '📋' : '❌';
         
         content += `${emoji} ${step.content}\n`;
         
