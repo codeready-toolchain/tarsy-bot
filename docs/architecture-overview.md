@@ -46,6 +46,7 @@ graph LR
 - **LLM (Large Language Model)**: Provides the "thinking" - analyzes situations and decides what to investigate
 - **Agent-specific MCP Tools**: The "hands" - allows inspection of systems, diagnostic commands, log analysis
 - **Chain context awareness**: Agents access accumulated data from previous stages for comprehensive analysis
+- **Intelligent Result Summarization**: Large MCP tool results are automatically summarized using context-aware AI to prevent context window bloat while preserving critical investigation details
 
 ### 5. Real-time Monitoring (Enhanced)
 - Dashboard shows live chain processing status with stage-by-stage progress
@@ -78,6 +79,7 @@ sequenceDiagram
     MCP->>A: Return tool list
     
     A->>L: Investigate using AI + specialized tools
+    Note over A,L: MCP results are automatically<br/>summarized if they exceed<br/>configured token thresholds
     L->>A: Complete analysis and recommendations
     
     A->>T: Return complete analysis
@@ -101,7 +103,7 @@ sequenceDiagram
         L->>A: ReAct structured response
         Note over L,A: Thought: [reasoning about what to investigate]<br/>Action: [specific tool name]<br/>Action Input: [tool parameters]
         A->>MCP: Execute the specified tool with parameters
-        MCP->>A: Tool execution results
+        MCP->>A: Tool execution results (auto-summarized if large)
         A->>L: "Observation: [formatted tool results]"
         
         alt LLM needs more investigation
@@ -146,6 +148,7 @@ graph TB
     subgraph "AI & Tools"
         LLM[AI/LLM Service]
         MCP[MCP Tool Servers]
+        Summarizer[Context-Aware<br/>Result Summarization]
     end
     
     subgraph "Data & Monitoring"
@@ -166,10 +169,16 @@ graph TB
     
     K8s --> LLM
     K8s --> MCP
+    K8s --> Summarizer
     Security --> LLM
     Security --> MCP
+    Security --> Summarizer
     Custom --> LLM
     Custom --> MCP
+    Custom --> Summarizer
+    
+    Summarizer --> LLM
+    Summarizer --> MCP
     
     Orchestrator --> History
     Orchestrator --> WS
@@ -218,6 +227,10 @@ The AI combines all four to make intelligent decisions about investigation appro
         - Query time-series data to identify performance trends
         - Focus on resource utilization and application metrics
         - Correlate metrics with alert timeframes
+      summarization:
+        enabled: true
+        size_threshold_tokens: 3000      # Database output can be large
+        summary_max_token_limit: 800
 
   agents:
     performance-k8s-data-collector:

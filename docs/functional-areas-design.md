@@ -482,6 +482,8 @@ graph TB
         Client[MCP Client]
         Registry[MCP Server Registry]
         Masking[Data Masking Service]
+        Summarizer[Result Summarizer]
+        TokenCounter[Token Counter]
     end
     
     subgraph "MCP Servers"
@@ -494,6 +496,9 @@ graph TB
     Tools --> Client
     Client --> Registry
     Client --> Masking
+    Client --> Summarizer
+    Client --> TokenCounter
+    Agent --> Summarizer
     
     Registry --> K8s
     Registry --> Custom
@@ -573,6 +578,48 @@ class KubernetesAgent(BaseAgent):
 
 **📍 Agent Factory Integration**: `backend/tarsy/services/agent_factory.py` ensures agents only access their declared MCP servers.
 
+#### Result Summarization Integration
+
+**📍 Intelligent Size Management**: `backend/tarsy/integrations/mcp/summarizer.py`
+- **Context-aware summarization** using agent-provided LLM client and investigation context
+- **Token-based thresholds** with tiktoken integration for accurate size detection
+- **Security-first design** - summarization occurs after data masking
+- **Provider-level token control** using LangChain's native `max_tokens` parameter
+
+**Summarization Flow**:
+```python
+# Automatic summarization in MCP client
+async with mcp_interaction_context(...) as ctx:
+    raw_response = await session.call_tool(tool_name, parameters)
+    masked_response = self.data_masking_service.mask_response(raw_response, server_name)
+    
+    # Size check and summarization
+    if investigation_conversation and self._should_summarize(server_name, tool_name, masked_response):
+        summarized_response = await self.summarizer.summarize_result(
+            server_name, tool_name, masked_response, investigation_conversation, 
+            session_id, stage_execution_id, max_summary_tokens
+        )
+        return summarized_response
+    
+    return masked_response
+```
+
+**📍 Server-Specific Configuration**: 
+```yaml
+# In agents.yaml
+mcp_servers:
+  kubectl:
+    summarization:
+      enabled: true                    # Default: true
+      size_threshold_tokens: 2000      # Default: 2K tokens
+      summary_max_token_limit: 1000    # Default: 1K tokens
+```
+
+**📍 Token Counter Utility**: `backend/tarsy/utils/token_counter.py`
+- **tiktoken integration** for accurate token estimation
+- **Model-aware encoding** with fallbacks for unknown models
+- **Observation format simulation** to predict actual context usage
+
 ### 6. LLM Integration & Multi-Provider Support
 **Purpose**: AI/LLM provider abstraction and management  
 **Key Responsibility**: Unified LLM access across multiple providers
@@ -646,6 +693,7 @@ BUILTIN_LLM_PROVIDERS = {
 - **Provider selection** via LLM_PROVIDER environment variable
 - **Unified client interface** using LangChain abstraction layer
 - **Automatic retry logic** with exponential backoff for rate limiting
+- **Enhanced token control** with optional `max_tokens` parameter for provider-level enforcement
 
 **Provider Integration Pattern**:
 ```python
@@ -689,6 +737,24 @@ llm_providers:
 **📍 LLM Communication Logging**: Separate logger (`llm.communications`) captures all LLM interactions
 **📍 Hook Integration**: All LLM interactions trigger typed hooks for history and dashboard updates
 **📍 Error Handling**: Automatic retry for rate limiting, empty response detection, graceful degradation
+
+#### Advanced LLM Features
+
+**📍 Provider-Level Token Control**: Enhanced `generate_response()` method supports optional `max_tokens` parameter
+```python
+# Used by summarization system for guaranteed length limits
+response_conversation = await self.llm_client.generate_response(
+    summarization_conversation, 
+    session_id, 
+    stage_execution_id, 
+    max_tokens=max_summary_tokens  # Provider enforces limit
+)
+```
+
+**Benefits**:
+- **Guaranteed token limits** - provider enforces max_tokens, not just prompt suggestions  
+- **Universal support** - works with OpenAI, Anthropic, xAI, Google providers via LangChain
+- **Cost control** - prevents excessive token generation and associated costs
 
 #### Provider Support
 
@@ -765,7 +831,7 @@ graph LR
 **Event Types**:
 ```python
 # Three main interaction types
-LLMInteraction    # LLM requests/responses, timing, errors
+LLMInteraction    # LLM requests/responses, timing, errors (including summarization LLM calls)
 MCPInteraction    # MCP tool calls, results, errors  
 StageExecution    # Stage lifecycle, status, metadata
 ```
