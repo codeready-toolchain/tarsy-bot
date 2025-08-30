@@ -246,4 +246,4 @@ Based on the investigation context above, provide a concise summary of the tool 
 - Maintains technical accuracy and actionable insights
 - Fits naturally as the next "Observation:" in the investigation conversation
 
-The summary will be used as an observation in the ongoing ReAct investigation process.""")
+CRITICAL INSTRUCTION: You MUST return ONLY plain text. DO NOT include "Final Answer:", "Thought:", "Action:", or any other formatting. Just the summary text that will be inserted as an observation in the conversation.""")

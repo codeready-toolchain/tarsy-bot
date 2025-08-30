@@ -153,11 +153,11 @@ class LLMClient:
         return langchain_messages
     
     async def generate_response(
-        self, 
-        conversation: LLMConversation, 
-        session_id: str, 
+        self,
+        conversation: LLMConversation,
+        session_id: str,
         stage_execution_id: Optional[str] = None,
-        llm_config: Optional[Dict[str, Any]] = None
+        max_tokens: Optional[int] = None
     ) -> LLMConversation:
         """
         Generate response using type-safe conversation object.
@@ -169,7 +169,7 @@ class LLMClient:
             conversation: The conversation to generate a response for
             session_id: Session ID for tracking
             stage_execution_id: Optional stage execution ID
-            llm_config: Optional configuration for LLM (e.g., max_tokens, temperature overrides)
+            max_tokens: Optional max tokens configuration for LLM
         
         Returns:
             Updated conversation with assistant response appended
@@ -201,7 +201,7 @@ class LLMClient:
                 langchain_messages = self._convert_conversation_to_langchain(conversation)
                 
                 # Get both response and usage metadata
-                response, usage_metadata = await self._execute_with_retry(langchain_messages, llm_config=llm_config)
+                response, usage_metadata = await self._execute_with_retry(langchain_messages, max_tokens=max_tokens)
                 
                 # Store token usage in dedicated type-safe fields on interaction
                 if usage_metadata:
@@ -244,10 +244,10 @@ class LLMClient:
                 raise Exception(enhanced_message) from e
     
     async def _execute_with_retry(
-        self, 
-        langchain_messages: List, 
+        self,
+        langchain_messages: List,
         max_retries: int = 3,
-        llm_config: Optional[Dict[str, Any]] = None
+        max_tokens: Optional[int] = None
     ) -> Tuple[Any, Optional[Dict[str, Any]]]:
         """Execute LLM call with usage tracking and retry logic."""
         for attempt in range(max_retries + 1):
@@ -255,13 +255,12 @@ class LLMClient:
                 # Add callback handler to capture token usage
                 callback = UsageMetadataCallbackHandler()
                 
-                # Build config with callbacks and optional LLM parameters
+                # Build config with callbacks and optional max_tokens
                 config = {"callbacks": [callback]}
-                if llm_config:
-                    config.update(llm_config)  # Add max_tokens and other params
-                
+                if max_tokens is not None:
+                    config["max_tokens"] = max_tokens
                 response = await self.llm_client.ainvoke(
-                    langchain_messages, 
+                    langchain_messages,
                     config=config
                 )
                 
@@ -435,12 +434,12 @@ class LLMManager:
         
         return self.clients.get(provider)
     
-    async def generate_response(self, 
+    async def generate_response(self,
                               conversation: LLMConversation,
                               session_id: str,
                               stage_execution_id: Optional[str] = None,
                               provider: str = None,
-                              llm_config: Optional[Dict[str, Any]] = None) -> LLMConversation:
+                              max_tokens: Optional[int] = None) -> LLMConversation:
         """Generate a response using the specified or default LLM provider.
         
         Args:
@@ -448,7 +447,7 @@ class LLMManager:
             session_id: Required session ID for timeline logging and tracking
             stage_execution_id: Optional stage execution ID for tracking
             provider: Optional provider override (uses default if not specified)
-            llm_config: Optional configuration for LLM (e.g., max_tokens, temperature overrides)
+            max_tokens: Optional max tokens configuration for LLM
             
         Returns:
             Updated LLMConversation with new assistant message appended
@@ -457,8 +456,8 @@ class LLMManager:
         if not client:
             available = list(self.clients.keys())
             raise Exception(f"LLM provider not available. Available: {available}")
-        
-        return await client.generate_response(conversation, session_id, stage_execution_id, llm_config)
+
+        return await client.generate_response(conversation, session_id, stage_execution_id, max_tokens)
 
     def list_available_providers(self) -> List[str]:
         """List available LLM providers."""

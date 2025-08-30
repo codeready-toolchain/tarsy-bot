@@ -6,6 +6,7 @@ but before database storage, enabling efficient conversation flow while preservi
 investigation-relevant details.
 """
 
+import copy
 import json
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
@@ -88,9 +89,9 @@ class MCPResultSummarizer:
             summarization_conversation = LLMConversation(messages=[system_message, user_message])
             
             # Generate summary using LLM client with max_tokens limit (ensures proper hook integration)
-            llm_config = {"max_tokens": max_summary_tokens}
             response_conversation = await self.llm_client.generate_response(
-                summarization_conversation, session_id, stage_execution_id, llm_config
+                summarization_conversation, session_id, stage_execution_id,
+                max_tokens=max_summary_tokens
             )
             
             # Extract summary from response
@@ -101,8 +102,16 @@ class MCPResultSummarizer:
             summary_text = assistant_message.content.strip()
             
             # Return summarized result in same structure as original
-            summarized_result = result.copy()
-            summarized_result["result"] = summary_text
+            # Create a completely new dictionary to avoid unhashable type errors
+            summarized_result = {"result": summary_text}
+            # Add any other keys from original result if they exist and are safe to copy
+            for key, value in result.items():
+                if key != "result":
+                    try:
+                        summarized_result[key] = copy.deepcopy(value)
+                    except (TypeError, ValueError):
+                        # Convert unhashable values to strings
+                        summarized_result[key] = str(value)
             
             logger.debug(f"Successfully summarized {server_name}.{tool_name} result with investigation context")
             return summarized_result

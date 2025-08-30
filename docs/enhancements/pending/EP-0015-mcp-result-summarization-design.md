@@ -6,7 +6,7 @@
 **✅ COMPLETE: Phase 2** - Foundation Components
 **✅ COMPLETE: Phase 3** - MCP Client Integration  
 **✅ COMPLETE: Phase 4** - Agent Integration  
-**🔄 PENDING: Phase 5** - Configuration and Testing  
+**✅ COMPLETE: Phase 5** - Configuration and Testing  
 **🔄 PENDING: Phase 6** - Performance Monitoring  
 
 ## Problem Statement
@@ -556,14 +556,6 @@ async def _maybe_summarize_result(
             server_name, tool_name, result, investigation_conversation, 
             session_id, stage_execution_id, max_summary_tokens
         )
-        
-        # Add metadata about summarization
-        if isinstance(summarized, dict):
-            summarized['_summarized'] = {
-                'original_tokens': estimated_tokens,
-                'threshold': size_threshold,
-                'summarized_at': now_us()
-            }
         
         return summarized
         

@@ -76,12 +76,12 @@ class TestMCPResultSummarizer:
         )
         self.mock_prompt_builder.build_mcp_summarization_user_prompt.assert_called_once()
         
-        # Verify LLM client was called with max_tokens config
+        # Verify LLM client was called with max_tokens parameter
         self.mock_llm_client.generate_response.assert_called_once()
         call_args = self.mock_llm_client.generate_response.call_args
         assert call_args[0][1] == "test-session"  # session_id
         assert call_args[0][2] == "test-stage"   # stage_execution_id
-        assert call_args[0][3] == {"max_tokens": 1000}  # llm_config with max_tokens
+        assert call_args.kwargs["max_tokens"] == 1000  # max_tokens parameter
     
     @pytest.mark.asyncio
     async def test_summarize_result_with_string_result(self):
@@ -252,9 +252,9 @@ class TestMCPResultSummarizer:
             max_summary_tokens=custom_max_tokens
         )
         
-        # Verify LLM client received correct max_tokens config
+        # Verify LLM client received correct max_tokens parameter
         call_args = self.mock_llm_client.generate_response.call_args
-        assert call_args[0][3] == {"max_tokens": custom_max_tokens}
+        assert call_args.kwargs["max_tokens"] == custom_max_tokens
     
     @pytest.mark.asyncio
     async def test_summarize_result_max_tokens_enforcement(self):
@@ -283,4 +283,4 @@ class TestMCPResultSummarizer:
         
         # Verify max_tokens was passed correctly
         call_args = self.mock_llm_client.generate_response.call_args
-        assert call_args[0][3] == {"max_tokens": 100}
+        assert call_args.kwargs["max_tokens"] == 100

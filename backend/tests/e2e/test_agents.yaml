@@ -54,6 +54,10 @@ mcp_servers:
     instructions: "Simple data collection server for testing - provides system information gathering tools"
     data_masking:
       enabled: false
+    summarization:
+      enabled: true
+      size_threshold_tokens: 100    # Low threshold to trigger summarization in tests
+      summary_max_token_limit: 50  # Reasonable limit for test summaries
 
 # Agent chains configuration - this is the key part for our test
 agent_chains:

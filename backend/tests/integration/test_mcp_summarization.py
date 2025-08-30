@@ -158,11 +158,11 @@ class TestMCPSummarizerComponent:
         from unittest.mock import Mock, AsyncMock
         client = Mock()
         
-        async def mock_response(conversation, session_id, stage_execution_id=None, llm_config=None):
+        async def mock_response(conversation, session_id, stage_execution_id=None, max_tokens=None):
             # Verify max_tokens enforcement
-            max_tokens = llm_config.get('max_tokens', 1000) if llm_config else 1000
+            max_tokens = max_tokens if max_tokens is not None else 1000
             summary = f"SUMMARY: Test summary content (max_tokens={max_tokens})"
-            
+
             # Create response conversation
             summary_message = LLMMessage(role=MessageRole.ASSISTANT, content=summary)
             result_conversation = LLMConversation(messages=conversation.messages + [summary_message])
@@ -244,16 +244,9 @@ DOMAIN KNOWLEDGE:
         mock_llm_client.generate_response.assert_called_once()
         call_args = mock_llm_client.generate_response.call_args
         
-        # Check if llm_config was passed as keyword argument
-        if len(call_args[1]) > 0 and "llm_config" in call_args[1]:
-            llm_config = call_args[1]["llm_config"]
-            assert llm_config["max_tokens"] == 500
-        else:
-            # Check positional arguments for llm_config
-            args = call_args[0]
-            if len(args) > 3:  # conversation, session_id, stage_execution_id, llm_config
-                llm_config = args[3]
-                assert llm_config["max_tokens"] == 500
+        # Check if max_tokens was passed as keyword argument
+        if len(call_args[1]) > 0 and "max_tokens" in call_args[1]:
+            assert call_args[1]["max_tokens"] == 500
 
 
 @pytest.mark.integration

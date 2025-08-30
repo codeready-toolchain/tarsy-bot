@@ -1,3 +1,157 @@
+# Expected conversation structures for the data collection stage tool summarization interaction, when the system info is too large to fit in the conversation
+EXPECTED_DATA_COLLECTION_SUMMARIZATION_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system", 
+            "content": """You are an expert at summarizing technical output from system administration and monitoring tools for ongoing incident investigation.
+
+Your specific task is to summarize output from **test-data-server.collect_system_info** in a way that:
+
+1. **Preserves Critical Information**: Keep all details essential for troubleshooting and investigation
+2. **Maintains Investigation Context**: Focus on information relevant to what the investigator was looking for
+3. **Reduces Verbosity**: Remove redundant details while preserving technical accuracy  
+4. **Highlights Key Findings**: Emphasize errors, warnings, unusual patterns, and actionable insights
+5. **Stays Concise**: Keep summary under 50 tokens while preserving meaning
+
+## Summarization Guidelines:
+
+- **Always Preserve**: Error messages, warnings, status indicators, resource metrics, timestamps
+- **Intelligently Summarize**: Large lists by showing patterns, counts, and notable exceptions
+- **Focus On**: Non-default configurations, problematic settings, resource utilization issues
+- **Maintain**: Technical accuracy and context about what the data represents
+- **Format**: Clean, structured text suitable for continued technical investigation
+
+Your summary will be inserted as an observation in the ongoing investigation conversation."""
+        },
+        {
+            "role": "user",
+            "content": """Below is the ongoing investigation conversation that provides context for what the investigator has been looking for and thinking about:
+
+## Investigation Context:
+=== CONVERSATION START ===
+SYSTEM: ## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Kubernetes Server Instructions
+
+For Kubernetes operations:
+- Be careful with cluster-scoped resource listings in large clusters
+- Always prefer namespaced queries when possible
+- Use kubectl explain for resource schema information
+- Check resource quotas before creating new resources
+
+## Custom Server Instructions
+
+Simple data collection server for testing - provides system information gathering tools
+
+## Agent-Specific Instructions
+
+You are a Kubernetes data collection specialist. Your role is to gather comprehensive 
+information about problematic resources using available kubectl tools.
+
+Focus on:
+- Namespace status and finalizers
+- Pod states and termination details  
+- Events showing errors and warnings
+- Resource dependencies that might block cleanup
+
+Be thorough but efficient. Collect all relevant data before stopping.
+
+USER: Answer the following question using the available tools.
+
+Available tools:
+kubernetes-server.kubectl_get: Get Kubernetes resources
+kubernetes-server.kubectl_describe: Describe Kubernetes resources
+test-data-server.collect_system_info: Collect basic system information like CPU, memory, and disk usage
+
+Question: Investigate this test-kubernetes alert and provide stage-specific analysis.
+
+## Alert Details
+
+**Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
+**Alert Type:** test-kubernetes
+**Runbook:** https://runbooks.example.com/k8s-namespace-stuck
+
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
+# Mock Runbook
+Test runbook content
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+No previous stage data is available for this alert. This is the first stage of analysis.
+
+## Your Task: DATA-COLLECTION STAGE
+Use available tools to:
+1. Collect additional data relevant to this stage
+2. Analyze findings in the context of this specific stage
+3. Provide stage-specific insights and recommendations
+
+Your Final Answer should include both the data collected and your stage-specific analysis.
+
+Begin!
+
+ASSISTANT: Thought: I need to get namespace information first.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
+
+USER: Observation: kubernetes-server.kubectl_get: {
+  "result": "stuck-namespace   Terminating   45m"
+}
+
+ASSISTANT: Action: kubernetes-server.kubectl_describe
+Action Input: {"resource": "namespace", "name": "stuck-namespace"}
+
+USER: Observation: kubernetes-server.kubectl_describe: {
+  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
+}
+
+ASSISTANT: Thought: Let me also collect system information to understand resource constraints.
+Action: test-data-server.collect_system_info
+Action Input: {"detailed": false}
+=== CONVERSATION END ===
+
+## Tool Result to Summarize:
+The investigator just executed `test-data-server.collect_system_info` and got the following output:
+
+=== TOOL OUTPUT START ===
+{'result': 'Long System Information Report - more than 100 tokens\\n8wHXXQkrjqtaYwXb3KdmeOapEKU27hMiaYvzT25SI4MexrI2SC9gFLsKie0eDxH5WEVV7TvDCWjOrD2egFSykp2eRP2u9jVwUqzgOVULB6WAnTKol7vmIii9F7gCWoKMXnJsh12fppgIWJAbFw5vYuv7JIQMargw3vxFZO699z3t0hiYPtcLyeSXyyIf0lIxl8lOmKLsYA4TBZiSwZ6V5NV1cZ2VQeMxDOLN4F6kjTaqCtTc7zGCYzvHlv9BaCVB4SXo26yfg3r2G7sCRjexj0EvKGxnYecJiJoEtqD01pCCBrlQC8esGoG15NaMlFCWIsbdJmADZOR0WUYOcOhNk0WOtASqzHJBIfnGVYYxGMq0A5DkPGbUe4UXYPNEnD0xZ7YcEYGKAmdYmx2F2BgMi2NYXcelZ1Ym1Ukx2zGZoiKVmBdutnWr2ManM0PnChDLj0SyIZGdmhZhOn5R9uB3HpbCXsKzw4gUYiU9EvwW2m22pe6zKTSCpyhI4rVG5fFwrehWEbuB8nTbI3eawqQQevCbal42ko0GBG1sjE2GIDn7jmwJEBImlxRkuHoyWvMqfLDn9RbGXzhtnlO7sKZEb9He'}
+=== TOOL OUTPUT END ===
+
+## Your Task:
+Based on the investigation context above, provide a concise summary of the tool result that:
+- Preserves information most relevant to what the investigator was looking for
+- Removes verbose or redundant details that don't impact the investigation
+- Maintains technical accuracy and actionable insights
+- Fits naturally as the next "Observation:" in the investigation conversation
+
+CRITICAL INSTRUCTION: You MUST return ONLY plain text. DO NOT include "Final Answer:", "Thought:", "Action:", or any other formatting. Just the summary text that will be inserted as an observation in the conversation."""
+        },
+        {
+            "role": "assistant",
+            "content": """Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."""
+        }
+    ]
+}
+
 """
 Expected stage interactions for the complete alert processing flow
 
@@ -14,7 +168,7 @@ Format:
 # Expected stages for the complete alert processing flow
 EXPECTED_STAGES = {
     'data-collection': {
-        'llm_count': 4,
+        'llm_count': 5,  # 4 regular interactions plus 1 tool result summarization interaction
         'mcp_count': 5,  # Tool discovery calls + tool execution calls are all tracked as MCP interactions
         'interactions': [
             # MCP 1 - Tool list discovery for kubernetes-server (first interaction)
@@ -25,16 +179,19 @@ EXPECTED_STAGES = {
             {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330},
             # MCP 3 - Successful kubectl_get attempt
             {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-            # LLM 2 - Second ReAct iteration  
+            # LLM 2 - Second ReAct iteration
             {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245},
-            # MCP 4 - Successful kubectl_describe attempt  
+            # MCP 4 - Successful kubectl_describe attempt
             {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
             # LLM 3 - Third ReAct iteration
             {'type': 'llm', 'position': 3, 'success': True, 'conversation_index': 7, 'input_tokens': 220, 'output_tokens': 75, 'total_tokens': 295},
-            # MCP 5 - Successful collect_system_info call
+            # LLM 4 - Summarization of large system info result (separate LLM call, not in conversation)
+            # The summarization interaction happens within the MCPtool call interaction, so it's recorded before the MCP Ineraction
+            {'type': 'llm', 'position': 4, 'success': True, 'conversation': EXPECTED_DATA_COLLECTION_SUMMARIZATION_CONVERSATION, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150},
+            # MCP 5 - Successful collect_system_info call (will trigger summarization)
             {'type': 'mcp', 'position': 5, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
-            # LLM 4 - Final completion
-            {'type': 'llm', 'position': 4, 'success': True, 'conversation_index': 9, 'input_tokens': 315, 'output_tokens': 125, 'total_tokens': 440}
+            # LLM 5 - Final completion with summarized observation
+            {'type': 'llm', 'position': 5, 'success': True, 'conversation_index': 9, 'input_tokens': 315, 'output_tokens': 125, 'total_tokens': 440}
         ]
     },
     'verification': {
@@ -79,6 +236,7 @@ Format:
     ]
 }
 """
+
 # Expected conversation structures for multi-stage chains
 EXPECTED_DATA_COLLECTION_CONVERSATION = {
     "messages": [
@@ -305,11 +463,11 @@ Action Input: {"resource": "namespace", "name": "stuck-namespace"}"""
 Action: test-data-server.collect_system_info
 Action Input: {"detailed": false}"""
         },
-        # 4th LLM interaction adds observation and gets final response
+        # 4th LLM interaction - Gets summarized system info and provides final answer
         {
-            "role": "user", 
+            "role": "user",
             "content": """Observation: test-data-server.collect_system_info: {
-  "result": "{'result': 'System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free'}"
+  "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
 }"""
         },
         {
@@ -502,7 +660,7 @@ Thought: Let me also collect system information to understand resource constrain
 Action: test-data-server.collect_system_info
 Action Input: {"detailed": false}
 Observation: test-data-server.collect_system_info: {
-  "result": "{'result': 'System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free'}"
+  "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
 }
 Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
 <!-- Analysis Result END -->
@@ -630,7 +788,7 @@ Thought: Let me also collect system information to understand resource constrain
 Action: test-data-server.collect_system_info
 Action Input: {"detailed": false}
 Observation: test-data-server.collect_system_info: {
-  "result": "{'result': 'System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free'}"
+  "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
 }
 Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
 <!-- Analysis Result END -->
@@ -661,9 +819,7 @@ Do NOT call any tools - use only the provided data."""
         },
         {
             "role": "assistant",
-            "content": """Based on previous stages, the namespace is stuck due to finalizers.
-## Recommended Actions
-1. Remove finalizers to allow deletion"""
+            "content": "Based on previous stages, the namespace is stuck due to finalizers."
         }
     ]
 }

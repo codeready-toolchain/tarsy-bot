@@ -15,7 +15,6 @@ from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.token_counter import TokenCounter
-from tarsy.utils.timestamp import now_us
 
 if TYPE_CHECKING:
     from tarsy.integrations.mcp.summarizer import MCPResultSummarizer
@@ -225,14 +224,6 @@ class MCPClient:
                 server_name, tool_name, result, investigation_conversation, 
                 session_id, stage_execution_id, max_summary_tokens
             )
-            
-            # Add metadata about summarization
-            if isinstance(summarized, dict):
-                summarized['_summarized'] = {
-                    'original_tokens': estimated_tokens,
-                    'threshold': size_threshold,
-                    'summarized_at': now_us()
-                }
             
             logger.info(f"Successfully summarized {server_name}.{tool_name} from {estimated_tokens} to ~{max_summary_tokens} tokens")
             return summarized

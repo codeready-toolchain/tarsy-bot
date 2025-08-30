@@ -527,10 +527,6 @@ class TestMCPClientSummarization:
             # Verify result structure includes summarization metadata
             assert "result" in result
             assert result["result"] == "Summarized: Large data truncated"
-            assert "_summarized" in result
-            assert "original_tokens" in result["_summarized"]
-            assert "threshold" in result["_summarized"]
-            assert "summarized_at" in result["_summarized"]
 
     @pytest.mark.asyncio
     async def test_call_tool_without_summarization_small_result(self, mock_settings, mock_registry_with_summarization, mock_summarizer, sample_conversation):

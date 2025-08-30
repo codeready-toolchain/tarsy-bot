@@ -12,6 +12,8 @@ Architecture:
 import asyncio
 import json
 import re
+import random
+import string
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
@@ -219,59 +221,54 @@ class TestRealE2E:
                     # Determine response based on interaction count (simple pattern)
                     total_interactions = len(all_llm_interactions)
 
-                    # Define realistic token usage for each interaction
-                    # These values are used to test token tracking at interaction, stage, and session levels
-                    # Expected stage totals: data-collection=1310, verification=650, analysis=600 
-                    # Expected session total: 2560 tokens (1850 input + 710 output)
-                    token_usage_map = {
-                        1: {"input_tokens": 245, "output_tokens": 85, "total_tokens": 330},   # Data collection - Initial analysis
-                        2: {"input_tokens": 180, "output_tokens": 65, "total_tokens": 245},   # Data collection - kubectl describe
-                        3: {"input_tokens": 220, "output_tokens": 75, "total_tokens": 295},   # Data collection - System info
-                        4: {"input_tokens": 315, "output_tokens": 125, "total_tokens": 440}, # Data collection - Summary
-                        5: {"input_tokens": 190, "output_tokens": 70, "total_tokens": 260},   # Verification - Check
-                        6: {"input_tokens": 280, "output_tokens": 110, "total_tokens": 390}, # Verification - Summary
-                        7: {"input_tokens": 420, "output_tokens": 180, "total_tokens": 600}, # Analysis - Final
-                    }
-
-                    if total_interactions <= 4:
-                        # Data collection stage responses
-                        if total_interactions == 1:
-                            response_content = """Thought: I need to get namespace information first.
+                    # Define mock response content and token usage for each interaction
+                    # These values are used to test llm interaction, token tracking at interaction, stage, and session levels
+                    # Expected stage token usage totals: data-collection=1310(regular)+150(summarization)=1460, verification=650, analysis=600
+                    # Expected session tolen usage total: 2710 tokens (1950 input + 760 output)
+                    mock_response_map = {
+                        1: { # Data collection - Initial analysis
+                            "response_content": """Thought: I need to get namespace information first.
 Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
-                        elif total_interactions == 2:
-                            response_content = """Action: kubernetes-server.kubectl_describe
-Action Input: {"resource": "namespace", "name": "stuck-namespace"}"""
-                        elif total_interactions == 3:
-                            response_content = """Thought: Let me also collect system information to understand resource constraints.
+Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
+                           "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
+                           },
+                        2: { # Data collection - kubectl describe
+                            "response_content": """Action: kubernetes-server.kubectl_describe
+Action Input: {"resource": "namespace", "name": "stuck-namespace"}""",
+                            "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
+                           },
+                        3: { # Data collection - System info
+                            "response_content": """Thought: Let me also collect system information to understand resource constraints.
 Action: test-data-server.collect_system_info
-Action Input: {"detailed": false}"""
-                        else:
-                            response_content = """Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion."""
-
-                    elif total_interactions <= 6:
-                        # Verification stage responses
-                        if total_interactions == 5:
-                            response_content = """Thought: I need to verify the namespace status.
+Action Input: {"detailed": false}""",
+                            "input_tokens": 220, "output_tokens": 75, "total_tokens": 295
+                           },
+                        4: { # Data collection - Tool result summarization
+                            "response_content": """Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK.""",
+                            "input_tokens": 100, "output_tokens": 50, "total_tokens": 150
+                           },
+                        5: { # Data collection - Final analysis
+                            "response_content": """Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.""",
+                            "input_tokens": 315, "output_tokens": 125, "total_tokens": 440
+                           },
+                        6: { # Verification - Check
+                            "response_content": """Thought: I need to verify the namespace status.
 Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
-                        else:
-                            response_content = """Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion."""
-
-                    else:
-                        # Analysis stage response
-                        response_content = """Based on previous stages, the namespace is stuck due to finalizers.
-## Recommended Actions
-1. Remove finalizers to allow deletion"""
-
-                    # Get realistic token usage for this interaction
-                    # Use correct OpenAI API field names: prompt_tokens, completion_tokens, total_tokens
-                    mock_usage = token_usage_map.get(total_interactions, {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0})
-                    usage_data = {
-                        "prompt_tokens": mock_usage["input_tokens"],
-                        "completion_tokens": mock_usage["output_tokens"], 
-                        "total_tokens": mock_usage["total_tokens"]
+Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
+                            "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
+                           },
+                        7: { # Verification - Summary
+                            "response_content": """Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion.""",
+                            "input_tokens": 280, "output_tokens": 110, "total_tokens": 390
+                           },
+                        8: { # Analysis - Final
+                            "response_content": """Based on previous stages, the namespace is stuck due to finalizers.""",
+                            "input_tokens": 420, "output_tokens": 180, "total_tokens": 600
+                           },
                     }
+
+                    # Get mock response for this interaction
+                    mock_response = mock_response_map.get(total_interactions, {"response_content": "", "input_tokens": 0, "output_tokens": 0, "total_tokens": 0})
 
                     # Return HTTP response in the format expected by LangChain
                     return httpx.Response(
@@ -280,14 +277,18 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
                             "choices": [
                                 {
                                     "message": {
-                                        "content": response_content,
+                                        "content": mock_response["response_content"],
                                         "role": "assistant",
                                     },
                                     "finish_reason": "stop",
                                 }
                             ],
                             "model": "gpt-4",
-                            "usage": usage_data,
+                            "usage": { # Use correct OpenAI API field names: prompt_tokens, completion_tokens, total_tokens
+                                "prompt_tokens": mock_response["input_tokens"],
+                                "completion_tokens": mock_response["output_tokens"], 
+                                "total_tokens": mock_response["total_tokens"]
+                            },
                         },
                     )
                 except Exception as e:
@@ -406,9 +407,12 @@ Finalizers:   kubernetes.io/pv-protection"""
                 # Create mock result object with content attribute - this must return the exact structure
                 # that MCPClient.call_tool expects after processing
                 if tool_name == "collect_system_info":
-                    # Return the dictionary format that MCPClient.call_tool produces
+                    # Return a large result that exceeds the summarization threshold (100 tokens)
+                    # This will trigger MCP result summarization
+                    large_system_info = """Long System Information Report - more than 100 tokens
+8wHXXQkrjqtaYwXb3KdmeOapEKU27hMiaYvzT25SI4MexrI2SC9gFLsKie0eDxH5WEVV7TvDCWjOrD2egFSykp2eRP2u9jVwUqzgOVULB6WAnTKol7vmIii9F7gCWoKMXnJsh12fppgIWJAbFw5vYuv7JIQMargw3vxFZO699z3t0hiYPtcLyeSXyyIf0lIxl8lOmKLsYA4TBZiSwZ6V5NV1cZ2VQeMxDOLN4F6kjTaqCtTc7zGCYzvHlv9BaCVB4SXo26yfg3r2G7sCRjexj0EvKGxnYecJiJoEtqD01pCCBrlQC8esGoG15NaMlFCWIsbdJmADZOR0WUYOcOhNk0WOtASqzHJBIfnGVYYxGMq0A5DkPGbUe4UXYPNEnD0xZ7YcEYGKAmdYmx2F2BgMi2NYXcelZ1Ym1Ukx2zGZoiKVmBdutnWr2ManM0PnChDLj0SyIZGdmhZhOn5R9uB3HpbCXsKzw4gUYiU9EvwW2m22pe6zKTSCpyhI4rVG5fFwrehWEbuB8nTbI3eawqQQevCbal42ko0GBG1sjE2GIDn7jmwJEBImlxRkuHoyWvMqfLDn9RbGXzhtnlO7sKZEb9He"""
                     return {
-                        "result": "System Info: CPU usage: 45%, Memory: 2.1GB/8GB used, Disk: 120GB free"
+                        "result": large_system_info.strip()
                     }
                 else:
                     return {"result": f"Mock response for custom tool: {tool_name}"}
@@ -574,10 +578,10 @@ Finalizers:   kubernetes.io/pv-protection"""
         ), f"Processing took too long: {processing_duration_ms}ms"
 
         # Verify session-level token usage totals (sum of all stages)
-        # Expected totals: data-collection(960+350+1310) + verification(470+180+650) + analysis(420+180+600)
-        expected_session_input_tokens = 1850  # 960 + 470 + 420
-        expected_session_output_tokens = 710   # 350 + 180 + 180  
-        expected_session_total_tokens = 2560   # 1310 + 650 + 600
+        # Expected totals: data-collection(1060+400=1460) + verification(470+180=650) + analysis(420+180=600)
+        expected_session_input_tokens = 1950  # 1060 + 470 + 420
+        expected_session_output_tokens = 760   # 400 + 180 + 180  
+        expected_session_total_tokens = 2710   # 1460 + 650 + 600
         
         actual_session_input_tokens = session_data.get("session_input_tokens")
         actual_session_output_tokens = session_data.get("session_output_tokens")
@@ -712,10 +716,22 @@ Finalizers:   kubernetes.io/pv-protection"""
                 # Verify the actual conversation matches the expected conversation
                 actual_conversation = details["conversation"]
                 actual_messages = actual_conversation["messages"]
-                expected_conversation_index = expected_interaction["conversation_index"]
-                assert_conversation_messages(
-                    expected_conversation, actual_messages, expected_conversation_index
-                )
+                
+                if "conversation_index" in expected_interaction:
+                    # Use conversation_index to slice from the expected conversation
+                    expected_conversation_index = expected_interaction["conversation_index"]
+                    assert_conversation_messages(
+                        expected_conversation, actual_messages, expected_conversation_index
+                    )
+                elif "conversation" in expected_interaction:
+                    # Use the provided conversation directly (e.g., for summarization)
+                    expected_conversation_for_interaction = expected_interaction["conversation"]
+                    expected_message_count = len(expected_conversation_for_interaction["messages"])
+                    assert_conversation_messages(
+                        expected_conversation_for_interaction, actual_messages, expected_message_count
+                    )
+                else:
+                    raise AssertionError(f"Stage '{stage_name}' interaction {i+1} missing both 'conversation_index' and 'conversation' fields")
                 
                 # Verify token usage
                 if "input_tokens" in expected_interaction:
@@ -760,7 +776,7 @@ Finalizers:   kubernetes.io/pv-protection"""
 
         # Validate stage-level token totals
         actual_stage_input_tokens = actual_stage.get("stage_input_tokens")
-        actual_stage_output_tokens = actual_stage.get("stage_output_tokens") 
+        actual_stage_output_tokens = actual_stage.get("stage_output_tokens")
         actual_stage_total_tokens = actual_stage.get("stage_total_tokens")
         
         assert (
