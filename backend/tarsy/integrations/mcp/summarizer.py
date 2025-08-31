@@ -72,6 +72,9 @@ class MCPResultSummarizer:
             else:
                 result_text = str(result_content)
             
+            # Apply tool result truncation based on current LLM provider limits
+            result_text = self._truncate_tool_result_if_needed(result_text)
+            
             # Use prompt builder to create summarization prompts
             system_prompt = self.prompt_builder.build_mcp_summarization_system_prompt(
                 server_name, tool_name, max_summary_tokens
@@ -167,3 +170,29 @@ class MCPResultSummarizer:
             domain_content = system_content[:1000] + "... [domain knowledge extracted]"
         
         return domain_content
+    
+    def _truncate_tool_result_if_needed(self, result_text: str) -> str:
+        """Truncate tool result content if it exceeds provider-specific limits."""
+        # Get provider-specific limit directly from LLM client
+        max_tool_result_tokens = self.llm_client.get_max_tool_result_tokens()
+        
+        # Rough token estimation: ~4 chars per token
+        max_chars = max_tool_result_tokens * 4
+        
+        if len(result_text) > max_chars:
+            truncated_text = result_text[:max_chars]
+            original_size = len(result_text)
+            
+            # Add clear truncation marker
+            result_text = (
+                truncated_text + 
+                f"\n\n[TOOL RESULT TRUNCATED - Original size: {original_size:,} chars, "
+                f"Truncated to: {max_chars:,} chars for LLM context limits]"
+            )
+            
+            logger.info(
+                f"Truncated tool result from {original_size:,} to {len(result_text):,} chars "
+                f"(limit: {max_tool_result_tokens:,} tokens)"
+            )
+        
+        return result_text

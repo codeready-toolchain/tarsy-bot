@@ -17,7 +17,7 @@ class LLMProviderConfig(TypedDict):
     
     Defines the structure for LLM provider configurations including
     required fields (type, model, api_key_env) and optional settings
-    (base_url, temperature, verify_ssl).
+    (base_url, temperature, verify_ssl, max_tool_result_tokens).
     """
     type: ProviderType
     model: str
@@ -25,3 +25,4 @@ class LLMProviderConfig(TypedDict):
     base_url: NotRequired[str]
     temperature: NotRequired[float]
     verify_ssl: NotRequired[bool]
+    max_tool_result_tokens: NotRequired[int]

@@ -21,6 +21,7 @@ from langchain_anthropic import ChatAnthropic
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import llm_interaction_context
 from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
+from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
 
@@ -101,6 +102,7 @@ class LLMClient:
     def __init__(self, provider_name: str, config: Dict):
         self.provider_name = provider_name
         self.config = config
+        self.provider_config = config  # Store config for access to provider-specific settings
         self.model = config.get("model", "default")
         self.api_key = config.get("api_key", "")
         self.temperature = config.get("temperature", DEFAULT_LLM_TEMPERATURE)
@@ -242,6 +244,20 @@ class LLMClient:
                     enhanced_message += f" | Details: {error_details}"
                 
                 raise Exception(enhanced_message) from e
+    
+    def get_max_tool_result_tokens(self) -> int:
+        """Return the maximum tool result tokens for the current provider."""
+        try:
+            max_tokens = self.provider_config.get("max_tool_result_tokens")
+            if max_tokens is not None:
+                return int(max_tokens)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid max_tool_result_tokens in provider config: {e}")
+        
+        # Fallback to safe default for most models
+        default_limit = 150000  # Conservative limit that works for most providers
+        logger.info(f"Using default tool result limit: {default_limit:,} tokens")
+        return default_limit
     
     async def _execute_with_retry(
         self,
