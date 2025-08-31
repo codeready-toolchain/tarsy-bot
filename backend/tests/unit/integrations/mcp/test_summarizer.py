@@ -27,6 +27,9 @@ class TestMCPResultSummarizer:
         self.mock_prompt_builder.build_mcp_summarization_system_prompt.return_value = "System prompt for summarization"
         self.mock_prompt_builder.build_mcp_summarization_user_prompt.return_value = "User prompt with context"
         
+        # Mock the new EP-0016 method with a reasonable default
+        self.mock_llm_client.get_max_tool_result_tokens.return_value = 150000  # Default fallback value
+        
         self.summarizer = MCPResultSummarizer(self.mock_llm_client, self.mock_prompt_builder)
     
     @pytest.mark.asyncio
@@ -284,3 +287,124 @@ class TestMCPResultSummarizer:
         # Verify max_tokens was passed correctly
         call_args = self.mock_llm_client.generate_response.call_args
         assert call_args.kwargs["max_tokens"] == 100
+
+
+@pytest.mark.unit
+class TestMCPResultSummarizerTruncation:
+    """Test cases for MCPResultSummarizer truncation functionality added in EP-0016."""
+    
+    def setup_method(self):
+        """Set up test environment before each test."""
+        self.mock_llm_client = MagicMock()
+        self.mock_prompt_builder = MagicMock()
+        self.summarizer = MCPResultSummarizer(self.mock_llm_client, self.mock_prompt_builder)
+    
+    def test_truncate_tool_result_no_truncation_needed(self):
+        """Test that small results are not truncated."""
+        # Mock LLM client to return high limit
+        self.mock_llm_client.get_max_tool_result_tokens.return_value = 100000  # 400K chars
+        
+        small_result = "Small result content"
+        result = self.summarizer._truncate_tool_result_if_needed(small_result)
+        
+        # Should return original content unchanged
+        assert result == small_result
+        self.mock_llm_client.get_max_tool_result_tokens.assert_called_once()
+    
+    def test_truncate_tool_result_truncation_applied(self):
+        """Test that large results are properly truncated."""
+        # Mock LLM client to return low limit for testing
+        self.mock_llm_client.get_max_tool_result_tokens.return_value = 10  # 40 chars max
+        
+        large_result = "x" * 100  # 100 chars, exceeds 40 char limit
+        result = self.summarizer._truncate_tool_result_if_needed(large_result)
+        
+        # Should be truncated to 40 chars plus truncation marker
+        assert result.startswith("x" * 40)
+        assert "[TOOL RESULT TRUNCATED" in result
+        assert "Original size: 100 chars" in result
+        assert "Truncated to: 40 chars" in result
+        self.mock_llm_client.get_max_tool_result_tokens.assert_called_once()
+    
+    def test_truncate_tool_result_exact_limit(self):
+        """Test behavior when result is exactly at the limit."""
+        # Mock LLM client to return specific limit
+        self.mock_llm_client.get_max_tool_result_tokens.return_value = 25  # 100 chars max
+        
+        exact_limit_result = "x" * 100  # Exactly 100 chars
+        result = self.summarizer._truncate_tool_result_if_needed(exact_limit_result)
+        
+        # Should return original content unchanged (not exceeding limit)
+        assert result == exact_limit_result
+        self.mock_llm_client.get_max_tool_result_tokens.assert_called_once()
+    
+    def test_truncate_tool_result_zero_limit(self):
+        """Test behavior with zero token limit."""
+        # Mock LLM client to return zero limit
+        self.mock_llm_client.get_max_tool_result_tokens.return_value = 0  # 0 chars max
+        
+        any_result = "Any content"
+        result = self.summarizer._truncate_tool_result_if_needed(any_result)
+        
+        # Should be truncated to empty string plus marker
+        assert result.startswith("")
+        assert "[TOOL RESULT TRUNCATED" in result
+        assert "Original size: 11 chars" in result
+        assert "Truncated to: 0 chars" in result
+    
+    def test_truncate_tool_result_preserves_format(self):
+        """Test that truncation marker format is consistent."""
+        # Mock LLM client to return low limit
+        self.mock_llm_client.get_max_tool_result_tokens.return_value = 5  # 20 chars max
+        
+        test_content = "Test content that is longer than 20 characters"
+        result = self.summarizer._truncate_tool_result_if_needed(test_content)
+        
+        # Verify truncation marker format
+        lines = result.split('\n')
+        assert lines[-1].startswith("[TOOL RESULT TRUNCATED")
+        assert "Original size:" in lines[-1]
+        assert "Truncated to:" in lines[-1]
+        assert "chars for LLM context limits]" in lines[-1]
+    
+    @pytest.mark.asyncio
+    async def test_summarize_result_calls_truncation(self):
+        """Test that summarize_result calls truncation method."""
+        # Set up test data with large content
+        large_content = "x" * 500  # Large content
+        test_result = {"result": large_content}
+        
+        investigation_conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="System message")
+        ])
+        
+        # Mock LLM client with low limit to trigger truncation
+        self.mock_llm_client.get_max_tool_result_tokens.return_value = 10  # 40 chars max
+        
+        # Mock successful response
+        mock_response_conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="System prompt"),
+            LLMMessage(role=MessageRole.USER, content="User prompt"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Summary")
+        ])
+        self.mock_llm_client.generate_response = AsyncMock(return_value=mock_response_conversation)
+        
+        # Mock prompt builder responses
+        self.mock_prompt_builder.build_mcp_summarization_system_prompt.return_value = "System prompt"
+        self.mock_prompt_builder.build_mcp_summarization_user_prompt.return_value = "User prompt"
+        
+        # Execute summarization
+        result = await self.summarizer.summarize_result(
+            "server", "tool", test_result, investigation_conversation, "session"
+        )
+        
+        # Verify truncation was applied
+        self.mock_llm_client.get_max_tool_result_tokens.assert_called_once()
+        
+        # Verify that user prompt was built with truncated content
+        user_prompt_call = self.mock_prompt_builder.build_mcp_summarization_user_prompt.call_args
+        result_text_param = user_prompt_call[0][3]  # Fourth parameter is result_text
+        
+        # Should contain truncated content and marker
+        assert len(result_text_param) < len(large_content)  # Shorter than original
+        assert "[TOOL RESULT TRUNCATED" in result_text_param

@@ -692,6 +692,89 @@ class TestLLMClientIntegration:
 
 
 @pytest.mark.unit
+class TestLLMClientMaxToolResultTokens:
+    """Test max tool result tokens functionality."""
+    
+    def test_get_max_tool_result_tokens_with_config(self):
+        """Test get_max_tool_result_tokens with configured value."""
+        config = {
+            "type": "openai",
+            "model": "gpt-4",
+            "api_key": "test-key",
+            "max_tool_result_tokens": 200000
+        }
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            result = client.get_max_tool_result_tokens()
+            assert result == 200000
+    
+    def test_get_max_tool_result_tokens_no_config(self):
+        """Test get_max_tool_result_tokens falls back to default when not configured."""
+        config = {
+            "type": "openai",
+            "model": "gpt-4", 
+            "api_key": "test-key"
+            # No max_tool_result_tokens configured
+        }
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            result = client.get_max_tool_result_tokens()
+            assert result == 150000  # Default fallback value
+    
+    def test_get_max_tool_result_tokens_invalid_value(self):
+        """Test get_max_tool_result_tokens handles invalid configuration values."""
+        config = {
+            "type": "openai",
+            "model": "gpt-4",
+            "api_key": "test-key",
+            "max_tool_result_tokens": "invalid-string"  # Invalid value
+        }
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            # Should fall back to default due to ValueError
+            result = client.get_max_tool_result_tokens()
+            assert result == 150000
+    
+    def test_get_max_tool_result_tokens_none_value(self):
+        """Test get_max_tool_result_tokens handles None value."""
+        config = {
+            "type": "openai",
+            "model": "gpt-4",
+            "api_key": "test-key",
+            "max_tool_result_tokens": None  # Explicit None
+        }
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            # Should fall back to default when value is None
+            result = client.get_max_tool_result_tokens()
+            assert result == 150000
+    
+    def test_get_max_tool_result_tokens_zero_value(self):
+        """Test get_max_tool_result_tokens handles zero value."""
+        config = {
+            "type": "openai",
+            "model": "gpt-4",
+            "api_key": "test-key",
+            "max_tool_result_tokens": 0  # Zero value
+        }
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            # Should return 0 if explicitly configured
+            result = client.get_max_tool_result_tokens()
+            assert result == 0
+
+
+@pytest.mark.unit
 class TestLLMClientTokenUsageTracking:
     """Test token usage tracking functionality added in EP-0009."""
     

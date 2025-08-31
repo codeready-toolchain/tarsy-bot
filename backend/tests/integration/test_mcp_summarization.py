@@ -169,6 +169,7 @@ class TestMCPSummarizerComponent:
             return result_conversation
         
         client.generate_response = AsyncMock(side_effect=mock_response)
+        client.get_max_tool_result_tokens.return_value = 150000  # Default test limit
         return client
     
     @pytest.fixture

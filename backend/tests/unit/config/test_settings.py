@@ -318,6 +318,67 @@ class TestSettingsLLMConfiguration:
         config = settings.get_llm_config("google-default")
         
         assert config['disable_ssl_verification'] is True
+    
+    def test_get_llm_config_max_tool_result_tokens(self):
+        """Test that max_tool_result_tokens are included in LLM config."""
+        settings = Settings(
+            openai_api_key="test-openai-key",
+            google_api_key="test-google-key",
+            xai_api_key="test-xai-key",
+            anthropic_api_key="test-anthropic-key"
+        )
+        
+        # Test each built-in provider has correct max_tool_result_tokens
+        openai_config = settings.get_llm_config("openai-default")
+        assert openai_config['max_tool_result_tokens'] == 250000
+        
+        google_config = settings.get_llm_config("google-default")
+        assert google_config['max_tool_result_tokens'] == 950000
+        
+        xai_config = settings.get_llm_config("xai-default")
+        assert xai_config['max_tool_result_tokens'] == 200000
+        
+        anthropic_config = settings.get_llm_config("anthropic-default")
+        assert anthropic_config['max_tool_result_tokens'] == 150000
+
+
+@pytest.mark.unit
+class TestBuiltinLLMProvidersConfiguration:
+    """Test built-in LLM provider configurations from EP-0016."""
+    
+    def test_builtin_providers_have_max_tool_result_tokens(self):
+        """Test that all built-in providers have max_tool_result_tokens configured."""
+        from tarsy.config.builtin_config import BUILTIN_LLM_PROVIDERS
+        
+        expected_limits = {
+            "openai-default": 250000,     # Conservative for 272K context
+            "google-default": 950000,     # Conservative for 1M context
+            "xai-default": 200000,        # Conservative for 256K context
+            "anthropic-default": 150000   # Conservative for 200K context
+        }
+        
+        for provider_name, expected_limit in expected_limits.items():
+            assert provider_name in BUILTIN_LLM_PROVIDERS
+            provider_config = BUILTIN_LLM_PROVIDERS[provider_name]
+            assert "max_tool_result_tokens" in provider_config
+            assert provider_config["max_tool_result_tokens"] == expected_limit
+    
+    def test_builtin_providers_config_structure(self):
+        """Test that built-in provider configs have all required fields."""
+        from tarsy.config.builtin_config import BUILTIN_LLM_PROVIDERS
+        
+        required_fields = {"type", "model", "api_key_env", "temperature"}
+        optional_fields = {"base_url", "verify_ssl", "max_tool_result_tokens"}
+        
+        for provider_name, config in BUILTIN_LLM_PROVIDERS.items():
+            # Check all required fields are present
+            for field in required_fields:
+                assert field in config, f"Provider {provider_name} missing required field: {field}"
+            
+            # Check max_tool_result_tokens is present (EP-0016 requirement)
+            assert "max_tool_result_tokens" in config, f"Provider {provider_name} missing max_tool_result_tokens"
+            assert isinstance(config["max_tool_result_tokens"], int), f"Provider {provider_name} max_tool_result_tokens must be int"
+            assert config["max_tool_result_tokens"] > 0, f"Provider {provider_name} max_tool_result_tokens must be positive"
 
 
 @pytest.mark.unit
