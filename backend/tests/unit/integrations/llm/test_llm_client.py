@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from tarsy.integrations.llm.client import LLM_PROVIDERS, LLMClient
+from tarsy.integrations.llm.client import LLM_PROVIDERS, LLMClient, LLMManager
 from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
 
@@ -1026,7 +1026,7 @@ class TestLLMClientTokenUsageTracking:
             mock_callback_instance.usage_metadata = None
             mock_callback_class.return_value = mock_callback_instance
 
-            response, usage_metadata = await client._execute_with_retry(
+            await client._execute_with_retry(
                 [], max_retries=3, max_tokens=max_tokens
             )
 
@@ -1039,3 +1039,109 @@ class TestLLMClientTokenUsageTracking:
             assert config['max_tokens'] == 1000
             # max_tokens should NOT be passed as direct kwarg
             assert 'max_tokens' not in call_args.kwargs
+
+
+@pytest.mark.unit
+class TestLLMManager:
+    """Test LLMManager functionality."""
+    
+    @pytest.fixture
+    def mock_settings(self):
+        """Mock Settings for LLMManager."""
+        mock_settings = Mock()
+        mock_settings.llm_providers = {
+            "openai-default": {"api_key": "test-key-1"},
+            "google-default": {"api_key": "test-key-2"},
+            "anthropic-default": {"api_key": ""}  # No API key
+        }
+        mock_settings.llm_provider = "openai-default"
+        mock_settings.get_llm_config.side_effect = lambda name: mock_settings.llm_providers[name]
+        return mock_settings
+    
+    @pytest.fixture
+    def llm_manager(self, mock_settings):
+        """Create LLMManager with mocked dependencies."""
+        with patch('tarsy.integrations.llm.client.LLMClient') as mock_llm_client_class:
+            # Mock successful client creation for providers with API keys
+            mock_client_1 = Mock()
+            mock_client_1.available = True
+            mock_client_1.get_max_tool_result_tokens.return_value = 250000
+            
+            mock_client_2 = Mock()
+            mock_client_2.available = True
+            mock_client_2.get_max_tool_result_tokens.return_value = 950000
+            
+            def client_side_effect(provider_name, config):
+                if provider_name == "openai-default":
+                    return mock_client_1
+                elif provider_name == "google-default":
+                    return mock_client_2
+                return Mock(available=False)
+            
+            mock_llm_client_class.side_effect = client_side_effect
+            
+            manager = LLMManager(mock_settings)
+            # Override the clients dictionary directly for testing
+            manager.clients = {
+                "openai-default": mock_client_1,
+                "google-default": mock_client_2
+            }
+            return manager
+    
+    def test_get_max_tool_result_tokens_with_default_client(self, llm_manager):
+        """Test get_max_tool_result_tokens returns value from default client."""
+        # Act
+        result = llm_manager.get_max_tool_result_tokens()
+        
+        # Assert
+        assert result == 250000  # openai-default client limit
+        # Verify the default client's method was called
+        default_client = llm_manager.get_client()
+        default_client.get_max_tool_result_tokens.assert_called_once()
+    
+    def test_get_max_tool_result_tokens_with_specific_provider(self, llm_manager, mock_settings):
+        """Test get_max_tool_result_tokens with specific provider override."""
+        # Set different default provider
+        mock_settings.llm_provider = "google-default"
+        
+        # Act
+        result = llm_manager.get_max_tool_result_tokens()
+        
+        # Assert - should use google-default client's limit
+        google_client = llm_manager.get_client("google-default")
+        google_client.get_max_tool_result_tokens.assert_called_once()
+    
+    def test_get_max_tool_result_tokens_no_clients_available(self, mock_settings):
+        """Test get_max_tool_result_tokens when no clients are available."""
+        with patch('tarsy.integrations.llm.client.LLMClient'):
+            # Create manager with no available clients
+            manager = LLMManager(mock_settings)
+            manager.clients = {}  # No clients available
+            
+            # Act
+            result = manager.get_max_tool_result_tokens()
+            
+            # Assert - should return safe fallback
+            assert result == 150000
+    
+    def test_get_max_tool_result_tokens_client_error_handling(self, llm_manager):
+        """Test error handling when client method fails."""
+        # Setup client to raise exception
+        default_client = llm_manager.get_client()
+        default_client.get_max_tool_result_tokens.side_effect = Exception("Client error")
+        
+        # Act & Assert - should propagate the exception
+        with pytest.raises(Exception, match="Client error"):
+            llm_manager.get_max_tool_result_tokens()
+    
+    def test_get_max_tool_result_tokens_with_invalid_client_response(self, llm_manager):
+        """Test handling when client returns invalid values."""
+        # Setup client to return None
+        default_client = llm_manager.get_client()
+        default_client.get_max_tool_result_tokens.return_value = None
+        
+        # Act
+        result = llm_manager.get_max_tool_result_tokens()
+        
+        # Assert - None should be handled gracefully by the client itself
+        assert result is None  # Client handles invalid values, manager just passes through

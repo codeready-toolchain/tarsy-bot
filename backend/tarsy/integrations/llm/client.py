@@ -491,3 +491,14 @@ class LLMManager:
             provider: client.available 
             for provider, client in self.clients.items()
         }
+    
+    def get_max_tool_result_tokens(self) -> int:
+        """Return the maximum tool result tokens for the default provider."""
+        default_client = self.get_client()
+        if default_client:
+            return default_client.get_max_tool_result_tokens()
+        
+        # Fallback to safe default if no client available
+        default_limit = 150000  # Conservative limit that works for most providers
+        logger.info(f"No LLM client available, using default tool result limit: {default_limit:,} tokens")
+        return default_limit
