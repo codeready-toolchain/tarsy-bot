@@ -5,7 +5,7 @@ Tests the new typed hook infrastructure that provides type-safe
 interaction logging and dashboard updates.
 """
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -19,7 +19,7 @@ from tarsy.hooks.typed_history_hooks import (
     TypedMCPHistoryHook,
     TypedStageExecutionHistoryHook,
 )
-from tarsy.models.constants import StageStatus
+from tarsy.models.constants import StageStatus, MAX_LLM_MESSAGE_CONTENT_SIZE
 from tarsy.models.db_models import StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
@@ -98,6 +98,54 @@ class TestTypedLLMHistoryHook:
         # Should raise the exception (hook doesn't catch it)
         with pytest.raises(Exception, match="Database error"):
             await llm_hook.execute(sample_llm_interaction)
+    
+    @pytest.mark.asyncio
+    async def test_execute_applies_truncation(self, llm_hook, mock_history_service, sample_llm_interaction):
+        """Test that execute applies content truncation before storing."""
+        with patch('tarsy.hooks.typed_history_hooks._apply_llm_interaction_truncation') as mock_truncate:
+            # Configure mock to return a modified interaction
+            truncated_interaction = sample_llm_interaction.model_copy()
+            mock_truncate.return_value = truncated_interaction
+            
+            await llm_hook.execute(sample_llm_interaction)
+            
+            # Verify truncation function was called with original interaction
+            mock_truncate.assert_called_once_with(sample_llm_interaction)
+            
+            # Verify history service was called with truncated interaction
+            mock_history_service.store_llm_interaction.assert_called_once_with(truncated_interaction)
+    
+    @pytest.mark.asyncio
+    async def test_execute_with_large_conversation(self, llm_hook, mock_history_service):
+        """Test execution with large conversation that requires truncation."""
+        # Create interaction with large user message
+        large_content = "X" * (MAX_LLM_MESSAGE_CONTENT_SIZE + 1000)
+        large_conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            LLMMessage(role=MessageRole.USER, content=large_content),
+            LLMMessage(role=MessageRole.ASSISTANT, content="I understand.")
+        ])
+        
+        interaction = LLMInteraction(
+            session_id="test-session",
+            model_name="gpt-4",
+            provider="openai",
+            success=True,
+            conversation=large_conversation
+        )
+        
+        await llm_hook.execute(interaction)
+        
+        # Verify history service was called (with truncated content)
+        mock_history_service.store_llm_interaction.assert_called_once()
+        
+        # Get the actual interaction that was stored
+        stored_interaction = mock_history_service.store_llm_interaction.call_args[0][0]
+        
+        # Verify user message was truncated
+        user_message = stored_interaction.conversation.messages[1]
+        assert len(user_message.content) <= MAX_LLM_MESSAGE_CONTENT_SIZE + 200  # Allow for metadata
+        assert "[HOOK TRUNCATED" in user_message.content
 
 
 @pytest.mark.unit
@@ -286,6 +334,56 @@ class TestTypedLLMDashboardHook:
         # Should raise the exception (hook doesn't catch it)
         with pytest.raises(Exception, match="Broadcast error"):
             await dashboard_hook.execute(sample_llm_interaction)
+    
+    @pytest.mark.asyncio
+    async def test_execute_applies_truncation(self, dashboard_hook, mock_dashboard_broadcaster, sample_llm_interaction):
+        """Test that execute applies content truncation before broadcasting."""
+        with patch('tarsy.hooks.typed_dashboard_hooks._apply_llm_interaction_truncation') as mock_truncate:
+            # Configure mock to return a modified interaction
+            truncated_interaction = sample_llm_interaction.model_copy()
+            mock_truncate.return_value = truncated_interaction
+            
+            await dashboard_hook.execute(sample_llm_interaction)
+            
+            # Verify truncation function was called with original interaction
+            mock_truncate.assert_called_once_with(sample_llm_interaction)
+            
+            # Verify dashboard broadcaster was called
+            mock_dashboard_broadcaster.broadcast_interaction_update.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_execute_with_large_conversation(self, dashboard_hook, mock_dashboard_broadcaster):
+        """Test execution with large conversation that requires truncation."""
+        # Create interaction with large user message
+        large_content = "X" * (MAX_LLM_MESSAGE_CONTENT_SIZE + 1000)
+        large_conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            LLMMessage(role=MessageRole.USER, content=large_content),
+            LLMMessage(role=MessageRole.ASSISTANT, content="I understand.")
+        ])
+        
+        interaction = LLMInteraction(
+            session_id="test-session",
+            model_name="gpt-4",
+            provider="openai",
+            success=True,
+            conversation=large_conversation
+        )
+        
+        await dashboard_hook.execute(interaction)
+        
+        # Verify dashboard broadcaster was called
+        mock_dashboard_broadcaster.broadcast_interaction_update.assert_called_once()
+        
+        # Get the actual update data that was broadcast
+        call_args = mock_dashboard_broadcaster.broadcast_interaction_update.call_args
+        update_data = call_args[1]["update_data"]
+        
+        # Verify the conversation in the update data was truncated
+        conversation_data = update_data["conversation"]
+        user_message_content = conversation_data["messages"][1]["content"]
+        assert len(user_message_content) <= MAX_LLM_MESSAGE_CONTENT_SIZE + 200  # Allow for metadata
+        assert "[HOOK TRUNCATED" in user_message_content
 
 
 @pytest.mark.unit
@@ -414,3 +512,59 @@ class TestTypedHooksIntegration:
         # Verify stage was created (not updated) - this is the bug fix
         mock_history_service.create_stage_execution.assert_called_once_with(stage_execution)
         mock_broadcaster.broadcast_session_update.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_llm_truncation_integration_end_to_end(self):
+        """Integration test for LLM interaction truncation across history and dashboard hooks."""
+        # Create real services (but mocked externals)
+        mock_history_service = Mock(spec=HistoryService)
+        mock_history_service.store_llm_interaction = Mock(return_value=True)
+        
+        mock_broadcaster = AsyncMock(spec=DashboardBroadcaster)
+        mock_broadcaster.broadcast_interaction_update = AsyncMock(return_value=3)
+        
+        # Create hooks
+        history_hook = TypedLLMHistoryHook(mock_history_service)
+        dashboard_hook = TypedLLMDashboardHook(mock_broadcaster)
+        
+        # Create interaction with large user message that requires truncation
+        large_content = "Z" * (MAX_LLM_MESSAGE_CONTENT_SIZE + 2000)
+        large_conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            LLMMessage(role=MessageRole.USER, content=large_content),
+            LLMMessage(role=MessageRole.ASSISTANT, content="I'll help you with that large request.")
+        ])
+        
+        interaction = LLMInteraction(
+            session_id="integration-truncation-test",
+            model_name="gpt-4",
+            provider="openai",
+            success=True,
+            conversation=large_conversation
+        )
+        
+        # Execute both hooks
+        await history_hook.execute(interaction)
+        await dashboard_hook.execute(interaction)
+        
+        # Verify both hooks executed
+        mock_history_service.store_llm_interaction.assert_called_once()
+        mock_broadcaster.broadcast_interaction_update.assert_called_once()
+        
+        # Verify history hook received truncated content
+        history_stored_interaction = mock_history_service.store_llm_interaction.call_args[0][0]
+        history_user_msg = history_stored_interaction.conversation.messages[1]
+        assert len(history_user_msg.content) <= MAX_LLM_MESSAGE_CONTENT_SIZE + 200
+        assert "[HOOK TRUNCATED" in history_user_msg.content
+        
+        # Verify dashboard hook received truncated content
+        dashboard_call_args = mock_broadcaster.broadcast_interaction_update.call_args
+        dashboard_conversation = dashboard_call_args[1]["update_data"]["conversation"]
+        dashboard_user_msg = dashboard_conversation["messages"][1]["content"]
+        assert len(dashboard_user_msg) <= MAX_LLM_MESSAGE_CONTENT_SIZE + 200
+        assert "[HOOK TRUNCATED" in dashboard_user_msg
+        
+        # Verify original interaction was not modified
+        original_user_msg = interaction.conversation.messages[1]
+        assert len(original_user_msg.content) > MAX_LLM_MESSAGE_CONTENT_SIZE
+        assert "[HOOK TRUNCATED" not in original_user_msg.content

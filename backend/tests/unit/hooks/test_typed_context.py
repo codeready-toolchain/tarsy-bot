@@ -16,9 +16,11 @@ from tarsy.hooks.typed_context import (
     get_typed_hook_manager,
     llm_interaction_context,
     mcp_interaction_context,
+    _apply_llm_interaction_truncation,
 )
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
 from tarsy.models.db_models import StageExecution
+from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE
 
 
 class TestLLMHook(BaseTypedHook[LLMInteraction]):
@@ -477,3 +479,226 @@ class TestInteractionHookContextCompletion:
         hook_manager.trigger_llm_hooks.assert_not_called()
         hook_manager.trigger_mcp_hooks.assert_not_called()
         hook_manager.trigger_mcp_list_hooks.assert_not_called()
+
+
+@pytest.mark.unit
+class TestLLMInteractionTruncation:
+    """Test the _apply_llm_interaction_truncation utility function."""
+    
+    @pytest.fixture
+    def small_conversation(self):
+        """Create a conversation with small content."""
+        return LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            LLMMessage(role=MessageRole.USER, content="What is the capital of France?"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="The capital of France is Paris.")
+        ])
+    
+    @pytest.fixture
+    def large_user_message_conversation(self):
+        """Create a conversation with a large user message exceeding size limit."""
+        # Create content that exceeds MAX_LLM_MESSAGE_CONTENT_SIZE (1MB)
+        large_content = "X" * (MAX_LLM_MESSAGE_CONTENT_SIZE + 1000)
+        return LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            LLMMessage(role=MessageRole.USER, content=large_content),
+            LLMMessage(role=MessageRole.ASSISTANT, content="I understand your request.")
+        ])
+    
+    @pytest.fixture
+    def large_assistant_message_conversation(self):
+        """Create a conversation with a large assistant message (should NOT be truncated)."""
+        # Create content that exceeds MAX_LLM_MESSAGE_CONTENT_SIZE (1MB)
+        large_content = "Y" * (MAX_LLM_MESSAGE_CONTENT_SIZE + 1000)
+        return LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            LLMMessage(role=MessageRole.USER, content="Give me a detailed response."),
+            LLMMessage(role=MessageRole.ASSISTANT, content=large_content)
+        ])
+    
+    @pytest.fixture
+    def mixed_size_conversation(self):
+        """Create a conversation with mixed message sizes."""
+        large_user_content = "X" * (MAX_LLM_MESSAGE_CONTENT_SIZE + 500)
+        large_assistant_content = "Y" * (MAX_LLM_MESSAGE_CONTENT_SIZE + 300)
+        return LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+            LLMMessage(role=MessageRole.USER, content="Small user message"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Small assistant response"),
+            LLMMessage(role=MessageRole.USER, content=large_user_content),
+            LLMMessage(role=MessageRole.ASSISTANT, content=large_assistant_content),
+            LLMMessage(role=MessageRole.USER, content="Another small message")
+        ])
+    
+    def test_no_conversation_returns_original(self):
+        """Test that interaction without conversation returns unchanged."""
+        interaction = LLMInteraction(
+            session_id="test-session",
+            model_name="gpt-4",
+            provider="openai",
+            success=True
+        )
+        
+        result = _apply_llm_interaction_truncation(interaction)
+        
+        assert result is interaction
+        assert result.conversation is None
+    
+    def test_small_conversation_returns_original(self, small_conversation):
+        """Test that conversation with small messages returns unchanged."""
+        interaction = LLMInteraction(
+            session_id="test-session",
+            model_name="gpt-4",
+            provider="openai",
+            success=True,
+            conversation=small_conversation
+        )
+        
+        result = _apply_llm_interaction_truncation(interaction)
+        
+        assert result is interaction
+        assert result.conversation is small_conversation
+        
+        # Verify no messages were modified
+        for original_msg, result_msg in zip(small_conversation.messages, result.conversation.messages):
+            assert original_msg.content == result_msg.content
+    
+    def test_large_user_message_gets_truncated(self, large_user_message_conversation):
+        """Test that large user messages are truncated with metadata."""
+        interaction = LLMInteraction(
+            session_id="test-session",
+            model_name="gpt-4",
+            provider="openai",
+            success=True,
+            conversation=large_user_message_conversation
+        )
+        
+        result = _apply_llm_interaction_truncation(interaction)
+        
+        # Should return a new interaction (not the same object)
+        assert result is not interaction
+        assert result.conversation is not large_user_message_conversation
+        
+        # Check that user message was truncated
+        truncated_messages = result.conversation.messages
+        user_message = truncated_messages[1]  # Second message is the large user message
+        
+        assert len(user_message.content) <= MAX_LLM_MESSAGE_CONTENT_SIZE + 200  # Allow for truncation marker
+        assert "[HOOK TRUNCATED" in user_message.content
+        assert "Original size:" in user_message.content
+        assert "Hook size:" in user_message.content
+        
+        # Other messages should remain unchanged
+        assert truncated_messages[0].content == "You are a helpful assistant."
+        assert truncated_messages[2].content == "I understand your request."
+    
+    def test_large_assistant_message_not_truncated(self, large_assistant_message_conversation):
+        """Test that large assistant messages are NOT truncated."""
+        interaction = LLMInteraction(
+            session_id="test-session", 
+            model_name="gpt-4",
+            provider="openai",
+            success=True,
+            conversation=large_assistant_message_conversation
+        )
+        
+        result = _apply_llm_interaction_truncation(interaction)
+        
+        # Should return original interaction (no truncation needed)
+        assert result is interaction
+        assert result.conversation is large_assistant_message_conversation
+        
+        # Assistant message should remain unchanged
+        assistant_message = result.conversation.messages[2]
+        assert len(assistant_message.content) > MAX_LLM_MESSAGE_CONTENT_SIZE
+        assert "[HOOK TRUNCATED" not in assistant_message.content
+    
+    def test_mixed_size_conversation_selective_truncation(self, mixed_size_conversation):
+        """Test that only large user messages are truncated in mixed conversation."""
+        interaction = LLMInteraction(
+            session_id="test-session",
+            model_name="gpt-4", 
+            provider="openai",
+            success=True,
+            conversation=mixed_size_conversation
+        )
+        
+        result = _apply_llm_interaction_truncation(interaction)
+        
+        # Should return new interaction due to truncation
+        assert result is not interaction
+        
+        messages = result.conversation.messages
+        
+        # Check individual messages
+        assert messages[0].content == "You are a helpful assistant."  # System - unchanged
+        assert messages[1].content == "Small user message"  # Small user - unchanged  
+        assert messages[2].content == "Small assistant response"  # Small assistant - unchanged
+        assert "[HOOK TRUNCATED" in messages[3].content  # Large user - truncated
+        assert len(messages[4].content) > MAX_LLM_MESSAGE_CONTENT_SIZE  # Large assistant - NOT truncated
+        assert "[HOOK TRUNCATED" not in messages[4].content
+        assert messages[5].content == "Another small message"  # Small user - unchanged
+    
+    def test_truncation_preserves_conversation_structure(self, large_user_message_conversation):
+        """Test that truncation preserves overall conversation structure."""
+        interaction = LLMInteraction(
+            session_id="test-session",
+            model_name="gpt-4",
+            provider="openai", 
+            success=True,
+            conversation=large_user_message_conversation
+        )
+        
+        result = _apply_llm_interaction_truncation(interaction)
+        
+        # Check conversation structure is preserved
+        assert len(result.conversation.messages) == len(large_user_message_conversation.messages)
+        
+        # Check message roles are preserved
+        for original_msg, truncated_msg in zip(large_user_message_conversation.messages, result.conversation.messages):
+            assert original_msg.role == truncated_msg.role
+    
+    def test_truncation_metadata_format(self, large_user_message_conversation):
+        """Test that truncation metadata follows expected format."""
+        interaction = LLMInteraction(
+            session_id="test-session",
+            model_name="gpt-4",
+            provider="openai",
+            success=True,
+            conversation=large_user_message_conversation
+        )
+        
+        result = _apply_llm_interaction_truncation(interaction)
+        
+        # Get the truncated user message
+        user_message = result.conversation.messages[1]
+        
+        # Check metadata format
+        assert "[HOOK TRUNCATED - Original size:" in user_message.content
+        assert f"Hook size: {MAX_LLM_MESSAGE_CONTENT_SIZE:,} chars]" in user_message.content
+        
+        # Verify the truncated content starts with original content
+        original_content = large_user_message_conversation.messages[1].content
+        truncated_content_start = user_message.content[:MAX_LLM_MESSAGE_CONTENT_SIZE]
+        expected_start = original_content[:MAX_LLM_MESSAGE_CONTENT_SIZE]
+        assert truncated_content_start == expected_start
+    
+    def test_conversation_with_only_system_message_returns_original(self):
+        """Test that conversation with only system message returns unchanged."""
+        system_only_conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant.")
+        ])
+        interaction = LLMInteraction(
+            session_id="test-session",
+            model_name="gpt-4",
+            provider="openai",
+            success=True,
+            conversation=system_only_conversation
+        )
+        
+        result = _apply_llm_interaction_truncation(interaction)
+        
+        assert result is interaction
+        assert result.conversation is system_only_conversation
+        assert len(result.conversation.messages) == 1
+        assert result.conversation.messages[0].role == MessageRole.SYSTEM
