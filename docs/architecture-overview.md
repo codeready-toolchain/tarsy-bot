@@ -46,7 +46,7 @@ graph LR
 - **LLM (Large Language Model)**: Provides the "thinking" - analyzes situations and decides what to investigate
 - **Agent-specific MCP Tools**: The "hands" - allows inspection of systems, diagnostic commands, log analysis
 - **Chain context awareness**: Agents access accumulated data from previous stages for comprehensive analysis
-- **Intelligent Result Summarization**: Large MCP tool results are automatically summarized using context-aware AI to prevent context window bloat while preserving critical investigation details
+- **Intelligent Content Management**: Dual-layer content truncation system with provider-aware limits prevents context overflow while preserving critical investigation details. Large MCP tool results are automatically summarized using context-aware AI, and hook processing includes content size optimization for database and dashboard performance
 
 ### 5. Real-time Monitoring (Enhanced)
 - Dashboard shows live chain processing status with stage-by-stage progress
@@ -211,7 +211,7 @@ The AI combines all four to make intelligent decisions about investigation appro
   - *Examples: Prometheus metrics server, Grafana dashboards server, cloud provider APIs, log aggregation tools*
 - **LLM Provider Configuration**: Built-in support for multiple AI providers with optional custom configurations
   - *Built-in providers: OpenAI, Google Gemini, xAI Grok, Anthropic Claude*
-  - *Custom providers: Proxy configurations, model overrides via `config/llm_providers.yaml`*
+  - *Custom providers: Proxy configurations, model overrides, content truncation controls via `config/llm_providers.yaml`*
 - **Configurable Chain Definitions**: Deploy new multi-stage workflows via YAML configuration without code changes
   - *Example config/agents.yaml:*
   ```yaml

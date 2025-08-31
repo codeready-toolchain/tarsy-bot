@@ -208,15 +208,28 @@ chains:
 - **Built-in default providers** work out-of-the-box with just API keys
 - **Optional YAML overrides** for custom models, proxy configurations, temperature settings
 - **Multi-provider support** with OpenAI, Google Gemini, xAI Grok, Anthropic Claude
+- **Content truncation controls** with provider-specific `max_tool_result_tokens` limits to prevent context overflow
 
 **Built-in Default Providers**:
 ```python
 # From builtin_config.py - work with just API keys
 BUILTIN_LLM_PROVIDERS = {
-    "openai-default": {"type": "openai", "model": "gpt-5"},
-    "google-default": {"type": "google", "model": "gemini-2.5-flash"},  # DEFAULT
-    "xai-default": {"type": "xai", "model": "grok-4-latest"},
-    "anthropic-default": {"type": "anthropic", "model": "claude-4-sonnet"}
+    "openai-default": {
+        "type": "openai", "model": "gpt-5",
+        "max_tool_result_tokens": 250000  # Conservative for 272K context
+    },
+    "google-default": {
+        "type": "google", "model": "gemini-2.5-flash",  # DEFAULT
+        "max_tool_result_tokens": 950000  # Conservative for 1M context
+    },
+    "xai-default": {
+        "type": "xai", "model": "grok-4-latest",
+        "max_tool_result_tokens": 200000  # Conservative for 256K context
+    },
+    "anthropic-default": {
+        "type": "anthropic", "model": "claude-4-sonnet",
+        "max_tool_result_tokens": 150000  # Conservative for 200K context
+    }
 }
 ```
 
@@ -228,6 +241,7 @@ llm_providers:
     type: openai
     model: gpt-4  # Override default gpt-5
     api_key_env: OPENAI_API_KEY
+    max_tool_result_tokens: 200000  # Override default limit
     
   # Custom proxy provider
   openai-proxy:
@@ -236,6 +250,7 @@ llm_providers:
     api_key_env: OPENAI_API_KEY
     base_url: https://my-proxy.domain.com/v1
     temperature: 0.0
+    max_tool_result_tokens: 150000  # Custom limit for proxy
 ```
 
 #### Configuration Loading Process
@@ -706,13 +721,26 @@ LLM_PROVIDERS = {
 }
 ```
 
+#### Content Truncation Controls
+
+**Provider-Specific Tool Result Limits**: Each LLM provider has different context window limits, and large MCP tool results can cause context overflow. The `max_tool_result_tokens` configuration provides dual-layer protection:
+
+1. **Pre-LLM truncation**: MCPResultSummarizer truncates tool results before sending to LLM
+2. **Provider-aware limits**: Conservative defaults based on each provider's context window:
+   - **OpenAI GPT-5**: 250K tokens (272K context window)
+   - **Google Gemini 2.5**: 950K tokens (1M context window)  
+   - **xAI Grok-4**: 200K tokens (256K context window)
+   - **Anthropic Claude-4**: 150K tokens (200K context window)
+
+**Benefits**: Prevents LLM API failures, ensures reliable processing regardless of tool result size, maintains performance across all components.
+
 #### Configuration & Customization
 
 **Three-tier configuration system**:
 
 1. **Built-in defaults** (zero config) - Just set GOOGLE_API_KEY
 2. **Environment overrides** - Set LLM_PROVIDER to use different built-in provider
-3. **YAML customization** - Override models, add proxies, custom base URLs
+3. **YAML customization** - Override models, add proxies, custom base URLs, content truncation limits
 
 **Advanced Configuration Examples**:
 ```yaml
@@ -722,6 +750,7 @@ llm_providers:
   openai-default:
     type: openai
     model: gpt-4  # Override gpt-5 default
+    max_tool_result_tokens: 200000  # Override default limit
     
   # Custom proxy configuration  
   openai-internal-proxy:
@@ -730,6 +759,7 @@ llm_providers:
     api_key_env: OPENAI_API_KEY
     base_url: https://internal-proxy.company.com/v1
     temperature: 0.1
+    max_tool_result_tokens: 150000  # Custom limit for proxy
 ```
 
 #### Communication & Error Handling
