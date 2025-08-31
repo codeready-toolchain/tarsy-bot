@@ -10,7 +10,7 @@ import asyncio
 import logging
 from typing import Any, Dict, Optional
 
-from tarsy.hooks.typed_context import BaseTypedHook
+from tarsy.hooks.typed_context import BaseTypedHook, _apply_llm_interaction_truncation
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.models.db_models import StageExecution
 from tarsy.services.history_service import HistoryService
@@ -30,15 +30,13 @@ class TypedLLMHistoryHook(BaseTypedHook[LLMInteraction]):
         self.history_service = history_service
 
     async def execute(self, interaction: LLMInteraction) -> None:
-        """
-        Log LLM interaction to history database.
-        
-        Args:
-            interaction: Unified LLM interaction data
-        """
+        """Log LLM interaction to history database with content truncation."""
         try:
+            # Apply content truncation before database write if needed
+            truncated_interaction = _apply_llm_interaction_truncation(interaction)
+            
             ok = await asyncio.to_thread(
-                self.history_service.store_llm_interaction, interaction
+                self.history_service.store_llm_interaction, truncated_interaction
             )
             if ok:
                 logger.debug(

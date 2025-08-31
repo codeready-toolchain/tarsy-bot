@@ -6,15 +6,11 @@ using structured Pydantic models, broadcasting updates to the dashboard
 via WebSocket without data contamination.
 """
 
-import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
-
-from tarsy.hooks.typed_context import BaseTypedHook
+from tarsy.hooks.typed_context import BaseTypedHook, _apply_llm_interaction_truncation
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.models.db_models import StageExecution
-from tarsy.utils.timestamp import now_us
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
 
 logger = logging.getLogger(__name__)
@@ -32,37 +28,35 @@ class TypedLLMDashboardHook(BaseTypedHook[LLMInteraction]):
         self.dashboard_broadcaster = dashboard_broadcaster
 
     async def execute(self, interaction: LLMInteraction) -> None:
-        """
-        Broadcast LLM interaction to dashboard.
-        
-        Args:
-            interaction: Unified LLM interaction data
-        """
+        """Broadcast LLM interaction to dashboard with content truncation."""
         try:
+            # Apply content truncation before WebSocket broadcast if needed
+            truncated_interaction = _apply_llm_interaction_truncation(interaction)
+            
             # Create dashboard update with complete conversation object
             update_data = {
                 "type": "llm_interaction",
-                "session_id": interaction.session_id,
-                "interaction_id": interaction.interaction_id,  # Use interaction_id instead of removed request_id
-                "model_name": interaction.model_name,
-                "provider": interaction.provider,
-                "step_description": f"LLM analysis using {interaction.model_name}",
+                "session_id": truncated_interaction.session_id,
+                "interaction_id": truncated_interaction.interaction_id,
+                "model_name": truncated_interaction.model_name,
+                "provider": truncated_interaction.provider,
+                "step_description": f"LLM analysis using {truncated_interaction.model_name}",
                 # Send complete conversation object instead of individual prompts
                 "conversation": (
-                    interaction.conversation.model_dump() 
-                    if interaction.conversation else None
+                    truncated_interaction.conversation.model_dump() 
+                    if truncated_interaction.conversation else None
                 ),
-                "success": interaction.success,
-                "error_message": interaction.error_message,
-                "duration_ms": interaction.duration_ms,
-                "timestamp_us": interaction.timestamp_us,
+                "success": truncated_interaction.success,
+                "error_message": truncated_interaction.error_message,
+                "duration_ms": truncated_interaction.duration_ms,
+                "timestamp_us": truncated_interaction.timestamp_us,
                 # Chain context for enhanced dashboard visualization
-                "stage_execution_id": interaction.stage_execution_id
+                "stage_execution_id": truncated_interaction.stage_execution_id
             }
             
             # Broadcast to dashboard
             await self.dashboard_broadcaster.broadcast_interaction_update(
-                session_id=interaction.session_id,
+                session_id=truncated_interaction.session_id,
                 update_data=update_data
             )
             

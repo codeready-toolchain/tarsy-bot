@@ -98,3 +98,6 @@ class IterationStrategy(str, Enum):
 # Default temperature for LLM interactions
 # Lower temperature (0.1) ensures more deterministic and focused responses
 DEFAULT_LLM_TEMPERATURE = 0.1
+
+# Maximum size for LLM interaction message content before hook processing
+MAX_LLM_MESSAGE_CONTENT_SIZE = 1048576  # 1MB

@@ -11,14 +11,45 @@ from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from typing import Any, AsyncContextManager, Dict, Generic, Optional, TypeVar, Union
 
+from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE
 from tarsy.models.db_models import StageExecution
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, MessageRole
 from tarsy.utils.timestamp import now_us
 
 logger = logging.getLogger(__name__)
 
 # Type variables for generic hook context
 TInteraction = TypeVar('TInteraction', LLMInteraction, MCPInteraction, StageExecution)
+
+
+def _apply_llm_interaction_truncation(interaction: LLMInteraction) -> LLMInteraction:
+    """Apply content truncation to LLM interaction for hook processing."""
+    if not interaction.conversation:
+        return interaction
+        
+    truncated_conversation = interaction.conversation.model_copy(deep=True)
+    truncation_applied = False
+    
+    for message in truncated_conversation.messages:
+        # Only truncate user messages for hook processing
+        if (message.role == MessageRole.USER and 
+            len(message.content) > MAX_LLM_MESSAGE_CONTENT_SIZE):
+            
+            original_size = len(message.content)
+            message.content = (
+                message.content[:MAX_LLM_MESSAGE_CONTENT_SIZE] + 
+                f"\n\n[HOOK TRUNCATED - Original size: {original_size:,} chars, "
+                f"Hook size: {MAX_LLM_MESSAGE_CONTENT_SIZE:,} chars]"
+            )
+            truncation_applied = True
+    
+    if truncation_applied:
+        # Create new interaction with truncated conversation
+        truncated_interaction = interaction.model_copy()
+        truncated_interaction.conversation = truncated_conversation
+        return truncated_interaction
+    
+    return interaction
 
 
 class BaseTypedHook(ABC, Generic[TInteraction]):
