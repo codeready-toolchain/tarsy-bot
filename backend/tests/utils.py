@@ -720,26 +720,32 @@ class MockFactory:
             "cors_origins": ["*"],
             "host": "localhost",
             "port": 8000,
-            "gemini_api_key": "test-gemini-key",
+            "google_api_key": "test-google-key",
             "openai_api_key": "test-openai-key",
-            "grok_api_key": "test-grok-key",
+            "xai_api_key": "test-xai-key",
+            "anthropic_api_key": "test-anthropic-key",
             "default_llm_provider": "gemini",
             "max_llm_mcp_iterations": 3,
             "llm_providers": {
                 "gemini": {
                     "model": "gemini-2.5-pro",
-                    "api_key_env": "GEMINI_API_KEY",
-                    "type": "gemini"
+                    "api_key_env": "GOOGLE_API_KEY",
+                    "type": "google"  # Canonical type
                 },
                 "openai": {
                     "model": "gpt-4-1106-preview",
                     "api_key_env": "OPENAI_API_KEY",
                     "type": "openai"
                 },
-                "grok": {
+                "xai": {
                     "model": "grok-3",
-                    "api_key_env": "GROK_API_KEY",
-                    "type": "grok"
+                    "api_key_env": "XAI_API_KEY",
+                    "type": "xai"  # Canonical type
+                },
+                "anthropic": {
+                    "model": "claude-sonnet-4",
+                    "api_key_env": "ANTHROPIC_API_KEY", 
+                    "type": "anthropic"
                 }
             }
         }
@@ -754,17 +760,30 @@ class MockFactory:
         def mock_get_llm_config(provider: str) -> LLMProviderConfig:
             if provider not in mock_settings.llm_providers:
                 raise ValueError(f"Unsupported LLM provider: {provider}")
-            base_config = mock_settings.llm_providers[provider]
-            if provider == "gemini":
-                api_key = mock_settings.gemini_api_key
-            elif provider == "openai":
+            base_config_dict = mock_settings.llm_providers[provider]
+            
+            # Convert dict to LLMProviderConfig BaseModel instance
+            base_config = LLMProviderConfig.model_validate(base_config_dict)
+            
+            # Map provider type to correct API key (mirror Settings.get_llm_config)
+            provider_type = base_config.type  # Direct field access
+            if provider_type == "google":
+                api_key = mock_settings.google_api_key
+            elif provider_type == "openai":
                 api_key = mock_settings.openai_api_key
-            elif provider == "grok":
-                api_key = mock_settings.grok_api_key
+            elif provider_type == "xai":
+                api_key = mock_settings.xai_api_key
+            elif provider_type == "anthropic":
+                api_key = mock_settings.anthropic_api_key
             else:
                 api_key = ""
-                
-            return base_config.model_copy(update={"api_key": api_key})
+            
+            # Create copy with runtime fields (frozen BaseModel requires update in model_copy)
+            config = base_config.model_copy(update={
+                "api_key": api_key,
+                "disable_ssl_verification": getattr(mock_settings, 'disable_ssl_verification', False)
+            })
+            return config
         
         mock_settings.get_llm_config = mock_get_llm_config
         return mock_settings
