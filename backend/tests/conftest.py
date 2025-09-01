@@ -99,9 +99,9 @@ def isolated_test_settings():
     settings.history_database_url = "sqlite:///:memory:"
     settings.history_enabled = True
     settings.history_retention_days = 90
-    settings.gemini_api_key = "test-gemini-key"
+    settings.google_api_key = "test-google-key"
     settings.openai_api_key = "test-openai-key"
-    settings.grok_api_key = "test-grok-key"
+    settings.xai_api_key = "test-xai-key"
     settings.github_token = "test-github-token"
     settings.default_llm_provider = "gemini"
     settings.max_llm_mcp_iterations = 3
@@ -132,11 +132,11 @@ def isolated_test_settings():
             raise ValueError(f"Unsupported LLM provider: {provider}")
         base_config = settings.llm_providers[provider]
         if provider == "gemini":
-            api_key = settings.gemini_api_key
+            api_key = settings.google_api_key
         elif provider == "openai":
             api_key = settings.openai_api_key
         elif provider == "grok":
-            api_key = settings.grok_api_key
+            api_key = settings.xai_api_key
         else:
             api_key = ""
             
