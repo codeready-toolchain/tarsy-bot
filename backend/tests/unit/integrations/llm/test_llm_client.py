@@ -12,7 +12,21 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from tarsy.integrations.llm.client import LLM_PROVIDERS, LLMClient, LLMManager
 from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
+from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
+
+
+def create_test_config(provider_type: str = "openai", **overrides) -> LLMProviderConfig:
+    """Helper to create test LLMProviderConfig instances."""
+    defaults = {
+        "type": provider_type,
+        "model": "gpt-4",
+        "api_key_env": "OPENAI_API_KEY",
+        "temperature": 0.7,
+        "api_key": "test-api-key"
+    }
+    defaults.update(overrides)
+    return LLMProviderConfig(**defaults)
 
 
 @pytest.mark.unit
@@ -22,11 +36,7 @@ class TestLLMClientInitialization:
     @pytest.fixture
     def mock_config(self):
         """Mock LLM configuration."""
-        return {
-            "temperature": 0.7,
-            "api_key": "test-api-key",
-            "model": "gpt-4"
-        }
+        return create_test_config()
     
     def test_initialization_openai_success(self, mock_config):
         """Test successful OpenAI client initialization."""
@@ -49,8 +59,8 @@ class TestLLMClientInitialization:
             mock_google.return_value = Mock()
             
             # Use 'google' as provider name and 'type': 'google' in config
-            mock_config = {**mock_config, "type": "google"}
-            client = LLMClient("google", mock_config)
+            google_config = create_test_config(type="google")
+            client = LLMClient("google", google_config)
             
             assert client.provider_name == "google"
             assert client.available == True
@@ -66,8 +76,8 @@ class TestLLMClientInitialization:
             mock_xai.return_value = Mock()
             
             # Use 'xai' as provider name and 'type': 'xai' in config
-            mock_config = {**mock_config, "type": "xai"}
-            client = LLMClient("xai", mock_config)
+            xai_config = create_test_config(type="xai")
+            client = LLMClient("xai", xai_config)
             
             assert client.provider_name == "xai"
             assert client.available == True
@@ -83,8 +93,8 @@ class TestLLMClientInitialization:
             mock_anthropic.return_value = Mock()
             
             # Use 'anthropic' as provider name and 'type': 'anthropic' in config
-            mock_config = {**mock_config, "type": "anthropic"}
-            client = LLMClient("anthropic", mock_config)
+            anthropic_config = create_test_config(type="anthropic")
+            client = LLMClient("anthropic", anthropic_config)
             
             assert client.provider_name == "anthropic"
             assert client.available == True
@@ -94,17 +104,27 @@ class TestLLMClientInitialization:
                 temperature=0.7
             )
     
-    def test_initialization_unknown_provider(self, mock_config):
-        """Test initialization with unknown provider."""
-        client = LLMClient("unknown", mock_config)
-        
-        assert client.provider_name == "unknown"
-        assert client.available == False
-        assert client.llm_client is None
+    def test_initialization_unknown_provider(self):
+        """Test that BaseModel validation prevents unknown provider types."""
+        # BaseModel should prevent unknown provider types at creation time
+        with pytest.raises(Exception):  # Pydantic validation error
+            LLMProviderConfig(
+                type="unknown-provider",  # Should fail validation
+                model="test-model",
+                api_key_env="TEST_API_KEY",
+                api_key="test-key"
+            )
     
     def test_initialization_with_defaults(self):
-        """Test initialization with minimal config uses defaults."""
-        config = {"api_key": "test-key"}
+        """Test initialization with minimal config uses BaseModel defaults."""
+        # Create config with only required fields to test BaseModel defaults
+        config = LLMProviderConfig(
+            type="openai",
+            model="gpt-4", 
+            api_key_env="OPENAI_API_KEY",
+            api_key="test-key"
+            # Uses BaseModel defaults: temperature=0.1
+        )
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
             mock_openai.return_value = Mock()
@@ -112,8 +132,8 @@ class TestLLMClientInitialization:
             client = LLMClient("openai", config)
             
             mock_openai.assert_called_once_with(
-                model_name="default",  # default model when not specified
-                temperature=DEFAULT_LLM_TEMPERATURE,  # default temperature
+                model_name="gpt-4",  # model from config
+                temperature=0.1,     # BaseModel default temperature
                 api_key="test-key"
             )
     
@@ -136,7 +156,12 @@ class TestLLMClientMessageConversion:
     def client(self):
         """Create client for testing."""
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
-            return LLMClient("openai", {"api_key": "test"})
+            return LLMClient("openai", LLMProviderConfig(
+                type="openai",
+                model="gpt-4", 
+                api_key_env="OPENAI_API_KEY",
+                api_key="test"
+            ))
     
     def test_convert_system_message(self, client):
         """Test system message conversion."""
@@ -223,7 +248,7 @@ class TestLLMClientResponseGeneration:
     def client(self, mock_llm_client):
         """Create client with mocked LangChain client."""
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
-            client = LLMClient("openai", {"api_key": "test"})
+            client = LLMClient("openai", create_test_config(api_key="test"))
             client.llm_client = mock_llm_client
             client.available = True
             return client
@@ -356,12 +381,10 @@ class TestLLMClientSSLAndBaseURL:
     
     def test_initialization_with_ssl_disabled(self):
         """Test client initialization with SSL verification disabled."""
-        config = {
-            "temperature": 0.7,
-            "api_key": "test-key",
-            "model": "gpt-4",
-            "disable_ssl_verification": True
-        }
+        config = create_test_config(
+            api_key="test-key",
+            disable_ssl_verification=True
+        )
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai, \
              patch('tarsy.integrations.llm.client.httpx.Client') as mock_client, \
@@ -383,12 +406,10 @@ class TestLLMClientSSLAndBaseURL:
     
     def test_initialization_with_custom_base_url(self):
         """Test client initialization with custom base URL."""
-        config = {
-            "temperature": 0.7,
-            "api_key": "test-key", 
-            "model": "gpt-4",
-            "base_url": "https://custom-api.example.com/v1"
-        }
+        config = create_test_config(
+            api_key="test-key",
+            base_url="https://custom-api.example.com/v1"
+        )
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
             client = LLMClient("openai", config)
@@ -399,13 +420,12 @@ class TestLLMClientSSLAndBaseURL:
     
     def test_initialization_google_ignores_base_url(self):
         """Test Google client ignores base_url parameter."""
-        config = {
-            "type": "google",
-            "temperature": 0.7,
-            "api_key": "test-key",
-            "model": "gemini-pro",
-            "base_url": "https://custom-google.example.com"  # Should be ignored
-        }
+        config = create_test_config(
+            type="google",
+            model="gemini-pro",
+            api_key="test-key",
+            base_url="https://custom-google.example.com"  # Should be ignored
+        )
         
         with patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google:
             client = LLMClient("google", config)
@@ -428,7 +448,7 @@ class TestLLMClientRetryLogic:
     def client_with_retry(self, mock_llm_client):
         """Create client for retry testing."""
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
-            client = LLMClient("openai", {"api_key": "test"})
+            client = LLMClient("openai", create_test_config(api_key="test"))
             client.llm_client = mock_llm_client
             client.available = True
             return client
@@ -578,7 +598,7 @@ class TestLLMClientErrorHandling:
     def client_for_errors(self):
         """Create client for error testing."""
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
-            client = LLMClient("openai", {"api_key": "test"})
+            client = LLMClient("openai", create_test_config(api_key="test"))
             client.available = True
             return client
     
@@ -645,11 +665,10 @@ class TestLLMClientIntegration:
     @pytest.mark.asyncio
     async def test_end_to_end_workflow(self):
         """Test complete LLM client workflow."""
-        config = {
-            "temperature": 0.5,
-            "api_key": "test-integration-key",
-            "model": "gpt-4"
-        }
+        config = create_test_config(
+            temperature=0.5,
+            api_key="test-integration-key"
+        )
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
             # Setup mock LangChain client
@@ -697,12 +716,10 @@ class TestLLMClientMaxToolResultTokens:
     
     def test_get_max_tool_result_tokens_with_config(self):
         """Test get_max_tool_result_tokens with configured value."""
-        config = {
-            "type": "openai",
-            "model": "gpt-4",
-            "api_key": "test-key",
-            "max_tool_result_tokens": 200000
-        }
+        config = create_test_config(
+            api_key="test-key",
+            max_tool_result_tokens=200000
+        )
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", config)
@@ -711,67 +728,42 @@ class TestLLMClientMaxToolResultTokens:
             assert result == 200000
     
     def test_get_max_tool_result_tokens_no_config(self):
-        """Test get_max_tool_result_tokens falls back to default when not configured."""
-        config = {
-            "type": "openai",
-            "model": "gpt-4", 
-            "api_key": "test-key"
-            # No max_tool_result_tokens configured
-        }
+        """Test get_max_tool_result_tokens uses BaseModel default when not explicitly configured."""
+        config = create_test_config(api_key="test-key")
+        # BaseModel will automatically use default max_tool_result_tokens=100000
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", config)
             
             result = client.get_max_tool_result_tokens()
-            assert result == 150000  # Default fallback value
+            assert result == 100000  # BaseModel default value
     
     def test_get_max_tool_result_tokens_invalid_value(self):
-        """Test get_max_tool_result_tokens handles invalid configuration values."""
-        config = {
-            "type": "openai",
-            "model": "gpt-4",
-            "api_key": "test-key",
-            "max_tool_result_tokens": "invalid-string"  # Invalid value
-        }
-        
-        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
-            client = LLMClient("openai", config)
-            
-            # Should fall back to default due to ValueError
-            result = client.get_max_tool_result_tokens()
-            assert result == 150000
+        """Test that BaseModel validation rejects invalid max_tool_result_tokens values."""
+        # BaseModel should reject invalid values at creation time
+        with pytest.raises(Exception):  # Pydantic validation error
+            create_test_config(
+                api_key="test-key",
+                max_tool_result_tokens="invalid-string"  # Invalid value - should fail validation
+            )
     
     def test_get_max_tool_result_tokens_none_value(self):
-        """Test get_max_tool_result_tokens handles None value."""
-        config = {
-            "type": "openai",
-            "model": "gpt-4",
-            "api_key": "test-key",
-            "max_tool_result_tokens": None  # Explicit None
-        }
-        
-        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
-            client = LLMClient("openai", config)
-            
-            # Should fall back to default when value is None
-            result = client.get_max_tool_result_tokens()
-            assert result == 150000
+        """Test that BaseModel validation rejects None value."""
+        # BaseModel should reject None values at creation time (field validation: gt=0)
+        with pytest.raises(Exception):  # Pydantic validation error
+            create_test_config(
+                api_key="test-key",
+                max_tool_result_tokens=None  # Should fail validation
+            )
     
     def test_get_max_tool_result_tokens_zero_value(self):
-        """Test get_max_tool_result_tokens handles zero value."""
-        config = {
-            "type": "openai",
-            "model": "gpt-4",
-            "api_key": "test-key",
-            "max_tool_result_tokens": 0  # Zero value
-        }
-        
-        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
-            client = LLMClient("openai", config)
-            
-            # Should return 0 if explicitly configured
-            result = client.get_max_tool_result_tokens()
-            assert result == 0
+        """Test that BaseModel validation rejects zero value."""
+        # BaseModel should reject zero values at creation time (field validation: gt=0) 
+        with pytest.raises(Exception):  # Pydantic validation error
+            create_test_config(
+                api_key="test-key",
+                max_tool_result_tokens=0  # Should fail validation (gt=0)
+            )
 
 
 @pytest.mark.unit
@@ -787,7 +779,7 @@ class TestLLMClientTokenUsageTracking:
     def client(self, mock_llm_client):
         """Create client with mocked LangChain client."""
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
-            client = LLMClient("openai", {"api_key": "test"})
+            client = LLMClient("openai", create_test_config(api_key="test"))
             client.llm_client = mock_llm_client
             client.available = True
             return client

@@ -16,7 +16,7 @@ Agent classes are imported dynamically by AgentFactory when needed.
 
 import copy
 from typing import Dict, Any
-from tarsy.models import LLMProviderConfig
+from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 
 
@@ -175,36 +175,36 @@ BUILTIN_PATTERN_GROUPS: Dict[str, list[str]] = {
 # ==============================================================================
 
 # Central registry of all built-in LLM provider configurations
-# Format: "provider-name" -> configuration_dict
+# Format: "provider-name" -> LLMProviderConfig instance
 BUILTIN_LLM_PROVIDERS: Dict[str, LLMProviderConfig] = {
-    "openai-default": {
-        "type": "openai",
-        "model": "gpt-5",
-        "api_key_env": "OPENAI_API_KEY",
-        "temperature": DEFAULT_LLM_TEMPERATURE,
-        "max_tool_result_tokens": 250000  # Conservative for 272K context
-    },
-    "google-default": {
-        "type": "google", 
-        "model": "gemini-2.5-flash",
-        "api_key_env": "GOOGLE_API_KEY",
-        "temperature": DEFAULT_LLM_TEMPERATURE,
-        "max_tool_result_tokens": 950000  # Conservative for 1M context
-    },
-    "xai-default": {
-        "type": "xai",
-        "model": "grok-4", 
-        "api_key_env": "XAI_API_KEY",
-        "temperature": DEFAULT_LLM_TEMPERATURE,
-        "max_tool_result_tokens": 200000  # Conservative for 256K context
-    },
-    "anthropic-default": {
-        "type": "anthropic",
-        "model": "claude-sonnet-4-20250514",
-        "api_key_env": "ANTHROPIC_API_KEY",
-        "temperature": DEFAULT_LLM_TEMPERATURE,
-        "max_tool_result_tokens": 150000  # Conservative for 200K context
-    }
+    "openai-default": LLMProviderConfig(
+        type="openai",
+        model="gpt-5",
+        api_key_env="OPENAI_API_KEY",
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        max_tool_result_tokens=250000  # Conservative for 272K context
+    ),
+    "google-default": LLMProviderConfig(
+        type="google", 
+        model="gemini-2.5-flash",
+        api_key_env="GOOGLE_API_KEY",
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        max_tool_result_tokens=950000  # Conservative for 1M context
+    ),
+    "xai-default": LLMProviderConfig(
+        type="xai",
+        model="grok-4", 
+        api_key_env="XAI_API_KEY",
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        max_tool_result_tokens=200000  # Conservative for 256K context
+    ),
+    "anthropic-default": LLMProviderConfig(
+        type="anthropic",
+        model="claude-sonnet-4-20250514",
+        api_key_env="ANTHROPIC_API_KEY",
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        max_tool_result_tokens=150000  # Conservative for 200K context
+    )
 }
 
 
@@ -237,6 +237,7 @@ def get_builtin_chain_definitions() -> Dict[str, Dict[str, Any]]:
     return copy.deepcopy(BUILTIN_CHAIN_DEFINITIONS)
 
 
-def get_builtin_llm_providers() -> Dict[str, Dict[str, Any]]:
+def get_builtin_llm_providers() -> Dict[str, LLMProviderConfig]:
     """Get all built-in LLM provider configurations."""
-    return copy.deepcopy(BUILTIN_LLM_PROVIDERS)
+    # Create deep copies of BaseModel instances
+    return {name: config.model_copy(deep=True) for name, config in BUILTIN_LLM_PROVIDERS.items()}

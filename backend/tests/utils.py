@@ -76,6 +76,7 @@ from fastapi import WebSocket
 from pydantic import ValidationError
 
 from tarsy.models.alert import Alert
+from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.utils.timestamp import now_us
 
 
@@ -750,17 +751,20 @@ class MockFactory:
             setattr(mock_settings, key, value)
         
         # Mock the get_llm_config method
-        def mock_get_llm_config(provider: str):
+        def mock_get_llm_config(provider: str) -> LLMProviderConfig:
             if provider not in mock_settings.llm_providers:
                 raise ValueError(f"Unsupported LLM provider: {provider}")
-            config = mock_settings.llm_providers[provider].copy()
+            base_config = mock_settings.llm_providers[provider]
             if provider == "gemini":
-                config["api_key"] = mock_settings.gemini_api_key
+                api_key = mock_settings.gemini_api_key
             elif provider == "openai":
-                config["api_key"] = mock_settings.openai_api_key
+                api_key = mock_settings.openai_api_key
             elif provider == "grok":
-                config["api_key"] = mock_settings.grok_api_key
-            return config
+                api_key = mock_settings.grok_api_key
+            else:
+                api_key = ""
+                
+            return base_config.model_copy(update={"api_key": api_key})
         
         mock_settings.get_llm_config = mock_get_llm_config
         return mock_settings

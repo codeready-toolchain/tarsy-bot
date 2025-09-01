@@ -54,53 +54,53 @@ class TestLLMProviderConfig:
     def test_llm_provider_config_valid_creation(self):
         """Test that valid LLMProviderConfig instances can be created."""
         # Test minimal required configuration
-        minimal_config: LLMProviderConfig = {
-            "type": "openai",
-            "model": "gpt-4",
-            "api_key_env": "OPENAI_API_KEY"
-        }
+        minimal_config = LLMProviderConfig(
+            type="openai",
+            model="gpt-4",
+            api_key_env="OPENAI_API_KEY"
+        )
         
-        assert minimal_config["type"] == "openai"
-        assert minimal_config["model"] == "gpt-4"
-        assert minimal_config["api_key_env"] == "OPENAI_API_KEY"
+        assert minimal_config.type == "openai"
+        assert minimal_config.model == "gpt-4"
+        assert minimal_config.api_key_env == "OPENAI_API_KEY"
     
     def test_llm_provider_config_with_ep0016_field(self):
         """Test LLMProviderConfig with EP-0016 max_tool_result_tokens field."""
         # Test configuration with EP-0016 field
-        config_with_max_tokens: LLMProviderConfig = {
-            "type": "google",
-            "model": "gemini-2.5-flash",
-            "api_key_env": "GOOGLE_API_KEY",
-            "temperature": 0.1,
-            "max_tool_result_tokens": 950000  # EP-0016 field
-        }
+        config_with_max_tokens = LLMProviderConfig(
+            type="google",
+            model="gemini-2.5-flash",
+            api_key_env="GOOGLE_API_KEY",
+            temperature=0.1,
+            max_tool_result_tokens=950000  # EP-0016 field
+        )
         
-        assert config_with_max_tokens["type"] == "google"
-        assert config_with_max_tokens["model"] == "gemini-2.5-flash"
-        assert config_with_max_tokens["api_key_env"] == "GOOGLE_API_KEY"
-        assert config_with_max_tokens["temperature"] == 0.1
-        assert config_with_max_tokens["max_tool_result_tokens"] == 950000
+        assert config_with_max_tokens.type == "google"
+        assert config_with_max_tokens.model == "gemini-2.5-flash"
+        assert config_with_max_tokens.api_key_env == "GOOGLE_API_KEY"
+        assert config_with_max_tokens.temperature == 0.1
+        assert config_with_max_tokens.max_tool_result_tokens == 950000
     
     def test_llm_provider_config_all_fields(self):
         """Test LLMProviderConfig with all possible fields."""
-        full_config: LLMProviderConfig = {
-            "type": "anthropic",
-            "model": "claude-sonnet-4-20250514",
-            "api_key_env": "ANTHROPIC_API_KEY",
-            "base_url": "https://custom-api.example.com",
-            "temperature": 0.2,
-            "verify_ssl": False,
-            "max_tool_result_tokens": 150000  # EP-0016 field
-        }
+        full_config = LLMProviderConfig(
+            type="anthropic",
+            model="claude-sonnet-4-20250514",
+            api_key_env="ANTHROPIC_API_KEY",
+            base_url="https://custom-api.example.com",
+            temperature=0.2,
+            verify_ssl=False,
+            max_tool_result_tokens=150000  # EP-0016 field
+        )
         
         # Verify all fields are accessible
-        assert full_config["type"] == "anthropic"
-        assert full_config["model"] == "claude-sonnet-4-20250514"
-        assert full_config["api_key_env"] == "ANTHROPIC_API_KEY"
-        assert full_config["base_url"] == "https://custom-api.example.com"
-        assert full_config["temperature"] == 0.2
-        assert full_config["verify_ssl"] is False
-        assert full_config["max_tool_result_tokens"] == 150000
+        assert full_config.type == "anthropic"
+        assert full_config.model == "claude-sonnet-4-20250514"
+        assert full_config.api_key_env == "ANTHROPIC_API_KEY"
+        assert full_config.base_url == "https://custom-api.example.com"
+        assert full_config.temperature == 0.2
+        assert full_config.verify_ssl is False
+        assert full_config.max_tool_result_tokens == 150000
     
     def test_llm_provider_config_provider_type_validation(self):
         """Test that only valid provider types are accepted."""
@@ -108,9 +108,9 @@ class TestLLMProviderConfig:
         valid_types = ["openai", "google", "xai", "anthropic"]
         
         for provider_type in valid_types:
-            config: LLMProviderConfig = {
-                "type": provider_type,  # type: ignore  # We're testing type validation
-                "model": "test-model",
-                "api_key_env": "TEST_API_KEY"
-            }
-            assert config["type"] == provider_type
+            config = LLMProviderConfig(
+                type=provider_type,  # type: ignore  # We're testing type validation
+                model="test-model",
+                api_key_env="TEST_API_KEY"
+            )
+            assert config.type == provider_type

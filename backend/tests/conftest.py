@@ -21,6 +21,7 @@ os.environ["TESTING"] = "true"
 import tarsy.models.db_models  # noqa: F401
 import tarsy.models.unified_interactions  # noqa: F401
 from tarsy.models.alert import Alert
+from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.processing_context import ChainContext
 from tarsy.utils.timestamp import now_us
 
@@ -126,17 +127,20 @@ def isolated_test_settings():
     }
     
     # Mock the get_llm_config method
-    def mock_get_llm_config(provider: str):
+    def mock_get_llm_config(provider: str) -> LLMProviderConfig:
         if provider not in settings.llm_providers:
             raise ValueError(f"Unsupported LLM provider: {provider}")
-        config = settings.llm_providers[provider].copy()
+        base_config = settings.llm_providers[provider]
         if provider == "gemini":
-            config["api_key"] = settings.gemini_api_key
+            api_key = settings.gemini_api_key
         elif provider == "openai":
-            config["api_key"] = settings.openai_api_key
+            api_key = settings.openai_api_key
         elif provider == "grok":
-            config["api_key"] = settings.grok_api_key
-        return config
+            api_key = settings.grok_api_key
+        else:
+            api_key = ""
+            
+        return base_config.model_copy(update={"api_key": api_key})
     
     settings.get_llm_config = mock_get_llm_config
     return settings

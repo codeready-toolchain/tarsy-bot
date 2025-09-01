@@ -79,22 +79,25 @@ def mock_settings():
         }
     }
     
-    # Mock the get_llm_config method that Settings class provides
+    # Mock the get_llm_config method that Settings class provides  
     def mock_get_llm_config(provider: str):
         if provider not in settings.llm_providers:
             raise ValueError(f"Unsupported LLM provider: {provider}")
-        config = settings.llm_providers[provider].copy()
+        base_config = settings.llm_providers[provider]
         # Map provider to correct API key based on type
-        provider_type = config.get("type")
+        provider_type = base_config.type  # Type-safe field access
         if provider_type == "google":
-            config["api_key"] = settings.google_api_key
+            api_key = settings.google_api_key
         elif provider_type == "openai":
-            config["api_key"] = settings.openai_api_key
+            api_key = settings.openai_api_key
         elif provider_type == "xai":
-            config["api_key"] = settings.xai_api_key
+            api_key = settings.xai_api_key
         elif provider_type == "anthropic":
-            config["api_key"] = settings.anthropic_api_key
-        return config
+            api_key = settings.anthropic_api_key
+        else:
+            api_key = ""
+            
+        return base_config.model_copy(update={"api_key": api_key})
     
     settings.get_llm_config = mock_get_llm_config
     return settings

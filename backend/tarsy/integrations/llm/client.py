@@ -99,13 +99,13 @@ LLM_PROVIDERS = {
 class LLMClient:
     """Simple LLM client focused purely on communication with LLM providers via LangChain."""
     
-    def __init__(self, provider_name: str, config: Dict):
+    def __init__(self, provider_name: str, config: LLMProviderConfig):
         self.provider_name = provider_name
         self.config = config
         self.provider_config = config  # Store config for access to provider-specific settings
-        self.model = config.get("model", "default")
-        self.api_key = config.get("api_key", "")
-        self.temperature = config.get("temperature", DEFAULT_LLM_TEMPERATURE)
+        self.model = config.model  # Direct field access on BaseModel
+        self.api_key = config.api_key or ""  # Handle Optional field
+        self.temperature = config.temperature  # Field with default in BaseModel
         self.llm_client: Optional[BaseChatModel] = None
         self._initialize_client()
     
@@ -113,7 +113,7 @@ class LLMClient:
         """Initialize the LangChain LLM client."""
         try:
             # Map provider name to provider type for LLM_PROVIDERS
-            provider_type = self.config.get("type", self.provider_name)
+            provider_type = self.config.type  # Direct field access on BaseModel
             
             if provider_type in LLM_PROVIDERS:
                 if not self.api_key:
@@ -121,11 +121,11 @@ class LLMClient:
                     self.available = False
                     return
                 
-                disable_ssl_verification = self.config.get("disable_ssl_verification", False)
+                disable_ssl_verification = self.config.disable_ssl_verification
                 if disable_ssl_verification:
                     logger.warning(f"SSL verification is DISABLED for {self.provider_name} - use with caution!")
                 
-                base_url = self.config.get("base_url")
+                base_url = self.config.base_url
                 self.llm_client = LLM_PROVIDERS[provider_type](
                     self.temperature, 
                     self.api_key, 
@@ -247,17 +247,7 @@ class LLMClient:
     
     def get_max_tool_result_tokens(self) -> int:
         """Return the maximum tool result tokens for the current provider."""
-        try:
-            max_tokens = self.provider_config.get("max_tool_result_tokens")
-            if max_tokens is not None:
-                return int(max_tokens)
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Invalid max_tool_result_tokens in provider config: {e}")
-        
-        # Fallback to safe default for most models
-        default_limit = 150000  # Conservative limit that works for most providers
-        logger.info(f"Using default tool result limit: {default_limit:,} tokens")
-        return default_limit
+        return self.provider_config.max_tool_result_tokens  # Already an int with BaseModel validation
     
     async def _execute_with_retry(
         self,
@@ -433,7 +423,7 @@ class LLMManager:
             try:
                 config = self.settings.get_llm_config(provider_name)
                 
-                if not config.get("api_key"):
+                if not config.api_key:
                     logger.warning(f"Skipping {provider_name}: No API key provided")
                     continue
                 

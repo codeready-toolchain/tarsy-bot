@@ -118,9 +118,9 @@ class TestSettingsYAMLConfiguration:
         
         # Check YAML provider details
         custom_openai = providers['custom-openai']
-        assert custom_openai['type'] == 'openai'
-        assert custom_openai['model'] == 'gpt-4-custom'
-        assert custom_openai['base_url'] == 'https://custom-openai.example.com/v1'
+        assert custom_openai.type == 'openai'
+        assert custom_openai.model == 'gpt-4-custom'
+        assert custom_openai.base_url == 'https://custom-openai.example.com/v1'
     
     def test_yaml_providers_override_builtin(self, temp_yaml_file):
         """Test that YAML providers can override built-in providers."""
@@ -142,7 +142,7 @@ class TestSettingsYAMLConfiguration:
             providers = settings.llm_providers
             
             # Should have overridden the built-in provider
-            assert providers['google-default']['model'] == 'custom-gemini-override'
+            assert providers['google-default'].model == 'custom-gemini-override'
             
             os.unlink(f.name)
     
@@ -201,7 +201,9 @@ class TestSettingsYAMLConfiguration:
                 # Should log validation error
                 mock_logger.error.assert_called()
                 error_message = str(mock_logger.error.call_args)
-                assert "invalid type" in error_message.lower()
+                # Pydantic validation error should mention the field validation failure
+                assert ("validation error" in error_message.lower() and 
+                       ("type" in error_message.lower() or "literal_error" in error_message.lower()))
                 
                 # Invalid provider should not be included
                 assert 'invalid-provider' not in providers
@@ -275,9 +277,9 @@ class TestSettingsLLMConfiguration:
         # Get config for built-in provider
         config = settings.get_llm_config("google-default")
         
-        assert config['type'] == 'google'
-        assert config['api_key'] == "test-google-key"
-        assert 'disable_ssl_verification' in config
+        assert config.type == 'google'
+        assert config.api_key == "test-google-key"
+        assert hasattr(config, 'disable_ssl_verification')
     
     def test_get_llm_config_unknown_provider(self):
         """Test error for unknown provider."""
@@ -297,16 +299,16 @@ class TestSettingsLLMConfiguration:
         
         # Test each provider type gets correct API key
         google_config = settings.get_llm_config("google-default")
-        assert google_config['api_key'] == "google-key"
+        assert google_config.api_key == "google-key"
         
         openai_config = settings.get_llm_config("openai-default") 
-        assert openai_config['api_key'] == "openai-key"
+        assert openai_config.api_key == "openai-key"
         
         xai_config = settings.get_llm_config("xai-default")
-        assert xai_config['api_key'] == "xai-key"
+        assert xai_config.api_key == "xai-key"
         
         anthropic_config = settings.get_llm_config("anthropic-default")
-        assert anthropic_config['api_key'] == "anthropic-key"
+        assert anthropic_config.api_key == "anthropic-key"
     
     def test_get_llm_config_ssl_verification_setting(self):
         """Test SSL verification setting is included in config."""
@@ -317,7 +319,7 @@ class TestSettingsLLMConfiguration:
         
         config = settings.get_llm_config("google-default")
         
-        assert config['disable_ssl_verification'] is True
+        assert config.disable_ssl_verification is True
     
     def test_get_llm_config_max_tool_result_tokens(self):
         """Test that max_tool_result_tokens are included in LLM config."""
@@ -330,16 +332,16 @@ class TestSettingsLLMConfiguration:
         
         # Test each built-in provider has correct max_tool_result_tokens
         openai_config = settings.get_llm_config("openai-default")
-        assert openai_config['max_tool_result_tokens'] == 250000
+        assert openai_config.max_tool_result_tokens == 250000
         
         google_config = settings.get_llm_config("google-default")
-        assert google_config['max_tool_result_tokens'] == 950000
+        assert google_config.max_tool_result_tokens == 950000
         
         xai_config = settings.get_llm_config("xai-default")
-        assert xai_config['max_tool_result_tokens'] == 200000
+        assert xai_config.max_tool_result_tokens == 200000
         
         anthropic_config = settings.get_llm_config("anthropic-default")
-        assert anthropic_config['max_tool_result_tokens'] == 150000
+        assert anthropic_config.max_tool_result_tokens == 150000
 
 
 @pytest.mark.unit
@@ -360,8 +362,8 @@ class TestBuiltinLLMProvidersConfiguration:
         for provider_name, expected_limit in expected_limits.items():
             assert provider_name in BUILTIN_LLM_PROVIDERS
             provider_config = BUILTIN_LLM_PROVIDERS[provider_name]
-            assert "max_tool_result_tokens" in provider_config
-            assert provider_config["max_tool_result_tokens"] == expected_limit
+            assert hasattr(provider_config, 'max_tool_result_tokens')
+            assert provider_config.max_tool_result_tokens == expected_limit
     
     def test_builtin_providers_config_structure(self):
         """Test that built-in provider configs have all required fields."""
@@ -373,12 +375,12 @@ class TestBuiltinLLMProvidersConfiguration:
         for provider_name, config in BUILTIN_LLM_PROVIDERS.items():
             # Check all required fields are present
             for field in required_fields:
-                assert field in config, f"Provider {provider_name} missing required field: {field}"
+                assert hasattr(config, field), f"Provider {provider_name} missing required field: {field}"
             
             # Check max_tool_result_tokens is present (EP-0016 requirement)
-            assert "max_tool_result_tokens" in config, f"Provider {provider_name} missing max_tool_result_tokens"
-            assert isinstance(config["max_tool_result_tokens"], int), f"Provider {provider_name} max_tool_result_tokens must be int"
-            assert config["max_tool_result_tokens"] > 0, f"Provider {provider_name} max_tool_result_tokens must be positive"
+            assert hasattr(config, 'max_tool_result_tokens'), f"Provider {provider_name} missing max_tool_result_tokens"
+            assert isinstance(config.max_tool_result_tokens, int), f"Provider {provider_name} max_tool_result_tokens must be int"
+            assert config.max_tool_result_tokens > 0, f"Provider {provider_name} max_tool_result_tokens must be positive"
 
 
 @pytest.mark.unit
