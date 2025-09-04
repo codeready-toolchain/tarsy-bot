@@ -14,6 +14,15 @@ if TYPE_CHECKING:
     from ..agents.base_agent import BaseAgent
 
 
+class MCPToolParameter(BaseModel):
+    """Type-safe representation of an MCP tool parameter."""
+    model_config: ConfigDict = ConfigDict(extra="forbid")
+    
+    name: str = Field(..., description="Parameter name", min_length=1)
+    description: str = Field(default="", description="Parameter description")
+    type: Optional[str] = Field(default=None, description="Parameter type (e.g., 'string', 'array', 'object')")
+
+
 class MCPTool(BaseModel):
     """Structured representation of an MCP tool."""
     model_config: ConfigDict = ConfigDict(extra="forbid")
@@ -21,7 +30,7 @@ class MCPTool(BaseModel):
     server: str = Field(..., description="MCP server name", min_length=1)
     name: str = Field(..., description="Tool name", min_length=1)
     description: str = Field(..., description="Tool description")
-    parameters: List[Dict[str, Any]] = Field(default_factory=list, description="Tool parameters schema")
+    parameters: List[MCPToolParameter] = Field(default_factory=list, description="Tool parameters schema")
 
 
 class AvailableTools(BaseModel):
@@ -36,14 +45,6 @@ class AvailableTools(BaseModel):
         default_factory=list,
         description="Available MCP tools"
     )
-    
-    def to_prompt_format(self) -> str:
-        """Format tools for prompt inclusion."""
-        if not self.tools:
-            return "No tools available."
-        
-        formatted_tools = [f"{tool.server}.{tool.name}: {tool.description}" for tool in self.tools]
-        return "\n".join(formatted_tools)
 
 
 class ChainContext(BaseModel):

@@ -5,8 +5,9 @@ This module implements the PromptBuilder using LangChain templates
 for clean, composable prompt generation.
 """
 
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 from tarsy.utils.logger import get_module_logger
+from tarsy.models.processing_context import MCPTool
 
 if TYPE_CHECKING:
     from tarsy.models.processing_context import StageContext
@@ -68,10 +69,8 @@ class PromptBuilder:
             history_text = "\n".join(flattened_history) + "\n"
         
         # Format available tools from StageContext
-        available_tools_dict = {"tools": [tool for tool in context.available_tools.tools]}
-        
         return STANDARD_REACT_PROMPT_TEMPLATE.format(
-            available_actions=self._format_available_actions(available_tools_dict),
+            available_actions=self._format_available_actions(context.available_tools.tools),
             question=question,
             history_text=history_text
         )
@@ -107,10 +106,8 @@ class PromptBuilder:
             history_text = "\n".join(flattened_history) + "\n"
         
         # Format available tools from StageContext
-        available_tools_dict = {"tools": [tool for tool in context.available_tools.tools]}
-        
         return STANDARD_REACT_PROMPT_TEMPLATE.format(
-            available_actions=self._format_available_actions(available_tools_dict),
+            available_actions=self._format_available_actions(context.available_tools.tools),
             question=question,
             history_text=history_text
         )
@@ -206,21 +203,19 @@ Focus on root cause analysis and sustainable solutions."""
             server_list=server_list
         )
 
-    def _format_available_actions(self, available_tools: Dict[str, Any]) -> str:
-        """Format available tools as ReAct actions. EP-0012 clean implementation - MCPTool objects only."""
-        if not available_tools or not available_tools.get("tools"):
+    def _format_available_actions(self, available_tools: List[MCPTool]) -> str:
+        """Format available tools as ReAct actions."""
+        if not available_tools:
             return "No tools available."
         
         actions = []
-        for tool in available_tools["tools"]:
-            # EP-0012 clean implementation: only MCPTool objects, no legacy compatibility
+        for tool in available_tools:
             action_name = f"{tool.server}.{tool.name}"
             description = tool.description
             
             if tool.parameters:
-                # MCPTool.parameters is List[Dict[str, Any]]
                 param_desc = ', '.join([
-                    f"{param.get('name', 'param')}: {param.get('description', 'no description')}" 
+                    f"{param.name}: {param.description or 'no description'}" 
                     for param in tool.parameters
                 ])
                 actions.append(f"{action_name}: {description}\n  Parameters: {param_desc}")

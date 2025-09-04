@@ -10,12 +10,14 @@ from unittest.mock import Mock
 import pytest
 from pydantic import ValidationError
 
+from tarsy.agents.prompts.builders import PromptBuilder
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
 from tarsy.models.processing_context import (
     AvailableTools,
     ChainContext,
     MCPTool,
+    MCPToolParameter,
     StageContext,
 )
 
@@ -29,14 +31,15 @@ class TestMCPTool:
             server="kubernetes-server",
             name="get_pods",
             description="Get pod information",
-            parameters=[{"name": "namespace", "type": "string"}]
+            parameters=[MCPToolParameter(name="namespace", type="string")]
         )
         
         assert tool.server == "kubernetes-server"
         assert tool.name == "get_pods"
         assert tool.description == "Get pod information"
         assert len(tool.parameters) == 1
-        assert tool.parameters[0]["name"] == "namespace"
+        assert tool.parameters[0].name == "namespace"
+        assert tool.parameters[0].type == "string"
     
     def test_mcp_tool_defaults(self):
         """Test MCPTool with default parameters."""
@@ -64,7 +67,11 @@ class TestAvailableTools:
         """Test empty AvailableTools."""
         tools = AvailableTools()
         assert tools.tools == []
-        assert tools.to_prompt_format() == "No tools available."
+        
+        # Use PromptBuilder to format tools
+        builder = PromptBuilder()
+        prompt_format = builder._format_available_actions(tools.tools)
+        assert prompt_format == "No tools available."
     
     def test_available_tools_with_mcp_tools(self):
         """Test AvailableTools with structured MCPTool objects."""
@@ -79,7 +86,9 @@ class TestAvailableTools:
         assert len(tools.tools) == 1
         assert isinstance(tools.tools[0], MCPTool)
         
-        prompt_format = tools.to_prompt_format()
+        # Use PromptBuilder to format tools
+        builder = PromptBuilder()
+        prompt_format = builder._format_available_actions(tools.tools)
         assert "k8s.get_pods: Get Kubernetes pods" in prompt_format
 
 

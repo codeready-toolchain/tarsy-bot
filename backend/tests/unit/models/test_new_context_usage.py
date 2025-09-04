@@ -6,6 +6,7 @@ work in actual test scenarios, alongside the existing models.
 """
 
 
+from tarsy.agents.prompts.builders import PromptBuilder
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
 from tarsy.models.processing_context import ChainContext, MCPTool, StageContext
@@ -193,7 +194,8 @@ class TestNewStageContextUsage:
         assert "Check pod logs" in runbook
         
         # Verify tools are available
-        tools_format = context.available_tools.to_prompt_format()
+        builder = PromptBuilder()
+        tools_format = builder._format_available_actions(context.available_tools.tools)
         assert "kubernetes-server.get_pods" in tools_format
         assert "kubernetes-server.get_pod_logs" in tools_format
         assert "kubernetes-server.describe_pod" in tools_format
@@ -210,7 +212,8 @@ class TestNewStageContextUsage:
         tools = context.available_tools
         assert len(tools.tools) >= 6  # K8s + AWS + monitoring tools
         
-        tools_format = tools.to_prompt_format()
+        builder = PromptBuilder()
+        tools_format = builder._format_available_actions(tools.tools)
         assert "kubernetes-server" in tools_format
         assert "aws-server" in tools_format
         assert "monitoring-server" in tools_format
@@ -248,7 +251,8 @@ class TestAvailableToolsUsage:
         assert len(get_pods_tool.parameters) == 2
         
         # Test prompt formatting
-        prompt = tools.to_prompt_format()
+        builder = PromptBuilder()
+        prompt = builder._format_available_actions(tools.tools)
         assert "kubernetes-server.get_pods: Get pod information and status" in prompt
         assert "kubernetes-server.get_pod_logs: Get logs from a specific pod" in prompt
     
@@ -263,7 +267,8 @@ class TestAvailableToolsUsage:
         assert "monitoring-server" in servers
         
         # Test comprehensive prompt format
-        prompt = tools.to_prompt_format()
+        builder = PromptBuilder()
+        prompt = builder._format_available_actions(tools.tools)
         assert "kubernetes-server.get_pods" in prompt
         assert "aws-server.describe_instances" in prompt
         assert "monitoring-server.query_prometheus" in prompt

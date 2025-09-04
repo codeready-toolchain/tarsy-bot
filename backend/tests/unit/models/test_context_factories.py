@@ -15,6 +15,7 @@ from tarsy.models.processing_context import (
     AvailableTools,
     ChainContext,
     MCPTool,
+    MCPToolParameter,
     StageContext,
 )
 
@@ -145,8 +146,8 @@ class AvailableToolsFactory:
                 name="get_pods",
                 description="Get pod information and status",
                 parameters=[
-                    {"name": "namespace", "type": "string", "description": "Kubernetes namespace"},
-                    {"name": "label_selector", "type": "string", "description": "Label selector for filtering"}
+                    MCPToolParameter(name="namespace", type="string", description="Kubernetes namespace"),
+                    MCPToolParameter(name="label_selector", type="string", description="Label selector for filtering")
                 ]
             ),
             MCPTool(
@@ -154,9 +155,9 @@ class AvailableToolsFactory:
                 name="get_pod_logs",
                 description="Get logs from a specific pod",
                 parameters=[
-                    {"name": "pod_name", "type": "string", "description": "Name of the pod"},
-                    {"name": "namespace", "type": "string", "description": "Pod namespace"},
-                    {"name": "tail_lines", "type": "integer", "description": "Number of lines to tail"}
+                    MCPToolParameter(name="pod_name", type="string", description="Name of the pod"),
+                    MCPToolParameter(name="namespace", type="string", description="Pod namespace"),
+                    MCPToolParameter(name="tail_lines", type="integer", description="Number of lines to tail")
                 ]
             ),
             MCPTool(
@@ -164,8 +165,8 @@ class AvailableToolsFactory:
                 name="describe_pod",
                 description="Get detailed pod description including events",
                 parameters=[
-                    {"name": "pod_name", "type": "string", "description": "Name of the pod"},
-                    {"name": "namespace", "type": "string", "description": "Pod namespace"}
+                    MCPToolParameter(name="pod_name", type="string", description="Name of the pod"),
+                    MCPToolParameter(name="namespace", type="string", description="Pod namespace")
                 ]
             )
         ]
@@ -180,8 +181,8 @@ class AvailableToolsFactory:
                 name="describe_instances",
                 description="Describe EC2 instances",
                 parameters=[
-                    {"name": "instance_ids", "type": "array", "description": "List of instance IDs"},
-                    {"name": "filters", "type": "object", "description": "EC2 filters"}
+                    MCPToolParameter(name="instance_ids", type="array", description="List of instance IDs"),
+                    MCPToolParameter(name="filters", type="object", description="EC2 filters")
                 ]
             ),
             MCPTool(
@@ -189,9 +190,9 @@ class AvailableToolsFactory:
                 name="get_cloudwatch_metrics",
                 description="Get CloudWatch metrics for resources",
                 parameters=[
-                    {"name": "metric_name", "type": "string", "description": "CloudWatch metric name"},
-                    {"name": "namespace", "type": "string", "description": "CloudWatch namespace"},
-                    {"name": "dimensions", "type": "object", "description": "Metric dimensions"}
+                    MCPToolParameter(name="metric_name", type="string", description="CloudWatch metric name"),
+                    MCPToolParameter(name="namespace", type="string", description="CloudWatch namespace"),
+                    MCPToolParameter(name="dimensions", type="object", description="Metric dimensions")
                 ]
             )
         ]
@@ -209,8 +210,8 @@ class AvailableToolsFactory:
             name="query_prometheus",
             description="Execute Prometheus query",
             parameters=[
-                {"name": "query", "type": "string", "description": "PromQL query"},
-                {"name": "time_range", "type": "string", "description": "Time range for query"}
+                MCPToolParameter(name="query", type="string", description="PromQL query"),
+                MCPToolParameter(name="time_range", type="string", description="Time range for query")
             ]
         )
         

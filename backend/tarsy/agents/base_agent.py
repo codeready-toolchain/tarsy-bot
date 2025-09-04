@@ -18,7 +18,7 @@ from tarsy.models.agent_execution_result import (
 )
 from tarsy.models.constants import StageStatus
 
-from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools, MCPTool
+from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools, MCPTool, MCPToolParameter
 
 if TYPE_CHECKING:
     from tarsy.models.unified_interactions import LLMConversation
@@ -337,13 +337,23 @@ class BaseAgent(ABC):
                 server_tools = await self.mcp_client.list_tools(session_id=session_id, server_name=server_name, stage_execution_id=self._current_stage_execution_id)
                 if server_name in server_tools:
                     for tool in server_tools[server_name]:
-                        # Handle MCP tool parameters schema - ensure it's a list
-                        tool_parameters = tool.get('parameters', [])
-                        if isinstance(tool_parameters, dict):
-                            # Convert dict schema to list format expected by MCPTool
-                            tool_parameters = [tool_parameters]
-                        elif not isinstance(tool_parameters, list):
-                            tool_parameters = []
+                        # Handle MCP tool parameters schema - convert to MCPToolParameter objects
+                        raw_parameters = tool.get('parameters', [])
+                        if isinstance(raw_parameters, dict):
+                            # Convert dict schema to list format
+                            raw_parameters = [raw_parameters]
+                        elif not isinstance(raw_parameters, list):
+                            raw_parameters = []
+                        
+                        # Convert raw parameter dictionaries to MCPToolParameter objects
+                        tool_parameters = []
+                        for param_dict in raw_parameters:
+                            if isinstance(param_dict, dict):
+                                tool_parameters.append(MCPToolParameter(
+                                    name=param_dict.get('name', 'param'),
+                                    description=param_dict.get('description', ''),
+                                    type=param_dict.get('type')
+                                ))
                         
                         mcp_tools.append(MCPTool(
                             server=server_name,

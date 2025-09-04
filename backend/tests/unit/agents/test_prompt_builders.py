@@ -9,6 +9,7 @@ import pytest
 from unittest.mock import Mock
 
 from tarsy.agents.prompts.builders import PromptBuilder
+from tarsy.models.processing_context import MCPToolParameter
 
 
 @pytest.mark.unit
@@ -196,8 +197,8 @@ class TestHelperMethods:
         get_pods_tool.name = "get_pods"
         get_pods_tool.description = "Get pod information"
         get_pods_tool.parameters = [
-            {"name": "namespace", "description": "Kubernetes namespace"},
-            {"name": "labels", "description": "Label selector"}
+            MCPToolParameter(name="namespace", description="Kubernetes namespace"),
+            MCPToolParameter(name="labels", description="Label selector")
         ]
         
         get_metrics_tool = Mock()
@@ -206,9 +207,7 @@ class TestHelperMethods:
         get_metrics_tool.description = "Get metrics data"
         get_metrics_tool.parameters = []
         
-        available_tools = {
-            "tools": [get_pods_tool, get_metrics_tool]
-        }
+        available_tools = [get_pods_tool, get_metrics_tool]
         
         result = builder._format_available_actions(available_tools)
         
@@ -222,15 +221,15 @@ class TestHelperMethods:
     
     def test_format_available_actions_empty_tools(self, builder):
         """Test available actions formatting with no tools."""
-        available_tools = {"tools": []}
+        available_tools = []
         
         result = builder._format_available_actions(available_tools)
         
         assert result == "No tools available."
     
-    def test_format_available_actions_no_tools_key(self, builder):
-        """Test available actions formatting with missing tools key."""
-        available_tools = {}
+    def test_format_available_actions_empty_list(self, builder):
+        """Test available actions formatting with empty tools list."""
+        available_tools = []
         
         result = builder._format_available_actions(available_tools)
         
@@ -305,15 +304,15 @@ Stage 2 (Initial): Found resource constraints and recent deployment
         get_pods_tool.server = "kubectl"
         get_pods_tool.name = "get_pods"
         get_pods_tool.description = "List pods in namespace"
-        get_pods_tool.parameters = [{"name": "namespace", "description": "Target namespace"}]
+        get_pods_tool.parameters = [MCPToolParameter(name="namespace", description="Target namespace")]
         
         describe_pod_tool = Mock()
         describe_pod_tool.server = "kubectl"
         describe_pod_tool.name = "describe_pod"
         describe_pod_tool.description = "Get detailed pod information"
         describe_pod_tool.parameters = [
-            {"name": "namespace", "description": "Pod namespace"},
-            {"name": "pod_name", "description": "Pod name"}
+            MCPToolParameter(name="namespace", description="Pod namespace"),
+            MCPToolParameter(name="pod_name", description="Pod name")
         ]
         
         get_logs_tool = Mock()
@@ -321,9 +320,9 @@ Stage 2 (Initial): Found resource constraints and recent deployment
         get_logs_tool.name = "get_logs"
         get_logs_tool.description = "Get pod logs"
         get_logs_tool.parameters = [
-            {"name": "namespace", "description": "Pod namespace"},
-            {"name": "pod_name", "description": "Pod name"},
-            {"name": "container", "description": "Container name"}
+            MCPToolParameter(name="namespace", description="Pod namespace"),
+            MCPToolParameter(name="pod_name", description="Pod name"),
+            MCPToolParameter(name="container", description="Container name")
         ]
         
         context.available_tools.tools = [get_pods_tool, describe_pod_tool, get_logs_tool]
