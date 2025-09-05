@@ -109,7 +109,7 @@ class ReActParser:
         # Check for action (with or without thought - LLMs sometimes skip thought)
         action = sections.get('action')
         action_input = sections.get('action_input')
-        if action and action_input:
+        if action and action_input is not None:  # Allow empty action_input for tools with no parameters
             try:
                 tool_call = ReActParser._convert_to_tool_call(action, action_input)
                 return ReActResponse(

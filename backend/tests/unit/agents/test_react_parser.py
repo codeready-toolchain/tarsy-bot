@@ -250,15 +250,31 @@ Final Answer: The namespace superman-dev is healthy and all pods are running nor
         assert result.is_malformed is True
     
     def test_parse_action_without_input_malformed(self):
-        """Test that action without input is malformed."""
+        """Test that action without Action Input line is malformed."""
         response = """Thought: I need to check something
 Action: kubectl.get_pods"""
-        # No Action Input
+        # No Action Input line at all
         
         result = ReActParser.parse_response(response)
         
         assert result.response_type == ResponseType.MALFORMED
         assert result.is_malformed is True
+    
+    def test_parse_action_with_empty_input_valid(self):
+        """Test that action with empty Action Input is valid (for tools with no parameters)."""
+        response = """Thought: I need to list all namespaces
+Action: kubernetes-server.namespaces_list
+Action Input:"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.THOUGHT_ACTION
+        assert result.has_action is True
+        assert result.thought == "I need to list all namespaces"
+        assert result.action == "kubernetes-server.namespaces_list"
+        assert result.tool_call.server == "kubernetes-server"
+        assert result.tool_call.tool == "namespaces_list"
+        assert result.tool_call.parameters == {}  # Empty dict for no parameters
     
     def test_parse_invalid_action_format_malformed(self):
         """Test that invalid action format results in malformed."""
