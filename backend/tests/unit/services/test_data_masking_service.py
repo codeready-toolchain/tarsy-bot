@@ -66,6 +66,10 @@ class TestBasicPatternMatching:
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890
 -----END CERTIFICATE-----""", ["certificate"], 
          ["***MASKED_CERTIFICATE***"], ["MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890"]),
+        ("certificate-authority-data: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZPQ==", ["certificate_authority_data"], 
+         ["***MASKED_CA_CERTIFICATE***"], ["LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZPQ=="]),
+        ("Contact support at support@example.com for help", ["email"], 
+         ["***MASKED_EMAIL***"], ["support@example.com"]),
         ("This is just normal text without secrets", ["api_key", "password"], 
          [], []),  # No masking
         (f'api_key: "{TEST_DATA_WITH_SECRETS["api_key"]}" password: "secretpass123"', ["api_key", "password"], 
@@ -105,6 +109,214 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890
         assert "superman-dev" in result
         assert "Secret" in result
 
+    def test_certificate_authority_data_masking_kubernetes_config(self):
+        """Test certificate-authority-data masking in Kubernetes config context."""
+        kubeconfig_data = """apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==
+    server: https://api.crc.testing:6443
+  name: api-crc-testing:6443
+contexts:
+- context:
+    cluster: api-crc-testing:6443
+    namespace: default
+  name: default"""
+
+        result = self.service._apply_patterns(kubeconfig_data, ["certificate_authority_data"])
+        
+        # Certificate authority data should be masked
+        assert "LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==" not in result
+        assert "***MASKED_CA_CERTIFICATE***" in result
+        
+        # Other config data should be preserved
+        assert "https://api.crc.testing:6443" in result
+        assert "api-crc-testing:6443" in result
+        assert "default" in result
+
+    def test_certificate_authority_data_no_false_positives(self):
+        """Test that certificate-authority-data pattern doesn't create false positives."""
+        # Test cases that should NOT be masked
+        test_cases = [
+            # No colon - should not match
+            "certificate-authority-data LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0t",
+            "certificate-authority-data. LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0t", 
+            "certificate-authority-data, LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0t",
+            
+            # Colon but no data or too short data - should not match
+            "certificate-authority-data:",
+            "certificate-authority-data: ",
+            "certificate-authority-data:   ",
+            "certificate-authority-data: short",
+            "certificate-authority-data: abc123",
+            "certificate-authority-data: notbase64text",
+            
+            # Descriptive text - should not match (no valid base64 after)
+            "The certificate-authority-data: field contains the certificate authority data",
+            "Configure certificate-authority-data: property in your kubeconfig",
+            "certificate-authority-data: value should be base64 encoded",
+            
+            # Invalid base64 patterns - should not match
+            "certificate-authority-data: this-is-not-base64-format-data",
+            "certificate-authority-data: @@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+            "certificate-authority-data: spaces in the data here",
+        ]
+        
+        for test_case in test_cases:
+            result = self.service._apply_patterns(test_case, ["certificate_authority_data"])
+            
+            # Should not be masked - original text should remain unchanged
+            assert result == test_case, f"False positive detected in: {test_case}"
+            assert "***MASKED_CA_CERTIFICATE***" not in result, f"Incorrectly masked: {test_case}"
+
+    def test_certificate_authority_data_valid_cases_are_masked(self):
+        """Test that valid certificate-authority-data cases ARE properly masked."""
+        # Test cases that SHOULD be masked
+        valid_test_cases = [
+            # Standard format
+            "certificate-authority-data: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==",
+            
+            # With extra whitespace
+            "certificate-authority-data:   LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==",
+            "certificate-authority-data:\t\tLS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==",
+            
+            # Case variations
+            "Certificate-Authority-Data: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==",
+            "CERTIFICATE-AUTHORITY-DATA: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==",
+            
+            # Minimum length base64 (20 chars)
+            "certificate-authority-data: YWJjZGVmZ2hpamtsbW5vcA==",
+            
+            # With padding variations
+            "certificate-authority-data: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9z",  # no padding
+            "certificate-authority-data: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ=",  # single =
+        ]
+        
+        for test_case in valid_test_cases:
+            result = self.service._apply_patterns(test_case, ["certificate_authority_data"])
+            
+            # Should be masked
+            assert "***MASKED_CA_CERTIFICATE***" in result, f"Should have been masked: {test_case}"
+            # Original base64 data should not be present
+            original_data = test_case.split(': ', 1)[1] if ': ' in test_case else test_case.split(':\t', 1)[1] if ':\t' in test_case else test_case.split(':', 1)[1]
+            assert original_data.strip() not in result, f"Original data still present: {test_case}"
+
+    def test_email_no_false_positives(self):
+        """Test that email pattern doesn't create false positives."""
+        # Test cases that should NOT be masked - clearly invalid email formats
+        test_cases = [
+            # No @ symbol
+            "email.domain.com",
+            "user.domain.com",
+            
+            # No domain extension
+            "user@domain",
+            "support@localhost",
+            
+            # Invalid characters or formats
+            "user@@domain.com",
+            "@domain.com", 
+            "user@",
+            "user@.com",
+            "user@domain.",
+            "user@domain..com",
+            
+            # Too short TLD (less than 2 chars) 
+            "user@domain.c",
+            "user@domain.1",
+            
+            # Domain starting with hyphen or dot
+            "user@-domain.com",
+            "user@.domain.com",
+            
+            # Empty username
+            "@domain.com",
+        ]
+        
+        for test_case in test_cases:
+            result = self.service._apply_patterns(test_case, ["email"])
+            
+            # Should not be masked - original text should remain unchanged
+            assert result == test_case, f"False positive detected in: {test_case}"
+            assert "***MASKED_EMAIL***" not in result, f"Incorrectly masked: {test_case}"
+
+    def test_email_contextual_cases(self):
+        """Test email pattern in various contextual cases that should be masked."""
+        # These cases SHOULD be masked because they contain legitimate emails
+        contextual_cases = [
+            # Emails in code contexts (these should be masked)
+            'var email = "user@domain.com"',
+            "func(user@domain.com)",
+            "Contact support@example.org for help",
+            
+            # Technical contexts that contain valid emails
+            "git clone user@github.com:repo/project.git",  # Contains valid email
+            "ssh user@server.com",  # Contains valid email
+        ]
+        
+        for test_case in contextual_cases:
+            result = self.service._apply_patterns(test_case, ["email"])
+            
+            # Should mask the email part
+            assert "***MASKED_EMAIL***" in result, f"Should have masked email in: {test_case}"
+
+    def test_email_valid_cases_are_masked(self):
+        """Test that valid email addresses ARE properly masked."""
+        # Test cases that SHOULD be masked
+        valid_test_cases = [
+            # Standard formats
+            "Contact user@example.com for support",
+            "Send logs to admin@company.org",
+            "Email: support@domain.net",
+            
+            # Various TLD lengths
+            "user@example.co.uk",
+            "admin@site.museum",
+            "info@domain.travel",
+            
+            # Numbers in domain/user
+            "user123@example123.com",
+            "test@domain2024.org",
+            
+            # Special characters in username
+            "user.name@example.com",
+            "user_name@example.com", 
+            "user-name@example.com",
+            "user+tag@example.com",
+            "user%special@example.com",
+            
+            # Subdomains
+            "admin@mail.example.com",
+            "user@subdomain.domain.co.uk",
+            
+            # Multiple emails in text
+            "Contact user@example.com or admin@example.org for help",
+            
+            # Mixed case
+            "User@Example.Com",
+            "ADMIN@DOMAIN.ORG",
+            
+            # In various contexts
+            "Log in with user@example.com",
+            "From: sender@company.com",
+            "To: recipient@domain.net",
+            "Reply-To: noreply@service.com",
+        ]
+        
+        for test_case in valid_test_cases:
+            result = self.service._apply_patterns(test_case, ["email"])
+            
+            # Should be masked
+            assert "***MASKED_EMAIL***" in result, f"Should have been masked: {test_case}"
+            
+            # Check that specific email addresses are masked
+            import re
+            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*\.[A-Za-z]{2,}\b'
+            found_emails = re.findall(email_pattern, test_case)
+            
+            for email in found_emails:
+                assert email not in result, f"Email {email} still present in result: {result}"
+
     @pytest.mark.parametrize("test_data,patterns,expected_masked,expected_preserved", [
         (f'token: {BASE64_TEST_DATA["token"]} another_field: {BASE64_TEST_DATA["another_field"]}', ["base64_secret"], 
          ["***MASKED_BASE64_VALUE***"], 
@@ -125,11 +337,6 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890
         # Check that base64 values are not present
         for preserved in expected_preserved:
             assert preserved not in result
-
-
-
-
-
 
 @pytest.mark.unit
 class TestDataStructureTraversal:
@@ -186,10 +393,10 @@ class TestPatternGroupExpansion:
     
     @pytest.mark.parametrize("groups,expected_patterns,expected_count", [
         (["basic"], PATTERN_GROUPS["basic"], 2),
-        (["basic", "security"], PATTERN_GROUPS["basic"] + PATTERN_GROUPS["security"], 4),
+        (["basic", "security"], PATTERN_GROUPS["basic"] + PATTERN_GROUPS["security"], 6),
         (["unknown_group", "basic"], PATTERN_GROUPS["basic"], 2),  # Skip unknown group
         ([], [], 0),  # Empty groups
-        (["kubernetes"], PATTERN_GROUPS["kubernetes"] + PATTERN_GROUPS["basic"], 4),
+        (["kubernetes"], PATTERN_GROUPS["kubernetes"] + PATTERN_GROUPS["basic"], 5),
     ])
     def test_pattern_group_expansion_scenarios(self, groups, expected_patterns, expected_count):
         """Test pattern group expansion for various scenarios."""
@@ -388,8 +595,6 @@ type: Opaque"""
         preserved_data = ["my-secret", "superman-dev", "Secret", "Opaque"]
         for data in preserved_data:
             assert data in result_str
-
-
     
     def test_mask_response_with_custom_patterns(self):
         """Test response with custom patterns."""

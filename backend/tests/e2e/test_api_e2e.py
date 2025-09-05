@@ -348,7 +348,11 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                         mock_content = Mock()
                         mock_content.text = """Name:         stuck-namespace
 Status:       Terminating
-Finalizers:   kubernetes.io/pv-protection"""
+Finalizers:   kubernetes.io/pv-protection
+Annotations:  contact=admin@company.com
+              api-key=sk_test_1234567890abcdef1234567890abcdef
+              certificate-authority-data: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==
+Labels:       environment=production"""
                         mock_result.content = [mock_content]
                     else:
                         mock_content = Mock()

@@ -134,7 +134,7 @@ ASSISTANT: Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}
 
 USER: Observation: kubernetes-server.kubectl_describe: {
-  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
+  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection\\nAnnotations:  contact=***MASKED_EMAIL***\\n              \\"api_key\\": \\"***MASKED_API_KEY***\\"\\n              certificate-authority-data: ***MASKED_CA_CERTIFICATE***\\nLabels:       environment=production"
 }
 
 ASSISTANT: Thought: Let me also collect system information to understand resource constraints.
@@ -480,7 +480,7 @@ Action Input: {"resource": "namespace", "name": "stuck-namespace"}"""
         {
             "role": "user",
             "content": """Observation: kubernetes-server.kubectl_describe: {
-  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
+  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection\\nAnnotations:  contact=***MASKED_EMAIL***\\n              \\"api_key\\": \\"***MASKED_API_KEY***\\"\\n              certificate-authority-data: ***MASKED_CA_CERTIFICATE***\\nLabels:       environment=production"
 }"""
         },
         {
@@ -690,7 +690,7 @@ Observation: kubernetes-server.kubectl_get: {
 Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}
 Observation: kubernetes-server.kubectl_describe: {
-  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
+  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection\\nAnnotations:  contact=***MASKED_EMAIL***\\n              \\"api_key\\": \\"***MASKED_API_KEY***\\"\\n              certificate-authority-data: ***MASKED_CA_CERTIFICATE***\\nLabels:       environment=production"
 }
 Thought: Let me also collect system information to understand resource constraints.
 Action: test-data-server.collect_system_info
@@ -818,7 +818,7 @@ Observation: kubernetes-server.kubectl_get: {
 Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}
 Observation: kubernetes-server.kubectl_describe: {
-  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection"
+  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   kubernetes.io/pv-protection\\nAnnotations:  contact=***MASKED_EMAIL***\\n              \\"api_key\\": \\"***MASKED_API_KEY***\\"\\n              certificate-authority-data: ***MASKED_CA_CERTIFICATE***\\nLabels:       environment=production"
 }
 Thought: Let me also collect system information to understand resource constraints.
 Action: test-data-server.collect_system_info

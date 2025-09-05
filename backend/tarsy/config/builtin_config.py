@@ -93,7 +93,7 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
         "data_masking": {
             "enabled": True,
             "pattern_groups": ["kubernetes"],  # Expands to kubernetes_secret, api_key, password
-            "patterns": ["certificate", "token"]  # Add individual patterns for comprehensive coverage
+            "patterns": ["certificate", "token", "email"]  # Add individual patterns for comprehensive coverage
         }
     },
     # Future MCP servers will be added here:
@@ -152,6 +152,16 @@ BUILTIN_MASKING_PATTERNS: Dict[str, Dict[str, str]] = {
         "replacement": '***MASKED_CERTIFICATE***',
         "description": "SSL/TLS certificates and private keys"
     },
+    "certificate_authority_data": {
+        "pattern": r'(?i)certificate-authority-data:\s*([A-Za-z0-9+/]{20,}={0,2})',
+        "replacement": r'certificate-authority-data: ***MASKED_CA_CERTIFICATE***',
+        "description": "Certificate authority data in Kubernetes configs and YAML files"
+    },
+    "email": {
+        "pattern": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*\.[A-Za-z]{2,}\b',
+        "replacement": '***MASKED_EMAIL***',
+        "description": "Email addresses in various contexts"
+    },
     "token": {
         "pattern": r'(?i)(?:token|bearer|jwt)["\']?\s*[:=]\s*["\']?([A-Za-z0-9_\-\.]{20,})["\']?',
         "replacement": r'"token": "***MASKED_TOKEN***"',
@@ -164,9 +174,9 @@ BUILTIN_MASKING_PATTERNS: Dict[str, Dict[str, str]] = {
 BUILTIN_PATTERN_GROUPS: Dict[str, list[str]] = {
     "basic": ["api_key", "password"],                          # Most common secrets
     "secrets": ["api_key", "password", "token"],               # Basic + tokens  
-    "security": ["api_key", "password", "token", "certificate"], # Full security focus
-    "kubernetes": ["kubernetes_data_section", "kubernetes_stringdata_json", "api_key", "password"], # Kubernetes-specific - masks data sections and stringData
-    "all": ["base64_secret", "base64_short", "api_key", "password", "certificate", "token"]  # All patterns
+    "security": ["api_key", "password", "token", "certificate", "certificate_authority_data", "email"], # Full security focus
+    "kubernetes": ["kubernetes_data_section", "kubernetes_stringdata_json", "api_key", "password", "certificate_authority_data"], # Kubernetes-specific - masks data sections and stringData
+    "all": ["base64_secret", "base64_short", "api_key", "password", "certificate", "certificate_authority_data", "email", "token"]  # All patterns
 }
 
 
