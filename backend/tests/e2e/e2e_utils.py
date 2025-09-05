@@ -11,6 +11,7 @@ from typing import Tuple, Dict, Any, List, Callable
 from unittest.mock import AsyncMock, Mock
 
 import httpx
+from mcp.types import Tool
 
 
 class E2ETestUtils:
@@ -235,10 +236,11 @@ class E2ETestUtils:
             return mock_result
 
         async def mock_list_tools():
-            mock_tool = Mock()
-            mock_tool.name = "generic_tool"
-            mock_tool.description = "Generic test tool"
-            mock_tool.inputSchema = {"type": "object", "properties": {}}
+            mock_tool = Tool(
+                name="generic_tool",
+                description="Generic test tool",
+                inputSchema={"type": "object", "properties": {}}
+            )
 
             mock_result = Mock()
             mock_result.tools = [mock_tool]

@@ -15,6 +15,7 @@ import re
 import random
 import string
 from unittest.mock import AsyncMock, Mock, patch
+from mcp.types import Tool
 
 import httpx
 import pytest
@@ -364,30 +365,32 @@ Finalizers:   kubernetes.io/pv-protection"""
                 return mock_result
 
             async def mock_list_tools():
-                # Create mock tool objects with attributes (not dict keys)
-                mock_tool1 = Mock()
-                mock_tool1.name = "kubectl_get"
-                mock_tool1.description = "Get Kubernetes resources"
-                mock_tool1.inputSchema = {
-                    "type": "object",
-                    "properties": {
-                        "resource": {"type": "string"},
-                        "namespace": {"type": "string"},
-                        "name": {"type": "string"},
-                    },
-                }
+                # Create proper Tool objects (not Mock objects)
+                mock_tool1 = Tool(
+                    name="kubectl_get",
+                    description="Get Kubernetes resources",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "resource": {"type": "string"},
+                            "namespace": {"type": "string"},
+                            "name": {"type": "string"},
+                        },
+                    }
+                )
 
-                mock_tool2 = Mock()
-                mock_tool2.name = "kubectl_describe"
-                mock_tool2.description = "Describe Kubernetes resources"
-                mock_tool2.inputSchema = {
-                    "type": "object",
-                    "properties": {
-                        "resource": {"type": "string"},
-                        "namespace": {"type": "string"},
-                        "name": {"type": "string"},
-                    },
-                }
+                mock_tool2 = Tool(
+                    name="kubectl_describe",
+                    description="Describe Kubernetes resources",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "resource": {"type": "string"},
+                            "namespace": {"type": "string"},
+                            "name": {"type": "string"},
+                        },
+                    }
+                )
 
                 # Return object with .tools attribute (matching MCP SDK API)
                 mock_result = Mock()
@@ -418,21 +421,20 @@ Finalizers:   kubernetes.io/pv-protection"""
                     return {"result": f"Mock response for custom tool: {tool_name}"}
 
             async def mock_list_tools():
-                # Create mock tool object with attributes (not dict keys)
-                mock_tool = Mock()
-                mock_tool.name = "collect_system_info"
-                mock_tool.description = (
-                    "Collect basic system information like CPU, memory, and disk usage"
+                # Create proper Tool object (not Mock object)
+                mock_tool = Tool(
+                    name="collect_system_info",
+                    description="Collect basic system information like CPU, memory, and disk usage",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "detailed": {
+                                "type": "boolean",
+                                "description": "Whether to return detailed system info",
+                            }
+                        },
+                    }
                 )
-                mock_tool.inputSchema = {
-                    "type": "object",
-                    "properties": {
-                        "detailed": {
-                            "type": "boolean",
-                            "description": "Whether to return detailed system info",
-                        }
-                    },
-                }
 
                 # Return object with .tools attribute (matching MCP SDK API)
                 mock_result = Mock()

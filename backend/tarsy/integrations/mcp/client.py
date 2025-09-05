@@ -150,8 +150,23 @@ class MCPClient:
                         self._log_mcp_list_tools_error(name, str(e), request_id)
                         all_tools[name] = []
             
+            # Convert Tool objects to dictionaries for JSON serialization
+            serializable_tools = {}
+            for server_name, tools in all_tools.items():
+                if tools:
+                    serializable_tools[server_name] = [
+                        {
+                            "name": tool.name,
+                            "description": tool.description or "",
+                            "inputSchema": tool.inputSchema or {}
+                        }
+                        for tool in tools
+                    ]
+                else:
+                    serializable_tools[server_name] = []
+            
             # Update the interaction with result data
-            ctx.interaction.available_tools = all_tools
+            ctx.interaction.available_tools = serializable_tools
             
             # Complete the typed context with success
             await ctx.complete_success({})

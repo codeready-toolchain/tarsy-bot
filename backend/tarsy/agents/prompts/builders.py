@@ -226,7 +226,9 @@ Focus on root cause analysis and sustainable solutions."""
             else:
                 actions.append("    **Parameters**: None")
             
-            actions.append("")  # Empty line between tools
+            # Add empty line between tools (but not after the last tool)
+            if i < len(available_tools):
+                actions.append("")
         
         return "\n".join(actions)
     

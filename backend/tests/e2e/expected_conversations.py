@@ -74,9 +74,22 @@ Be thorough but efficient. Collect all relevant data before stopping.
 USER: Answer the following question using the available tools.
 
 Available tools:
-kubernetes-server.kubectl_get: Get Kubernetes resources
-kubernetes-server.kubectl_describe: Describe Kubernetes resources
-test-data-server.collect_system_info: Collect basic system information like CPU, memory, and disk usage
+
+1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
+    **Parameters**:
+    - resource (optional, string): No description
+    - namespace (optional, string): No description
+    - name (optional, string): No description
+
+2. **kubernetes-server.kubectl_describe**: Describe Kubernetes resources
+    **Parameters**:
+    - resource (optional, string): No description
+    - namespace (optional, string): No description
+    - name (optional, string): No description
+
+3. **test-data-server.collect_system_info**: Collect basic system information like CPU, memory, and disk usage
+    **Parameters**:
+    - detailed (optional, boolean): Whether to return detailed system info
 
 Question: Investigate this test-kubernetes alert and provide stage-specific analysis.
 
@@ -196,7 +209,7 @@ EXPECTED_STAGES = {
     },
     'verification': {
         'llm_count': 2,
-        'mcp_count': 2,
+        'mcp_count': 2,  # Tool discovery calls + tool execution calls are all tracked as MCP interactions
         'interactions': [
             # MCP 1 - Tool list discovery (first interaction)
             {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
@@ -396,9 +409,22 @@ Focus on collecting additional data and providing stage-specific analysis for hu
             "content": """Answer the following question using the available tools.
 
 Available tools:
-kubernetes-server.kubectl_get: Get Kubernetes resources
-kubernetes-server.kubectl_describe: Describe Kubernetes resources
-test-data-server.collect_system_info: Collect basic system information like CPU, memory, and disk usage
+
+1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
+    **Parameters**:
+    - resource (optional, string): No description
+    - namespace (optional, string): No description
+    - name (optional, string): No description
+
+2. **kubernetes-server.kubectl_describe**: Describe Kubernetes resources
+    **Parameters**:
+    - resource (optional, string): No description
+    - namespace (optional, string): No description
+    - name (optional, string): No description
+
+3. **test-data-server.collect_system_info**: Collect basic system information like CPU, memory, and disk usage
+    **Parameters**:
+    - detailed (optional, boolean): Whether to return detailed system info
 
 Question: Investigate this test-kubernetes alert and provide stage-specific analysis.
 
@@ -618,8 +644,18 @@ Focus on investigation and providing recommendations for human operators to exec
             "content": """Answer the following question using the available tools.
 
 Available tools:
-kubernetes-server.kubectl_get: Get Kubernetes resources
-kubernetes-server.kubectl_describe: Describe Kubernetes resources
+
+1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
+    **Parameters**:
+    - resource (optional, string): No description
+    - namespace (optional, string): No description
+    - name (optional, string): No description
+
+2. **kubernetes-server.kubectl_describe**: Describe Kubernetes resources
+    **Parameters**:
+    - resource (optional, string): No description
+    - namespace (optional, string): No description
+    - name (optional, string): No description
 
 Question: Analyze this test-kubernetes alert and provide actionable recommendations.
 
