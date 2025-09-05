@@ -65,7 +65,7 @@ def mock_settings():
     }
     
     # Mock the get_llm_config method that Settings class provides
-    from tarsy.models.llm_models import LLMProviderConfig, ProviderType
+    from tarsy.models.llm_models import LLMProviderConfig
 
     def mock_get_llm_config(provider: str) -> LLMProviderConfig:
         if provider not in settings.llm_providers:
@@ -83,12 +83,11 @@ def mock_settings():
         else:
             api_key = ""
 
-        cfg = LLMProviderConfig(
-            model=base_dict["model"],
-            api_key_env=base_dict["api_key_env"],
-            type=ProviderType(provider_type),
-        )
-        return cfg.model_copy(update={"api_key": api_key})
+        cfg = LLMProviderConfig.model_validate(base_dict)
+        return cfg.model_copy(update={
+            "api_key": api_key,
+            "disable_ssl_verification": getattr(settings, "disable_ssl_verification", False),
+        })
     
     settings.get_llm_config = mock_get_llm_config
     return settings
