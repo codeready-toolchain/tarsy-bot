@@ -263,7 +263,7 @@ class TestMCPClientToolCalling:
         
         mock_session = AsyncMock()
         mock_result = Mock()
-        mock_result.content = [Mock(type="text", text="Result with api_key: sk_test_0000000000000000")]
+        mock_result.content = [Mock(type="text", text="Result with api_key: not-a-real-api-key-0000000000000000")]
         mock_session.call_tool.return_value = mock_result
         
         client = MCPClient(Mock(), registry)

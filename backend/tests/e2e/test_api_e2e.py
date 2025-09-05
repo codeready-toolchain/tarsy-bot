@@ -350,7 +350,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
 Status:       Terminating
 Finalizers:   kubernetes.io/pv-protection
 Annotations:  contact=admin@company.com
-              api-key=sk_test_1234567890abcdef1234567890abcdef
+              api-key=not-a-real-api-key-1234567890abcdef1234567890abcdef
               certificate-authority-data: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==
 Labels:       environment=production"""
                         mock_result.content = [mock_content]

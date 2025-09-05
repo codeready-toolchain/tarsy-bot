@@ -1545,7 +1545,7 @@ class DataMaskingFactory:
     def create_test_data_with_secrets(**overrides):
         """Create test data containing sensitive information."""
         base_data = {
-            "api_key": "sk_test_123456789012345678901234567890",
+            "api_key": "not-a-real-api-key-123456789012345678901234567890",
             "password": "mySecretPassword123",
             "token": "dGhpc2lzYWxvbmdlcmJhc2U2NGVuY29kZWR2YWx1ZQ==",
             "normal_field": "normal_value",
