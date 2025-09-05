@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.types import Tool
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import mcp_interaction_context, mcp_list_context
@@ -99,7 +100,12 @@ class MCPClient:
         
         self._initialized = True
     
-    async def list_tools(self, session_id: str, server_name: Optional[str] = None, stage_execution_id: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+    async def list_tools(
+        self,
+        session_id: str,
+        server_name: Optional[str] = None,
+        stage_execution_id: Optional[str] = None,
+    ) -> Dict[str, List[Tool]]:
         """List available tools from MCP servers."""
         if not self._initialized:
             await self.initialize()
@@ -150,11 +156,11 @@ class MCPClient:
                         self._log_mcp_list_tools_error(name, str(e), request_id)
                         all_tools[name] = []
             
-            # Convert Tool objects to dictionaries for JSON serialization
-            serializable_tools = {}
-            for server_name, tools in all_tools.items():
+            # Convert Tool objects to dictionaries for JSON serialization in hook context
+            serializable_tools: Dict[str, List[Dict[str, Any]]] = {}
+            for srv_name, tools in all_tools.items():
                 if tools:
-                    serializable_tools[server_name] = [
+                    serializable_tools[srv_name] = [
                         {
                             "name": tool.name,
                             "description": tool.description or "",
@@ -163,7 +169,7 @@ class MCPClient:
                         for tool in tools
                     ]
                 else:
-                    serializable_tools[server_name] = []
+                    serializable_tools[srv_name] = []
             
             # Update the interaction with result data
             ctx.interaction.available_tools = serializable_tools
@@ -358,7 +364,7 @@ class MCPClient:
         mcp_comm_logger.info(f"Target: {target}")
         mcp_comm_logger.info(f"=== END LIST TOOLS REQUEST [ID: {request_id}] ===")
     
-    def _log_mcp_list_tools_response(self, server_name: str, tools: List[Dict[str, Any]], request_id: str):
+    def _log_mcp_list_tools_response(self, server_name: str, tools: List[Tool], request_id: str):
         """Log the MCP list tools response."""
         mcp_comm_logger.info(f"=== MCP LIST TOOLS RESPONSE [{server_name}] [ID: {request_id}] ===")
         mcp_comm_logger.info(f"Request ID: {request_id}")

@@ -58,35 +58,20 @@ def mock_settings():
     
     # Updated LLM providers configuration to match EP-0013
     settings.llm_providers = {
-        "google-default": {
-            "model": "gemini-2.5-flash",
-            "api_key_env": "GOOGLE_API_KEY",
-            "type": "google"
-        },
-        "openai-default": {
-            "model": "gpt-5",
-            "api_key_env": "OPENAI_API_KEY", 
-            "type": "openai"
-        },
-        "xai-default": {
-            "model": "grok-4-latest",
-            "api_key_env": "XAI_API_KEY",
-            "type": "xai"
-        },
-        "anthropic-default": {
-            "model": "claude-4-sonnet",
-            "api_key_env": "ANTHROPIC_API_KEY",
-            "type": "anthropic"
-        }
+        "google-default": {"model": "gemini-2.5-flash", "api_key_env": "GOOGLE_API_KEY", "type": "google"},
+        "openai-default": {"model": "gpt-5", "api_key_env": "OPENAI_API_KEY", "type": "openai"},
+        "xai-default": {"model": "grok-4-latest", "api_key_env": "XAI_API_KEY", "type": "xai"},
+        "anthropic-default": {"model": "claude-4-sonnet", "api_key_env": "ANTHROPIC_API_KEY", "type": "anthropic"},
     }
     
-    # Mock the get_llm_config method that Settings class provides  
-    def mock_get_llm_config(provider: str):
+    # Mock the get_llm_config method that Settings class provides
+    from tarsy.models.llm_models import LLMProviderConfig, ProviderType
+
+    def mock_get_llm_config(provider: str) -> LLMProviderConfig:
         if provider not in settings.llm_providers:
             raise ValueError(f"Unsupported LLM provider: {provider}")
-        base_config = settings.llm_providers[provider]
-        # Map provider to correct API key based on type
-        provider_type = base_config.type  # Type-safe field access
+        base_dict = settings.llm_providers[provider]
+        provider_type = base_dict["type"]
         if provider_type == "google":
             api_key = settings.google_api_key
         elif provider_type == "openai":
@@ -97,8 +82,13 @@ def mock_settings():
             api_key = settings.anthropic_api_key
         else:
             api_key = ""
-            
-        return base_config.model_copy(update={"api_key": api_key})
+
+        cfg = LLMProviderConfig(
+            model=base_dict["model"],
+            api_key_env=base_dict["api_key_env"],
+            type=ProviderType(provider_type),
+        )
+        return cfg.model_copy(update={"api_key": api_key})
     
     settings.get_llm_config = mock_get_llm_config
     return settings

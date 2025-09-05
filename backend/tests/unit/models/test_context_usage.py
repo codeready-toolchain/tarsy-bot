@@ -173,9 +173,9 @@ class TestNewStageContextUsage:
         
         # Test formatted context generation
         formatted = context.format_previous_stages_context()
-        assert "## Results from 'Data Collection' stage:" in formatted
+        assert "### Results from 'Data Collection' stage:" in formatted
         assert "Collected instance metrics" in formatted
-        assert "## Results from 'Root Cause Analysis' stage:" in formatted
+        assert "### Results from 'Root Cause Analysis' stage:" in formatted
         assert "memory leak" in formatted
     
     def test_kubernetes_troubleshooting_scenario(self):
