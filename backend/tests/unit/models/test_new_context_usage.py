@@ -9,7 +9,7 @@ work in actual test scenarios, alongside the existing models.
 from tarsy.agents.prompts.builders import PromptBuilder
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
-from tarsy.models.processing_context import ChainContext, MCPTool, StageContext
+from tarsy.models.processing_context import ChainContext, StageContext, ToolWithServer
 from tests.unit.models.test_context_factories import (
     AvailableToolsFactory,
     ChainContextFactory,
@@ -242,19 +242,23 @@ class TestAvailableToolsUsage:
         tools = AvailableToolsFactory.create_kubernetes_tools()
         
         assert len(tools.tools) == 3
-        assert all(isinstance(tool, MCPTool) for tool in tools.tools)
+        assert all(isinstance(tool, ToolWithServer) for tool in tools.tools)
         
         # Test tool details
-        get_pods_tool = next(tool for tool in tools.tools if tool.name == "get_pods")
+        get_pods_tool = next(tool for tool in tools.tools if tool.tool.name == "get_pods")
         assert get_pods_tool.server == "kubernetes-server"
-        assert "pod information" in get_pods_tool.description
-        assert len(get_pods_tool.parameters) == 2
+        assert "pod information" in get_pods_tool.tool.description
+        # Check that tool has parameters in inputSchema
+        input_schema = get_pods_tool.tool.inputSchema
+        assert input_schema is not None
+        assert 'properties' in input_schema
+        assert len(input_schema['properties']) == 2
         
         # Test prompt formatting
         builder = PromptBuilder()
         prompt = builder._format_available_actions(tools.tools)
-        assert "kubernetes-server.get_pods: Get pod information and status" in prompt
-        assert "kubernetes-server.get_pod_logs: Get logs from a specific pod" in prompt
+        assert "**kubernetes-server.get_pods**: Get pod information and status" in prompt
+        assert "**kubernetes-server.get_pod_logs**: Get logs from a specific pod" in prompt
     
     def test_mixed_tools_scenario(self):
         """Test AvailableTools with tools from multiple servers."""

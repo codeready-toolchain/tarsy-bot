@@ -18,6 +18,7 @@ from tarsy.models.processing_context import ChainContext
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.timestamp import now_us
+from mcp.types import Tool
 
 
 class TestConcreteAgent(BaseAgent):
@@ -267,7 +268,11 @@ class TestBaseAgentMCPIntegration:
         client = Mock(spec=MCPClient)
         client.list_tools = AsyncMock(
             return_value={
-                "test-server": [{"name": "kubectl-get", "description": "Get resources"}]
+                "test-server": [Tool(
+                    name="kubectl-get", 
+                    description="Get resources",
+                    inputSchema={"type": "object", "properties": {}}
+                )]
             }
         )
         client.call_tool = AsyncMock(return_value={"result": "success"})
@@ -320,7 +325,7 @@ class TestBaseAgentMCPIntegration:
         tools = await base_agent._get_available_tools("test_session")
 
         assert len(tools.tools) == 1
-        assert tools.tools[0].name == "kubectl-get"
+        assert tools.tools[0].tool.name == "kubectl-get"
         assert tools.tools[0].server == "test-server"
         mock_mcp_client.list_tools.assert_called_once_with(
             session_id="test_session",

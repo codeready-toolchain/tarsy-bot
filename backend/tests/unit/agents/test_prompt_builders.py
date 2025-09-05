@@ -9,7 +9,8 @@ import pytest
 from unittest.mock import Mock
 
 from tarsy.agents.prompts.builders import PromptBuilder
-from tarsy.models.processing_context import MCPToolParameter
+from tarsy.models.processing_context import ToolWithServer
+from mcp.types import Tool
 
 
 @pytest.mark.unit
@@ -23,7 +24,7 @@ class TestPromptBuilding:
     
     @pytest.fixture
     def mock_stage_context(self):
-        """Create mock StageContext for testing."""
+        """Create mock StageContext with proper ToolWithServer objects for testing."""
         context = Mock()
         context.alert_data = {
             'title': 'Test Alert',
@@ -33,18 +34,25 @@ class TestPromptBuilding:
         context.runbook_content = "Test runbook content"
         context.format_previous_stages_context.return_value = "No previous stage context available."
         context.chain_context.alert_type = "kubernetes"
-        # Create proper Mock objects with name attributes
-        get_pods_tool = Mock()
-        get_pods_tool.server = "kubectl"
-        get_pods_tool.name = "get_pods"
-        get_pods_tool.description = "Get pod information"
-        get_pods_tool.parameters = []
         
-        get_namespace_tool = Mock()
-        get_namespace_tool.server = "kubectl"  
-        get_namespace_tool.name = "get_namespace"
-        get_namespace_tool.description = "Get namespace info"
-        get_namespace_tool.parameters = []
+        # Create proper ToolWithServer objects with official MCP Tool objects
+        get_pods_tool = ToolWithServer(
+            server="kubectl",
+            tool=Tool(
+                name="get_pods",
+                description="Get pod information",
+                inputSchema={"type": "object", "properties": {}}
+            )
+        )
+        
+        get_namespace_tool = ToolWithServer(
+            server="kubectl",
+            tool=Tool(
+                name="get_namespace",
+                description="Get namespace info",
+                inputSchema={"type": "object", "properties": {}}
+            )
+        )
         
         context.available_tools.tools = [get_pods_tool, get_namespace_tool]
         context.agent_name = "test-agent"
@@ -60,8 +68,8 @@ class TestPromptBuilding:
         assert "Test Alert" in result
         assert "critical" in result
         assert "Test runbook content" in result
-        assert "kubectl.get_pods: Get pod information" in result
-        assert "kubectl.get_namespace: Get namespace info" in result
+        assert "**kubectl.get_pods**: Get pod information" in result
+        assert "**kubectl.get_namespace**: Get namespace info" in result
         assert "Previous Stage Data" in result
     
     def test_build_standard_react_prompt_with_history(self, builder, mock_stage_context):
@@ -86,7 +94,7 @@ class TestPromptBuilding:
         # Should contain stage-specific elements
         assert "Test Alert" in result
         assert "INVESTIGATION" in result  # Stage name in uppercase
-        assert "kubectl.get_pods: Get pod information" in result
+        assert "**kubectl.get_pods**: Get pod information" in result
         assert "Previous Stage Data" in result
     
     def test_build_stage_analysis_react_prompt_with_history(self, builder, mock_stage_context):
@@ -190,32 +198,49 @@ class TestHelperMethods:
         assert "kubectl, monitoring, logging" in result
     
     def test_format_available_actions_with_tools(self, builder):
-        """Test available actions formatting."""
-        # Create proper Mock objects with correct attributes
-        get_pods_tool = Mock()
-        get_pods_tool.server = "kubectl"
-        get_pods_tool.name = "get_pods"
-        get_pods_tool.description = "Get pod information"
-        get_pods_tool.parameters = [
-            MCPToolParameter(name="namespace", description="Kubernetes namespace"),
-            MCPToolParameter(name="labels", description="Label selector")
+        """Test available actions formatting with official MCP Tool objects."""
+        # Create official MCP Tool objects
+        get_pods_tool = Tool(
+            name="get_pods",
+            description="Get pod information",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "namespace": {
+                        "type": "string",
+                        "description": "Kubernetes namespace"
+                    },
+                    "labels": {
+                        "type": "string", 
+                        "description": "Label selector"
+                    }
+                },
+                "required": ["namespace"]
+            }
+        )
+        
+        get_metrics_tool = Tool(
+            name="get_metrics",
+            description="Get metrics data",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        )
+        
+        # Create ToolWithServer objects
+        available_tools = [
+            ToolWithServer(server="kubectl", tool=get_pods_tool),
+            ToolWithServer(server="monitoring", tool=get_metrics_tool)
         ]
-        
-        get_metrics_tool = Mock()
-        get_metrics_tool.server = "monitoring"
-        get_metrics_tool.name = "get_metrics"
-        get_metrics_tool.description = "Get metrics data"
-        get_metrics_tool.parameters = []
-        
-        available_tools = [get_pods_tool, get_metrics_tool]
         
         result = builder._format_available_actions(available_tools)
         
-        # Should format actions correctly
+        # Should format actions correctly with rich schema information
         assert "kubectl.get_pods" in result
         assert "Get pod information" in result
-        assert "namespace: Kubernetes namespace" in result
-        assert "labels: Label selector" in result
+        assert "namespace (required, string): Kubernetes namespace" in result
+        assert "labels (optional, string): Label selector" in result
         assert "monitoring.get_metrics" in result
         assert "Get metrics data" in result
     
@@ -234,6 +259,67 @@ class TestHelperMethods:
         result = builder._format_available_actions(available_tools)
         
         assert result == "No tools available."
+    
+    def test_format_available_actions_with_enhanced_schema(self, builder):
+        """Test enhanced schema formatting with all enum values displayed."""
+        # Create a tool with comprehensive JSON Schema including enums
+        enhanced_tool = ToolWithServer(
+            server="kubectl",
+            tool=Tool(
+                name="get_resources",
+                description="Get Kubernetes resources with various output formats",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "output_format": {
+                            "type": "string",
+                            "description": "Output format for the resource information",
+                            "enum": ["json", "yaml", "wide", "name", "custom-columns", "custom-columns-file", "go-template", "go-template-file", "jsonpath", "jsonpath-file"],
+                            "default": "yaml"
+                        },
+                        "resource_type": {
+                            "type": "string", 
+                            "description": "Type of Kubernetes resource to retrieve",
+                            "enum": ["pods", "services", "deployments", "configmaps", "secrets"]
+                        },
+                        "namespace": {
+                            "type": "string",
+                            "description": "Kubernetes namespace",
+                            "default": "default",
+                            "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": "Request timeout in seconds",
+                            "minimum": 1,
+                            "maximum": 300,
+                            "default": 30
+                        }
+                    },
+                    "required": ["resource_type"]
+                }
+            )
+        )
+        
+        result = builder._format_available_actions([enhanced_tool])
+        
+        # Test that all enum values are displayed (not truncated)
+        assert 'choices: ["json", "yaml", "wide", "name", "custom-columns", "custom-columns-file", "go-template", "go-template-file", "jsonpath", "jsonpath-file"]' in result
+        assert 'choices: ["pods", "services", "deployments", "configmaps", "secrets"]' in result
+        
+        # Test other enhanced schema features
+        assert "(required, string)" in result  # Required parameter
+        assert "(optional, string)" in result  # Optional parameter
+        assert "(optional, integer)" in result  # Integer type
+        assert "default: yaml" in result  # Default value
+        assert "default: default" in result  # Default value for namespace
+        assert "default: 30" in result  # Default value for timeout
+        assert "pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" in result  # Regex pattern
+        assert "min: 1; max: 300" in result  # Min/max constraints
+        
+        # Verify no truncation indicators
+        assert "..." not in result  # No truncation
+        assert "choices: [json, yaml, wide, ...]" not in result  # Old truncated format should not be present
     
     def test_flatten_react_history_mixed_types(self, builder):
         """Test flattening react history with mixed types."""
@@ -299,31 +385,72 @@ Stage 1 (Detection): Identified CrashLoopBackOff in prod namespace
 Stage 2 (Initial): Found resource constraints and recent deployment
         """.strip()
         context.chain_context.alert_type = "kubernetes-pod"
-        # Create proper Mock objects with correct attributes
-        get_pods_tool = Mock()
-        get_pods_tool.server = "kubectl"
-        get_pods_tool.name = "get_pods"
-        get_pods_tool.description = "List pods in namespace"
-        get_pods_tool.parameters = [MCPToolParameter(name="namespace", description="Target namespace")]
+        # Create proper ToolWithServer objects with official MCP Tool objects
+        get_pods_tool = ToolWithServer(
+            server="kubectl",
+            tool=Tool(
+                name="get_pods",
+                description="List pods in namespace",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "namespace": {
+                            "type": "string",
+                            "description": "Target namespace"
+                        }
+                    },
+                    "required": ["namespace"]
+                }
+            )
+        )
         
-        describe_pod_tool = Mock()
-        describe_pod_tool.server = "kubectl"
-        describe_pod_tool.name = "describe_pod"
-        describe_pod_tool.description = "Get detailed pod information"
-        describe_pod_tool.parameters = [
-            MCPToolParameter(name="namespace", description="Pod namespace"),
-            MCPToolParameter(name="pod_name", description="Pod name")
-        ]
+        describe_pod_tool = ToolWithServer(
+            server="kubectl",
+            tool=Tool(
+                name="describe_pod",
+                description="Get detailed pod information",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "namespace": {
+                            "type": "string",
+                            "description": "Pod namespace"
+                        },
+                        "pod_name": {
+                            "type": "string",
+                            "description": "Pod name"
+                        }
+                    },
+                    "required": ["namespace", "pod_name"]
+                }
+            )
+        )
         
-        get_logs_tool = Mock()
-        get_logs_tool.server = "kubectl"
-        get_logs_tool.name = "get_logs"
-        get_logs_tool.description = "Get pod logs"
-        get_logs_tool.parameters = [
-            MCPToolParameter(name="namespace", description="Pod namespace"),
-            MCPToolParameter(name="pod_name", description="Pod name"),
-            MCPToolParameter(name="container", description="Container name")
-        ]
+        get_logs_tool = ToolWithServer(
+            server="kubectl",
+            tool=Tool(
+                name="get_logs",
+                description="Get pod logs",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "namespace": {
+                            "type": "string",
+                            "description": "Pod namespace"
+                        },
+                        "pod_name": {
+                            "type": "string",
+                            "description": "Pod name"
+                        },
+                        "container": {
+                            "type": "string",
+                            "description": "Container name"
+                        }
+                    },
+                    "required": ["namespace", "pod_name"]
+                }
+            )
+        )
         
         context.available_tools.tools = [get_pods_tool, describe_pod_tool, get_logs_tool]
         context.agent_name = "kubernetes-sre-agent"
@@ -347,9 +474,9 @@ Stage 2 (Initial): Found resource constraints and recent deployment
         assert "Multiple pods crashing" in result
         assert "Pod CrashLoop Investigation Runbook" in result
         assert "Stage 1 (Detection)" in result
-        assert "kubectl.get_pods: List pods in namespace" in result
-        assert "kubectl.describe_pod: Get detailed pod information" in result
-        assert "kubectl.get_logs: Get pod logs" in result
+        assert "**kubectl.get_pods**: List pods in namespace" in result
+        assert "**kubectl.describe_pod**: Get detailed pod information" in result
+        assert "**kubectl.get_logs**: Get pod logs" in result
         assert "Thought: I need to investigate" in result
         assert "Found 3 pods in CrashLoopBackOff state" in result
     
@@ -360,7 +487,7 @@ Stage 2 (Initial): Found resource constraints and recent deployment
         # Should contain stage-specific formatting
         assert "DEEP_INVESTIGATION" in result
         assert "Pod CrashLoopBackOff" in result
-        assert "kubectl.get_pods: List pods in namespace" in result
+        assert "**kubectl.get_pods**: List pods in namespace" in result
         assert "Stage 1 (Detection)" in result
     
     def test_final_analysis_comprehensive(self, builder, full_mock_context):

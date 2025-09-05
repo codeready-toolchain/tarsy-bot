@@ -18,6 +18,7 @@ from tarsy.models.alert import Alert
 from tarsy.models.constants import IterationStrategy
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.mcp_server_registry import MCPServerRegistry
+from mcp.types import Tool
 from tarsy.utils.timestamp import now_us
 
 
@@ -272,8 +273,8 @@ class TestKubernetesAgentInheritedFunctionality:
         """Test that _get_available_tools retrieves tools from kubernetes-server."""
         kubernetes_agent._configured_servers = ["kubernetes-server"]
         mock_tools = [
-            {"name": "get_pod_status", "description": "Get pod status"},
-            {"name": "get_namespace_events", "description": "Get namespace events"}
+            Tool(name="get_pod_status", description="Get pod status", inputSchema={"type": "object", "properties": {}}),
+            Tool(name="get_namespace_events", description="Get namespace events", inputSchema={"type": "object", "properties": {}})
         ]
         kubernetes_agent.mcp_client.list_tools.return_value = {"kubernetes-server": mock_tools}
         
@@ -282,8 +283,8 @@ class TestKubernetesAgentInheritedFunctionality:
         assert len(tools.tools) == 2
         for tool in tools.tools:
             assert tool.server == "kubernetes-server"
-            assert hasattr(tool, 'name')
-            assert hasattr(tool, 'description')
+            assert hasattr(tool.tool, 'name')
+            assert hasattr(tool.tool, 'description')
         
         kubernetes_agent.mcp_client.list_tools.assert_called_once_with(session_id="test_session", server_name="kubernetes-server", stage_execution_id=None)
     
@@ -663,7 +664,7 @@ class TestKubernetesAgentIntegrationScenarios:
         
         # Mock iterative tool calls with properly structured tool data
         mock_mcp.list_tools.return_value = {"kubernetes-server": [
-            {"name": "kubectl", "description": "Kubernetes command-line tool", "parameters": []}
+            Tool(name="kubectl", description="Kubernetes command-line tool", inputSchema={"type": "object", "properties": {}})
         ]}
         mock_mcp.call_tool.return_value = {"result": "Pod details retrieved"}
         

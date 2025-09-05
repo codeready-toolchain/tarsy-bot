@@ -16,48 +16,10 @@ from tarsy.models.constants import StageStatus
 from tarsy.models.processing_context import (
     AvailableTools,
     ChainContext,
-    MCPTool,
-    MCPToolParameter,
     StageContext,
+    ToolWithServer,
 )
-
-
-class TestMCPTool:
-    """Test MCPTool model."""
-    
-    def test_mcp_tool_creation(self):
-        """Test creating an MCPTool with all fields."""
-        tool = MCPTool(
-            server="kubernetes-server",
-            name="get_pods",
-            description="Get pod information",
-            parameters=[MCPToolParameter(name="namespace", type="string")]
-        )
-        
-        assert tool.server == "kubernetes-server"
-        assert tool.name == "get_pods"
-        assert tool.description == "Get pod information"
-        assert len(tool.parameters) == 1
-        assert tool.parameters[0].name == "namespace"
-        assert tool.parameters[0].type == "string"
-    
-    def test_mcp_tool_defaults(self):
-        """Test MCPTool with default parameters."""
-        tool = MCPTool(
-            server="test-server",
-            name="test_tool",
-            description="Test description"
-        )
-        
-        assert tool.parameters == []
-    
-    def test_mcp_tool_validation(self):
-        """Test MCPTool field validation."""
-        with pytest.raises(ValidationError):
-            MCPTool(server="", name="test", description="test")
-        
-        with pytest.raises(ValidationError):
-            MCPTool(server="test", name="", description="test")
+from mcp.types import Tool
 
 
 class TestAvailableTools:
@@ -74,22 +36,27 @@ class TestAvailableTools:
         assert prompt_format == "No tools available."
     
     def test_available_tools_with_mcp_tools(self):
-        """Test AvailableTools with structured MCPTool objects."""
-        mcp_tool = MCPTool(
+        """Test AvailableTools with ToolWithServer objects."""
+        tool_with_server = ToolWithServer(
             server="k8s",
-            name="get_pods",
-            description="Get Kubernetes pods"
+            tool=Tool(
+                name="get_pods",
+                description="Get Kubernetes pods",
+                inputSchema={"type": "object", "properties": {}}
+            )
         )
         
-        tools = AvailableTools(tools=[mcp_tool])
+        tools = AvailableTools(tools=[tool_with_server])
         
         assert len(tools.tools) == 1
-        assert isinstance(tools.tools[0], MCPTool)
+        assert isinstance(tools.tools[0], ToolWithServer)
+        assert tools.tools[0].server == "k8s"
+        assert tools.tools[0].tool.name == "get_pods"
         
         # Use PromptBuilder to format tools
         builder = PromptBuilder()
         prompt_format = builder._format_available_actions(tools.tools)
-        assert "k8s.get_pods: Get Kubernetes pods" in prompt_format
+        assert "**k8s.get_pods**: Get Kubernetes pods" in prompt_format
 
 
 class TestChainContext:
@@ -340,12 +307,15 @@ class TestStageContext:
     
     def create_test_available_tools(self) -> AvailableTools:
         """Create test AvailableTools for StageContext tests."""
-        tool = MCPTool(
+        tool_with_server = ToolWithServer(
             server="k8s",
-            name="get_pods",
-            description="Get pod information"
+            tool=Tool(
+                name="get_pods",
+                description="Get pod information",
+                inputSchema={"type": "object", "properties": {}}
+            )
         )
-        return AvailableTools(tools=[tool])
+        return AvailableTools(tools=[tool_with_server])
     
     def create_mock_agent(self) -> Mock:
         """Create a mock BaseAgent for testing."""

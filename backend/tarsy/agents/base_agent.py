@@ -18,7 +18,7 @@ from tarsy.models.agent_execution_result import (
 )
 from tarsy.models.constants import StageStatus
 
-from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools, MCPTool, MCPToolParameter
+from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools, ToolWithServer
 
 if TYPE_CHECKING:
     from tarsy.models.unified_interactions import LLMConversation
@@ -322,9 +322,9 @@ class BaseAgent(ABC):
         logger.info(f"Configured agent {self.__class__.__name__} with MCP servers: {mcp_server_ids}")
     
     async def _get_available_tools(self, session_id: str) -> AvailableTools:
-        """Get available tools from assigned MCP servers."""
+        """Get available tools from assigned MCP servers using official MCP Tool objects."""
         try:
-            mcp_tools = []
+            tools_with_server = []
             
             if self._configured_servers is None:
                 # This should never happen now - configuration is required
@@ -336,34 +336,15 @@ class BaseAgent(ABC):
             for server_name in self._configured_servers:
                 server_tools = await self.mcp_client.list_tools(session_id=session_id, server_name=server_name, stage_execution_id=self._current_stage_execution_id)
                 if server_name in server_tools:
+                    # Server_tools[server_name] contains official mcp.types.Tool objects
                     for tool in server_tools[server_name]:
-                        # Handle MCP tool parameters schema - convert to MCPToolParameter objects
-                        raw_parameters = tool.get('parameters', [])
-                        if isinstance(raw_parameters, dict):
-                            # Convert dict schema to list format
-                            raw_parameters = [raw_parameters]
-                        elif not isinstance(raw_parameters, list):
-                            raw_parameters = []
-                        
-                        # Convert raw parameter dictionaries to MCPToolParameter objects
-                        tool_parameters = []
-                        for param_dict in raw_parameters:
-                            if isinstance(param_dict, dict):
-                                tool_parameters.append(MCPToolParameter(
-                                    name=param_dict.get('name', 'param'),
-                                    description=param_dict.get('description', ''),
-                                    type=param_dict.get('type')
-                                ))
-                        
-                        mcp_tools.append(MCPTool(
+                        tools_with_server.append(ToolWithServer(
                             server=server_name,
-                            name=tool.get('name', 'tool'),
-                            description=tool.get('description', 'No description'),
-                            parameters=tool_parameters
+                            tool=tool
                         ))
             
-            logger.info(f"Agent {self.__class__.__name__} retrieved {len(mcp_tools)} tools from servers: {self._configured_servers}")
-            return AvailableTools(tools=mcp_tools)
+            logger.info(f"Agent {self.__class__.__name__} retrieved {len(tools_with_server)} tools from servers: {self._configured_servers}")
+            return AvailableTools(tools=tools_with_server)
             
         except Exception as e:
             error_msg = f"Failed to retrieve tools for agent {self.__class__.__name__}: {str(e)}"

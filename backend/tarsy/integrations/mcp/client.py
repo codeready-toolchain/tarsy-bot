@@ -124,18 +124,11 @@ class MCPClient:
                     try:
                         session = self.sessions[server_name]
                         tools_result = await session.list_tools()
-                        tools = []
-                        for tool in tools_result.tools:
-                            tool_dict = {
-                                "name": tool.name,
-                                "description": tool.description or "",
-                                "inputSchema": tool.inputSchema
-                            }
-                            tools.append(tool_dict)
-                        all_tools[server_name] = tools
+                        # Keep the official Tool objects with full schema information
+                        all_tools[server_name] = tools_result.tools
                         
                         # Log the successful response
-                        self._log_mcp_list_tools_response(server_name, tools, request_id)
+                        self._log_mcp_list_tools_response(server_name, tools_result.tools, request_id)
                         
                     except Exception as e:
                         logger.error(f"Error listing tools from {server_name}: {str(e)}")
@@ -146,18 +139,11 @@ class MCPClient:
                 for name, session in self.sessions.items():
                     try:
                         tools_result = await session.list_tools()
-                        tools = []
-                        for tool in tools_result.tools:
-                            tool_dict = {
-                                "name": tool.name,
-                                "description": tool.description or "",
-                                "inputSchema": tool.inputSchema
-                            }
-                            tools.append(tool_dict)
-                        all_tools[name] = tools
+                        # Keep the official Tool objects with full schema information
+                        all_tools[name] = tools_result.tools
                         
                         # Log the successful response for this server
-                        self._log_mcp_list_tools_response(name, tools, request_id)
+                        self._log_mcp_list_tools_response(name, tools_result.tools, request_id)
                         
                     except Exception as e:
                         logger.error(f"Error listing tools from {name}: {str(e)}")
@@ -365,9 +351,9 @@ class MCPClient:
         mcp_comm_logger.info(f"Tools count: {len(tools)}")
         mcp_comm_logger.info("--- TOOLS ---")
         for i, tool in enumerate(tools):
-            mcp_comm_logger.info(f"Tool {i+1}: {tool['name']}")
-            mcp_comm_logger.info(f"  Description: {tool['description']}")
-            mcp_comm_logger.info(f"  Schema: {json.dumps(tool['inputSchema'], indent=2, default=str)}")
+            mcp_comm_logger.info(f"Tool {i+1}: {tool.name}")
+            mcp_comm_logger.info(f"  Description: {tool.description or 'No description'}")
+            mcp_comm_logger.info(f"  Schema: {json.dumps(tool.inputSchema or {}, indent=2, default=str)}")
         mcp_comm_logger.info(f"=== END LIST TOOLS RESPONSE [ID: {request_id}] ===")
     
     def _log_mcp_list_tools_error(self, server_name: str, error_message: str, request_id: str):

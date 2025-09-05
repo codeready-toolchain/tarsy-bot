@@ -9,41 +9,31 @@ from dataclasses import dataclass
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from .agent_execution_result import AgentExecutionResult
 from .constants import StageStatus
+from mcp.types import Tool
 
 if TYPE_CHECKING:
     from ..agents.base_agent import BaseAgent
 
 
-class MCPToolParameter(BaseModel):
-    """Type-safe representation of an MCP tool parameter."""
-    model_config: ConfigDict = ConfigDict(extra="forbid")
-    
-    name: str = Field(..., description="Parameter name", min_length=1)
-    description: str = Field(default="", description="Parameter description")
-    type: Optional[str] = Field(default=None, description="Parameter type (e.g., 'string', 'array', 'object')")
-
-
-class MCPTool(BaseModel):
-    """Structured representation of an MCP tool."""
+class ToolWithServer(BaseModel):
+    """Official MCP Tool with server context for action naming."""
     model_config: ConfigDict = ConfigDict(extra="forbid")
     
     server: str = Field(..., description="MCP server name", min_length=1)
-    name: str = Field(..., description="Tool name", min_length=1)
-    description: str = Field(..., description="Tool description")
-    parameters: List[MCPToolParameter] = Field(default_factory=list, description="Tool parameters schema")
+    tool: Tool = Field(..., description="Official MCP Tool object with full schema information")
 
 
 class AvailableTools(BaseModel):
     """
-    Available tools for agent processing.
+    Available tools for agent processing using official MCP Tool objects.
     
-    Clean implementation using only structured MCPTool objects.
+    Uses official mcp.types.Tool with full JSON Schema support for enhanced LLM guidance.
     """
     model_config: ConfigDict = ConfigDict(extra="forbid")
     
-    tools: List[MCPTool] = Field(
+    tools: List[ToolWithServer] = Field(
         default_factory=list,
-        description="Available MCP tools"
+        description="Available MCP tools with server context"
     )
 
 

@@ -3,13 +3,13 @@
 from .unified_interactions import LLMMessage, LLMConversation, LLMInteraction, MessageRole
 
 # Context models for alert processing
-from .processing_context import ChainContext, StageContext, AvailableTools, MCPTool
+from .processing_context import ChainContext, StageContext, AvailableTools, ToolWithServer
 
 # LLM provider types
 from .llm_models import ProviderType, LLMProviderConfig
 
 __all__ = [
     "LLMMessage", "LLMConversation", "LLMInteraction", "MessageRole",
-    "ChainContext", "StageContext", "AvailableTools", "MCPTool", 
+    "ChainContext", "StageContext", "AvailableTools", "ToolWithServer", 
     "ProviderType", "LLMProviderConfig"
 ] 

@@ -7,7 +7,7 @@ for clean, composable prompt generation.
 
 from typing import List, Optional, TYPE_CHECKING
 from tarsy.utils.logger import get_module_logger
-from tarsy.models.processing_context import MCPTool
+from tarsy.models.processing_context import ToolWithServer
 
 if TYPE_CHECKING:
     from tarsy.models.processing_context import StageContext
@@ -193,7 +193,7 @@ Focus on root cause analysis and sustainable solutions."""
             result_text=result_text
         )
     
-    # ============ Helper Methods (Keep Current Logic) ============
+    # ============ Helper Methods ============
     
     def _build_context_section(self, context: 'StageContext') -> str:
         """Build the context section using template."""
@@ -203,26 +203,109 @@ Focus on root cause analysis and sustainable solutions."""
             server_list=server_list
         )
 
-    def _format_available_actions(self, available_tools: List[MCPTool]) -> str:
-        """Format available tools as ReAct actions."""
+    def _format_available_actions(self, available_tools: List[ToolWithServer]) -> str:
+        """Format available tools with rich JSON Schema information for enhanced LLM guidance."""
         if not available_tools:
             return "No tools available."
         
         actions = []
-        for tool in available_tools:
-            action_name = f"{tool.server}.{tool.name}"
-            description = tool.description
-            
-            if tool.parameters:
-                param_desc = ', '.join([
-                    f"{param.name}: {param.description or 'no description'}" 
-                    for param in tool.parameters
-                ])
-                actions.append(f"{action_name}: {description}\n  Parameters: {param_desc}")
-            else:
-                actions.append(f"{action_name}: {description}")
         
-        return '\n'.join(actions)
+        for i, tool_with_server in enumerate(available_tools, 1):
+            tool = tool_with_server.tool
+            action_name = f"{tool_with_server.server}.{tool.name}"
+            
+            # Tool name and description on one line
+            actions.append(f"{i}. **{action_name}**: {tool.description or 'No description'}")
+            
+            # Extract rich parameters from inputSchema
+            parameters_info = self._extract_parameters_from_schema(tool.inputSchema or {})
+            if parameters_info:
+                actions.append("    **Parameters**:")
+                for param_info in parameters_info:
+                    actions.append(f"    - {param_info}")
+            else:
+                actions.append("    **Parameters**: None")
+            
+            actions.append("")  # Empty line between tools
+        
+        return "\n".join(actions)
+    
+    def _extract_parameters_from_schema(self, input_schema: dict) -> List[str]:
+        """Extract rich parameter information from JSON Schema."""
+        if not isinstance(input_schema, dict):
+            return []
+        
+        properties = input_schema.get('properties', {})
+        required_params = set(input_schema.get('required', []))
+        
+        param_infos = []
+        
+        for param_name, param_schema in properties.items():
+            if not isinstance(param_schema, dict):
+                continue
+                
+            # Build rich parameter description with better spacing
+            parts = [param_name]
+            
+            # Add space before parentheses for better readability
+            if param_name in required_params:
+                parts.append(" (required")
+            else:
+                parts.append(" (optional")
+                
+            # Add type information
+            param_type = param_schema.get('type')
+            if param_type:
+                parts.append(f", {param_type}")
+            
+            # Close the parenthesis
+            parts[-1] += ")"
+            
+            # Add description
+            description = param_schema.get('description', '')
+            if description:
+                parts.append(f": {description}")
+            else:
+                parts.append(": No description")
+            
+            # Add additional schema information for LLM guidance with consistent formatting
+            schema_info = []
+            
+            # Default value
+            if 'default' in param_schema:
+                schema_info.append(f"default: {param_schema['default']}")
+            
+            # Enum values (constrained choices) - show all values  
+            if 'enum' in param_schema:
+                enum_values = ', '.join(f'"{v}"' for v in param_schema['enum'])
+                schema_info.append(f"choices: [{enum_values}]")
+            
+            # Pattern validation for strings
+            if param_type == 'string' and 'pattern' in param_schema:
+                schema_info.append(f"pattern: {param_schema['pattern']}")
+            
+            # Numeric constraints
+            if param_type in ['number', 'integer']:
+                constraints = []
+                if 'minimum' in param_schema:
+                    constraints.append(f"min: {param_schema['minimum']}")
+                if 'maximum' in param_schema:
+                    constraints.append(f"max: {param_schema['maximum']}")
+                if constraints:
+                    schema_info.extend(constraints)
+            
+            # Add examples if available
+            if 'examples' in param_schema and param_schema['examples']:
+                example = param_schema['examples'][0] 
+                schema_info.append(f"example: \"{example}\"")
+            
+            # Append schema information in consistent bracket format
+            if schema_info:
+                parts.append(f" [{'; '.join(schema_info)}]")
+            
+            param_infos.append(''.join(parts))
+        
+        return param_infos
     
     def _flatten_react_history(self, react_history: List) -> List[str]:
         """Utility method to flatten react history and ensure all elements are strings."""

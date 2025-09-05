@@ -123,6 +123,7 @@ Focus on {task_focus} for human operators to execute.""")
 STANDARD_REACT_PROMPT_TEMPLATE = PromptTemplate.from_template("""Answer the following question using the available tools.
 
 Available tools:
+
 {available_actions}
 
 Question: {question}

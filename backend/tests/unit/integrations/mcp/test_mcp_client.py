@@ -7,6 +7,7 @@ using the official MCP SDK and the new typed hook system.
 
 from contextlib import AsyncExitStack
 from unittest.mock import AsyncMock, Mock, patch
+from mcp.types import Tool
 
 import pytest
 
@@ -114,10 +115,11 @@ class TestMCPClientToolListing:
     def mock_session(self):
         """Mock MCP session."""
         session = AsyncMock()
-        mock_tool = Mock()
-        mock_tool.name = "test_tool"
-        mock_tool.description = "Test tool description"
-        mock_tool.inputSchema = {"type": "object", "properties": {}}
+        mock_tool = Tool(
+            name="test_tool",
+            description="Test tool description",
+            inputSchema={"type": "object", "properties": {}}
+        )
         
         mock_result = Mock()
         mock_result.tools = [mock_tool]
@@ -146,9 +148,9 @@ class TestMCPClientToolListing:
             assert len(result["test-server"]) == 1
             
             tool = result["test-server"][0]
-            assert tool["name"] == "test_tool"
-            assert tool["description"] == "Test tool description"
-            assert "inputSchema" in tool
+            assert tool.name == "test_tool"
+            assert tool.description == "Test tool description"
+            assert tool.inputSchema == {"type": "object", "properties": {}}
             
             mock_session.list_tools.assert_called_once()
     
@@ -384,10 +386,11 @@ class TestMCPClientIntegration:
             mock_client_session.return_value.__aenter__.return_value = mock_session
             
             # Setup tool listing
-            mock_tool = Mock()
-            mock_tool.name = "integration_tool"
-            mock_tool.description = "Integration test tool"
-            mock_tool.inputSchema = {"type": "object"}
+            mock_tool = Tool(
+                name="integration_tool",
+                description="Integration test tool",
+                inputSchema={"type": "object"}
+            )
             
             mock_list_result = Mock()
             mock_list_result.tools = [mock_tool]
@@ -414,7 +417,7 @@ class TestMCPClientIntegration:
             tools = await client.list_tools("integration-session", "integration-server")
             assert "integration-server" in tools
             assert len(tools["integration-server"]) == 1
-            assert tools["integration-server"][0]["name"] == "integration_tool"
+            assert tools["integration-server"][0].name == "integration_tool"
             
             result = await client.call_tool(
                 "integration-server",
