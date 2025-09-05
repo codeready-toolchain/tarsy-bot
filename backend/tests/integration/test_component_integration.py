@@ -301,7 +301,7 @@ class TestMCPClientIntegration:
         # Assert
         assert "kubernetes-server" in tools
         assert len(tools["kubernetes-server"]) == 2
-        tool_names = [tool["name"] for tool in tools["kubernetes-server"]]
+        tool_names = [tool.name for tool in tools["kubernetes-server"]]
         assert "kubectl_get_namespace" in tool_names
         assert "kubectl_get_pods" in tool_names
 

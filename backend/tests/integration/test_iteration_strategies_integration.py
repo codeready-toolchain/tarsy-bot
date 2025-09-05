@@ -8,6 +8,7 @@ to ensure they work correctly in realistic scenarios.
 import os
 import tempfile
 from unittest.mock import AsyncMock, Mock, patch
+from mcp.types import Tool
 
 import pytest
 
@@ -62,8 +63,8 @@ class TestIterationStrategiesIntegration:
         client = Mock()
         client.list_tools = AsyncMock(return_value={
             "kubernetes-server": [
-                {"name": "kubectl-get-pods", "description": "Get pods"},
-                {"name": "kubectl-describe-pod", "description": "Describe pod"}
+                Tool(name="kubectl-get-pods", description="Get pods", inputSchema={"type": "object", "properties": {}}),
+                Tool(name="kubectl-describe-pod", description="Describe pod", inputSchema={"type": "object", "properties": {}})
             ]
         })
         client.call_tool = AsyncMock(return_value={

@@ -6,6 +6,7 @@ This module provides fixtures for mocking external services in e2e tests.
 
 import asyncio
 from unittest.mock import AsyncMock, Mock
+from mcp.types import Tool
 
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
@@ -340,34 +341,34 @@ def mock_mcp_client():
     client.initialize = AsyncMock()
     client.close = AsyncMock()
     
-    # Mock tool listing - use simpler return structure
+    # Mock tool listing - use proper Tool objects
     def mock_list_tools_sync(session_id, server_name=None, stage_execution_id=None):
         """Mock tool listing response - synchronous version."""
         if server_name == "kubernetes-server":
             return {
                 "kubernetes-server": [
-                    {
-                        "name": "kubectl_get_namespace",
-                        "description": "Get namespace information",
-                        "parameters": {
+                    Tool(
+                        name="kubectl_get_namespace",
+                        description="Get namespace information",
+                        inputSchema={
                             "type": "object",
                             "properties": {
                                 "namespace": {"type": "string", "description": "Namespace name"}
                             },
                             "required": ["namespace"]
                         }
-                    },
-                    {
-                        "name": "kubectl_get_pods", 
-                        "description": "List pods in namespace",
-                        "parameters": {
+                    ),
+                    Tool(
+                        name="kubectl_get_pods", 
+                        description="List pods in namespace",
+                        inputSchema={
                             "type": "object",
                             "properties": {
                                 "namespace": {"type": "string", "description": "Namespace name"}
                             },
                             "required": ["namespace"]
                         }
-                    }
+                    )
                 ]
             }
         return {}

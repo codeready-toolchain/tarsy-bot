@@ -1,7 +1,7 @@
 """
-Phase 2: Tests using the new context models in real scenarios.
+Phase 2: Tests using the context models in real scenarios.
 
-This module demonstrates how the new ChainContext and StageContext models
+This module demonstrates how the ChainContext and StageContext models
 work in actual test scenarios, alongside the existing models.
 """
 
