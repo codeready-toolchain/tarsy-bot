@@ -503,13 +503,13 @@ class TestFailsafeBehavior:
     def test_mask_response_with_no_registry(self):
         """Test mask_response without registry returns original response."""
         service = DataMaskingService()  # No registry
-        response = {"result": "api_key: sk_123456789012345678901234567890"}
+        response = {"result": "api_key: not-a-real-api-key-123456789012345678901234567890"}
         
         result = service.mask_response(response, "test-server")
         
         # Should return original response unchanged (no registry = no masking)
         assert result == response
-        assert "sk_123456789012345678901234567890" in str(result)
+        assert "not-a-real-api-key-123456789012345678901234567890" in str(result)
 
 
 @pytest.mark.unit
@@ -527,12 +527,12 @@ class TestMaskResponseIntegration:
         # Mock: server has no masking config
         self.mock_registry.get_server_config_safe.return_value = None
         
-        response = {"result": "api_key: sk_123456789012345678901234567890"}
+        response = {"result": "api_key: not-a-real-api-key-123456789012345678901234567890"}
         result = self.service.mask_response(response, "test-server")
         
         # Should return original response unchanged
         assert result == response
-        assert "sk_123456789012345678901234567890" in str(result)
+        assert "not-a-real-api-key-123456789012345678901234567890" in str(result)
     
     def test_mask_response_with_enabled_masking(self):
         """Test response with masking enabled."""
@@ -544,11 +544,11 @@ class TestMaskResponseIntegration:
         )
         self.mock_registry.get_server_config_safe.return_value = mock_server_config
         
-        response = {"result": "api_key: sk_123456789012345678901234567890"}
+        response = {"result": "api_key: not-a-real-api-key-123456789012345678901234567890"}
         result = self.service.mask_response(response, "test-server")
         
         # Should mask the API key
-        assert "sk_123456789012345678901234567890" not in str(result)
+        assert "not-a-real-api-key-123456789012345678901234567890" not in str(result)
         assert "***MASKED_API_KEY***" in str(result)
 
     def test_mask_response_kubernetes_secret_comprehensive(self):
