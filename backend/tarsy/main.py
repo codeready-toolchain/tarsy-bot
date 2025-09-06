@@ -8,10 +8,10 @@ import json
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import re
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
@@ -26,6 +26,7 @@ from tarsy.services.alert_service import AlertService
 from tarsy.services.dashboard_connection_manager import DashboardConnectionManager
 from tarsy.utils.logger import get_module_logger, setup_logging
 from tarsy.utils.timestamp import now_us
+from tarsy.auth.dependencies import verify_jwt_token, verify_jwt_token_websocket
 
 # Setup logger for this module
 logger = get_module_logger(__name__)
@@ -187,7 +188,7 @@ async def health_check():
             "error": str(e)
         }
 
-@app.get("/alert-types", response_model=List[str])
+@app.get("/alert-types", response_model=List[str], dependencies=[Depends(verify_jwt_token)])
 async def get_alert_types():
     """Get supported alert types for the development/testing web interface.
     
@@ -200,7 +201,7 @@ async def get_alert_types():
         raise HTTPException(status_code=503, detail="Service not initialized")
     return alert_service.chain_registry.list_available_alert_types()
 
-@app.post("/alerts", response_model=AlertResponse)
+@app.post("/alerts", response_model=AlertResponse, dependencies=[Depends(verify_jwt_token)])
 async def submit_alert(request: Request):
     """Submit a new alert for processing with flexible data structure and comprehensive error handling."""
     try:
@@ -422,7 +423,7 @@ async def submit_alert(request: Request):
             }
         )
 
-@app.get("/session-id/{alert_id}")
+@app.get("/session-id/{alert_id}", dependencies=[Depends(verify_jwt_token)])
 async def get_session_id(alert_id: str):
     """Get session ID for an alert.
     Needed for dashboard websocket subscription because
@@ -443,10 +444,19 @@ async def get_session_id(alert_id: str):
         return {"alert_id": alert_id, "session_id": None}
 
 @app.websocket("/ws/dashboard/{user_id}")
-async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
+async def dashboard_websocket_endpoint(
+    websocket: WebSocket, 
+    user_id: str,
+    jwt_payload: Optional[Dict[str, Any]] = Depends(verify_jwt_token_websocket)
+):
     """WebSocket endpoint for dashboard real-time updates."""
     if dashboard_manager is None:
         await websocket.close(code=1011, reason="Service not initialized")
+        return
+    
+    # Check JWT token validation
+    if not jwt_payload:
+        await websocket.close(code=1008, reason="Invalid or expired token")
         return
         
     try:

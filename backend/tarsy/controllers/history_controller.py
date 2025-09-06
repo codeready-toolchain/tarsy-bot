@@ -25,6 +25,7 @@ from tarsy.models.api_models import (
 )
 from tarsy.utils.timestamp import now_us
 from tarsy.services.history_service import HistoryService, get_history_service
+from tarsy.auth.dependencies import verify_jwt_token
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -37,6 +38,7 @@ router = APIRouter(prefix="/api/v1/history", tags=["history"])
 @router.get(
     "/sessions", 
     response_model=PaginatedSessions,
+    dependencies=[Depends(verify_jwt_token)],
     responses={
         400: {"model": ErrorResponse, "description": "Bad request - invalid parameters"},
         500: {"model": ErrorResponse, "description": "Internal server error"}
@@ -148,6 +150,7 @@ async def list_sessions(
 @router.get(
     "/sessions/{session_id}",
     response_model=DetailedSession,
+    dependencies=[Depends(verify_jwt_token)],
     responses={
         404: {"model": ErrorResponse, "description": "Session not found"},
         500: {"model": ErrorResponse, "description": "Internal server error"}
@@ -204,6 +207,7 @@ async def get_session_detail(
 @router.get(
     "/sessions/{session_id}/summary",
     response_model=SessionStats,
+    dependencies=[Depends(verify_jwt_token)],
     responses={
         404: {"model": ErrorResponse, "description": "Session not found"},
         500: {"model": ErrorResponse, "description": "Internal server error"}
@@ -327,6 +331,7 @@ async def health_check(
 
 @router.get(
     "/active-sessions",
+    dependencies=[Depends(verify_jwt_token)],
     summary="Active Sessions", 
     description="Get currently active/processing sessions"
 )
@@ -361,6 +366,7 @@ async def get_active_sessions(
 @router.get(
     "/filter-options",
     response_model=FilterOptions,
+    dependencies=[Depends(verify_jwt_token)],
     summary="Filter Options",
     description="Get available filter options for dashboard filtering"
 )
