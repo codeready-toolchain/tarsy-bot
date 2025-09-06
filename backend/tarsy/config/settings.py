@@ -59,6 +59,29 @@ class Settings(BaseSettings):
     # GitHub Configuration
     github_token: Optional[str] = Field(default=None)
     
+    # GitHub OAuth Configuration
+    github_client_id: str = Field(default="")
+    github_client_secret: str = Field(default="")
+    github_org: str = Field(default="", description="Required GitHub organization")
+    github_team: Optional[str] = Field(default=None, description="Optional GitHub team - if specified, team membership required")
+    
+    # JWT Configuration
+    jwt_private_key_path: str = Field(default="keys/jwt-private-key.pem")
+    jwt_public_key_path: str = Field(default="keys/jwt-public-key.pem")
+    jwt_algorithm: str = Field(default="RS256")
+    jwt_issuer: str = Field(default="tarsy")
+    user_token_expiry_hours: int = Field(default=168, description="User token expiry in hours (default: 1 week)")
+    
+    # OAuth State Management
+    oauth_state_ttl_minutes: int = Field(default=10, description="OAuth state TTL in minutes")
+    
+    # Development Mode
+    dev_mode: bool = Field(default=False, description="Enable development mode (bypasses GitHub OAuth)")
+    backend_url: str = Field(default="http://localhost:8000", description="Backend URL for OAuth callbacks")
+    
+    # Environment Configuration
+    environment: str = Field(default="development", description="Environment (development, production)")
+    
     # Alert Processing Configuration
     max_llm_mcp_iterations: int = Field(
         default=10,
@@ -243,6 +266,19 @@ class Settings(BaseSettings):
         logger.debug(f"Template default lookup for '{var_name}': attribute='{default_attr}', {presence}")
         
         return default_value
+    
+    @property 
+    def is_dev_keys(self) -> bool:
+        """Check if using insecure development keys."""
+        return "INSECURE" in self.jwt_private_key_path
+        
+    def validate_production_safety(self) -> None:
+        """Ensure dev settings are not used in production."""
+        if self.environment == "production":
+            if self.dev_mode:
+                raise RuntimeError("DEV_MODE cannot be enabled in production!")
+            if self.is_dev_keys:
+                raise RuntimeError("INSECURE dev keys cannot be used in production!")
 
 @lru_cache()
 def get_settings() -> Settings:

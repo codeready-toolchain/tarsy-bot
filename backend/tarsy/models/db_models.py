@@ -10,7 +10,7 @@ import uuid
 from typing import Optional
 
 from sqlmodel import Column, Field, SQLModel, Index
-from sqlalchemy import JSON
+from sqlalchemy import JSON, BigInteger, String
 
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.utils.timestamp import now_us
@@ -155,7 +155,27 @@ class StageExecution(SQLModel, table=True):
     
     # Note: Relationship to AlertSession would be: session: AlertSession = Relationship(back_populates="stage_executions")
     # Omitted to avoid circular imports - use session_id for queries instead
+
+
+class OAuthState(SQLModel, table=True):
+    """Temporary OAuth state storage for CSRF protection."""
+    __tablename__ = "oauth_states"
     
+    state: str = Field(
+        primary_key=True,
+        sa_column=Column(String, primary_key=True),
+        description="OAuth state parameter for CSRF protection"
+    )
+    created_at: int = Field(
+        sa_column=Column(BigInteger, nullable=False),
+        default_factory=now_us,
+        description="Creation timestamp (microseconds since epoch UTC)"
+    )
+    expires_at: int = Field(
+        sa_column=Column(BigInteger, nullable=False),
+        description="Expiration timestamp (microseconds since epoch UTC)"
+    )
+
 
 # Import unified models that replace the old separate DB models
 from typing import TYPE_CHECKING
