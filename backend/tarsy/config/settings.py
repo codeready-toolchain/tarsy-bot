@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     github_org: str = Field(default="", description="Required GitHub organization")
     github_team: Optional[str] = Field(default=None, description="Optional GitHub team - if specified, team membership required")
     
+    # GitHub OAuth Endpoints (configurable for GitHub Enterprise)
+    github_oauth_authorize_url: str = Field(default="https://github.com/login/oauth/authorize", description="GitHub OAuth authorization endpoint")
+    github_oauth_token_url: str = Field(default="https://github.com/login/oauth/access_token", description="GitHub OAuth token exchange endpoint")
+    github_base_url: str = Field(default="https://github.com", description="GitHub base URL (for GitHub Enterprise)")
+    
     # JWT Configuration
     jwt_private_key_path: str = Field(default="keys/jwt-private-key.pem")
     jwt_public_key_path: str = Field(default="keys/jwt-public-key.pem")

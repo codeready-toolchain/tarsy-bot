@@ -296,16 +296,6 @@ async def github_callback(
         logger.error(f"OAuth callback failed: {e}")
         raise HTTPException(500, "OAuth callback failed")
     
-@router.get("/user")
-async def get_current_user(jwt_payload: dict = Depends(verify_jwt_token)) -> dict:
-    """Get current authenticated user info from JWT token."""
-    return {
-        "user_id": jwt_payload["sub"],
-        "username": jwt_payload.get("username"),
-        "email": jwt_payload.get("email"),
-        "avatar_url": jwt_payload.get("avatar_url"),
-        "expires_at": jwt_payload["exp"]
-    }
 ```
 
 **Router Registration**: Add to main.py to register the auth controller
@@ -633,7 +623,7 @@ async def submit_alert(
 **Dashboard Authentication Flow:**
 1. User clicks "Login with GitHub" → redirect to `/auth/login`
 2. GitHub redirects to `/auth/callback` → validate membership → return JWT token
-3. Frontend receives JWT token → store in `localStorage`  
+3. Frontend receives JWT token → store in `localStorage` and decode for user info
 4. All API/WebSocket requests include `Authorization: Bearer <jwt_token>`
 
 **Frontend Integration Key Points:**
@@ -650,17 +640,16 @@ async def submit_alert(
 
 *Both apps already use proper patterns (axios interceptors, environment variables) that align perfectly with JWT token integration.*
 
-**API Response Example (`/auth/user`):**
-```json
-{
-  "user_id": "12345678",
-  "username": "johndoe",
-  "email": "john@example.com",
-  "avatar_url": "https://avatars.githubusercontent.com/u/12345678",
-  "expires_at": 1704067200
-}
+**JWT Token Claims Example:**
+JWT tokens are self-contained and include all necessary user information. Frontend applications should decode the JWT token directly using a library like `jwt-decode`:
+
+```javascript
+import { jwtDecode } from 'jwt-decode'
+const userInfo = jwtDecode(jwt_token)
+// Contains: user_id (sub), username, email, avatar_url, expires_at (exp)
 ```
-*Note: All user info is extracted from the JWT token claims - no database lookups needed*
+
+*Note: No server endpoint needed - all user info is extracted from JWT token claims client-side*
 
 ---
 
@@ -907,8 +896,9 @@ cd backend && make dev-prod-auth
 - Create `backend/tarsy/controllers/auth.py`
 - Implement `/auth/login` endpoint (production + dev mode)
 - Implement `/auth/callback` endpoint (production + dev mode)
-- Implement `/auth/user` endpoint
 - Add hardcoded DEV_USER constant
+
+*Note: No `/auth/user` endpoint needed - JWT tokens are self-contained. Frontend applications should decode JWT tokens directly using `jwt-decode` or similar libraries.*
 
 **4.2 Router Registration**
 - Update `backend/tarsy/main.py` to import and register auth router

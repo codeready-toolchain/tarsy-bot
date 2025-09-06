@@ -25,8 +25,17 @@ async def validate_github_membership(github_access_token: str, username: str) ->
     settings = get_settings()
     
     try:
-        # Initialize GitHub client with access token
-        g = Github(github_access_token)
+        # Initialize GitHub client with access token and configurable base URL
+        from github import Auth
+        auth = Auth.Token(github_access_token)
+        
+        # Use configurable GitHub API base URL for GitHub Enterprise support
+        github_api_url = settings.github_base_url.replace("github.com", "api.github.com")
+        if "github.com" not in settings.github_base_url:
+            # GitHub Enterprise format: https://github.company.com -> https://github.company.com/api/v3
+            github_api_url = f"{settings.github_base_url.rstrip('/')}/api/v3"
+        
+        g = Github(auth=auth, base_url=github_api_url)
         user = g.get_user(username)
         org = g.get_organization(settings.github_org)
         

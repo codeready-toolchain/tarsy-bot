@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from tarsy.config.settings import get_settings
 from tarsy.controllers.history_controller import router as history_router
+from tarsy.controllers.auth import router as auth_router
 from tarsy.database.init_db import get_database_info, initialize_database
 from tarsy.models.alert import Alert, AlertResponse
 from tarsy.models.alert_processing import AlertKey
@@ -136,6 +137,7 @@ app.add_middleware(
 
 # Register API routers
 app.include_router(history_router, tags=["history"])
+app.include_router(auth_router, tags=["authentication"])
 
 
 @app.get("/")

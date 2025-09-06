@@ -7,7 +7,7 @@ Provides CRUD operations for OAuth state management with automatic cleanup.
 from typing import Optional
 
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import Session
 
 from tarsy.models.db_models import OAuthState
 from tarsy.utils.timestamp import now_us
@@ -16,11 +16,11 @@ from tarsy.utils.timestamp import now_us
 class OAuthStateRepository:
     """Repository for OAuth state database operations."""
     
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: Session):
         """Initialize repository with database session."""
         self.session = session
     
-    async def create_state(self, state: str, expires_at: int) -> OAuthState:
+    def create_state(self, state: str, expires_at: int) -> OAuthState:
         """
         Create a new OAuth state.
         
@@ -37,10 +37,10 @@ class OAuthStateRepository:
             expires_at=expires_at
         )
         self.session.add(oauth_state)
-        await self.session.commit()
+        self.session.commit()
         return oauth_state
     
-    async def get_state(self, state: str) -> Optional[OAuthState]:
+    def get_state(self, state: str) -> Optional[OAuthState]:
         """
         Get OAuth state by state parameter.
         
@@ -50,24 +50,23 @@ class OAuthStateRepository:
         Returns:
             OAuthState instance if found, None otherwise
         """
-        result = await self.session.execute(
-            select(OAuthState).filter(OAuthState.state == state)
-        )
-        return result.scalar_one_or_none()
+        return self.session.exec(
+            select(OAuthState).where(OAuthState.state == state)
+        ).first()
     
-    async def delete_state(self, state: str) -> None:
+    def delete_state(self, state: str) -> None:
         """
         Delete OAuth state.
         
         Args:
             state: OAuth state parameter to delete
         """
-        await self.session.execute(
-            delete(OAuthState).filter(OAuthState.state == state)
+        self.session.exec(
+            delete(OAuthState).where(OAuthState.state == state)
         )
-        await self.session.commit()
+        self.session.commit()
     
-    async def cleanup_expired_states(self) -> int:
+    def cleanup_expired_states(self) -> int:
         """
         Clean up expired OAuth states and return count of deleted records.
         
@@ -75,8 +74,8 @@ class OAuthStateRepository:
             Number of deleted expired states
         """
         current_time = now_us()
-        result = await self.session.execute(
+        result = self.session.exec(
             delete(OAuthState).where(OAuthState.expires_at < current_time)
         )
-        await self.session.commit()
+        self.session.commit()
         return result.rowcount or 0
