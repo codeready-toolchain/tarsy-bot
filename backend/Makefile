@@ -121,12 +121,22 @@ check-test-deps: check-venv ## Ensure test dependencies are installed
 .PHONY: dev
 dev: check-venv ## Start development server with auto-reload
 	@echo "$(GREEN)Starting development server...$(NC)"
+	@echo "$(YELLOW)🔓 DEV MODE: Authentication bypassed - DEV USER will be used$(NC)"
+	@echo "$(YELLOW)⚠️  Using INSECURE committed dev keys!$(NC)"
+	DEV_MODE=true JWT_PRIVATE_KEY_PATH=keys/INSECURE-dev-jwt-private-key.pem JWT_PUBLIC_KEY_PATH=keys/INSECURE-dev-jwt-public-key.pem .venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-level info
+
+.PHONY: dev-prod-auth  
+dev-prod-auth: check-venv ## Start development server with production authentication
+	@echo "$(GREEN)Starting development server with PRODUCTION authentication...$(NC)"
+	@echo "$(RED)🔐 GitHub OAuth required - configure .env with GitHub credentials$(NC)"
 	.venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-level info
 
 .PHONY: dev-debug
 dev-debug: check-venv ## Start development server with debug logging
 	@echo "$(GREEN)Starting development server (debug mode)...$(NC)"
-	.venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-level debug
+	@echo "$(YELLOW)🔓 DEV MODE: Authentication bypassed - DEV USER will be used$(NC)"
+	@echo "$(YELLOW)⚠️  Using INSECURE committed dev keys!$(NC)"
+	DEV_MODE=true JWT_PRIVATE_KEY_PATH=keys/INSECURE-dev-jwt-private-key.pem JWT_PUBLIC_KEY_PATH=keys/INSECURE-dev-jwt-public-key.pem .venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-level debug
 
 .PHONY: run
 run: check-venv ## Start development server with manual venv activation
@@ -197,6 +207,38 @@ status: ## Show project status and health
 	@echo "Tests: $$(find $(TEST_DIR)/ -name 'test_*.py' | wc -l) test files"
 	@echo "Database: $$(if [ -f history.db ]; then echo 'Present'; else echo 'Not found'; fi)"
 	@echo "Logs: $$(if [ -d logs ]; then ls logs/ | wc -l; else echo '0'; fi) log files"
+
+# JWT Key Management
+.PHONY: generate-jwt-keys
+generate-jwt-keys: ## Generate RSA key pair for JWT signing (one-time setup)
+	@echo "$(GREEN)Generating JWT keys...$(NC)"
+	@mkdir -p keys
+	@openssl genrsa -out keys/jwt-private-key.pem 2048
+	@openssl rsa -in keys/jwt-private-key.pem -pubout -out keys/jwt-public-key.pem
+	@chmod 600 keys/jwt-private-key.pem
+	@chmod 644 keys/jwt-public-key.pem
+	@echo "$(GREEN)JWT keys generated in keys/ directory$(NC)"
+
+.PHONY: generate-service-token
+generate-service-token: check-venv ## Generate service account JWT token (usage: make generate-service-token SERVICE_NAME=monitoring)
+	@if [ -z "$(SERVICE_NAME)" ]; then \
+		echo "$(RED)Error: SERVICE_NAME is required$(NC)"; \
+		echo "Usage: make generate-service-token SERVICE_NAME=monitoring"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Generating service account JWT token for: $(SERVICE_NAME)$(NC)"
+	@.venv/bin/python -c " \
+		from tarsy.services.jwt_service import JWTService; \
+		from tarsy.config.settings import get_settings; \
+		try: \
+			jwt_service = JWTService(get_settings()); \
+			token = jwt_service.create_service_account_jwt_token('$(SERVICE_NAME)'); \
+			print('$(GREEN)Service account JWT token for $(SERVICE_NAME):$(NC)'); \
+			print(token); \
+		except Exception as e: \
+			print('$(RED)Error generating token:$(NC)', str(e)); \
+			exit(1) \
+		"
 
 # Export variables for sub-processes
 export PYTHONPATH := $(shell pwd):$(PYTHONPATH) 

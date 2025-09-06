@@ -940,6 +940,10 @@ cd backend && make dev-prod-auth
 - Add `generate-jwt-keys` target for production RSA key generation
 - Add `generate-service-token` target for service account JWT creation
 
+### **Phase 7: Front-end**
+
+**7.1 Front-end Implementation**
+
 ### **Validation Steps**
 - After Phase 1: Dependencies installed and dev keys generated
 - After Phase 2: JWT service can generate and verify tokens
