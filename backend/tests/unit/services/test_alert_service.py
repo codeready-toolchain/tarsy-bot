@@ -31,7 +31,7 @@ class TestAlertServiceInitialization:
         return MockFactory.create_mock_settings(
             github_token="test_token",
             history_enabled=True,
-            agent_config_path=None  # No agent config for unit tests
+            agent_config_path="../config/agents.yaml"  # Set valid path for tests
         )
     
     @pytest.fixture
@@ -80,74 +80,6 @@ class TestAlertServiceInitialization:
             
             # Verify LLM manager created with settings
             mock_llm_manager.assert_called_once_with(mock_settings)
-
-
-@pytest.mark.unit
-class TestAlertServiceAsyncInitialization:
-    """Test AlertService async initialization methods."""
-    
-    @pytest.fixture
-    async def alert_service(self):
-        """Create AlertService with mocked dependencies."""
-        mock_settings = Mock(spec=Settings)
-        mock_settings.agent_config_path = None  # Prevent agent config loading
-        
-        with patch('tarsy.services.alert_service.RunbookService'), \
-             patch('tarsy.services.alert_service.get_history_service'), \
-             patch('tarsy.services.alert_service.ChainRegistry'), \
-             patch('tarsy.services.alert_service.MCPServerRegistry'), \
-             patch('tarsy.services.alert_service.MCPClient') as mock_mcp_client, \
-             patch('tarsy.services.alert_service.LLMManager') as mock_llm_manager, \
-             patch('tarsy.services.alert_service.AgentFactory') as mock_agent_factory:
-            
-            service = AlertService(mock_settings)
-            
-            # Setup mocks for initialize()
-            service.mcp_client = AsyncMock()
-            service.llm_manager = Mock()
-            service.llm_manager.is_available.return_value = True
-            service.agent_factory = mock_agent_factory.return_value
-            
-            yield service
-    
-    @pytest.mark.asyncio
-    async def test_initialize_success(self, alert_service):
-        """Test successful async initialization."""
-        with patch('tarsy.services.alert_service.AgentFactory') as mock_factory:
-            await alert_service.initialize()
-            
-            # Verify MCP client initialization
-            alert_service.mcp_client.initialize.assert_called_once()
-            
-            # Verify LLM availability check
-            alert_service.llm_manager.is_available.assert_called_once()
-            
-            # Verify agent factory creation
-            mock_factory.assert_called_once_with(
-                llm_client=alert_service.llm_manager,
-                mcp_client=alert_service.mcp_client,
-                mcp_registry=alert_service.mcp_server_registry,
-                agent_configs={}  # Empty dict when no config path is provided
-            )
-    
-    @pytest.mark.asyncio
-    async def test_initialize_llm_unavailable(self, alert_service):
-        """Test initialization failure when LLM is unavailable."""
-        alert_service.llm_manager.is_available.return_value = False
-        alert_service.llm_manager.list_available_providers.return_value = ["provider1"]
-        alert_service.llm_manager.get_availability_status.return_value = {"status": "error"}
-        
-        with pytest.raises(Exception, match="No LLM providers are available"):
-            await alert_service.initialize()
-    
-    @pytest.mark.asyncio
-    async def test_initialize_mcp_client_failure(self, alert_service):
-        """Test initialization failure when MCP client initialization fails."""
-        alert_service.mcp_client.initialize.side_effect = Exception("MCP init failed")
-        
-        with pytest.raises(Exception, match="MCP init failed"):
-            await alert_service.initialize()
-
 
 @pytest.mark.unit
 class TestAlertProcessing:

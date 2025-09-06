@@ -766,7 +766,7 @@ class TestHistoryAPIIntegration:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service_for_api
         
         try:
-            response = client.get("/api/v1/history/sessions?status=completed&page=1&page_size=10")
+            response = client.get("/api/v1/history/sessions?status=completed&page=1&page_size=10", headers={"Authorization": "Bearer mock_jwt_token"})
         
             assert response.status_code == 200
             data = response.json()
@@ -798,7 +798,7 @@ class TestHistoryAPIIntegration:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service_for_api
         
         try:
-            response = client.get(f"/api/v1/history/sessions/{expected_session_id}")
+            response = client.get(f"/api/v1/history/sessions/{expected_session_id}", headers={"Authorization": "Bearer mock_jwt_token"})
             
             
             assert response.status_code == 200
@@ -870,7 +870,7 @@ class TestHistoryAPIIntegration:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service_for_api
         
         try:
-            response = client.get("/api/v1/history/health")
+            response = client.get("/api/v1/history/health", headers={"Authorization": "Bearer mock_jwt_token"})
         
             assert response.status_code == 200
             data = response.json()
@@ -897,7 +897,7 @@ class TestHistoryAPIIntegration:
         app.dependency_overrides[get_history_service] = lambda: mock_service
         
         try:
-            response = client.get("/api/v1/history/sessions")
+            response = client.get("/api/v1/history/sessions", headers={"Authorization": "Bearer mock_jwt_token"})
         
             assert response.status_code == 500
             # The actual error message varies, just check it's an error response

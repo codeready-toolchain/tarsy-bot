@@ -62,7 +62,7 @@ class TestSessionIdEndpoint:
             mock_alert_service.alert_exists = Mock(return_value=False)
             mock_alert_service.get_session_id_for_alert = Mock(return_value=None)
             
-            response = client.get(f"/session-id/{non_existent_alert_id}")
+            response = client.get(f"/session-id/{non_existent_alert_id}", headers={"Authorization": "Bearer mock_jwt_token"})
             
             assert response.status_code == 404
             assert "not found" in response.json()["detail"].lower()
@@ -75,7 +75,7 @@ class TestSessionIdEndpoint:
         """Test endpoint behavior with empty alert ID."""
         with patch('tarsy.main.alert_service') as mock_alert_service:
             # FastAPI should handle this at the path level, but let's test
-            response = client.get("/session-id/")
+            response = client.get("/session-id/", headers={"Authorization": "Bearer mock_jwt_token"})
             
             # Should return 404 or method not allowed, not 500
             assert response.status_code in [404, 405]
@@ -90,7 +90,7 @@ class TestSessionIdEndpoint:
             mock_alert_service.alert_exists = Mock(return_value=True)
             mock_alert_service.get_session_id_for_alert = Mock(return_value=None)
             
-            response = client.get(f"/session-id/{alert_id}")
+            response = client.get(f"/session-id/{alert_id}", headers={"Authorization": "Bearer mock_jwt_token"})
             
             assert response.status_code == 200
             response_data = response.json()
@@ -112,7 +112,7 @@ class TestSessionIdEndpoint:
             mock_alert_service.alert_exists = Mock(return_value=True)
             mock_alert_service.get_session_id_for_alert = Mock(return_value=session_id)
             
-            response = client.get(f"/session-id/{alert_id}")
+            response = client.get(f"/session-id/{alert_id}", headers={"Authorization": "Bearer mock_jwt_token"})
             
             assert response.status_code == 200
             response_data = response.json()
@@ -144,14 +144,14 @@ class TestSessionIdEndpoint:
             mock_alert_service.get_session_id_for_alert = Mock(side_effect=mock_get_session_with_progression)
             
             # First request - no session yet
-            response = client.get(f"/session-id/{alert_id}")
+            response = client.get(f"/session-id/{alert_id}", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 200
             response_data = response.json()
             assert response_data["alert_id"] == alert_id
             assert response_data["session_id"] is None
             
             # Second request - session now exists
-            response = client.get(f"/session-id/{alert_id}")
+            response = client.get(f"/session-id/{alert_id}", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 200
             response_data = response.json()
             assert response_data["alert_id"] == alert_id
@@ -181,18 +181,18 @@ class TestSessionIdEndpoint:
             mock_alert_service.get_session_id_for_alert = Mock(side_effect=mock_get_session)
             
             # Test first alert
-            response = client.get(f"/session-id/{alert_id_1}")
+            response = client.get(f"/session-id/{alert_id_1}", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 200
             assert response.json()["session_id"] == session_id_1
             
             # Test second alert
-            response = client.get(f"/session-id/{alert_id_2}")
+            response = client.get(f"/session-id/{alert_id_2}", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 200
             assert response.json()["session_id"] == session_id_2
             
             # Test non-existent alert
             non_existent_id = str(uuid.uuid4())
-            response = client.get(f"/session-id/{non_existent_id}")
+            response = client.get(f"/session-id/{non_existent_id}", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 404
 
     def test_session_id_endpoint_error_response_format(self, client):
@@ -204,7 +204,7 @@ class TestSessionIdEndpoint:
             mock_alert_service.alert_exists = Mock(return_value=False)
             mock_alert_service.get_session_id_for_alert = Mock(return_value=None)
             
-            response = client.get(f"/session-id/{non_existent_id}")
+            response = client.get(f"/session-id/{non_existent_id}", headers={"Authorization": "Bearer mock_jwt_token"})
             
             assert response.status_code == 404
             assert "detail" in response.json()
@@ -224,7 +224,7 @@ class TestSessionIdEndpoint:
             mock_alert_service.alert_exists = Mock(return_value=True)
             mock_alert_service.get_session_id_for_alert = Mock(return_value="session-123")
             
-            response = client.get(f"/session-id/{alert_id}")
+            response = client.get(f"/session-id/{alert_id}", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 200
             assert response.json()["alert_id"] == alert_id
 
@@ -239,7 +239,7 @@ class TestSessionIdEndpoint:
             
             # Make multiple requests to ensure consistent behavior
             for i in range(10):
-                response = client.get(f"/session-id/{alert_id}")
+                response = client.get(f"/session-id/{alert_id}", headers={"Authorization": "Bearer mock_jwt_token"})
                 assert response.status_code == 200
                 assert response.json()["alert_id"] == alert_id
                 assert response.json()["session_id"] == "session-123"
@@ -258,7 +258,7 @@ class TestSessionIdEndpoint:
             mock_alert_service.alert_exists = Mock(return_value=True)
             mock_alert_service.get_session_id_for_alert = Mock(return_value=None)
             
-            response = client.get(f"/session-id/{alert_id}")
+            response = client.get(f"/session-id/{alert_id}", headers={"Authorization": "Bearer mock_jwt_token"})
             
             # Should still return 200 with null session_id (backward compatible)
             assert response.status_code == 200

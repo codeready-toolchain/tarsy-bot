@@ -17,8 +17,10 @@ def get_test_jwt_service():
         from tarsy.services.jwt_service import JWTService
         
         test_settings = Settings()
-        test_settings.jwt_private_key_path = "keys/INSECURE-dev-jwt-private-key.pem"
-        test_settings.jwt_public_key_path = "keys/INSECURE-dev-jwt-public-key.pem"
+        # Use absolute paths to avoid working directory issues
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  # Go up from backend/tests/ to project root  
+        test_settings.jwt_private_key_path = os.path.join(project_root, "keys", "INSECURE-dev-jwt-private-key.pem")
+        test_settings.jwt_public_key_path = os.path.join(project_root, "keys", "INSECURE-dev-jwt-public-key.pem")
         test_settings.jwt_algorithm = "RS256"
         test_settings.jwt_issuer = "tarsy-test"
         return JWTService(test_settings)
@@ -46,8 +48,9 @@ def create_test_user_token(
     try:
         from cryptography.hazmat.primitives import serialization
         
-        # Load dev private key
-        private_key_path = "keys/INSECURE-dev-jwt-private-key.pem"
+        # Load dev private key - use absolute path
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  # Go up from backend/tests/ to project root
+        private_key_path = os.path.join(project_root, "keys", "INSECURE-dev-jwt-private-key.pem")
         if not os.path.exists(private_key_path):
             raise FileNotFoundError(f"Dev private key not found at {private_key_path}")
             
@@ -94,8 +97,9 @@ def create_test_service_token(
     try:
         from cryptography.hazmat.primitives import serialization
         
-        # Load dev private key
-        private_key_path = "keys/INSECURE-dev-jwt-private-key.pem"
+        # Load dev private key - use absolute path
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  # Go up from backend/tests/ to project root
+        private_key_path = os.path.join(project_root, "keys", "INSECURE-dev-jwt-private-key.pem")
         if not os.path.exists(private_key_path):
             raise FileNotFoundError(f"Dev private key not found at {private_key_path}")
             

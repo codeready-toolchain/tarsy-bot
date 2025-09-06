@@ -16,6 +16,49 @@ from mcp.types import Tool
 
 class E2ETestUtils:
     """Shared utility methods for E2E tests."""
+    
+    @staticmethod
+    def get_e2e_jwt_token() -> str:
+        """
+        Generate a real JWT token for E2E tests using the dev keys.
+        
+        Returns:
+            Valid JWT token string for E2E authentication
+        """
+        try:
+            from tarsy.services.jwt_service import JWTService
+            from tarsy.config.settings import Settings
+            
+            # Use E2E-specific settings that should already be configured
+            settings = Settings()
+            jwt_service = JWTService(settings)
+            
+            # Create a test user token
+            test_user_data = {
+                "sub": "e2e_test_user_123",
+                "username": "e2e-test-user", 
+                "email": "e2e-test@example.com",
+                "avatar_url": "https://github.com/e2e-test.png"
+            }
+            
+            return jwt_service.create_user_jwt_token(test_user_data)
+            
+        except Exception as e:
+            # Fallback for cases where JWT service is not available
+            print(f"⚠️  Could not generate real JWT token: {e}")
+            print("🔧 Using fallback mock token")
+            return "mock_e2e_jwt_token"
+    
+    @staticmethod
+    def get_auth_headers() -> Dict[str, str]:
+        """
+        Get authentication headers for E2E API requests.
+        
+        Returns:
+            Dictionary with Authorization header containing Bearer token
+        """
+        token = E2ETestUtils.get_e2e_jwt_token()
+        return {"Authorization": f"Bearer {token}"}
 
     @staticmethod
     async def wait_for_session_completion(
@@ -51,7 +94,8 @@ class E2ETestUtils:
                 # Print debug info about the current state
                 if debug_logging:
                     try:
-                        sessions_response = e2e_test_client.get("/api/v1/history/sessions")
+                        headers = E2ETestUtils.get_auth_headers()
+                        sessions_response = e2e_test_client.get("/api/v1/history/sessions", headers=headers)
                         if sessions_response.status_code == 200:
                             sessions_data = sessions_response.json()
                             sessions = sessions_data.get("sessions", [])
@@ -67,7 +111,8 @@ class E2ETestUtils:
 
             try:
                 # Get current sessions
-                sessions_response = e2e_test_client.get("/api/v1/history/sessions")
+                headers = E2ETestUtils.get_auth_headers()
+                sessions_response = e2e_test_client.get("/api/v1/history/sessions", headers=headers)
                 if sessions_response.status_code != 200:
                     print(f"⚠️ Failed to get sessions: {sessions_response.status_code}")
                     await asyncio.sleep(poll_interval)
@@ -229,8 +274,8 @@ class E2ETestUtils:
         mock_session = AsyncMock()
 
         async def mock_call_tool(tool_name, _parameters):
-            mock_result = Mock()
-            mock_content = Mock()
+            mock_result = AsyncMock()
+            mock_content = AsyncMock()
             mock_content.text = f"Mock {tool_name} response"
             mock_result.content = [mock_content]
             return mock_result
@@ -242,7 +287,7 @@ class E2ETestUtils:
                 inputSchema={"type": "object", "properties": {}}
             )
 
-            mock_result = Mock()
+            mock_result = AsyncMock()
             mock_result.tools = [mock_tool]
             return mock_result
 
@@ -267,7 +312,12 @@ class E2ETestUtils:
             AssertionError: If submission fails or response is invalid
         """
         print("🚀 Submitting alert")
-        response = e2e_test_client.post("/alerts", json=alert_data)
+        headers = E2ETestUtils.get_auth_headers()
+        response = e2e_test_client.post("/alerts", json=alert_data, headers=headers)
+        
+        if response.status_code != 200:
+            print(f"❌ Alert submission failed with status {response.status_code}")
+            print(f"Response: {response.text}")
         assert response.status_code == 200
 
         response_data = response.json()
@@ -295,7 +345,8 @@ class E2ETestUtils:
             AssertionError: If session details cannot be retrieved
         """
         for attempt in range(max_retries):
-            session_detail_response = e2e_test_client.get(f"/api/v1/history/sessions/{session_id}")
+            headers = E2ETestUtils.get_auth_headers()
+            session_detail_response = e2e_test_client.get(f"/api/v1/history/sessions/{session_id}", headers=headers)
             assert session_detail_response.status_code == 200
 
             detail_data = session_detail_response.json()

@@ -8,13 +8,136 @@ ensuring proper test isolation and database handling.
 import os
 from pathlib import Path
 from typing import Generator
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
 # Set testing environment variable as early as possible
 os.environ["TESTING"] = "true"
+
+# Mock JWT service before any imports that might trigger JWT service creation
+import sys
+from unittest.mock import Mock
+
+# Create a mock JWT service module to replace the real one
+mock_jwt_service = Mock()
+mock_jwt_service.verify_jwt_token = Mock(return_value={
+    "sub": "test_user_123",
+    "username": "test-user",
+    "email": "test@example.com",
+    "avatar_url": "https://github.com/test.png",
+    "iss": "tarsy-test",
+    "iat": 1234567890,
+    "exp": 1234567890 + 3600
+})
+mock_jwt_service.create_user_jwt_token = Mock(return_value="mock_jwt_token")
+mock_jwt_service.create_service_account_jwt_token = Mock(return_value="mock_service_jwt_token")
+
+# Mock the JWTService class to return our mock instance
+class MockJWTService:
+    def __init__(self, *args, **kwargs):
+        pass
+    
+    def verify_jwt_token(self, token):
+        return {
+            "sub": "test_user_123",
+            "username": "test-user",
+            "email": "test@example.com",
+            "avatar_url": "https://github.com/test.png",
+            "iss": "tarsy-test",
+            "iat": 1234567890,
+            "exp": 1234567890 + 3600
+        }
+    
+    def create_user_jwt_token(self, *args, **kwargs):
+        return "mock_jwt_token"
+    
+    def create_service_account_jwt_token(self, *args, **kwargs):
+        return "mock_service_jwt_token"
+
+# Replace the JWT service at the module level
+sys.modules['tarsy.services.jwt_service'] = Mock()
+sys.modules['tarsy.services.jwt_service'].JWTService = MockJWTService
+
+# Mock PyGithub to avoid import issues in tests
+mock_github = Mock()
+mock_github_user = Mock()
+mock_github_user.id = 123
+mock_github_user.login = "test-user"
+mock_github_user.email = "test@example.com"
+mock_github_user.avatar_url = "https://github.com/test.png"
+
+mock_github_class = Mock()
+mock_github_class.return_value.get_user.return_value = mock_github_user
+
+sys.modules['github'] = mock_github
+sys.modules['github'].Github = mock_github_class
+sys.modules['github'].GithubException = Exception
+sys.modules['github'].UnknownObjectException = Exception
+
+# Mock the GitHub service as well
+mock_github_service = Mock()
+mock_github_service.validate_github_membership = Mock()
+sys.modules['tarsy.services.github_service'] = mock_github_service
+
+# Mock async operations that can hang in tests
+@pytest.fixture(autouse=True) 
+def mock_async_operations(request):
+    """Mock async operations that can cause hangs in tests."""
+    
+    # Skip this fixture for E2E tests (they need real services)
+    if "e2e" in request.node.nodeid:
+        yield
+        return
+    
+    # Create a no-op async context manager for lifespan
+    from contextlib import asynccontextmanager
+    
+    @asynccontextmanager
+    async def mock_lifespan(app):
+        # Do minimal setup for tests
+        import asyncio
+        from tarsy import main
+        
+        # Mock alert service with chain registry using AsyncMock for async methods
+        mock_alert_service = Mock()
+        mock_alert_service.process_alert = AsyncMock()  # Make process_alert awaitable
+        mock_chain_registry = Mock()
+        mock_chain_registry.list_available_alert_types.return_value = ["kubernetes", "database", "network"]
+        mock_alert_service.chain_registry = mock_chain_registry
+        mock_alert_service.register_alert_id = Mock()
+        
+        # Set up global state in the main module
+        main.alert_service = mock_alert_service
+        main.dashboard_manager = Mock()
+        main.alert_processing_semaphore = asyncio.Semaphore(10)
+        
+        yield
+    
+    # Also patch the app's lifespan directly
+    import tarsy.main
+    original_lifespan = tarsy.main.app.router.lifespan_context
+    
+    try:
+        tarsy.main.app.router.lifespan_context = mock_lifespan
+        
+        with patch('tarsy.main.lifespan', mock_lifespan), \
+             patch('tarsy.main.initialize_database', return_value=True), \
+             patch('tarsy.database.init_db.initialize_database', return_value=True), \
+             patch('tarsy.services.alert_service.AlertService.initialize', return_value=None), \
+             patch('tarsy.services.dashboard_connection_manager.DashboardConnectionManager.initialize_broadcaster', return_value=None), \
+             patch('tarsy.services.history_service.get_history_service') as mock_history:
+            
+            # Mock history service methods that could hang
+            mock_history_service = Mock()
+            mock_history_service.cleanup_orphaned_sessions = Mock(return_value=0)
+            mock_history.return_value = mock_history_service
+            
+            yield
+    finally:
+        # Restore original lifespan
+        tarsy.main.app.router.lifespan_context = original_lifespan
 
 # Import Alert model for fixtures
 # Import all database models to ensure they're registered with SQLModel.metadata
@@ -24,6 +147,38 @@ from tarsy.models.alert import Alert
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.processing_context import ChainContext
 from tarsy.utils.timestamp import now_us
+
+
+# Optional JWT authentication mocking - use when you don't want real JWT validation
+@pytest.fixture
+def mock_jwt_authentication():
+    """
+    Mock JWT authentication for tests that don't need real JWT validation.
+    
+    Use this fixture explicitly in tests that need to bypass JWT authentication.
+    Most tests should use real JWT tokens via auth_fixtures instead.
+    """
+    mock_user_payload = {
+        "sub": "test_user_123",
+        "username": "test-user",
+        "email": "test@example.com",
+        "avatar_url": "https://github.com/test.png",
+        "iss": "tarsy-test",
+        "iat": 1234567890,
+        "exp": 1234567890 + 3600
+    }
+    
+    # Create a mock JWT service that doesn't require key files
+    mock_jwt_service = Mock()
+    mock_jwt_service.verify_jwt_token.return_value = mock_user_payload
+    mock_jwt_service.create_user_jwt_token.return_value = "mock_jwt_token"
+    mock_jwt_service.create_service_account_jwt_token.return_value = "mock_service_jwt_token"
+    
+    # Mock the dependency functions and JWT service creation
+    with patch('tarsy.auth.dependencies.get_jwt_service', return_value=mock_jwt_service), \
+         patch('tarsy.auth.dependencies.verify_jwt_token', return_value=mock_user_payload), \
+         patch('tarsy.auth.dependencies.verify_jwt_token_websocket', return_value=mock_user_payload):
+        yield
 
 
 def alert_to_api_format(alert: Alert) -> ChainContext:

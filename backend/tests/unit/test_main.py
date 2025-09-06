@@ -24,6 +24,13 @@ from tarsy.main import (
 )
 from tarsy.models.processing_context import ChainContext
 
+# Import authentication fixtures
+from tests.fixtures.auth_fixtures import (
+    AuthenticatedTestClient,
+    mock_jwt_verification,
+    mock_jwt_websocket_verification,
+)
+
 
 @pytest.mark.unit
 class TestMainLifespan:
@@ -207,9 +214,15 @@ class TestMainEndpoints:
         """Create test client."""
         return TestClient(app)
 
+    @pytest.fixture
+    def authenticated_client(self, client, mock_jwt_verification):
+        """Create authenticated test client with mocked JWT verification."""
+        auth_headers = {"Authorization": "Bearer mock_jwt_token"}
+        return AuthenticatedTestClient(client, auth_headers)
+
     def test_root_endpoint(self, client):
-        """Test root health check endpoint."""
-        response = client.get("/")
+        """Test root health check endpoint (no auth required)."""
+        response = client.get("/", headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "Tarsy is running"
@@ -263,7 +276,7 @@ class TestMainEndpoints:
         else:
             mock_db_info.return_value = db_status
         
-        response = client.get("/health")
+        response = client.get("/health", headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 200
         data = response.json()
         
@@ -297,7 +310,7 @@ class TestMainEndpoints:
                 assert str(db_status) in data["error"]
 
     @patch('tarsy.main.alert_service')
-    def test_get_alert_types(self, mock_alert_service, client):
+    def test_get_alert_types(self, mock_alert_service, authenticated_client):
         """Test get alert types endpoint."""
         mock_chain_registry = Mock()
         mock_chain_registry.list_available_alert_types.return_value = [
@@ -305,7 +318,7 @@ class TestMainEndpoints:
         ]
         mock_alert_service.chain_registry = mock_chain_registry
         
-        response = client.get("/alert-types")
+        response = authenticated_client.get("/alert-types", headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 200
         data = response.json()
         
@@ -318,9 +331,16 @@ class TestSubmitAlertEndpoint:
     """Test the complex submit alert endpoint."""
 
     @pytest.fixture
+    def authenticated_client(self):
+        """Create authenticated test client with mocked JWT verification."""
+        client = TestClient(app)  # This will use the mocked lifespan
+        auth_headers = {"Authorization": "Bearer mock_jwt_token"}
+        return AuthenticatedTestClient(client, auth_headers)
+
+    @pytest.fixture
     def client(self):
         """Create test client."""
-        return TestClient(app)
+        return TestClient(app)  # This will use the mocked lifespan
 
     @pytest.fixture
     def valid_alert_data(self):
@@ -339,12 +359,12 @@ class TestSubmitAlertEndpoint:
     @patch('tarsy.main.alert_service')
     @patch('tarsy.main.asyncio.create_task')
     def test_submit_alert_success(
-        self, mock_create_task, mock_alert_service, client, valid_alert_data
+        self, mock_create_task, mock_alert_service, authenticated_client, valid_alert_data
     ):
         """Test successful alert submission."""
         mock_alert_service.register_alert_id = Mock()
         
-        response = client.post("/alerts", json=valid_alert_data)
+        response = authenticated_client.post("/alerts", json=valid_alert_data, headers={"Authorization": "Bearer mock_jwt_token"})
         
         assert response.status_code == 200
         data = response.json()
@@ -381,18 +401,18 @@ class TestSubmitAlertEndpoint:
     ])
     def test_submit_alert_input_validation(
         self, client, valid_alert_data, invalid_input, expected_status, expected_error
-    ):
+    , mock_jwt_authentication):
         """Test alert submission with various invalid inputs."""
         if invalid_input == "invalid json":
             response = client.post(
                 "/alerts",
                 data=invalid_input,
-                headers={"content-type": "application/json"}
+                headers={"content-type": "application/json", "Authorization": "Bearer mock_jwt_token"}
             )
         elif invalid_input == "not a dict" or invalid_input is None:
-            response = client.post("/alerts", json=invalid_input)
+            response = client.post("/alerts", json=invalid_input, headers={"Authorization": "Bearer mock_jwt_token"})
         else:
-            response = client.post("/alerts", json=invalid_input)
+            response = client.post("/alerts", json=invalid_input, headers={"Authorization": "Bearer mock_jwt_token"})
         
         assert response.status_code == expected_status
         data = response.json()
@@ -409,7 +429,7 @@ class TestSubmitAlertEndpoint:
         elif expected_error in ["Invalid alert_type", "Invalid runbook"]:
             assert "field" in data["detail"]
 
-    def test_submit_alert_duplicate_detection(self, client, valid_alert_data):
+    def test_submit_alert_duplicate_detection(self, client, valid_alert_data, mock_jwt_authentication):
         """Test duplicate alert detection."""
         # Create a mock AlertKey instance
         mock_alert_key = Mock()
@@ -426,7 +446,7 @@ class TestSubmitAlertEndpoint:
             # Mock the factory method to return our test key
             mock_from_chain_context.return_value = mock_alert_key
             
-            response = client.post("/alerts", json=valid_alert_data)
+            response = client.post("/alerts", json=valid_alert_data, headers={"Authorization": "Bearer mock_jwt_token"})
             
             assert response.status_code == 200
             data = response.json()
@@ -450,26 +470,26 @@ class TestSubmitAlertEndpoint:
                 }
             }
             
-            response = client.post("/alerts", json=large_data)
+            response = client.post("/alerts", json=large_data, headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 413
 
     @patch('tarsy.main.alert_service')
     @patch('tarsy.main.asyncio.create_task')
     def test_submit_alert_suspicious_runbook_url(
         self, _mock_create_task, mock_alert_service, client, valid_alert_data
-    ):
+    , mock_jwt_authentication):
         """Test alert submission with suspicious runbook URL."""
         mock_alert_service.register_alert_id = Mock()
         valid_alert_data["runbook"] = "file:///etc/passwd"  # Suspicious URL
         
-        response = client.post("/alerts", json=valid_alert_data)
+        response = client.post("/alerts", json=valid_alert_data, headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 200  # Should still process but log warning
 
     @patch('tarsy.main.alert_service')
     @patch('tarsy.main.asyncio.create_task')
     def test_submit_alert_with_defaults(
         self, mock_create_task, mock_alert_service, client
-    ):
+    , mock_jwt_authentication):
         """Test alert submission applies defaults for missing fields."""
         mock_alert_service.register_alert_id = Mock()
         
@@ -478,7 +498,7 @@ class TestSubmitAlertEndpoint:
             "runbook": "https://example.com/runbook.md"
         }
         
-        response = client.post("/alerts", json=minimal_data)
+        response = client.post("/alerts", json=minimal_data, headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 200
         
         # Verify defaults were applied by checking the task was created
@@ -495,7 +515,7 @@ class TestSessionIdEndpoint:
         return TestClient(app)
 
     @patch.object(app, 'dependency_overrides', {})
-    def test_get_session_id_success(self, client):
+    def test_get_session_id_success(self, client, mock_jwt_authentication):
         """Test successful session ID retrieval."""
         # Mock the global alert_service
         from tarsy import main
@@ -504,7 +524,7 @@ class TestSessionIdEndpoint:
         mock_alert_service.get_session_id_for_alert.return_value = "session-123"
         main.alert_service = mock_alert_service
         
-        response = client.get("/session-id/alert-123")
+        response = client.get("/session-id/alert-123", headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 200
         data = response.json()
         
@@ -512,21 +532,21 @@ class TestSessionIdEndpoint:
         assert data["session_id"] == "session-123"
 
     @patch.object(app, 'dependency_overrides', {})
-    def test_get_session_id_not_found(self, client):
+    def test_get_session_id_not_found(self, client, mock_jwt_authentication):
         """Test session ID retrieval for non-existent alert."""
         from tarsy import main
         mock_alert_service = Mock()
         mock_alert_service.alert_exists.return_value = False
         main.alert_service = mock_alert_service
         
-        response = client.get("/session-id/nonexistent")
+        response = client.get("/session-id/nonexistent", headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 404
         data = response.json()
         
         assert "not found" in data["detail"]
 
     @patch.object(app, 'dependency_overrides', {})
-    def test_get_session_id_no_session(self, client):
+    def test_get_session_id_no_session(self, client, mock_jwt_authentication):
         """Test session ID retrieval when session doesn't exist yet."""
         from tarsy import main
         mock_alert_service = Mock()
@@ -534,7 +554,7 @@ class TestSessionIdEndpoint:
         mock_alert_service.get_session_id_for_alert.return_value = None
         main.alert_service = mock_alert_service
         
-        response = client.get("/session-id/alert-123")
+        response = client.get("/session-id/alert-123", headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 200
         data = response.json()
         
@@ -779,7 +799,7 @@ class TestInputSanitization:
         """Create test client.""" 
         return TestClient(app)
 
-    def test_sanitize_xss_prevention(self, client):
+    def test_sanitize_xss_prevention(self, client, mock_jwt_authentication):
         """Test XSS prevention in input sanitization."""
         malicious_data = {
             "alert_type": "<script>alert('xss')</script>kubernetes",
@@ -793,12 +813,12 @@ class TestInputSanitization:
         with patch('tarsy.main.alert_service') as mock_alert_service:
             mock_alert_service.register_alert_id = Mock()
             with patch('tarsy.main.asyncio.create_task'):
-                response = client.post("/alerts", json=malicious_data)
+                response = client.post("/alerts", json=malicious_data, headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Should succeed after sanitization
         assert response.status_code == 200
 
-    def test_deep_sanitization_nested_objects(self, client):
+    def test_deep_sanitization_nested_objects(self, client, mock_jwt_authentication):
         """Test deep sanitization of nested objects."""
         nested_data = {
             "alert_type": "test",
@@ -820,11 +840,11 @@ class TestInputSanitization:
         with patch('tarsy.main.alert_service') as mock_alert_service:
             mock_alert_service.register_alert_id = Mock()
             with patch('tarsy.main.asyncio.create_task'):
-                response = client.post("/alerts", json=nested_data)
+                response = client.post("/alerts", json=nested_data, headers={"Authorization": "Bearer mock_jwt_token"})
         
         assert response.status_code == 200
 
-    def test_array_size_limits(self, client):
+    def test_array_size_limits(self, client, mock_jwt_authentication):
         """Test array size limiting in sanitization."""
         large_array_data = {
             "alert_type": "test", 
@@ -837,11 +857,11 @@ class TestInputSanitization:
         with patch('tarsy.main.alert_service') as mock_alert_service:
             mock_alert_service.register_alert_id = Mock()  
             with patch('tarsy.main.asyncio.create_task'):
-                response = client.post("/alerts", json=large_array_data)
+                response = client.post("/alerts", json=large_array_data, headers={"Authorization": "Bearer mock_jwt_token"})
         
         assert response.status_code == 200
 
-    def test_string_length_limits(self, client):
+    def test_string_length_limits(self, client, mock_jwt_authentication):
         """Test string length limiting in sanitization."""
         long_string_data = {
             "alert_type": "x" * 15000,  # Over 10KB limit
@@ -854,7 +874,7 @@ class TestInputSanitization:
         with patch('tarsy.main.alert_service') as mock_alert_service:
             mock_alert_service.register_alert_id = Mock()
             with patch('tarsy.main.asyncio.create_task'):
-                response = client.post("/alerts", json=long_string_data)
+                response = client.post("/alerts", json=long_string_data, headers={"Authorization": "Bearer mock_jwt_token"})
         
         assert response.status_code == 200
 
@@ -868,7 +888,7 @@ class TestCriticalCoverage:
         """Create test client."""
         return TestClient(app)
 
-    def test_concurrent_alert_processing(self, client):
+    def test_concurrent_alert_processing(self, client, mock_jwt_authentication):
         """Test that multiple alerts can be processed concurrently without conflicts."""
         from tests.utils import AlertFactory
         
@@ -894,7 +914,7 @@ class TestCriticalCoverage:
                     "severity": alert.severity,
                     "data": alert.data
                 }
-                response = client.post("/alerts", json=alert_data)
+                response = client.post("/alerts", json=alert_data, headers={"Authorization": "Bearer mock_jwt_token"})
                 responses.append(response)
             
             # Verify all were accepted
@@ -907,7 +927,7 @@ class TestCriticalCoverage:
             # Verify each alert was registered
             assert mock_alert_service.register_alert_id.call_count == len(alerts)
 
-    def test_alert_processing_recovery_after_failure(self, client):
+    def test_alert_processing_recovery_after_failure(self, client, mock_jwt_authentication):
         """Test that system recovers after alert processing failure."""
         from tests.utils import AlertFactory
         
@@ -930,15 +950,15 @@ class TestCriticalCoverage:
             }
             
             # First submission should fail gracefully
-            response1 = client.post("/alerts", json=alert_data)
+            response1 = client.post("/alerts", json=alert_data, headers={"Authorization": "Bearer mock_jwt_token"})
             # Should handle failure gracefully
             assert response1.status_code in [200, 500]
             
             # Second submission should succeed
-            response2 = client.post("/alerts", json=alert_data)
+            response2 = client.post("/alerts", json=alert_data, headers={"Authorization": "Bearer mock_jwt_token"})
             assert response2.status_code == 200
 
-    def test_malicious_payload_handling(self, client):
+    def test_malicious_payload_handling(self, client, mock_jwt_authentication):
         """Test handling of potentially malicious payloads."""
         malicious_payloads = [
             {
@@ -978,7 +998,7 @@ class TestCriticalCoverage:
                 mock_alert_service.register_alert_id = Mock()
                 
                 # Should handle malicious payloads gracefully
-                response = client.post("/alerts", json=payload)
+                response = client.post("/alerts", json=payload, headers={"Authorization": "Bearer mock_jwt_token"})
                 
                 # Should either succeed (with sanitization) or fail gracefully
                 assert response.status_code in [200, 400, 413]
@@ -987,7 +1007,7 @@ class TestCriticalCoverage:
                     data = response.json()
                     assert data["status"] in ["queued", "duplicate"]
 
-    def test_alert_deduplication_edge_cases(self, client):
+    def test_alert_deduplication_edge_cases(self, client, mock_jwt_authentication):
         """Test edge cases in alert deduplication logic."""
         from tests.utils import AlertFactory
         
@@ -1013,13 +1033,13 @@ class TestCriticalCoverage:
             # Mock the factory method to return our test key
             mock_from_chain_context.return_value = mock_alert_key
             
-            response = client.post("/alerts", json=alert_data)
+            response = client.post("/alerts", json=alert_data, headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "duplicate"
             assert data["alert_id"] == "existing-id"
 
-    def test_alert_processing_timeout_handling(self, client):
+    def test_alert_processing_timeout_handling(self, client, mock_jwt_authentication):
         """Test handling of alert processing timeouts."""
         from tests.utils import AlertFactory
         
@@ -1049,7 +1069,7 @@ class TestCriticalCoverage:
             mock_alert_service.register_alert_id = Mock()
             
             # Should not block the endpoint
-            response = client.post("/alerts", json=alert_data)
+            response = client.post("/alerts", json=alert_data, headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 200
             data = response.json()
             assert data["status"] in ["queued", "duplicate"]  # Accept either status
@@ -1060,13 +1080,13 @@ class TestCriticalCoverage:
             mock_db_info.side_effect = Exception("Database connection failed")
             
             # Health endpoint should handle database failures gracefully
-            response = client.get("/health")
+            response = client.get("/health", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "unhealthy"
             assert "error" in data
 
-    def test_memory_usage_under_load(self, client):
+    def test_memory_usage_under_load(self, client, mock_jwt_authentication):
         """Test memory usage behavior under load."""
         from tests.utils import AlertFactory
         
@@ -1086,14 +1106,14 @@ class TestCriticalCoverage:
                     "severity": alert.severity,
                     "data": alert.data
                 }
-                response = client.post("/alerts", json=alert_data)
+                response = client.post("/alerts", json=alert_data, headers={"Authorization": "Bearer mock_jwt_token"})
                 assert response.status_code == 200
 
     def test_websocket_connection_stability(self, client):
         """Test WebSocket connection stability under various conditions."""
         # This would require a more complex setup with actual WebSocket testing
         # For now, we'll test the endpoint exists and responds appropriately
-        response = client.get("/")
+        response = client.get("/", headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 200
         assert "tarsy" in response.json()["message"].lower()
 

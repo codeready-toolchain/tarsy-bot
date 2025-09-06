@@ -12,11 +12,8 @@ Architecture:
 import asyncio
 import json
 import re
-import random
-import string
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 from mcp.types import Tool
-
 import httpx
 import pytest
 import respx
@@ -325,18 +322,18 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
 
             async def mock_call_tool(tool_name, _parameters):
                 # Create mock result object with content attribute
-                mock_result = Mock()
+                mock_result = AsyncMock()
 
                 if tool_name == "kubectl_get":
                     resource = _parameters.get("resource", "pods")
                     name = _parameters.get("name", "")
 
                     if resource == "namespaces" and name == "stuck-namespace":
-                        mock_content = Mock()
+                        mock_content = AsyncMock()
                         mock_content.text = "stuck-namespace   Terminating   45m"
                         mock_result.content = [mock_content]
                     else:
-                        mock_content = Mock()
+                        mock_content = AsyncMock()
                         mock_content.text = f"Mock kubectl get {resource} response"
                         mock_result.content = [mock_content]
 
@@ -345,7 +342,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                     name = _parameters.get("name", "")
 
                     if resource == "namespace" and name == "stuck-namespace":
-                        mock_content = Mock()
+                        mock_content = AsyncMock()
                         mock_content.text = """Name:         stuck-namespace
 Status:       Terminating
 Finalizers:   kubernetes.io/pv-protection
@@ -355,14 +352,14 @@ Annotations:  contact=admin@company.com
 Labels:       environment=production"""
                         mock_result.content = [mock_content]
                     else:
-                        mock_content = Mock()
+                        mock_content = AsyncMock()
                         mock_content.text = (
                             f"Mock kubectl describe {resource} {name} response"
                         )
                         mock_result.content = [mock_content]
 
                 else:
-                    mock_content = Mock()
+                    mock_content = AsyncMock()
                     mock_content.text = f"Mock response for tool: {tool_name}"
                     mock_result.content = [mock_content]
 
@@ -397,7 +394,7 @@ Labels:       environment=production"""
                 )
 
                 # Return object with .tools attribute (matching MCP SDK API)
-                mock_result = Mock()
+                mock_result = AsyncMock()
                 mock_result.tools = [mock_tool1, mock_tool2]
                 return mock_result
 
@@ -441,7 +438,7 @@ Labels:       environment=production"""
                 )
 
                 # Return object with .tools attribute (matching MCP SDK API)
-                mock_result = Mock()
+                mock_result = AsyncMock()
                 mock_result.tools = [mock_tool]
                 return mock_result
 

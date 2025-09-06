@@ -51,6 +51,7 @@ class E2ETestIsolation:
             "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
             "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
             "LLM_PROVIDER",
+            "JWT_PRIVATE_KEY_PATH", "JWT_PUBLIC_KEY_PATH", "JWT_ALGORITHM", "JWT_ISSUER",
             "TESTING"
         ]
         
@@ -205,6 +206,11 @@ current-context: test-context
     current_dir = Path(__file__).parent
     test_agents_path = current_dir / "test_agents.yaml"
     
+    # Create absolute paths to JWT dev keys (project root relative)
+    project_root = Path(__file__).parent.parent.parent  # Go up from backend/tests/e2e/ to project root
+    jwt_private_key_path = project_root / "keys" / "INSECURE-dev-jwt-private-key.pem"
+    jwt_public_key_path = project_root / "keys" / "INSECURE-dev-jwt-public-key.pem"
+    
     # Set isolated environment variables
     e2e_isolation.set_isolated_env("HISTORY_DATABASE_URL", test_db_url)
     e2e_isolation.set_isolated_env("HISTORY_ENABLED", "true")
@@ -212,6 +218,11 @@ current-context: test-context
     e2e_isolation.set_isolated_env("OPENAI_API_KEY", "test-key-123")
     e2e_isolation.set_isolated_env("LLM_PROVIDER", "openai-default")
     e2e_isolation.set_isolated_env("KUBECONFIG", kubeconfig_path)
+    # Configure JWT for E2E tests to use real dev keys
+    e2e_isolation.set_isolated_env("JWT_PRIVATE_KEY_PATH", str(jwt_private_key_path))
+    e2e_isolation.set_isolated_env("JWT_PUBLIC_KEY_PATH", str(jwt_public_key_path))
+    e2e_isolation.set_isolated_env("JWT_ALGORITHM", "RS256")
+    e2e_isolation.set_isolated_env("JWT_ISSUER", "tarsy-e2e-test")
     
     # Create real Settings object with isolated environment
     settings = Settings()
@@ -222,6 +233,11 @@ current-context: test-context
     settings.agent_config_path = str(test_agents_path)
     settings.openai_api_key = "test-key-123"
     settings.llm_provider = "openai-default"
+    # Configure JWT settings for real authentication
+    settings.jwt_private_key_path = str(jwt_private_key_path)
+    settings.jwt_public_key_path = str(jwt_public_key_path)
+    settings.jwt_algorithm = "RS256"
+    settings.jwt_issuer = "tarsy-e2e-test"
     
     # Patch global settings
     e2e_isolation.patch_settings(settings)
@@ -256,7 +272,8 @@ def ensure_e2e_isolation(request):
         "TESTING", "KUBECONFIG", "HISTORY_DATABASE_URL", "HISTORY_ENABLED",
         "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
         "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
-        "LLM_PROVIDER"
+        "LLM_PROVIDER",
+        "JWT_PRIVATE_KEY_PATH", "JWT_PUBLIC_KEY_PATH", "JWT_ALGORITHM", "JWT_ISSUER"
     ]
     
     for var in e2e_env_vars:

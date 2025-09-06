@@ -98,7 +98,8 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/sessions")
+        headers = {"Authorization": "Bearer mock_jwt_token"}
+        response = client.get("/api/v1/history/sessions", headers=headers)
         
         # Clean up
         app.dependency_overrides.clear()
@@ -146,7 +147,8 @@ class TestHistoryControllerEndpoints:
                 "alert_type": "NamespaceTerminating",
                 "page": 2,
                 "page_size": 10
-            }
+            },
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -182,7 +184,8 @@ class TestHistoryControllerEndpoints:
         
         response = client.get(
             "/api/v1/history/sessions",
-            params={"status": "completed"}
+            params={"status": "completed"},
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -218,7 +221,8 @@ class TestHistoryControllerEndpoints:
                 ("status", "completed"),
                 ("status", "failed"),
                 ("agent_type", "KubernetesAgent")
-            ]
+            ],
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -268,7 +272,8 @@ class TestHistoryControllerEndpoints:
         
         response = client.get(
             "/api/v1/history/sessions",
-            params=[("status", "completed"), ("status", "failed")]
+            params=[("status", "completed"), ("status", "failed")],
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -326,7 +331,8 @@ class TestHistoryControllerEndpoints:
         
         response = client.get(
             "/api/v1/history/sessions",
-            params=[("status", "pending"), ("status", "in_progress")]
+            params=[("status", "pending"), ("status", "in_progress")],
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -367,7 +373,8 @@ class TestHistoryControllerEndpoints:
                 ("status", "completed"),
                 ("status", "failed"), 
                 ("status", "in_progress")
-            ]
+            ],
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -399,7 +406,8 @@ class TestHistoryControllerEndpoints:
         
         response = client.get(
             "/api/v1/history/sessions",
-            params={"agent_type": "KubernetesAgent"}  # Other filters but no status
+            params={"agent_type": "KubernetesAgent"},  # Other filters but no status
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -438,7 +446,8 @@ class TestHistoryControllerEndpoints:
             params={
                 "start_date_us": start_date_us,
                 "end_date_us": end_date_us
-            }
+            },
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -471,7 +480,8 @@ class TestHistoryControllerEndpoints:
         
         response = client.get(
             "/api/v1/history/sessions",
-            params={"search": "namespace"}
+            params={"search": "namespace"},
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -506,7 +516,8 @@ class TestHistoryControllerEndpoints:
                 "search": "kubernetes",
                 "status": "completed",
                 "agent_type": "KubernetesAgent"
-            }
+            },
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -531,7 +542,8 @@ class TestHistoryControllerEndpoints:
         
         response = client.get(
             "/api/v1/history/sessions",
-            params={"search": "ab"}  # Only 2 characters
+            params={"search": "ab"},  # Only 2 characters
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -552,7 +564,8 @@ class TestHistoryControllerEndpoints:
         
         response = client.get(
             "/api/v1/history/sessions",
-            params={"search": ""}  # Empty string
+            params={"search": ""},  # Empty string
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -580,7 +593,8 @@ class TestHistoryControllerEndpoints:
         
         response = client.get(
             "/api/v1/history/sessions",
-            params={"search": "pod"}  # Exactly 3 characters
+            params={"search": "pod"},  # Exactly 3 characters
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -611,7 +625,8 @@ class TestHistoryControllerEndpoints:
         
         response = client.get(
             "/api/v1/history/sessions",
-            params={"search": "  namespace  "}  # Whitespace around search term
+            params={"search": "  namespace  "},  # Whitespace around search term
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -634,7 +649,8 @@ class TestHistoryControllerEndpoints:
         
         response = client.get(
             "/api/v1/history/sessions",
-            params={"start_date_us": "invalid-timestamp"}
+            params={"start_date_us": "invalid-timestamp"},
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -663,7 +679,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/sessions")
+        response = client.get("/api/v1/history/sessions", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -681,7 +697,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/sessions")
+        response = client.get("/api/v1/history/sessions", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -828,7 +844,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/sessions/test-session-123")
+        response = client.get("/api/v1/history/sessions/test-session-123", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -896,7 +912,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/sessions/non-existent-session")
+        response = client.get("/api/v1/history/sessions/non-existent-session", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -914,7 +930,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/sessions/test-session")
+        response = client.get("/api/v1/history/sessions/test-session", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -931,7 +947,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/sessions/test-session")
+        response = client.get("/api/v1/history/sessions/test-session", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -948,7 +964,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/health")
+        response = client.get("/api/v1/history/health", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -974,7 +990,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/health")
+        response = client.get("/api/v1/history/health", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -995,7 +1011,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/health")
+        response = client.get("/api/v1/history/health", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1015,7 +1031,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/health")
+        response = client.get("/api/v1/history/health", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1055,19 +1071,19 @@ class TestHistoryControllerValidation:
         """Test pagination parameter validation."""
         with patch('tarsy.controllers.history_controller.get_history_service', return_value=mock_history_service):
             # Test negative page number
-            response = client.get("/api/v1/history/sessions?page=-1")
+            response = client.get("/api/v1/history/sessions?page=-1", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 422
             
             # Test zero page number
-            response = client.get("/api/v1/history/sessions?page=0")
+            response = client.get("/api/v1/history/sessions?page=0", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 422
             
             # Test negative page_size
-            response = client.get("/api/v1/history/sessions?page_size=-1")
+            response = client.get("/api/v1/history/sessions?page_size=-1", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 422
             
             # Test page_size too large
-            response = client.get("/api/v1/history/sessions?page_size=1001")
+            response = client.get("/api/v1/history/sessions?page_size=1001", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 422
     
     @pytest.mark.unit
@@ -1085,13 +1101,13 @@ class TestHistoryControllerValidation:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         # Test invalid status - the API doesn't enforce enum validation, so it returns 200
-        response = client.get("/api/v1/history/sessions?status=invalid_status")
+        response = client.get("/api/v1/history/sessions?status=invalid_status", headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 200  # No enum validation in current implementation
         
         # Test valid status values
         valid_statuses = ["pending", "in_progress", "completed", "failed"]
         for status in valid_statuses:
-            response = client.get(f"/api/v1/history/sessions?status={status}")
+            response = client.get(f"/api/v1/history/sessions?status={status}", headers={"Authorization": "Bearer mock_jwt_token"})
             assert response.status_code == 200
         
         # Clean up
@@ -1106,11 +1122,11 @@ class TestHistoryControllerValidation:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         # Test session ID with special characters (should be handled)
-        response = client.get("/api/v1/history/sessions/session-with-dashes-123")
+        response = client.get("/api/v1/history/sessions/session-with-dashes-123", headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 404  # Not found, but valid format
         
         # Test another valid format session ID
-        response = client.get("/api/v1/history/sessions/valid-session-id")
+        response = client.get("/api/v1/history/sessions/valid-session-id", headers={"Authorization": "Bearer mock_jwt_token"})
         assert response.status_code == 404  # Not found, but endpoint exists
         
         # Clean up
@@ -1130,7 +1146,7 @@ class TestHistoryControllerValidation:
         ]
         
         for invalid_timestamp in invalid_timestamps:
-            response = client.get(f"/api/v1/history/sessions?start_date_us={invalid_timestamp}")
+            response = client.get(f"/api/v1/history/sessions?start_date_us={invalid_timestamp}", headers={"Authorization": "Bearer mock_jwt_token"})
             # FastAPI returns 422 for validation errors, not 400
             assert response.status_code == 422
             # Check that the error is about integer parsing
@@ -1204,7 +1220,7 @@ class TestHistoryControllerResponseFormat:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_service
         
-        response = client.get("/api/v1/history/sessions")
+        response = client.get("/api/v1/history/sessions", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1376,7 +1392,7 @@ class TestHistoryControllerResponseFormat:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/sessions/test-session")
+        response = client.get("/api/v1/history/sessions/test-session", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1441,7 +1457,7 @@ class TestHistoryControllerResponseFormat:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        response = client.get("/api/v1/history/health")
+        response = client.get("/api/v1/history/health", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1513,7 +1529,8 @@ class TestHistoryControllerIntegration:
                 "end_date_us": end_date_us,
                 "page": 1,
                 "page_size": 20
-            }
+            },
+            headers={"Authorization": "Bearer mock_jwt_token"}
         )
         
         # Clean up
@@ -1543,7 +1560,7 @@ class TestHistoryControllerIntegration:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_service
         
-        response = client.get("/api/v1/history/sessions")
+        response = client.get("/api/v1/history/sessions", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1570,7 +1587,7 @@ class TestHistoryControllerIntegration:
         # Simulate multiple concurrent requests
         responses = []
         for i in range(5):
-            response = client.get(f"/api/v1/history/sessions?page={i+1}")
+            response = client.get(f"/api/v1/history/sessions?page={i+1}", headers={"Authorization": "Bearer mock_jwt_token"})
             responses.append(response)
         
         # Clean up
@@ -1660,7 +1677,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_service
         
         # Make request
-        response = client.get("/api/v1/history/active-sessions")
+        response = client.get("/api/v1/history/active-sessions", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1692,7 +1709,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_service
         
         # Make request
-        response = client.get("/api/v1/history/active-sessions")
+        response = client.get("/api/v1/history/active-sessions", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1713,7 +1730,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_service
         
         # Make request
-        response = client.get("/api/v1/history/active-sessions")
+        response = client.get("/api/v1/history/active-sessions", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1744,7 +1761,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         # Make request
-        response = client.get("/api/v1/history/filter-options")
+        response = client.get("/api/v1/history/filter-options", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1773,7 +1790,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         # Make request
-        response = client.get("/api/v1/history/filter-options")
+        response = client.get("/api/v1/history/filter-options", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1811,7 +1828,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         # Make request
-        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1850,7 +1867,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         # Make request
-        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1874,7 +1891,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         # Make request
-        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1912,7 +1929,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         # Make request
-        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -1964,7 +1981,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         # Make request
-        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
@@ -2007,7 +2024,7 @@ class TestDashboardEndpoints:
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
         # Make request
-        response = client.get(f"/api/v1/history/sessions/{session_id}/summary")
+        response = client.get(f"/api/v1/history/sessions/{session_id}/summary", headers={"Authorization": "Bearer mock_jwt_token"})
         
         # Clean up
         app.dependency_overrides.clear()
