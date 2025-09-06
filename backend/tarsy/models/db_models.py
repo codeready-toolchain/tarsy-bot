@@ -162,7 +162,6 @@ class OAuthState(SQLModel, table=True):
     __tablename__ = "oauth_states"
     
     state: str = Field(
-        primary_key=True,
         sa_column=Column(String, primary_key=True),
         description="OAuth state parameter for CSRF protection"
     )

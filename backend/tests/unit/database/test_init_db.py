@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from tarsy.database.init_db import (
+    cleanup_expired_oauth_states,
     create_database_tables,
     get_database_info,
     initialize_database,
@@ -105,6 +106,91 @@ class TestCreateDatabaseTables:
 
 
 @pytest.mark.unit
+class TestCleanupExpiredOAuthStates:
+    """Test cleanup_expired_oauth_states function."""
+    
+    def test_cleanup_oauth_states_success(self):
+        """Test successful cleanup of expired OAuth states."""
+        with patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
+             patch('tarsy.database.init_db.Session') as mock_session, \
+             patch('tarsy.database.init_db.now_us') as mock_now_us, \
+             patch('tarsy.database.init_db.delete') as mock_delete, \
+             patch('tarsy.database.init_db.logger') as mock_logger:
+            
+            # Mock current time
+            mock_now_us.return_value = 1000000  # 1 second in microseconds
+            
+            # Mock engine and session
+            mock_engine = Mock()
+            mock_create_engine.return_value = mock_engine
+            mock_session_instance = Mock()
+            mock_session.return_value.__enter__.return_value = mock_session_instance
+            
+            # Mock delete query result
+            mock_result = Mock()
+            mock_result.rowcount = 3  # 3 expired states deleted
+            mock_session_instance.exec.return_value = mock_result
+            
+            # Mock delete query
+            mock_delete_query = Mock()
+            mock_delete.return_value.where.return_value = mock_delete_query
+            
+            result = cleanup_expired_oauth_states("sqlite:///test.db")
+            
+            assert result == 3
+            mock_create_engine.assert_called_once_with("sqlite:///test.db", echo=False)
+            mock_session.assert_called_once_with(mock_engine)
+            mock_session_instance.exec.assert_called_once_with(mock_delete_query)
+            mock_session_instance.commit.assert_called_once()
+            mock_logger.info.assert_called_once_with("Cleaned up 3 expired OAuth states")
+    
+    def test_cleanup_oauth_states_no_expired(self):
+        """Test cleanup when no OAuth states are expired."""
+        with patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
+             patch('tarsy.database.init_db.Session') as mock_session, \
+             patch('tarsy.database.init_db.now_us') as mock_now_us, \
+             patch('tarsy.database.init_db.delete') as mock_delete, \
+             patch('tarsy.database.init_db.logger') as mock_logger:
+            
+            # Mock current time
+            mock_now_us.return_value = 1000000
+            
+            # Mock engine and session
+            mock_engine = Mock()
+            mock_create_engine.return_value = mock_engine
+            mock_session_instance = Mock()
+            mock_session.return_value.__enter__.return_value = mock_session_instance
+            
+            # Mock delete query result - no rows deleted
+            mock_result = Mock()
+            mock_result.rowcount = 0
+            mock_session_instance.exec.return_value = mock_result
+            
+            # Mock delete query
+            mock_delete_query = Mock()
+            mock_delete.return_value.where.return_value = mock_delete_query
+            
+            result = cleanup_expired_oauth_states("sqlite:///test.db")
+            
+            assert result == 0
+            mock_session_instance.commit.assert_called_once()
+            # Should not log info message when no states cleaned up
+            mock_logger.info.assert_not_called()
+    
+    def test_cleanup_oauth_states_error(self):
+        """Test cleanup when database error occurs."""
+        with patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
+             patch('tarsy.database.init_db.logger') as mock_logger:
+            
+            mock_create_engine.side_effect = Exception("Database connection failed")
+            
+            result = cleanup_expired_oauth_states("sqlite:///test.db")
+            
+            assert result == 0
+            mock_logger.error.assert_called_once_with("Failed to cleanup expired OAuth states: Database connection failed")
+
+
+@pytest.mark.unit
 class TestInitializeDatabase:
     """Test initialize_database function."""
     
@@ -113,6 +199,7 @@ class TestInitializeDatabase:
         # Test successful initialization
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
              patch('tarsy.database.init_db.create_database_tables') as mock_create_tables, \
+             patch('tarsy.database.init_db.cleanup_expired_oauth_states') as mock_cleanup_oauth, \
              patch('tarsy.database.init_db.logger') as mock_logger:
             
             mock_settings = Mock()
@@ -121,10 +208,12 @@ class TestInitializeDatabase:
             mock_settings.history_retention_days = 90
             mock_get_settings.return_value = mock_settings
             mock_create_tables.return_value = True
+            mock_cleanup_oauth.return_value = 2  # Mock 2 OAuth states cleaned up
             
             result = initialize_database()
             assert result is True
             mock_create_tables.assert_called_once_with("sqlite:///history.db")
+            mock_cleanup_oauth.assert_called_once_with("sqlite:///history.db")
         
         # Test history disabled
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
@@ -163,6 +252,27 @@ class TestInitializeDatabase:
             
             result = initialize_database()
             assert result is False
+        
+        # Test OAuth cleanup failure (should not prevent successful initialization)
+        with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
+             patch('tarsy.database.init_db.create_database_tables') as mock_create_tables, \
+             patch('tarsy.database.init_db.cleanup_expired_oauth_states') as mock_cleanup_oauth, \
+             patch('tarsy.database.init_db.logger') as mock_logger:
+            
+            mock_settings = Mock()
+            mock_settings.history_enabled = True
+            mock_settings.history_database_url = "sqlite:///history.db"
+            mock_settings.history_retention_days = 90
+            mock_get_settings.return_value = mock_settings
+            mock_create_tables.return_value = True
+            mock_cleanup_oauth.side_effect = Exception("OAuth cleanup failed")
+            
+            result = initialize_database()
+            assert result is True  # Should still succeed despite OAuth cleanup failure
+            mock_create_tables.assert_called_once_with("sqlite:///history.db")
+            mock_cleanup_oauth.assert_called_once_with("sqlite:///history.db")
+            # Should log warning about OAuth cleanup failure
+            mock_logger.warning.assert_called_once()
 
 
 @pytest.mark.unit  
@@ -310,6 +420,8 @@ class TestDatabaseInitIntegration:
              patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
              patch('tarsy.database.init_db.SQLModel') as mock_sqlmodel, \
              patch('tarsy.database.init_db.Session') as mock_session, \
+             patch('tarsy.database.init_db.now_us') as mock_now_us, \
+             patch('tarsy.database.init_db.delete') as mock_delete, \
              patch('tarsy.database.init_db.logger') as mock_logger:
             
             # Mock settings
@@ -328,17 +440,32 @@ class TestDatabaseInitIntegration:
             mock_metadata = Mock()
             mock_sqlmodel.metadata = mock_metadata
             
+            # Mock OAuth cleanup (second call for cleanup)
+            mock_cleanup_result = Mock()
+            mock_cleanup_result.rowcount = 1
+            # First call for connectivity test, second for OAuth cleanup
+            mock_session_instance.exec.side_effect = [
+                Mock(first=Mock(return_value=1)),  # Connectivity test
+                mock_cleanup_result  # OAuth cleanup
+            ]
+            
+            # Mock OAuth cleanup delete query
+            mock_now_us.return_value = 2000000
+            mock_delete_query = Mock()
+            mock_delete.return_value.where.return_value = mock_delete_query
+            
             result = initialize_database()
             
             assert result is True
             # Verify the complete flow was executed
             mock_get_settings.assert_called_once()
-            mock_create_engine.assert_called_once_with("sqlite:///test_history.db", echo=False)
+            # create_engine is called twice: once for table creation, once for cleanup
+            assert mock_create_engine.call_count == 2
             mock_metadata.create_all.assert_called_once_with(mock_engine)
-            mock_session.assert_called_once_with(mock_engine)
             
-            # Verify success logging
+            # Verify success and OAuth cleanup logging
             call_args_list = mock_logger.info.call_args_list
             assert any(call.args and "initialization completed successfully" in call.args[0] for call in call_args_list)
             assert any(call.args and "Database: test_history.db" in call.args[0] for call in call_args_list)
             assert any(call.args and "Retention policy: 60 days" in call.args[0] for call in call_args_list)
+            assert any(call.args and "OAuth state cleanup completed" in call.args[0] for call in call_args_list)
