@@ -80,6 +80,14 @@ class Settings(BaseSettings):
     # OAuth State Management
     oauth_state_ttl_minutes: int = Field(default=10, description="OAuth state TTL in minutes")
     
+    # Frontend URL for OAuth redirects (production mode)
+    frontend_url: str = Field(default="http://localhost:5173", description="Production frontend URL for OAuth redirects")
+    
+    # Cookie configuration
+    # Setting cookie_domain=".example.com" makes cookies available to all subdomains of example.com. 
+    # Only use this when you control all subdomains and need cross-subdomain authentication.
+    cookie_domain: Optional[str] = Field(default=None, description="Cookie domain for cross-subdomain sharing (e.g., '.example.com' for app.example.com + api.example.com)")
+    
     # Development Mode
     dev_mode: bool = Field(default=False, description="Enable development mode (bypasses GitHub OAuth)")
     backend_url: str = Field(default="http://localhost:8000", description="Backend URL for OAuth callbacks")

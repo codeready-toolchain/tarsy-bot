@@ -5,16 +5,19 @@ Universal JWT authentication dependencies for HTTP and WebSocket endpoints.
 Provides token verification with consistent error handling across all protected endpoints.
 """
 
+import logging
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, HTTPException, Query, status
+from fastapi import Depends, HTTPException, Query, Request, status, WebSocket
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from tarsy.config.settings import get_settings
 from tarsy.services.jwt_service import JWTService
 
-# HTTPBearer security scheme for HTTP endpoints
-security = HTTPBearer()
+# HTTPBearer security scheme for HTTP endpoints (optional for hybrid auth)
+security = HTTPBearer(auto_error=False)
+
+logger = logging.getLogger(__name__)
 
 
 def get_jwt_service() -> JWTService:
@@ -23,51 +26,75 @@ def get_jwt_service() -> JWTService:
 
 
 async def verify_jwt_token(
-    token: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    token: Optional[HTTPAuthorizationCredentials] = Depends(security),
     jwt_service: JWTService = Depends(get_jwt_service)
 ) -> Dict[str, Any]:
     """
-    Verify JWT token for HTTP endpoints.
+    Hybrid JWT verification supporting both Bearer tokens and cookies.
     
-    This dependency should be used for all protected HTTP endpoints.
-    It extracts the JWT token from the Authorization header and validates it.
+    Priority Order:
+    1. Authorization: Bearer <token> (for service accounts and API clients)
+    2. access_token cookie (for browser-based user authentication)
+    
+    This enables the same endpoints to serve both:
+    - Service accounts using Bearer tokens
+    - Web users using secure HTTP-only cookies
     
     Args:
-        token: HTTP Authorization credentials from Bearer token
+        request: FastAPI request object to access cookies
+        token: Optional HTTP Authorization credentials from Bearer token
         jwt_service: JWT service for token validation
         
     Returns:
         Dict containing JWT payload with user/service account information
         
     Raises:
-        HTTPException: 401 if token is invalid, missing, or expired
+        HTTPException: 401 if no valid authentication found
     """
-    try:
-        payload = jwt_service.verify_jwt_token(token.credentials)
-        return payload
-    except HTTPException:
-        # Re-raise JWT service HTTP exceptions (already have proper status codes)
-        raise
-    except Exception as e:
-        # Catch any other unexpected errors
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token validation failed"
-        )
+    # Try Bearer token first (service accounts, API clients)
+    if token:
+        try:
+            payload = jwt_service.verify_jwt_token(token.credentials)
+            return payload
+        except HTTPException:
+            # If Bearer token is present but invalid, don't fall back to cookie
+            raise
+    
+    # Fall back to cookie authentication (web users)
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        try:
+            payload = jwt_service.verify_jwt_token(cookie_token)
+            return payload
+        except HTTPException as e:
+            # Clear invalid cookie and require re-authentication
+            logger.warning(f"Invalid authentication cookie, clearing: {e.detail}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication cookie expired or invalid"
+            )
+    
+    # No valid authentication found
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required: provide Bearer token or valid session cookie"
+    )
 
 
 async def verify_jwt_token_websocket(
-    token: str = Query(..., description="JWT token for authentication"),
+    _websocket: WebSocket,
+    token: str = Query(..., description="JWT token for WebSocket authentication"),
     jwt_service: JWTService = Depends(get_jwt_service)
 ) -> Optional[Dict[str, Any]]:
     """
-    Verify JWT token for WebSocket endpoints.
+    WebSocket JWT verification.
     
-    This dependency should be used for WebSocket endpoints that require authentication.
-    Returns None if token is invalid instead of raising an exception, allowing
-    the WebSocket handler to close the connection gracefully.
+    Note: WebSockets cannot use HTTP-only cookies, so they must use token query parameter.
+    Frontend should extract token from cookie using server-side helper endpoint if needed.
     
     Args:
+        websocket: WebSocket connection instance
         token: JWT token from query parameter
         jwt_service: JWT service for token validation
         
@@ -77,6 +104,6 @@ async def verify_jwt_token_websocket(
     try:
         payload = jwt_service.verify_jwt_token(token)
         return payload
-    except Exception:
-        # Return None for any validation error - WebSocket handler should close connection
+    except Exception as e:
+        logger.warning(f"WebSocket authentication failed: {e}")
         return None

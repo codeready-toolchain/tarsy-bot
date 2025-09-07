@@ -24,10 +24,47 @@ Transform the current unprotected API into a unified JWT-based authentication sy
 
 | Endpoint Category           | Authentication Method | Token Type           | Use Case                      |
 |-----------------------------|-----------------------|----------------------|-------------------------------|
-| `POST /alerts`              | Bearer JWT Token      | User or Service      | All alert submissions         |
-| `GET /api/v1/history/*`     | Bearer JWT Token      | User or Service      | All API access                |
+| `POST /alerts`              | Hybrid Auth*          | User or Service      | All alert submissions         |
+| `GET /api/v1/history/*`     | Hybrid Auth*          | User or Service      | All API access                |
 | `WebSocket /ws/dashboard/*` | Bearer JWT Token      | User or Service      | All WebSocket connections     |
 | `GET /health`               | None                  | N/A                  | System monitoring             |
+
+***Hybrid Authentication**: Supports both HTTP-only cookies (web users) and Bearer tokens (service accounts) on the same endpoints*
+
+### Hybrid Authentication Design
+
+**Phase 7** introduces a hybrid authentication approach with state-encoded redirects that supports both secure cookie-based authentication for web users and Bearer token authentication for service accounts:
+
+**Web Users (OAuth Flow with State-Encoded Redirects)**:
+1. Frontend specifies desired redirect URL via query parameter: `/auth/login?redirect_url=http://localhost:3001/`
+2. Backend validates redirect URL (dev mode: any localhost port; production: only configured frontend URL)
+3. Redirect URL is cryptographically encoded into OAuth state parameter for security
+4. After successful authentication, user is redirected to their original requesting frontend
+5. Authentication stored as secure HTTP-only cookies (immune to XSS attacks)
+6. CSRF protection with `SameSite=Strict` cookies and OAuth state validation
+
+**Service Accounts (Bearer Tokens)**:
+1. Long-lived JWT tokens generated via Makefile for automation
+2. Standard `Authorization: Bearer <token>` header authentication  
+3. Same endpoints accessible via both authentication methods
+4. Backward compatibility with existing service account integrations
+
+**State Parameter Security**:
+- Redirect URL encoded in OAuth state parameter using JSON + Base64
+- State contains both CSRF token and redirect URL
+- Only CSRF token stored in database (not full redirect URL)
+- Prevents tampering with redirect destinations
+- Built-in validation against allowed origins
+
+**Benefits**:
+- **Multi-Frontend Support**: Both dashboard and alert-dev-ui can initiate auth flows
+- **Secure Redirects**: State-encoded redirects prevent open redirect vulnerabilities
+- **Environment-Aware**: Dev mode allows any localhost port, production restricts to configured URL
+- **Security First**: HTTP-only cookies prevent XSS token theft
+- **Dual Support**: Single endpoints serve both users and service accounts
+- **Industry Standard**: Follows OAuth 2.0 best practices for SPAs and state parameters
+- **Developer Friendly**: Service accounts work unchanged
+- **Simplified Frontend**: No JWT token management in browser JavaScript
 
 ---
 
@@ -940,9 +977,359 @@ cd backend && make dev-prod-auth
 - Add `generate-jwt-keys` target for production RSA key generation
 - Add `generate-service-token` target for service account JWT creation
 
-### **Phase 7: Front-end**
+### **Phase 7: Hybrid Authentication Implementation**
 
-**7.1 Front-end Implementation**
+**7.1 OAuth Login Enhancement**
+
+*File: `backend/tarsy/controllers/auth.py` (modify existing login endpoint)*
+```python
+from fastapi import Query
+import json
+import base64
+import re
+
+@router.get("/login")
+async def github_login(
+    session: AsyncSession = Depends(get_session),
+    redirect_url: str = Query(default="http://localhost:5173/", description="URL to redirect after successful authentication")
+):
+    """Start GitHub OAuth flow with state-encoded redirect support."""
+    settings = get_settings()
+    
+    # Validate redirect URL based on environment
+    if settings.dev_mode:
+        # Dev mode: allow any localhost port
+        if not re.match(r'^https?://localhost:\d+/?.*', redirect_url):
+            raise HTTPException(400, "Dev mode: redirect URL must be localhost")
+    else:
+        # Production: only allow configured frontend URL
+        if not redirect_url.startswith(settings.frontend_url):
+            raise HTTPException(400, f"Production mode: redirect URL must start with {settings.frontend_url}")
+    
+    if settings.dev_mode:
+        # Dev mode: Skip GitHub, redirect directly to callback with encoded state
+        logger.warning("🚨 DEV MODE: Using insecure development authentication! 🚨")
+        
+        # Encode redirect URL into state for dev callback
+        state_data = {
+            "csrf_token": "dev_fake_state",
+            "redirect_url": redirect_url
+        }
+        encoded_state = base64.urlsafe_b64encode(
+            json.dumps(state_data).encode()
+        ).decode()
+        
+        return RedirectResponse(f"/auth/callback?code=dev_fake_code&state={encoded_state}")
+    
+    # Production OAuth flow
+    # Generate and store OAuth state for CSRF protection
+    csrf_token = str(uuid4())
+    expires_at = now_us() + 600_000_000  # 10 minutes in microseconds
+    
+    # Encode redirect URL into OAuth state parameter
+    state_data = {
+        "csrf_token": csrf_token,
+        "redirect_url": redirect_url
+    }
+    encoded_state = base64.urlsafe_b64encode(
+        json.dumps(state_data).encode()
+    ).decode()
+    
+    # Store only CSRF token in database (not full state data)
+    oauth_repo = OAuthStateRepository(session)
+    await oauth_repo.create_state(csrf_token, expires_at)
+    
+    # Build GitHub OAuth URL with encoded state
+    github_url = (
+        f"https://github.com/login/oauth/authorize"
+        f"?client_id={settings.github_client_id}"
+        f"&redirect_uri={settings.backend_url}/auth/callback"
+        f"&scope=user:email,read:org"
+        f"&state={encoded_state}"
+    )
+    
+    return RedirectResponse(github_url)
+```
+
+**7.2 OAuth Callback Enhancement**
+
+*File: `backend/tarsy/controllers/auth.py` (modify existing callback endpoint)*
+```python
+from fastapi import Response
+import json
+import base64
+
+@router.get("/callback") 
+async def github_callback(
+    code: str, 
+    state: str,
+    response: Response,
+    session: AsyncSession = Depends(get_session)
+):
+    """Handle GitHub OAuth callback with state-encoded redirect support."""
+    settings = get_settings()
+    
+    # Decode state parameter to extract redirect URL and CSRF token
+    try:
+        state_data = json.loads(
+            base64.urlsafe_b64decode(state.encode()).decode()
+        )
+        csrf_token = state_data["csrf_token"]
+        redirect_url = state_data["redirect_url"]
+    except Exception:
+        raise HTTPException(400, "Invalid OAuth state parameter")
+    
+    if settings.dev_mode:
+        # Dev mode: Use hardcoded user data, generate real JWT
+        logger.warning("🚨 DEV MODE: Generating JWT with fake user data! 🚨")
+        
+        jwt_service = JWTService(settings)
+        jwt_token = jwt_service.create_user_jwt_token(
+            user_id=str(DEV_USER["id"]),
+            username=DEV_USER["login"],
+            email=DEV_USER["email"], 
+            avatar_url=DEV_USER["avatar_url"]
+        )
+        
+        # Set HTTP-only cookie for browser-based authentication
+        _set_auth_cookie(response, jwt_token)
+        
+        # Redirect to original requesting frontend
+        return RedirectResponse(redirect_url)
+    
+    # Production OAuth flow
+    try:
+        oauth_repo = OAuthStateRepository(session)
+        
+        # Validate OAuth CSRF token exists in database
+        oauth_state = await oauth_repo.get_state(csrf_token)
+        if not oauth_state or oauth_state.expires_at < now_us():
+            raise HTTPException(400, "Invalid or expired OAuth state")
+        
+        # Clean up used state
+        await oauth_repo.delete_state(csrf_token)
+        
+        # Exchange code for access token using authlib
+        from authlib.integrations.httpx_client import AsyncOAuth2Client
+        
+        oauth_client = AsyncOAuth2Client(
+            client_id=settings.github_client_id,
+            client_secret=settings.github_client_secret
+        )
+        
+        token_response = await oauth_client.fetch_token(
+            token_url="https://github.com/login/oauth/access_token",
+            code=code,
+            redirect_uri=f"{settings.backend_url}/auth/callback"
+        )
+        
+        github_access_token = token_response['access_token']
+        
+        # Get user data and validate membership
+        from github import Github
+        g = Github(github_access_token)
+        github_user = g.get_user()
+        
+        # Validate org/team membership (raises HTTPException if invalid)
+        await validate_github_membership(github_access_token, github_user.login)
+        
+        # Generate JWT token with user claims
+        jwt_service = JWTService(settings)
+        jwt_token = jwt_service.create_user_jwt_token(
+            user_id=str(github_user.id),
+            username=github_user.login,
+            email=github_user.email or "",
+            avatar_url=github_user.avatar_url or ""
+        )
+        
+        # Set HTTP-only cookie for browser-based authentication
+        _set_auth_cookie(response, jwt_token)
+        
+        # Redirect to original requesting frontend
+        return RedirectResponse(redirect_url)
+        
+    except HTTPException:
+        raise  # Re-raise validation errors (403, etc.)
+    except Exception as e:
+        logger.error(f"OAuth callback failed: {e}")
+        raise HTTPException(500, "OAuth callback failed")
+
+def _set_auth_cookie(response: Response, jwt_token: str) -> None:
+    """Set secure HTTP-only authentication cookie."""
+    settings = get_settings()
+    
+    response.set_cookie(
+        key="access_token",
+        value=jwt_token,
+        httponly=True,  # Prevents JavaScript access (XSS protection)
+        secure=not settings.dev_mode,  # HTTPS only in production
+        samesite="strict",  # CSRF protection
+        max_age=7 * 24 * 60 * 60,  # 7 days (matches JWT expiry)
+        path="/",  # Available to all paths
+        domain=settings.cookie_domain  # Cross-subdomain support if configured
+    )
+```
+
+**7.3 Logout Endpoint**
+
+*File: `backend/tarsy/controllers/auth.py` (add new endpoint)*
+```python
+@router.post("/logout")
+async def logout(response: Response):
+    """Clear authentication cookie and log out user."""
+    settings = get_settings()
+    response.delete_cookie(
+        key="access_token",
+        path="/",
+        samesite="strict",
+        domain=settings.cookie_domain  # Must match domain used when setting cookie
+    )
+    return {"message": "Successfully logged out"}
+```
+
+**7.4 Hybrid Authentication Dependencies**
+
+*File: `backend/tarsy/auth/dependencies.py` (modify existing dependencies)*
+```python
+from fastapi import Request
+
+async def verify_jwt_token(
+    request: Request,
+    token: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> Dict[str, Any]:
+    """
+    Hybrid JWT verification supporting both Bearer tokens and cookies.
+    
+    Priority Order:
+    1. Authorization: Bearer <token> (for service accounts and API clients)
+    2. access_token cookie (for browser-based user authentication)
+    
+    This enables the same endpoints to serve both:
+    - Service accounts using Bearer tokens
+    - Web users using secure HTTP-only cookies
+    """
+    jwt_service = JWTService(get_settings())
+    
+    # Try Bearer token first (service accounts, API clients)
+    if token:
+        try:
+            payload = jwt_service.verify_jwt_token(token.credentials)
+            return payload
+        except HTTPException:
+            # If Bearer token is present but invalid, don't fall back to cookie
+            raise
+    
+    # Fall back to cookie authentication (web users)
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        try:
+            payload = jwt_service.verify_jwt_token(cookie_token)
+            return payload
+        except HTTPException as e:
+            # Clear invalid cookie and require re-authentication
+            logger.warning(f"Invalid authentication cookie, clearing: {e.detail}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication cookie expired or invalid"
+            )
+    
+    # No valid authentication found
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required: provide Bearer token or valid session cookie"
+    )
+
+async def verify_jwt_token_websocket(
+    websocket: WebSocket,
+    token: str = Query(..., description="JWT token for WebSocket authentication")
+) -> Optional[Dict[str, Any]]:
+    """
+    WebSocket JWT verification.
+    
+    Note: WebSockets cannot use HTTP-only cookies, so they must use token query parameter.
+    Frontend should extract token from cookie using server-side helper endpoint if needed.
+    """
+    try:
+        jwt_service = JWTService(get_settings())
+        return jwt_service.verify_jwt_token(token)
+    except Exception as e:
+        logger.warning(f"WebSocket authentication failed: {e}")
+        return None
+```
+
+**7.5 Settings Configuration**
+
+*File: `backend/tarsy/config/settings.py` (add new fields)*
+```python
+class Settings(BaseSettings):
+    # ... existing settings ...
+    
+    # Frontend URL for OAuth redirects (production mode)
+    frontend_url: str = Field(default="http://localhost:5173", description="Production frontend URL for OAuth redirects")
+    
+    # Cookie configuration
+    # Setting cookie_domain=".example.com" makes cookies available to all subdomains of example.com. 
+    # Only use this when you control all subdomains and need cross-subdomain authentication.
+    cookie_domain: Optional[str] = Field(default=None, description="Cookie domain for cross-subdomain sharing (e.g., '.example.com' for app.example.com + api.example.com)")
+```
+
+**7.6 WebSocket Token Helper Endpoint** (Optional)
+
+*File: `backend/tarsy/controllers/auth.py` (add helper endpoint)*
+```python
+@router.get("/token")
+async def get_token_from_cookie(request: Request):
+    """
+    Extract JWT token from HTTP-only cookie for WebSocket connections.
+    
+    Frontend can call this endpoint to get the token for WebSocket authentication
+    since WebSockets cannot access HTTP-only cookies directly.
+    """
+    cookie_token = request.cookies.get("access_token")
+    if not cookie_token:
+        raise HTTPException(401, "No authentication cookie found")
+    
+    # Verify token is valid before returning
+    jwt_service = JWTService(get_settings())
+    try:
+        payload = jwt_service.verify_jwt_token(cookie_token)
+        return {"access_token": cookie_token}
+    except HTTPException:
+        raise HTTPException(401, "Authentication cookie is invalid or expired")
+```
+
+**7.7 Frontend Usage Examples**
+
+**Dashboard Login Integration** (`dashboard/src/components/auth/LoginPage.tsx`):
+```javascript
+const handleLogin = () => {
+    // Redirect to login with dashboard-specific URL
+    const redirectUrl = "http://localhost:5173/dashboard";
+    window.location.href = `/auth/login?redirect_url=${encodeURIComponent(redirectUrl)}`;
+};
+```
+
+**Alert Dev UI Login Integration** (`alert-dev-ui/src/components/auth/LoginPage.tsx`):
+```javascript
+const handleLogin = () => {
+    // Redirect to login with alert UI-specific URL
+    const redirectUrl = "http://localhost:3001/alerts";
+    window.location.href = `/auth/login?redirect_url=${encodeURIComponent(redirectUrl)}`;
+};
+```
+
+**Production Example**:
+```javascript
+const handleLogin = () => {
+    // Production frontend with custom redirect path
+    const redirectUrl = "https://yourdomain.com/app/dashboard";
+    window.location.href = `/auth/login?redirect_url=${encodeURIComponent(redirectUrl)}`;
+};
+```
+
+### **Phase 8: Front-end**
+
+**8.1 Front-end Implementation**
 
 ### **Validation Steps**
 - After Phase 1: Dependencies installed and dev keys generated
@@ -951,6 +1338,8 @@ cd backend && make dev-prod-auth
 - After Phase 4: Auth endpoints return JWT tokens in both prod and dev mode
 - After Phase 5: Protected endpoints require valid JWT tokens
 - After Phase 6: Development workflow with `make dev` works and tests pass
+- After Phase 7: State-encoded redirects support multi-frontend authentication with secure cookie storage
+- After Phase 8: Frontend authentication integrated with cookie-based flow
 
 ---
 
@@ -967,6 +1356,17 @@ cd backend && make dev-prod-auth
 - Use secure random state generation (`uuid4`)
 - Implement state expiration and cleanup (10 minutes TTL)
 - Validate GitHub organization/team membership at token issuance
+
+### Hybrid Authentication Security (Phase 7)
+- **State-Encoded Redirects**: Redirect URLs cryptographically protected in OAuth state parameter
+- **Environment-Based URL Validation**: Dev mode allows localhost:*, production allows only configured frontend URL
+- **CSRF Protection**: OAuth state validation prevents cross-site request forgery
+- **No Open Redirects**: Strict URL validation prevents malicious redirect attacks
+- **HTTP-only Cookies**: Prevent XSS-based token theft for web users
+- **SameSite=Strict Cookies**: Provide additional CSRF protection
+- **Bearer Token Fallback**: Maintains service account compatibility
+- **Cookie Security Flags**: `Secure`, `HttpOnly` enforced in production
+- **Token Validation Precedence**: Bearer > Cookie prevents authentication confusion
 
 ### General Security
 - Implement proper error handling (don't leak authentication details)

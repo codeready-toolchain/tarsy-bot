@@ -125,7 +125,7 @@ dev: check-venv ## Start development server with auto-reload
 	@echo "$(GREEN)Starting development server...$(NC)"
 	@echo "$(YELLOW)🔓 DEV MODE: Authentication bypassed - DEV USER will be used$(NC)"
 	@echo "$(YELLOW)⚠️  Using INSECURE committed dev keys!$(NC)"
-	DEV_MODE=true JWT_PRIVATE_KEY_PATH=keys/INSECURE-dev-jwt-private-key.pem JWT_PUBLIC_KEY_PATH=keys/INSECURE-dev-jwt-public-key.pem .venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-level info
+	DEV_MODE=true JWT_PRIVATE_KEY_PATH=../keys/INSECURE-dev-jwt-private-key.pem JWT_PUBLIC_KEY_PATH=../keys/INSECURE-dev-jwt-public-key.pem .venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-level info
 
 .PHONY: dev-prod-auth  
 dev-prod-auth: check-venv ## Start development server with production authentication
