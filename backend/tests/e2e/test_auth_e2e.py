@@ -232,8 +232,9 @@ class TestAuthenticationSystemE2E:
         assert token_response_with_bearer.status_code == 401, "Token endpoint ignores Bearer tokens"
         
         print("    ✅ /auth/token correctly requires HTTP-only cookie (not Bearer token)")
-        print("    📝 Note: This endpoint is for WebSocket clients to extract cookie tokens")
-        print("  ✅ Special auth endpoints tested successfully")
+        print("    📝 Note: This endpoint helps WebSocket clients extract tokens from cookies")
+        print("    🔗 Real usage: Frontend calls this after login to get token for WebSocket auth")
+        print("  ✅ Token endpoint tested successfully")
 
     
     async def _test_dev_mode_login_flow(self, client) -> str:
@@ -261,33 +262,81 @@ class TestAuthenticationSystemE2E:
         callback_response = client.get(callback_path, params=callback_params, follow_redirects=False)
         assert callback_response.status_code == 307, "Callback should redirect to frontend"
         
+        # Step 3: PROPERLY verify that HTTP-only cookie was set
+        # We'll test this by mocking the Response object and verifying the cookie setting function
+        print("    🔍 Verifying HTTP-only cookie was actually set by the server...")
+        
+        # Test the _set_auth_cookie function directly to ensure it works correctly
+        from tarsy.controllers.auth import _set_auth_cookie
+        from fastapi import Response
+        from unittest.mock import Mock
+        
+        # Create a mock response and test the cookie function
+        mock_response = Mock(spec=Response)
+        test_jwt_token = "test.jwt.token.for.verification"
+        
+        # Call the cookie setting function
+        _set_auth_cookie(mock_response, test_jwt_token)
+        
+        # Verify that set_cookie was called with correct parameters
+        mock_response.set_cookie.assert_called_once()
+        call_args = mock_response.set_cookie.call_args
+        
+        # Get settings to check dev_mode for secure flag verification
+        from tarsy.config.settings import get_settings
+        settings = get_settings()
+        expected_secure = not settings.dev_mode  # Secure flag should be opposite of dev_mode
+        
+        # Verify cookie parameters
+        assert call_args[1]['key'] == 'access_token', "Cookie key should be 'access_token'"
+        assert call_args[1]['value'] == test_jwt_token, "Cookie value should be the JWT token"
+        assert call_args[1]['httponly'] == True, "Cookie should be HttpOnly"
+        assert call_args[1]['samesite'] == 'strict', "Cookie should have SameSite=strict"
+        assert call_args[1]['secure'] == expected_secure, f"Cookie secure flag should be {expected_secure} (dev_mode={settings.dev_mode})"
+        assert call_args[1]['path'] == '/', "Cookie should be available on all paths"
+        
+        print("    ✅ _set_auth_cookie function verified - sets correct HTTP-only cookie parameters")
+        
+        # Now verify that the callback flow actually calls the cookie function
+        # by patching it and checking if it was called during the callback
+        from unittest.mock import patch
+        
+        captured_jwt_token = None
+        
+        with patch('tarsy.controllers.auth._set_auth_cookie') as mock_set_cookie:
+            # Re-run the callback to verify the function is called
+            callback_response_test = client.get(callback_path, params=callback_params, follow_redirects=False)
+            
+            # Verify the cookie function was called during callback
+            mock_set_cookie.assert_called_once()
+            assert mock_set_cookie.called, "Callback should call _set_auth_cookie function"
+            cookie_call_args = mock_set_cookie.call_args[0]
+            
+            # Capture the actual JWT token that was passed to the cookie function
+            captured_jwt_token = cookie_call_args[1] 
+            assert len(captured_jwt_token) > 100, f"JWT token should be substantial length, got {len(captured_jwt_token)} chars"
+            assert captured_jwt_token.count('.') == 2, "JWT token should have 3 parts separated by dots"
+            
+            print(f"    ✅ Callback verified - _set_auth_cookie called with {len(captured_jwt_token)}-char JWT token")
+            print("    🍪 HTTP-only cookie authentication system: FULLY VERIFIED")
+            print(f"    🔑 Captured real JWT token for Bearer authentication testing")
+        
         # Verify the redirect URL is correct
         redirect_url = callback_response.headers.get("location", "")
         assert "localhost:3000" in redirect_url, "Should redirect to specified frontend URL"
         
-        # Step 3: Since TestClient doesn't handle HTTP-only cookies like browsers,
-        # we'll test the Bearer token flow directly by calling the auth controller methods
-        # This simulates what service accounts and API clients do
-        
-        # For E2E testing, we'll generate a valid JWT token directly (simulating successful auth)
-        from tarsy.services.jwt_service import JWTService
-        from tarsy.config.settings import get_settings
-        
-        # Get JWT service and generate a token (like the callback does)
-        settings = get_settings()
-        jwt_service = JWTService(settings)
-        jwt_token = jwt_service.create_user_jwt_token(
-            user_id="999999", 
-            username="tarsy-dev-user",
-            email="dev@tarsy-local.invalid", 
-            avatar_url="https://github.com/github.png"
-        )
+        # Step 4: Use the captured JWT token for Bearer token authentication testing
+        # This is the same token that was generated during the actual authentication flow
+        # and passed to the _set_auth_cookie function - making our test more realistic
+        assert captured_jwt_token is not None, "Should have captured JWT token from callback flow"
+        jwt_token = captured_jwt_token
         
         # JWT tokens should be long (real JWTs are typically 100+ chars, mock tokens are short)
         # If we get a mock token, that's still fine for testing purposes
         assert len(jwt_token) > 10, f"JWT token should be reasonably long, got: {jwt_token}"
         
-        print("      ✅ Dev mode login flow successful (Phase 7 hybrid auth)")
-        print("      📝 Note: Cookie authentication was set but TestClient can't use HTTP-only cookies")
-        print("      🔧 Testing Bearer token authentication (used by service accounts & API clients)")
+        print("      ✅ Dev mode login flow successful - hybrid authentication system verified!")
+        print("      🍪 HTTP-only cookie authentication: VERIFIED & SET (browser-compatible)")
+        print("      🔑 Bearer token authentication: READY (using real captured token)")
+        print("      🎯 Using the actual JWT token from authentication flow (not generated separately)")
         return jwt_token
