@@ -500,7 +500,10 @@ Labels:       environment=production"""
                 # MCP calls handled by mock session that provides kubectl tools
 
                 print("⏳ Step 1: Submitting alert...")
-                E2ETestUtils.submit_alert(e2e_test_client, e2e_realistic_kubernetes_alert)
+                # Get the E2E-patched settings from this test context
+                from tarsy.config.settings import get_settings
+                e2e_settings = get_settings()
+                E2ETestUtils.submit_alert_with_settings(e2e_test_client, e2e_realistic_kubernetes_alert, e2e_settings)
 
                 print("⏳ Step 2: Waiting for processing...")
                 session_id, final_status = await E2ETestUtils.wait_for_session_completion(

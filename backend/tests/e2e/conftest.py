@@ -206,10 +206,7 @@ current-context: test-context
     current_dir = Path(__file__).parent
     test_agents_path = current_dir / "test_agents.yaml"
     
-    # Create absolute paths to JWT dev keys (project root relative)
-    project_root = Path(__file__).parent.parent.parent  # Go up from backend/tests/e2e/ to project root
-    jwt_private_key_path = project_root / "keys" / "INSECURE-dev-jwt-private-key.pem"
-    jwt_public_key_path = project_root / "keys" / "INSECURE-dev-jwt-public-key.pem"
+    # JWT dev keys are configured correctly in default settings
     
     # Set isolated environment variables
     e2e_isolation.set_isolated_env("HISTORY_DATABASE_URL", test_db_url)
@@ -218,11 +215,6 @@ current-context: test-context
     e2e_isolation.set_isolated_env("OPENAI_API_KEY", "test-key-123")
     e2e_isolation.set_isolated_env("LLM_PROVIDER", "openai-default")
     e2e_isolation.set_isolated_env("KUBECONFIG", kubeconfig_path)
-    # Configure JWT for E2E tests to use real dev keys
-    e2e_isolation.set_isolated_env("JWT_PRIVATE_KEY_PATH", str(jwt_private_key_path))
-    e2e_isolation.set_isolated_env("JWT_PUBLIC_KEY_PATH", str(jwt_public_key_path))
-    e2e_isolation.set_isolated_env("JWT_ALGORITHM", "RS256")
-    e2e_isolation.set_isolated_env("JWT_ISSUER", "tarsy-e2e-test")
     
     # Create real Settings object with isolated environment
     settings = Settings()
@@ -233,14 +225,34 @@ current-context: test-context
     settings.agent_config_path = str(test_agents_path)
     settings.openai_api_key = "test-key-123"
     settings.llm_provider = "openai-default"
-    # Configure JWT settings for real authentication
-    settings.jwt_private_key_path = str(jwt_private_key_path)
-    settings.jwt_public_key_path = str(jwt_public_key_path)
-    settings.jwt_algorithm = "RS256"
-    settings.jwt_issuer = "tarsy-e2e-test"
+    # JWT settings use correct dev keys from defaults
+    settings.jwt_issuer = "tarsy-e2e-test"  # Customize issuer for E2E tests
+    # Enable dev mode for e2e tests to avoid external GitHub OAuth
+    settings.dev_mode = True
     
     # Patch global settings
     e2e_isolation.patch_settings(settings)
+    
+    # CRITICAL: Restore real JWT service for E2E tests 
+    # The global conftest.py mocks the JWT service module for unit tests.
+    # E2E tests need real JWT validation with dev keys.
+    # The default settings point to correct INSECURE dev keys, we just need to
+    # override the global JWT service mock with the real one.
+    import sys
+    import importlib.util
+    from unittest.mock import patch
+    
+    # Import the REAL JWT service directly from source file, bypassing the mocked module
+    jwt_service_path = Path(__file__).parent.parent.parent / "tarsy" / "services" / "jwt_service.py"
+    spec = importlib.util.spec_from_file_location("real_jwt_service", jwt_service_path)
+    real_jwt_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(real_jwt_module)
+    RealJWTService = real_jwt_module.JWTService
+    
+    # Replace the global mock with the real JWT service
+    real_jwt_module_patcher = patch.object(sys.modules['tarsy.services.jwt_service'], 'JWTService', RealJWTService)
+    real_jwt_module_patcher.start()
+    e2e_isolation.patches.append(real_jwt_module_patcher)
     
     return settings
 

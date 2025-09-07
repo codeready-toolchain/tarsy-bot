@@ -70,9 +70,9 @@ class Settings(BaseSettings):
     github_oauth_token_url: str = Field(default="https://github.com/login/oauth/access_token", description="GitHub OAuth token exchange endpoint")
     github_base_url: str = Field(default="https://github.com", description="GitHub base URL (for GitHub Enterprise)")
     
-    # JWT Configuration
-    jwt_private_key_path: str = Field(default="keys/jwt-private-key.pem")
-    jwt_public_key_path: str = Field(default="keys/jwt-public-key.pem")
+    # JWT Configuration  
+    jwt_private_key_path: str = Field(default="../keys/INSECURE-dev-jwt-private-key.pem")
+    jwt_public_key_path: str = Field(default="../keys/INSECURE-dev-jwt-public-key.pem")
     jwt_algorithm: str = Field(default="RS256")
     jwt_issuer: str = Field(default="tarsy")
     user_token_expiry_hours: int = Field(default=168, description="User token expiry in hours (default: 1 week)")

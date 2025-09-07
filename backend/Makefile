@@ -57,10 +57,12 @@ test-integration: check-test-deps ## Run integration tests only
 .PHONY: test-e2e
 test-e2e: check-test-deps ## Run end-to-end tests only (one by one for isolation)
 	@echo "$(GREEN)Running end-to-end tests sequentially...$(NC)"
-	@echo "$(YELLOW)Running first E2E test...$(NC)"
+	@echo "$(YELLOW)Running API E2E test...$(NC)"
 	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/test_api_e2e.py -v --tb=short -m e2e' || exit 1
-	@echo "$(YELLOW)Running second E2E test...$(NC)"
+	@echo "$(YELLOW)Running stage failure detection E2E test...$(NC)"
 	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/test_stage_failure_detection_e2e.py -v --tb=short -m e2e' || exit 1
+	@echo "$(YELLOW)Running authentication system E2E test...$(NC)"
+	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/test_auth_e2e.py -v --tb=short -m e2e' || exit 1
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
 
 .PHONY: test-coverage

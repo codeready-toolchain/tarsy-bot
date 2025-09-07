@@ -16,11 +16,12 @@ from sqlmodel import Session, SQLModel, create_engine
 # Set testing environment variable as early as possible
 os.environ["TESTING"] = "true"
 
-# Mock JWT service before any imports that might trigger JWT service creation
+# JWT service mocking for unit/integration tests only (NOT E2E tests)
+# E2E tests need real JWT validation with dev keys
 import sys
 from unittest.mock import Mock
 
-# Create a mock JWT service module to replace the real one
+# Create a mock JWT service module to replace the real one (unit tests only)
 mock_jwt_service = Mock()
 mock_jwt_service.verify_jwt_token = Mock(return_value={
     "sub": "test_user_123",
@@ -34,7 +35,7 @@ mock_jwt_service.verify_jwt_token = Mock(return_value={
 mock_jwt_service.create_user_jwt_token = Mock(return_value="mock_jwt_token")
 mock_jwt_service.create_service_account_jwt_token = Mock(return_value="mock_service_jwt_token")
 
-# Mock the JWTService class to return our mock instance
+# Mock the JWTService class to return our mock instance (unit tests only)
 class MockJWTService:
     def __init__(self, *args, **kwargs):
         pass
@@ -56,7 +57,8 @@ class MockJWTService:
     def create_service_account_jwt_token(self, *args, **kwargs):
         return "mock_service_jwt_token"
 
-# Replace the JWT service at the module level
+# Apply JWT mocking at module level for unit/integration tests
+# E2E tests will override this in their conftest.py to use real JWT validation
 sys.modules['tarsy.services.jwt_service'] = Mock()
 sys.modules['tarsy.services.jwt_service'].JWTService = MockJWTService
 

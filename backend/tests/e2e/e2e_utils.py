@@ -8,7 +8,7 @@ to reduce duplication and improve maintainability.
 import asyncio
 import time
 from typing import Tuple, Dict, Any, List, Callable
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import httpx
 from mcp.types import Tool
@@ -18,30 +18,32 @@ class E2ETestUtils:
     """Shared utility methods for E2E tests."""
     
     @staticmethod
-    def get_e2e_jwt_token() -> str:
+    def get_e2e_jwt_token(settings=None) -> str:
         """
         Generate a real JWT token for E2E tests using the dev keys.
+        
+        Args:
+            settings: Optional settings object to use. If None, will try get_settings()
         
         Returns:
             Valid JWT token string for E2E authentication
         """
         try:
             from tarsy.services.jwt_service import JWTService
-            from tarsy.config.settings import Settings
+            from tarsy.config.settings import get_settings
             
-            # Use E2E-specific settings that should already be configured
-            settings = Settings()
+            # Use provided settings or fall back to get_settings() 
+            if settings is None:
+                settings = get_settings()
             jwt_service = JWTService(settings)
             
-            # Create a test user token
-            test_user_data = {
-                "sub": "e2e_test_user_123",
-                "username": "e2e-test-user", 
-                "email": "e2e-test@example.com",
-                "avatar_url": "https://github.com/e2e-test.png"
-            }
-            
-            return jwt_service.create_user_jwt_token(test_user_data)
+            # Create a test user token with correct method signature
+            return jwt_service.create_user_jwt_token(
+                user_id="e2e_test_user_123",
+                username="e2e-test-user", 
+                email="e2e-test@example.com",
+                avatar_url="https://github.com/e2e-test.png"
+            )
             
         except Exception as e:
             # Fallback for cases where JWT service is not available
@@ -50,14 +52,17 @@ class E2ETestUtils:
             return "mock_e2e_jwt_token"
     
     @staticmethod
-    def get_auth_headers() -> Dict[str, str]:
+    def get_auth_headers(settings=None) -> Dict[str, str]:
         """
         Get authentication headers for E2E API requests.
         
+        Args:
+            settings: Optional settings object to use for JWT generation
+            
         Returns:
             Dictionary with Authorization header containing Bearer token
         """
-        token = E2ETestUtils.get_e2e_jwt_token()
+        token = E2ETestUtils.get_e2e_jwt_token(settings)
         return {"Authorization": f"Bearer {token}"}
 
     @staticmethod
@@ -313,6 +318,38 @@ class E2ETestUtils:
         """
         print("🚀 Submitting alert")
         headers = E2ETestUtils.get_auth_headers()
+        response = e2e_test_client.post("/alerts", json=alert_data, headers=headers)
+        
+        if response.status_code != 200:
+            print(f"❌ Alert submission failed with status {response.status_code}")
+            print(f"Response: {response.text}")
+        assert response.status_code == 200
+
+        response_data = response.json()
+        assert response_data["status"] == "queued"
+        alert_id = response_data["alert_id"]
+        print(f"✅ Alert submitted: {alert_id}")
+
+        return alert_id
+
+    @staticmethod
+    def submit_alert_with_settings(e2e_test_client, alert_data: Dict[str, Any], settings) -> str:
+        """
+        Submit an alert using provided E2E settings and return the alert ID.
+
+        Args:
+            e2e_test_client: Test client for making API calls
+            alert_data: Alert data to submit
+            settings: E2E settings object with correct JWT configuration
+
+        Returns:
+            alert_id: The ID of the submitted alert
+
+        Raises:
+            AssertionError: If submission fails or response is invalid
+        """
+        print("🚀 Submitting alert with E2E settings")
+        headers = E2ETestUtils.get_auth_headers(settings)
         response = e2e_test_client.post("/alerts", json=alert_data, headers=headers)
         
         if response.status_code != 200:
