@@ -36,8 +36,10 @@ ENDPOINT_MATRIX = [
         "data": {"message": "Test endpoint matrix"}
     }},
     
+    # Session-specific protected endpoints (using fake session ID - should return 404 with valid auth)
+    {"protected": True, "method": "GET", "endpoint": "/api/v1/history/sessions/fake-session-id-12345", "payload": None, "expected_success_code": 404},
+    
     # Note: /auth/login and /auth/callback are tested separately due to redirect behavior
-    # Note: session-specific endpoints tested separately due to dynamic session_id
 ]
 
 
@@ -111,11 +113,11 @@ class TestAuthenticationSystemE2E:
         
         # Authentication scenarios to test
         auth_scenarios = [
-            {"name": "no_auth", "headers": None, "description": "No auth header"},
+            {"name": "no_auth", "headers": None, "description": "No auth header", "expected_unauthorized_code": 403},
             {"name": "valid_auth", "headers": {"Authorization": f"Bearer {valid_jwt_token}"}, "description": "Valid JWT token"},
-            {"name": "empty_token", "headers": {"Authorization": "Bearer "}, "description": "Empty token"},
-            {"name": "broken_token", "headers": {"Authorization": "Bearer broken-token"}, "description": "Random string token"},
-            {"name": "different_key", "headers": {"Authorization": f"Bearer {different_key_token}"}, "description": "JWT with different signing key"},
+            {"name": "empty_token", "headers": {"Authorization": "Bearer "}, "description": "Empty token", "expected_unauthorized_code": 403},
+            {"name": "broken_token", "headers": {"Authorization": "Bearer broken-token"}, "description": "Random string token", "expected_unauthorized_code": 401},
+            {"name": "different_key", "headers": {"Authorization": f"Bearer {different_key_token}"}, "description": "JWT with different signing key", "expected_unauthorized_code": 401},
         ]
         
         # Test all endpoints with all auth scenarios
@@ -124,13 +126,18 @@ class TestAuthenticationSystemE2E:
             method = endpoint_config["method"]
             payload = endpoint_config["payload"]
             is_protected = endpoint_config["protected"]
+            expected_success_code = endpoint_config.get("expected_success_code", 200)
             
-            print(f"\n  🔍 Testing {method} {endpoint} ({'protected' if is_protected else 'unprotected'}):")
+            endpoint_type = "protected" if is_protected else "unprotected"
+            if expected_success_code != 200:
+                endpoint_type += f" → {expected_success_code}"
+            print(f"\n  🔍 Testing {method} {endpoint} ({endpoint_type}):")
             
             for auth_scenario in auth_scenarios:
                 scenario_name = auth_scenario["name"]
                 headers = auth_scenario["headers"]
                 description = auth_scenario["description"]
+                expected_unauthorized_code = auth_scenario.get("expected_unauthorized_code")
                 
                 print(f"    - {description}...")
                 
@@ -146,14 +153,14 @@ class TestAuthenticationSystemE2E:
                 if is_protected:
                     # Protected endpoints
                     if scenario_name == "valid_auth":
-                        # Should succeed with valid auth
-                        assert response.status_code == 200, \
-                            f"Protected endpoint {endpoint} should work with valid auth, got {response.status_code}: {response.text}"
-                        print(f"      ✅ Success (200) - as expected")
+                        # Should return the expected success code with valid auth
+                        assert response.status_code == expected_success_code, \
+                            f"Protected endpoint {endpoint} should return {expected_success_code} with valid auth, got {response.status_code}: {response.text}"
+                        print(f"      ✅ Response ({expected_success_code}) - as expected")
                     else:
-                        # Should fail with any invalid/missing auth
-                        assert response.status_code in [401, 403], \
-                            f"Protected endpoint {endpoint} should reject {description}, got {response.status_code}"
+                        # Should fail with specific unauthorized code
+                        assert response.status_code == expected_unauthorized_code, \
+                            f"Protected endpoint {endpoint} should reject {description} with {expected_unauthorized_code}, got {response.status_code}"
                         print(f"      ✅ Rejected ({response.status_code}) - as expected")
                 else:
                     # Unprotected endpoints - should always succeed regardless of auth
