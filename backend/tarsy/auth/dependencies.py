@@ -60,6 +60,12 @@ async def verify_jwt_token(
         except HTTPException:
             # If Bearer token is present but invalid, don't fall back to cookie
             raise
+        except Exception:
+            # Convert other exceptions to HTTPException
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token validation failed"
+            )
     
     # Fall back to cookie authentication (web users)
     cookie_token = request.cookies.get("access_token")
