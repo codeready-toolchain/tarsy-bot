@@ -51,16 +51,10 @@ npm run dev            # Development server
 npm run build          # Production build
 npm run test:run       # Run tests
 npm run lint           # ESLint
-
-# Alert Dev UI (testing interface)
-cd alert-dev-ui
-PORT=3001 npm start    # Development server
-npm run build          # Production build
 ```
 
 ### Service URLs (Development)
 - **TARSy Dashboard**: http://localhost:5173 (operational monitoring)
-- **Alert Dev UI**: http://localhost:3001 (alert testing)
 - **Backend API**: http://localhost:8000 (docs at /docs)
 
 ## Architecture Overview
@@ -84,7 +78,6 @@ The system uses a sophisticated three-layer architecture:
 
 #### Frontend Applications
 - **Dashboard** (`dashboard/`): React TypeScript SRE dashboard with real-time monitoring
-- **Alert Dev UI** (`alert-dev-ui/`): React TypeScript development interface for testing
 
 ### Configuration-Based Agents (EP-0006)
 The system supports defining new agents through YAML configuration without code changes:

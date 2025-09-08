@@ -57,7 +57,7 @@ Transform the current unprotected API into a unified JWT-based authentication sy
 - Built-in validation against allowed origins
 
 **Benefits**:
-- **Multi-Frontend Support**: Both dashboard and alert-dev-ui can initiate auth flows
+- **Single Frontend Support**: Dashboard handles all authentication flows
 - **Secure Redirects**: State-encoded redirects prevent open redirect vulnerabilities
 - **Environment-Aware**: Dev mode allows any localhost port, production restricts to configured URL
 - **Security First**: HTTP-only cookies prevent XSS token theft
@@ -671,11 +671,7 @@ async def submit_alert(
 - **WebSocket Service**: Include JWT token as query parameter in existing WebSocket URL
 - **Error Handling**: Extend existing axios response interceptor to handle 401 redirects to login
 
-**Alert Dev UI Updates** (`alert-dev-ui/`):
-- **API Service**: Add JWT token to existing axios interceptors
-- **Error Handling**: Extend existing error handler to redirect to login on 401
-
-*Both apps already use proper patterns (axios interceptors, environment variables) that align perfectly with JWT token integration.*
+*Dashboard already uses proper patterns (axios interceptors, environment variables) that align perfectly with JWT token integration.*
 
 **JWT Token Claims Example:**
 JWT tokens are self-contained and include all necessary user information. Frontend applications should decode the JWT token directly using a library like `jwt-decode`:
@@ -849,7 +845,7 @@ dev-prod-auth: check-venv ## Start development server with production authentica
 
 **Development Workflow**:
 ```bash
-# Start all services (backend + frontends) - backend uses dev auth mode automatically
+# Start all services (backend + dashboard frontend) - backend uses dev auth mode automatically
 make dev
 
 # Or start just backend in dev mode  
@@ -862,7 +858,7 @@ cd backend && make dev-prod-auth
 **How Root Make Dev Works**:
 - Root `make dev` calls `cd backend && make dev` for backend
 - Since backend `make dev` uses dev auth mode, entire stack runs with dev auth
-- Frontends get dev auth automatically through backend API
+- Dashboard frontend gets dev auth automatically through backend API
 
 **Safety Warnings**: Clear indicators when using insecure dev/test keys
 - Console warnings with 🚨 emojis
@@ -1305,15 +1301,6 @@ async def get_token_from_cookie(request: Request):
 const handleLogin = () => {
     // Redirect to login with dashboard-specific URL
     const redirectUrl = "http://localhost:5173/dashboard";
-    window.location.href = `/auth/login?redirect_url=${encodeURIComponent(redirectUrl)}`;
-};
-```
-
-**Alert Dev UI Login Integration** (`alert-dev-ui/src/components/auth/LoginPage.tsx`):
-```javascript
-const handleLogin = () => {
-    // Redirect to login with alert UI-specific URL
-    const redirectUrl = "http://localhost:3001/alerts";
     window.location.href = `/auth/login?redirect_url=${encodeURIComponent(redirectUrl)}`;
 };
 ```
