@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, AppBar, Toolbar, Typography, Box, Tooltip, CircularProgress, IconButton } from '@mui/material';
-import { FiberManualRecord, Refresh } from '@mui/icons-material';
+import { Container, AppBar, Toolbar, Typography, Box, Tooltip, CircularProgress, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import { FiberManualRecord, Refresh, Menu as MenuIcon, Send as SendIcon } from '@mui/icons-material';
 import DashboardLayout from './DashboardLayout';
 import FilterPanel from './FilterPanel';
 import { apiClient, handleAPIError } from '../services/api';
@@ -56,6 +56,7 @@ function DashboardView() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(() => 
     loadAdvancedFiltersVisibility()
   );
+  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
 
   // Throttling state for API calls
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -450,11 +451,38 @@ function DashboardView() {
     webSocketService.retry();
   };
 
+  // Handle navigation menu
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setMenuAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchorEl(null);
+  };
+
+  const handleManualAlertSubmission = () => {
+    // Open manual alert submission in new tab
+    window.open('/submit-alert', '_blank');
+    handleMenuClose();
+  };
+
   return (
     <Container maxWidth={false} sx={{ px: 2 }}>
       {/* AppBar with dashboard title and live indicator */}
       <AppBar position="static" elevation={0} sx={{ borderRadius: 1 }}>
         <Toolbar>
+          {/* Navigation Menu */}
+          <IconButton
+            size="large"
+            edge="start"
+            color="inherit"
+            aria-label="menu"
+            onClick={handleMenuOpen}
+            sx={{ mr: 2 }}
+          >
+            <MenuIcon />
+          </IconButton>
+          
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             Tarsy Dashboard
           </Typography>
@@ -512,6 +540,24 @@ function DashboardView() {
           </Box>
         </Toolbar>
       </AppBar>
+
+      {/* Navigation Menu */}
+      <Menu
+        id="navigation-menu"
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={handleMenuClose}
+        MenuListProps={{
+          'aria-labelledby': 'navigation-menu-button',
+        }}
+      >
+        <MenuItem onClick={handleManualAlertSubmission}>
+          <ListItemIcon>
+            <SendIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Manual Alert Submission</ListItemText>
+        </MenuItem>
+      </Menu>
 
       {/* Phase 6: Advanced Filter Panel */}
       <FilterPanel

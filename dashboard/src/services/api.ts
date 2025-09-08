@@ -193,6 +193,39 @@ class APIClient {
     }
   }
 
+  // EP-0018: Manual Alert Submission methods
+
+  /**
+   * Submit an alert for processing (flexible data structure)
+   */
+  async submitAlert(alertData: Record<string, any>): Promise<{ alert_id: string; status: string; message: string }> {
+    try {
+      const response = await this.client.post('/alerts', alertData);
+      return response.data;
+    } catch (error) {
+      console.error('Error submitting alert:', error);
+      throw error instanceof Error ? error : new Error('Failed to submit alert');
+    }
+  }
+
+  /**
+   * Get supported alert types for the development/testing web interface dropdown.
+   * 
+   * NOTE: These alert types are used only for dropdown selection in this
+   * development/testing interface. In production, external clients (like Alert Manager)
+   * can submit any alert type. The system analyzes all alert types using the provided
+   * runbook and all available MCP tools.
+   */
+  async getAlertTypes(): Promise<string[]> {
+    try {
+      const response = await this.client.get('/alert-types');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting alert types:', error);
+      throw error instanceof Error ? error : new Error('Failed to get alert types');
+    }
+  }
+
   // Phase 4: Search and filtering methods
 
   /**

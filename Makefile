@@ -12,7 +12,6 @@ NC := \033[0m # No Color
 
 # Service ports
 BACKEND_PORT := 8000
-ALERT_UI_PORT := 3001
 DASHBOARD_PORT := 5173
 
 # Prerequisites check
@@ -38,8 +37,6 @@ setup: check-prereqs ## Complete project setup (run this first!)
 	else \
 		echo "$(GREEN)✓ backend/.env already exists - keeping your configuration$(NC)"; \
 	fi
-	@echo "$(BLUE)Setting up alert dev UI...$(NC)"
-	cd alert-dev-ui && npm install
 	@echo "$(BLUE)Setting up dashboard...$(NC)"
 	cd dashboard && npm install
 	@echo "$(GREEN)✅ Setup completed! Run 'make dev' to start all services$(NC)"
@@ -54,15 +51,12 @@ setup: check-prereqs ## Complete project setup (run this first!)
 dev: ## Start all services for development
 	@echo "$(GREEN)🚀 Starting all services...$(NC)"
 	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
-	@echo "$(BLUE)Alert Dev UI will run on: http://localhost:$(ALERT_UI_PORT)$(NC)"
 	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
 	@echo ""
 	@trap 'make stop' INT; \
 	( \
 		echo "$(YELLOW)Starting backend...$(NC)" && \
 		(cd backend && make dev) & \
-		echo "$(YELLOW)Starting alert dev UI...$(NC)" && \
-		(cd alert-dev-ui && PORT=$(ALERT_UI_PORT) npm start) & \
 		echo "$(YELLOW)Starting dashboard...$(NC)" && \
 		(cd dashboard && npm run dev) & \
 		wait \
@@ -74,11 +68,6 @@ backend: ## Start backend only
 	@echo "$(GREEN)Starting backend on http://localhost:$(BACKEND_PORT)$(NC)"
 	$(MAKE) -C backend dev
 
-.PHONY: alert-ui  
-alert-ui: ## Start alert dev UI only
-	@echo "$(GREEN)Starting alert dev UI on http://localhost:$(ALERT_UI_PORT)$(NC)"
-	cd alert-dev-ui && PORT=$(ALERT_UI_PORT) npm start
-
 .PHONY: dashboard
 dashboard: ## Start dashboard only
 	@echo "$(GREEN)Starting dashboard on http://localhost:$(DASHBOARD_PORT)$(NC)"
@@ -89,7 +78,6 @@ dashboard: ## Start dashboard only
 stop: ## Stop all running services
 	@echo "$(YELLOW)Stopping all services...$(NC)"
 	$(MAKE) -C backend stop
-	@lsof -ti:$(ALERT_UI_PORT) | xargs -r kill -9 2>/dev/null || true
 	@lsof -ti:$(DASHBOARD_PORT) | xargs -r kill -9 2>/dev/null || true
 	@echo "$(GREEN)✅ All services stopped$(NC)"
 
@@ -131,7 +119,6 @@ lint-fix: ## Auto-fix linting issues
 .PHONY: build
 build: ## Build for production
 	@echo "$(GREEN)Building all components...$(NC)"
-	cd alert-dev-ui && npm run build
 	cd dashboard && npm run build
 	@echo "$(GREEN)✅ Build completed$(NC)"
 
@@ -140,7 +127,6 @@ build: ## Build for production
 clean: ## Clean build artifacts and caches
 	@echo "$(GREEN)Cleaning all components...$(NC)"
 	$(MAKE) -C backend clean
-	cd alert-dev-ui && rm -rf build/ node_modules/
 	cd dashboard && rm -rf dist/ node_modules/
 	rm -rf node_modules/
 	@echo "$(GREEN)✅ Cleanup completed$(NC)"
@@ -167,7 +153,6 @@ status: ## Show which services are running and project status
 	@echo "$(GREEN)Tarsy-bot Service Status$(NC)"
 	@echo "=========================="
 	@echo "Backend (port $(BACKEND_PORT)): $$(if lsof -i:$(BACKEND_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
-	@echo "Alert UI (port $(ALERT_UI_PORT)): $$(if lsof -i:$(ALERT_UI_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
 	@echo "Dashboard (port $(DASHBOARD_PORT)): $$(if lsof -i:$(DASHBOARD_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
 	@echo ""
 	$(MAKE) -C backend status
@@ -177,8 +162,8 @@ urls: ## Display service URLs and endpoints
 	@echo "$(GREEN)Tarsy-bot Service URLs$(NC)"
 	@echo "======================"
 	@echo "$(BLUE)🌍 Frontend Applications:$(NC)"
-	@echo "  Alert Dev UI:    http://localhost:$(ALERT_UI_PORT)"
 	@echo "  SRE Dashboard:   http://localhost:$(DASHBOARD_PORT)"
+	@echo "    - Manual Alert Submission: http://localhost:$(DASHBOARD_PORT)/submit-alert"
 	@echo ""
 	@echo "$(BLUE)🔧 Backend Services:$(NC)"
 	@echo "  API Server:      http://localhost:$(BACKEND_PORT)"

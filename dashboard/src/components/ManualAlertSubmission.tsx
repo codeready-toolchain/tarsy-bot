@@ -1,66 +1,42 @@
 /**
- * Main App component for the tarsy-bot alert dev UI
+ * Manual Alert Submission page component - EP-0018
+ * Integrated from alert-dev-ui into the main dashboard
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  CssBaseline,
-  ThemeProvider,
-  createTheme,
+  Box,
   Container,
+  Typography,
+  Alert,
+  Button,
+  Fade,
   AppBar,
   Toolbar,
-  Typography,
-  Box,
-  Button,
-  Alert,
-  Fade,
 } from '@mui/material';
 import {
   Psychology as BrainIcon,
   Refresh as RefreshIcon,
+  ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 
-import { AlertResponse } from './types';
-import AlertForm from './components/AlertForm';
-import ProcessingStatus from './components/ProcessingStatus';
-import ApiService from './services/api';
-
-// Create theme
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-  },
-  typography: {
-    h4: {
-      fontWeight: 600,
-    },
-    h5: {
-      fontWeight: 600,
-    },
-    h6: {
-      fontWeight: 600,
-    },
-  },
-});
+import type { AlertSubmissionResponse } from '../types';
+import ManualAlertForm from './ManualAlertForm';
+import AlertProcessingStatus from './AlertProcessingStatus';
+import { apiClient } from '../services/api';
 
 type AppState = 'form' | 'processing' | 'completed';
 
-function App() {
+function ManualAlertSubmission() {
   const [appState, setAppState] = useState<AppState>('form');
-  const [currentAlert, setCurrentAlert] = useState<AlertResponse | null>(null);
+  const [currentAlert, setCurrentAlert] = useState<AlertSubmissionResponse | null>(null);
   const [backendStatus, setBackendStatus] = useState<'unknown' | 'healthy' | 'error'>('unknown');
 
-  // Check backend health on app start
+  // Check backend health on component mount
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        await ApiService.healthCheck();
+        await apiClient.healthCheck();
         setBackendStatus('healthy');
       } catch (error) {
         setBackendStatus('error');
@@ -71,7 +47,7 @@ function App() {
     checkBackendHealth();
   }, []);
 
-  const handleAlertSubmitted = (alertResponse: AlertResponse) => {
+  const handleAlertSubmitted = (alertResponse: AlertSubmissionResponse) => {
     setCurrentAlert(alertResponse);
     setAppState('processing');
   };
@@ -85,13 +61,22 @@ function App() {
     setCurrentAlert(null);
   };
 
+  const handleBack = () => {
+    // Since this opens in a new tab, we can just close the window or go back
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      window.close();
+    }
+  };
+
   const renderContent = () => {
     switch (appState) {
       case 'form':
         return (
           <Fade in timeout={500}>
             <Box>
-              <AlertForm onAlertSubmitted={handleAlertSubmitted} />
+              <ManualAlertForm onAlertSubmitted={handleAlertSubmitted} />
             </Box>
           </Fade>
         );
@@ -101,7 +86,7 @@ function App() {
           <Fade in timeout={500}>
             <Box>
               {currentAlert && (
-                <ProcessingStatus
+                <AlertProcessingStatus
                   alertId={currentAlert.alert_id}
                   onComplete={handleProcessingComplete}
                 />
@@ -116,18 +101,26 @@ function App() {
             <Box>
               {currentAlert && (
                 <>
-                  <ProcessingStatus
+                  <AlertProcessingStatus
                     alertId={currentAlert.alert_id}
                     onComplete={handleProcessingComplete}
                   />
-                  <Box mt={3} display="flex" justifyContent="center">
+                  <Box mt={3} display="flex" justifyContent="center" gap={2}>
                     <Button
                       variant="outlined"
                       startIcon={<RefreshIcon />}
                       onClick={handleNewAlert}
                       size="large"
                     >
-                      Analyze Another Alert
+                      Submit Another Alert
+                    </Button>
+                    <Button
+                      variant="text"
+                      startIcon={<ArrowBackIcon />}
+                      onClick={handleBack}
+                      size="large"
+                    >
+                      Back to Dashboard
                     </Button>
                   </Box>
                 </>
@@ -142,14 +135,12 @@ function App() {
   };
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      
+    <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default' }}>
       <AppBar position="static" elevation={1}>
         <Toolbar>
           <BrainIcon sx={{ mr: 2 }} />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Tarsy-bot
+            Tarsy-bot - Manual Alert Submission
           </Typography>
           <Typography variant="body2" sx={{ opacity: 0.8 }}>
             Automated Incident Response
@@ -157,7 +148,7 @@ function App() {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container maxWidth={false} sx={{ py: 4, px: { xs: 1, sm: 2 } }}>
         {/* Backend status indicator */}
         {backendStatus === 'error' && (
           <Alert severity="error" sx={{ mb: 3 }}>
@@ -191,8 +182,8 @@ function App() {
           </Typography>
         </Box>
       </Container>
-    </ThemeProvider>
+    </Box>
   );
 }
 
-export default App; 
+export default ManualAlertSubmission;

@@ -4,6 +4,7 @@ import { CssBaseline } from '@mui/material';
 import { theme } from './theme';
 import DashboardView from './components/DashboardView';
 import SessionDetailWrapper from './components/SessionDetailWrapper';
+import ManualAlertSubmission from './components/ManualAlertSubmission';
 
 /**
  * Main App component for the Tarsy Dashboard - Enhanced with Conversation View
@@ -22,6 +23,9 @@ function App() {
           {/* Session detail routes - Unified wrapper prevents duplicate API calls */}
           <Route path="/sessions/:sessionId" element={<SessionDetailWrapper />} />
           <Route path="/sessions/:sessionId/technical" element={<SessionDetailWrapper />} />
+          
+          {/* Manual Alert Submission route - EP-0018 */}
+          <Route path="/submit-alert" element={<ManualAlertSubmission />} />
           
           {/* Catch-all route redirects to dashboard */}
           <Route path="*" element={<DashboardView />} />
