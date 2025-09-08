@@ -359,7 +359,6 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
       }
       
       setError(errorMessage);
-      
     } finally {
       setLoading(false);
     }
