@@ -45,15 +45,14 @@ make dev
 ```
 
 **Services will be available at:**
-- 🖥️ **TARSy Dashboard**: http://localhost:5173 (operational monitoring)
-- 🛠️ **Alert Dev UI**: http://localhost:3001 (alert testing)  
+- 🖥️ **TARSy Dashboard**: http://localhost:5173
+  - Manual Alert Submission: http://localhost:5173/submit-alert
 - 🔧 **Backend API**: http://localhost:8000 (docs at /docs)
 
 **Stop all services:** `make stop`
 
 ## Key Features
 
-- **🔗 Sequential Agent Chains**: Multi-stage workflows where specialized agents build upon each other's work for comprehensive analysis
 - **🛠️ Configuration-Based Agents**: Deploy new agents and chain definitions via YAML configuration without code changes
 - **🔧 Flexible Alert Processing**: Accept arbitrary JSON payloads from any monitoring system  
 - **🧠 Chain-Based Agent Architecture**: Specialized agents with domain-specific tools and AI reasoning working in coordinated stages
@@ -100,8 +99,8 @@ sequenceDiagram
 
 ## Usage
 
-1. **Start All Services**: Run `make dev` to start backend, dashboard, and alert UI
-2. **Submit an Alert**: Use the alert dev UI at http://localhost:3001 to simulate an alert
+1. **Start All Services**: Run `make dev` to start backend and dashboard
+2. **Submit an Alert**: You can Use Manual Alert Submission at http://localhost:5173/submit-alert for testing TARSy in dev environment.
 3. **Monitor via Dashboard**: Watch real-time progress updates and historical analysis at http://localhost:5173
 4. **View Results**: See detailed processing timelines and comprehensive LLM analysis
 5. **Stop Services**: Run `make stop` when finished

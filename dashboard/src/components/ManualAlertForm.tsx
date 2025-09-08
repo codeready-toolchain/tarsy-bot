@@ -1,5 +1,6 @@
 /**
- * Flexible Alert submission form component (Development/Testing Interface)
+ * Manual Alert submission form component - EP-0018
+ * Adapted from alert-dev-ui AlertForm.tsx for dashboard integration
  * Supports arbitrary key-value pairs for flexible alert data structures
  */
 
@@ -12,7 +13,7 @@ import {
   TextField,
   MenuItem,
   Button,
-  Grid,
+  Stack,
   Alert as MuiAlert,
   CircularProgress,
   IconButton,
@@ -22,22 +23,11 @@ import {
 import { 
   Send as SendIcon, 
   Add as AddIcon, 
-  Remove as RemoveIcon,
   Close as CloseIcon 
 } from '@mui/icons-material';
 
-import { AlertResponse } from '../types';
-import ApiService from '../services/api';
-
-interface KeyValuePair {
-  id: string;
-  key: string;
-  value: string;
-}
-
-interface AlertFormProps {
-  onAlertSubmitted: (alertResponse: AlertResponse) => void;
-}
+import type { KeyValuePair, ManualAlertFormProps } from '../types';
+import { apiClient } from '../services/api';
 
 /**
  * Generate a unique ID for key-value pairs
@@ -58,11 +48,10 @@ const fieldPresets = [
   { key: 'service', value: 'web-service', description: 'Service name' },
 ];
 
-const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
+const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) => {
   // Required fields
   const [alertType, setAlertType] = useState('');
   const [runbook, setRunbook] = useState('https://github.com/alexeykazakov/runbooks/blob/master/namespace-terminating-v2.md');
-  // const [runbook, setRunbook] = useState('https://github.com/alexeykazakov/runbooks/blob/master/pod-crashlooping.md');
   
   // Dynamic key-value pairs
   const [keyValuePairs, setKeyValuePairs] = useState<KeyValuePair[]>([
@@ -70,9 +59,7 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
     { id: generateId(), key: 'environment', value: 'production' },
     { id: generateId(), key: 'cluster', value: 'https://api.crc.testing:6443' },
     { id: generateId(), key: 'namespace', value: 'superman-dev' },
-    // { id: generateId(), key: 'namespace', value: 'batman-dev' },
     { id: generateId(), key: 'message', value: 'Namespace is stuck in terminating state' }
-    // { id: generateId(), key: 'message', value: 'Pod is crashlooping' }
   ]);
 
   const [availableAlertTypes, setAvailableAlertTypes] = useState<string[]>([]);
@@ -84,17 +71,22 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
   useEffect(() => {
     const loadAlertTypes = async () => {
       try {
-        const alertTypes = await ApiService.getAlertTypes();
-        setAvailableAlertTypes(alertTypes);
-        // Set default alertType to 'kubernetes' if available, otherwise first available type
-        if (alertTypes.includes('kubernetes')) {
-          setAlertType('kubernetes');
-        } else if (alertTypes.length > 0) {
-          setAlertType(alertTypes[0]);
+        const alertTypes = await apiClient.getAlertTypes();
+        if (Array.isArray(alertTypes)) {
+          setAvailableAlertTypes(alertTypes);
+          // Set default alertType to 'kubernetes' if available, otherwise first available type
+          if (alertTypes.includes('kubernetes')) {
+            setAlertType('kubernetes');
+          } else if (alertTypes.length > 0) {
+            setAlertType(alertTypes[0]);
+          }
+        } else {
+          console.error('Alert types response is not an array:', alertTypes);
+          setError('Invalid response from alert types API');
         }
       } catch (error) {
         console.error('Failed to load alert types:', error);
-        setError('Failed to load alert types from backend');
+        setError('Failed to load alert types from backend. Please check if the backend is running.');
       }
     };
 
@@ -209,28 +201,28 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
         
         usedKeys.add(trimmedKey);
         
-                 // Validate value (keep as string for now, will process later)
-         let valueForStorage = pair.value;
-         
-         if (typeof pair.value === 'string' && pair.value.trim().length > 0) {
-           const trimmedValue = pair.value.trim();
-           
-           // Validate JSON if it looks like JSON
-           if ((trimmedValue.startsWith('{') && trimmedValue.endsWith('}')) ||
-               (trimmedValue.startsWith('[') && trimmedValue.endsWith(']'))) {
-             try {
-               JSON.parse(trimmedValue); // Just validate, don't store parsed value yet
-               valueForStorage = trimmedValue;
-             } catch (jsonError) {
-               validationErrors.push(`Row ${index + 1}: Invalid JSON format for key "${trimmedKey}"`);
-               continue;
-             }
-           } else {
-             valueForStorage = trimmedValue;
-           }
-         }
-         
-         processedPairs.push({ key: trimmedKey, value: valueForStorage });
+        // Validate value (keep as string for now, will process later)
+        let valueForStorage = pair.value;
+        
+        if (typeof pair.value === 'string' && pair.value.trim().length > 0) {
+          const trimmedValue = pair.value.trim();
+          
+          // Validate JSON if it looks like JSON
+          if ((trimmedValue.startsWith('{') && trimmedValue.endsWith('}')) ||
+              (trimmedValue.startsWith('[') && trimmedValue.endsWith(']'))) {
+            try {
+              JSON.parse(trimmedValue); // Just validate, don't store parsed value yet
+              valueForStorage = trimmedValue;
+            } catch (jsonError) {
+              validationErrors.push(`Row ${index + 1}: Invalid JSON format for key "${trimmedKey}"`);
+              continue;
+            }
+          } else {
+            valueForStorage = trimmedValue;
+          }
+        }
+        
+        processedPairs.push({ key: trimmedKey, value: valueForStorage });
       }
 
       // Show validation errors
@@ -246,46 +238,48 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
         data: {}
       };
 
-             // Add processed key-value pairs to data with type conversion
-       processedPairs.forEach(pair => {
-         let processedValue = pair.value;
-         
-         if (typeof pair.value === 'string' && pair.value.trim().length > 0) {
-           const trimmedValue = pair.value.trim();
-           
-           // Try to parse as JSON if it looks like JSON
-           if ((trimmedValue.startsWith('{') && trimmedValue.endsWith('}')) ||
-               (trimmedValue.startsWith('[') && trimmedValue.endsWith(']'))) {
-             try {
-               processedValue = JSON.parse(trimmedValue);
-             } catch {
-               // Keep as string if JSON parsing fails (shouldn't happen due to validation)
-               processedValue = trimmedValue;
-             }
-           }
-           // Try to parse as number
-           else if (/^-?\d+(\.\d+)?$/.test(trimmedValue)) {
-             processedValue = Number(trimmedValue);
-           }
-           // Try to parse as boolean
-           else if (trimmedValue.toLowerCase() === 'true' || trimmedValue.toLowerCase() === 'false') {
-             processedValue = trimmedValue.toLowerCase() === 'true';
-           }
-           // Keep as string
-           else {
-             processedValue = trimmedValue;
-           }
-         }
-         
-         alertData.data[pair.key] = processedValue;
-       });
+      // Add processed key-value pairs to data with type conversion
+      processedPairs.forEach(pair => {
+        let processedValue = pair.value;
+        
+        if (typeof pair.value === 'string' && pair.value.trim().length > 0) {
+          const trimmedValue = pair.value.trim();
+          
+          // Try to parse as JSON if it looks like JSON
+          if ((trimmedValue.startsWith('{') && trimmedValue.endsWith('}')) ||
+              (trimmedValue.startsWith('[') && trimmedValue.endsWith(']'))) {
+            try {
+              processedValue = JSON.parse(trimmedValue);
+            } catch {
+              // Keep as string if JSON parsing fails (shouldn't happen due to validation)
+              processedValue = trimmedValue;
+            }
+          }
+          // Try to parse as number
+          else if (/^-?\d+(\.\d+)?$/.test(trimmedValue)) {
+            processedValue = Number(trimmedValue);
+          }
+          // Try to parse as boolean
+          else if (trimmedValue.toLowerCase() === 'true' || trimmedValue.toLowerCase() === 'false') {
+            processedValue = trimmedValue.toLowerCase() === 'true';
+          }
+          // Keep as string
+          else {
+            processedValue = trimmedValue;
+          }
+        }
+        
+        alertData.data[pair.key] = processedValue;
+      });
 
       // Input sanitization and size checks
       const alertDataJson = JSON.stringify(alertData);
-      const MAX_PAYLOAD_SIZE = 5 * 1024 * 1024; // 5MB limit
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(alertDataJson).length;
+      const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB
       
-      if (alertDataJson.length > MAX_PAYLOAD_SIZE) {
-        setError(`Alert data is too large (${(alertDataJson.length / 1024 / 1024).toFixed(2)}MB). Maximum size is 5MB.`);
+      if (bytes > MAX_PAYLOAD_BYTES) {
+        setError(`Alert data is too large (${(bytes / 1024 / 1024).toFixed(2)}MB). Maximum size is 5MB.`);
         return;
       }
 
@@ -293,23 +287,17 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
       console.log('Submitting alert:', { 
         alert_type: alertData.alert_type, 
         data_keys: Object.keys(alertData.data),
-        size_bytes: alertDataJson.length 
+        size_bytes: bytes 
       });
 
-      // Submit flexible alert with timeout
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 30000) // 30 second timeout
-      );
-      
-      const submitPromise = ApiService.submitAlert(alertData);
-      
-      const response = await Promise.race([submitPromise, timeoutPromise]) as any;
+      // Submit alert using dashboard API client
+      const response = await apiClient.submitAlert(alertData);
       
       setSuccess(`Alert submitted successfully! 
         ID: ${response.alert_id}
         Status: ${response.status}
         Message: ${response.message || 'Processing started'}
-        Data size: ${(alertDataJson.length / 1024).toFixed(1)}KB`);
+        Data size: ${(bytes / 1024).toFixed(1)}KB`);
       
       onAlertSubmitted(response);
 
@@ -371,26 +359,16 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
       }
       
       setError(errorMessage);
-      
-      // Log detailed error information for debugging
-      console.error('Detailed error information:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        url: error.config?.url,
-        method: error.config?.method
-      });
-      
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Card sx={{ maxWidth: 900, margin: '0 auto' }}>
+    <Card sx={{ width: '100%' }}>
       <CardContent>
         <Typography variant="h5" component="h2" gutterBottom>
-          Submit Flexible Alert for Analysis
+          Submit Manual Alert for Analysis
         </Typography>
         
         <Typography variant="body2" color="text.secondary" paragraph>
@@ -400,26 +378,30 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
 
         {error && (
           <MuiAlert severity="error" sx={{ mb: 2 }}>
-            {error}
+            <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap' }}>
+              {error}
+            </Typography>
           </MuiAlert>
         )}
 
         {success && (
           <MuiAlert severity="success" sx={{ mb: 2 }}>
-            {success}
+            <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap' }}>
+              {success}
+            </Typography>
           </MuiAlert>
         )}
 
         <Box component="form" onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-          <Grid container spacing={3}>
+          <Stack spacing={3}>
             {/* Required Fields */}
-            <Grid item xs={12}>
+            <Box>
               <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
                 Required Fields
               </Typography>
-            </Grid>
+            </Box>
 
-            <Grid item xs={12} md={6}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
               <TextField
                 select
                 fullWidth
@@ -440,9 +422,7 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
                   ))
                 )}
               </TextField>
-            </Grid>
 
-            <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
                 label="Runbook URL"
@@ -452,14 +432,12 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
                 required
                 helperText="URL to the processing runbook"
               />
-            </Grid>
+            </Stack>
 
-            <Grid item xs={12}>
-              <Divider sx={{ my: 2 }} />
-            </Grid>
+            <Divider sx={{ my: 2 }} />
 
             {/* Dynamic Fields */}
-            <Grid item xs={12}>
+            <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                 <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 600 }}>
                   Additional Alert Data
@@ -493,12 +471,12 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
                   ))}
                 </Box>
               </Box>
-            </Grid>
+            </Box>
 
             {/* Key-Value Pairs */}
-            {keyValuePairs.map((pair, index) => (
-              <Grid item xs={12} key={pair.id}>
-                <Box sx={{ 
+            <Stack spacing={2}>
+              {keyValuePairs.map((pair) => (
+                <Box key={pair.id} sx={{ 
                   display: 'flex', 
                   alignItems: 'flex-start', 
                   gap: 2,
@@ -535,15 +513,13 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
                     <CloseIcon />
                   </IconButton>
                 </Box>
-              </Grid>
-            ))}
+              ))}
+            </Stack>
 
-            <Grid item xs={12}>
-              <Divider sx={{ my: 2 }} />
-            </Grid>
+            <Divider sx={{ my: 2 }} />
 
             {/* Submit Button */}
-            <Grid item xs={12}>
+            <Box>
               <Button
                 type="submit"
                 variant="contained"
@@ -552,14 +528,14 @@ const AlertForm: React.FC<AlertFormProps> = ({ onAlertSubmitted }) => {
                 disabled={loading}
                 fullWidth
               >
-                {loading ? 'Submitting Alert...' : 'Submit Flexible Alert'}
+                {loading ? 'Submitting Alert...' : 'Submit Alert'}
               </Button>
-            </Grid>
-          </Grid>
+            </Box>
+          </Stack>
         </Box>
       </CardContent>
     </Card>
   );
 };
 
-export default AlertForm;
+export default ManualAlertForm;

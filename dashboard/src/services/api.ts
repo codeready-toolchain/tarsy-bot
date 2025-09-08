@@ -24,17 +24,9 @@ class APIClient {
       (error: AxiosError) => {
         console.error('API Error:', error);
         
-        if (error.response) {
-          // Server responded with error status
-          const message = (error.response.data as any)?.error || `Server error: ${error.response.status}`;
-          return Promise.reject(new Error(message));
-        } else if (error.request) {
-          // Network error
-          return Promise.reject(new Error('Network error: Unable to connect to server'));
-        } else {
-          // Other error
-          return Promise.reject(new Error('Request failed'));
-        }
+        // Preserve the original AxiosError to allow UI components to access
+        // error.response, error.response.status, error.response.data, etc.
+        return Promise.reject(error);
       }
     );
   }
@@ -55,7 +47,7 @@ class APIClient {
       }
     } catch (error) {
       console.error('Failed to fetch sessions:', error);
-      throw error instanceof Error ? error : new Error('Failed to fetch sessions');
+      throw error;
     }
   }
 
@@ -85,7 +77,7 @@ class APIClient {
       }
     } catch (error) {
       console.error('Failed to fetch active sessions:', error);
-      throw error instanceof Error ? error : new Error('Failed to fetch active sessions');
+      throw error;
     }
   }
 
@@ -125,7 +117,7 @@ class APIClient {
       }
     } catch (error) {
       console.error('Failed to fetch historical sessions:', error);
-      throw error instanceof Error ? error : new Error('Failed to fetch historical sessions');
+      throw error;
     }
   }
 
@@ -158,7 +150,7 @@ class APIClient {
       if (error instanceof Error && error.message.includes('404')) {
         throw new Error('Session not found');
       }
-      throw error instanceof Error ? error : new Error('Failed to fetch session detail');
+      throw error;
     }
   }
 
@@ -176,7 +168,7 @@ class APIClient {
       if (error instanceof Error && error.message.includes('404')) {
         throw new Error('Session not found');
       }
-      throw error instanceof Error ? error : new Error('Failed to fetch session summary');
+      throw error;
     }
   }
 
@@ -189,7 +181,54 @@ class APIClient {
       return response.data;
     } catch (error) {
       console.error('Health check failed:', error);
-      throw error instanceof Error ? error : new Error('Health check failed');
+      throw error;
+    }
+  }
+
+  // EP-0018: Manual Alert Submission methods
+
+  /**
+   * Submit an alert for processing (flexible data structure)
+   */
+  async submitAlert(alertData: Record<string, any>): Promise<{ alert_id: string; status: string; message: string }> {
+    try {
+      const response = await this.client.post('/alerts', alertData);
+      return response.data;
+    } catch (error) {
+      console.error('Error submitting alert:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get supported alert types for the development/testing web interface dropdown.
+   * 
+   * NOTE: These alert types are used only for dropdown selection in this
+   * development/testing interface. In production, external clients (like Alert Manager)
+   * can submit any alert type. The system analyzes all alert types using the provided
+   * runbook and all available MCP tools.
+   */
+  async getAlertTypes(): Promise<string[]> {
+    try {
+      const response = await this.client.get('/alert-types');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting alert types:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get session ID for an alert ID - needed for WebSocket subscription
+   * The client needs the session ID (generated later) to subscribe to alert updates
+   */
+  async getSessionIdForAlert(alertId: string): Promise<{ alert_id: string; session_id: string | null }> {
+    try {
+      const response = await this.client.get(`/session-id/${alertId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting session ID for alert:', error);
+      throw error;
     }
   }
 
@@ -227,7 +266,7 @@ class APIClient {
       }
     } catch (error) {
       console.error('Failed to search sessions:', error);
-      throw error instanceof Error ? error : new Error('Failed to search sessions');
+      throw error;
     }
   }
 
@@ -252,7 +291,7 @@ class APIClient {
       }
     } catch (error) {
       console.error('Failed to fetch filter options:', error);
-      throw error instanceof Error ? error : new Error('Failed to fetch filter options');
+      throw error;
     }
   }
 
@@ -327,7 +366,7 @@ class APIClient {
       }
     } catch (error) {
       console.error('Failed to fetch filtered sessions:', error);
-      throw error instanceof Error ? error : new Error('Failed to fetch filtered sessions');
+      throw error;
     }
   }
 }
@@ -337,8 +376,67 @@ export const apiClient = new APIClient();
 
 // Helper function for error handling in components
 export const handleAPIError = (error: unknown): string => {
+  // Handle AxiosError specifically to extract meaningful error messages
+  if (error && typeof error === 'object' && 'isAxiosError' in error) {
+    const axiosError = error as AxiosError;
+    
+    if (axiosError.response?.data) {
+      const data = axiosError.response.data as any;
+      // Try to extract a meaningful error message from response data
+      if (data.detail) {
+        if (typeof data.detail === 'string') {
+          return data.detail;
+        }
+        if (data.detail.message) {
+          return data.detail.message;
+        }
+        if (data.detail.error) {
+          return data.detail.error;
+        }
+      }
+      if (data.error) {
+        return data.error;
+      }
+      if (data.message) {
+        return data.message;
+      }
+    }
+    
+    // Fallback to status-based messages
+    if (axiosError.response?.status) {
+      const status = axiosError.response.status;
+      if (status === 400) {
+        return 'Bad Request: Invalid data format';
+      } else if (status === 401) {
+        return 'Unauthorized: Please check your authentication';
+      } else if (status === 403) {
+        return 'Forbidden: You do not have permission to perform this action';
+      } else if (status === 404) {
+        return 'Not Found: The requested resource was not found';
+      } else if (status === 429) {
+        return 'Too many requests. Please wait a moment and try again';
+      } else if (status === 500) {
+        return 'Server error occurred. Please try again later';
+      } else if (status === 503) {
+        return 'Service temporarily unavailable. Please try again later';
+      } else {
+        return `Request failed with status ${status}`;
+      }
+    }
+    
+    // Network error
+    if (axiosError.request && !axiosError.response) {
+      return 'Network error. Please check your connection and ensure the backend is running';
+    }
+    
+    // Other axios errors
+    return axiosError.message || 'Request failed';
+  }
+  
+  // Handle regular Error objects
   if (error instanceof Error) {
     return error.message;
   }
+  
   return 'An unexpected error occurred';
 }; 

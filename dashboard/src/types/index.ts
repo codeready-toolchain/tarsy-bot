@@ -543,3 +543,41 @@ export interface StageCardProps {
   expanded?: boolean;
   onToggle?: () => void;
 }
+
+// EP-0018: Manual Alert Submission types
+export interface AlertSubmissionResponse {
+  alert_id: string;
+  status: string;
+  message: string;
+}
+
+export interface ProcessingStatus {
+  alert_id: string;
+  status: 'queued' | 'processing' | 'completed' | 'error';
+  progress: number;
+  current_step: string;
+  result?: string;
+  error?: string;
+  timestamp: string;
+}
+
+export interface AlertSubmissionWebSocketMessage {
+  type: 'status_update' | 'error' | 'connected';
+  data?: ProcessingStatus;
+  message?: string;
+}
+
+export interface KeyValuePair {
+  id: string;
+  key: string;
+  value: string;
+}
+
+export interface ManualAlertFormProps {
+  onAlertSubmitted: (alertResponse: AlertSubmissionResponse) => void;
+}
+
+export interface ProcessingStatusProps {
+  alertId: string;
+  onComplete?: () => void;
+}

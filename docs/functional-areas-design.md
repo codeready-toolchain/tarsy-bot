@@ -1021,15 +1021,14 @@ GET /api/v1/history/sessions?start_date_us=1734476400000000&end_date_us=17345627
 **Purpose**: User interface and live system monitoring  
 **Key Responsibility**: Providing real-time visibility and historical analysis
 
-TARSy provides dual UI interfaces: a comprehensive SRE dashboard for operational monitoring and a development interface for alert testing. Real-time updates flow through a sophisticated WebSocket system integrated with the hook architecture.
+TARSy provides a comprehensive SRE dashboard for operational monitoring with optinal integrated manual alert submission capability. Real-time updates flow through a sophisticated WebSocket system integrated with the hook architecture.
 
 #### UI Architecture
 
 ```mermaid
 graph TB
-    subgraph "Frontend Applications"
+    subgraph "Frontend Application"
         Dashboard[SRE Dashboard<br/>localhost:5173]
-        DevUI[Alert Dev UI<br/>localhost:3001]
     end
     
     subgraph "Backend Services"
@@ -1044,7 +1043,7 @@ graph TB
     end
     
     Dashboard --> WS
-    DevUI --> API
+    Dashboard --> API
     
     WS --> Broadcaster
     Broadcaster --> History
@@ -1059,10 +1058,11 @@ graph TB
 - **Timeline visualization** for processing stages
 - **Active session monitoring** with live progress
 
-**📍 Alert Dev UI**: `alert-dev-ui/src/` (React TypeScript)  
-- **Alert submission interface** for testing
-- **Payload validation and preview**
-- **Processing status monitoring**
+**📍 Manual Alert Submission**: Integrated into dashboard at `/submit-alert` (React TypeScript)  
+- **Alert submission interface** for manual alert testing
+- **Payload validation and preview** with flexible key-value pairs
+- **Processing status monitoring** with real-time WebSocket updates
+- **Unified user experience** within main dashboard application
 
 #### WebSocket & Real-time Communication Architecture
 
