@@ -226,6 +226,20 @@ class APIClient {
     }
   }
 
+  /**
+   * Get session ID for an alert ID - needed for WebSocket subscription
+   * The client needs the session ID (generated later) to subscribe to alert updates
+   */
+  async getSessionIdForAlert(alertId: string): Promise<{ alert_id: string; session_id: string | null }> {
+    try {
+      const response = await this.client.get(`/session-id/${alertId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting session ID for alert:', error);
+      throw error instanceof Error ? error : new Error('Failed to get session ID for alert');
+    }
+  }
+
   // Phase 4: Search and filtering methods
 
   /**

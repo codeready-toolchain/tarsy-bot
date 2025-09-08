@@ -24,24 +24,27 @@ import ReactMarkdown from 'react-markdown';
 
 import type { ProcessingStatus, ProcessingStatusProps } from '../types';
 import { webSocketService } from '../services/websocket';
+import { apiClient } from '../services/api';
 
 const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete }) => {
   const [status, setStatus] = useState<ProcessingStatus | null>(null);
   const [wsError, setWsError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   // Store onComplete in a ref to avoid effect re-runs when it changes
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  
+  // Track if component is mounted to prevent state updates after unmount
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    // Use the existing dashboard WebSocket service
+    // Initialize WebSocket connection status
     const initialConnectionStatus = webSocketService.isConnected;
     setWsConnected(initialConnectionStatus);
-    // Don't show error during initial connection attempt
     if (!initialConnectionStatus) {
       setWsError('Connecting...');
-      // Clear error after a moment to avoid flickering
       setTimeout(() => {
         if (webSocketService.isConnected) {
           setWsError(null);
@@ -54,13 +57,84 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
       alert_id: alertId,
       status: 'processing',
       progress: 10,
-      current_step: 'Alert submitted, processing started...',
+      current_step: 'Alert submitted, initializing session...',
       timestamp: new Date().toISOString()
     });
+
+    // Fetch the session ID for this alert with retry logic
+    // Note: The session ID mapping might take a moment to become available
+    const fetchSessionIdWithRetry = async () => {
+      const maxAttempts = 5;
+      const retryDelayMs = 1000; // Start with 1 second
+      
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          console.log(`🔄 Fetching session ID for alert (attempt ${attempt}/${maxAttempts}):`, alertId);
+          const response = await apiClient.getSessionIdForAlert(alertId);
+          
+          if (response.session_id) {
+            if (!isMountedRef.current) return; // Component unmounted, skip state updates
+            
+            setSessionId(response.session_id);
+            console.log('✅ Successfully fetched session ID:', alertId, '→', response.session_id);
+            
+            // Update status to reflect successful session initialization
+            setStatus(prev => prev ? {
+              ...prev,
+              current_step: 'Session initialized, processing alert...',
+              progress: 20,
+              timestamp: new Date().toISOString()
+            } : null);
+            
+            return;
+          } else {
+            console.log(`⏳ Session ID not yet available for alert ${alertId} (attempt ${attempt}/${maxAttempts})`);
+          }
+        } catch (error) {
+          console.log(`⚠️ Failed to fetch session ID (attempt ${attempt}/${maxAttempts}):`, error);
+        }
+        
+        // Wait before next attempt (exponential backoff)
+        if (attempt < maxAttempts) {
+          const delay = retryDelayMs * Math.pow(1.5, attempt - 1);
+          console.log(`⏱️ Waiting ${delay}ms before next attempt...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+      
+      console.warn('⚠️ Could not fetch session ID after', maxAttempts, 'attempts. Will process all updates (no filtering).');
+    };
+
+    fetchSessionIdWithRetry();
 
     // Handle dashboard updates for this specific alert/session
     const handleDashboardUpdate = (update: any) => {
       console.log('🔄 Alert processing update:', update);
+
+      // Guard: Filter updates by session ID when available
+      const updateSessionId = update.session_id || update.alert_id || update.sessionId || update.alertId;
+      
+      if (sessionId && updateSessionId) {
+        // We have both session ID and update session ID - filter precisely
+        if (updateSessionId !== sessionId) {
+          console.log('🚫 Ignoring update for different session:', updateSessionId, 'vs expected:', sessionId);
+          return;
+        }
+        console.log('✅ Processing update for matching session:', update.type, 'session:', updateSessionId);
+      } else if (sessionId && !updateSessionId) {
+        // We have session ID but update doesn't - process system-wide updates
+        if (['system_metrics', 'connection_status'].includes(update.type)) {
+          console.log('📊 Processing system-wide update:', update.type);
+        } else {
+          console.log('📝 Processing update without session identifier:', update.type, '(allowed)');
+        }
+      } else if (!sessionId && updateSessionId) {
+        // Session ID not yet available, but update has one - process during initialization
+        console.log('⏳ Processing update during session ID fetch:', update.type, 'session:', updateSessionId);
+      } else {
+        // Neither has session ID - process all updates
+        console.log('📝 Processing update (no session filtering):', update.type);
+      }
 
       // Handle different types of updates
       let updatedStatus: ProcessingStatus | null = null;
@@ -128,6 +202,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     const unsubscribeConnection = webSocketService.onConnectionChange(handleConnectionChange);
 
     return () => {
+      isMountedRef.current = false; // Mark component as unmounted
       unsubscribeDashboard();
       unsubscribeConnection();
     };

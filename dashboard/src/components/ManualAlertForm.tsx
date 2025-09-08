@@ -274,10 +274,12 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
 
       // Input sanitization and size checks
       const alertDataJson = JSON.stringify(alertData);
-      const MAX_PAYLOAD_SIZE = 5 * 1024 * 1024; // 5MB limit
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(alertDataJson).length;
+      const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB
       
-      if (alertDataJson.length > MAX_PAYLOAD_SIZE) {
-        setError(`Alert data is too large (${(alertDataJson.length / 1024 / 1024).toFixed(2)}MB). Maximum size is 5MB.`);
+      if (bytes > MAX_PAYLOAD_BYTES) {
+        setError(`Alert data is too large (${(bytes / 1024 / 1024).toFixed(2)}MB). Maximum size is 5MB.`);
         return;
       }
 
@@ -285,7 +287,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
       console.log('Submitting alert:', { 
         alert_type: alertData.alert_type, 
         data_keys: Object.keys(alertData.data),
-        size_bytes: alertDataJson.length 
+        size_bytes: bytes 
       });
 
       // Submit alert using dashboard API client
@@ -295,7 +297,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
         ID: ${response.alert_id}
         Status: ${response.status}
         Message: ${response.message || 'Processing started'}
-        Data size: ${(alertDataJson.length / 1024).toFixed(1)}KB`);
+        Data size: ${(bytes / 1024).toFixed(1)}KB`);
       
       onAlertSubmitted(response);
 
