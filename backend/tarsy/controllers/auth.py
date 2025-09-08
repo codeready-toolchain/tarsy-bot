@@ -150,11 +150,11 @@ async def github_callback(
             avatar_url=DEV_USER["avatar_url"]
         )
         
-        # Set HTTP-only cookie for browser-based authentication
-        _set_auth_cookie(response, jwt_token)
+        # Create redirect response and set cookie on it
+        redirect_response = RedirectResponse(redirect_url)
+        _set_auth_cookie(redirect_response, jwt_token)
         
-        # Redirect to original requesting frontend
-        return RedirectResponse(redirect_url)
+        return redirect_response
     
     # Production OAuth flow
     try:
@@ -209,11 +209,11 @@ async def github_callback(
             avatar_url=github_user.avatar_url or ""  # Handle None avatar_url
         )
         
-        # Set HTTP-only cookie for browser-based authentication
-        _set_auth_cookie(response, jwt_token)
+        # Create redirect response and set cookie on it
+        redirect_response = RedirectResponse(redirect_url)
+        _set_auth_cookie(redirect_response, jwt_token)
         
-        # Redirect to original requesting frontend
-        return RedirectResponse(redirect_url)
+        return redirect_response
         
     except HTTPException:
         raise  # Re-raise validation errors (403, etc.)

@@ -2,9 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, AppBar, Toolbar, Typography, Box, Tooltip, CircularProgress, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
-import { FiberManualRecord, Refresh, Menu as MenuIcon, Send as SendIcon } from '@mui/icons-material';
+import { Refresh, Menu as MenuIcon, Send as SendIcon } from '@mui/icons-material';
 import DashboardLayout from './DashboardLayout';
 import FilterPanel from './FilterPanel';
+import UserProfile from './auth/UserProfile';
+import { useAuth } from '../contexts/AuthContext';
 import { apiClient, handleAPIError } from '../services/api';
 import { webSocketService } from '../services/websocket';
 import {
@@ -29,6 +31,7 @@ import type { Session, SessionUpdate, SessionFilter, PaginationState, SortState,
  */
 function DashboardView() {
   const navigate = useNavigate();
+  const { getTokenForWebSocket, loading: authLoading } = useAuth();
   
   // Dashboard state
   const [activeAlerts, setActiveAlerts] = useState<Session[]>([]);
@@ -411,9 +414,9 @@ function DashboardView() {
     const unsubscribeError = webSocketService.onError(handleWebSocketError);
     const unsubscribeClose = webSocketService.onClose(handleWebSocketClose);
 
-    // Connect to WebSocket with enhanced logging
-    console.log('🔌 Connecting to WebSocket for real-time updates...');
-    webSocketService.connect();
+    // Set up WebSocket authentication (but don't connect yet)
+    console.log('🔧 Setting up WebSocket token provider, waiting for auth to be ready...');
+    webSocketService.setTokenProvider(getTokenForWebSocket);
 
     // Set initial connection status
     setWsConnected(webSocketService.isConnected);
@@ -430,6 +433,16 @@ function DashboardView() {
       unsubscribeClose();
     };
   }, []);
+
+  // Connect WebSocket only after authentication is ready
+  useEffect(() => {
+    if (!authLoading) {
+      console.log('🔌 Authentication ready, connecting to WebSocket...');
+      webSocketService.connect();
+    } else {
+      console.log('⏳ Authentication still loading, waiting to connect WebSocket...');
+    }
+  }, [authLoading]); // Connect when auth loading completes
 
   // Handle session click with same-tab navigation
   const handleSessionClick = (sessionId: string) => {
@@ -496,17 +509,23 @@ function DashboardView() {
               }
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <FiberManualRecord 
-                  sx={{ 
-                    fontSize: 12, 
-                    color: wsConnected ? 'success.main' : 'error.main',
+                <Box
+                  component="span"
+                  sx={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    bgcolor: wsConnected ? 'success.main' : 'error.main',
+                    border: '2px solid rgba(255,255,255,0.95)', // High-contrast ring on blue AppBar
+                    boxShadow: wsConnected ? '0 0 0 2px rgba(255,255,255,0.25)' : 'none',
+                    display: 'inline-block',
                     animation: wsConnected ? 'none' : 'pulse 2s infinite',
                     '@keyframes pulse': {
-                      '0%': { opacity: 0.5 },
+                      '0%': { opacity: 0.6 },
                       '50%': { opacity: 1 },
-                      '100%': { opacity: 0.5 },
-                    }
-                  }} 
+                      '100%': { opacity: 0.6 },
+                    },
+                  }}
                 />
                 <Typography variant="body2" sx={{ color: 'inherit' }}>
                   {wsConnected ? 'Live' : 'Manual'}
@@ -538,6 +557,9 @@ function DashboardView() {
                 <CircularProgress size={20} sx={{ color: 'inherit' }} />
               </Tooltip>
             )}
+
+            {/* User Profile - EP-0017 Authentication */}
+            <UserProfile />
           </Box>
         </Toolbar>
       </AppBar>

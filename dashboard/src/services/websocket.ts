@@ -9,7 +9,7 @@ type SessionSpecificHandler = (data: any) => void; // For session-specific timel
 
 class WebSocketService {
   private ws: WebSocket | null = null;
-  private url: string;
+  private baseUrl: string;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10; // Increased from 3 to 10
   private reconnectTimeout: NodeJS.Timeout | null = null;
@@ -19,6 +19,7 @@ class WebSocketService {
   private lastConnectionAttempt = 0;
   private userId: string;
   private subscribedChannels = new Set<string>(); // Track subscribed channels
+  private getTokenCallback: (() => Promise<string | null>) | null = null; // EP-0017: Token provider callback
   private eventHandlers: {
     sessionUpdate: WebSocketEventHandler[];
     sessionCompleted: WebSocketEventHandler[];
@@ -66,7 +67,7 @@ class WebSocketService {
       wsBaseUrl = `${protocol}//${host}`;
     }
     
-    this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
+    this.baseUrl = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
 
     // Start periodic health check to recover from permanently disabled state
     this.startHealthCheck();
@@ -107,7 +108,15 @@ class WebSocketService {
   }
 
   /**
+   * EP-0017: Set token provider callback for authentication
+   */
+  setTokenProvider(getToken: () => Promise<string | null>): void {
+    this.getTokenCallback = getToken;
+  }
+
+  /**
    * Connect to WebSocket with automatic reconnection
+   * EP-0017: Includes JWT token as query parameter for authentication
    */
   connect(): void {
     if (this.permanentlyDisabled) {
@@ -121,10 +130,32 @@ class WebSocketService {
 
     this.isConnecting = true;
     this.lastConnectionAttempt = Date.now();
-    console.log('🔌 Connecting to WebSocket:', this.url);
 
+    // EP-0017: Get JWT token for WebSocket authentication
+    this.connectWithAuth();
+  }
+
+  /**
+   * Connect to WebSocket with JWT token authentication
+   */
+  private async connectWithAuth(): Promise<void> {
     try {
-      this.ws = new WebSocket(this.url);
+      let wsUrl = this.baseUrl;
+
+      // Get JWT token if token provider is available
+      if (this.getTokenCallback) {
+        const token = await this.getTokenCallback();
+        if (token) {
+          wsUrl = `${this.baseUrl}?token=${encodeURIComponent(token)}`;
+          console.log('🔌 Connecting to WebSocket with JWT token:', wsUrl.replace(/token=[^&]+/, 'token=***'));
+        } else {
+          console.warn('⚠️  No JWT token available for WebSocket, connecting without auth');
+        }
+      } else {
+        console.warn('⚠️  No token provider set for WebSocket, connecting without auth');
+      }
+
+      this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
         console.log('🎉 WebSocket connected successfully!');
@@ -209,20 +240,21 @@ class WebSocketService {
    */
   private async checkEndpointExists(): Promise<boolean> {
     try {
-      // Test if the WebSocket endpoint path exists by checking a simple endpoint
-      // Since WebSocket endpoints don't respond to HTTP, we'll just check if we get a reasonable response
-      const response = await fetch(`/ws/dashboard/${this.userId}`);
-      
-      // If we get 404, the endpoint doesn't exist
-      if (response.status === 404) {
-        return false;
+      // Perform a lightweight probe. Note: HTTP 404 is common for WS paths and should NOT disable retries.
+      const response = await fetch(`/ws/dashboard/${this.userId}`, {
+        credentials: 'include'
+      });
+
+      // Treat 2xx/3xx/401/426 Upgrade Required as endpoint-present
+      if (response.ok || response.status === 401 || response.status === 426) {
+        return true;
       }
-      
-      // Any other response (including WebSocket upgrade errors) suggests the endpoint exists
+
+      // 404 or other codes: do NOT permanently disable; just indicate "unknown" and allow backoff retries
+      console.log(`WebSocket endpoint probe status: ${response.status} - will keep retrying with backoff`);
       return true;
     } catch (error) {
-      console.log('Endpoint check failed, assuming endpoint might exist:', error);
-      // Network error, assume endpoint might exist
+      console.log('Endpoint probe error; will keep retrying with backoff:', error);
       return true;
     }
   }

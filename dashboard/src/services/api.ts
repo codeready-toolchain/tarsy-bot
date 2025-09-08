@@ -16,13 +16,33 @@ class APIClient {
       headers: {
         'Content-Type': 'application/json',
       },
+      withCredentials: true, // EP-0017: Include HTTP-only cookies in all requests
     });
 
-    // Add response interceptor for error handling
+    // Add response interceptor for error handling and authentication
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
         console.error('API Error:', error);
+        
+        // EP-0017: Handle 401 Unauthorized by redirecting to login
+        if (error.response?.status === 401) {
+          console.log('🔒 Unauthorized request detected');
+          
+          // Don't redirect if we're already on auth endpoints or login page
+          const isAuthEndpoint = error.config?.url?.includes('/auth/');
+          const isOnLoginPage = window.location.pathname === '/login' || window.location.pathname.includes('/auth/');
+          
+          if (!isAuthEndpoint && !isOnLoginPage) {
+            console.log('🔒 Redirecting to login page...');
+            // Store current URL for post-login redirect
+            const currentUrl = window.location.href;
+            window.location.href = `/auth/login?redirect_url=${encodeURIComponent(currentUrl)}`;
+            return Promise.reject(new Error('Authentication required - redirecting to login'));
+          } else {
+            console.log('🔒 Already on auth page, not redirecting');
+          }
+        }
         
         // Preserve the original AxiosError to allow UI components to access
         // error.response, error.response.status, error.response.data, etc.

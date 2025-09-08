@@ -25,6 +25,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // Proxy authentication endpoints to the backend server
+      '/auth': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      },
       // Proxy session-id endpoint to the backend server (for WebSocket subscription setup)
       '/session-id': {
         target: 'http://localhost:8000',

@@ -178,8 +178,10 @@ class TestGithubCallbackEndpoint:
     
     @patch('tarsy.controllers.auth.get_settings')
     @patch('tarsy.controllers.auth.JWTService')
+    @patch('tarsy.controllers.auth._set_auth_cookie')
     async def test_github_callback_dev_mode(
         self,
+        mock_set_auth_cookie,
         mock_jwt_service_class,
         mock_get_settings,
         mock_session,
@@ -214,8 +216,15 @@ class TestGithubCallbackEndpoint:
         
         # Dev mode sets cookie and redirects
         assert isinstance(result, RedirectResponse)
-        # Verify cookie was set
-        mock_response.set_cookie.assert_called_once()
+        # Verify the result is a RedirectResponse with the correct location
+        assert result.status_code == 307
+        assert result.headers["location"] == "http://localhost:5173/"
+        
+        # Verify _set_auth_cookie was called with the RedirectResponse and JWT token
+        mock_set_auth_cookie.assert_called_once()
+        call_args = mock_set_auth_cookie.call_args
+        assert call_args[0][0] == result  # First arg should be the RedirectResponse
+        assert call_args[0][1] == "dev_jwt_token"  # Second arg should be the JWT token
     
     @patch('tarsy.controllers.auth.get_settings')
     @patch('tarsy.controllers.auth.OAuthStateRepository')
