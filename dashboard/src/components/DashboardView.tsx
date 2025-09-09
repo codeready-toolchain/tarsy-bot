@@ -5,6 +5,8 @@ import { Container, AppBar, Toolbar, Typography, Box, Tooltip, CircularProgress,
 import { FiberManualRecord, Refresh, Menu as MenuIcon, Send as SendIcon } from '@mui/icons-material';
 import DashboardLayout from './DashboardLayout';
 import FilterPanel from './FilterPanel';
+import LoginButton from './LoginButton';
+import { useAuth } from '../contexts/AuthContext';
 import { apiClient, handleAPIError } from '../services/api';
 import { webSocketService } from '../services/websocket';
 import {
@@ -29,6 +31,14 @@ import type { Session, SessionUpdate, SessionFilter, PaginationState, SortState,
  */
 function DashboardView() {
   const navigate = useNavigate();
+  const { isAuthenticated, isLoading: authLoading, checkAuth } = useAuth();
+  
+  // Debug auth state in console
+  useEffect(() => {
+    console.log('🔐 Auth state:', { isAuthenticated, authLoading });
+    // Make checkAuth available globally for debugging
+    (window as any).checkAuth = checkAuth;
+  }, [isAuthenticated, authLoading, checkAuth]);
   
   // Dashboard state
   const [activeAlerts, setActiveAlerts] = useState<Session[]>([]);
@@ -488,6 +498,11 @@ function DashboardView() {
             Tarsy Dashboard
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {/* Login Button - only show when not authenticated */}
+            {!isAuthenticated && !authLoading && (
+              <LoginButton variant="contained" size="medium" />
+            )}
+            
             {/* Connection Status Indicator */}
             <Tooltip 
               title={wsConnected 

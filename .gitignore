@@ -120,6 +120,7 @@ backend/coverage.*
 # Configuration files (keep .example files)
 config/agents.yaml
 config/llm_providers.yaml
+config/oauth2-proxy.cfg
 
 # Temporary files
 tmp/

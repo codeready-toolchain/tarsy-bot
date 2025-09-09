@@ -1,10 +1,11 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
 import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult } from '../types';
+import { authService } from './auth';
 
-// API base URL configuration
-// In development with Vite proxy, use relative URLs
+// API base URL configuration  
+// In development, use Vite proxy (relative URLs) to handle CORS with OAuth2 proxy
 // In production, use the full URL from environment variables
-const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000');
+const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || '');
 
 class APIClient {
   private client: AxiosInstance;
@@ -13,6 +14,7 @@ class APIClient {
     this.client = axios.create({
       baseURL: API_BASE_URL,
       timeout: 10000,
+      withCredentials: true, // Important: include cookies for OAuth2 proxy
       headers: {
         'Content-Type': 'application/json',
       },
@@ -22,7 +24,19 @@ class APIClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
-        console.error('API Error:', error);
+        console.error('API Error:', {
+          status: error.response?.status,
+          url: error.config?.url,
+          baseURL: error.config?.baseURL,
+          error: error.message
+        });
+        
+        // Handle 401 Unauthorized - redirect to OAuth login
+        if (error.response?.status === 401) {
+          console.log('🔒 401 Unauthorized detected - triggering auth redirect');
+          authService.handleAuthError();
+          return Promise.reject(error); // Still reject to prevent further processing
+        }
         
         // Preserve the original AxiosError to allow UI components to access
         // error.response, error.response.status, error.response.data, etc.

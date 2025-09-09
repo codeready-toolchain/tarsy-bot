@@ -48,22 +48,27 @@ class WebSocketService {
     this.userId = 'dashboard-' + Math.random().toString(36).substr(2, 9);
     
     // WebSocket URL configuration
-    // Use environment variable or derive from current page origin for HTTPS/proxy support
+    // In development, use OAuth2 proxy to maintain authentication
     let wsBaseUrl: string | undefined;
     
     // Safety check: import.meta.env might be undefined in some environments
     try {
       wsBaseUrl = import.meta.env?.VITE_WS_BASE_URL;
     } catch (error) {
-      console.warn('import.meta.env not available, falling back to window.location');
+      console.warn('import.meta.env not available, falling back to default');
       wsBaseUrl = undefined;
     }
     
     if (!wsBaseUrl) {
-      // Derive WebSocket URL from current page origin
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      wsBaseUrl = `${protocol}//${host}`;
+      if (import.meta.env.DEV) {
+        // In development, connect through Vite dev server for consistent domain
+        wsBaseUrl = 'ws://localhost:5173';
+      } else {
+        // In production, derive WebSocket URL from current page origin
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        wsBaseUrl = `${protocol}//${host}`;
+      }
     }
     
     this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
