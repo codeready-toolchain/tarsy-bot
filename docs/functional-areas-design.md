@@ -46,7 +46,8 @@ TARSy is an AI-powered incident analysis system that processes alerts through se
   - [WebSocket & Real-time Communication Architecture](#websocket--real-time-communication-architecture)
 
 ### Cross-Cutting Concerns
-- [10. Security & Data Protection](#10-security--data-protection)
+- [10. Authentication & Authorization](#10-authentication--authorization)
+- [11. Security & Data Protection](#11-security--data-protection)
 
 ---
 
@@ -1096,7 +1097,109 @@ Hook Event → Dashboard Hook → Broadcaster → WebSocket → UI Update
 - **Subscription management** for multiple channels  
 - **Message routing** to appropriate UI components
 
-### 10. Security & Data Protection
+### 10. Authentication & Authorization
+**Purpose**: User authentication and API access control  
+**Key Responsibility**: Ensuring only authorized users and services access TARSy
+
+TARSy implements JWT-based authentication with GitHub OAuth integration for web users and service account tokens for API clients (monitoring systems, CI/CD pipelines, etc.). The system supports hybrid authentication patterns for flexibility across different client types.
+
+#### Authentication Architecture
+
+```mermaid
+graph TB
+    subgraph "Client Types"
+        Web[Web Dashboard Users]
+        API["API Clients
+        (Monitoring, CI/CD, etc.)"]
+    end
+    
+    subgraph "Authentication Methods"
+        OAuth[GitHub OAuth Flow]
+        Cookie[HTTP-only Cookies]
+        Bearer["Service Account Tokens
+        (Bearer format)"]
+    end
+    
+    subgraph "Validation Layer"
+        JWT[JWT Service]
+        GitHub[GitHub Membership]
+        Middleware[Auth Middleware]
+    end
+    
+    subgraph "Protected Resources"
+        Endpoints[API Endpoints]
+        WS[WebSocket Connections]
+    end
+    
+    Web --> OAuth
+    OAuth --> Cookie
+    Cookie --> JWT
+    
+    API --> Bearer
+    Bearer --> JWT
+    
+    JWT --> GitHub
+    JWT --> Middleware
+    
+    Middleware --> Endpoints
+    Middleware --> WS
+    
+    style JWT fill:#e8f5e8
+    style Middleware fill:#fff3e0
+```
+
+#### Key Components
+
+**📍 JWT Service**: `backend/tarsy/services/jwt_service.py`
+- **RSA-256 signed tokens** prevent tampering
+- **User tokens**: 1-week expiry with user identity claims
+- **Service account tokens**: Long-lived tokens for automation
+- **Token verification** with proper issuer validation
+
+**📍 GitHub OAuth Integration**: `backend/tarsy/controllers/auth.py`
+- **OAuth state management** with CSRF protection using database storage
+- **Organization membership validation** - users must belong to configured GitHub org
+- **Optional team membership** - additional team-level access control
+- **State-encoded redirects** support multiple frontend URLs securely
+
+**📍 Hybrid Authentication Dependencies**: `backend/tarsy/auth/dependencies.py`
+- **Bearer token support** for API clients using service account tokens
+- **Cookie authentication** for web dashboard users with HTTP-only cookies
+- **Automatic fallback** - Bearer tokens take priority over cookies
+- **WebSocket authentication** via token query parameter
+
+#### Authentication Flow Types
+
+**Web User Authentication (Cookie-based)**:
+1. User accesses dashboard → Redirect to `/auth/login?redirect_url=...`
+2. GitHub OAuth flow with state parameter containing redirect URL
+3. Membership validation → JWT token generation
+4. Secure HTTP-only cookie set → Redirect to original URL
+5. Subsequent requests authenticated via cookie
+
+**API Client Authentication (Service Account Tokens)**:
+1. Generate service account token: `make generate-service-token SERVICE_NAME=monitoring`
+2. API clients include in requests: `Authorization: Bearer <token>`
+3. Token validated on each request → No session management required
+
+**Development Mode**:
+- **Dev authentication bypass** with hardcoded test user
+- **Insecure dev keys** (clearly marked) shared between dev and test environments
+- **Warning indicators** prevent accidental production usage
+
+#### Protected Resources
+
+**📍 Endpoint Protection**: JWT middleware applied to all API endpoints except health checks
+- **`POST /alerts`** - Alert submission requires authentication
+- **History API endpoints** - Session data access requires authentication  
+- **WebSocket connections** - Dashboard updates require token validation
+
+**📍 Service Account Token Integration**: 
+- **Makefile token generation** for API client authentication
+- **Same endpoint access** as web dashboard users
+- **Long-lived tokens** suitable for CI/CD pipelines and monitoring systems
+
+### 11. Security & Data Protection
 **Purpose**: Sensitive data protection and secure operations  
 **Key Responsibility**: Preventing sensitive data exposure
 

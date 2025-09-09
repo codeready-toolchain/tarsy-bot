@@ -1,9 +1,6 @@
 # EP-0017: Authentication System - Design Document
 
-**Status:** Pending  
 **Created:** 2025-01-01  
-**Phase:** Design Phase
-**Requirements:** Unified JWT-based authentication system for all endpoints
 
 ---
 

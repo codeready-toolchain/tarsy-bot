@@ -26,6 +26,14 @@ Before running TARSy, ensure you have the following tools installed:
 
 > **Quick Check**: Run `make check-prereqs` to verify all prerequisites are installed.
 
+### Authentication Requirements
+
+TARSy uses JWT-based authentication with GitHub OAuth integration:
+
+- **GitHub OAuth App** - Required for production authentication (bypassed in dev mode)
+- **GitHub Organization Access** - Users must be members of configured GitHub organization
+- **GitHub Team Access** - Optional team membership validation
+
 ## Quick Start
 
 ```bash
@@ -37,10 +45,15 @@ make setup
 # - GOOGLE_API_KEY (get from https://aistudio.google.com/app/apikey)
 # - GITHUB_TOKEN (get from https://github.com/settings/tokens)
 
-# 3. Ensure Kubernetes/OpenShift access (REQUIRED)
+# 3. Configure Authentication (REQUIRED for production)
+# For production: Set up GitHub OAuth in backend/.env:
+# - GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_ORG
+# For development: Authentication is automatically bypassed in dev mode
+
+# 4. Ensure Kubernetes/OpenShift access (REQUIRED)
 # See [K8s Access Requirements](#k8s-access-reqs) section below for details
 
-# 4. Start all services  
+# 5. Start all services  
 make dev
 ```
 
@@ -59,6 +72,7 @@ make dev
 - **📊 Comprehensive Audit Trail**: Complete visibility into chain processing workflows with stage-level timeline reconstruction
 - **🖥️ SRE Dashboard**: Real-time monitoring and historical analysis with interactive chain timeline visualization
 - **🔒 Data Masking**: Automatic protection of sensitive data in logs and responses
+- **🔐 Secure Authentication**: JWT-based authentication with GitHub OAuth, organization/team membership validation, and service account support
 
 ## Architecture
 
@@ -186,15 +200,21 @@ npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
 
 ## API Endpoints
 
-### Core API
-- `GET /` - Health check endpoint
-- `GET /health` - Comprehensive health check with service status
-- `POST /alerts` - Submit a new alert for processing
-- `GET /alert-types` - Get supported alert types
-- `GET /processing-status/{alert_id}` - Get processing status
-- `WebSocket /ws/{alert_id}` - Real-time progress updates
+### Authentication API
+- `GET /auth/login` - Start GitHub OAuth authentication flow
+- `GET /auth/callback` - Handle GitHub OAuth callback
+- `POST /auth/logout` - Clear authentication session
+- `GET /auth/token` - Extract JWT token from cookie for WebSocket connections
 
-### History API (EP-0003)
+### Core API (Protected)
+- `GET /` - Health check endpoint (unprotected)
+- `GET /health` - Comprehensive health check with service status (unprotected)
+- `POST /alerts` - Submit a new alert for processing (requires authentication)
+- `GET /alert-types` - Get supported alert types (requires authentication)
+- `GET /processing-status/{alert_id}` - Get processing status (requires authentication)
+- `WebSocket /ws/dashboard/{user_id}` - Real-time dashboard updates (requires authentication)
+
+### History API (Protected)
 - `GET /api/v1/history/sessions` - List alert processing sessions with filtering and pagination
 - `GET /api/v1/history/sessions/{session_id}` - Get detailed session with chronological timeline
 - `GET /api/v1/history/health` - History service health check and database status

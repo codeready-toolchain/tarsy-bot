@@ -6,6 +6,8 @@
 
 Tarsy is an **AI-powered incident analysis system** that processes alerts through sequential chains of specialized agents. When an alert comes in, Tarsy automatically selects the appropriate chain, executes multiple stages where agents build upon each other's work, and provides comprehensive analysis and recommendations for engineers to act upon. This chain-based approach enables complex multi-stage workflows for thorough incident investigation and analysis.
 
+The system uses **JWT-based authentication** with GitHub OAuth integration to ensure secure access, supporting both web dashboard users and API clients using service account tokens.
+
 ## Core Concept
 
 ```mermaid
@@ -124,9 +126,11 @@ graph TB
     subgraph "External"
         Alerts[Monitoring Alerts]
         SRE[SRE Dashboard]
+        GitHub[GitHub OAuth]
     end
     
     subgraph "Tarsy Core"
+        Auth[JWT Authentication]
         API[API Gateway]
         Orchestrator[Chain Orchestrator]
         ChainRegistry[Chain Registry]
@@ -156,7 +160,10 @@ graph TB
         WS[Real-time Chain Updates]
     end
     
-    Alerts --> API
+    Alerts --> Auth
+    SRE --> Auth
+    Auth --> GitHub
+    Auth --> API
     API --> Orchestrator
     Orchestrator --> ChainRegistry
     ChainRegistry --> Chain1
