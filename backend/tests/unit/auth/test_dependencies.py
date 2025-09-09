@@ -156,6 +156,65 @@ class TestHTTPJWTVerification:
         assert exc_info.value.status_code == 401
         assert exc_info.value.detail == "Token validation failed"
         mock_jwt_service.verify_jwt_token.assert_called_once_with("valid_jwt_token")
+    
+    async def test_verify_jwt_token_fallback_to_cookie_success(self, mock_request_with_cookie, mock_jwt_service, valid_jwt_payload):
+        """Test successful JWT token verification by falling back to cookie when no Authorization header."""
+        # Setup mock JWT service to succeed with cookie token
+        mock_jwt_service.verify_jwt_token.return_value = valid_jwt_payload
+        
+        # No Authorization header (credentials=None), should fall back to cookie
+        result = await verify_jwt_token(mock_request_with_cookie, None, mock_jwt_service)
+        
+        assert result == valid_jwt_payload
+        assert result["sub"] == "user123"
+        assert result["username"] == "testuser"
+        # Should be called with cookie token
+        mock_jwt_service.verify_jwt_token.assert_called_once_with("cookie_jwt_token")
+    
+    async def test_verify_jwt_token_invalid_bearer_no_fallback(self, mock_request_with_cookie, mock_http_credentials, mock_jwt_service):
+        """Test that invalid Bearer token does NOT fall back to cookie auth."""
+        # Setup mock JWT service to fail with Bearer token
+        mock_jwt_service.verify_jwt_token.side_effect = HTTPException(
+            status_code=401, 
+            detail="Invalid token: signature invalid"
+        )
+        
+        # Bearer token present but invalid - should NOT fall back to cookie
+        with pytest.raises(HTTPException) as exc_info:
+            await verify_jwt_token(mock_request_with_cookie, mock_http_credentials, mock_jwt_service)
+        
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Invalid token: signature invalid"
+        # Should only be called with Bearer token, not cookie
+        mock_jwt_service.verify_jwt_token.assert_called_once_with("valid_jwt_token")
+    
+    async def test_verify_jwt_token_no_authentication_provided(self, mock_request, mock_jwt_service):
+        """Test that no Authorization header and no cookie results in proper 401 error."""
+        # No Authorization header (credentials=None) and no cookies
+        with pytest.raises(HTTPException) as exc_info:
+            await verify_jwt_token(mock_request, None, mock_jwt_service)
+        
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Authentication required: provide Bearer token or valid session cookie"
+        # JWT service should not be called at all
+        mock_jwt_service.verify_jwt_token.assert_not_called()
+    
+    async def test_verify_jwt_token_invalid_cookie_no_bearer(self, mock_request_with_cookie, mock_jwt_service):
+        """Test invalid cookie token when no Bearer token is present gives user-friendly message."""
+        # Setup mock JWT service to fail with cookie token
+        mock_jwt_service.verify_jwt_token.side_effect = HTTPException(
+            status_code=401, 
+            detail="Invalid token: signature invalid"
+        )
+        
+        # No Bearer token (credentials=None), invalid cookie - should get user-friendly message
+        with pytest.raises(HTTPException) as exc_info:
+            await verify_jwt_token(mock_request_with_cookie, None, mock_jwt_service)
+        
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Authentication cookie expired or invalid"
+        # Should be called with cookie token
+        mock_jwt_service.verify_jwt_token.assert_called_once_with("cookie_jwt_token")
 
 
 @pytest.mark.unit

@@ -152,9 +152,9 @@ class TestAuthenticationSystemE2E:
                 
                 # Make the request
                 if method == "GET":
-                    response = client.get(endpoint, headers=headers)
+                    response = client.get(endpoint, headers=headers, follow_redirects=False)
                 elif method == "POST":
-                    response = client.post(endpoint, json=payload, headers=headers)
+                    response = client.post(endpoint, json=payload, headers=headers, follow_redirects=False)
                 else:
                     raise ValueError(f"Unsupported method: {method}")
                 
@@ -173,9 +173,9 @@ class TestAuthenticationSystemE2E:
                         print(f"      ✅ Rejected ({response.status_code}) - as expected")
                 else:
                     # Unprotected endpoints - should always succeed regardless of auth
-                    assert response.status_code == 200, \
+                    assert response.status_code == expected_success_code, \
                         f"Unprotected endpoint {endpoint} should work regardless of auth, got {response.status_code}: {response.text}"
-                    print(f"      ✅ Success (200) - as expected")
+                    print(f"      ✅ Success ({expected_success_code}) - as expected")
         
         print("\n  ✅ Comprehensive endpoint authentication matrix completed!")
     

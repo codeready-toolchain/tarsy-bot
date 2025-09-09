@@ -7,7 +7,7 @@ for both user and service account authentication.
 
 import sys
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock
 from contextlib import contextmanager
@@ -316,7 +316,7 @@ class TestJWTTokenVerification:
         _, _, private_key, _ = test_rsa_keys
         
         # Create expired token
-        past_time = datetime.utcnow() - timedelta(hours=1)
+        past_time = datetime.now(timezone.utc) - timedelta(hours=1)
         payload = {
             "sub": "user123",
             "username": "testuser",
@@ -341,7 +341,7 @@ class TestJWTTokenVerification:
             "sub": "user123",
             "username": "testuser",
             "iss": "wrong-issuer",  # Wrong issuer
-            "iat": int(datetime.utcnow().timestamp())
+            "iat": int(datetime.now(timezone.utc).timestamp())
         }
         
         wrong_issuer_token = pyjwt.encode(payload, private_key, algorithm="RS256")

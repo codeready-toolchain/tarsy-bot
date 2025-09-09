@@ -25,11 +25,7 @@ from tarsy.main import (
 from tarsy.models.processing_context import ChainContext
 
 # Import authentication fixtures
-from tests.fixtures.auth_fixtures import (
-    AuthenticatedTestClient,
-    mock_jwt_verification,
-    mock_jwt_websocket_verification,
-)
+from tests.fixtures.auth_fixtures import AuthenticatedTestClient
 
 
 @pytest.mark.unit
@@ -215,7 +211,7 @@ class TestMainEndpoints:
         return TestClient(app)
 
     @pytest.fixture
-    def authenticated_client(self, client, mock_jwt_verification):
+    def authenticated_client(self, client, mock_jwt_authentication):  # noqa: ARG002
         """Create authenticated test client with mocked JWT verification."""
         auth_headers = {"Authorization": "Bearer mock_jwt_token"}
         return AuthenticatedTestClient(client, auth_headers)
