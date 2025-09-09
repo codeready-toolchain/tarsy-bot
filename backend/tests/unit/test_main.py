@@ -326,7 +326,8 @@ class TestMainEndpoints:
         mock_chain_registry.list_available_alert_types.assert_called_once()
 
 
-@pytest.mark.unit  
+@pytest.mark.unit
+@pytest.mark.usefixtures("mock_jwt_authentication")
 class TestSubmitAlertEndpoint:
     """Test the complex submit alert endpoint."""
 
@@ -401,7 +402,7 @@ class TestSubmitAlertEndpoint:
     ])
     def test_submit_alert_input_validation(
         self, client, valid_alert_data, invalid_input, expected_status, expected_error
-    , mock_jwt_authentication):
+    ):
         """Test alert submission with various invalid inputs."""
         if invalid_input == "invalid json":
             response = client.post(
@@ -429,7 +430,7 @@ class TestSubmitAlertEndpoint:
         elif expected_error in ["Invalid alert_type", "Invalid runbook"]:
             assert "field" in data["detail"]
 
-    def test_submit_alert_duplicate_detection(self, client, valid_alert_data, mock_jwt_authentication):
+    def test_submit_alert_duplicate_detection(self, client, valid_alert_data):
         """Test duplicate alert detection."""
         # Create a mock AlertKey instance
         mock_alert_key = Mock()
@@ -477,7 +478,7 @@ class TestSubmitAlertEndpoint:
     @patch('tarsy.main.asyncio.create_task')
     def test_submit_alert_suspicious_runbook_url(
         self, _mock_create_task, mock_alert_service, client, valid_alert_data
-    , mock_jwt_authentication):
+    ):
         """Test alert submission with suspicious runbook URL."""
         mock_alert_service.register_alert_id = Mock()
         valid_alert_data["runbook"] = "file:///etc/passwd"  # Suspicious URL
@@ -489,7 +490,7 @@ class TestSubmitAlertEndpoint:
     @patch('tarsy.main.asyncio.create_task')
     def test_submit_alert_with_defaults(
         self, mock_create_task, mock_alert_service, client
-    , mock_jwt_authentication):
+    ):
         """Test alert submission applies defaults for missing fields."""
         mock_alert_service.register_alert_id = Mock()
         
@@ -506,6 +507,7 @@ class TestSubmitAlertEndpoint:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("mock_jwt_authentication")
 class TestSessionIdEndpoint:
     """Test session ID endpoint."""
 
@@ -515,7 +517,7 @@ class TestSessionIdEndpoint:
         return TestClient(app)
 
     @patch.object(app, 'dependency_overrides', {})
-    def test_get_session_id_success(self, client, mock_jwt_authentication):
+    def test_get_session_id_success(self, client):
         """Test successful session ID retrieval."""
         # Mock the global alert_service
         from tarsy import main
@@ -532,7 +534,7 @@ class TestSessionIdEndpoint:
         assert data["session_id"] == "session-123"
 
     @patch.object(app, 'dependency_overrides', {})
-    def test_get_session_id_not_found(self, client, mock_jwt_authentication):
+    def test_get_session_id_not_found(self, client):
         """Test session ID retrieval for non-existent alert."""
         from tarsy import main
         mock_alert_service = Mock()
@@ -546,7 +548,7 @@ class TestSessionIdEndpoint:
         assert "not found" in data["detail"]
 
     @patch.object(app, 'dependency_overrides', {})
-    def test_get_session_id_no_session(self, client, mock_jwt_authentication):
+    def test_get_session_id_no_session(self, client):
         """Test session ID retrieval when session doesn't exist yet."""
         from tarsy import main
         mock_alert_service = Mock()
@@ -790,7 +792,8 @@ class TestGlobalState:
         """Test alert keys lock is properly initialized."""
         assert isinstance(alert_keys_lock, asyncio.Lock)
 
-@pytest.mark.unit 
+@pytest.mark.unit
+@pytest.mark.usefixtures("mock_jwt_authentication")
 class TestInputSanitization:
     """Test input sanitization functions in submit_alert endpoint."""
 
@@ -799,7 +802,7 @@ class TestInputSanitization:
         """Create test client.""" 
         return TestClient(app)
 
-    def test_sanitize_xss_prevention(self, client, mock_jwt_authentication):
+    def test_sanitize_xss_prevention(self, client):
         """Test XSS prevention in input sanitization."""
         malicious_data = {
             "alert_type": "<script>alert('xss')</script>kubernetes",
@@ -818,7 +821,7 @@ class TestInputSanitization:
         # Should succeed after sanitization
         assert response.status_code == 200
 
-    def test_deep_sanitization_nested_objects(self, client, mock_jwt_authentication):
+    def test_deep_sanitization_nested_objects(self, client):
         """Test deep sanitization of nested objects."""
         nested_data = {
             "alert_type": "test",
@@ -844,7 +847,7 @@ class TestInputSanitization:
         
         assert response.status_code == 200
 
-    def test_array_size_limits(self, client, mock_jwt_authentication):
+    def test_array_size_limits(self, client):
         """Test array size limiting in sanitization."""
         large_array_data = {
             "alert_type": "test", 
@@ -861,7 +864,7 @@ class TestInputSanitization:
         
         assert response.status_code == 200
 
-    def test_string_length_limits(self, client, mock_jwt_authentication):
+    def test_string_length_limits(self, client):
         """Test string length limiting in sanitization."""
         long_string_data = {
             "alert_type": "x" * 15000,  # Over 10KB limit
@@ -880,6 +883,7 @@ class TestInputSanitization:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("mock_jwt_authentication")
 class TestCriticalCoverage:
     """Test critical business logic and edge cases that were missing coverage."""
 
@@ -888,7 +892,7 @@ class TestCriticalCoverage:
         """Create test client."""
         return TestClient(app)
 
-    def test_concurrent_alert_processing(self, client, mock_jwt_authentication):
+    def test_concurrent_alert_processing(self, client):
         """Test that multiple alerts can be processed concurrently without conflicts."""
         from tests.utils import AlertFactory
         
@@ -927,7 +931,7 @@ class TestCriticalCoverage:
             # Verify each alert was registered
             assert mock_alert_service.register_alert_id.call_count == len(alerts)
 
-    def test_alert_processing_recovery_after_failure(self, client, mock_jwt_authentication):
+    def test_alert_processing_recovery_after_failure(self, client):
         """Test that system recovers after alert processing failure."""
         from tests.utils import AlertFactory
         
@@ -958,7 +962,7 @@ class TestCriticalCoverage:
             response2 = client.post("/alerts", json=alert_data, headers={"Authorization": "Bearer mock_jwt_token"})
             assert response2.status_code == 200
 
-    def test_malicious_payload_handling(self, client, mock_jwt_authentication):
+    def test_malicious_payload_handling(self, client):
         """Test handling of potentially malicious payloads."""
         malicious_payloads = [
             {
@@ -1007,7 +1011,7 @@ class TestCriticalCoverage:
                     data = response.json()
                     assert data["status"] in ["queued", "duplicate"]
 
-    def test_alert_deduplication_edge_cases(self, client, mock_jwt_authentication):
+    def test_alert_deduplication_edge_cases(self, client):
         """Test edge cases in alert deduplication logic."""
         from tests.utils import AlertFactory
         
@@ -1039,7 +1043,7 @@ class TestCriticalCoverage:
             assert data["status"] == "duplicate"
             assert data["alert_id"] == "existing-id"
 
-    def test_alert_processing_timeout_handling(self, client, mock_jwt_authentication):
+    def test_alert_processing_timeout_handling(self, client):
         """Test handling of alert processing timeouts."""
         from tests.utils import AlertFactory
         
@@ -1086,7 +1090,7 @@ class TestCriticalCoverage:
             assert data["status"] == "unhealthy"
             assert "error" in data
 
-    def test_memory_usage_under_load(self, client, mock_jwt_authentication):
+    def test_memory_usage_under_load(self, client):
         """Test memory usage behavior under load."""
         from tests.utils import AlertFactory
         

@@ -142,15 +142,16 @@ class TestRealE2E:
         try:
             # Use task-based timeout instead of wait_for to avoid cancellation issues
             task = asyncio.create_task(run_test())
-            done, pending = await asyncio.wait({task}, timeout=500.0)
+            HARD_TIMEOUT_SECS = 60.0
+            _, pending = await asyncio.wait({task}, timeout=HARD_TIMEOUT_SECS)
 
             if pending:
                 # Timeout occurred
                 for t in pending:
                     t.cancel()
-                print("❌ HARDCORE TIMEOUT: Test exceeded 30 seconds!")
+                print(f"❌ HARDCORE TIMEOUT: Test exceeded {HARD_TIMEOUT_SECS} seconds!")
                 print("Check for hanging in alert processing pipeline")
-                raise AssertionError("Test exceeded hardcore timeout of 10 seconds")
+                raise AssertionError(f"Test exceeded hardcore timeout of {HARD_TIMEOUT_SECS} seconds")
             else:
                 # Task completed
                 return task.result()

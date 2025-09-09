@@ -287,7 +287,7 @@ def isolated_test_settings():
     def mock_get_llm_config(provider: str) -> LLMProviderConfig:
         if provider not in settings.llm_providers:
             raise ValueError(f"Unsupported LLM provider: {provider}")
-        base_config = settings.llm_providers[provider]
+        base = settings.llm_providers[provider]
         if provider == "gemini":
             api_key = settings.google_api_key
         elif provider == "openai":
@@ -296,8 +296,12 @@ def isolated_test_settings():
             api_key = settings.xai_api_key
         else:
             api_key = ""
-            
-        return base_config.model_copy(update={"api_key": api_key})
+        
+        return LLMProviderConfig(
+            model=base["model"],
+            type=base["type"],
+            api_key=api_key,
+        )
     
     settings.get_llm_config = mock_get_llm_config
     return settings

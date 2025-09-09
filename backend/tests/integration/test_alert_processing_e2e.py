@@ -403,8 +403,8 @@ class TestConcurrencyAndPerformance:
     async def test_concurrent_alert_processing(
         self,
         alert_service,
-        sample_alert
-    , mock_jwt_authentication):
+        sample_alert,
+        mock_jwt_authentication):
         """Test processing multiple alerts concurrently."""
         # Arrange - Create multiple alerts
         alerts = []

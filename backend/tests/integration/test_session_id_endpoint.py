@@ -15,6 +15,7 @@ from tarsy.main import app
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures("mock_jwt_authentication")
 class TestSessionIdEndpoint:
     """Integration tests for the /session-id/{alert_id} endpoint."""
 

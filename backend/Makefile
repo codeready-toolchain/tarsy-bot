@@ -7,7 +7,7 @@
 # Variables
 UV := uv
 TEST_DIR := tests
-APP_DIR := app
+APP_DIR := tarsy
 PYTEST := TESTING=true $(UV) run python -m pytest
 
 # Colors for output
