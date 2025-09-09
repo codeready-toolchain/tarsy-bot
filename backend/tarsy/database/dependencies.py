@@ -5,15 +5,21 @@ Provides database session dependencies using the existing synchronous pattern.
 """
 
 from typing import Generator
+from sqlalchemy.engine import Engine
 from sqlmodel import Session, create_engine
 
 from tarsy.config.settings import get_settings
 
-# Create engine using existing pattern from init_db.py
-def get_engine():
+# Module-level cached engine
+_cached_engine: Engine | None = None
+
+def get_engine() -> Engine:
     """Get database engine for session creation."""
-    settings = get_settings()
-    return create_engine(settings.history_database_url, echo=False)
+    global _cached_engine
+    if _cached_engine is None:
+        settings = get_settings()
+        _cached_engine = create_engine(settings.history_database_url, echo=False)
+    return _cached_engine
 
 def get_session() -> Generator[Session, None, None]:
     """

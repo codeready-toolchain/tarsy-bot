@@ -9,6 +9,7 @@ import logging
 import json
 import base64
 import re
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
@@ -51,7 +52,7 @@ def _set_auth_cookie(response: Response, jwt_token: str) -> None:
 
 @router.get("/login")
 async def github_login(
-    session: Session = Depends(get_session),
+    session: Annotated[Session, Depends(get_session)],
     redirect_url: str = Query(default="http://localhost:5173/", description="URL to redirect after successful authentication")
 ):
     """Start GitHub OAuth flow with state-encoded redirect support."""
@@ -122,7 +123,7 @@ async def github_callback(
     code: str, 
     state: str,
     response: Response,
-    session: Session = Depends(get_session)
+    session: Annotated[Session, Depends(get_session)]
 ):
     """Handle GitHub OAuth callback with state-encoded redirect support."""
     settings = get_settings()
@@ -170,7 +171,7 @@ async def github_callback(
         # Exchange code for access token using requests-oauthlib
         from requests_oauthlib import OAuth2Session
         
-        logger.debug(f"Exchanging OAuth code for access token using requests-oauthlib")
+        logger.debug("Exchanging OAuth code for access token using requests-oauthlib")
         try:
             oauth = OAuth2Session(
                 client_id=settings.github_client_id,

@@ -19,7 +19,6 @@ class WebSocketService {
   private lastConnectionAttempt = 0;
   private userId: string;
   private subscribedChannels = new Set<string>(); // Track subscribed channels
-  private getTokenCallback: (() => Promise<string | null>) | null = null; // EP-0017: Token provider callback
   private eventHandlers: {
     sessionUpdate: WebSocketEventHandler[];
     sessionCompleted: WebSocketEventHandler[];
@@ -107,16 +106,10 @@ class WebSocketService {
     console.log('🔄 Connection state reset - ready for new connection attempts');
   }
 
-  /**
-   * EP-0017: Set token provider callback for authentication
-   */
-  setTokenProvider(getToken: () => Promise<string | null>): void {
-    this.getTokenCallback = getToken;
-  }
 
   /**
    * Connect to WebSocket with automatic reconnection
-   * EP-0017: Includes JWT token as query parameter for authentication
+   * Uses cookie-based authentication
    */
   connect(): void {
     if (this.permanentlyDisabled) {
@@ -131,7 +124,7 @@ class WebSocketService {
     this.isConnecting = true;
     this.lastConnectionAttempt = Date.now();
 
-    // EP-0017: Get JWT token for WebSocket authentication
+    // Connect with cookie-based authentication
     this.connectWithAuth();
   }
 

@@ -126,6 +126,13 @@ class TestCleanupExpiredOAuthStates:
             mock_session_instance = Mock()
             mock_session.return_value.__enter__.return_value = mock_session_instance
             
+            # Mock session.begin() context manager
+            mock_transaction = Mock()
+            mock_begin_context = Mock()
+            mock_begin_context.__enter__ = Mock(return_value=mock_transaction)
+            mock_begin_context.__exit__ = Mock(return_value=None)
+            mock_session_instance.begin.return_value = mock_begin_context
+            
             # Mock delete query result
             mock_result = Mock()
             mock_result.rowcount = 3  # 3 expired states deleted
@@ -140,8 +147,8 @@ class TestCleanupExpiredOAuthStates:
             assert result == 3
             mock_create_engine.assert_called_once_with("sqlite:///test.db", echo=False)
             mock_session.assert_called_once_with(mock_engine)
+            mock_session_instance.begin.assert_called_once()
             mock_session_instance.exec.assert_called_once_with(mock_delete_query)
-            mock_session_instance.commit.assert_called_once()
             mock_logger.info.assert_called_once_with("Cleaned up 3 expired OAuth states")
     
     def test_cleanup_oauth_states_no_expired(self):
@@ -161,6 +168,13 @@ class TestCleanupExpiredOAuthStates:
             mock_session_instance = Mock()
             mock_session.return_value.__enter__.return_value = mock_session_instance
             
+            # Mock session.begin() context manager
+            mock_transaction = Mock()
+            mock_begin_context = Mock()
+            mock_begin_context.__enter__ = Mock(return_value=mock_transaction)
+            mock_begin_context.__exit__ = Mock(return_value=None)
+            mock_session_instance.begin.return_value = mock_begin_context
+            
             # Mock delete query result - no rows deleted
             mock_result = Mock()
             mock_result.rowcount = 0
@@ -173,7 +187,7 @@ class TestCleanupExpiredOAuthStates:
             result = cleanup_expired_oauth_states("sqlite:///test.db")
             
             assert result == 0
-            mock_session_instance.commit.assert_called_once()
+            mock_session_instance.begin.assert_called_once()
             # Should not log info message when no states cleaned up
             mock_logger.info.assert_not_called()
     
@@ -182,12 +196,12 @@ class TestCleanupExpiredOAuthStates:
         with patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
              patch('tarsy.database.init_db.logger') as mock_logger:
             
-            mock_create_engine.side_effect = Exception("Database connection failed")
+            mock_create_engine.side_effect = SQLAlchemyError("Database connection failed")
             
-            result = cleanup_expired_oauth_states("sqlite:///test.db")
+            with pytest.raises(SQLAlchemyError):
+                cleanup_expired_oauth_states("sqlite:///test.db")
             
-            assert result == 0
-            mock_logger.error.assert_called_once_with("Failed to cleanup expired OAuth states: Database connection failed")
+            mock_logger.error.assert_called_once_with("SQLAlchemy error during OAuth state cleanup: Database connection failed")
 
 
 @pytest.mark.unit
@@ -265,7 +279,7 @@ class TestInitializeDatabase:
             mock_settings.history_retention_days = 90
             mock_get_settings.return_value = mock_settings
             mock_create_tables.return_value = True
-            mock_cleanup_oauth.side_effect = Exception("OAuth cleanup failed")
+            mock_cleanup_oauth.side_effect = SQLAlchemyError("OAuth cleanup failed")
             
             result = initialize_database()
             assert result is True  # Should still succeed despite OAuth cleanup failure
@@ -434,19 +448,30 @@ class TestDatabaseInitIntegration:
             # Mock successful database creation
             mock_engine = Mock()
             mock_create_engine.return_value = mock_engine
-            mock_session_instance = Mock()
-            mock_session.return_value.__enter__.return_value = mock_session_instance
-            mock_session_instance.exec.return_value.first.return_value = 1
             mock_metadata = Mock()
             mock_sqlmodel.metadata = mock_metadata
             
-            # Mock OAuth cleanup (second call for cleanup)
+            # Mock session for table creation (first call)
+            mock_session_instance_1 = Mock()
+            mock_session_instance_1.exec.return_value.first.return_value = 1
+            
+            # Mock session for OAuth cleanup (second call) 
+            mock_session_instance_2 = Mock()
             mock_cleanup_result = Mock()
             mock_cleanup_result.rowcount = 1
-            # First call for connectivity test, second for OAuth cleanup
-            mock_session_instance.exec.side_effect = [
-                Mock(first=Mock(return_value=1)),  # Connectivity test
-                mock_cleanup_result  # OAuth cleanup
+            mock_session_instance_2.exec.return_value = mock_cleanup_result
+            
+            # Mock session.begin() context manager for OAuth cleanup
+            mock_transaction = Mock()
+            mock_begin_context = Mock()
+            mock_begin_context.__enter__ = Mock(return_value=mock_transaction)
+            mock_begin_context.__exit__ = Mock(return_value=None)
+            mock_session_instance_2.begin.return_value = mock_begin_context
+            
+            # Set up session calls in order: table creation, then OAuth cleanup
+            mock_session.return_value.__enter__.side_effect = [
+                mock_session_instance_1,
+                mock_session_instance_2
             ]
             
             # Mock OAuth cleanup delete query
@@ -462,6 +487,9 @@ class TestDatabaseInitIntegration:
             # create_engine is called twice: once for table creation, once for cleanup
             assert mock_create_engine.call_count == 2
             mock_metadata.create_all.assert_called_once_with(mock_engine)
+            
+            # Verify OAuth cleanup transaction was used
+            mock_session_instance_2.begin.assert_called_once()
             
             # Verify success and OAuth cleanup logging
             call_args_list = mock_logger.info.call_args_list

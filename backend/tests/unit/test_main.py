@@ -598,7 +598,8 @@ class TestWebSocketEndpoint:
         
         with contextlib.suppress(Exception):
             # Expected due to disconnect simulation
-            await dashboard_websocket_endpoint(mock_websocket, "user-123")
+            mock_jwt_payload = {"sub": "user-123", "exp": 1234567890}
+            await dashboard_websocket_endpoint(mock_websocket, "user-123", mock_jwt_payload)
         
         # Verify connection flow
         mock_dashboard_manager.connect.assert_called_once_with(
@@ -626,7 +627,8 @@ class TestWebSocketEndpoint:
         from tarsy.main import dashboard_websocket_endpoint
         
         with contextlib.suppress(Exception):
-            await dashboard_websocket_endpoint(mock_websocket, "user-123")
+            mock_jwt_payload = {"sub": "user-123", "exp": 1234567890}
+            await dashboard_websocket_endpoint(mock_websocket, "user-123", mock_jwt_payload)
         
         # Verify error message was sent
         # Connection message + error message

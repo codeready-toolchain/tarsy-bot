@@ -66,29 +66,32 @@ def cleanup_expired_oauth_states(database_url: str) -> int:
         
     Returns:
         Number of deleted expired OAuth states
+        
+    Raises:
+        SQLAlchemyError: If database operation fails
     """
     try:
         # Create engine
         engine = create_engine(database_url, echo=False)
         
         with Session(engine) as session:
-            current_time = now_us()
+            with session.begin():
+                current_time = now_us()
+                
+                # Delete expired OAuth states
+                result = session.exec(
+                    delete(OAuthState).where(OAuthState.expires_at < current_time)
+                )
+                
+                deleted_count = result.rowcount or 0
+                if deleted_count > 0:
+                    logger.info(f"Cleaned up {deleted_count} expired OAuth states")
+                
+                return deleted_count
             
-            # Delete expired OAuth states
-            result = session.exec(
-                delete(OAuthState).where(OAuthState.expires_at < current_time)
-            )
-            session.commit()
-            
-            deleted_count = result.rowcount or 0
-            if deleted_count > 0:
-                logger.info(f"Cleaned up {deleted_count} expired OAuth states")
-            
-            return deleted_count
-            
-    except Exception as e:
-        logger.error(f"Failed to cleanup expired OAuth states: {str(e)}")
-        return 0
+    except SQLAlchemyError as e:
+        logger.error(f"SQLAlchemy error during OAuth state cleanup: {str(e)}")
+        raise
 
 
 def initialize_database() -> bool:

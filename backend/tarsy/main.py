@@ -8,7 +8,7 @@ import json
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 import re
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, Depends
@@ -447,7 +447,7 @@ async def get_session_id(alert_id: str):
 async def dashboard_websocket_endpoint(
     websocket: WebSocket, 
     user_id: str,
-    jwt_payload: Optional[Dict[str, Any]] = Depends(verify_jwt_token_websocket)
+    jwt_payload: Annotated[Optional[Dict[str, Any]], Depends(verify_jwt_token_websocket)]
 ):
     """WebSocket endpoint for dashboard real-time updates."""
     if dashboard_manager is None:

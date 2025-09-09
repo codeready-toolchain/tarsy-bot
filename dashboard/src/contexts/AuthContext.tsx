@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { webSocketService } from '../services/websocket';
 
 interface User {
   sub: string;
@@ -178,14 +177,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     checkAuth();
   }, []);
 
-  // Set up WebSocket token provider when auth is ready (for fallback scenarios)
-  useEffect(() => {
-    if (!loading && getTokenForWebSocket) {
-      console.log('🔧 Setting up WebSocket token provider for fallback scenarios...');
-      console.log('🍪 Primary authentication will use HTTP-only cookies automatically');
-      webSocketService.setTokenProvider(getTokenForWebSocket);
-    }
-  }, [loading, getTokenForWebSocket]);
+  // WebSocket uses HTTP-only cookies automatically - no token provider needed
 
   const contextValue: AuthContextData = {
     user,
