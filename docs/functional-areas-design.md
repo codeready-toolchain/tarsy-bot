@@ -1093,6 +1093,7 @@ Hook Event → Dashboard Hook → Broadcaster → WebSocket → UI Update
 ```
 
 **📍 Frontend WebSocket**: `dashboard/src/services/websocket.ts`
+- **Cookie-based authentication** - HTTP-only cookies automatically included in WebSocket handshake
 - **Automatic reconnection** with exponential backoff
 - **Subscription management** for multiple channels  
 - **Message routing** to appropriate UI components
@@ -1166,7 +1167,7 @@ graph TB
 - **Bearer token support** for API clients using service account tokens
 - **Cookie authentication** for web dashboard users with HTTP-only cookies
 - **Automatic fallback** - Bearer tokens take priority over cookies
-- **WebSocket authentication** via token query parameter
+- **WebSocket authentication** via HTTP-only cookies (automatically included in handshake) and Authorization headers
 
 #### Authentication Flow Types
 
@@ -1192,7 +1193,7 @@ graph TB
 **📍 Endpoint Protection**: JWT middleware applied to all API endpoints except health checks
 - **`POST /alerts`** - Alert submission requires authentication
 - **History API endpoints** - Session data access requires authentication  
-- **WebSocket connections** - Dashboard updates require token validation
+- **WebSocket connections** - Dashboard updates require authentication via HTTP-only cookies or Authorization headers
 
 **📍 Service Account Token Integration**: 
 - **Makefile token generation** for API client authentication

@@ -177,6 +177,9 @@ def mock_jwt_authentication():
     mock_jwt_service.create_service_account_jwt_token.return_value = "mock_service_jwt_token"
     
     # Mock the dependency functions and JWT service creation
+    # Note: get_jwt_service is cached with @lru_cache for performance.
+    # If your test modifies JWT settings, call clear_jwt_service_cache() 
+    # from tarsy.auth.dependencies to ensure fresh configuration.
     with patch('tarsy.auth.dependencies.get_jwt_service', return_value=mock_jwt_service), \
          patch('tarsy.auth.dependencies.verify_jwt_token', return_value=mock_user_payload), \
          patch('tarsy.auth.dependencies.verify_jwt_token_websocket', return_value=mock_user_payload):

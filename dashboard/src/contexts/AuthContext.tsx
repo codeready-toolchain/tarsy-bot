@@ -148,8 +148,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   /**
-   * Get JWT token for WebSocket authentication
-   * WebSockets cannot use HTTP-only cookies, so we need the actual token
+   * Get JWT token for programmatic clients (optional fallback)
+   * 
+   * Note: WebSockets now support HTTP-only cookies directly via handshake headers,
+   * so this is mainly for programmatic clients that need Authorization headers.
    */
   const getTokenForWebSocket = async (): Promise<string | null> => {
     try {
@@ -161,11 +163,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const data = await response.json();
         return data.access_token;
       } else {
-        console.error('❌ Failed to get token for WebSocket:', response.status);
+        console.error('❌ Failed to get token for WebSocket fallback:', response.status);
         return null;
       }
     } catch (error) {
-      console.error('❌ Error getting token for WebSocket:', error);
+      console.error('❌ Error getting token for WebSocket fallback:', error);
       return null;
     }
   };
@@ -176,10 +178,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     checkAuth();
   }, []);
 
-  // Set up WebSocket token provider when auth is ready
+  // Set up WebSocket token provider when auth is ready (for fallback scenarios)
   useEffect(() => {
     if (!loading && getTokenForWebSocket) {
-      console.log('🔧 Setting up global WebSocket token provider...');
+      console.log('🔧 Setting up WebSocket token provider for fallback scenarios...');
+      console.log('🍪 Primary authentication will use HTTP-only cookies automatically');
       webSocketService.setTokenProvider(getTokenForWebSocket);
     }
   }, [loading, getTokenForWebSocket]);

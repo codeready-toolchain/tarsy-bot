@@ -136,25 +136,19 @@ class WebSocketService {
   }
 
   /**
-   * Connect to WebSocket with JWT token authentication
+   * Connect to WebSocket with cookie-based authentication
+   * 
+   * WebSockets automatically include HTTP-only cookies from the same domain
+   * in the handshake request, enabling secure authentication without query parameters.
    */
   private async connectWithAuth(): Promise<void> {
     try {
-      let wsUrl = this.baseUrl;
+      // Use base WebSocket URL - cookies are automatically included in handshake
+      const wsUrl = this.baseUrl;
+      console.log('🔌 Connecting to WebSocket with cookie-based authentication:', wsUrl);
+      console.log('🍪 HTTP-only access_token cookie will be automatically included in handshake');
 
-      // Get JWT token if token provider is available
-      if (this.getTokenCallback) {
-        const token = await this.getTokenCallback();
-        if (token) {
-          wsUrl = `${this.baseUrl}?token=${encodeURIComponent(token)}`;
-          console.log('🔌 Connecting to WebSocket with JWT token:', wsUrl.replace(/token=[^&]+/, 'token=***'));
-        } else {
-          console.warn('⚠️  No JWT token available for WebSocket, connecting without auth');
-        }
-      } else {
-        console.warn('⚠️  No token provider set for WebSocket, connecting without auth');
-      }
-
+      // Note: No need to fetch or append tokens - WebSocket handshake includes cookies automatically
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {

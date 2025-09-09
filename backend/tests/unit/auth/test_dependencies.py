@@ -3,6 +3,10 @@ Unit tests for JWT authentication dependencies.
 
 Tests HTTP and WebSocket JWT verification dependencies used to protect endpoints,
 including token validation, error handling, and dependency injection scenarios.
+
+Note: The get_jwt_service function uses @lru_cache for singleton behavior.
+If tests modify JWT-related settings, call clear_jwt_service_cache() to ensure
+test isolation and prevent cached stale configurations.
 """
 
 from unittest.mock import Mock
@@ -14,7 +18,8 @@ from fastapi.security import HTTPAuthorizationCredentials
 from tarsy.auth.dependencies import (
     verify_jwt_token, 
     verify_jwt_token_websocket,
-    get_jwt_service
+    get_jwt_service,
+    clear_jwt_service_cache
 )
 from tarsy.services.jwt_service import JWTService
 from tarsy.config.settings import Settings
@@ -77,7 +82,9 @@ def mock_request_with_cookie():
 @pytest.fixture
 def mock_websocket():
     """Create mock WebSocket object."""
-    return Mock(spec=WebSocket)
+    mock_ws = Mock(spec=WebSocket)
+    mock_ws.headers = {}  # Default empty headers
+    return mock_ws
 
 
 @pytest.mark.unit
@@ -156,11 +163,12 @@ class TestWebSocketJWTVerification:
     """Test WebSocket JWT token verification dependency."""
     
     async def test_verify_jwt_token_websocket_success_user_token(self, mock_websocket, mock_jwt_service, valid_jwt_payload):
-        """Test successful WebSocket JWT token verification for user token."""
-        # Setup mock JWT service
+        """Test successful WebSocket JWT token verification via cookie."""
+        # Setup mock websocket with cookie header
+        mock_websocket.headers = {"cookie": "access_token=valid_jwt_token"}
         mock_jwt_service.verify_jwt_token.return_value = valid_jwt_payload
         
-        result = await verify_jwt_token_websocket(mock_websocket, "valid_jwt_token", mock_jwt_service)
+        result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
         
         assert result == valid_jwt_payload
         assert result["sub"] == "user123"
@@ -168,11 +176,12 @@ class TestWebSocketJWTVerification:
         mock_jwt_service.verify_jwt_token.assert_called_once_with("valid_jwt_token")
     
     async def test_verify_jwt_token_websocket_success_service_account(self, mock_websocket, mock_jwt_service, service_account_jwt_payload):
-        """Test successful WebSocket JWT token verification for service account."""
-        # Setup mock JWT service
+        """Test successful WebSocket JWT token verification for service account via header."""
+        # Setup mock websocket with Authorization header
+        mock_websocket.headers = {"authorization": "Bearer service_jwt_token"}
         mock_jwt_service.verify_jwt_token.return_value = service_account_jwt_payload
         
-        result = await verify_jwt_token_websocket(mock_websocket, "service_jwt_token", mock_jwt_service)
+        result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
         
         assert result == service_account_jwt_payload
         assert result["sub"] == "service_account:monitoring"
@@ -180,40 +189,117 @@ class TestWebSocketJWTVerification:
         mock_jwt_service.verify_jwt_token.assert_called_once_with("service_jwt_token")
     
     async def test_verify_jwt_token_websocket_invalid_token(self, mock_websocket, mock_jwt_service):
-        """Test WebSocket JWT token verification with invalid token."""
+        """Test WebSocket JWT token verification with invalid token via cookie."""
+        # Setup mock websocket with invalid cookie token
+        mock_websocket.headers = {"cookie": "access_token=invalid_token"}
         # Setup mock JWT service to raise HTTPException
         mock_jwt_service.verify_jwt_token.side_effect = HTTPException(
             status_code=401, 
             detail="Invalid token: signature invalid"
         )
         
-        result = await verify_jwt_token_websocket(mock_websocket, "invalid_token", mock_jwt_service)
+        result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
         
         assert result is None  # WebSocket verification returns None on error
         mock_jwt_service.verify_jwt_token.assert_called_once_with("invalid_token")
     
     async def test_verify_jwt_token_websocket_expired_token(self, mock_websocket, mock_jwt_service):
-        """Test WebSocket JWT token verification with expired token."""
+        """Test WebSocket JWT token verification with expired token via header."""
+        # Setup mock websocket with expired token in Authorization header
+        mock_websocket.headers = {"authorization": "Bearer expired_token"}
         # Setup mock JWT service to raise HTTPException for expired token
         mock_jwt_service.verify_jwt_token.side_effect = HTTPException(
             status_code=401, 
             detail="Invalid token: token has expired"
         )
         
-        result = await verify_jwt_token_websocket(mock_websocket, "expired_token", mock_jwt_service)
+        result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
         
         assert result is None  # WebSocket verification returns None on error
         mock_jwt_service.verify_jwt_token.assert_called_once_with("expired_token")
     
     async def test_verify_jwt_token_websocket_service_error(self, mock_websocket, mock_jwt_service):
-        """Test WebSocket JWT token verification with unexpected service error."""
+        """Test WebSocket JWT token verification with unexpected service error via cookie."""
+        # Setup mock websocket with error-causing token in cookie
+        mock_websocket.headers = {"cookie": "access_token=error_token"}
         # Setup mock JWT service to raise non-HTTPException
         mock_jwt_service.verify_jwt_token.side_effect = Exception("Unexpected JWT service error")
         
-        result = await verify_jwt_token_websocket(mock_websocket, "error_token", mock_jwt_service)
+        result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
         
         assert result is None  # WebSocket verification returns None on any error
         mock_jwt_service.verify_jwt_token.assert_called_once_with("error_token")
+    
+    async def test_verify_jwt_token_websocket_cookie_authentication(self, mock_websocket, mock_jwt_service, valid_jwt_payload):
+        """Test WebSocket JWT token verification via cookies (priority method)."""
+        # Setup mock websocket with cookie header
+        mock_websocket.headers = {"cookie": "access_token=cookie_jwt_token; other_cookie=value"}
+        mock_jwt_service.verify_jwt_token.return_value = valid_jwt_payload
+        
+        result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
+        
+        assert result == valid_jwt_payload
+        mock_jwt_service.verify_jwt_token.assert_called_once_with("cookie_jwt_token")
+    
+    async def test_verify_jwt_token_websocket_authorization_header_authentication(self, mock_websocket, mock_jwt_service, valid_jwt_payload):
+        """Test WebSocket JWT token verification via Authorization header."""
+        # Setup mock websocket with Authorization header (no cookies)
+        mock_websocket.headers = {"authorization": "Bearer header_jwt_token"}
+        mock_jwt_service.verify_jwt_token.return_value = valid_jwt_payload
+        
+        result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
+        
+        assert result == valid_jwt_payload
+        mock_jwt_service.verify_jwt_token.assert_called_once_with("header_jwt_token")
+    
+    async def test_verify_jwt_token_websocket_priority_order(self, mock_websocket, mock_jwt_service, valid_jwt_payload):
+        """Test WebSocket authentication priority: cookies > authorization header."""
+        # Setup mock websocket with both cookie and header
+        mock_websocket.headers = {
+            "cookie": "access_token=cookie_token",
+            "authorization": "Bearer header_token"
+        }
+        mock_jwt_service.verify_jwt_token.return_value = valid_jwt_payload
+        
+        # Should use cookie token (highest priority)
+        result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
+        
+        assert result == valid_jwt_payload
+        mock_jwt_service.verify_jwt_token.assert_called_once_with("cookie_token")
+    
+    async def test_verify_jwt_token_websocket_fallback_chain(self, mock_websocket, mock_jwt_service, valid_jwt_payload):
+        """Test WebSocket authentication fallback chain when higher priority methods fail."""
+        # Setup mock websocket with invalid cookie but valid header
+        mock_websocket.headers = {
+            "cookie": "access_token=invalid_cookie_token",
+            "authorization": "Bearer valid_header_token"
+        }
+        
+        # Configure mock to fail for cookie but succeed for header
+        def mock_verify_side_effect(token):
+            if token == "invalid_cookie_token":
+                raise HTTPException(status_code=401, detail="Invalid token")
+            return valid_jwt_payload
+        
+        mock_jwt_service.verify_jwt_token.side_effect = mock_verify_side_effect
+        
+        result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
+        
+        assert result == valid_jwt_payload
+        # Should be called twice: once for cookie (fails), once for header (succeeds)
+        assert mock_jwt_service.verify_jwt_token.call_count == 2
+        mock_jwt_service.verify_jwt_token.assert_any_call("invalid_cookie_token")
+        mock_jwt_service.verify_jwt_token.assert_any_call("valid_header_token")
+    
+    async def test_verify_jwt_token_websocket_no_authentication(self, mock_websocket, mock_jwt_service):
+        """Test WebSocket authentication when no valid authentication is provided."""
+        # Setup mock websocket with no headers and no query token
+        mock_websocket.headers = {}
+        
+        result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
+        
+        assert result is None
+        mock_jwt_service.verify_jwt_token.assert_not_called()
 
 
 @pytest.mark.unit
@@ -241,7 +327,7 @@ class TestDependencyErrorHandling:
             assert http_exc_info.value.status_code == 401
             
             # Test WebSocket dependency - should always return None
-            websocket_result = await verify_jwt_token_websocket(mock_websocket, "test_token", mock_jwt_service)
+            websocket_result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
             assert websocket_result is None
     
     async def test_token_type_differentiation(self, mock_request, mock_websocket, mock_jwt_service):
@@ -277,11 +363,15 @@ class TestDependencyErrorHandling:
         assert "service_account" not in user_result
         
         # Test service token verification
-        service_result = await verify_jwt_token_websocket(mock_websocket, "service_token", mock_jwt_service)
+        # Configure mock to use Authorization header for service token
+        mock_websocket.headers = {"authorization": "Bearer service_token"}
+        service_result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
         assert service_result["service_account"] is True
         
         # Test invalid token (WebSocket - should return None)
-        invalid_result = await verify_jwt_token_websocket(mock_websocket, "invalid_token", mock_jwt_service)
+        # Test with no authentication - should return None
+        mock_websocket.headers = {}  # Reset headers
+        invalid_result = await verify_jwt_token_websocket(mock_websocket, mock_jwt_service)
         assert invalid_result is None
         
         # Test invalid token (HTTP - should raise exception)

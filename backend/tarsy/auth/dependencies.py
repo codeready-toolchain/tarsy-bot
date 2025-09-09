@@ -5,8 +5,9 @@ Universal JWT authentication dependencies for HTTP and WebSocket endpoints.
 Provides token verification with consistent error handling across all protected endpoints.
 """
 
+import functools
 import logging
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, Query, Request, status, WebSocket
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -20,15 +21,81 @@ security = HTTPBearer(auto_error=False)
 logger = logging.getLogger(__name__)
 
 
+def _extract_cookie_token_from_websocket(websocket: WebSocket) -> Optional[str]:
+    """Extract access_token from WebSocket Cookie header."""
+    cookie_header = websocket.headers.get("cookie")
+    if cookie_header:
+        cookies = {}
+        for cookie_part in cookie_header.split(";"):
+            if "=" in cookie_part:
+                key, value = cookie_part.strip().split("=", 1)
+                cookies[key] = value
+        return cookies.get("access_token")
+    return None
+
+
+def _extract_bearer_token_from_websocket(websocket: WebSocket) -> Optional[str]:
+    """Extract Bearer token from WebSocket Authorization header."""
+    auth_header = websocket.headers.get("authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        return auth_header[7:]  # Remove "Bearer " prefix
+    return None
+
+
+def _extract_token_from_request(
+    request: Request, 
+    token: Optional[HTTPAuthorizationCredentials]
+) -> Optional[str]:
+    """
+    Extract JWT token from HTTP request (Bearer token or cookies).
+    
+    Priority order:
+    1. Authorization: Bearer header
+    2. access_token cookie
+    
+    Returns:
+        Token string if found, None otherwise
+    """
+    # Try Bearer token first
+    if token:
+        return token.credentials
+    
+    # Try cookie second
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        return cookie_token
+    
+    return None
+
+
+@functools.lru_cache(maxsize=1)
 def get_jwt_service() -> JWTService:
-    """Get JWT service instance configured with current settings."""
+    """
+    Get JWT service instance configured with current settings.
+    
+    Uses LRU cache to ensure singleton behavior - RSA keys are loaded once and reused.
+    This prevents expensive key reloading on every service instantiation.
+    
+    Note for testing: Call clear_jwt_service_cache() when tests modify settings
+    to ensure test isolation.
+    """
     return JWTService(get_settings())
+
+
+def clear_jwt_service_cache() -> None:
+    """
+    Clear the JWT service cache.
+    
+    Should be called in test fixtures when settings are modified to ensure
+    the cached JWT service reflects updated configuration.
+    """
+    get_jwt_service.cache_clear()
 
 
 async def verify_jwt_token(
     request: Request,
-    token: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    jwt_service: JWTService = Depends(get_jwt_service)
+    token: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security)],
+    jwt_service: Annotated[JWTService, Depends(get_jwt_service)]
 ) -> Dict[str, Any]:
     """
     Hybrid JWT verification supporting both Bearer tokens and cookies.
@@ -52,33 +119,29 @@ async def verify_jwt_token(
     Raises:
         HTTPException: 401 if no valid authentication found
     """
-    # Try Bearer token first (service accounts, API clients)
-    if token:
+    extracted_token = _extract_token_from_request(request, token)
+    
+    if extracted_token:
         try:
-            payload = jwt_service.verify_jwt_token(token.credentials)
+            payload = jwt_service.verify_jwt_token(extracted_token)
             return payload
-        except HTTPException:
-            # If Bearer token is present but invalid, don't fall back to cookie
-            raise
+        except HTTPException as e:
+            # Handle specific JWT validation errors
+            if token:
+                # If Bearer token is present but invalid, don't fall back
+                raise
+            else:
+                # Invalid cookie - provide user-friendly message
+                logger.warning(f"Invalid authentication cookie: {e.detail}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication cookie expired or invalid"
+                )
         except Exception:
             # Convert other exceptions to HTTPException
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token validation failed"
-            )
-    
-    # Fall back to cookie authentication (web users)
-    cookie_token = request.cookies.get("access_token")
-    if cookie_token:
-        try:
-            payload = jwt_service.verify_jwt_token(cookie_token)
-            return payload
-        except HTTPException as e:
-            # Clear invalid cookie and require re-authentication
-            logger.warning(f"Invalid authentication cookie, clearing: {e.detail}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication cookie expired or invalid"
             )
     
     # No valid authentication found
@@ -89,27 +152,46 @@ async def verify_jwt_token(
 
 
 async def verify_jwt_token_websocket(
-    _websocket: WebSocket,
-    token: str = Query(..., description="JWT token for WebSocket authentication"),
-    jwt_service: JWTService = Depends(get_jwt_service)
+    websocket: WebSocket,
+    jwt_service: Annotated[JWTService, Depends(get_jwt_service)]
 ) -> Optional[Dict[str, Any]]:
     """
-    WebSocket JWT verification.
+    WebSocket JWT verification supporting browser and programmatic authentication.
     
-    Note: WebSockets cannot use HTTP-only cookies, so they must use token query parameter.
-    Frontend should extract token from cookie using server-side helper endpoint if needed.
+    Browsers send cookies during WebSocket handshake, enabling secure authentication.
+    Programmatic clients can use Authorization headers.
+    
+    Authentication priority order:
+    1. HTTP-only cookies (access_token cookie) - for browser clients
+    2. Authorization: Bearer <token> header - for programmatic clients
     
     Args:
         websocket: WebSocket connection instance
-        token: JWT token from query parameter
         jwt_service: JWT service for token validation
         
     Returns:
-        Dict containing JWT payload if valid, None if invalid
+        Dict containing JWT payload if valid, None if authentication fails
     """
-    try:
-        payload = jwt_service.verify_jwt_token(token)
-        return payload
-    except Exception as e:
-        logger.warning(f"WebSocket authentication failed: {e}")
-        return None
+    # Try cookies first (most secure for browser clients)
+    cookie_token = _extract_cookie_token_from_websocket(websocket)
+    if cookie_token:
+        try:
+            payload = jwt_service.verify_jwt_token(cookie_token)
+            logger.debug("WebSocket authenticated via cookie")
+            return payload
+        except Exception as e:
+            logger.warning(f"WebSocket cookie authentication failed: {e}")
+    
+    # Try Authorization header second (for programmatic clients)
+    bearer_token = _extract_bearer_token_from_websocket(websocket)
+    if bearer_token:
+        try:
+            payload = jwt_service.verify_jwt_token(bearer_token)
+            logger.debug("WebSocket authenticated via Authorization header")
+            return payload
+        except Exception as e:
+            logger.warning(f"WebSocket Authorization header authentication failed: {e}")
+    
+    # No valid authentication found
+    logger.warning("WebSocket authentication failed: no valid token found in cookies or headers")
+    return None
