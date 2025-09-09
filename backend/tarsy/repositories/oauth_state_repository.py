@@ -10,7 +10,10 @@ from sqlalchemy import delete, select
 from sqlmodel import Session
 
 from tarsy.models.db_models import OAuthState
+from tarsy.utils.logger import get_logger
 from tarsy.utils.timestamp import now_us
+
+logger = get_logger(__name__)
 
 
 class OAuthStateRepository:
@@ -36,9 +39,14 @@ class OAuthStateRepository:
             created_at=now_us(),
             expires_at=expires_at
         )
-        self.session.add(oauth_state)
-        self.session.commit()
-        return oauth_state
+        try:
+            self.session.add(oauth_state)
+            self.session.commit()
+            return oauth_state
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to create OAuth state: {str(e)}")
+            raise
     
     def get_state(self, state: str) -> Optional[OAuthState]:
         """
@@ -62,10 +70,15 @@ class OAuthStateRepository:
         Args:
             state: OAuth state parameter to delete
         """
-        self.session.exec(
-            delete(OAuthState).where(OAuthState.state == state)
-        )
-        self.session.commit()
+        try:
+            self.session.exec(
+                delete(OAuthState).where(OAuthState.state == state)
+            )
+            self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to delete OAuth state '{state}': {str(e)}")
+            raise
     
     def cleanup_expired_states(self) -> int:
         """
@@ -75,8 +88,13 @@ class OAuthStateRepository:
             Number of deleted expired states
         """
         current_time = now_us()
-        result = self.session.exec(
-            delete(OAuthState).where(OAuthState.expires_at < current_time)
-        )
-        self.session.commit()
-        return result.rowcount or 0
+        try:
+            result = self.session.exec(
+                delete(OAuthState).where(OAuthState.expires_at < current_time)
+            )
+            self.session.commit()
+            return result.rowcount or 0
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to cleanup expired OAuth states: {str(e)}")
+            return 0

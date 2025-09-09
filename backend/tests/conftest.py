@@ -6,6 +6,7 @@ ensuring proper test isolation and database handling.
 """
 
 import os
+import types
 from pathlib import Path
 from typing import Generator
 from unittest.mock import Mock, patch, AsyncMock
@@ -59,8 +60,9 @@ class MockJWTService:
 
 # Apply JWT mocking at module level for unit/integration tests
 # E2E tests will override this in their conftest.py to use real JWT validation
-sys.modules['tarsy.services.jwt_service'] = Mock()
-sys.modules['tarsy.services.jwt_service'].JWTService = MockJWTService
+mock_jwt_module = types.ModuleType('tarsy.services.jwt_service')
+mock_jwt_module.JWTService = MockJWTService
+sys.modules['tarsy.services.jwt_service'] = mock_jwt_module
 
 # Mock PyGithub to avoid import issues in tests
 mock_github = Mock()
@@ -77,6 +79,17 @@ sys.modules['github'] = mock_github
 sys.modules['github'].Github = mock_github_class
 sys.modules['github'].GithubException = Exception
 sys.modules['github'].UnknownObjectException = Exception
+
+# Create module-like objects for direct exception imports
+# Production code uses: from github.GithubException import GithubException
+github_exception_module = types.ModuleType('github.GithubException')
+github_exception_module.GithubException = Exception
+sys.modules['github.GithubException'] = github_exception_module
+
+# Handle UnknownObjectException for potential future use
+unknown_object_exception_module = types.ModuleType('github.UnknownObjectException')
+unknown_object_exception_module.UnknownObjectException = Exception
+sys.modules['github.UnknownObjectException'] = unknown_object_exception_module
 
 # Mock the GitHub service as well
 mock_github_service = Mock()
@@ -125,10 +138,9 @@ def mock_async_operations(request):
         tarsy.main.app.router.lifespan_context = mock_lifespan
         
         with patch('tarsy.main.lifespan', mock_lifespan), \
-             patch('tarsy.main.initialize_database', return_value=True), \
              patch('tarsy.database.init_db.initialize_database', return_value=True), \
-             patch('tarsy.services.alert_service.AlertService.initialize', return_value=None), \
-             patch('tarsy.services.dashboard_connection_manager.DashboardConnectionManager.initialize_broadcaster', return_value=None), \
+             patch('tarsy.services.alert_service.AlertService.initialize', new_callable=AsyncMock), \
+             patch('tarsy.services.dashboard_connection_manager.DashboardConnectionManager.initialize_broadcaster', new_callable=AsyncMock), \
              patch('tarsy.services.history_service.get_history_service') as mock_history:
             
             # Mock history service methods that could hang
@@ -181,8 +193,8 @@ def mock_jwt_authentication():
     # If your test modifies JWT settings, call clear_jwt_service_cache() 
     # from tarsy.auth.dependencies to ensure fresh configuration.
     with patch('tarsy.auth.dependencies.get_jwt_service', return_value=mock_jwt_service), \
-         patch('tarsy.auth.dependencies.verify_jwt_token', return_value=mock_user_payload), \
-         patch('tarsy.auth.dependencies.verify_jwt_token_websocket', return_value=mock_user_payload):
+         patch('tarsy.auth.dependencies.verify_jwt_token', new_callable=AsyncMock, return_value=mock_user_payload), \
+         patch('tarsy.auth.dependencies.verify_jwt_token_websocket', new_callable=AsyncMock, return_value=mock_user_payload):
         yield
 
 

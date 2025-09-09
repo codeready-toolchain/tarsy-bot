@@ -313,12 +313,13 @@ class TestOAuthStateCleanup:
         # Mock session commit to raise exception
         mock_session.commit.side_effect = Exception("Database cleanup error")
         
-        # Should re-raise the exception
-        with pytest.raises(Exception, match="Database cleanup error"):
-            oauth_repo.cleanup_expired_states()
+        # Should return 0 instead of raising exception (graceful error handling)
+        result = oauth_repo.cleanup_expired_states()
         
+        assert result == 0
         mock_session.exec.assert_called_once()
         mock_session.commit.assert_called_once()
+        mock_session.rollback.assert_called_once()
 
 
 @pytest.mark.unit
