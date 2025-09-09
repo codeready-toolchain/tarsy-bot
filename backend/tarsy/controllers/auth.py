@@ -100,18 +100,17 @@ async def github_login(
     oauth_repo = OAuthStateRepository(session)
     oauth_repo.create_state(csrf_token, expires_at)
     
-    # Build GitHub OAuth URL with encoded state
-    from authlib.integrations.httpx_client import AsyncOAuth2Client
+    # Build GitHub OAuth URL with encoded state using requests-oauthlib
+    from requests_oauthlib import OAuth2Session
     
-    oauth_client = AsyncOAuth2Client(
+    oauth = OAuth2Session(
         client_id=settings.github_client_id,
-        client_secret=settings.github_client_secret
+        redirect_uri=f"{settings.backend_url}/auth/callback",
+        scope=["user:email", "read:org"]
     )
     
-    authorization_url, _ = oauth_client.create_authorization_url(
-        url=settings.github_oauth_authorize_url,
-        redirect_uri=f"{settings.backend_url}/auth/callback",
-        scope="user:email,read:org",
+    authorization_url, _ = oauth.authorization_url(
+        settings.github_oauth_authorize_url,
         state=encoded_state
     )
     
@@ -168,19 +167,25 @@ async def github_callback(
         # Clean up used state
         oauth_repo.delete_state(csrf_token)
         
-        # Exchange code for access token using authlib
-        from authlib.integrations.httpx_client import AsyncOAuth2Client
+        # Exchange code for access token using requests-oauthlib
+        from requests_oauthlib import OAuth2Session
         
-        oauth_client = AsyncOAuth2Client(
-            client_id=settings.github_client_id,
-            client_secret=settings.github_client_secret
-        )
-        
-        token_response = await oauth_client.fetch_token(
-            token_url=settings.github_oauth_token_url,
-            code=code,
-            redirect_uri=f"{settings.backend_url}/auth/callback"
-        )
+        logger.debug(f"Exchanging OAuth code for access token using requests-oauthlib")
+        try:
+            oauth = OAuth2Session(
+                client_id=settings.github_client_id,
+                redirect_uri=f"{settings.backend_url}/auth/callback"
+            )
+            
+            # Exchange code for token
+            token_response = oauth.fetch_token(
+                token_url=settings.github_oauth_token_url,
+                code=code,
+                client_secret=settings.github_client_secret
+            )
+        except Exception as e:
+            logger.error(f"GitHub OAuth token exchange failed: {e}")
+            raise HTTPException(500, f"GitHub OAuth token exchange failed: {str(e)}")
         
         github_access_token = token_response['access_token']
         
@@ -193,6 +198,9 @@ async def github_callback(
         if "github.com" not in settings.github_base_url:
             # GitHub Enterprise format: https://github.company.com -> https://github.company.com/api/v3
             github_api_url = f"{settings.github_base_url.rstrip('/')}/api/v3"
+        
+        # Debug logging for GitHub API URL
+        logger.debug(f"GitHub API parameters: base_url={github_api_url}, access_token=***")
         
         g = Github(auth=auth, base_url=github_api_url)
         github_user = g.get_user()

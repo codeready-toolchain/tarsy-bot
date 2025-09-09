@@ -124,16 +124,16 @@ class TestGithubLoginEndpoint:
         
         # Skip complex OAuth client mocking - focus on our business logic
         with patch('builtins.__import__') as mock_import:
-            # Mock minimal authlib behavior
+            # Mock requests-oauthlib behavior
             def import_side_effect(name, *args, **kwargs):
-                if name == 'authlib.integrations.httpx_client':
+                if name == 'requests_oauthlib':
                     mock_module = Mock()
-                    mock_client = Mock()
-                    mock_client.return_value.create_authorization_url.return_value = (
+                    mock_oauth_session = Mock()
+                    mock_oauth_session.return_value.authorization_url.return_value = (
                         "https://github.com/login/oauth/authorize?client_id=prod_client_id&state=test_state_123",
                         "test_state_123"
                     )
-                    mock_module.AsyncOAuth2Client = mock_client
+                    mock_module.OAuth2Session = mock_oauth_session
                     return mock_module
                 return __import__(name, *args, **kwargs)
             
@@ -498,16 +498,16 @@ class TestStateParameterEncoding:
         mock_session = Mock()
         
         with patch('builtins.__import__') as mock_import:
-            # Mock minimal authlib behavior
+            # Mock requests-oauthlib behavior
             def import_side_effect(name, *args, **kwargs):
-                if name == 'authlib.integrations.httpx_client':
+                if name == 'requests_oauthlib':
                     mock_module = Mock()
-                    mock_client = Mock()
-                    mock_client.return_value.create_authorization_url.return_value = (
+                    mock_oauth_session = Mock()
+                    mock_oauth_session.return_value.authorization_url.return_value = (
                         "https://github.com/login/oauth/authorize?state=encoded_state",
                         "encoded_state"
                     )
-                    mock_module.AsyncOAuth2Client = mock_client
+                    mock_module.OAuth2Session = mock_oauth_session
                     return mock_module
                 return __import__(name, *args, **kwargs)
             
@@ -569,19 +569,26 @@ class TestStateParameterEncoding:
             # Save the original import before patching
             original_import = __import__
             with patch('builtins.__import__') as mock_import:
-                # Mock minimal authlib behavior
+                # Mock requests-oauthlib behavior
                 def import_side_effect(name, *args, **kwargs):
-                    if name == 'authlib.integrations.httpx_client':
+                    if name == 'requests_oauthlib':
                         mock_module = Mock()
-                        mock_client = Mock()
-                        mock_client_instance = Mock()
-                        # Make fetch_token an async mock that returns a dictionary
-                        async def mock_fetch_token(*args, **kwargs):
+                        mock_oauth_session = Mock()
+                        mock_oauth_instance = Mock()
+                        # Mock fetch_token method (synchronous, not async for requests-oauthlib)
+                        def mock_fetch_token(*args, **kwargs):
                             return {"access_token": "github_token"}
-                        mock_client_instance.fetch_token = mock_fetch_token
-                        mock_client.return_value = mock_client_instance
-                        mock_module.AsyncOAuth2Client = mock_client
+                        mock_oauth_instance.fetch_token = mock_fetch_token
+                        mock_oauth_session.return_value = mock_oauth_instance
+                        mock_module.OAuth2Session = mock_oauth_session
                         return mock_module
+                    elif name == 'asyncio':
+                        # Mock asyncio for the run_in_executor call
+                        mock_asyncio = Mock()
+                        mock_loop = Mock()
+                        mock_loop.run_in_executor = Mock(return_value={"access_token": "github_token"})
+                        mock_asyncio.get_event_loop.return_value = mock_loop
+                        return mock_asyncio
                     return original_import(name, *args, **kwargs)
                 
                 mock_import.side_effect = import_side_effect
@@ -705,13 +712,13 @@ class TestRedirectValidation:
                     mock_oauth_repo.create_state.return_value = True
                     
                     with patch('builtins.__import__') as mock_import:
-                        # Mock minimal authlib behavior
+                        # Mock requests-oauthlib behavior
                         def import_side_effect(name, *args, **kwargs):
-                            if name == 'authlib.integrations.httpx_client':
+                            if name == 'requests_oauthlib':
                                 mock_module = Mock()
-                                mock_client = Mock()
-                                mock_client.return_value.create_authorization_url.return_value = ("https://github.com/oauth", "state")
-                                mock_module.AsyncOAuth2Client = mock_client
+                                mock_oauth_session = Mock()
+                                mock_oauth_session.return_value.authorization_url.return_value = ("https://github.com/oauth", "state")
+                                mock_module.OAuth2Session = mock_oauth_session
                                 return mock_module
                             return __import__(name, *args, **kwargs)
                         

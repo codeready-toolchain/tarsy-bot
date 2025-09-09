@@ -109,7 +109,7 @@ class TestOAuthStateRetrieval:
         """Test successful OAuth state retrieval."""
         # Mock session exec to return the state
         mock_result = Mock()
-        mock_result.first.return_value = sample_oauth_state
+        mock_result.scalar_one_or_none.return_value = sample_oauth_state
         mock_session.exec.return_value = mock_result
         
         result = oauth_repo.get_state("test_state_123")
@@ -128,7 +128,7 @@ class TestOAuthStateRetrieval:
         """Test OAuth state retrieval when state doesn't exist."""
         # Mock session exec to return None (not found)
         mock_result = Mock()
-        mock_result.first.return_value = None
+        mock_result.scalar_one_or_none.return_value = None
         mock_session.exec.return_value = mock_result
         
         result = oauth_repo.get_state("nonexistent_state")
@@ -149,7 +149,7 @@ class TestOAuthStateRetrieval:
         
         # Mock session exec to return the state
         mock_result = Mock()
-        mock_result.first.return_value = expected_state
+        mock_result.scalar_one_or_none.return_value = expected_state
         mock_session.exec.return_value = mock_result
         
         result = oauth_repo.get_state(special_state)
@@ -340,7 +340,7 @@ class TestOAuthStateRepositoryIntegration:
         
         # 2. Simulate retrieval (mock the state being found)
         mock_result = Mock()
-        mock_result.first.return_value = created_state
+        mock_result.scalar_one_or_none.return_value = created_state
         mock_session.exec.return_value = mock_result
         
         retrieved_state = oauth_repo.get_state("oauth_flow_state")
@@ -396,7 +396,7 @@ class TestOAuthStateRepositoryIntegration:
             mock_result = Mock()
             if "SELECT" in str(query):
                 # GET operation
-                mock_result.first.return_value = OAuthState(
+                mock_result.scalar_one_or_none.return_value = OAuthState(
                     state="concurrent_state",
                     created_at=1609459200_000_000,
                     expires_at=1609459800_000_000
@@ -442,7 +442,7 @@ class TestOAuthStateRepositoryIntegration:
             
             # Test retrieval
             mock_result = Mock()
-            mock_result.first.return_value = created_state
+            mock_result.scalar_one_or_none.return_value = created_state
             mock_session.exec.return_value = mock_result
             
             retrieved_state = oauth_repo.get_state(state)

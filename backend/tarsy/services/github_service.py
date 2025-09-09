@@ -36,11 +36,33 @@ async def validate_github_membership(github_access_token: str, username: str) ->
             github_api_url = f"{settings.github_base_url.rstrip('/')}/api/v3"
         
         g = Github(auth=auth, base_url=github_api_url)
+        
+        # Get the authenticated user (this is key - it uses the /user endpoint, not /users/{username})
+        authenticated_user = g.get_user()
+        # Also get the specific user object for verification
         user = g.get_user(username)
         org = g.get_organization(settings.github_org)
         
-        # Check organization membership (required)
-        if not org.has_in_members(user):
+        # Verify the authenticated user matches the requested user
+        if authenticated_user.login != username:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="GitHub token does not match the authenticated user"
+            )
+        
+        # Check organization membership using authenticated user's perspective
+        # This works for both public and private memberships with read:org scope
+        try:
+            membership = authenticated_user.get_organization_membership(settings.github_org)
+            is_org_member = membership.state == "active"
+        except Exception:
+            # User is not a member or organization has restrictions
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: insufficient GitHub organization permissions"
+            )
+        
+        if not is_org_member:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied: insufficient GitHub organization permissions"
@@ -49,13 +71,17 @@ async def validate_github_membership(github_access_token: str, username: str) ->
         # Check team membership (if configured)
         if settings.github_team:
             try:
-                team = org.get_team_by_slug(settings.github_team)
-                if not team.has_in_members(user):
+                # Check team membership from authenticated user's perspective  
+                user_teams = [team_item.slug for team_item in authenticated_user.get_teams()]
+                is_team_member = settings.github_team in user_teams
+                
+                if not is_team_member:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="Access denied: insufficient GitHub team permissions"
                     )
-            except UnknownObjectException:
+                    
+            except Exception:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="GitHub authentication configuration error"

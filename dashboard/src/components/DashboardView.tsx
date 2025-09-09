@@ -31,7 +31,7 @@ import type { Session, SessionUpdate, SessionFilter, PaginationState, SortState,
  */
 function DashboardView() {
   const navigate = useNavigate();
-  const { getTokenForWebSocket, loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuth();
   
   // Dashboard state
   const [activeAlerts, setActiveAlerts] = useState<Session[]>([]);
@@ -414,9 +414,7 @@ function DashboardView() {
     const unsubscribeError = webSocketService.onError(handleWebSocketError);
     const unsubscribeClose = webSocketService.onClose(handleWebSocketClose);
 
-    // Set up WebSocket authentication (but don't connect yet)
-    console.log('🔧 Setting up WebSocket token provider, waiting for auth to be ready...');
-    webSocketService.setTokenProvider(getTokenForWebSocket);
+    // Note: WebSocket token provider will be set when auth is ready (see separate useEffect)
 
     // Set initial connection status
     setWsConnected(webSocketService.isConnected);

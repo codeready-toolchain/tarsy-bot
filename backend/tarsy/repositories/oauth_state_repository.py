@@ -50,9 +50,10 @@ class OAuthStateRepository:
         Returns:
             OAuthState instance if found, None otherwise
         """
-        return self.session.exec(
+        result = self.session.exec(
             select(OAuthState).where(OAuthState.state == state)
-        ).first()
+        )
+        return result.scalar_one_or_none()
     
     def delete_state(self, state: str) -> None:
         """

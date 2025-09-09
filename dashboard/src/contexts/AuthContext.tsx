@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { apiClient } from '../services/api';
+import { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
+import { webSocketService } from '../services/websocket';
 
 interface User {
   sub: string;
@@ -174,6 +175,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('🔍 Checking initial authentication status...');
     checkAuth();
   }, []);
+
+  // Set up WebSocket token provider when auth is ready
+  useEffect(() => {
+    if (!loading && getTokenForWebSocket) {
+      console.log('🔧 Setting up global WebSocket token provider...');
+      webSocketService.setTokenProvider(getTokenForWebSocket);
+    }
+  }, [loading, getTokenForWebSocket]);
 
   const contextValue: AuthContextData = {
     user,
