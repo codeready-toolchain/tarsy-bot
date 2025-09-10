@@ -26,6 +26,8 @@ dependencies = [
     "cachetools>=5.3.0",
     "PyYAML>=6.0",
     "tiktoken>=0.7.0",
+    "cryptography>=42.0.0",
+    "PyJWT>=2.8.0",
 ]
 requires-python = ">= 3.13"
 
