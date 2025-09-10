@@ -8,7 +8,7 @@ import asyncio
 import contextlib
 import uuid
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch, call
 
 import pytest
 from fastapi import WebSocket
@@ -858,6 +858,346 @@ class TestInputSanitization:
         
         assert response.status_code == 200
 
+
+@pytest.mark.unit
+class TestJWKSEndpoint:
+    """Test JWKS endpoint for JWT authentication."""
+    
+    @pytest.fixture(autouse=True)
+    def clear_jwks_cache(self):
+        """Clear JWKS cache before each test."""
+        from tarsy.main import jwks_cache
+        jwks_cache.clear()
+    
+    @pytest.fixture
+    def client(self):
+        """Create test client."""
+        return TestClient(app)
+    
+    @pytest.fixture
+    def mock_rsa_public_key(self):
+        """Create a mock RSA public key for testing."""
+        from unittest.mock import Mock
+        
+        # Mock RSA public key with test values
+        mock_key = Mock()
+        mock_numbers = Mock()
+        mock_numbers.n = 123456789  # Modulus
+        mock_numbers.e = 65537      # Exponent
+        mock_key.public_numbers.return_value = mock_numbers
+        return mock_key
+    
+    @pytest.fixture
+    def valid_pem_key_content(self):
+        """Valid PEM key content for testing."""
+        # This is a valid RSA public key format (test key, not for production)
+        return b"""-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4qiXJLzX8QExQ8tBZrU9
+GOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFOJ2
+jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq
+/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5
+mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqG
+qJ7nFOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7n
+FOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFQIDAQAB
+-----END PUBLIC KEY-----"""
+    
+    @patch('tarsy.main.get_settings')
+    @patch('tarsy.main.Path')
+    @patch('builtins.open')
+    @patch('tarsy.main.serialization.load_pem_public_key')
+    def test_jwks_endpoint_success(self, mock_load_key, mock_open, mock_path_class, mock_get_settings, client, mock_rsa_public_key, valid_pem_key_content):
+        """Test successful JWKS endpoint response."""
+        # Setup mocks
+        mock_settings = Mock()
+        mock_settings.jwt_public_key_path = "/test/path/jwt_public_key.pem"
+        mock_get_settings.return_value = mock_settings
+        
+        # Mock path operations
+        mock_path_instance = Mock()
+        mock_path_instance.is_absolute.return_value = True
+        mock_path_instance.exists.return_value = True
+        mock_path_class.return_value = mock_path_instance
+        
+        # Mock file operations
+        mock_file = Mock()
+        mock_file.read.return_value = valid_pem_key_content
+        mock_open.return_value.__enter__.return_value = mock_file
+        
+        # Mock cryptographic operations
+        mock_load_key.return_value = mock_rsa_public_key
+        
+        # Clear cache before test
+        from tarsy.main import jwks_cache
+        jwks_cache.clear()
+        
+        response = client.get("/.well-known/jwks.json")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify JWKS structure
+        assert "keys" in data
+        assert len(data["keys"]) == 1
+        
+        key = data["keys"][0]
+        assert key["kty"] == "RSA"
+        assert key["use"] == "sig"
+        assert key["kid"] == "tarsy-api-key-1"
+        assert key["alg"] == "RS256"
+        assert "n" in key  # Modulus
+        assert "e" in key  # Exponent
+        
+        # Verify key path was created and file was read
+        mock_path_class.assert_called_once_with("/test/path/jwt_public_key.pem")
+        # Verify open was called with the correct arguments
+        # Note: mock_open may track multiple calls due to context manager usage
+        assert mock_open.call_count >= 1, f"Expected at least 1 call to open, got {mock_open.call_count}"
+        # Check that at least one call was made with our expected arguments
+        expected_call = call(mock_path_instance, "rb")
+        assert expected_call in mock_open.call_args_list, f"Expected call {expected_call} not found in {mock_open.call_args_list}"
+        mock_load_key.assert_called_once_with(valid_pem_key_content)
+    
+    @patch('tarsy.main.get_settings')
+    @patch('tarsy.main.Path')
+    def test_jwks_endpoint_missing_file(self, mock_path_class, mock_get_settings, client):
+        """Test JWKS endpoint when public key file doesn't exist."""
+        # Setup mocks
+        mock_settings = Mock()
+        mock_settings.jwt_public_key_path = "/nonexistent/jwt_public_key.pem"
+        mock_get_settings.return_value = mock_settings
+        
+        # Mock path operations - file doesn't exist
+        mock_path_instance = Mock()
+        mock_path_instance.is_absolute.return_value = True
+        mock_path_instance.exists.return_value = False
+        mock_path_class.return_value = mock_path_instance
+        
+        # Clear cache before test
+        from tarsy.main import jwks_cache
+        jwks_cache.clear()
+        
+        response = client.get("/.well-known/jwks.json")
+        
+        assert response.status_code == 503
+        data = response.json()
+        
+        assert data["detail"]["error"] == "JWT public key not available"
+        assert "make generate-jwt-keys" in data["detail"]["message"]
+    
+    @patch('tarsy.main.get_settings')
+    @patch('tarsy.main.Path')
+    @patch('builtins.open')
+    @patch('tarsy.main.serialization.load_pem_public_key')
+    def test_jwks_endpoint_invalid_key_file(self, mock_load_key, mock_open, mock_path_class, mock_get_settings, client):
+        """Test JWKS endpoint with invalid public key file."""
+        # Setup mocks
+        mock_settings = Mock()
+        mock_settings.jwt_public_key_path = "/test/path/invalid_key.pem"
+        mock_get_settings.return_value = mock_settings
+        
+        # Mock path operations
+        mock_path_instance = Mock()
+        mock_path_instance.is_absolute.return_value = True
+        mock_path_instance.exists.return_value = True
+        mock_path_class.return_value = mock_path_instance
+        
+        # Mock file operations
+        mock_file = Mock()
+        mock_file.read.return_value = b"invalid key data"
+        mock_open.return_value.__enter__.return_value = mock_file
+        
+        # Mock cryptographic operations to fail
+        mock_load_key.side_effect = ValueError("Invalid key format")
+        
+        # Clear cache before test
+        from tarsy.main import jwks_cache
+        jwks_cache.clear()
+        
+        response = client.get("/.well-known/jwks.json")
+        
+        assert response.status_code == 500
+        data = response.json()
+        
+        assert data["detail"]["error"] == "JWKS generation failed"
+        assert "Unable to generate JSON Web Key Set" in data["detail"]["message"]
+    
+    @patch('tarsy.main.get_settings')
+    @patch('tarsy.main.Path')
+    @patch('builtins.open')
+    @patch('tarsy.main.serialization.load_pem_public_key')
+    def test_jwks_endpoint_relative_path_handling(self, mock_load_key, mock_open, mock_path_class, mock_get_settings, client, mock_rsa_public_key, valid_pem_key_content):
+        """Test JWKS endpoint correctly handles relative paths."""
+        # Setup mocks
+        mock_settings = Mock()
+        mock_settings.jwt_public_key_path = "../config/keys/jwt_public_key.pem"
+        mock_get_settings.return_value = mock_settings
+        
+        # Mock the initial relative path
+        mock_relative_path = Mock()
+        mock_relative_path.is_absolute.return_value = False
+        
+        # Mock the backend directory path  
+        mock_backend_dir = Mock()
+        
+        # Mock the combined path result (backend_dir / relative_path)
+        mock_combined_path = Mock()
+        # Mock the resolved final path
+        mock_final_path = Mock()
+        mock_final_path.exists.return_value = True
+        
+        # Set up the path operation chain:
+        # backend_dir / relative_path -> combined_path
+        mock_backend_dir.__truediv__ = Mock(return_value=mock_combined_path)
+        # combined_path.resolve() -> final_path
+        mock_combined_path.resolve = Mock(return_value=mock_final_path)
+        
+        # Mock __file__ path to get backend directory
+        mock_file_path = Mock()
+        mock_file_path.parent.parent = mock_backend_dir
+        
+        # Mock Path constructor calls
+        def path_side_effect(path_str):
+            if path_str == "../config/keys/jwt_public_key.pem":
+                return mock_relative_path
+            # For Path(__file__)
+            else:
+                return mock_file_path
+        
+        mock_path_class.side_effect = path_side_effect
+        
+        # Mock __file__ in the main module
+        import tarsy.main
+        original_file = getattr(tarsy.main, '__file__', None)
+        tarsy.main.__file__ = '/backend/tarsy/main.py'  # Mock file path
+        
+        try:
+            # Mock file operations
+            mock_file = Mock()
+            mock_file.read.return_value = valid_pem_key_content
+            mock_open.return_value.__enter__.return_value = mock_file
+            
+            # Mock cryptographic operations
+            mock_load_key.return_value = mock_rsa_public_key
+            
+            # Clear cache before test
+            from tarsy.main import jwks_cache
+            jwks_cache.clear()
+            
+            response = client.get("/.well-known/jwks.json")
+            
+            assert response.status_code == 200
+            data = response.json()
+            
+            # Verify JWKS structure is correct
+            assert "keys" in data
+            assert len(data["keys"]) == 1
+            
+            key = data["keys"][0]
+            assert key["kty"] == "RSA"
+            assert key["use"] == "sig"
+            
+            # Verify path resolution was used
+            mock_backend_dir.__truediv__.assert_called_once_with(mock_relative_path)
+            mock_combined_path.resolve.assert_called_once()
+            
+        finally:
+            # Restore original __file__
+            if original_file is not None:
+                tarsy.main.__file__ = original_file
+    
+    @patch('tarsy.main.get_settings')
+    @patch('tarsy.main.Path')
+    @patch('builtins.open')
+    @patch('tarsy.main.serialization.load_pem_public_key')
+    def test_jwks_endpoint_caching_behavior(self, mock_load_key, mock_open, mock_path_class, mock_get_settings, client, mock_rsa_public_key, valid_pem_key_content):
+        """Test that JWKS endpoint uses caching correctly."""
+        # Setup mocks
+        mock_settings = Mock()
+        mock_settings.jwt_public_key_path = "/test/path/jwt_public_key.pem"
+        mock_get_settings.return_value = mock_settings
+        
+        # Mock path operations
+        mock_path_instance = Mock()
+        mock_path_instance.is_absolute.return_value = True
+        mock_path_instance.exists.return_value = True
+        mock_path_class.return_value = mock_path_instance
+        
+        # Mock file operations
+        mock_file = Mock()
+        mock_file.read.return_value = valid_pem_key_content
+        mock_open.return_value.__enter__.return_value = mock_file
+        
+        # Mock cryptographic operations
+        mock_load_key.return_value = mock_rsa_public_key
+        
+        # Clear cache before test
+        from tarsy.main import jwks_cache
+        jwks_cache.clear()
+        
+        # First request should load from file
+        response1 = client.get("/.well-known/jwks.json")
+        assert response1.status_code == 200
+        
+        # Verify file was read once
+        assert mock_open.call_count == 1
+        assert mock_load_key.call_count == 1
+        
+        # Second request should use cache
+        response2 = client.get("/.well-known/jwks.json")
+        assert response2.status_code == 200
+        
+        # Verify file was not read again (still only called once)
+        assert mock_open.call_count == 1
+        assert mock_load_key.call_count == 1
+        
+        # Both responses should be identical
+        assert response1.json() == response2.json()
+    
+    @patch('tarsy.main.get_settings')
+    @patch('tarsy.main.Path')
+    @patch('builtins.open')
+    def test_jwks_endpoint_file_permission_error(self, mock_open, mock_path_class, mock_get_settings, client):
+        """Test JWKS endpoint when file cannot be read due to permissions."""
+        # Setup mocks
+        mock_settings = Mock()
+        mock_settings.jwt_public_key_path = "/test/path/jwt_public_key.pem"
+        mock_get_settings.return_value = mock_settings
+        
+        # Mock path operations
+        mock_path_instance = Mock()
+        mock_path_instance.is_absolute.return_value = True
+        mock_path_instance.exists.return_value = True
+        mock_path_class.return_value = mock_path_instance
+        
+        # Mock file operations to raise permission error
+        mock_open.side_effect = PermissionError("Permission denied")
+        
+        # Clear cache before test
+        from tarsy.main import jwks_cache
+        jwks_cache.clear()
+        
+        response = client.get("/.well-known/jwks.json")
+        
+        assert response.status_code == 500
+        data = response.json()
+        
+        assert data["detail"]["error"] == "JWKS generation failed"
+        assert "Unable to generate JSON Web Key Set" in data["detail"]["message"]
+    
+    def test_jwks_cache_initialization(self):
+        """Test that JWKS cache is properly initialized."""
+        from tarsy.main import jwks_cache
+        
+        # Cache should be initialized and empty
+        assert jwks_cache is not None
+        assert len(jwks_cache) == 0
+        
+        # Test cache basic functionality
+        jwks_cache["test"] = {"test": "data"}
+        assert jwks_cache["test"] == {"test": "data"}
+        
+        # Clear for other tests
+        jwks_cache.clear()
 
 @pytest.mark.unit
 class TestCriticalCoverage:

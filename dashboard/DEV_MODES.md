@@ -49,7 +49,9 @@ cd dashboard && npm run dev:auth
 
 ## Prerequisites for Auth Mode
 
-For auth mode to work, you need oauth2-proxy running on `localhost:4180`. The auth proxy should be configured to forward requests to your backend on `localhost:8000`.
+For auth mode to work, you need [OAuth2-Proxy](https://github.com/oauth2-proxy/oauth2-proxy) running on `localhost:4180`. The auth proxy should be configured to forward requests to your backend on `localhost:8000`.
+
+**📖 For detailed oauth2-proxy setup instructions, see: [docs/oauth2-proxy-setup.md](../docs/oauth2-proxy-setup.md)**
 
 ## Environment Loading Priority
 

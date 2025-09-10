@@ -1,9 +1,11 @@
-# TARSy-bot 🤖
-
 [![CI Pipeline](https://github.com/codeready-toolchain/tarsy-bot/workflows/CI%20Pipeline/badge.svg)](https://github.com/codeready-toolchain/tarsy-bot/actions)
 [![codecov](https://codecov.io/gh/codeready-toolchain/tarsy-bot/branch/master/graph/badge.svg)](https://codecov.io/gh/codeready-toolchain/tarsy-bot)
 
-An intelligent Site Reliability Engineering system that automatically processes alerts through sequential agent chains, retrieves runbooks, and uses MCP (Model Context Protocol) servers to gather system information for comprehensive multi-stage incident analysis.
+<div align="center">
+  <img src="./docs/img/TARSy-logo.png" alt="TARSy-bot" width="100"/>
+</div>
+
+**TARSy** is an intelligent Site Reliability Engineering system that automatically processes alerts through sequential agent chains, retrieves runbooks, and uses MCP (Model Context Protocol) servers to gather system information for comprehensive multi-stage incident analysis.
 
 Inspired by the spirit of sci-fi AI, TARSy is your reliable SRE operations companion for SRE operations. 🚀
 
@@ -106,6 +108,19 @@ sequenceDiagram
 5. **Stop Services**: Run `make stop` when finished
 
 > **Tip**: Use `make urls` to see all available service endpoints and `make status` to check which services are running.
+
+### Development with Authentication (Optional)
+
+For testing with real OAuth authentication:
+
+```bash
+# Start all services with OAuth2-proxy authentication
+make dev-auth-full
+```
+
+This mode adds [OAuth2-Proxy](https://github.com/oauth2-proxy/oauth2-proxy) authentication layer for development testing.
+
+**📖 For OAuth2-proxy setup instructions**: See [docs/oauth2-proxy-setup.md](docs/oauth2-proxy-setup.md)
 
 ## Supported Alert Types
 
