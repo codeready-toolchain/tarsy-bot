@@ -878,9 +878,10 @@ class TestJWKSEndpoint:
     def mock_rsa_public_key(self):
         """Create a mock RSA public key for testing."""
         from unittest.mock import Mock
+        from cryptography.hazmat.primitives.asymmetric import rsa
         
-        # Mock RSA public key with test values
-        mock_key = Mock()
+        # Mock RSA public key with test values, using spec to pass isinstance checks
+        mock_key = Mock(spec=rsa.RSAPublicKey)
         mock_numbers = Mock()
         mock_numbers.n = 123456789  # Modulus
         mock_numbers.e = 65537      # Exponent
@@ -1020,6 +1021,47 @@ FOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFQIDAQAB
         
         assert data["detail"]["error"] == "JWKS generation failed"
         assert "Unable to generate JSON Web Key Set" in data["detail"]["message"]
+    
+    @patch('tarsy.main.get_settings')
+    @patch('tarsy.main.Path')
+    @patch('builtins.open')
+    @patch('tarsy.main.serialization.load_pem_public_key')
+    def test_jwks_endpoint_non_rsa_key_validation(self, mock_load_key, mock_open, mock_path_class, mock_get_settings, client, valid_pem_key_content):
+        """Test JWKS endpoint rejects non-RSA public keys."""
+        from unittest.mock import Mock
+        from cryptography.hazmat.primitives.asymmetric import ec
+        
+        # Setup mocks
+        mock_settings = Mock()
+        mock_settings.jwt_public_key_path = "/test/path/ec_public_key.pem"
+        mock_get_settings.return_value = mock_settings
+        
+        # Mock path operations
+        mock_path_instance = Mock()
+        mock_path_instance.is_absolute.return_value = True
+        mock_path_instance.exists.return_value = True
+        mock_path_class.return_value = mock_path_instance
+        
+        # Mock file operations
+        mock_file = Mock()
+        mock_file.read.return_value = valid_pem_key_content
+        mock_open.return_value.__enter__.return_value = mock_file
+        
+        # Mock cryptographic operations - return a non-RSA key (EC key)
+        mock_ec_key = Mock(spec=ec.EllipticCurvePublicKey)
+        mock_load_key.return_value = mock_ec_key
+        
+        # Clear cache before test
+        from tarsy.main import jwks_cache
+        jwks_cache.clear()
+        
+        response = client.get("/.well-known/jwks.json")
+        
+        assert response.status_code == 503
+        data = response.json()
+        
+        assert data["detail"]["error"] == "Invalid key type"
+        assert data["detail"]["message"] == "JWT public key must be an RSA public key"
     
     @patch('tarsy.main.get_settings')
     @patch('tarsy.main.Path')
