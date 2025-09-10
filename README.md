@@ -7,7 +7,7 @@
 
 **TARSy** is an intelligent Site Reliability Engineering system that automatically processes alerts through sequential agent chains, retrieves runbooks, and uses MCP (Model Context Protocol) servers to gather system information for comprehensive multi-stage incident analysis.
 
-Inspired by the spirit of sci-fi AI, TARSy is your reliable SRE operations companion for SRE operations. 🚀
+Inspired by the spirit of sci-fi AI, TARSy is your reliable companion for SRE operations. 🚀
 
 ## Documentation
 

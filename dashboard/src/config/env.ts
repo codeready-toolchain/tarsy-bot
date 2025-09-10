@@ -69,7 +69,7 @@ export const urls = {
     activeSessions: '/api/v1/history/active-sessions',
     sessionDetail: (sessionId: string) => `/api/v1/history/sessions/${sessionId}`,
     sessionSummary: (sessionId: string) => `/api/v1/history/sessions/${sessionId}/summary`,
-    submitAlert: '/api/v1/alert-submission',
+    submitAlert: '/alerts',
   },
   
   // WebSocket endpoints
@@ -96,11 +96,15 @@ export const urls = {
  * Validation function to ensure all required config is present
  */
 export const validateConfig = (): void => {
-  const required = ['apiBaseUrl', 'wsBaseUrl'] as const;
-  const missing = required.filter(key => !config[key]);
+  const requiredEnvVars = [
+    { name: 'VITE_API_BASE_URL', configKey: 'apiBaseUrl' },
+    { name: 'VITE_WS_BASE_URL', configKey: 'wsBaseUrl' }
+  ] as const;
   
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  const missing = requiredEnvVars.filter(({ name }) => !import.meta.env[name]);
+  
+  if (missing.length > 0 && !config.isDevelopment) {
+    throw new Error(`Missing required environment variables: ${missing.map(({ name }) => name).join(', ')}`);
   }
   
   console.log('✅ Configuration validated successfully', {

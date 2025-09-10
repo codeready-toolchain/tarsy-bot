@@ -7,16 +7,17 @@ import asyncio
 import json
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 import re
 import base64
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cachetools import TTLCache
 
 from tarsy.config.settings import get_settings
@@ -159,7 +160,7 @@ async def health_check():
         health_status = {
             "status": "healthy",
             "service": "tarsy",
-            "timestamp": "2024-12-19T12:00:00Z",  # This will be updated by actual timestamp
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds") + "Z",
         }
         
         # Add history service status
@@ -193,7 +194,7 @@ async def health_check():
         }
 
 @app.get("/.well-known/jwks.json")
-async def get_jwks():
+async def get_jwks(response: Response):
     """Serve JSON Web Key Set (JWKS) for JWT token validation by oauth2-proxy.
     
     Uses caching to avoid loading and encoding the public key on every request.
@@ -204,6 +205,8 @@ async def get_jwks():
         cache_key = "jwks"
         if cache_key in jwks_cache:
             logger.debug("JWKS served from cache")
+            # Add caching headers for cached responses
+            response.headers["Cache-Control"] = "public, max-age=3600"
             return jwks_cache[cache_key]
         
         # Get public key path from settings
@@ -228,6 +231,16 @@ async def get_jwks():
         # Load and process the public key
         with open(public_key_path, "rb") as f:
             public_key = serialization.load_pem_public_key(f.read())
+        
+        # Validate that the loaded key is an RSA public key
+        if not isinstance(public_key, rsa.RSAPublicKey):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "Invalid key type",
+                    "message": "JWT public key must be an RSA public key"
+                }
+            )
         
         # Convert RSA public key to JWKS format
         public_numbers = public_key.public_numbers()
@@ -255,6 +268,9 @@ async def get_jwks():
         jwks_cache[cache_key] = jwks
         logger.debug("JWKS generated and cached successfully")
         
+        # Add caching headers for fresh responses
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        
         return jwks
         
     except HTTPException:
@@ -267,7 +283,7 @@ async def get_jwks():
                 "error": "JWKS generation failed", 
                 "message": "Unable to generate JSON Web Key Set"
             }
-        )
+        ) from e
 
 @app.get("/alert-types", response_model=List[str])
 async def get_alert_types():

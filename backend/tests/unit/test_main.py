@@ -1188,6 +1188,9 @@ FOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFQIDAQAB
         """Test that JWKS cache is properly initialized."""
         from tarsy.main import jwks_cache
         
+        # Clear cache to ensure deterministic initial state
+        jwks_cache.clear()
+        
         # Cache should be initialized and empty
         assert jwks_cache is not None
         assert len(jwks_cache) == 0

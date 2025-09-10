@@ -12,8 +12,8 @@ class WebSocketService {
   private url: string = '';
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10; // Increased from 3 to 10
-  private reconnectTimeout: NodeJS.Timeout | null = null;
-  private healthCheckInterval: NodeJS.Timeout | null = null;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
   private isConnecting = false;
   private permanentlyDisabled = false;
   private lastConnectionAttempt = 0;

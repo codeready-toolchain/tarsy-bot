@@ -163,7 +163,7 @@ class APIClient {
       }
     } catch (error) {
       console.error('Failed to fetch session detail:', error);
-      if (error instanceof Error && error.message.includes('404')) {
+      if (axios.isAxiosError?.(error) && error.response?.status === 404) {
         throw new Error('Session not found');
       }
       throw error;
@@ -181,7 +181,7 @@ class APIClient {
       return response.data;
     } catch (error) {
       console.error('Failed to fetch session summary:', error);
-      if (error instanceof Error && error.message.includes('404')) {
+      if (axios.isAxiosError?.(error) && error.response?.status === 404) {
         throw new Error('Session not found');
       }
       throw error;
@@ -208,7 +208,7 @@ class APIClient {
    */
   async submitAlert(alertData: Record<string, any>): Promise<{ alert_id: string; status: string; message: string }> {
     try {
-      const response = await this.client.post('/alerts', alertData);
+      const response = await this.client.post(urls.api.submitAlert, alertData);
       return response.data;
     } catch (error) {
       console.error('Error submitting alert:', error);

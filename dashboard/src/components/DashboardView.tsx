@@ -34,11 +34,13 @@ function DashboardView() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading: authLoading, checkAuth } = useAuth();
   
-  // Debug auth state in console
+  // Debug auth state in console (development only)
   useEffect(() => {
-    console.log('🔐 Auth state:', { isAuthenticated, authLoading });
-    // Make checkAuth available globally for debugging
-    (window as any).checkAuth = checkAuth;
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔐 Auth state:', { isAuthenticated, authLoading });
+      // Make checkAuth available globally for debugging
+      (window as any).checkAuth = checkAuth;
+    }
   }, [isAuthenticated, authLoading, checkAuth]);
   
   // Dashboard state

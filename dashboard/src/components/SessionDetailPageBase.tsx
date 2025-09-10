@@ -185,7 +185,7 @@ function SessionDetailPageBase({
   // Ref to hold latest session to avoid stale closures in WebSocket handlers
   const sessionRef = useRef<DetailedSession | null>(null);
   const lastUpdateRef = useRef<number>(0);
-  const updateThrottleRef = useRef<NodeJS.Timeout | null>(null);
+  const updateThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   useEffect(() => {
     sessionRef.current = session;

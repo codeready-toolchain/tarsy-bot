@@ -70,8 +70,13 @@ dev-auth: ## Start all services for development with oauth2-proxy authentication
 	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
 	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
 	@echo "$(YELLOW)Mode: OAuth2-proxy authentication (port $(OAUTH2_PROXY_PORT))$(NC)"
-	@echo "$(RED)⚠️  Make sure oauth2-proxy is running on localhost:$(OAUTH2_PROXY_PORT)$(NC)"
-	@echo "$(YELLOW)💡 Use 'make dev-auth-full' to auto-start oauth2-proxy$(NC)"
+	@echo "$(BLUE)Checking if oauth2-proxy is running on localhost:$(OAUTH2_PROXY_PORT)...$(NC)"
+	@if ! curl --silent --fail --connect-timeout 3 http://localhost:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then \
+		echo "$(RED)❌ Error: oauth2-proxy is not running on localhost:$(OAUTH2_PROXY_PORT)$(NC)"; \
+		echo "$(YELLOW)💡 To auto-start oauth2-proxy, run: make dev-auth-full$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ oauth2-proxy is running$(NC)"
 	@echo ""
 	@trap 'make stop' INT; \
 	( \
@@ -119,16 +124,31 @@ dashboard-auth: ## Start dashboard only (auth mode via oauth2-proxy)
 	cd dashboard && npm run dev:auth
 
 # OAuth2 Proxy targets
+.PHONY: check-oauth2-config
+check-oauth2-config: ## Ensure oauth2-proxy config exists (internal target)
+	@if [ ! -f config/oauth2-proxy.cfg ]; then \
+		if [ -f config/oauth2-proxy.cfg.example ]; then \
+			echo "$(YELLOW)📋 Config file not found. Copying from example...$(NC)"; \
+			cp config/oauth2-proxy.cfg.example config/oauth2-proxy.cfg; \
+			echo "$(GREEN)✅ Created config/oauth2-proxy.cfg from example$(NC)"; \
+		else \
+			echo "$(RED)❌ Error: config/oauth2-proxy.cfg not found$(NC)"; \
+			echo "$(YELLOW)Please create config/oauth2-proxy.cfg or provide config/oauth2-proxy.cfg.example$(NC)"; \
+			exit 1; \
+		fi; \
+	fi
+
 .PHONY: oauth2-proxy
-oauth2-proxy: ## Start oauth2-proxy only
+oauth2-proxy: check-oauth2-config ## Start oauth2-proxy only
 	@echo "$(GREEN)Starting oauth2-proxy on http://localhost:$(OAUTH2_PROXY_PORT)$(NC)"
 	@echo "$(BLUE)Config: config/oauth2-proxy.cfg$(NC)"
 	@echo "$(YELLOW)Proxying to backend on localhost:$(BACKEND_PORT)$(NC)"
 	oauth2-proxy --config=config/oauth2-proxy.cfg
 
 .PHONY: oauth2-proxy-bg
-oauth2-proxy-bg: ## Start oauth2-proxy in background
+oauth2-proxy-bg: check-oauth2-config ## Start oauth2-proxy in background
 	@echo "$(GREEN)Starting oauth2-proxy in background...$(NC)"
+	@mkdir -p logs
 	@if lsof -i:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then \
 		echo "$(YELLOW)⚠️  OAuth2-proxy already running on port $(OAUTH2_PROXY_PORT)$(NC)"; \
 	else \

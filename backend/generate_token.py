@@ -10,6 +10,30 @@ import datetime
 from pathlib import Path
 
 
+def _load_private_key(private_key_path: Path) -> str:
+    """Load private key from file.
+    
+    Args:
+        private_key_path: Path to the JWT private key file
+        
+    Returns:
+        Private key content as string
+        
+    Raises:
+        FileNotFoundError: If the private key file doesn't exist
+        PermissionError: If there are insufficient permissions to read the file
+        OSError: If there are other OS-level issues reading the file
+    """
+    if not private_key_path.exists():
+        raise FileNotFoundError(f"Private key file not found at {private_key_path}. Run 'make generate-jwt-keys' first")
+    
+    try:
+        with open(private_key_path, 'r') as f:
+            return f.read()
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        raise type(e)(f"Unable to read private key at {private_key_path}: {e}") from e
+
+
 def generate_jwt_token(private_key_path: Path, expiration_days: int = 30, subject: str = "monitoring-system", issuer: str = "http://localhost:8000") -> str:
     """Generate a JWT token for API authentication.
     
@@ -21,19 +45,14 @@ def generate_jwt_token(private_key_path: Path, expiration_days: int = 30, subjec
         
     Returns:
         Encoded JWT token string
+        
+    Raises:
+        FileNotFoundError: If the private key file doesn't exist
+        PermissionError: If there are insufficient permissions to read the file
+        OSError: If there are other OS-level issues reading the file
     """
-    
-    if not private_key_path.exists():
-        print("Error: Private key not found. Run 'make generate-jwt-keys' first")
-        sys.exit(1)
-    
     # Load the private key
-    try:
-        with open(private_key_path, 'r') as f:
-            private_key = f.read()
-    except Exception as e:
-        print(f"Error reading private key: {e}")
-        sys.exit(1)
+    private_key = _load_private_key(private_key_path)
     
     # Create JWT payload
     now_utc = datetime.datetime.now(datetime.UTC)
@@ -47,24 +66,20 @@ def generate_jwt_token(private_key_path: Path, expiration_days: int = 30, subjec
     }
     
     # Generate token with RS256 algorithm
-    try:
-        token = jwt.encode(
-            payload, 
-            private_key, 
-            algorithm='RS256', 
-            headers={'kid': 'tarsy-api-key-1'}  # Key ID matching JWKS endpoint
-        )
-        return token
-    except Exception as e:
-        print(f"Error generating token: {e}")
-        sys.exit(1)
+    token = jwt.encode(
+        payload, 
+        private_key, 
+        algorithm='RS256', 
+        headers={'kid': 'tarsy-api-key-1'}  # Key ID matching JWKS endpoint
+    )
+    return token
 
 
 def main():
     """Main function."""
     # Parse command line arguments
     expiration_days = 30  # Default
-    private_key_path = Path("../config/keys/jwt_private_key.pem")  # Default
+    private_key_path = Path(__file__).parent / "../config/keys/jwt_private_key.pem"  # Default based on script location
     subject = "monitoring-system"  # Default
     issuer = "http://localhost:8000"  # Default
     
@@ -92,9 +107,16 @@ def main():
         private_key_path = private_key_path.resolve()
     
     # Generate and print token
-    token = generate_jwt_token(private_key_path, expiration_days, subject, issuer)
-    print(f"Generated JWT token for '{subject}' from issuer '{issuer}' (expires in {expiration_days} days):")
-    print(token)
+    try:
+        token = generate_jwt_token(private_key_path, expiration_days, subject, issuer)
+        print(f"Generated JWT token for '{subject}' from issuer '{issuer}' (expires in {expiration_days} days):")
+        print(token)
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error generating token: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
