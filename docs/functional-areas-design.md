@@ -47,6 +47,7 @@ TARSy is an AI-powered incident analysis system that processes alerts through se
 
 ### Cross-Cutting Concerns
 - [10. Security & Data Protection](#10-security--data-protection)
+- [11. Authentication & Access Control](#11-authentication--access-control)
 
 ---
 
@@ -1218,5 +1219,105 @@ mcp_servers:
 - **Pattern testing** during startup to catch invalid regex patterns
 - **Server reference validation** ensures masking configs reference valid servers
 - **Graceful degradation** if masking service unavailable
+
+---
+
+### 11. Authentication & Access Control
+**Purpose**: Optional OAuth2-based authentication for enhanced security  
+**Key Responsibility**: Protecting dashboard and API access in development and production environments
+
+TARSy supports flexible authentication through [OAuth2-Proxy](https://github.com/oauth2-proxy/oauth2-proxy) integration, enabling organization-level access control while maintaining simple local development workflows.
+
+#### Authentication Architecture
+
+```mermaid
+graph TB
+    subgraph "Client Access"
+        Browser[Browser/Dashboard]
+        API_Client[Direct API Client]
+    end
+    
+    subgraph "Authentication Layer (Optional)"
+        OAuth2[OAuth2-Proxy<br/>:4180]
+        Config[OAuth2 Config]
+    end
+    
+    subgraph "OAuth Providers"
+        GitHub[GitHub OAuth]
+        Google[Google OAuth]
+        Custom[Custom Provider]
+    end
+    
+    subgraph "Tarsy Core"
+        FastAPI[Tarsy API<br/>:8000]
+        Dashboard[Dashboard Assets]
+    end
+    
+    Browser --> OAuth2
+    OAuth2 --> Config
+    OAuth2 --> GitHub
+    OAuth2 --> Google
+    OAuth2 --> Custom
+    OAuth2 --> FastAPI
+    OAuth2 --> Dashboard
+    
+    API_Client -.-> OAuth2
+    API_Client --> FastAPI
+    
+    style OAuth2 fill:#f0f8ff
+    style Config fill:#e8f5e8
+    style GitHub stroke-dasharray: 5 5
+    style Google stroke-dasharray: 5 5
+    style Custom stroke-dasharray: 5 5
+```
+
+#### OAuth2-Proxy Integration
+
+**📍 Configuration**: `config/oauth2-proxy.cfg`
+- **Upstream Configuration**: Proxies requests to Tarsy API (`:8000`)
+- **Provider Integration**: GitHub, Google, and others
+- **Session Management**: Cookie-based authentication with configurable expiration
+- **Access Control**: Organization, team, or domain-based restrictions
+
+**Protected Endpoints**:
+- **Dashboard Access**: All dashboard routes require authentication
+- **API Endpoints**: All `/api/` routes protected by default
+- **WebSocket Connections**: Real-time updates require authenticated session
+- **Health Endpoints**: Unprotected for monitoring purposes
+
+#### Authentication Flow
+
+**Browser-Based Authentication**:
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant D as Dashboard
+    participant O as OAuth2-Proxy
+    participant P as OAuth Provider
+    participant A as Tarsy API
+    
+    U->>D: Access dashboard
+    D->>O: Request protected resource
+    O->>P: Redirect for authentication
+    P->>U: Present login form
+    U->>P: Submit credentials
+    P->>O: Return auth code
+    O->>P: Exchange for access token
+    O->>O: Create session cookie
+    O->>A: Forward request with headers
+    A->>O: Return response
+    O->>D: Return authenticated response
+    D->>U: Show protected content
+```
+
+**API Authentication Headers**:
+```http
+X-Auth-Request-User: username@organization.com
+X-Auth-Request-Email: username@organization.com
+X-Forwarded-For: original.client.ip
+Authorization: Bearer <token>
+```
+
+**📖 For oauth2-proxy setup instructions**: See [OAuth2-Proxy Setup Guide](oauth2-proxy-setup.md)
 
 ---

@@ -103,6 +103,12 @@ class Settings(BaseSettings):
         description="Path to agent and MCP server configuration file"
     )
     
+    # JWT Authentication Configuration
+    jwt_public_key_path: str = Field(
+        default="../config/keys/jwt_public_key.pem",
+        description="Path to JWT public key file for token validation"
+    )
+    
     # Template Variable Defaults
     # These provide default values for template variables if not set in environment
     kubeconfig_default: str = Field(

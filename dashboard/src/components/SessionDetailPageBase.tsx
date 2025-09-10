@@ -3,9 +3,6 @@ import type { ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Container, 
-  AppBar, 
-  Toolbar, 
-  IconButton, 
   Typography, 
   Box, 
   Paper, 
@@ -16,9 +13,11 @@ import {
   FormControlLabel,
   Chip,
   ToggleButton,
-  ToggleButtonGroup
+  ToggleButtonGroup,
+  IconButton
 } from '@mui/material';
-import { ArrowBack, Speed, Psychology, BugReport } from '@mui/icons-material';
+import { Speed, Psychology, BugReport } from '@mui/icons-material';
+import SharedHeader from './SharedHeader';
 import { webSocketService } from '../services/websocket';
 import { useSession } from '../contexts/SessionContext';
 import type { DetailedSession } from '../types';
@@ -186,7 +185,7 @@ function SessionDetailPageBase({
   // Ref to hold latest session to avoid stale closures in WebSocket handlers
   const sessionRef = useRef<DetailedSession | null>(null);
   const lastUpdateRef = useRef<number>(0);
-  const updateThrottleRef = useRef<NodeJS.Timeout | null>(null);
+  const updateThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   useEffect(() => {
     sessionRef.current = session;
@@ -230,8 +229,14 @@ function SessionDetailPageBase({
 
     console.log(`🔌 Setting up WebSocket for ${viewType} view:`, sessionId);
     
-    webSocketService.connect();
-    webSocketService.subscribeToSessionChannel(sessionId);
+    (async () => {
+      try {
+        await webSocketService.connect();
+        webSocketService.subscribeToSessionChannel(sessionId);
+      } catch (error) {
+        console.error('Failed to connect to WebSocket:', error);
+      }
+    })();
 
     // Handle granular session updates for better performance
     const handleSessionUpdate = (update: any) => {
@@ -391,10 +396,7 @@ function SessionDetailPageBase({
 
   // Note: Initial load is now handled by the SessionContext automatically
 
-  // Navigation handlers
-  const handleBack = () => {
-    navigate('/dashboard');
-  };
+  // Navigation handlers (back navigation now handled by SharedHeader)
 
   const handleViewChange = (_event: React.MouseEvent<HTMLElement>, newView: string) => {
     if (newView !== null && (newView === 'conversation' || newView === 'technical')) {
@@ -430,53 +432,27 @@ function SessionDetailPageBase({
   return (
     <Container maxWidth={false} sx={{ py: 2, px: { xs: 1, sm: 2 } }}>
       {/* Header with navigation and controls */}
-      <AppBar 
-        position="static" 
-        elevation={1}
-        sx={{ 
-          borderRadius: 2,
-          mb: 2,
-          bgcolor: 'primary.main',
-          backgroundImage: 'linear-gradient(45deg, primary.main 30%, primary.dark 90%)'
-        }}
+      <SharedHeader 
+        title={`${viewType === 'conversation' ? 'AI Reasoning View' : 'Debug View'}${session ? ` - ${session.session_id?.slice(-8) || sessionId}` : ''}`}
+        showBackButton={true}
+        backUrl="/"
       >
-        <Toolbar>
-          <IconButton 
-            edge="start" 
-            color="inherit" 
-            onClick={handleBack}
-            sx={{ mr: 2 }}
-          >
-            <ArrowBack />
-          </IconButton>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexGrow: 1 }}>
-            <Typography 
-              variant="h6" 
-              component="h1" 
-              sx={{ 
-                fontWeight: 600,
-                letterSpacing: '0.5px'
-              }}
-            >
-              {viewType === 'conversation' ? 'AI Reasoning View' : 'Debug View'}
-              {session && (
-                <Typography component="span" variant="body2" sx={{ ml: 2, opacity: 0.8 }}>
-                  {session.stages?.length || 0} stages • {session.total_interactions || 0} interactions
-                </Typography>
-              )}
+        {/* Session info */}
+        {session && (
+          <Typography variant="body2" sx={{ mr: 2, opacity: 0.8, color: 'white' }}>
+            {session.stages?.length || 0} stages • {session.total_interactions || 0} interactions
+          </Typography>
+        )}
+        
+        {/* Live Updates indicator */}
+        {session && (session.status === 'in_progress' || session.status === 'pending') && !loading && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
+            <CircularProgress size={14} sx={{ color: 'inherit' }} />
+            <Typography variant="caption" sx={{ color: 'inherit', fontSize: '0.75rem' }}>
+              Live
             </Typography>
-            
-            {/* Live Updates indicator moved here */}
-            {session && (session.status === 'in_progress' || session.status === 'pending') && !loading && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'inherit' }}>
-                <CircularProgress size={14} sx={{ color: 'inherit' }} />
-                <Typography variant="caption" sx={{ color: 'inherit', fontSize: '0.75rem' }}>
-                  Live
-                </Typography>
-              </Box>
-            )}
           </Box>
+        )}
           
           {/* Enhanced View Toggle */}
           <ToggleButtonGroup
@@ -595,8 +571,7 @@ function SessionDetailPageBase({
           {loading && (
             <CircularProgress size={20} sx={{ color: 'inherit' }} />
           )}
-        </Toolbar>
-      </AppBar>
+      </SharedHeader>
 
       <Box sx={{ mt: 2 }} data-autoscroll-container>
         {/* Loading state with progressive skeletons */}

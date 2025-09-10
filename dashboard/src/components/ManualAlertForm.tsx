@@ -193,32 +193,39 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
           continue;
         }
         
-        // Validate key format (no special characters except underscore)
-        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmedKey)) {
-          validationErrors.push(`Row ${index + 1}: Key "${trimmedKey}" contains invalid characters. Use only letters, numbers, and underscores.`);
+        // Validate key format (allow more flexible naming for YAML and complex data)
+        if (!/^[a-zA-Z_][a-zA-Z0-9_.-]*$/.test(trimmedKey)) {
+          validationErrors.push(`Row ${index + 1}: Key "${trimmedKey}" contains invalid characters. Use letters, numbers, underscores, dots, and hyphens.`);
           continue;
         }
         
         usedKeys.add(trimmedKey);
         
-        // Validate value (keep as string for now, will process later)
+        // Validate value (keep as string, support multiline content like YAML)
         let valueForStorage = pair.value;
         
-        if (typeof pair.value === 'string' && pair.value.trim().length > 0) {
-          const trimmedValue = pair.value.trim();
-          
-          // Validate JSON if it looks like JSON
-          if ((trimmedValue.startsWith('{') && trimmedValue.endsWith('}')) ||
-              (trimmedValue.startsWith('[') && trimmedValue.endsWith(']'))) {
-            try {
-              JSON.parse(trimmedValue); // Just validate, don't store parsed value yet
-              valueForStorage = trimmedValue;
-            } catch (jsonError) {
-              validationErrors.push(`Row ${index + 1}: Invalid JSON format for key "${trimmedKey}"`);
-              continue;
-            }
+        if (typeof pair.value === 'string') {
+          // For empty values, keep as empty string
+          if (pair.value.trim().length === 0) {
+            valueForStorage = '';
           } else {
-            valueForStorage = trimmedValue;
+            // Don't trim multiline values (preserve formatting for YAML, etc.)
+            const value = pair.value;
+            
+            // Only validate JSON if it clearly looks like JSON (strict check)
+            if ((value.trim().startsWith('{') && value.trim().endsWith('}')) ||
+                (value.trim().startsWith('[') && value.trim().endsWith(']'))) {
+              try {
+                JSON.parse(value.trim()); // Just validate, don't store parsed value yet
+                valueForStorage = value;
+              } catch (jsonError) {
+                validationErrors.push(`Row ${index + 1}: Invalid JSON format for key "${trimmedKey}"`);
+                continue;
+              }
+            } else {
+              // Accept all other string values as-is (including YAML, multiline, etc.)
+              valueForStorage = value;
+            }
           }
         }
         
@@ -498,9 +505,10 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
                     label="Value"
                     value={pair.value}
                     onChange={(e) => updateKeyValuePair(pair.id, 'value', e.target.value)}
-                    placeholder="Field value (strings, JSON objects, arrays, etc.)"
+                    placeholder="Field value (strings, JSON objects, arrays, YAML, etc.)"
                     multiline
-                    maxRows={3}
+                    minRows={1}
+                    maxRows={20}
                     size="small"
                     sx={{ flex: 2 }}
                   />

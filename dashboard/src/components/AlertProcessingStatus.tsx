@@ -38,8 +38,16 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
   
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef(true);
+  
+  // Track if onComplete has been called for this alert to prevent duplicates
+  const didCompleteRef = useRef(false);
 
   useEffect(() => {
+    // Reset mount flag on (re)mount or alert change
+    isMountedRef.current = true;
+    // New alert -> allow onComplete again
+    didCompleteRef.current = false;
+    
     // Initialize WebSocket connection status
     const initialConnectionStatus = webSocketService.isConnected;
     setWsConnected(initialConnectionStatus);
@@ -181,8 +189,10 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
       if (updatedStatus) {
         setStatus(updatedStatus);
         
-        // Call onComplete callback when processing is done
-        if (updatedStatus.status === 'completed' && onCompleteRef.current) {
+        // Call onComplete callback when processing is done (success or failure)
+        if ((updatedStatus.status === 'completed' || updatedStatus.status === 'error') && 
+            onCompleteRef.current && !didCompleteRef.current) {
+          didCompleteRef.current = true; // Mark as completed to prevent duplicate calls
           setTimeout(() => {
             if (onCompleteRef.current) onCompleteRef.current();
           }, 1000);

@@ -7,13 +7,19 @@ import asyncio
 import json
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 import re
+import base64
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cachetools import TTLCache
 
 from tarsy.config.settings import get_settings
 from tarsy.controllers.history_controller import router as history_router
@@ -32,6 +38,9 @@ logger = get_module_logger(__name__)
 # Track currently processing alert keys to prevent duplicates
 processing_alert_keys: Dict[AlertKey, str] = {}  # alert_key -> alert_id mapping
 alert_keys_lock = asyncio.Lock()  # Protect the processing_alert_keys dict
+
+# JWT/JWKS caching to avoid loading/encoding public key on every request
+jwks_cache: TTLCache = TTLCache(maxsize=1, ttl=3600)  # Cache for 1 hour
 
 alert_service: Optional[AlertService] = None
 dashboard_manager: Optional[DashboardConnectionManager] = None
@@ -139,20 +148,20 @@ app.include_router(history_router, tags=["history"])
 
 
 @app.get("/")
-async def root():
+async def root() -> Dict[str, str]:
     """Health check endpoint."""
     return {"message": "Tarsy is running", "status": "healthy"}
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> Dict[str, Any]:
     """Comprehensive health check endpoint."""
     try:
         # Get basic service status
         health_status = {
             "status": "healthy",
             "service": "tarsy",
-            "timestamp": "2024-12-19T12:00:00Z",  # This will be updated by actual timestamp
+            "timestamp": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         }
         
         # Add history service status
@@ -184,6 +193,98 @@ async def health_check():
             "service": "tarsy",
             "error": str(e)
         }
+
+@app.get("/.well-known/jwks.json")
+async def get_jwks(response: Response) -> JSONResponse:
+    """Serve JSON Web Key Set (JWKS) for JWT token validation by oauth2-proxy.
+    
+    Uses caching to avoid loading and encoding the public key on every request.
+    Cache TTL is 1 hour, which is reasonable for key rotation scenarios.
+    """
+    try:
+        # Check cache first
+        cache_key = "jwks"
+        if cache_key in jwks_cache:
+            logger.debug("JWKS served from cache")
+            # Add caching headers for cached responses
+            response.headers["Cache-Control"] = "public, max-age=3600"
+            return JSONResponse(content=jwks_cache[cache_key], status_code=200)
+        
+        # Get public key path from settings
+        settings = get_settings()
+        public_key_path = Path(settings.jwt_public_key_path)
+        
+        # Handle relative paths by resolving them from the backend directory
+        if not public_key_path.is_absolute():
+            # Relative paths are resolved from the backend directory (where the app runs)
+            backend_dir = Path(__file__).parent.parent
+            public_key_path = (backend_dir / public_key_path).resolve()
+        
+        if not public_key_path.exists():
+            raise HTTPException(
+                status_code=503, 
+                detail={
+                    "error": "JWT public key not available",
+                    "message": "JWT authentication is not configured. Please run 'make generate-jwt-keys' to set up JWT authentication."
+                }
+            )
+        
+        # Load and process the public key
+        with open(public_key_path, "rb") as f:
+            public_key = serialization.load_pem_public_key(f.read())
+        
+        # Validate that the loaded key is an RSA public key
+        if not isinstance(public_key, rsa.RSAPublicKey):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "Invalid key type",
+                    "message": "JWT public key must be an RSA public key"
+                }
+            )
+        
+        # Convert RSA public key to JWKS format
+        public_numbers = public_key.public_numbers()
+        
+        def int_to_base64url(val: int) -> str:
+            """Convert integer to base64url encoding for JWKS format."""
+            val_bytes = val.to_bytes((val.bit_length() + 7) // 8, 'big')
+            return base64.urlsafe_b64encode(val_bytes).decode('ascii').rstrip('=')
+        
+        # Create JWKS response
+        jwks = {
+            "keys": [
+                {
+                    "kty": "RSA",          # Key type
+                    "use": "sig",          # Key usage: signature
+                    "kid": "tarsy-api-key-1",  # Key ID
+                    "alg": "RS256",        # Algorithm
+                    "n": int_to_base64url(public_numbers.n),    # Modulus
+                    "e": int_to_base64url(public_numbers.e)     # Exponent
+                }
+            ]
+        }
+        
+        # Cache the result for future requests
+        jwks_cache[cache_key] = jwks
+        logger.debug("JWKS generated and cached successfully")
+        
+        # Add caching headers for fresh responses
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        
+        return JSONResponse(content=jwks, status_code=200)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"JWKS endpoint error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "JWKS generation failed", 
+                "message": "Unable to generate JSON Web Key Set"
+            }
+        ) from e
 
 @app.get("/alert-types", response_model=List[str])
 async def get_alert_types():

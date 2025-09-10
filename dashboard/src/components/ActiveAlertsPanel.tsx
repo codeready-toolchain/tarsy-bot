@@ -121,8 +121,14 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
       webSocketService.onStageProgress(handleStageProgress) : () => {};
 
     // Connect to WebSocket
-    webSocketService.connect();
-    setWsConnected(webSocketService.isConnected);
+    (async () => {
+      try {
+        await webSocketService.connect();
+        setWsConnected(webSocketService.isConnected);
+      } catch (error) {
+        console.error('Failed to connect to WebSocket:', error);
+      }
+    })();
 
     // Check connection status periodically
     const connectionCheck = setInterval(() => {

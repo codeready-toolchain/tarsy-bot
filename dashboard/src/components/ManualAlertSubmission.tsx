@@ -11,14 +11,12 @@ import {
   Alert,
   Button,
   Fade,
-  AppBar,
-  Toolbar,
 } from '@mui/material';
 import {
-  Psychology as BrainIcon,
   Refresh as RefreshIcon,
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
+import SharedHeader from './SharedHeader';
 
 import type { AlertSubmissionResponse } from '../types';
 import ManualAlertForm from './ManualAlertForm';
@@ -135,18 +133,16 @@ function ManualAlertSubmission() {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default' }}>
-      <AppBar position="static" elevation={1}>
-        <Toolbar>
-          <BrainIcon sx={{ mr: 2 }} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Tarsy-bot - Manual Alert Submission
-          </Typography>
-          <Typography variant="body2" sx={{ opacity: 0.8 }}>
-            Automated Incident Response
-          </Typography>
-        </Toolbar>
-      </AppBar>
+    <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default', px: 2, py: 2 }}>
+      <SharedHeader 
+        title="Manual Alert Submission"
+        showBackButton={true}
+        backUrl="/"
+      >
+        <Typography variant="body2" sx={{ opacity: 0.8, color: 'white', mr: 2 }}>
+          Automated Incident Response
+        </Typography>
+      </SharedHeader>
 
       <Container maxWidth={false} sx={{ py: 4, px: { xs: 1, sm: 2 } }}>
         {/* Backend status indicator */}

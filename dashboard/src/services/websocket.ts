@@ -9,16 +9,17 @@ type SessionSpecificHandler = (data: any) => void; // For session-specific timel
 
 class WebSocketService {
   private ws: WebSocket | null = null;
-  private url: string;
+  private url: string = '';
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10; // Increased from 3 to 10
-  private reconnectTimeout: NodeJS.Timeout | null = null;
-  private healthCheckInterval: NodeJS.Timeout | null = null;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
   private isConnecting = false;
   private permanentlyDisabled = false;
   private lastConnectionAttempt = 0;
   private userId: string;
   private subscribedChannels = new Set<string>(); // Track subscribed channels
+  private urlResolutionPromise: Promise<void> | null = null; // Track URL resolution state
   private eventHandlers: {
     sessionUpdate: WebSocketEventHandler[];
     sessionCompleted: WebSocketEventHandler[];
@@ -48,23 +49,40 @@ class WebSocketService {
     this.userId = 'dashboard-' + Math.random().toString(36).substr(2, 9);
     
     // WebSocket URL configuration
-    // Use environment variable or derive from current page origin for HTTPS/proxy support
+    // In development, use OAuth2 proxy to maintain authentication
     let wsBaseUrl: string | undefined;
     
     // Safety check: import.meta.env might be undefined in some environments
-    try {
-      wsBaseUrl = import.meta.env?.VITE_WS_BASE_URL;
-    } catch (error) {
-      console.warn('import.meta.env not available, falling back to window.location');
-      wsBaseUrl = undefined;
-    }
-    
-    if (!wsBaseUrl) {
-      // Derive WebSocket URL from current page origin
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      wsBaseUrl = `${protocol}//${host}`;
-    }
+  try {
+    wsBaseUrl = import.meta.env?.VITE_WS_BASE_URL;
+  } catch (error) {
+    console.warn('import.meta.env not available, falling back to default');
+    wsBaseUrl = undefined;
+  }
+  
+  if (!wsBaseUrl) {
+    // Import at runtime to avoid circular dependency issues
+    this.urlResolutionPromise = import('../config/env').then(({ urls }) => {
+      wsBaseUrl = urls.websocket.base;
+      this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
+      this.startHealthCheck();
+    }).catch(() => {
+      // Fallback if config import fails
+      if (import.meta.env.DEV) {
+        wsBaseUrl = 'ws://localhost:5173';
+      } else {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        wsBaseUrl = `${protocol}//${host}`;
+      }
+      this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
+      this.startHealthCheck();
+    }).finally(() => {
+      // Mark URL resolution as complete
+      this.urlResolutionPromise = null;
+    });
+    return; // Early return for async case
+  }
     
     this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
 
@@ -109,13 +127,36 @@ class WebSocketService {
   /**
    * Connect to WebSocket with automatic reconnection
    */
-  connect(): void {
+  async connect(): Promise<void> {
     if (this.permanentlyDisabled) {
       console.log('WebSocket permanently disabled (endpoint not available)');
       return;
     }
 
     if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
+      return;
+    }
+
+    // Wait for URL resolution if still in progress
+    if (this.urlResolutionPromise) {
+      console.log('🔌 Waiting for URL resolution before connecting...');
+      try {
+        await this.urlResolutionPromise;
+      } catch (error) {
+        console.error('❌ URL resolution failed:', error);
+        return;
+      }
+      
+      // Re-check connection state after URL resolution
+      if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
+        console.log('🔌 Connection already established or in progress after URL resolution');
+        return;
+      }
+    }
+
+    // Check if URL is set after resolution
+    if (!this.url) {
+      console.error('❌ Cannot connect: WebSocket URL not set');
       return;
     }
 
@@ -142,6 +183,13 @@ class WebSocketService {
         };
         console.log('📤 Sending subscription message:', subscribeMessage);
         this.send(subscribeMessage);
+
+        // Re-subscribe to previously tracked session channels
+        if (this.subscribedChannels.size > 0) {
+          for (const channel of this.subscribedChannels) {
+            this.send({ type: 'subscribe', channel });
+          }
+        }
       };
 
       this.ws.onmessage = (event) => {
@@ -674,10 +722,10 @@ class WebSocketService {
   /**
    * Manually retry connection - useful for UI controls
    */
-  retry(): void {
+  async retry(): Promise<void> {
     console.log('🔄 Manual retry requested');
     this.resetConnectionState();
-    this.connect();
+    await this.connect();
   }
 
   /**

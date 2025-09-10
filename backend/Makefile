@@ -168,6 +168,48 @@ clean-db: ## Clean up database files (USE WITH CAUTION)
 			;; \
 	esac
 
+# JWT Authentication
+.PHONY: generate-jwt-keys
+generate-jwt-keys: ## Generate RSA key pair for JWT signing/validation
+	@echo "$(GREEN)Generating JWT RSA key pair...$(NC)"
+	@mkdir -p ../config/keys
+	@openssl genrsa -out ../config/keys/jwt_private_key.pem 2048
+	@openssl rsa -in ../config/keys/jwt_private_key.pem -pubout -out ../config/keys/jwt_public_key.pem
+	@chmod 600 ../config/keys/jwt_private_key.pem  # Secure private key
+	@chmod 644 ../config/keys/jwt_public_key.pem   # Public key can be readable
+	@echo "$(GREEN)JWT keys generated successfully!$(NC)"
+	@echo "$(YELLOW)Private key: config/keys/jwt_private_key.pem (keep secure!)$(NC)"
+	@echo "$(YELLOW)Public key: config/keys/jwt_public_key.pem$(NC)"
+
+.PHONY: generate-api-token
+generate-api-token: ## Generate JWT token for API access (365-day expiration, subject: monitoring-system, issuer: http://localhost:8000)
+	@echo "$(GREEN)Generating JWT API token...$(NC)"
+	@$(UV) run python3 generate_token.py 365 ../config/keys/jwt_private_key.pem monitoring-system http://localhost:8000
+
+.PHONY: generate-api-token-exp
+generate-api-token-exp: ## Generate JWT token with custom expiration (Usage: make generate-api-token-exp DAYS=365 [SUBJECT=monitoring-system] [ISSUER=http://localhost:8000])
+	@if [ -z "$(DAYS)" ]; then \
+		echo "$(RED)Usage: make generate-api-token-exp DAYS=<number> [SUBJECT=<subject>] [ISSUER=<issuer>]$(NC)"; \
+		echo "$(YELLOW)Example: make generate-api-token-exp DAYS=365 SUBJECT=prometheus ISSUER=https://api.production.com$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Generating JWT API token ($(DAYS) days expiration)...$(NC)"
+	@$(UV) run python3 generate_token.py $(DAYS) ../config/keys/jwt_private_key.pem $(if $(SUBJECT),$(SUBJECT),monitoring-system) $(if $(ISSUER),$(ISSUER),http://localhost:8000)
+
+.PHONY: verify-jwt-setup
+verify-jwt-setup: ## Verify JWT authentication setup
+	@echo "$(GREEN)Verifying JWT authentication setup...$(NC)"
+	@if [ -f ../config/keys/jwt_private_key.pem ] && [ -f ../config/keys/jwt_public_key.pem ]; then \
+		echo "$(GREEN)✓ JWT keys found$(NC)"; \
+		echo "Private key: config/keys/jwt_private_key.pem"; \
+		echo "Public key: config/keys/jwt_public_key.pem"; \
+	else \
+		echo "$(RED)✗ JWT keys not found$(NC)"; \
+		echo "Run 'make generate-jwt-keys' to create them"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)JWT authentication setup verified!$(NC)"
+
 # Utility targets
 .PHONY: check
 check: quality test-unit ## Run quality checks and unit tests (fast CI check)

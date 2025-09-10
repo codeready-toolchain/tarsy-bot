@@ -117,80 +117,15 @@ sequenceDiagram
     A->>A: Process final analysis for return
 ```
 
-## System Architecture
+## Authentication & Access Control
 
-```mermaid
-graph TB
-    subgraph "External"
-        Alerts[Monitoring Alerts]
-        SRE[SRE Dashboard]
-    end
-    
-    subgraph "Tarsy Core"
-        API[API Gateway]
-        Orchestrator[Chain Orchestrator]
-        ChainRegistry[Chain Registry]
-    end
-    
-    subgraph "Chain Definitions"
-        Chain1[Kubernetes Chain<br/>Stage 1: Data Collection<br/>Stage 2: Analysis]
-        Chain2[Security Chain - Example<br/>Stage 1: Evidence Collection<br/>Stage 2: Analysis<br/>Stage 3: Response Plan]
-        Chain3[Custom Chains...]
-    end
-    
-    subgraph "Specialized Agents"
-        K8s[Kubernetes Agent]
-        DB[Database Agent - Example]
-        Security[Security Agent - Example]
-        Custom[Custom Agents...]
-    end
-    
-    subgraph "AI & Tools"
-        LLM[AI/LLM Service]
-        MCP[MCP Tool Servers]
-        Summarizer[Context-Aware<br/>Result Summarization]
-    end
-    
-    subgraph "Data & Monitoring"
-        History[(Audit Database with Stage Tracking)]
-        WS[Real-time Chain Updates]
-    end
-    
-    Alerts --> API
-    API --> Orchestrator
-    Orchestrator --> ChainRegistry
-    ChainRegistry --> Chain1
-    ChainRegistry --> Chain2
-    ChainRegistry --> Chain3
-    
-    Chain1 --> K8s
-    Chain2 --> Security
-    Chain3 --> Custom
-    
-    K8s --> LLM
-    K8s --> MCP
-    K8s --> Summarizer
-    Security --> LLM
-    Security --> MCP
-    Security --> Summarizer
-    Custom --> LLM
-    Custom --> MCP
-    Custom --> Summarizer
-    
-    Summarizer --> LLM
-    Summarizer --> MCP
-    
-    Orchestrator --> History
-    Orchestrator --> WS
-    WS --> SRE
-    History --> SRE
-    
-    style Chain2 stroke-dasharray: 5 5
-    style Chain3 stroke-dasharray: 5 5
-    style DB stroke-dasharray: 5 5
-    style Security stroke-dasharray: 5 5
-    style Custom stroke-dasharray: 5 5
-```
+Tarsy supports **optional OAuth2-based authentication** for enhanced security in development and production environments using [OAuth2-Proxy](https://github.com/oauth2-proxy/oauth2-proxy):
+
+### Development Modes
+- **Direct Mode (Default)**: Dashboard connects directly to Tarsy API (`localhost:8000`)
+- **Authenticated Mode**: Dashboard connects through OAuth2-proxy (`localhost:4180`) for real authentication testing
+
+**📖 For complete authentication setup**: See [OAuth2-Proxy Setup Guide](oauth2-proxy-setup.md)
 
 ## Agent Intelligence Model
 

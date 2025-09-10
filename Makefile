@@ -13,6 +13,7 @@ NC := \033[0m # No Color
 # Service ports
 BACKEND_PORT := 8000
 DASHBOARD_PORT := 5173
+OAUTH2_PROXY_PORT := 4180
 
 # Prerequisites check
 .PHONY: check-prereqs
@@ -48,10 +49,11 @@ setup: check-prereqs ## Complete project setup (run this first!)
 
 # Development targets
 .PHONY: dev
-dev: ## Start all services for development
-	@echo "$(GREEN)🚀 Starting all services...$(NC)"
+dev: ## Start all services for development (direct backend connection)
+	@echo "$(GREEN)🚀 Starting all services in default dev mode...$(NC)"
 	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
 	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
+	@echo "$(YELLOW)Mode: Direct backend connection (no auth proxy)$(NC)"
 	@echo ""
 	@trap 'make stop' INT; \
 	( \
@@ -62,6 +64,48 @@ dev: ## Start all services for development
 		wait \
 	)
 
+.PHONY: dev-auth
+dev-auth: ## Start all services for development with oauth2-proxy authentication  
+	@echo "$(GREEN)🚀 Starting all services in auth dev mode...$(NC)"
+	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
+	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
+	@echo "$(YELLOW)Mode: OAuth2-proxy authentication (port $(OAUTH2_PROXY_PORT))$(NC)"
+	@echo "$(BLUE)Checking if oauth2-proxy is running on localhost:$(OAUTH2_PROXY_PORT)...$(NC)"
+	@if ! timeout 3 bash -c "</dev/tcp/localhost/$(OAUTH2_PROXY_PORT)" >/dev/null 2>&1; then \
+		echo "$(RED)❌ Error: oauth2-proxy is not running on localhost:$(OAUTH2_PROXY_PORT)$(NC)"; \
+		echo "$(YELLOW)💡 To auto-start oauth2-proxy, run: make dev-auth-full$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ oauth2-proxy is running$(NC)"
+	@echo ""
+	@trap 'make stop' INT; \
+	( \
+		echo "$(YELLOW)Starting backend...$(NC)" && \
+		(cd backend && make dev) & \
+		echo "$(YELLOW)Starting dashboard in auth mode...$(NC)" && \
+		(cd dashboard && npm run dev:auth) & \
+		wait \
+	)
+
+.PHONY: dev-auth-full
+dev-auth-full: ## Start all services including oauth2-proxy automatically
+	@echo "$(GREEN)🚀 Starting all services with auto oauth2-proxy...$(NC)"
+	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
+	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
+	@echo "$(BLUE)OAuth2-proxy will run on: http://localhost:$(OAUTH2_PROXY_PORT)$(NC)"
+	@echo ""
+	@trap 'make stop' INT; \
+	( \
+		echo "$(YELLOW)Starting oauth2-proxy...$(NC)" && \
+		make oauth2-proxy-bg && \
+		sleep 3 && \
+		echo "$(YELLOW)Starting backend...$(NC)" && \
+		(cd backend && make dev) & \
+		echo "$(YELLOW)Starting dashboard in auth mode...$(NC)" && \
+		(cd dashboard && npm run dev:auth) & \
+		wait \
+	)
+
 # Individual service targets
 .PHONY: backend
 backend: ## Start backend only
@@ -69,9 +113,65 @@ backend: ## Start backend only
 	$(MAKE) -C backend dev
 
 .PHONY: dashboard
-dashboard: ## Start dashboard only
+dashboard: ## Start dashboard only (direct backend connection)
 	@echo "$(GREEN)Starting dashboard on http://localhost:$(DASHBOARD_PORT)$(NC)"
 	cd dashboard && npm run dev
+
+.PHONY: dashboard-auth
+dashboard-auth: ## Start dashboard only (auth mode via oauth2-proxy)
+	@echo "$(GREEN)Starting dashboard in auth mode on http://localhost:$(DASHBOARD_PORT)$(NC)"
+	@echo "$(YELLOW)Connecting to backend via oauth2-proxy on port $(OAUTH2_PROXY_PORT)$(NC)"
+	cd dashboard && npm run dev:auth
+
+# OAuth2 Proxy targets
+.PHONY: check-oauth2-config
+check-oauth2-config: ## Ensure oauth2-proxy config exists (internal target)
+	@if [ ! -f config/oauth2-proxy.cfg ]; then \
+		if [ -f config/oauth2-proxy.cfg.example ]; then \
+			echo "$(YELLOW)📋 Config file not found. Copying from example...$(NC)"; \
+			cp config/oauth2-proxy.cfg.example config/oauth2-proxy.cfg; \
+			echo "$(GREEN)✅ Created config/oauth2-proxy.cfg from example$(NC)"; \
+		else \
+			echo "$(RED)❌ Error: config/oauth2-proxy.cfg not found$(NC)"; \
+			echo "$(YELLOW)Please create config/oauth2-proxy.cfg or provide config/oauth2-proxy.cfg.example$(NC)"; \
+			exit 1; \
+		fi; \
+	fi
+
+.PHONY: oauth2-proxy
+oauth2-proxy: check-oauth2-config ## Start oauth2-proxy only
+	@echo "$(GREEN)Starting oauth2-proxy on http://localhost:$(OAUTH2_PROXY_PORT)$(NC)"
+	@echo "$(BLUE)Config: config/oauth2-proxy.cfg$(NC)"
+	@echo "$(YELLOW)Proxying to backend on localhost:$(BACKEND_PORT)$(NC)"
+	oauth2-proxy --config=config/oauth2-proxy.cfg
+
+.PHONY: oauth2-proxy-bg
+oauth2-proxy-bg: check-oauth2-config ## Start oauth2-proxy in background
+	@echo "$(GREEN)Starting oauth2-proxy in background...$(NC)"
+	@mkdir -p logs
+	@if lsof -i:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then \
+		echo "$(YELLOW)⚠️  OAuth2-proxy already running on port $(OAUTH2_PROXY_PORT)$(NC)"; \
+	else \
+		echo "$(BLUE)Config: config/oauth2-proxy.cfg$(NC)"; \
+		echo "$(YELLOW)Proxying to backend on localhost:$(BACKEND_PORT)$(NC)"; \
+		nohup oauth2-proxy --config=config/oauth2-proxy.cfg > logs/oauth2-proxy.log 2>&1 & \
+		sleep 2; \
+		if lsof -i:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then \
+			echo "$(GREEN)✅ OAuth2-proxy started successfully$(NC)"; \
+		else \
+			echo "$(RED)❌ Failed to start oauth2-proxy$(NC)"; \
+		fi; \
+	fi
+
+.PHONY: oauth2-proxy-status
+oauth2-proxy-status: ## Check if oauth2-proxy is running
+	@if lsof -i:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then \
+		echo "$(GREEN)✅ OAuth2-proxy is running on port $(OAUTH2_PROXY_PORT)$(NC)"; \
+		echo "$(BLUE)Access URL: http://localhost:$(OAUTH2_PROXY_PORT)$(NC)"; \
+	else \
+		echo "$(RED)❌ OAuth2-proxy is not running$(NC)"; \
+		echo "$(YELLOW)Start with: make oauth2-proxy-bg$(NC)"; \
+	fi
 
 # Stop services
 .PHONY: stop
@@ -79,6 +179,7 @@ stop: ## Stop all running services
 	@echo "$(YELLOW)Stopping all services...$(NC)"
 	$(MAKE) -C backend stop
 	@lsof -ti:$(DASHBOARD_PORT) | xargs -r kill -9 2>/dev/null || true
+	@lsof -ti:$(OAUTH2_PROXY_PORT) | xargs -r kill -9 2>/dev/null || true
 	@echo "$(GREEN)✅ All services stopped$(NC)"
 
 # Testing targets (leverage backend Makefile)
@@ -154,6 +255,7 @@ status: ## Show which services are running and project status
 	@echo "=========================="
 	@echo "Backend (port $(BACKEND_PORT)): $$(if lsof -i:$(BACKEND_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
 	@echo "Dashboard (port $(DASHBOARD_PORT)): $$(if lsof -i:$(DASHBOARD_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
+	@echo "OAuth2-Proxy (port $(OAUTH2_PROXY_PORT)): $$(if lsof -i:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
 	@echo ""
 	$(MAKE) -C backend status
 
@@ -169,6 +271,10 @@ urls: ## Display service URLs and endpoints
 	@echo "  API Server:      http://localhost:$(BACKEND_PORT)"
 	@echo "  API Docs:        http://localhost:$(BACKEND_PORT)/docs"
 	@echo "  Health Check:    http://localhost:$(BACKEND_PORT)/health"
+	@echo ""
+	@echo "$(BLUE)🔐 Authentication (Auth Mode):$(NC)"
+	@echo "  OAuth2-Proxy:    http://localhost:$(OAUTH2_PROXY_PORT)"
+	@echo "    - Access dashboard via proxy for auth testing"
 
 .PHONY: logs
 logs: ## Show recent logs from all services
@@ -181,9 +287,15 @@ help: ## Show this help message
 	@echo "================================="
 	@echo ""
 	@echo "$(YELLOW)🚀 Quick Start:$(NC)"
-	@echo "  make setup     # First time setup"
-	@echo "  make dev       # Start all services"
-	@echo "  make stop      # Stop all services"
+	@echo "  make setup        # First time setup"
+	@echo "  make dev          # Start all services (direct backend)"
+	@echo "  make dev-auth     # Start all services (manual oauth2-proxy)"
+	@echo "  make dev-auth-full# Start all services (auto oauth2-proxy)"
+	@echo "  make stop         # Stop all services"
+	@echo ""
+	@echo "$(YELLOW)🔐 OAuth2-Proxy:$(NC)"
+	@echo "  make oauth2-proxy-bg      # Start oauth2-proxy in background"
+	@echo "  make oauth2-proxy-status  # Check oauth2-proxy status"
 	@echo ""
 	@echo "$(YELLOW)📋 Available Commands:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-15s$(NC) %s\n", $$1, $$2}'
