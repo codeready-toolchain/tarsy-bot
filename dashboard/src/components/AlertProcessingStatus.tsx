@@ -181,8 +181,8 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
       if (updatedStatus) {
         setStatus(updatedStatus);
         
-        // Call onComplete callback when processing is done
-        if (updatedStatus.status === 'completed' && onCompleteRef.current) {
+        // Call onComplete callback when processing is done (success or failure)
+        if ((updatedStatus.status === 'completed' || updatedStatus.status === 'error') && onCompleteRef.current) {
           setTimeout(() => {
             if (onCompleteRef.current) onCompleteRef.current();
           }, 1000);
