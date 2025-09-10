@@ -5,7 +5,9 @@ import { authService } from './auth';
 // API base URL configuration  
 // In development, use Vite proxy (relative URLs) to handle CORS with OAuth2 proxy
 // In production, use the full URL from environment variables
-const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || '');
+import { urls } from '../config/env';
+
+const API_BASE_URL = urls.api.base;
 
 class APIClient {
   private client: AxiosInstance;

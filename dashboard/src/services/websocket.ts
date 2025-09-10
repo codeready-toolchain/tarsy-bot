@@ -9,7 +9,7 @@ type SessionSpecificHandler = (data: any) => void; // For session-specific timel
 
 class WebSocketService {
   private ws: WebSocket | null = null;
-  private url: string;
+  private url: string = '';
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10; // Increased from 3 to 10
   private reconnectTimeout: NodeJS.Timeout | null = null;
@@ -52,24 +52,33 @@ class WebSocketService {
     let wsBaseUrl: string | undefined;
     
     // Safety check: import.meta.env might be undefined in some environments
-    try {
-      wsBaseUrl = import.meta.env?.VITE_WS_BASE_URL;
-    } catch (error) {
-      console.warn('import.meta.env not available, falling back to default');
-      wsBaseUrl = undefined;
-    }
-    
-    if (!wsBaseUrl) {
+  try {
+    wsBaseUrl = import.meta.env?.VITE_WS_BASE_URL;
+  } catch (error) {
+    console.warn('import.meta.env not available, falling back to default');
+    wsBaseUrl = undefined;
+  }
+  
+  if (!wsBaseUrl) {
+    // Import at runtime to avoid circular dependency issues
+    import('../config/env').then(({ urls }) => {
+      wsBaseUrl = urls.websocket.base;
+      this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
+      this.startHealthCheck();
+    }).catch(() => {
+      // Fallback if config import fails
       if (import.meta.env.DEV) {
-        // In development, connect through Vite dev server for consistent domain
         wsBaseUrl = 'ws://localhost:5173';
       } else {
-        // In production, derive WebSocket URL from current page origin
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
         wsBaseUrl = `${protocol}//${host}`;
       }
-    }
+      this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
+      this.startHealthCheck();
+    });
+    return; // Early return for async case
+  }
     
     this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
 

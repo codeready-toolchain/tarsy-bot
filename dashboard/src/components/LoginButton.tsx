@@ -1,4 +1,5 @@
-import { Button } from '@mui/material';
+import { IconButton, Tooltip } from '@mui/material';
+import { Login } from '@mui/icons-material';
 import { authService } from '../services/auth';
 
 interface LoginButtonProps {
@@ -7,24 +8,27 @@ interface LoginButtonProps {
   className?: string;
 }
 
-export default function LoginButton({ variant = 'contained', size = 'medium', className }: LoginButtonProps) {
+export default function LoginButton({ size = 'medium', className }: LoginButtonProps) {
   const handleLogin = () => {
     console.log('Manual login button clicked');
     authService.redirectToLogin();
   };
 
   return (
-    <Button
-      variant={variant}
-      size={size}
-      onClick={handleLogin}
-      className={className}
-      sx={{ 
-        minWidth: 'auto', // Prevent button from being too wide
-        whiteSpace: 'nowrap' // Keep text on one line
-      }}
-    >
-      Login with GitHub
-    </Button>
+    <Tooltip title="Login with GitHub">
+      <IconButton
+        size={size}
+        onClick={handleLogin}
+        className={className}
+        sx={{ 
+          color: 'white',
+          '&:hover': {
+            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+          }
+        }}
+      >
+        <Login />
+      </IconButton>
+    </Tooltip>
   );
 }

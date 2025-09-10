@@ -43,7 +43,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const logout = () => {
+    // Immediately clear auth state
+    setIsAuthenticated(false);
     setUser(null);
+    // Then redirect to logout
     authService.logout();
   };
 

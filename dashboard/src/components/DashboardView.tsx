@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, AppBar, Toolbar, Typography, Box, Tooltip, CircularProgress, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
-import { FiberManualRecord, Refresh, Menu as MenuIcon, Send as SendIcon } from '@mui/icons-material';
+import { Refresh, Menu as MenuIcon, Send as SendIcon } from '@mui/icons-material';
 import DashboardLayout from './DashboardLayout';
 import FilterPanel from './FilterPanel';
 import LoginButton from './LoginButton';
+import UserMenu from './UserMenu';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient, handleAPIError } from '../services/api';
 import { webSocketService } from '../services/websocket';
@@ -480,7 +481,16 @@ function DashboardView() {
   return (
     <Container maxWidth={false} sx={{ px: 2 }}>
       {/* AppBar with dashboard title and live indicator */}
-      <AppBar position="static" elevation={0} sx={{ borderRadius: 1 }}>
+      <AppBar 
+        position="static" 
+        elevation={0} 
+        sx={{ 
+          borderRadius: 1,
+          background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+          boxShadow: '0 4px 16px rgba(25, 118, 210, 0.3)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+        }}
+      >
         <Toolbar>
           {/* Navigation Menu */}
           <IconButton
@@ -489,46 +499,92 @@ function DashboardView() {
             color="inherit"
             aria-label="menu"
             onClick={handleMenuOpen}
-            sx={{ mr: 2 }}
+            sx={{ 
+              mr: 2,
+              background: 'rgba(255, 255, 255, 0.1)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: 2,
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                background: 'rgba(255, 255, 255, 0.2)',
+                transform: 'translateY(-1px)',
+                boxShadow: '0 4px 12px rgba(255, 255, 255, 0.2)',
+              }
+            }}
           >
             <MenuIcon />
           </IconButton>
           
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Tarsy Dashboard
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {/* Login Button - only show when not authenticated */}
-            {!isAuthenticated && !authLoading && (
-              <LoginButton variant="contained" size="medium" />
-            )}
-            
-            {/* Connection Status Indicator */}
-            <Tooltip 
-              title={wsConnected 
-                ? "Connected - Real-time updates active" 
-                : "Disconnected - Use manual refresh buttons or retry connection"
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              width: 40,
+              height: 40,
+              borderRadius: 2,
+              background: 'rgba(255, 255, 255, 0.1)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15), 0 0 20px rgba(255, 255, 255, 0.1)',
+              transition: 'all 0.3s ease',
+              position: 'relative',
+              overflow: 'hidden',
+              '&:before': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: '-100%',
+                width: '100%',
+                height: '100%',
+                background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent)',
+                animation: 'shimmer 2s infinite',
+              },
+              '&:hover': {
+                background: 'rgba(255, 255, 255, 0.15)',
+                transform: 'translateY(-2px) scale(1.05)',
+                boxShadow: '0 8px 25px rgba(0, 0, 0, 0.2), 0 0 30px rgba(255, 255, 255, 0.2)',
+                '&:before': {
+                  left: '100%',
+                }
+              },
+              '@keyframes shimmer': {
+                '0%': { left: '-100%' },
+                '100%': { left: '100%' },
               }
+            }}>
+              <img 
+                src="/tarsy-logo.png" 
+                alt="Tarsy Logo" 
+                style={{ 
+                  height: '28px', 
+                  width: 'auto', 
+                  borderRadius: '3px',
+                  filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))'
+                }} 
+              />
+            </Box>
+            <Typography 
+              variant="h5" 
+              component="div"
+              sx={{
+                fontWeight: 600,
+                letterSpacing: '-0.5px',
+                textShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
+                background: 'linear-gradient(45deg, #ffffff 0%, rgba(255, 255, 255, 0.9) 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                // Fallback for browsers that don't support background-clip: text
+                color: 'white',
+              }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <FiberManualRecord 
-                  sx={{ 
-                    fontSize: 12, 
-                    color: wsConnected ? 'success.main' : 'error.main',
-                    animation: wsConnected ? 'none' : 'pulse 2s infinite',
-                    '@keyframes pulse': {
-                      '0%': { opacity: 0.5 },
-                      '50%': { opacity: 1 },
-                      '100%': { opacity: 0.5 },
-                    }
-                  }} 
-                />
-                <Typography variant="body2" sx={{ color: 'inherit' }}>
-                  {wsConnected ? 'Live' : 'Manual'}
-                </Typography>
-              </Box>
-            </Tooltip>
-
+              Tarsy Dashboard
+            </Typography>
+          </Box>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexGrow: 1, justifyContent: 'flex-end' }}>
             {/* WebSocket Retry Button - only show when disconnected */}
             {!wsConnected && (
               <Tooltip title="Retry WebSocket connection">
@@ -546,12 +602,81 @@ function DashboardView() {
                 </IconButton>
               </Tooltip>
             )}
-
-            {/* Loading indicator for active refreshes */}
+            
+            {/* Loading indicator */}
             {(activeLoading || historicalLoading) && (
               <Tooltip title="Loading data...">
-                <CircularProgress size={20} sx={{ color: 'inherit' }} />
+                <CircularProgress size={18} sx={{ color: 'inherit' }} />
               </Tooltip>
+            )}
+            
+            {/* Connection Status Indicator - Subtle badge in top right */}
+            <Tooltip 
+              title={wsConnected 
+                ? "Connected - Real-time updates active" 
+                : "Disconnected - Use manual refresh buttons or retry connection"
+              }
+            >
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 0.5,
+                px: 1.5,
+                py: 0.6,
+                borderRadius: 3,
+                background: wsConnected 
+                  ? 'linear-gradient(135deg, rgba(76, 175, 80, 0.2), rgba(139, 195, 74, 0.2))' 
+                  : 'linear-gradient(135deg, rgba(244, 67, 54, 0.2), rgba(255, 87, 51, 0.2))',
+                border: `2px solid ${wsConnected ? 'rgba(76, 175, 80, 0.6)' : 'rgba(244, 67, 54, 0.6)'}`,
+                minWidth: 'fit-content',
+                boxShadow: wsConnected 
+                  ? '0 4px 20px rgba(76, 175, 80, 0.4), 0 0 15px rgba(76, 175, 80, 0.2)' 
+                  : '0 4px 20px rgba(244, 67, 54, 0.4), 0 0 15px rgba(244, 67, 54, 0.2)',
+                backdropFilter: 'blur(10px)',
+                transition: 'all 0.3s ease',
+                position: 'relative',
+                '&:hover': {
+                  transform: 'translateY(-1px)',
+                  boxShadow: wsConnected 
+                    ? '0 6px 25px rgba(76, 175, 80, 0.5), 0 0 20px rgba(76, 175, 80, 0.3)' 
+                    : '0 6px 25px rgba(244, 67, 54, 0.5), 0 0 20px rgba(244, 67, 54, 0.3)',
+                }
+              }}>
+                <Box
+                  sx={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    backgroundColor: wsConnected ? '#81C784' : '#FF7043',
+                    boxShadow: `0 0 6px ${wsConnected ? '#4CAF50' : '#F44336'}`,
+                    animation: wsConnected ? 'none' : 'pulse 2s infinite',
+                    '@keyframes pulse': {
+                      '0%': { opacity: 0.7, transform: 'scale(1)', boxShadow: `0 0 6px ${wsConnected ? '#4CAF50' : '#F44336'}` },
+                      '50%': { opacity: 1, transform: 'scale(1.3)', boxShadow: `0 0 12px ${wsConnected ? '#4CAF50' : '#F44336'}` },
+                      '100%': { opacity: 0.7, transform: 'scale(1)', boxShadow: `0 0 6px ${wsConnected ? '#4CAF50' : '#F44336'}` },
+                    }
+                  }}
+                />
+                <Typography variant="caption" sx={{ 
+                  color: 'white',
+                  fontWeight: 600,
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.8px',
+                  textTransform: 'uppercase',
+                  textShadow: `0 1px 2px rgba(0, 0, 0, 0.3)`
+                }}>
+                  {wsConnected ? 'Live' : 'Offline'}
+                </Typography>
+              </Box>
+            </Tooltip>
+            
+            {/* Authentication Elements */}
+            {!isAuthenticated && !authLoading && (
+              <LoginButton size="medium" />
+            )}
+            
+            {isAuthenticated && !authLoading && (
+              <UserMenu />
             )}
           </Box>
         </Toolbar>

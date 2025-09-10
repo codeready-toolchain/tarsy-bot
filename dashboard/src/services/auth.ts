@@ -2,6 +2,8 @@
  * Authentication service for handling OAuth2 Proxy authentication flow
  */
 
+import { urls, config } from '../config/env';
+
 export interface AuthUser {
   email: string;
   name?: string;
@@ -10,7 +12,7 @@ export interface AuthUser {
 
 class AuthService {
   private static instance: AuthService;
-  private readonly OAUTH_PROXY_BASE = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4180');
+  private readonly OAUTH_PROXY_BASE = urls.oauth.base;
 
   public static getInstance(): AuthService {
     if (!AuthService.instance) {
@@ -48,13 +50,45 @@ class AuthService {
   }
 
   /**
-   * Get current user info from OAuth2 proxy headers (if available)
-   * This would need to be implemented based on your OAuth provider
+   * Get current user info from OAuth2 proxy userinfo endpoint
    */
   async getCurrentUser(): Promise<AuthUser | null> {
     try {
-      // OAuth2 proxy typically passes user info via headers
-      // Use a protected endpoint to ensure authentication and get user headers
+      console.log('🔍 Fetching user info from oauth2-proxy...');
+      
+      // Try the oauth2-proxy userinfo endpoint first
+      const userinfoResponse = await fetch('/oauth2/userinfo', {
+        method: 'GET', 
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      if (userinfoResponse.ok) {
+        const userinfo = await userinfoResponse.json();
+        console.log('📋 OAuth2-proxy userinfo response:', userinfo);
+        console.log('🔍 Available userinfo fields:', Object.keys(userinfo));
+        console.log('🎯 Checking userinfo fields:', {
+          user: userinfo.user,
+          login: userinfo.login,
+          preferred_username: userinfo.preferred_username,
+          name: userinfo.name,
+          email: userinfo.email
+        });
+        
+        if (userinfo.email) {
+          return {
+            email: userinfo.email,
+            // Priority: username > login > preferred_username > name > email username
+            name: userinfo.user || userinfo.login || userinfo.preferred_username || userinfo.name || userinfo.email.split('@')[0],
+            groups: [], // Removed groups as per user request
+          };
+        }
+      }
+
+      // Fallback: Try to get user info from headers
+      console.log('🔄 Fallback: trying to get user info from headers...');
       const response = await fetch('/api/v1/history/active-sessions', {
         method: 'GET', 
         credentials: 'include',
@@ -64,24 +98,53 @@ class AuthService {
       });
 
       if (!response.ok) {
+        console.warn('❌ Both userinfo endpoint and headers approach failed');
         return null;
       }
 
-      // Extract user info from headers if available
-      const email = response.headers.get('X-Forwarded-User') || 
-                   response.headers.get('X-Forwarded-Email');
+      // Extract user info from response headers  
+      const email = response.headers.get('X-Forwarded-Email') ||
+                   response.headers.get('X-Forwarded-User') ||
+                   response.headers.get('X-User-Email');
+      
+      const username = response.headers.get('X-Forwarded-Preferred-Username');
+      const displayName = response.headers.get('X-User-Name');
+      
+      // Get all forwarded headers for debugging
+      const allHeaders = {
+        'X-Forwarded-User': response.headers.get('X-Forwarded-User'),
+        'X-Forwarded-Email': response.headers.get('X-Forwarded-Email'),
+        'X-Forwarded-Preferred-Username': response.headers.get('X-Forwarded-Preferred-Username'),
+        'X-User-Name': response.headers.get('X-User-Name'),
+        'X-Forwarded-Groups': response.headers.get('X-Forwarded-Groups')
+      };
+      
+      console.log('🔍 All OAuth2-proxy headers:', allHeaders);
+      console.log('🎯 Selected values:', {
+        email,
+        username,
+        displayName,
+        finalName: username || displayName || email?.split('@')[0]
+      });
       
       if (email) {
         return {
           email,
-          name: response.headers.get('X-Forwarded-Preferred-Username') || email,
-          groups: response.headers.get('X-Forwarded-Groups')?.split(',') || [],
+          // Priority: username > display name > email username
+          name: username || displayName || email.split('@')[0],
+          groups: response.headers.get('X-Forwarded-Groups')?.split(',').map(g => g.trim()).filter(g => g) || [],
         };
       }
 
-      return null;
+      // If we get here, we're authenticated but no user info is available
+      console.warn('⚠️ User is authenticated but no user info available');
+      return {
+        email: 'unknown@user.com',
+        name: 'Authenticated User',
+        groups: [],
+      };
     } catch (error) {
-      console.warn('Failed to get current user:', error);
+      console.warn('❌ Failed to get current user:', error);
       return null;
     }
   }
@@ -115,7 +178,16 @@ class AuthService {
    * Logout by clearing OAuth session
    */
   logout(): void {
-    const logoutUrl = `${this.OAUTH_PROXY_BASE}/oauth2/sign_out`;
+    console.log('🚪 Logging out...');
+    
+    // In development, use relative URL to go through Vite proxy
+    // In production, use the full OAuth2 proxy URL
+    const logoutUrl = import.meta.env.DEV 
+      ? '/oauth2/sign_out'
+      : `${this.OAUTH_PROXY_BASE}/oauth2/sign_out`;
+    
+    console.log('🚪 Redirecting to logout URL:', logoutUrl);
+    console.log('🚪 Environment:', import.meta.env.DEV ? 'development' : 'production');
     window.location.href = logoutUrl;
   }
 
@@ -125,7 +197,7 @@ class AuthService {
   handleAuthError(): void {
     // Only prevent redirect if we're actually on an OAuth2 proxy page
     const currentUrl = window.location.href;
-    const isOAuthProxyUrl = currentUrl.includes('localhost:4180') && 
+    const isOAuthProxyUrl = currentUrl.includes(config.oauthProxyUrl.replace('http://', '').replace('https://', '')) && 
                           (currentUrl.includes('/oauth2/sign_in') || 
                            currentUrl.includes('/oauth2/callback'));
     
