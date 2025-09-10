@@ -48,10 +48,11 @@ setup: check-prereqs ## Complete project setup (run this first!)
 
 # Development targets
 .PHONY: dev
-dev: ## Start all services for development
-	@echo "$(GREEN)🚀 Starting all services...$(NC)"
+dev: ## Start all services for development (direct backend connection)
+	@echo "$(GREEN)🚀 Starting all services in default dev mode...$(NC)"
 	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
 	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
+	@echo "$(YELLOW)Mode: Direct backend connection (no auth proxy)$(NC)"
 	@echo ""
 	@trap 'make stop' INT; \
 	( \
@@ -62,6 +63,23 @@ dev: ## Start all services for development
 		wait \
 	)
 
+.PHONY: dev-auth
+dev-auth: ## Start all services for development with oauth2-proxy authentication  
+	@echo "$(GREEN)🚀 Starting all services in auth dev mode...$(NC)"
+	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
+	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
+	@echo "$(YELLOW)Mode: OAuth2-proxy authentication (port 4180)$(NC)"
+	@echo "$(RED)⚠️  Make sure oauth2-proxy is running on localhost:4180$(NC)"
+	@echo ""
+	@trap 'make stop' INT; \
+	( \
+		echo "$(YELLOW)Starting backend...$(NC)" && \
+		(cd backend && make dev) & \
+		echo "$(YELLOW)Starting dashboard in auth mode...$(NC)" && \
+		(cd dashboard && npm run dev:auth) & \
+		wait \
+	)
+
 # Individual service targets
 .PHONY: backend
 backend: ## Start backend only
@@ -69,9 +87,15 @@ backend: ## Start backend only
 	$(MAKE) -C backend dev
 
 .PHONY: dashboard
-dashboard: ## Start dashboard only
+dashboard: ## Start dashboard only (direct backend connection)
 	@echo "$(GREEN)Starting dashboard on http://localhost:$(DASHBOARD_PORT)$(NC)"
 	cd dashboard && npm run dev
+
+.PHONY: dashboard-auth
+dashboard-auth: ## Start dashboard only (auth mode via oauth2-proxy)
+	@echo "$(GREEN)Starting dashboard in auth mode on http://localhost:$(DASHBOARD_PORT)$(NC)"
+	@echo "$(YELLOW)Connecting to backend via oauth2-proxy on port 4180$(NC)"
+	cd dashboard && npm run dev:auth
 
 # Stop services
 .PHONY: stop
@@ -182,7 +206,8 @@ help: ## Show this help message
 	@echo ""
 	@echo "$(YELLOW)🚀 Quick Start:$(NC)"
 	@echo "  make setup     # First time setup"
-	@echo "  make dev       # Start all services"
+	@echo "  make dev       # Start all services (direct backend)"
+	@echo "  make dev-auth  # Start all services (with oauth2-proxy)"
 	@echo "  make stop      # Stop all services"
 	@echo ""
 	@echo "$(YELLOW)📋 Available Commands:$(NC)"
