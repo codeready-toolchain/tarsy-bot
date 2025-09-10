@@ -580,7 +580,7 @@ function DashboardView() {
                 color: 'white',
               }}
             >
-              Tarsy Dashboard
+              TARSy
             </Typography>
           </Box>
           
