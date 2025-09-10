@@ -229,8 +229,14 @@ function SessionDetailPageBase({
 
     console.log(`🔌 Setting up WebSocket for ${viewType} view:`, sessionId);
     
-    webSocketService.connect();
-    webSocketService.subscribeToSessionChannel(sessionId);
+    (async () => {
+      try {
+        await webSocketService.connect();
+        webSocketService.subscribeToSessionChannel(sessionId);
+      } catch (error) {
+        console.error('Failed to connect to WebSocket:', error);
+      }
+    })();
 
     // Handle granular session updates for better performance
     const handleSessionUpdate = (update: any) => {

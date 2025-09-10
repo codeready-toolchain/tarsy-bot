@@ -20,7 +20,6 @@ class WebSocketService {
   private userId: string;
   private subscribedChannels = new Set<string>(); // Track subscribed channels
   private urlResolutionPromise: Promise<void> | null = null; // Track URL resolution state
-  private shouldAutoConnect = false; // Flag to auto-connect after URL resolution
   private eventHandlers: {
     sessionUpdate: WebSocketEventHandler[];
     sessionCompleted: WebSocketEventHandler[];
@@ -67,11 +66,6 @@ class WebSocketService {
       wsBaseUrl = urls.websocket.base;
       this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
       this.startHealthCheck();
-      // Auto-connect if requested
-      if (this.shouldAutoConnect) {
-        this.shouldAutoConnect = false;
-        this.connect();
-      }
     }).catch(() => {
       // Fallback if config import fails
       if (import.meta.env.DEV) {
@@ -83,11 +77,6 @@ class WebSocketService {
       }
       this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
       this.startHealthCheck();
-      // Auto-connect if requested
-      if (this.shouldAutoConnect) {
-        this.shouldAutoConnect = false;
-        this.connect();
-      }
     }).finally(() => {
       // Mark URL resolution as complete
       this.urlResolutionPromise = null;
@@ -151,11 +140,16 @@ class WebSocketService {
     // Wait for URL resolution if still in progress
     if (this.urlResolutionPromise) {
       console.log('🔌 Waiting for URL resolution before connecting...');
-      this.shouldAutoConnect = true;
       try {
         await this.urlResolutionPromise;
       } catch (error) {
         console.error('❌ URL resolution failed:', error);
+        return;
+      }
+      
+      // Re-check connection state after URL resolution
+      if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
+        console.log('🔌 Connection already established or in progress after URL resolution');
         return;
       }
     }
@@ -189,6 +183,13 @@ class WebSocketService {
         };
         console.log('📤 Sending subscription message:', subscribeMessage);
         this.send(subscribeMessage);
+
+        // Re-subscribe to previously tracked session channels
+        if (this.subscribedChannels.size > 0) {
+          for (const channel of this.subscribedChannels) {
+            this.send({ type: 'subscribe', channel });
+          }
+        }
       };
 
       this.ws.onmessage = (event) => {

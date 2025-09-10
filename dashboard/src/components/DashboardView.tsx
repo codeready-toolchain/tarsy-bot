@@ -426,10 +426,15 @@ function DashboardView() {
 
     // Connect to WebSocket with enhanced logging
     console.log('🔌 Connecting to WebSocket for real-time updates...');
-    webSocketService.connect();
-
-    // Set initial connection status
-    setWsConnected(webSocketService.isConnected);
+    (async () => {
+      try {
+        await webSocketService.connect();
+        // Set initial connection status after connection attempt
+        setWsConnected(webSocketService.isConnected);
+      } catch (error) {
+        console.error('Failed to connect to WebSocket:', error);
+      }
+    })();
 
     // Cleanup
     return () => {
@@ -460,9 +465,13 @@ function DashboardView() {
   };
 
   // Handle WebSocket retry
-  const handleWebSocketRetry = () => {
+  const handleWebSocketRetry = async () => {
     console.log('🔄 Manual WebSocket retry requested');
-    webSocketService.retry();
+    try {
+      await webSocketService.retry();
+    } catch (error) {
+      console.error('Failed to retry WebSocket connection:', error);
+    }
   };
 
   // Handle navigation menu
