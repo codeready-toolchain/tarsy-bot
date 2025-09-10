@@ -71,7 +71,7 @@ dev-auth: ## Start all services for development with oauth2-proxy authentication
 	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
 	@echo "$(YELLOW)Mode: OAuth2-proxy authentication (port $(OAUTH2_PROXY_PORT))$(NC)"
 	@echo "$(BLUE)Checking if oauth2-proxy is running on localhost:$(OAUTH2_PROXY_PORT)...$(NC)"
-	@if ! curl --silent --fail --connect-timeout 3 http://localhost:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then \
+	@if ! timeout 3 bash -c "</dev/tcp/localhost/$(OAUTH2_PROXY_PORT)" >/dev/null 2>&1; then \
 		echo "$(RED)❌ Error: oauth2-proxy is not running on localhost:$(OAUTH2_PROXY_PORT)$(NC)"; \
 		echo "$(YELLOW)💡 To auto-start oauth2-proxy, run: make dev-auth-full$(NC)"; \
 		exit 1; \

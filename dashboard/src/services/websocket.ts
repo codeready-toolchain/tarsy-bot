@@ -19,6 +19,8 @@ class WebSocketService {
   private lastConnectionAttempt = 0;
   private userId: string;
   private subscribedChannels = new Set<string>(); // Track subscribed channels
+  private urlResolutionPromise: Promise<void> | null = null; // Track URL resolution state
+  private shouldAutoConnect = false; // Flag to auto-connect after URL resolution
   private eventHandlers: {
     sessionUpdate: WebSocketEventHandler[];
     sessionCompleted: WebSocketEventHandler[];
@@ -61,10 +63,15 @@ class WebSocketService {
   
   if (!wsBaseUrl) {
     // Import at runtime to avoid circular dependency issues
-    import('../config/env').then(({ urls }) => {
+    this.urlResolutionPromise = import('../config/env').then(({ urls }) => {
       wsBaseUrl = urls.websocket.base;
       this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
       this.startHealthCheck();
+      // Auto-connect if requested
+      if (this.shouldAutoConnect) {
+        this.shouldAutoConnect = false;
+        this.connect();
+      }
     }).catch(() => {
       // Fallback if config import fails
       if (import.meta.env.DEV) {
@@ -76,6 +83,14 @@ class WebSocketService {
       }
       this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
       this.startHealthCheck();
+      // Auto-connect if requested
+      if (this.shouldAutoConnect) {
+        this.shouldAutoConnect = false;
+        this.connect();
+      }
+    }).finally(() => {
+      // Mark URL resolution as complete
+      this.urlResolutionPromise = null;
     });
     return; // Early return for async case
   }
@@ -123,13 +138,31 @@ class WebSocketService {
   /**
    * Connect to WebSocket with automatic reconnection
    */
-  connect(): void {
+  async connect(): Promise<void> {
     if (this.permanentlyDisabled) {
       console.log('WebSocket permanently disabled (endpoint not available)');
       return;
     }
 
     if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
+      return;
+    }
+
+    // Wait for URL resolution if still in progress
+    if (this.urlResolutionPromise) {
+      console.log('🔌 Waiting for URL resolution before connecting...');
+      this.shouldAutoConnect = true;
+      try {
+        await this.urlResolutionPromise;
+      } catch (error) {
+        console.error('❌ URL resolution failed:', error);
+        return;
+      }
+    }
+
+    // Check if URL is set after resolution
+    if (!this.url) {
+      console.error('❌ Cannot connect: WebSocket URL not set');
       return;
     }
 
@@ -688,10 +721,10 @@ class WebSocketService {
   /**
    * Manually retry connection - useful for UI controls
    */
-  retry(): void {
+  async retry(): Promise<void> {
     console.log('🔄 Manual retry requested');
     this.resetConnectionState();
-    this.connect();
+    await this.connect();
   }
 
   /**

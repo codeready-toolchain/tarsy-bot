@@ -8,12 +8,13 @@ import json
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import re
 import base64
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from cryptography.hazmat.primitives import serialization
@@ -147,20 +148,20 @@ app.include_router(history_router, tags=["history"])
 
 
 @app.get("/")
-async def root():
+async def root() -> Dict[str, str]:
     """Health check endpoint."""
     return {"message": "Tarsy is running", "status": "healthy"}
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> Dict[str, Any]:
     """Comprehensive health check endpoint."""
     try:
         # Get basic service status
         health_status = {
             "status": "healthy",
             "service": "tarsy",
-            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds") + "Z",
+            "timestamp": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         }
         
         # Add history service status
@@ -194,7 +195,7 @@ async def health_check():
         }
 
 @app.get("/.well-known/jwks.json")
-async def get_jwks(response: Response):
+async def get_jwks(response: Response) -> JSONResponse:
     """Serve JSON Web Key Set (JWKS) for JWT token validation by oauth2-proxy.
     
     Uses caching to avoid loading and encoding the public key on every request.
@@ -207,7 +208,7 @@ async def get_jwks(response: Response):
             logger.debug("JWKS served from cache")
             # Add caching headers for cached responses
             response.headers["Cache-Control"] = "public, max-age=3600"
-            return jwks_cache[cache_key]
+            return JSONResponse(content=jwks_cache[cache_key], status_code=200)
         
         # Get public key path from settings
         settings = get_settings()
@@ -271,7 +272,7 @@ async def get_jwks(response: Response):
         # Add caching headers for fresh responses
         response.headers["Cache-Control"] = "public, max-age=3600"
         
-        return jwks
+        return JSONResponse(content=jwks, status_code=200)
         
     except HTTPException:
         raise

@@ -75,7 +75,7 @@ def generate_jwt_token(private_key_path: Path, expiration_days: int = 30, subjec
     return token
 
 
-def main():
+def main() -> None:
     """Main function."""
     # Parse command line arguments
     expiration_days = 30  # Default
