@@ -161,11 +161,6 @@ mcp_servers:
 agents:
   # Security-focused agent for handling security-related alerts
   security-agent:
-    alert_types:
-      - "SecurityBreach"          # Data breach or unauthorized access
-      - "AccessViolation"         # Authentication/authorization failures
-      - "SuspiciousActivity"      # Unusual user or system behavior
-      - "ComplianceViolation"     # Regulatory compliance issues
     mcp_servers:
       - "security-server"         # Custom security MCP server (defined above)
       - "kubernetes-server"       # Built-in Kubernetes MCP server for cluster security
@@ -188,12 +183,6 @@ agents:
 
   # Performance-focused agent for handling performance and resource issues
   performance-agent:
-    alert_types:
-      - "HighLatency"             # Service response time issues
-      - "CPUSpike"                # High CPU utilization
-      - "MemoryPressure"          # Memory exhaustion or leaks
-      - "DiskSpaceWarning"        # Storage capacity issues
-      - "NetworkCongestion"       # Network bandwidth or connectivity issues
     mcp_servers:
       - "monitoring-server"       # Custom monitoring MCP server (defined above)
       - "kubernetes-server"       # Built-in Kubernetes MCP server for cluster metrics
@@ -216,11 +205,6 @@ agents:
 
   # Database-focused agent for handling database-related alerts
   database-agent:
-    alert_types:
-      - "DatabaseConnectionFailure"    # Database connectivity issues
-      - "SlowQueryPerformance"         # Query performance degradation
-      - "DatabaseDiskSpace"            # Database storage issues
-      - "ReplicationLag"               # Database replication delays
     mcp_servers:
       - "kubernetes-server"            # Built-in Kubernetes MCP server only
     # iteration_strategy: "react"      # Optional: defaults to "react" if not specified
@@ -242,11 +226,6 @@ agents:
 
   # Cloud infrastructure agent (disabled by default - requires cloud credentials)
   cloud-infrastructure-agent:
-    alert_types:
-      - "EC2InstanceFailure"           # EC2 instance health issues
-      - "LoadBalancerUnhealthy"        # Load balancer configuration issues
-      - "AutoScalingFailure"           # Auto-scaling group problems
-      - "CloudWatchAlarm"              # CloudWatch metric thresholds
     mcp_servers:
       - "aws-server"                   # Custom AWS MCP server (currently disabled)
       - "kubernetes-server"            # Built-in Kubernetes MCP server

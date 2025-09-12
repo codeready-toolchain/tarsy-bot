@@ -162,7 +162,7 @@ function findMCPResult(
   stage: StageExecution,
   actionName: string,
   afterTimestamp: number
-): { result: any; success: boolean } | null {
+): { result: any; success: boolean; errorMessage?: string } | null {
   const mcpCommunications = stage.mcp_communications || [];
   const [serverPart, toolPart] = actionName.includes('.')
     ? actionName.split('.', 2)
@@ -185,11 +185,23 @@ function findMCPResult(
   const match: any = candidates[0];
   const details = match.details ?? match;
   const success = details.success !== false;
+  
+  // Handle error cases properly
+  if (!success) {
+    const errorMessage = details.error_message || 'MCP tool call failed - no response received';
+    return { 
+      result: null, 
+      success: false, 
+      errorMessage 
+    };
+  }
+  
+  // Handle successful cases
   const result =
     details.result ??
     details.tool_result ??
     details.available_tools ??
-    (success ? 'Action completed successfully' : null);
+    'Action completed successfully';
   return { result, success };
 }
 
@@ -357,7 +369,8 @@ export function parseStageConversation(stage: StageExecution): StageConversation
             actionInput: parsed.actionInput || '',
             actionResult: mcpResult?.result || null,
             timestamp_us: timestamp,
-            success: mcpResult?.success ?? true
+            success: mcpResult?.success ?? true,
+            errorMessage: mcpResult?.errorMessage
           });
         }
         

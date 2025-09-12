@@ -72,9 +72,7 @@ class ConfigurableAgent(BaseAgent):
             self._validate_mcp_server_availability()
             
             logger.info(f"Initialized ConfigurableAgent '{self._agent_name}' with "
-                       f"{len(config.alert_types)} alert types and "
                        f"{len(config.mcp_servers)} MCP servers")
-            logger.debug(f"Alert types: {config.alert_types}")
             logger.debug(f"MCP servers: {config.mcp_servers}")
             logger.debug(f"Custom instructions length: {len(config.custom_instructions)} characters")
             
@@ -106,17 +104,6 @@ class ConfigurableAgent(BaseAgent):
         """Get the agent name for identification."""
         return self._provided_agent_name if self._provided_agent_name else ""
     
-    def get_supported_alert_types(self) -> List[str]:
-        """
-        Get the alert types this configured agent can handle.
-        
-        This method provides visibility into what alert types this
-        agent instance is configured to handle.
-        
-        Returns:
-            List of alert types from configuration
-        """
-        return self._config.alert_types.copy()
     
     def __str__(self) -> str:
         """
@@ -136,7 +123,6 @@ class ConfigurableAgent(BaseAgent):
             Detailed string representation for debugging
         """
         return (f"ConfigurableAgent(config=AgentConfigModel("
-                f"alert_types={self._config.alert_types!r}, "
                 f"mcp_servers={self._config.mcp_servers!r}, "
                 f"custom_instructions={self._config.custom_instructions!r}))")
     
@@ -165,8 +151,6 @@ class ConfigurableAgent(BaseAgent):
         if config is None:
             errors.append("Agent configuration is required and cannot be None")
         else:
-            if not config.alert_types:
-                errors.append("Agent configuration must specify at least one alert type")
             if not config.mcp_servers:
                 errors.append("Agent configuration must specify at least one MCP server")
         

@@ -359,14 +359,8 @@ class ConfigurationLoader:
         Raises:
             ConfigurationError: If configuration is incomplete or inconsistent
         """
-        # Check for agents without alert types (should be caught by Pydantic, but double-check)
+        # Check for agents without required fields (should be caught by Pydantic, but double-check)
         for agent_name, agent_config in config.agents.items():
-            if not agent_config.alert_types:
-                raise ConfigurationError(
-                    f"Agent '{agent_name}' has no alert types configured. "
-                    f"Each agent must handle at least one alert type."
-                )
-            
             if not agent_config.mcp_servers:
                 raise ConfigurationError(
                     f"Agent '{agent_name}' has no MCP servers configured. "

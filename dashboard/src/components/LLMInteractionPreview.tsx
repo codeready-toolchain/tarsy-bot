@@ -193,8 +193,8 @@ function LLMInteractionPreview({
             fontWeight: 500
           }}>
             {interaction.error_message ? 
-              (interaction.error_message.length > 100 ? 
-                `${interaction.error_message.substring(0, 100)}...` : 
+              (interaction.error_message.length > 600 ? 
+                `${interaction.error_message.substring(0, 600)}...` : 
                 interaction.error_message
               ) : 
               'LLM request failed - no response received'

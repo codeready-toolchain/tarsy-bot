@@ -7,7 +7,7 @@ This module serves as the SINGLE SOURCE OF TRUTH for:
 - Built-in MCP server configurations
 
 When adding new built-in agents or MCP servers, edit only this file.
-All other modules (AgentRegistry, AgentFactory, MCPServerRegistry, ConfigurationLoader)
+All other modules (AgentFactory, MCPServerRegistry, ConfigurationLoader)
 import their built-in definitions from here.
 
 Note: This module contains only data structures to avoid circular imports.

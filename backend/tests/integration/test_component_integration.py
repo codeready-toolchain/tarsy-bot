@@ -13,52 +13,33 @@ from tarsy.integrations.llm.client import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.constants import StageStatus
 from tarsy.services.agent_factory import AgentFactory
-from tarsy.services.agent_registry import AgentRegistry
+from tarsy.services.chain_registry import ChainRegistry
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-class TestAgentRegistryIntegration:
-    """Test agent registry component and its interactions."""
+class TestChainRegistryIntegration:
+    """Test chain registry component and its interactions."""
 
-    def test_agent_registry_default_mappings(self):
-        """Test agent registry with default mappings."""
+    def test_chain_registry_default_mappings(self):
+        """Test chain registry with default mappings."""
         # Act
-        registry = AgentRegistry()
+        registry = ChainRegistry()
         
         # Assert
-        supported_types = registry.get_supported_alert_types()
+        supported_types = registry.list_available_alert_types()
         assert "NamespaceTerminating" in supported_types
         
-        agent_class = registry.get_agent_for_alert_type("NamespaceTerminating")
-        assert agent_class == "KubernetesAgent"
+        chain = registry.get_chain_for_alert_type("NamespaceTerminating")
+        assert chain.chain_id == "kubernetes-agent-chain"
 
-    def test_agent_registry_custom_mappings(self):
-        """Test agent registry with custom configuration."""
-        # Arrange
-        custom_config = {
-            "Custom Alert Type": "CustomAgent",
-            "Test Alert": "TestAgent"
-        }
-        
-        # Act
-        registry = AgentRegistry(config=custom_config)
-        
-        # Assert
-        supported_types = registry.get_supported_alert_types()
-        assert "Custom Alert Type" in supported_types
-        assert "Test Alert" in supported_types
-        
-        agent_class = registry.get_agent_for_alert_type("Custom Alert Type")
-        assert agent_class == "CustomAgent"
-
-    def test_agent_registry_unknown_alert_type(self):
-        """Test agent registry behavior with unknown alert types."""
+    def test_chain_registry_unknown_alert_type(self):
+        """Test chain registry behavior with unknown alert types."""
         # Act & Assert
-        registry = AgentRegistry()
-        with pytest.raises(ValueError, match="No agent for alert type 'Unknown Alert Type'"):
-            registry.get_agent_for_alert_type("Unknown Alert Type")
+        registry = ChainRegistry()
+        with pytest.raises(ValueError, match="No chain found for alert type 'Unknown Alert Type'"):
+            registry.get_chain_for_alert_type("Unknown Alert Type")
 
 
 @pytest.mark.asyncio
@@ -311,15 +292,15 @@ class TestMCPClientIntegration:
 class TestServiceInteractionPatterns:
     """Test common interaction patterns between services."""
 
-    async def test_agent_registry_factory_integration(
+    async def test_chain_registry_factory_integration(
         self, 
         mock_llm_manager, 
         mock_mcp_client, 
         mock_mcp_server_registry
     ):
-        """Test integration between agent registry and factory."""
+        """Test integration between chain registry and factory."""
         # Arrange
-        registry = AgentRegistry()
+        registry = ChainRegistry()
         factory = AgentFactory(
             llm_client=mock_llm_manager,
             mcp_client=mock_mcp_client,
@@ -329,11 +310,14 @@ class TestServiceInteractionPatterns:
         alert_type = "NamespaceTerminating"
         
         # Act
-        agent_class_name = registry.get_agent_for_alert_type(alert_type)
-        agent = factory.create_agent(agent_class_name)
+        chain_config = registry.get_chain_for_alert_type(alert_type)
+        # Get the agent name from the first stage of the chain
+        first_stage = chain_config.stages[0]
+        agent = factory.create_agent(first_stage.agent)
         
         # Assert
-        assert agent_class_name == "KubernetesAgent"
+        assert chain_config.chain_id == "kubernetes-agent-chain"
+        assert first_stage.agent == "KubernetesAgent"
         assert isinstance(agent, KubernetesAgent)
 
     async def test_agent_mcp_registry_integration(

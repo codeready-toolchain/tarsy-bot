@@ -280,10 +280,59 @@ function InteractionDetails({
   );
 };
 
-  const renderMCPDetails = (mcpDetails: MCPInteraction) => (
-    <Stack spacing={2}>
-      {/* Only show Tool Call section for actual tool calls, not tool lists */}
-      {!isToolList(mcpDetails) && (
+  const renderMCPDetails = (mcpDetails: MCPInteraction) => {
+    const isFailed = mcpDetails.success === false;
+    
+    return (
+      <Stack spacing={2}>
+        {/* Show error section first for failed interactions */}
+        {isFailed && (
+          <Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{
+                  px: 1,
+                  py: 0.5,
+                  bgcolor: 'error.main',
+                  color: 'error.contrastText',
+                  borderRadius: 1,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  MCP Error
+                </Box>
+              </Box>
+              <CopyButton
+                text={mcpDetails.error_message || 'MCP tool call failed - no response received'}
+                variant="icon"
+                size="small"
+                tooltip="Copy error message"
+              />
+            </Box>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                p: 1.5,
+                bgcolor: 'grey.50',
+                borderRadius: 1,
+                border: 1,
+                borderColor: 'error.main',
+                color: 'error.main',
+                fontFamily: 'monospace',
+                fontSize: '0.875rem'
+              }}
+            >
+              {mcpDetails.error_message || 'MCP tool call failed - no response received'}
+            </Typography>
+          </Box>
+        )}
+        
+        {/* Only show Tool Call section for actual tool calls, not tool lists */}
+        {!isToolList(mcpDetails) && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
@@ -379,7 +428,8 @@ function InteractionDetails({
         </Stack>
       </Box>
     </Stack>
-  );
+    );
+  };
 
   const renderSystemDetails = (systemDetails: SystemEvent) => (
     <Stack spacing={2}>

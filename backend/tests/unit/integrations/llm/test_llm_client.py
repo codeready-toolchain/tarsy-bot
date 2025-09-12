@@ -604,29 +604,35 @@ class TestLLMClientErrorHandling:
     
     def test_extract_error_details_basic_exception(self, client_for_errors):
         """Test error detail extraction for basic exceptions."""
+        from tarsy.utils.error_details import extract_error_details
+        
         try:
             raise ValueError("Test error message")
         except Exception as e:
-            details = client_for_errors._extract_error_details(e)
+            details = extract_error_details(e)
             
             assert "Type=ValueError" in details
             assert "Message=Test error message" in details
     
     def test_extract_error_details_with_cause(self, client_for_errors):
         """Test error detail extraction with exception chain."""
+        from tarsy.utils.error_details import extract_error_details
+        
         try:
             try:
                 raise ConnectionError("Network failed")
             except Exception as e:
                 raise ValueError("Wrapper error") from e
         except Exception as e:
-            details = client_for_errors._extract_error_details(e)
+            details = extract_error_details(e)
             
             assert "Type=ValueError" in details
             assert "RootCause=ConnectionError: Network failed" in details
     
     def test_extract_error_details_with_attributes(self, client_for_errors):
         """Test error detail extraction with exception attributes."""
+        from tarsy.utils.error_details import extract_error_details
+        
         class CustomException(Exception):
             def __init__(self, message):
                 super().__init__(message)
@@ -636,13 +642,15 @@ class TestLLMClientErrorHandling:
         try:
             raise CustomException("Custom error")
         except Exception as e:
-            details = client_for_errors._extract_error_details(e)
+            details = extract_error_details(e)
             
             assert "status_code=500" in details
             assert "error_type='server_error'" in details
     
-    def test_extract_error_details_truncates_long_values(self, client_for_errors):
-        """Test that long attribute values are truncated."""
+    def test_extract_error_details_preserves_long_values(self, client_for_errors):
+        """Test that long attribute values are preserved in full."""
+        from tarsy.utils.error_details import extract_error_details
+        
         class LongAttributeException(Exception):
             def __init__(self):
                 super().__init__("Error with long attribute")
@@ -651,11 +659,11 @@ class TestLLMClientErrorHandling:
         try:
             raise LongAttributeException()
         except Exception as e:
-            details = client_for_errors._extract_error_details(e)
+            details = extract_error_details(e)
             
-            # Should truncate long values
+            # Should preserve full long values for debugging
             assert "long_data=" in details
-            assert len(details) < 1000  # Should be truncated
+            assert "x" * 300 in details  # Full string should be preserved
 
 
 @pytest.mark.integration

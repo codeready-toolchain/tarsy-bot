@@ -448,10 +448,61 @@ const LazyDetailsRenderer = memo(({
     );
   };
 
-  const renderMCPDetails = (mcpDetails: MCPInteraction) => (
-    <Stack spacing={2}>
-      {/* Tool Call section */}
-      {!isToolList(mcpDetails) && (
+  const renderMCPDetails = (mcpDetails: MCPInteraction) => {
+    const isFailed = mcpDetails.success === false;
+    
+    return (
+      <Stack spacing={2}>
+        {/* Show error section first for failed interactions */}
+        {isFailed && (
+          <Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{
+                  px: 1,
+                  py: 0.5,
+                  bgcolor: 'error.main',
+                  color: 'error.contrastText',
+                  borderRadius: 1,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  MCP Error
+                </Box>
+              </Box>
+              <Suspense fallback={<CircularProgress size={16} />}>
+                <CopyButton
+                  text={mcpDetails.error_message || 'MCP tool call failed - no response received'}
+                  variant="icon"
+                  size="small"
+                  tooltip="Copy error message"
+                />
+              </Suspense>
+            </Box>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                p: 1.5,
+                bgcolor: 'error.50',
+                borderRadius: 1,
+                color: 'error.main',
+                fontFamily: 'monospace',
+                fontSize: '0.875rem',
+                maxHeight: 600,
+                overflow: 'auto'
+              }}
+            >
+              {mcpDetails.error_message || 'MCP tool call failed - no response received'}
+            </Typography>
+          </Box>
+        )}
+        
+        {/* Tool Call section */}
+        {!isToolList(mcpDetails) && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
@@ -514,7 +565,8 @@ const LazyDetailsRenderer = memo(({
         </Typography>
       </Box>
     </Stack>
-  );
+    );
+  };
 
   const renderSystemDetails = (systemDetails: SystemEvent) => (
     <Stack spacing={2}>
@@ -627,6 +679,11 @@ const LazyDetailsRenderer = memo(({
           mcpText += `PARAMETERS:\n${JSON.stringify(mcpDetails.parameters, null, 2)}\n\n`;
         }
         
+        // Show error if failed
+        if (mcpDetails.success === false && mcpDetails.error_message) {
+          mcpText += `ERROR:\n${mcpDetails.error_message}\n\n`;
+        }
+        
         if (mcpDetails.result) {
           mcpText += `RESULT:\n${typeof mcpDetails.result === 'string' ? mcpDetails.result : JSON.stringify(mcpDetails.result, null, 2)}\n\n`;
         }
@@ -635,6 +692,9 @@ const LazyDetailsRenderer = memo(({
         mcpText += `Server: ${mcpDetails.server_name}\n`;
         mcpText += `Communication Type: ${mcpDetails.communication_type}\n`;
         mcpText += `Success: ${mcpDetails.success}\n`;
+        if (mcpDetails.duration_ms) {
+          mcpText += `Duration: ${mcpDetails.duration_ms}ms\n`;
+        }
         
         return mcpText;
       }

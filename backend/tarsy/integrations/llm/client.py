@@ -24,6 +24,7 @@ from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
+from tarsy.utils.error_details import extract_error_details
 
 # Suppress SSL warnings when SSL verification is disabled
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -238,7 +239,7 @@ class LLMClient:
                 self._log_llm_detailed_error(e, request_id)
                 
                 # Create enhanced error message with key attributes
-                error_details = self._extract_error_details(e)
+                error_details = extract_error_details(e)
                 enhanced_message = f"{self.provider_name} API error: {str(e)}"
                 if error_details:
                     enhanced_message += f" | Details: {error_details}"
@@ -327,7 +328,7 @@ class LLMClient:
                     continue
                 else:
                     # Log detailed error information for debugging
-                    error_details = self._extract_error_details(e)
+                    error_details = extract_error_details(e)
                     logger.error(f"LLM execution failed after {attempt + 1} attempts - {error_details}")
                     
                     # Re-raise the exception for non-rate-limit errors or max retries reached
@@ -345,34 +346,6 @@ class LLMClient:
             pass
         return None
     
-    def _extract_error_details(self, exception: Exception) -> str:
-        """Extract ALL error details using built-in capabilities."""
-        details = []
-        details.append(f"Type={type(exception).__name__}")
-        details.append(f"Message={str(exception)}")
-        
-        # Get the root cause (walk to the bottom of the exception chain)
-        root_cause = exception
-        while root_cause.__cause__ is not None:
-            root_cause = root_cause.__cause__
-        
-        # If we found a different root cause, include it
-        if root_cause != exception:
-            details.append(f"RootCause={type(root_cause).__name__}: {str(root_cause)}")
-        
-        # Use vars() to dump all instance variables
-        try:
-            exception_vars = vars(exception)
-            if exception_vars:
-                for key, value in exception_vars.items():
-                    str_value = repr(value)
-                    if len(str_value) > 200:
-                        str_value = str_value[:200] + "..."
-                    details.append(f"{key}={str_value}")
-        except:
-            pass
-        
-        return " | ".join(details)
     
     def _log_llm_detailed_error(self, exception: Exception, request_id: str):
         """Log detailed LLM communication errors using built-in capabilities."""

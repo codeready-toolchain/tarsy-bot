@@ -161,14 +161,12 @@ class TestIterationStrategiesIntegration:
         
         # Create configurations with different strategies
         react_stage_config = AgentConfigModel(
-            alert_types=["kubernetes"],
             mcp_servers=["kubernetes-server"],
             custom_instructions="Use react stage processing",
             iteration_strategy=IterationStrategy.REACT_STAGE
         )
         
         react_config = AgentConfigModel(
-            alert_types=["kubernetes"],
             mcp_servers=["kubernetes-server"],
             custom_instructions="Use ReAct processing", 
             iteration_strategy=IterationStrategy.REACT
@@ -265,22 +263,35 @@ class TestIterationStrategiesIntegration:
         config_yaml = """
 agents:
   react-stage-security-agent:
-    alert_types:
-      - security
-      - intrusion
     mcp_servers:
       - security-tools
     iteration_strategy: react-stage
     custom_instructions: "Use react stage processing for security alerts"
   
   react-performance-agent:
-    alert_types:
-      - performance
-      - resource-usage
     mcp_servers:
       - monitoring-server
     iteration_strategy: react
     custom_instructions: "Use ReAct reasoning for performance analysis"
+
+agent_chains:
+  security-chain:
+    alert_types:
+      - security
+      - intrusion
+    stages:
+      - name: "security-analysis"
+        agent: "ConfigurableAgent:react-stage-security-agent"
+    description: "Security alert processing chain"
+  
+  performance-chain:
+    alert_types:
+      - performance
+      - resource-usage
+    stages:
+      - name: "performance-analysis"
+        agent: "ConfigurableAgent:react-performance-agent"
+    description: "Performance alert processing chain"
 
 mcp_servers:
   security-tools:
@@ -311,6 +322,7 @@ mcp_servers:
             
             # Verify agent configurations loaded correctly
             assert len(config.agents) == 2
+            assert len(config.agent_chains) == 2
             
             react_stage_agent_config = config.agents["react-stage-security-agent"]
             react_agent_config = config.agents["react-performance-agent"]
@@ -319,9 +331,12 @@ mcp_servers:
             assert react_stage_agent_config.iteration_strategy == IterationStrategy.REACT_STAGE
             assert react_agent_config.iteration_strategy == IterationStrategy.REACT
             
-            # Verify other properties
-            assert react_stage_agent_config.alert_types == ["security", "intrusion"]
-            assert react_agent_config.alert_types == ["performance", "resource-usage"]
+            # Verify alert types are in chains, not agents
+            security_chain = config.agent_chains["security-chain"]
+            performance_chain = config.agent_chains["performance-chain"]
+            
+            assert security_chain.alert_types == ["security", "intrusion"]
+            assert performance_chain.alert_types == ["performance", "resource-usage"]
             
             # Verify custom instructions
             assert "react stage processing" in react_stage_agent_config.custom_instructions
@@ -338,16 +353,29 @@ mcp_servers:
         config_yaml = """
 agents:
   test-react-stage-agent:
-    alert_types: ["test-alerts"]
     mcp_servers: ["test-k8s-server"]
     iteration_strategy: react-stage
     custom_instructions: "React stage processing"
   
   test-react-agent:
-    alert_types: ["test-performance"] 
     mcp_servers: ["test-k8s-server"]
     iteration_strategy: react
     custom_instructions: "Reasoning-based processing"
+
+agent_chains:
+  test-alerts-chain:
+    alert_types: ["test-alerts"]
+    stages:
+      - name: "analysis"
+        agent: "ConfigurableAgent:test-react-stage-agent"
+    description: "Test alerts processing chain"
+  
+  test-performance-chain:
+    alert_types: ["test-performance"]
+    stages:
+      - name: "analysis"
+        agent: "ConfigurableAgent:test-react-agent"
+    description: "Test performance processing chain"
 
 mcp_servers:
   test-k8s-server:

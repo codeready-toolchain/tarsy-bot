@@ -4,9 +4,6 @@
 agents:
   # Data Collection Agent for gathering kubernetes information
   DataCollectionAgent:
-    alert_types:
-      - "test-kubernetes-data-collection"
-    iteration_strategy: "react-stage"
     custom_instructions: |
       You are a Kubernetes data collection specialist. Your role is to gather comprehensive 
       information about problematic resources using available kubectl tools.
@@ -24,9 +21,6 @@ agents:
 
   # Analysis Agent for root cause analysis
   AnalysisAgent:
-    alert_types:
-      - "test-kubernetes-analysis"
-    iteration_strategy: "react-final-analysis"
     custom_instructions: |
       You are a Senior Site Reliability Engineer specializing in Kubernetes troubleshooting.
       Analyze the collected data from previous stages to identify root causes.

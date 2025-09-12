@@ -561,7 +561,9 @@ class HistoryRepository:
                     parameters=mcp_db.tool_arguments or {},
                     result=mcp_db.tool_result or {},
                     available_tools=mcp_db.available_tools or {},
-                    success=mcp_db.success
+                    success=mcp_db.success,
+                    error_message=mcp_db.error_message,
+                    duration_ms=mcp_db.duration_ms
                 )
                 
                 mcp_interaction = MCPTimelineEvent(

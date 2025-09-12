@@ -111,6 +111,14 @@ function StageConversationCard({
                         JSON.stringify(step.actionResult, null, 2);
           content += `   Result: ${result}\n`;
         }
+        
+        if (!step.success && step.errorMessage) {
+          content += `   Error: ${step.errorMessage}\n`;
+        }
+      }
+      
+      if (step.type === 'error' && step.errorMessage) {
+        content += `   Error: ${step.errorMessage}\n`;
       }
       
       if (stepIndex < stage.steps.length - 1) {

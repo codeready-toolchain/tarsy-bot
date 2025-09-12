@@ -19,27 +19,23 @@ class TestAgentConfigModel:
     def test_valid_agent_config(self):
         """Test valid agent configuration."""
         config_data = {
-            "alert_types": ["security", "performance"],
             "mcp_servers": ["security-tools", "monitoring-server"],
             "custom_instructions": "Focus on threat detection and response."
         }
         
         config = AgentConfigModel(**config_data)
         
-        assert config.alert_types == ["security", "performance"]
         assert config.mcp_servers == ["security-tools", "monitoring-server"]
         assert config.custom_instructions == "Focus on threat detection and response."
 
     def test_minimal_valid_agent_config(self):
         """Test minimal valid agent configuration."""
         config_data = {
-            "alert_types": ["security"],
             "mcp_servers": ["security-tools"]
         }
         
         config = AgentConfigModel(**config_data)
         
-        assert config.alert_types == ["security"]
         assert config.mcp_servers == ["security-tools"]
         assert config.custom_instructions == ""
         assert config.iteration_strategy == IterationStrategy.REACT  # Default value
@@ -47,7 +43,6 @@ class TestAgentConfigModel:
     def test_serialization_roundtrip(self, model_test_helpers):
         """Test that agent config can be serialized and deserialized correctly."""
         valid_data = {
-            "alert_types": ["security", "performance"],
             "mcp_servers": ["security-tools", "monitoring-server"],
             "custom_instructions": "Focus on threat detection and response.",
             "iteration_strategy": "react"
@@ -58,18 +53,15 @@ class TestAgentConfigModel:
     def test_required_fields_validation(self, model_validation_tester):
         """Test that required fields are enforced."""
         valid_data = {
-            "alert_types": ["security"],
             "mcp_servers": ["security-tools"]
         }
         
-        required_fields = ["alert_types", "mcp_servers"]
+        required_fields = ["mcp_servers"]
         model_validation_tester.test_required_fields(AgentConfigModel, required_fields, valid_data)
 
     @pytest.mark.parametrize("invalid_data,expected_error_type", [
-        ({"alert_types": [], "mcp_servers": ["security-tools"]}, "too_short"),
-        ({"alert_types": ["security"], "mcp_servers": []}, "too_short"),
-        ({"alert_types": "security", "mcp_servers": ["security-tools"]}, "list_type"),
-        ({"alert_types": ["security"], "mcp_servers": "security-tools"}, "list_type"),
+        ({"mcp_servers": []}, "too_short"),
+        ({"mcp_servers": "security-tools"}, "list_type"),
     ])
     def test_field_validation(self, invalid_data, expected_error_type):
         """Test field validation for various invalid inputs."""
@@ -89,7 +81,6 @@ class TestAgentConfigModel:
     def test_valid_iteration_strategies(self, strategy_value, expected_strategy):
         """Test valid iteration strategy values."""
         config_data = {
-            "alert_types": ["security"],
             "mcp_servers": ["security-tools"],
             "iteration_strategy": strategy_value
         }
@@ -106,7 +97,6 @@ class TestAgentConfigModel:
     def test_invalid_iteration_strategies(self, invalid_strategy):
         """Test that invalid iteration strategies fail validation."""
         config_data = {
-            "alert_types": ["security"],
             "mcp_servers": ["security-tools"],
             "iteration_strategy": invalid_strategy
         }
@@ -213,11 +203,11 @@ class TestCombinedConfigModel:
         config_data = {
             "agents": {
                 "security-agent": {
-                    "alert_types": ["security"],
+                    
                     "mcp_servers": ["security-tools"]
                 },
                 "performance-agent": {
-                    "alert_types": ["performance"],
+                    
                     "mcp_servers": ["monitoring-server"]
                 }
             },
@@ -328,8 +318,7 @@ class TestCombinedConfigModel:
         config_data = {
             "agents": {
                 "security-agent": {
-                    "alert_types": [],  # Invalid: empty list
-                    "mcp_servers": ["security-tools"]
+                    "mcp_servers": []  # Invalid: empty list
                 }
             },
             "mcp_servers": {
@@ -344,8 +333,8 @@ class TestCombinedConfigModel:
             CombinedConfigModel(**config_data)
             
         errors = exc_info.value.errors()
-        # Should have error for empty alert_types
-        agent_error = next((e for e in errors if "agents" in e["loc"] and "alert_types" in e["loc"]), None)
+        # Should have error for empty mcp_servers
+        agent_error = next((e for e in errors if "agents" in e["loc"] and "mcp_servers" in e["loc"]), None)
         assert agent_error is not None
 
     def test_invalid_nested_mcp_server_config(self):
@@ -353,7 +342,7 @@ class TestCombinedConfigModel:
         config_data = {
             "agents": {
                 "security-agent": {
-                    "alert_types": ["security"],
+                    
                     "mcp_servers": ["security-tools"]
                 }
             },
@@ -379,11 +368,11 @@ class TestCombinedConfigModel:
         config_data = {
             "agents": {
                 "my-security-agent": {
-                    "alert_types": ["security"],
+                    
                     "mcp_servers": ["security-tools"]
                 },
                 "performance-agent": {
-                    "alert_types": ["performance"],
+                    
                     "mcp_servers": ["monitoring-server"]
                 }
             },
@@ -427,7 +416,7 @@ class TestCombinedConfigModel:
         config_data = {
             "agents": {
                 "existing-agent": {
-                    "alert_types": ["security"],
+                    
                     "mcp_servers": ["security-tools"]
                 }
             },
@@ -441,7 +430,7 @@ class TestCombinedConfigModel:
             "agent_chains": {
                 "test-chain": {
                     "chain_id": "test-chain",
-                    "alert_types": ["security"],
+                    "alert_types": ["test"],
                     "stages": [
                         {
                             "name": "analysis",
@@ -469,7 +458,7 @@ class TestCombinedConfigModel:
             "agent_chains": {
                 "builtin-chain": {
                     "chain_id": "builtin-chain",
-                    "alert_types": ["kubernetes"],
+                    "alert_types": ["builtin"],
                     "stages": [
                         {
                             "name": "k8s-analysis",
@@ -495,7 +484,7 @@ class TestCombinedConfigModel:
         config_data = {
             "agents": {
                 "valid-agent": {
-                    "alert_types": ["security"],
+                    
                     "mcp_servers": ["security-tools"]
                 }
             },
@@ -503,7 +492,7 @@ class TestCombinedConfigModel:
             "agent_chains": {
                 "chain1": {
                     "chain_id": "chain1",
-                    "alert_types": ["security"],
+                    "alert_types": ["test"],
                     "stages": [
                         {
                             "name": "stage1",
@@ -513,7 +502,7 @@ class TestCombinedConfigModel:
                 },
                 "chain2": {
                     "chain_id": "chain2",
-                    "alert_types": ["performance"],
+                    "alert_types": ["test2"],
                     "stages": [
                         {
                             "name": "stage2",

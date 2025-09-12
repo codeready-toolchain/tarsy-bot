@@ -83,7 +83,6 @@ class TestConfigurationLoaderFileHandling:
         valid_config = {
             "agents": {
                 "security-agent": {
-                    "alert_types": ["security"],
                     "mcp_servers": ["security-server"],
                     "custom_instructions": "Handle security alerts"
                 }
@@ -201,7 +200,6 @@ class TestConfigurationLoaderValidation:
         config = CombinedConfigModel(
             agents={
                 "test-agent": AgentConfigModel(
-                    alert_types=["test"],
                     mcp_servers=["builtin-server", "custom-server"]
                 )
             },
@@ -226,7 +224,6 @@ class TestConfigurationLoaderValidation:
         config = CombinedConfigModel(
             agents={
                 "test-agent": AgentConfigModel(
-                    alert_types=["test"],
                     mcp_servers=["nonexistent-server"]
                 )
             },
@@ -251,7 +248,6 @@ class TestConfigurationLoaderValidation:
         config = CombinedConfigModel(
             agents={
                 "KubernetesAgent": AgentConfigModel(
-                    alert_types=["test"],
                     mcp_servers=["test-server"]
                 )
             },
@@ -292,14 +288,11 @@ class TestConfigurationLoaderValidation:
         assert "conflicts with built-in MCP server" in str(exc_info.value)
     
     def test_validate_configuration_completeness_no_alert_types(self):
-        """Test configuration completeness validation - missing alert types."""
-        # Create a valid config first, then manipulate it to bypass Pydantic validation
+        """Test configuration completeness validation - alert types are now optional."""
+        # Create agent config without alert types - should now be valid since they're optional
         agent_config = AgentConfigModel(
-            alert_types=["temp"],
-            mcp_servers=["test-server"]
+            mcp_servers=["test-server"]  # Only mcp_servers are required now
         )
-        # Bypass Pydantic validation by directly setting the attribute
-        agent_config.alert_types = []
         
         config = CombinedConfigModel(
             agents={"test-agent": agent_config},
@@ -308,16 +301,16 @@ class TestConfigurationLoaderValidation:
         
         loader = ConfigurationLoader("/test/config.yaml")
         
-        with pytest.raises(ConfigurationError) as exc_info:
+        # Should not raise an error anymore since alert_types are optional
+        try:
             loader._validate_configuration_completeness(config)
-        
-        assert "has no alert types configured" in str(exc_info.value)
+        except ConfigurationError:
+            pytest.fail("Validation should not fail when agent has no alert_types (they are now optional)")
     
     def test_validate_configuration_completeness_no_mcp_servers(self):
         """Test configuration completeness validation - missing MCP servers."""
         # Create a valid config first, then manipulate it to bypass Pydantic validation
         agent_config = AgentConfigModel(
-            alert_types=["test"],
             mcp_servers=["temp"]
         )
         # Bypass Pydantic validation by directly setting the attribute
@@ -364,7 +357,6 @@ class TestConfigurationLoaderValidation:
         config = CombinedConfigModel(
             agents={
                 "test-agent": AgentConfigModel(
-                    alert_types=["test"],
                     mcp_servers=["disabled-server"]
                 )
             },
@@ -435,7 +427,6 @@ class TestConfigurationLoaderPrivateMethods:
         raw_config = {
             "agents": {
                 "test-agent": {
-                    "alert_types": ["test"],
                     "mcp_servers": ["test-server"]
                 }
             },
@@ -453,8 +444,7 @@ class TestConfigurationLoaderPrivateMethods:
         raw_config = {
             "agents": {
                 "test-agent": {
-                    "alert_types": "not a list",  # Should be a list
-                    "mcp_servers": ["test-server"]
+                    "mcp_servers": "not a list"  # Should be a list
                 }
             }
         }
@@ -528,7 +518,6 @@ class TestConfigurationLoaderErrorFormatting:
             CombinedConfigModel(
                 agents={
                     "test-agent": {
-                        "alert_types": "not a list",  # Should be a list
                         "mcp_servers": []  # Empty list (too short)
                     }
                 },
@@ -636,7 +625,6 @@ class TestConfigurationLoaderIntegration:
         complete_config = {
             "agents": {
                 "security-agent": {
-                    "alert_types": ["security-incident"],
                     "mcp_servers": ["security-scanner"],
                     "custom_instructions": "Focus on security analysis",
                     "iteration_strategy": "react"

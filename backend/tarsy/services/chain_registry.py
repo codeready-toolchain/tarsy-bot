@@ -1,9 +1,9 @@
 """
 ChainRegistry for sequential agent chains.
 
-This module replaces AgentRegistry with chain-based lookup system.
-It loads built-in chains and YAML chains, validates chain_id uniqueness,
-and provides chain lookup functionality for alert types.
+This module provides chain-based lookup system that maps alert types
+to chain definitions. It loads built-in chains and YAML chains, validates
+chain_id uniqueness, and provides chain lookup functionality for alert types.
 """
 
 from typing import Dict, Optional
@@ -19,8 +19,8 @@ class ChainRegistry:
     """
     Registry for chain definitions with built-in and YAML chain support.
     
-    Replaces AgentRegistry with chain-based lookup system that maps
-    alert types to chain definitions instead of individual agents.
+    Provides chain-based lookup system that maps alert types to chain
+    definitions for sequential agent processing.
     """
     
     def __init__(self, config_loader: Optional[ConfigurationLoader] = None):

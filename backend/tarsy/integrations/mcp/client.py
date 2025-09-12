@@ -16,6 +16,7 @@ from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.token_counter import TokenCounter
+from tarsy.utils.error_details import extract_error_details
 
 if TYPE_CHECKING:
     from tarsy.integrations.mcp.summarizer import MCPResultSummarizer
@@ -96,7 +97,8 @@ class MCPClient:
                 logger.info(f"Successfully initialized MCP server: {server_id}")
                 
             except Exception as e:
-                logger.error(f"Failed to initialize MCP server {server_id}: {str(e)}")
+                error_details = extract_error_details(e)
+                logger.error(f"Failed to initialize MCP server {server_id}: {error_details}")
         
         self._initialized = True
     
@@ -137,8 +139,9 @@ class MCPClient:
                         self._log_mcp_list_tools_response(server_name, tools_result.tools, request_id)
                         
                     except Exception as e:
-                        logger.error(f"Error listing tools from {server_name}: {str(e)}")
-                        self._log_mcp_list_tools_error(server_name, str(e), request_id)
+                        error_details = extract_error_details(e)
+                        logger.error(f"Error listing tools from {server_name}: {error_details}")
+                        self._log_mcp_list_tools_error(server_name, error_details, request_id)
                         all_tools[server_name] = []
             else:
                 # List tools from all servers
@@ -152,8 +155,9 @@ class MCPClient:
                         self._log_mcp_list_tools_response(name, tools_result.tools, request_id)
                         
                     except Exception as e:
-                        logger.error(f"Error listing tools from {name}: {str(e)}")
-                        self._log_mcp_list_tools_error(name, str(e), request_id)
+                        error_details = extract_error_details(e)
+                        logger.error(f"Error listing tools from {name}: {error_details}")
+                        self._log_mcp_list_tools_error(name, error_details, request_id)
                         all_tools[name] = []
             
             # Convert Tool objects to dictionaries for JSON serialization in hook context
@@ -236,7 +240,8 @@ class MCPClient:
             return summarized
             
         except Exception as e:
-            logger.error(f"Failed to summarize MCP result {server_name}.{tool_name}: {e}")
+            error_details = extract_error_details(e)
+            logger.error(f"Failed to summarize MCP result {server_name}.{tool_name}: {error_details}")
             # Return error message as result for graceful degradation
             return {
                 "result": f"Error: Failed to summarize large result ({estimated_tokens} tokens). Summarization error: {str(e)}"
@@ -322,8 +327,9 @@ class MCPClient:
                     
             except Exception as e:
                 # Log the error (hooks will be triggered automatically by context manager)
-                error_msg = f"Failed to call tool {tool_name} on {server_name}: {str(e)}"
-                self._log_mcp_error(server_name, tool_name, str(e), request_id)
+                error_details = extract_error_details(e)
+                error_msg = f"Failed to call tool {tool_name} on {server_name}: {error_details}"
+                self._log_mcp_error(server_name, tool_name, error_details, request_id)
                 raise Exception(error_msg)
     
     def _log_mcp_request(self, server_name: str, tool_name: str, parameters: Dict[str, Any], request_id: str):

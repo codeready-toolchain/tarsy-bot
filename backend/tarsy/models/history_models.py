@@ -55,6 +55,8 @@ class MCPEventDetails(BaseModel):
     result: Dict[str, Any] = Field(default_factory=dict)      # tool_result (structured result, not serialized JSON)
     available_tools: Dict[str, Any] = Field(default_factory=dict)  # structured tools data, not serialized JSON
     success: bool
+    error_message: Optional[str] = None
+    duration_ms: Optional[int] = None
 
 
 # =============================================================================

@@ -514,13 +514,11 @@ class TestAgentFactoryIterationStrategies:
         
         return {
             'react-stage-agent': AgentConfigModel(
-                alert_types=['performance'],
                 mcp_servers=['monitoring-server'],
                 iteration_strategy=IterationStrategy.REACT_STAGE,
                 custom_instructions='Use react stage processing'
             ),
             'react-agent': AgentConfigModel(
-                alert_types=['security'],
                 mcp_servers=['security-server'],
                 iteration_strategy=IterationStrategy.REACT,
                 custom_instructions='Use ReAct reasoning'
@@ -638,8 +636,9 @@ class TestAgentFactoryIterationStrategies:
         assert react_stage_agent.agent_name == "react-stage-agent"
         assert react_agent.agent_name == "react-agent"
         
-        assert 'performance' in react_stage_agent.get_supported_alert_types()
-        assert 'security' in react_agent.get_supported_alert_types()
+        # Verify iteration strategies are correctly configured
+        assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
+        assert react_agent.iteration_strategy == IterationStrategy.REACT
     
     def test_agent_factory_logging_includes_iteration_strategy(self, mock_dependencies, caplog):
         """Test that agent factory logging includes iteration strategy information."""
@@ -647,9 +646,8 @@ class TestAgentFactoryIterationStrategies:
         from tarsy.models.constants import IterationStrategy
         
         agent_configs = {
-            'test-agent': AgentConfigModel(
-                alert_types=['test'],
-                mcp_servers=['test-server'],
+        'test-agent': AgentConfigModel(
+            mcp_servers=['test-server'],
                 iteration_strategy=IterationStrategy.REACT_STAGE
             )
         }

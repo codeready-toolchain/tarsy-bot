@@ -398,8 +398,8 @@ def mock_runbook_service(sample_runbook_content):
 
 
 @pytest.fixture
-def mock_agent_registry():
-    """Mock chain registry (adapted from agent registry)."""
+def mock_chain_registry():
+    """Mock chain registry for testing."""
     from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
     from tarsy.services.chain_registry import ChainRegistry
     registry = Mock(spec=ChainRegistry)
@@ -791,7 +791,7 @@ def progress_callback_mock():
 
 
 @pytest.fixture
-async def alert_service(ensure_integration_test_isolation, mock_settings, mock_runbook_service, mock_agent_registry, 
+async def alert_service(ensure_integration_test_isolation, mock_settings, mock_runbook_service, mock_chain_registry, 
                        mock_mcp_server_registry, mock_mcp_client, mock_llm_manager,
                        mock_agent_factory):
     """Create AlertService with mocked dependencies."""
@@ -799,7 +799,7 @@ async def alert_service(ensure_integration_test_isolation, mock_settings, mock_r
     
     # Replace dependencies with mocks
     service.runbook_service = mock_runbook_service
-    service.chain_registry = mock_agent_registry  # Using agent_registry mock but renamed for chain_registry
+    service.chain_registry = mock_chain_registry
     service.mcp_server_registry = mock_mcp_server_registry
     service.mcp_client = mock_mcp_client
     service.llm_manager = mock_llm_manager
@@ -821,7 +821,7 @@ def alert_service_with_mocks(
     mock_mcp_client,
     mock_mcp_server_registry,
     mock_runbook_service,
-    mock_agent_registry,
+    mock_chain_registry,
     mock_agent_factory
 ):
     """Create AlertService with all dependencies mocked for integration testing."""
@@ -833,7 +833,7 @@ def alert_service_with_mocks(
     service.mcp_client = mock_mcp_client
     service.mcp_server_registry = mock_mcp_server_registry
     service.runbook_service = mock_runbook_service
-    service.chain_registry = mock_agent_registry  # Reuse the mock for chain registry
+    service.chain_registry = mock_chain_registry
     service.agent_factory = mock_agent_factory
     # Create mock history service for proper testing
     mock_history_service = Mock(spec=HistoryService)
@@ -850,7 +850,7 @@ def alert_service_with_mocks(
         'mcp_client': mock_mcp_client,
         'mcp_registry': mock_mcp_server_registry,
         'runbook': mock_runbook_service,
-        'registry': mock_agent_registry,
+        'registry': mock_chain_registry,
         'factory': mock_agent_factory,
         'history': mock_history_service
     }

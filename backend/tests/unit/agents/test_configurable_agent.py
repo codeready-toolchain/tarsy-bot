@@ -17,7 +17,6 @@ class TestConfigurableAgent:
     def mock_config(self):
         """Mock agent configuration for testing."""
         return AgentConfigModel(
-            alert_types=["security", "intrusion"],
             mcp_servers=["security-tools", "vulnerability-scanner"],
             custom_instructions="Focus on threat detection and response."
         )
@@ -137,7 +136,6 @@ class TestConfigurableAgent:
     def test_custom_instructions_property_without_instructions(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test custom_instructions property when no instructions are provided."""
         config_without_instructions = AgentConfigModel(
-            alert_types=["security"],
             mcp_servers=["security-tools"]
             # No custom_instructions field
         )
@@ -173,49 +171,6 @@ class TestConfigurableAgent:
         
         assert name == "ConfigurableAgent(performance-monitoring-agent)"
 
-    def test_get_supported_alert_types(self, agent):
-        """Test get_supported_alert_types returns configured alert types."""
-        alert_types = agent.get_supported_alert_types()
-        
-        assert alert_types == ["security", "intrusion"]
-
-    def test_get_supported_alert_types_single_type(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
-        """Test get_supported_alert_types with single alert type."""
-        config_single_type = AgentConfigModel(
-            alert_types=["database"],
-            mcp_servers=["db-tools"]
-        )
-        
-        agent = ConfigurableAgent(
-            agent_name="db-agent",
-            config=config_single_type,
-            llm_client=mock_llm_client,
-            mcp_client=mock_mcp_client,
-            mcp_registry=mock_mcp_registry
-        )
-        
-        alert_types = agent.get_supported_alert_types()
-        
-        assert alert_types == ["database"]
-
-    def test_get_supported_alert_types_multiple_types(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
-        """Test get_supported_alert_types with multiple alert types."""
-        config_multiple_types = AgentConfigModel(
-            alert_types=["performance", "monitoring", "infrastructure"],
-            mcp_servers=["perf-tools", "infra-tools"]
-        )
-        
-        agent = ConfigurableAgent(
-            agent_name="multi-agent",
-            config=config_multiple_types,
-            llm_client=mock_llm_client,
-            mcp_client=mock_mcp_client,
-            mcp_registry=mock_mcp_registry
-        )
-        
-        alert_types = agent.get_supported_alert_types()
-        
-        assert alert_types == ["performance", "monitoring", "infrastructure"]
 
     def test_inheritance_from_base_agent(self, agent):
         """Test that ConfigurableAgent inherits from BaseAgent properly."""
@@ -250,7 +205,6 @@ class TestConfigurableAgent:
     def test_empty_mcp_servers_list(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with minimum required MCP servers (one server)."""
         config_min_servers = AgentConfigModel(
-            alert_types=["test"],
             mcp_servers=["single-server"]  # Minimum one server required by Pydantic model
         )
         
@@ -282,20 +236,16 @@ class TestConfigurableAgent:
 
     def test_agent_configuration_immutability(self, agent):
         """Test that agent configuration cannot be modified externally."""
-        original_alert_types = agent.config.alert_types.copy()
         original_mcp_servers = agent.config.mcp_servers.copy()
         
         # Try to modify the configuration (should not affect agent behavior)
         returned_servers = agent.mcp_servers()
-        returned_types = agent.get_supported_alert_types()
         
         # Agent should return the same data consistently
         assert agent.mcp_servers() == original_mcp_servers
-        assert agent.get_supported_alert_types() == original_alert_types
         
         # Return values should match configuration
         assert returned_servers == original_mcp_servers
-        assert returned_types == original_alert_types
 
     def test_special_characters_in_agent_name(self, mock_config, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with special characters in agent name."""
@@ -315,7 +265,6 @@ class TestConfigurableAgent:
     def test_unicode_characters_in_custom_instructions(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with unicode characters in custom instructions."""
         config_with_unicode = AgentConfigModel(
-            alert_types=["security"],
             mcp_servers=["security-tools"],
             custom_instructions="Analysez les menaces de sécurité 🔒 and respond appropriately"
         )
@@ -351,7 +300,6 @@ class TestConfigurableAgentIterationStrategies:
     def test_default_iteration_strategy_react(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test that ConfigurableAgent defaults to REACT iteration strategy."""
         config = AgentConfigModel(
-            alert_types=["security"],
             mcp_servers=["security-tools"]
             # No iteration_strategy specified - should default to REACT
         )
@@ -369,7 +317,6 @@ class TestConfigurableAgentIterationStrategies:
     def test_explicit_react_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with explicit REACT iteration strategy."""
         config = AgentConfigModel(
-            alert_types=["security"],
             mcp_servers=["security-tools"],
             iteration_strategy=IterationStrategy.REACT
         )
@@ -387,7 +334,6 @@ class TestConfigurableAgentIterationStrategies:
     def test_react_stage_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with REACT_STAGE iteration strategy."""
         config = AgentConfigModel(
-            alert_types=["performance"],
             mcp_servers=["monitoring-tools"],
             iteration_strategy=IterationStrategy.REACT_STAGE
         )
@@ -405,7 +351,6 @@ class TestConfigurableAgentIterationStrategies:
     def test_string_iteration_strategy_react(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with string-based REACT iteration strategy."""
         config = AgentConfigModel(
-            alert_types=["security"],
             mcp_servers=["security-tools"],
             iteration_strategy="react"
         )
@@ -423,7 +368,6 @@ class TestConfigurableAgentIterationStrategies:
     def test_string_iteration_strategy_react_stage(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with string-based REACT_STAGE iteration strategy."""
         config = AgentConfigModel(
-            alert_types=["performance"],
             mcp_servers=["monitoring-tools"],
             iteration_strategy="react-stage"
         )
@@ -449,7 +393,6 @@ class TestConfigurableAgentIterationStrategies:
         
         # Create agent with REACT_STAGE strategy
         react_stage_config = AgentConfigModel(
-            alert_types=["performance"],
             mcp_servers=["monitoring-tools"],
             iteration_strategy=IterationStrategy.REACT_STAGE
         )
@@ -464,7 +407,6 @@ class TestConfigurableAgentIterationStrategies:
         
         # Create agent with REACT strategy
         react_config = AgentConfigModel(
-            alert_types=["security"],
             mcp_servers=["security-tools"],
             iteration_strategy=IterationStrategy.REACT
         )
@@ -488,7 +430,6 @@ class TestConfigurableAgentIterationStrategies:
     def test_config_property_includes_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
         """Test that agent config property reflects the iteration strategy."""
         config = AgentConfigModel(
-            alert_types=["security"],
             mcp_servers=["security-tools"],
             iteration_strategy=IterationStrategy.REACT_STAGE
         )

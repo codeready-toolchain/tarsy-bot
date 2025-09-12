@@ -116,6 +116,14 @@ function ConversationStep({
       if (step.actionResult) {
         text += `\n└─ ${formatActionResult(step.actionResult)}`;
       }
+      
+      if (!step.success && step.errorMessage) {
+        text += `\n❌ Error: ${step.errorMessage}`;
+      }
+    }
+    
+    if (step.type === 'error' && step.errorMessage) {
+      text += `\n❌ Error: ${step.errorMessage}`;
     }
     
     return text;
@@ -385,7 +393,7 @@ function ConversationStep({
           </Box>
 
           {/* Error Message for Failed Steps */}
-          {step.type === 'error' && step.errorMessage && (
+          {((step.type === 'error' && step.errorMessage) || (step.type === 'action' && !step.success && step.errorMessage)) && (
             <Box sx={{ 
               mt: 1,
               p: 1,
@@ -580,6 +588,7 @@ export default React.memo(ConversationStep, (prevProps, nextProps) => {
     prevProps.step.type === nextProps.step.type &&
     prevProps.step.success === nextProps.step.success &&
     prevProps.step.actionResult === nextProps.step.actionResult &&
+    prevProps.step.errorMessage === nextProps.step.errorMessage &&
     prevProps.stepIndex === nextProps.stepIndex &&
     prevProps.isLastStep === nextProps.isLastStep
   );

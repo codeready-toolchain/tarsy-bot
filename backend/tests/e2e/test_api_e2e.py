@@ -341,25 +341,8 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                         mock_result.content = [mock_content]
 
                 elif tool_name == "kubectl_describe":
-                    resource = _parameters.get("resource", "")
-                    name = _parameters.get("name", "")
-
-                    if resource == "namespace" and name == "stuck-namespace":
-                        mock_content = Mock()
-                        mock_content.text = """Name:         stuck-namespace
-Status:       Terminating
-Finalizers:   kubernetes.io/pv-protection
-Annotations:  contact=admin@company.com
-              api-key=not-a-real-api-key-1234567890abcdef1234567890abcdef
-              certificate-authority-data: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==
-Labels:       environment=production"""
-                        mock_result.content = [mock_content]
-                    else:
-                        mock_content = Mock()
-                        mock_content.text = (
-                            f"Mock kubectl describe {resource} {name} response"
-                        )
-                        mock_result.content = [mock_content]
+                    # Simulate MCP tool call failure for testing error handling
+                    raise Exception("Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH")
 
                 else:
                     mock_content = Mock()
@@ -770,6 +753,17 @@ Labels:       environment=production"""
                     assert (
                         details["tool_name"] == expected_interaction["tool_name"]
                     ), f"Stage '{stage_name}' interaction {i+1} tool_name mismatch"
+                    
+                    # Verify error message for failed interactions
+                    if not expected_interaction["success"]:
+                        expected_error_message = expected_interaction.get("error_message")
+                        actual_error_message = details.get("error_message")
+                        assert expected_error_message is not None, f"Stage '{stage_name}' interaction {i+1} expected error but no expected_error_message defined"
+                        assert actual_error_message is not None, f"Stage '{stage_name}' interaction {i+1} expected error but no error_message in API response"
+                        assert (
+                            actual_error_message == expected_error_message
+                        ), f"Stage '{stage_name}' interaction {i+1} error_message mismatch: expected '{expected_error_message}', got '{actual_error_message}'"
+                        print(f"    ✅ MCP Error message verified: {actual_error_message[:80]}...")
 
                 # Verify tool_list has available_tools
                 elif expected_interaction["communication_type"] == "tool_list":

@@ -167,8 +167,9 @@ class SummarizationConfig(BaseModel):
 class AgentConfigModel(BaseModel):
     """Configuration model for a single agent.
     
-    Defines what alert types an agent handles, which MCP servers it uses,
-    and any custom instructions for specialized behavior.
+    Defines which MCP servers an agent uses and any custom instructions 
+    for specialized behavior. Agents are reusable components that can be 
+    used by multiple chains.
     """
     
     model_config = ConfigDict(
@@ -176,11 +177,6 @@ class AgentConfigModel(BaseModel):
         str_strip_whitespace=True
     )
     
-    alert_types: List[str] = Field(
-        ...,
-        description="List of alert types this agent handles",
-        min_length=1
-    )
     mcp_servers: List[str] = Field(
         ...,
         description="List of MCP server IDs to use for alert processing",

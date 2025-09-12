@@ -317,6 +317,24 @@ class TestHistoryRepository:
             success=True
         )
     
+    @pytest.fixture
+    def sample_failed_mcp_communication(self):
+        """Create sample failed MCPInteraction for testing."""
+        return MCPInteraction(
+            communication_id="mcp-comm-102",
+            session_id="test-session-123",
+            server_name="argocd-server",
+            communication_type="tool_call",
+            tool_name="unhealthyApplications",
+            tool_arguments={},
+            tool_result={},
+            timestamp_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            step_description="Check unhealthy ArgoCD applications",
+            duration_ms=2,
+            success=False,
+            error_message='Failed to call tool unhealthyApplications on argocd-server: Type=McpError | Message=Get "https://argocd.example.com/api/v1/applications": net/http: invalid header field value for "Authorization"'
+        )
+    
     @pytest.mark.parametrize("session_id,expected_result", [
         ("test-session-123", "found"),
         ("non-existent-session", None),

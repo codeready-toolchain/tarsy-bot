@@ -145,6 +145,8 @@ export interface MCPEventDetails {
   result?: Record<string, any> | null;
   available_tools?: Record<string, any> | null;
   success: boolean;
+  error_message?: string | null;
+  duration_ms?: number | null;
 }
 
 // Complete interaction types (EP-0010)

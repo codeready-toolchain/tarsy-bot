@@ -34,6 +34,8 @@ class TestAlertServiceTemplateIntegration:
     ):
         """Test that AlertService passes Settings to MCPServerRegistry."""
         settings = Settings()
+        # Set to non-existent path to ensure empty configuration is loaded
+        settings.agent_config_path = "/nonexistent/config.yaml"
         
         with patch('tarsy.services.alert_service.MCPServerRegistry') as mock_registry_class:
             mock_registry = Mock()
@@ -156,25 +158,21 @@ class TestAlertServiceTemplateIntegration:
         config_yaml = """
 agents:
   security-analyzer:
-    alert_types: ["security", "intrusion"]
     mcp_servers: ["kubernetes-server"]
     iteration_strategy: react
     custom_instructions: "Analyze security alerts using ReAct reasoning"
   
   performance-monitor:
-    alert_types: ["performance", "resource-usage"]
     mcp_servers: ["kubernetes-server"]
     iteration_strategy: react
     custom_instructions: "Monitor performance metrics"
 
   data-collector:
-    alert_types: ["kubernetes"]
     mcp_servers: ["custom-k8s-server"]
     iteration_strategy: react-stage
     custom_instructions: "Collect data from Kubernetes cluster"
 
   analyzer:
-    alert_types: ["kubernetes"]
     mcp_servers: ["custom-k8s-server"]
     iteration_strategy: react-final-analysis
     custom_instructions: "Analyze collected data and provide insights"
@@ -236,12 +234,10 @@ mcp_servers:
                 
                 # Verify agent configurations
                 security_config = alert_service.parsed_config.agents["security-analyzer"]
-                assert security_config.alert_types == ["security", "intrusion"]
                 assert security_config.iteration_strategy == IterationStrategy.REACT
                 assert "ReAct reasoning" in security_config.custom_instructions
                 
                 performance_config = alert_service.parsed_config.agents["performance-monitor"]
-                assert performance_config.alert_types == ["performance", "resource-usage"]
                 assert performance_config.iteration_strategy == IterationStrategy.REACT
                 assert "Monitor performance metrics" in performance_config.custom_instructions
                 

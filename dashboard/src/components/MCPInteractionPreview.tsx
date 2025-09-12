@@ -135,44 +135,68 @@ function MCPInteractionPreview({
         <Box>
           <Typography variant="caption" sx={{ 
             fontWeight: 600, 
-            color: 'secondary.main',
+            color: interaction.success ? 'secondary.main' : 'error.main',
             textTransform: 'uppercase',
             letterSpacing: '0.5px'
           }}>
-            Tool Call
+            {interaction.success ? 'Tool Call' : 'Failed Tool Call'}
           </Typography>
           
-          <Box sx={{ 
-            mt: 0.5,
-            p: 0.75,
-            bgcolor: 'grey.50',
-            borderRadius: 1,
-            border: 1,
-            borderColor: 'divider'
-          }}>
-            <Typography variant="body2" sx={{ 
-              fontFamily: 'monospace',
-              fontSize: '0.75rem',
-              color: 'text.primary',
-              fontWeight: 600,
-              lineHeight: 1.3
+          {!interaction.success && interaction.error_message && (
+            <Box sx={{ 
+              mt: 0.5,
+              p: 0.75,
+              bgcolor: 'grey.50',
+              borderRadius: 1,
+              border: 1,
+              borderColor: 'error.main'
             }}>
-              {interaction.tool_name}
-            </Typography>
-            
-            {interaction.parameters && Object.keys(interaction.parameters).length > 0 && (
+              <Typography variant="body2" sx={{ 
+                fontSize: '0.75rem',
+                color: 'error.main',
+                fontWeight: 500
+              }}>
+                {interaction.error_message.length > 600 ? 
+                  `${interaction.error_message.substring(0, 600)}...` : 
+                  interaction.error_message
+                }
+              </Typography>
+            </Box>
+          )}
+          
+          {interaction.success && (
+            <Box sx={{ 
+              mt: 0.5,
+              p: 0.75,
+              bgcolor: 'grey.50',
+              borderRadius: 1,
+              border: 1,
+              borderColor: 'divider'
+            }}>
               <Typography variant="body2" sx={{ 
                 fontFamily: 'monospace',
-                fontSize: '0.7rem',
-                color: 'text.secondary',
-                mt: 0.25,
-                fontStyle: 'italic',
+                fontSize: '0.75rem',
+                color: 'text.primary',
+                fontWeight: 600,
                 lineHeight: 1.3
               }}>
-                {formatToolParameters(interaction.parameters)}
+                {interaction.tool_name}
               </Typography>
-            )}
-          </Box>
+              
+              {interaction.parameters && Object.keys(interaction.parameters).length > 0 && (
+                <Typography variant="body2" sx={{ 
+                  fontFamily: 'monospace',
+                  fontSize: '0.7rem',
+                  color: 'text.secondary',
+                  mt: 0.25,
+                  fontStyle: 'italic',
+                  lineHeight: 1.3
+                }}>
+                  {formatToolParameters(interaction.parameters)}
+                </Typography>
+              )}
+            </Box>
+          )}
         </Box>
       )}
 
