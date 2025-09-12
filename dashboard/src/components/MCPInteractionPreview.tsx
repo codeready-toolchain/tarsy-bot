@@ -183,7 +183,7 @@ function MCPInteractionPreview({
                 {interaction.tool_name}
               </Typography>
               
-              {interaction.parameters && Object.keys(interaction.parameters).length > 0 && (
+              {interaction.tool_arguments && Object.keys(interaction.tool_arguments).length > 0 && (
                 <Typography variant="body2" sx={{ 
                   fontFamily: 'monospace',
                   fontSize: '0.7rem',
@@ -192,7 +192,7 @@ function MCPInteractionPreview({
                   fontStyle: 'italic',
                   lineHeight: 1.3
                 }}>
-                  {formatToolParameters(interaction.parameters)}
+                  {formatToolParameters(interaction.tool_arguments)}
                 </Typography>
               )}
             </Box>

@@ -66,11 +66,11 @@ export function useOptimizedSession({
       
       // Estimate MCP interaction sizes
       stage.mcp_communications?.forEach(interaction => {
-        if (interaction.details?.result) {
-          estimatedSize += JSON.stringify(interaction.details.result).length;
+        if (interaction.details?.tool_result) {
+          estimatedSize += JSON.stringify(interaction.details.tool_result).length;
         }
-        if (interaction.details?.parameters) {
-          estimatedSize += JSON.stringify(interaction.details.parameters).length;
+        if (interaction.details?.tool_arguments) {
+          estimatedSize += JSON.stringify(interaction.details.tool_arguments).length;
         }
       });
     });

@@ -339,7 +339,7 @@ function InteractionDetails({
               Tool Call
             </Typography>
             <CopyButton
-              text={`${mcpDetails.tool_name}(${JSON.stringify(mcpDetails.parameters, null, 2)})`}
+              text={`${mcpDetails.tool_name}(${JSON.stringify(mcpDetails.tool_arguments, null, 2)})`}
               variant="icon"
               size="small"
               tooltip="Copy tool call"
@@ -360,8 +360,8 @@ function InteractionDetails({
             >
               {mcpDetails.tool_name}
             </Typography>
-            {mcpDetails.parameters && Object.keys(mcpDetails.parameters).length > 0 && (
-              <JsonDisplay data={mcpDetails.parameters} collapsed={1} />
+            {mcpDetails.tool_arguments && Object.keys(mcpDetails.tool_arguments).length > 0 && (
+              <JsonDisplay data={mcpDetails.tool_arguments} collapsed={1} />
             )}
           </Box>
         </Box>
@@ -400,7 +400,7 @@ function InteractionDetails({
             text={JSON.stringify(
               isToolList(mcpDetails)
                 ? mcpDetails.available_tools 
-                : mcpDetails.result, 
+                : mcpDetails.tool_result, 
               null, 2
             )}
             variant="icon"
@@ -409,7 +409,7 @@ function InteractionDetails({
           />
         </Box>
         <JsonDisplay 
-          data={isToolList(mcpDetails) ? mcpDetails.available_tools : mcpDetails.result} 
+          data={isToolList(mcpDetails) ? mcpDetails.available_tools : mcpDetails.tool_result} 
           collapsed={isToolList(mcpDetails) ? false : 1}
           maxHeight={800}
         />
@@ -512,8 +512,8 @@ function InteractionDetails({
           mcpFormatted += `TOOL: ${mcp.tool_name}\n`;
           mcpFormatted += `SERVER: ${mcp.server_name}\n`;
           // execution_time_ms removed in EP-0010
-          mcpFormatted += `\nPARAMETERS:\n${JSON.stringify(mcp.parameters, null, 2)}\n\n`;
-          mcpFormatted += `RESULT:\n${JSON.stringify(mcp.result, null, 2)}`;
+          mcpFormatted += `\nPARAMETERS:\n${JSON.stringify(mcp.tool_arguments, null, 2)}\n\n`;
+          mcpFormatted += `RESULT:\n${JSON.stringify(mcp.tool_result, null, 2)}`;
         }
         return mcpFormatted;
       }
@@ -562,7 +562,7 @@ function InteractionDetails({
         if (isToolList(mcp)) {
           return `Tool List from ${mcp.server_name}\n\n---\n\n${JSON.stringify(mcp.available_tools, null, 2)}`;
         } else {
-          return `${mcp.tool_name}(${JSON.stringify(mcp.parameters, null, 2)})\n\n---\n\n${JSON.stringify(mcp.result, null, 2)}`;
+          return `${mcp.tool_name}(${JSON.stringify(mcp.tool_arguments, null, 2)})\n\n---\n\n${JSON.stringify(mcp.tool_result, null, 2)}`;
         }
       }
       case 'system': {

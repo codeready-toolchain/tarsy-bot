@@ -103,16 +103,16 @@ export const formatInteractionForCopy = (interaction: TimelineItem): string => {
         // For regular tool calls, show tool name, parameters, and result
         content += `Tool: ${mcpDetails.tool_name || 'N/A'}\n`;
         
-        if (mcpDetails.parameters && Object.keys(mcpDetails.parameters).length > 0) {
+        if (mcpDetails.tool_arguments && Object.keys(mcpDetails.tool_arguments).length > 0) {
           content += `\n--- PARAMETERS ---\n`;
-          content += `${JSON.stringify(mcpDetails.parameters, null, 2)}\n`;
+          content += `${JSON.stringify(mcpDetails.tool_arguments, null, 2)}\n`;
         } else {
           content += `Parameters: None\n`;
         }
         
-        if (mcpDetails.result && Object.keys(mcpDetails.result).length > 0) {
+        if (mcpDetails.tool_result && Object.keys(mcpDetails.tool_result).length > 0) {
           content += `\n--- RESULT ---\n`;
-          content += `${JSON.stringify(mcpDetails.result, null, 2)}\n`;
+          content += `${JSON.stringify(mcpDetails.tool_result, null, 2)}\n`;
         } else {
           content += `Result: ${mcpDetails.success ? 'Success (no data)' : 'Failed'}\n`;
         }
