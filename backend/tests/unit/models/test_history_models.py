@@ -17,8 +17,8 @@ class TestMCPEventDetails:
             tool_name="kubectl_get_pods",
             server_name="kubernetes-server",
             communication_type="tool_call",
-            parameters={"namespace": "default", "selector": "app=nginx"},
-            result={"pods": ["nginx-1", "nginx-2"]},
+            tool_arguments={"namespace": "default", "selector": "app=nginx"},
+            tool_result={"pods": ["nginx-1", "nginx-2"]},
             available_tools={},
             success=True,
             error_message=None,
@@ -28,8 +28,8 @@ class TestMCPEventDetails:
         assert mcp_details.tool_name == "kubectl_get_pods"
         assert mcp_details.server_name == "kubernetes-server"
         assert mcp_details.communication_type == "tool_call"
-        assert mcp_details.parameters == {"namespace": "default", "selector": "app=nginx"}
-        assert mcp_details.result == {"pods": ["nginx-1", "nginx-2"]}
+        assert mcp_details.tool_arguments == {"namespace": "default", "selector": "app=nginx"}
+        assert mcp_details.tool_result == {"pods": ["nginx-1", "nginx-2"]}
         assert mcp_details.success == True
         assert mcp_details.error_message is None
         assert mcp_details.duration_ms == 1500
@@ -73,8 +73,8 @@ class TestMCPEventDetails:
         assert mcp_details.success == True
         assert mcp_details.error_message is None  # Default None
         assert mcp_details.duration_ms is None  # Default None
-        assert mcp_details.parameters == {}  # Default empty dict
-        assert mcp_details.result == {}  # Default empty dict
+        assert mcp_details.tool_arguments == {}  # Default empty dict
+        assert mcp_details.tool_result == {}  # Default empty dict
         assert mcp_details.available_tools == {}  # Default empty dict
     
     def test_mcp_event_details_required_fields_validation(self):

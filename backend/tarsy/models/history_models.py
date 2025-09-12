@@ -9,7 +9,7 @@ for session timelines, interaction details, and API responses.
 from __future__ import annotations  # Deferred evaluation for forward references
 
 from typing import List, Dict, Optional, Union, Literal, Any
-from pydantic import BaseModel, Field, model_validator, computed_field
+from pydantic import BaseModel, Field, model_validator, computed_field, AliasChoices, ConfigDict
 
 # Import existing enums and models
 from tarsy.models.constants import AlertSessionStatus, StageStatus
@@ -48,11 +48,12 @@ class FilterOptions(BaseModel):
 
 class MCPEventDetails(BaseModel):
     """MCP-specific event details with structured objects"""
+    
     tool_name: Optional[str] = None # Only required for tool_call interactions
     server_name: str
-    communication_type: str
-    parameters: Dict[str, Any] = Field(default_factory=dict)  # tool_arguments (structured parameters, not serialized JSON)
-    result: Dict[str, Any] = Field(default_factory=dict)      # tool_result (structured result, not serialized JSON)
+    communication_type: Literal["tool_list", "tool_call"]
+    tool_arguments: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    tool_result: Optional[Dict[str, Any]] = Field(default_factory=dict)
     available_tools: Dict[str, Any] = Field(default_factory=dict)  # structured tools data, not serialized JSON
     success: bool
     error_message: Optional[str] = None
