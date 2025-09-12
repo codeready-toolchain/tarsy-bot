@@ -9,7 +9,7 @@ import type { MCPInteraction, LLMInteraction } from '../../types'
 vi.mock('../../components/CopyButton', () => ({
   default: ({ text, tooltip }: { text: string; tooltip: string }) => (
     <button data-testid="copy-button" title={tooltip}>
-      Copy ({text.length} chars)
+      Copy ({text ? text.length : 0} chars)
     </button>
   )
 }))
@@ -40,8 +40,8 @@ describe('InteractionDetails - MCP Error Handling', () => {
     tool_name: 'unhealthyApplications',
     server_name: 'argocd-server',
     communication_type: 'tool_call',
-    parameters: {},
-    result: {},
+    tool_arguments: {},
+    tool_result: {},
     available_tools: {},
     success: false,
     error_message: 'Failed to call tool unhealthyApplications on argocd-server: Type=McpError | Message=Get "https://argocd.example.com/api/v1/applications": net/http: invalid header field value for "Authorization"',
@@ -52,8 +52,8 @@ describe('InteractionDetails - MCP Error Handling', () => {
     tool_name: 'kubectl_get_pods',
     server_name: 'kubernetes-server',
     communication_type: 'tool_call',
-    parameters: { namespace: 'default' },
-    result: { pods: ['nginx-1', 'nginx-2'] },
+    tool_arguments: { namespace: 'default' },
+    tool_result: { pods: ['nginx-1', 'nginx-2'] },
     available_tools: {},
     success: true,
     error_message: null,
@@ -169,8 +169,8 @@ describe('InteractionDetails - MCP Error Handling', () => {
       tool_name: null,
       server_name: 'test-server',
       communication_type: 'tool_list',
-      parameters: {},
-      result: {},
+      tool_arguments: {},
+      tool_result: {},
       available_tools: {
         'server1': [
           { name: 'tool1', description: 'Tool 1' },
