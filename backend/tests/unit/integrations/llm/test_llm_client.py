@@ -602,7 +602,8 @@ class TestLLMClientErrorHandling:
             client.available = True
             return client
     
-    def test_extract_error_details_basic_exception(self, client_for_errors):
+    @pytest.mark.usefixtures("client_for_errors")
+    def test_extract_error_details_basic_exception(self):
         """Test error detail extraction for basic exceptions."""
         from tarsy.utils.error_details import extract_error_details
         
@@ -614,7 +615,8 @@ class TestLLMClientErrorHandling:
             assert "Type=ValueError" in details
             assert "Message=Test error message" in details
     
-    def test_extract_error_details_with_cause(self, client_for_errors):
+    @pytest.mark.usefixtures("client_for_errors")
+    def test_extract_error_details_with_cause(self):
         """Test error detail extraction with exception chain."""
         from tarsy.utils.error_details import extract_error_details
         
@@ -629,7 +631,8 @@ class TestLLMClientErrorHandling:
             assert "Type=ValueError" in details
             assert "RootCause=ConnectionError: Network failed" in details
     
-    def test_extract_error_details_with_attributes(self, client_for_errors):
+    @pytest.mark.usefixtures("client_for_errors")
+    def test_extract_error_details_with_attributes(self):
         """Test error detail extraction with exception attributes."""
         from tarsy.utils.error_details import extract_error_details
         
@@ -647,7 +650,8 @@ class TestLLMClientErrorHandling:
             assert "status_code=500" in details
             assert "error_type='server_error'" in details
     
-    def test_extract_error_details_preserves_long_values(self, client_for_errors):
+    @pytest.mark.usefixtures("client_for_errors")
+    def test_extract_error_details_preserves_long_values(self):
         """Test that long attribute values are preserved in full."""
         from tarsy.utils.error_details import extract_error_details
         

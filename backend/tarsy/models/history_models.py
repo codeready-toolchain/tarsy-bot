@@ -48,7 +48,7 @@ class FilterOptions(BaseModel):
 
 class MCPEventDetails(BaseModel):
     """MCP-specific event details with structured objects"""
-    tool_name: str
+    tool_name: Optional[str] = None # Only required for tool_call interactions
     server_name: str
     communication_type: str
     parameters: Dict[str, Any] = Field(default_factory=dict)  # tool_arguments (structured parameters, not serialized JSON)

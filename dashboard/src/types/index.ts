@@ -141,8 +141,8 @@ export interface MCPEventDetails {
   tool_name?: string | null;
   server_name: string;
   communication_type: string;
-  parameters?: Record<string, any> | null;
-  result?: Record<string, any> | null;
+  tool_arguments?: Record<string, any> | null;
+  tool_result?: Record<string, any> | null;
   available_tools?: Record<string, any> | null;
   success: boolean;
   error_message?: string | null;

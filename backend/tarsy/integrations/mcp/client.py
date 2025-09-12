@@ -330,7 +330,7 @@ class MCPClient:
                 error_details = extract_error_details(e)
                 error_msg = f"Failed to call tool {tool_name} on {server_name}: {error_details}"
                 self._log_mcp_error(server_name, tool_name, error_details, request_id)
-                raise Exception(error_msg)
+                raise Exception(error_msg) from e
     
     def _log_mcp_request(self, server_name: str, tool_name: str, parameters: Dict[str, Any], request_id: str):
         """Log the outgoing MCP tool call request."""

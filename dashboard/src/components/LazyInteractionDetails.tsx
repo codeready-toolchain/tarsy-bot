@@ -510,7 +510,7 @@ const LazyDetailsRenderer = memo(({
             </Typography>
             <Suspense fallback={<CircularProgress size={16} />}>
               <CopyButton
-                text={`${mcpDetails.tool_name}(${JSON.stringify(mcpDetails.parameters, null, 2)})`}
+                text={`${mcpDetails.tool_name}(${JSON.stringify(mcpDetails.tool_arguments ?? {}, null, 2)})`}
                 variant="icon"
                 size="small"
                 tooltip="Copy tool call"
@@ -520,9 +520,9 @@ const LazyDetailsRenderer = memo(({
           <Typography variant="body2" sx={{ fontFamily: 'monospace', mb: 1 }}>
             {mcpDetails.tool_name}
           </Typography>
-          {mcpDetails.parameters && Object.keys(mcpDetails.parameters).length > 0 && (
+          {mcpDetails.tool_arguments && Object.keys(mcpDetails.tool_arguments).length > 0 && (
             <Suspense fallback={<CircularProgress size={20} />}>
-              <LazyJsonDisplay data={mcpDetails.parameters} collapsed={1} maxHeight={400} />
+              <LazyJsonDisplay data={mcpDetails.tool_arguments} collapsed={1} maxHeight={400} />
             </Suspense>
           )}
         </Box>
@@ -537,7 +537,7 @@ const LazyDetailsRenderer = memo(({
           <Suspense fallback={<CircularProgress size={16} />}>
             <CopyButton
               text={JSON.stringify(
-                isToolList(mcpDetails) ? mcpDetails.available_tools : mcpDetails.result, 
+                isToolList(mcpDetails) ? mcpDetails.available_tools : mcpDetails.tool_result, 
                 null, 2
               )}
               variant="icon"
@@ -548,7 +548,7 @@ const LazyDetailsRenderer = memo(({
         </Box>
         <Suspense fallback={<CircularProgress size={20} />}>
           <LazyJsonDisplay 
-            data={isToolList(mcpDetails) ? mcpDetails.available_tools : mcpDetails.result} 
+            data={isToolList(mcpDetails) ? mcpDetails.available_tools : mcpDetails.tool_result} 
             collapsed={isToolList(mcpDetails) ? false : 1}
             maxHeight={600}
           />
@@ -675,17 +675,17 @@ const LazyDetailsRenderer = memo(({
         let mcpText = `=== MCP INTERACTION ===\n\n`;
         mcpText += `TOOL: ${mcpDetails.tool_name || 'Unknown'}\n\n`;
         
-        if (mcpDetails.parameters && Object.keys(mcpDetails.parameters).length > 0) {
-          mcpText += `PARAMETERS:\n${JSON.stringify(mcpDetails.parameters, null, 2)}\n\n`;
+        if (mcpDetails.tool_arguments && Object.keys(mcpDetails.tool_arguments).length > 0) {
+          mcpText += `PARAMETERS:\n${JSON.stringify(mcpDetails.tool_arguments, null, 2)}\n\n`;
         }
         
         // Show error if failed
-        if (mcpDetails.success === false && mcpDetails.error_message) {
-          mcpText += `ERROR:\n${mcpDetails.error_message}\n\n`;
+        if (mcpDetails.success === false) {
+          mcpText += `ERROR:\n${mcpDetails.error_message || 'MCP tool call failed - no response received'}\n\n`;
         }
         
-        if (mcpDetails.result) {
-          mcpText += `RESULT:\n${typeof mcpDetails.result === 'string' ? mcpDetails.result : JSON.stringify(mcpDetails.result, null, 2)}\n\n`;
+        if (mcpDetails.tool_result) {
+          mcpText += `RESULT:\n${typeof mcpDetails.tool_result === 'string' ? mcpDetails.tool_result : JSON.stringify(mcpDetails.tool_result, null, 2)}\n\n`;
         }
         
         mcpText += `--- METADATA ---\n`;

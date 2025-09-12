@@ -79,14 +79,23 @@ class TestMCPEventDetails:
     
     def test_mcp_event_details_required_fields_validation(self):
         """Test that required fields are validated."""
-        # Missing tool_name
-        with pytest.raises(ValidationError) as exc_info:
-            MCPEventDetails(
-                server_name="test-server",
-                communication_type="tool_call",
-                success=True
-            )
-        assert "tool_name" in str(exc_info.value)
+        # tool_name is optional for tool_list communications
+        mcp_details = MCPEventDetails(
+            server_name="test-server",
+            communication_type="tool_list",
+            success=True
+        )
+        assert mcp_details.tool_name is None
+        assert mcp_details.communication_type == "tool_list"
+        
+        # tool_name is also optional for tool_call at the field level
+        # (validation happens at MCPTimelineEvent level)
+        mcp_details = MCPEventDetails(
+            server_name="test-server", 
+            communication_type="tool_call",
+            success=True
+        )
+        assert mcp_details.tool_name is None
         
         # Missing server_name  
         with pytest.raises(ValidationError) as exc_info:
@@ -169,3 +178,48 @@ class TestMCPTimelineEvent:
                 details=invalid_details
             )
         assert "server_name" in str(exc_info.value)
+    
+    def test_mcp_timeline_event_tool_name_validation(self):
+        """Test MCPTimelineEvent validation for tool_name requirement in tool_call communications."""
+        from tarsy.utils.timestamp import now_us
+        
+        # tool_call communication without tool_name should fail
+        with pytest.raises(ValidationError) as exc_info:
+            invalid_details = MCPEventDetails(
+                tool_name=None,  # Missing tool_name for tool_call
+                server_name="test-server",
+                communication_type="tool_call",
+                success=True
+            )
+            
+            MCPTimelineEvent(
+                id="mcp-timeline-1",
+                event_id="mcp-timeline-1", 
+                timestamp_us=now_us(),
+                step_description="Test MCP call",
+                stage_execution_id="test-stage-1",
+                details=invalid_details
+            )
+        
+        assert "tool_name" in str(exc_info.value)
+        assert "tool_call" in str(exc_info.value)
+        
+        # tool_list communication without tool_name should succeed
+        valid_details = MCPEventDetails(
+            tool_name=None,  # No tool_name needed for tool_list
+            server_name="test-server",
+            communication_type="tool_list",
+            success=True
+        )
+        
+        timeline_event = MCPTimelineEvent(
+            id="mcp-timeline-2",
+            event_id="mcp-timeline-2",
+            timestamp_us=now_us(),
+            step_description="List MCP tools",
+            stage_execution_id="test-stage-1", 
+            details=valid_details
+        )
+        
+        assert timeline_event.details.tool_name is None
+        assert timeline_event.details.communication_type == "tool_list"

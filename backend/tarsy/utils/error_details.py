@@ -2,6 +2,10 @@
 Utility functions for extracting comprehensive error details from exceptions.
 """
 
+from tarsy.utils.logger import get_module_logger
+
+logger = get_module_logger(__name__)
+
 
 def extract_error_details(exception: Exception) -> str:
     """
@@ -39,7 +43,10 @@ def extract_error_details(exception: Exception) -> str:
                 str_value = repr(value)
                 # No truncation - preserve full error details for debugging
                 details.append(f"{key}={str_value}")
-    except:
-        pass
+    except Exception as e:
+        # Log the failure to extract exception variables, but continue with available details
+        logger.warning(
+            f"Failed to extract variables from exception {type(exception).__name__}: {e}"
+        )
     
     return " | ".join(details)
