@@ -209,7 +209,7 @@ npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
 - `GET /processing-status/{alert_id}` - Get processing status
 - `WebSocket /ws/{alert_id}` - Real-time progress updates
 
-### History API (EP-0003)
+### History API
 - `GET /api/v1/history/sessions` - List alert processing sessions with filtering and pagination
 - `GET /api/v1/history/sessions/{session_id}` - Get detailed session with chronological timeline
 - `GET /api/v1/history/health` - History service health check and database status

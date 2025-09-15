@@ -9,7 +9,7 @@ for session timelines, interaction details, and API responses.
 from __future__ import annotations  # Deferred evaluation for forward references
 
 from typing import List, Dict, Optional, Union, Literal, Any
-from pydantic import BaseModel, Field, model_validator, computed_field, AliasChoices, ConfigDict
+from pydantic import BaseModel, Field, model_validator, computed_field
 
 # Import existing enums and models
 from tarsy.models.constants import AlertSessionStatus, StageStatus
