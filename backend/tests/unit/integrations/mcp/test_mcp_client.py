@@ -337,7 +337,202 @@ class TestMCPClientToolCalling:
             
             mock_init.assert_called_once()
 
-
+@pytest.mark.unit
+class TestMCPClientRecovery:
+    """Test MCP client recovery functionality."""
+    
+    @pytest.fixture
+    def mock_registry(self):
+        """Mock MCP server registry with recovery-friendly config."""
+        registry = Mock(spec=MCPServerRegistry)
+        mock_config = Mock()
+        mock_config.command = "test-command"
+        mock_config.args = ["--test"]
+        mock_config.env = {"TEST_VAR": "test_value"}
+        # Disable data masking to avoid interference
+        mock_config.data_masking = Mock(enabled=False)
+        registry.get_server_config_safe.return_value = mock_config
+        return registry
+    
+    @pytest.fixture
+    def client_with_recovery_setup(self, mock_registry):
+        """Create client configured for recovery testing."""
+        client = MCPClient(Mock(), mock_registry)
+        client._initialized = True
+        # Disable data masking service to avoid test interference
+        client.data_masking_service = None
+        return client
+    
+    @pytest.mark.asyncio
+    async def test_recovery_attempted_on_tool_call_failure(self, client_with_recovery_setup):
+        """Test that recovery is attempted when a tool call fails."""
+        client = client_with_recovery_setup
+        
+        # Create a failing session
+        failing_session = AsyncMock()
+        failing_session.call_tool.side_effect = Exception("Connection closed")
+        client.sessions = {"test-server": failing_session}
+        
+        # Mock the recovery method to track if it's called
+        recovery_called = False
+        
+        async def mock_recover_session(server_name):
+            nonlocal recovery_called
+            recovery_called = True
+            # Create a new working session
+            new_session = AsyncMock()
+            mock_result = Mock()
+            mock_result.content = [Mock(type="text", text="Recovery successful")]
+            new_session.call_tool.return_value = mock_result
+            client.sessions[server_name] = new_session
+        
+        client._recover_session = mock_recover_session
+        
+        # Attempt tool call - should trigger recovery
+        with patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
+            mock_ctx = AsyncMock()
+            mock_ctx.get_request_id.return_value = "recovery-test-123"
+            mock_context.return_value.__aenter__.return_value = mock_ctx
+            
+            result = await client.call_tool(
+                "test-server", 
+                "test_tool", 
+                {"param": "value"}, 
+                "test-session"
+            )
+            
+            # Verify recovery was attempted and call succeeded
+            assert recovery_called, "Recovery should have been attempted"
+            assert "Recovery successful" in str(result), "Tool call should succeed after recovery"
+    
+    @pytest.mark.asyncio
+    async def test_retry_logic_and_error_message_format(self, client_with_recovery_setup):
+        """Test retry behavior and proper error message formatting."""
+        client = client_with_recovery_setup
+        
+        # Track call attempts
+        call_count = 0
+        def failing_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            raise Exception("Always fails")
+        
+        failing_session = AsyncMock()
+        failing_session.call_tool.side_effect = failing_side_effect
+        client.sessions = {"test-server": failing_session}
+        
+        # Mock recovery that fails
+        async def mock_recover_session(server_name):
+            raise Exception("Recovery failed")
+        
+        client._recover_session = mock_recover_session
+        
+        with patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
+            mock_ctx = AsyncMock()
+            mock_ctx.get_request_id.return_value = "retry-test-456"
+            mock_context.return_value.__aenter__.return_value = mock_ctx
+            
+            # Should fail with proper error message including attempt count
+            with pytest.raises(Exception) as exc_info:
+                await client.call_tool("test-server", "test_tool", {"param": "value"}, "test-session")
+            
+            # Verify error message format includes attempt count
+            error_msg = str(exc_info.value)
+            assert "after 2 attempts" in error_msg, f"Error should mention attempts: {error_msg}"
+            assert "Always fails" in error_msg, f"Error should include original error: {error_msg}"
+    
+    @pytest.mark.asyncio 
+    async def test_successful_recovery_flow(self, client_with_recovery_setup):
+        """Test the complete successful recovery flow."""
+        client = client_with_recovery_setup
+        
+        # Track session lifecycle
+        sessions_created = []
+        recovery_called = False
+        
+        # Create initial failing session
+        failing_session = AsyncMock()
+        failing_session.call_tool.side_effect = Exception("Connection lost")
+        client.sessions = {"test-server": failing_session}
+        
+        # Mock successful recovery
+        async def mock_recover_session(server_name):
+            nonlocal recovery_called
+            recovery_called = True
+            
+            # Create recovered session that works
+            recovered_session = AsyncMock()
+            mock_result = Mock()
+            mock_result.content = [Mock(type="text", text="Recovered and working")]
+            recovered_session.call_tool.return_value = mock_result
+            client.sessions[server_name] = recovered_session
+            sessions_created.append("recovered_session")
+        
+        client._recover_session = mock_recover_session
+        
+        with patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
+            mock_ctx = AsyncMock()
+            mock_ctx.get_request_id.return_value = "success-recovery-test"
+            mock_context.return_value.__aenter__.return_value = mock_ctx
+            
+            # This should succeed after recovery
+            result = await client.call_tool("test-server", "test_tool", {}, "test-session")
+            
+            # Verify recovery occurred and result is correct
+            assert recovery_called, "Recovery should have been called"
+            assert len(sessions_created) == 1, "One recovered session should be created"
+            assert "Recovered and working" in str(result), "Should get result from recovered session"
+    
+    @pytest.mark.asyncio
+    async def test_recovery_isolation(self, client_with_recovery_setup):
+        """Test that recovery only affects the failing server."""
+        client = client_with_recovery_setup
+        
+        # Set up two sessions: one failing, one working
+        failing_session = AsyncMock()
+        failing_session.call_tool.side_effect = Exception("Server A failed")
+        
+        working_session = AsyncMock()
+        working_result = Mock()
+        working_result.content = [Mock(type="text", text="Server B is fine")]
+        working_session.call_tool.return_value = working_result
+        
+        client.sessions = {
+            "server-a": failing_session,
+            "server-b": working_session
+        }
+        
+        # Mock recovery for server-a only
+        recovery_calls = []
+        async def mock_recover_session(server_name):
+            recovery_calls.append(server_name)
+            if server_name == "server-a":
+                # Create recovered session
+                recovered_session = AsyncMock()
+                recovered_result = Mock()
+                recovered_result.content = [Mock(type="text", text="Server A recovered")]
+                recovered_session.call_tool.return_value = recovered_result
+                client.sessions[server_name] = recovered_session
+        
+        client._recover_session = mock_recover_session
+        
+        with patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
+            mock_ctx = AsyncMock()
+            mock_ctx.get_request_id.return_value = "isolation-test"
+            mock_context.return_value.__aenter__.return_value = mock_ctx
+            
+            # Test failing server recovers
+            result_a = await client.call_tool("server-a", "test_tool", {}, "test-session")
+            assert "Server A recovered" in str(result_a)
+            assert len(recovery_calls) == 1, "Recovery should be called once"
+            assert recovery_calls[0] == "server-a", "Recovery should be called for server-a"
+            
+            # Test working server is unaffected
+            result_b = await client.call_tool("server-b", "test_tool", {}, "test-session")
+            assert "Server B is fine" in str(result_b)
+            # Working session should still be the original one
+            assert client.sessions["server-b"] == working_session, "Working session unchanged"
+    
 
 
 @pytest.mark.unit
