@@ -958,3 +958,137 @@ class TestParameterParsing:
         result = ReActParser._parse_action_parameters(json_dict)
         
         assert result == {"key": "value", "number": 123}
+
+
+@pytest.mark.unit
+class TestParameterTypeConversion:
+    """Test parameter value type conversion - fixes MCP boolean parameter issue."""
+    
+    def test_convert_boolean_true_values(self):
+        """Test converting boolean true values."""
+        # Test various true representations
+        assert ReActParser._convert_parameter_value("true") is True
+        assert ReActParser._convert_parameter_value("True") is True  
+        assert ReActParser._convert_parameter_value("TRUE") is True
+        assert ReActParser._convert_parameter_value("  true  ") is True
+        
+    def test_convert_boolean_false_values(self):
+        """Test converting boolean false values."""
+        # Test various false representations
+        assert ReActParser._convert_parameter_value("false") is False
+        assert ReActParser._convert_parameter_value("False") is False
+        assert ReActParser._convert_parameter_value("FALSE") is False
+        assert ReActParser._convert_parameter_value("  false  ") is False
+        
+    def test_convert_null_values(self):
+        """Test converting null/none values."""
+        assert ReActParser._convert_parameter_value("null") is None
+        assert ReActParser._convert_parameter_value("NULL") is None
+        assert ReActParser._convert_parameter_value("none") is None
+        assert ReActParser._convert_parameter_value("None") is None
+        assert ReActParser._convert_parameter_value("NONE") is None
+        assert ReActParser._convert_parameter_value("  null  ") is None
+        
+    def test_convert_integer_values(self):
+        """Test converting integer values."""
+        assert ReActParser._convert_parameter_value("123") == 123
+        assert ReActParser._convert_parameter_value("0") == 0
+        assert ReActParser._convert_parameter_value("-456") == -456
+        assert ReActParser._convert_parameter_value("  789  ") == 789
+        
+    def test_convert_float_values(self):
+        """Test converting float values."""
+        assert ReActParser._convert_parameter_value("123.45") == 123.45
+        assert ReActParser._convert_parameter_value("0.0") == 0.0
+        assert ReActParser._convert_parameter_value("-456.78") == -456.78
+        assert ReActParser._convert_parameter_value("  1.23  ") == 1.23
+        
+    def test_convert_string_values(self):
+        """Test that string values remain as strings."""
+        assert ReActParser._convert_parameter_value("hello") == "hello"
+        assert ReActParser._convert_parameter_value("world123") == "world123"
+        assert ReActParser._convert_parameter_value("true_but_not_boolean") == "true_but_not_boolean"
+        assert ReActParser._convert_parameter_value("123abc") == "123abc"
+        assert ReActParser._convert_parameter_value("") == ""
+        
+    def test_parse_yaml_like_with_boolean_types(self):
+        """Test that YAML-like parsing correctly converts boolean types."""
+        # This is the critical test for the MCP bug fix!
+        yaml_input = "name: external-secrets-pod, namespace: external-secrets-operator, previous: true"
+        
+        result = ReActParser._parse_action_parameters(yaml_input)
+        
+        # Verify that boolean 'true' is converted to actual boolean True
+        assert result["name"] == "external-secrets-pod"
+        assert result["namespace"] == "external-secrets-operator"
+        assert result["previous"] is True  # This was the bug - it was string "true"
+        assert isinstance(result["previous"], bool)  # Explicitly verify type
+        
+    def test_parse_yaml_like_with_mixed_types(self):
+        """Test YAML-like parsing with mixed parameter types."""
+        yaml_input = "enabled: true, replicas: 3, threshold: 0.8, name: test-pod, debug: false"
+        
+        result = ReActParser._parse_action_parameters(yaml_input)
+        
+        assert result["enabled"] is True
+        assert result["replicas"] == 3
+        assert result["threshold"] == 0.8
+        assert result["name"] == "test-pod"
+        assert result["debug"] is False
+        
+        # Verify types
+        assert isinstance(result["enabled"], bool)
+        assert isinstance(result["replicas"], int)
+        assert isinstance(result["threshold"], float)
+        assert isinstance(result["name"], str)
+        assert isinstance(result["debug"], bool)
+        
+    def test_parse_key_equals_value_with_boolean_types(self):
+        """Test key=value parsing with boolean types."""
+        input_str = "enabled=true, count=5, rate=2.5, name=test, active=false"
+        
+        result = ReActParser._parse_action_parameters(input_str)
+        
+        assert result["enabled"] is True
+        assert result["count"] == 5
+        assert result["rate"] == 2.5
+        assert result["name"] == "test"
+        assert result["active"] is False
+        
+        # Verify types
+        assert isinstance(result["enabled"], bool)
+        assert isinstance(result["count"], int)
+        assert isinstance(result["rate"], float)
+        assert isinstance(result["name"], str)
+        assert isinstance(result["active"], bool)
+        
+    def test_pods_log_previous_parameter_conversion(self):
+        """Test the specific case that caused the MCP connection issue."""
+        # Simulate the exact parameter input that was failing
+        yaml_input = "name: external-secrets-operator-controller-manager-6956c9c764-wfr7c, namespace: external-secrets-operator, previous: true"
+        
+        result = ReActParser._parse_action_parameters(yaml_input)
+        
+        # This should now produce the correct types for MCP server
+        expected = {
+            "name": "external-secrets-operator-controller-manager-6956c9c764-wfr7c",
+            "namespace": "external-secrets-operator", 
+            "previous": True  # Boolean true, not string "true"
+        }
+        
+        assert result == expected
+        assert isinstance(result["previous"], bool), f"Expected bool, got {type(result['previous'])}"
+        
+    def test_conversion_preserves_json_parsing(self):
+        """Test that JSON parsing still works correctly and doesn't interfere with type conversion."""
+        # JSON should still parse correctly and not go through string conversion
+        json_input = '{"name": "test-pod", "previous": true, "count": 5}'
+        
+        result = ReActParser._parse_action_parameters(json_input)
+        
+        # JSON parsing should preserve original types
+        assert result["name"] == "test-pod"
+        assert result["previous"] is True
+        assert result["count"] == 5
+        assert isinstance(result["previous"], bool)
+        assert isinstance(result["count"], int)

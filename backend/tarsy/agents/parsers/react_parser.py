@@ -365,11 +365,11 @@ class ReActParser:
                 if ':' in part and '=' not in part:
                     # YAML-like format (key: value)
                     key, value = part.split(':', 1)
-                    parameters[key.strip()] = value.strip()
+                    parameters[key.strip()] = ReActParser._convert_parameter_value(value.strip())
                 elif '=' in part:
                     # key=value format
                     key, value = part.split('=', 1)
-                    parameters[key.strip()] = value.strip()
+                    parameters[key.strip()] = ReActParser._convert_parameter_value(value.strip())
                 else:
                     # Single parameter without format
                     if not parameters:  # Only if we haven't added anything yet
@@ -384,6 +384,43 @@ class ReActParser:
             parameters['input'] = action_input
         
         return parameters
+    
+    @staticmethod
+    def _convert_parameter_value(value: str) -> Any:
+        """
+        Convert a string parameter value to its appropriate type.
+        
+        Handles booleans, integers, floats, and keeps strings as strings.
+        This is essential for MCP tool calls that expect specific types.
+        """
+        value = value.strip()
+        
+        # Handle boolean values
+        if value.lower() == 'true':
+            return True
+        elif value.lower() == 'false':
+            return False
+        
+        # Handle null/None values
+        if value.lower() in ('null', 'none'):
+            return None
+        
+        # Try integer conversion
+        try:
+            # Check if it looks like an integer (no decimal point)
+            if '.' not in value:
+                return int(value)
+        except ValueError:
+            pass
+        
+        # Try float conversion
+        try:
+            return float(value)
+        except ValueError:
+            pass
+        
+        # Return as string if no other type matches
+        return value
     
     @staticmethod
     def get_continuation_prompt(context_type: str = "general") -> str:

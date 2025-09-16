@@ -82,13 +82,9 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
         "server_type": "kubernetes",
         "enabled": True,
         "connection_params": {
-            "command": "/home/igels/Projects/AI/kubernetes-mcp-server/kubernetes-mcp-server",
-            "args": ["--read-only", "--disable-destructive", "--kubeconfig", "/home/igels/.kube/prod-mcp.yaml"]
+            "command": "npx",
+            "args": ["-y", "kubernetes-mcp-server@latest", "--read-only", "--disable-destructive", "--kubeconfig", "${KUBECONFIG}"]
         },
-        # "connection_params": {
-        #     "command": "npx",
-        #     "args": ["-y", "kubernetes-mcp-server@latest", "--read-only", "--disable-destructive", "--kubeconfig", "${KUBECONFIG}"]
-        # },
         "instructions": """For Kubernetes operations:
 - Be careful with cluster-scoped resource listings in large clusters
 - Always prefer namespaced queries when possible
