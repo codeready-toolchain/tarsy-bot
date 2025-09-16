@@ -66,33 +66,8 @@ class MCPClient:
                 env_keys = sorted(server_config.connection_params.get('env', {}).keys())
                 logger.debug("  Env keys: %s", env_keys)
                 
-                # Create server parameters for stdio connection
-                server_params = StdioServerParameters(
-                    command=server_config.connection_params.get("command"),
-                    args=server_config.connection_params.get("args", []),
-                    env=server_config.connection_params.get("env", None)
-                )
-                
-                # Log server parameters without exposing sensitive env values
-                logger.debug("Created StdioServerParameters for '%s':", server_id)
-                logger.debug("  Command: %s", server_params.command)
-                logger.debug("  Args: %s", server_params.args)
-                env_keys = sorted(server_params.env.keys()) if server_params.env else []
-                logger.debug("  Env keys: %s", env_keys)
-                
-                # Connect to the server
-                read_stream, write_stream = await self.exit_stack.enter_async_context(
-                    stdio_client(server_params)
-                )
-                
-                # Create session
-                session = await self.exit_stack.enter_async_context(
-                    ClientSession(read_stream, write_stream)
-                )
-                
-                # Initialize the session
-                await session.initialize()
-                
+                # Create and initialize session using shared helper
+                session = await self._create_session(server_id, server_config)
                 self.sessions[server_id] = session
                 logger.info(f"Successfully initialized MCP server: {server_id}")
                 
@@ -101,6 +76,58 @@ class MCPClient:
                 logger.error(f"Failed to initialize MCP server {server_id}: {error_details}")
         
         self._initialized = True
+    
+    async def _create_session(self, server_id: str, server_config) -> ClientSession:
+        """Create and initialize a new MCP session for a server.
+        
+        Args:
+            server_id: ID of the server
+            server_config: Server configuration object
+            
+        Returns:
+            Initialized ClientSession
+            
+        Raises:
+            Exception: If session creation fails
+        """
+        # Determine how to access connection parameters based on server_config structure
+        if hasattr(server_config, 'connection_params'):
+            # Standard config from registry (during initialization)
+            command = server_config.connection_params.get("command")
+            args = server_config.connection_params.get("args", [])
+            env = server_config.connection_params.get("env", {})
+        else:
+            # Direct config attributes (during recovery)
+            command = server_config.command
+            args = server_config.args or []
+            env = server_config.env or {}
+        
+        # Create server parameters for stdio connection
+        server_params = StdioServerParameters(
+            command=command,
+            args=args,
+            env=env
+        )
+        
+        logger.debug(f"Creating session for '{server_id}' with command: {command}")
+        logger.debug(f"Args: {args}")
+        env_keys = sorted(env.keys()) if env else []
+        logger.debug(f"Env keys: {env_keys}")
+        
+        # Connect to the server
+        read_stream, write_stream = await self.exit_stack.enter_async_context(
+            stdio_client(server_params)
+        )
+        
+        # Create session
+        session = await self.exit_stack.enter_async_context(
+            ClientSession(read_stream, write_stream)
+        )
+        
+        # Initialize the session
+        await session.initialize()
+        
+        return session
     
     async def list_tools(
         self,
@@ -129,36 +156,77 @@ class MCPClient:
             if server_name:
                 # List tools from specific server
                 if server_name in self.sessions:
-                    try:
-                        session = self.sessions[server_name]
-                        tools_result = await session.list_tools()
-                        # Keep the official Tool objects with full schema information
-                        all_tools[server_name] = tools_result.tools
-                        
-                        # Log the successful response
-                        self._log_mcp_list_tools_response(server_name, tools_result.tools, request_id)
-                        
-                    except Exception as e:
-                        error_details = extract_error_details(e)
-                        logger.error(f"Error listing tools from {server_name}: {error_details}")
-                        self._log_mcp_list_tools_error(server_name, error_details, request_id)
-                        all_tools[server_name] = []
+                    max_retries = 2
+                    for attempt in range(max_retries):
+                        try:
+                            session = self.sessions[server_name]
+                            tools_result = await session.list_tools()
+                            # Keep the official Tool objects with full schema information
+                            all_tools[server_name] = tools_result.tools
+                            
+                            # Log the successful response
+                            self._log_mcp_list_tools_response(server_name, tools_result.tools, request_id)
+                            break  # Success, exit retry loop
+                            
+                        except Exception as e:
+                            error_details = extract_error_details(e)
+                            
+                            if attempt < max_retries - 1:
+                                logger.warning(f"List tools failed on attempt {attempt + 1}/{max_retries} for {server_name}: {error_details}")
+                                logger.info(f"Attempting to recover session for server: {server_name}")
+                                
+                                try:
+                                    await self._recover_session(server_name)
+                                    logger.info(f"Successfully recovered session for server: {server_name}")
+                                    continue  # Retry with the new session
+                                except Exception as recovery_error:
+                                    logger.error(f"Failed to recover session for {server_name}: {extract_error_details(recovery_error)}")
+                                    # Continue to final attempt logic below
+                            
+                            # Final attempt or recovery failed
+                            logger.error(f"Error listing tools from {server_name}: {error_details}")
+                            self._log_mcp_list_tools_error(server_name, error_details, request_id)
+                            all_tools[server_name] = []
+                            break  # Exit retry loop
             else:
                 # List tools from all servers
-                for name, session in self.sessions.items():
-                    try:
-                        tools_result = await session.list_tools()
-                        # Keep the official Tool objects with full schema information
-                        all_tools[name] = tools_result.tools
-                        
-                        # Log the successful response for this server
-                        self._log_mcp_list_tools_response(name, tools_result.tools, request_id)
-                        
-                    except Exception as e:
-                        error_details = extract_error_details(e)
-                        logger.error(f"Error listing tools from {name}: {error_details}")
-                        self._log_mcp_list_tools_error(name, error_details, request_id)
-                        all_tools[name] = []
+                for name in list(self.sessions.keys()):  # Use list() to avoid dict changed during iteration
+                    max_retries = 2
+                    for attempt in range(max_retries):
+                        try:
+                            session = self.sessions.get(name)
+                            if not session:
+                                all_tools[name] = []
+                                break
+                                
+                            tools_result = await session.list_tools()
+                            # Keep the official Tool objects with full schema information
+                            all_tools[name] = tools_result.tools
+                            
+                            # Log the successful response for this server
+                            self._log_mcp_list_tools_response(name, tools_result.tools, request_id)
+                            break  # Success, exit retry loop
+                            
+                        except Exception as e:
+                            error_details = extract_error_details(e)
+                            
+                            if attempt < max_retries - 1:
+                                logger.warning(f"List tools failed on attempt {attempt + 1}/{max_retries} for {name}: {error_details}")
+                                logger.info(f"Attempting to recover session for server: {name}")
+                                
+                                try:
+                                    await self._recover_session(name)
+                                    logger.info(f"Successfully recovered session for server: {name}")
+                                    continue  # Retry with the new session
+                                except Exception as recovery_error:
+                                    logger.error(f"Failed to recover session for {name}: {extract_error_details(recovery_error)}")
+                                    # Continue to final attempt logic below
+                            
+                            # Final attempt or recovery failed
+                            logger.error(f"Error listing tools from {name}: {error_details}")
+                            self._log_mcp_list_tools_error(name, error_details, request_id)
+                            all_tools[name] = []
+                            break  # Exit retry loop
             
             # Convert Tool objects to dictionaries for JSON serialization in hook context
             serializable_tools: Dict[str, List[Dict[str, Any]]] = {}
@@ -273,64 +341,128 @@ class MCPClient:
             # Log the outgoing tool call
             self._log_mcp_request(server_name, tool_name, parameters, request_id)
             
-            session = self.sessions[server_name]
-            
-            try:
-                result = await session.call_tool(tool_name, parameters)
+            # Try the tool call with automatic session recovery on failure
+            max_retries = 2
+            for attempt in range(max_retries):
+                session = self.sessions.get(server_name)
+                if not session:
+                    raise Exception(f"MCP server not found: {server_name}")
                 
-                # Convert result to dictionary
-                if hasattr(result, 'content'):
-                    # Handle different content types
-                    content = result.content
-                    if isinstance(content, list):
-                        # Extract text content from the list
-                        text_parts = []
-                        for item in content:
-                            if hasattr(item, 'text'):
-                                text_parts.append(item.text)
-                            elif hasattr(item, 'type') and item.type == 'text':
-                                text_parts.append(str(item))
-                        response_dict = {"result": "\n".join(text_parts)}
-                    else:
-                        response_dict = {"result": str(content)}
-                else:
-                    response_dict = {"result": str(result)}
-                
-                # Apply data masking if service is available
-                if self.data_masking_service:
-                    try:
-                        logger.debug("Applying data masking for server: %s", server_name)
-                        response_dict = self.data_masking_service.mask_response(response_dict, server_name)
-                        logger.debug("Data masking completed for server: %s", server_name)
-                    except Exception as e:
-                        logger.error("Error during data masking for server '%s': %s", server_name, e)
-                        # Continue with unmasked response rather than failing the entire call
-                        logger.warning("Continuing with unmasked response for server: %s", server_name)
-                
-                # Apply summarization AFTER data masking (if investigation context available)
-                if investigation_conversation:
-                    response_dict = await self._maybe_summarize_result(
-                        server_name, tool_name, response_dict, investigation_conversation, 
-                        session_id, stage_execution_id
-                    )
-                
-                # Log the successful response (after masking and optional summarization)
-                self._log_mcp_response(server_name, tool_name, response_dict, request_id)
-                
-                # Update the interaction with result data
-                ctx.interaction.tool_result = response_dict
-                
-                # Complete the typed context with success
-                await ctx.complete_success({})
-                
-                return response_dict
+                try:
+                    result = await session.call_tool(tool_name, parameters)
                     
-            except Exception as e:
-                # Log the error (hooks will be triggered automatically by context manager)
-                error_details = extract_error_details(e)
-                error_msg = f"Failed to call tool {tool_name} on {server_name}: {error_details}"
-                self._log_mcp_error(server_name, tool_name, error_details, request_id)
-                raise Exception(error_msg) from e
+                    # Convert result to dictionary
+                    if hasattr(result, 'content'):
+                        # Handle different content types
+                        content = result.content
+                        if isinstance(content, list):
+                            # Extract text content from the list
+                            text_parts = []
+                            for item in content:
+                                if hasattr(item, 'text'):
+                                    text_parts.append(item.text)
+                                elif hasattr(item, 'type') and item.type == 'text':
+                                    text_parts.append(str(item))
+                            response_dict = {"result": "\n".join(text_parts)}
+                        else:
+                            response_dict = {"result": str(content)}
+                    else:
+                        response_dict = {"result": str(result)}
+                    
+                    # Apply data masking if service is available
+                    if self.data_masking_service:
+                        try:
+                            logger.debug("Applying data masking for server: %s", server_name)
+                            response_dict = self.data_masking_service.mask_response(response_dict, server_name)
+                            logger.debug("Data masking completed for server: %s", server_name)
+                        except Exception as e:
+                            logger.error("Error during data masking for server '%s': %s", server_name, e)
+                            # Continue with unmasked response rather than failing the entire call
+                            logger.warning("Continuing with unmasked response for server: %s", server_name)
+                    
+                    # Apply summarization AFTER data masking (if investigation context available)
+                    if investigation_conversation:
+                        response_dict = await self._maybe_summarize_result(
+                            server_name, tool_name, response_dict, investigation_conversation, 
+                            session_id, stage_execution_id
+                        )
+                    
+                    # Log the successful response (after masking and optional summarization)
+                    self._log_mcp_response(server_name, tool_name, response_dict, request_id)
+                    
+                    # Update the interaction with result data
+                    ctx.interaction.tool_result = response_dict
+                    
+                    # Complete the typed context with success
+                    await ctx.complete_success({})
+                    
+                    return response_dict
+                        
+                except Exception as e:
+                    error_details = extract_error_details(e)
+                    
+                    if attempt < max_retries - 1:
+                        # Always attempt recovery on first failure - simpler and more robust
+                        logger.warning(f"Tool call failed on attempt {attempt + 1}/{max_retries} for {server_name}.{tool_name}: {error_details}")
+                        logger.info(f"Attempting to recover session for server: {server_name}")
+                        
+                        try:
+                            # Attempt to recover the session
+                            await self._recover_session(server_name)
+                            logger.info(f"Successfully recovered session for server: {server_name}")
+                            continue  # Retry with the new session
+                        except Exception as recovery_error:
+                            logger.error(f"Failed to recover session for {server_name}: {extract_error_details(recovery_error)}")
+                            # Continue to final attempt logic below
+                    
+                    # Final attempt or recovery failed - raise the original error
+                    error_msg = f"Failed to call tool {tool_name} on {server_name} after {max_retries} attempts: {error_details}"
+                    self._log_mcp_error(server_name, tool_name, error_details, request_id)
+                    raise Exception(error_msg) from e
+            
+            # This should never be reached, but just in case
+            error_msg = f"Failed to call tool {tool_name} on {server_name} after {max_retries} attempts"
+            self._log_mcp_error(server_name, tool_name, "Max retries exceeded", request_id)
+            raise Exception(error_msg)
+    
+    async def _recover_session(self, server_name: str) -> None:
+        """Recover a failed MCP session by recreating it.
+        
+        Args:
+            server_name: Name of the server whose session needs recovery
+            
+        Raises:
+            Exception: If session recovery fails
+        """
+        logger.info(f"Recovering session for MCP server: {server_name}")
+        
+        # Clean up the old session first
+        if server_name in self.sessions:
+            try:
+                # Try to close the old session gracefully if possible
+                old_session = self.sessions[server_name]
+                if hasattr(old_session, 'close'):
+                    await old_session.close()
+            except Exception as cleanup_error:
+                logger.debug(f"Error during session cleanup for {server_name}: {cleanup_error}")
+            finally:
+                # Remove from sessions dict regardless
+                del self.sessions[server_name]
+        
+        # Get server configuration
+        server_config = self.mcp_registry.get_server_config_safe(server_name)
+        if not server_config:
+            raise Exception(f"Server configuration not found for: {server_name}")
+        
+        # Recreate the session using shared helper
+        try:
+            session = await self._create_session(server_name, server_config)
+            self.sessions[server_name] = session
+            logger.info(f"Successfully recovered MCP server session: {server_name}")
+            
+        except Exception as e:
+            logger.error(f"Failed to recover session for {server_name}: {extract_error_details(e)}")
+            raise Exception(f"Session recovery failed for {server_name}: {str(e)}") from e
     
     def _log_mcp_request(self, server_name: str, tool_name: str, parameters: Dict[str, Any], request_id: str):
         """Log the outgoing MCP tool call request."""
