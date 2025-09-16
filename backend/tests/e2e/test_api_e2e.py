@@ -11,9 +11,8 @@ Architecture:
 
 import asyncio
 import json
+import os
 import re
-import random
-import string
 from unittest.mock import AsyncMock, Mock, patch
 from mcp.types import Tool
 
@@ -341,8 +340,29 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                         mock_result.content = [mock_content]
 
                 elif tool_name == "kubectl_describe":
-                    # Simulate MCP tool call failure for testing error handling
-                    raise Exception("Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH")
+                    # Create a custom exception that mimics the exact MCP error structure
+                    # The extract_error_details function will format it as: Type=McpError | Message=... | error=ErrorData(...)
+                    class MockErrorData:
+                        def __init__(self):
+                            self.code = -32602
+                            self.message = "tool 'kubectl_describe' not found: tool not found"
+                            self.data = None
+                            
+                        def __repr__(self):
+                            return f"ErrorData(code={self.code}, message=\"{self.message}\", data={self.data})"
+                    
+                    class MockMcpError(Exception):
+                        def __init__(self, message):
+                            # Only store the error attribute (not message to avoid duplication)
+                            self.error = MockErrorData()
+                            super().__init__(message)
+                        
+                        def __str__(self):
+                            return "tool 'kubectl_describe' not found: tool not found"
+                    
+                    # Make the error appear as if it's an MCP error by setting the type name
+                    MockMcpError.__name__ = "McpError"
+                    raise MockMcpError("tool 'kubectl_describe' not found: tool not found")
 
                 else:
                     mock_content = Mock()
@@ -453,9 +473,11 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         })
 
         # Apply comprehensive mocking with test MCP server config
-        with respx.mock() as respx_mock, patch(
-            "tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers
-        ):
+        # Patch both the original constant and the registry's stored reference
+        with respx.mock() as respx_mock, \
+             patch("tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers), \
+             patch("tarsy.services.mcp_server_registry.MCPServerRegistry._DEFAULT_SERVERS", test_mcp_servers), \
+             patch.dict(os.environ, {}, clear=True):  # Isolate from environment variables
             # 1. Mock LLM API calls (preserves LLM hooks!)
             llm_handler = create_llm_response_handler()
 
@@ -474,9 +496,15 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             }
             mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
 
-            with patch.object(MCPClient, "list_tools", mock_list_tools), patch.object(
-                MCPClient, "call_tool", mock_call_tool
-            ):
+            # Create a mock initialize method that sets up mock sessions without real server processes
+            async def mock_initialize(self):
+                """Mock initialization that bypasses real server startup."""
+                self.sessions = mock_sessions.copy()
+                self._initialized = True
+                
+            with patch.object(MCPClient, "initialize", mock_initialize), \
+                 patch.object(MCPClient, "list_tools", mock_list_tools), \
+                 patch.object(MCPClient, "call_tool", mock_call_tool):
                 print(
                     "🔧 Using the real AlertService with test MCP server config and mocking..."
                 )

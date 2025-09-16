@@ -5,6 +5,7 @@ This test is separated from the main test file to avoid database isolation issue
 that occur when running multiple e2e tests together.
 """
 
+import os
 from unittest.mock import patch
 
 import httpx
@@ -97,9 +98,11 @@ class TestStageFailureDetectionE2E:
         mock_session = E2ETestUtils.create_generic_mcp_session_mock()
 
         # Apply mocking and run test
-        with respx.mock() as respx_mock, patch(
-            "tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers
-        ):
+        # Patch both the original constant and the registry's stored reference
+        with respx.mock() as respx_mock, \
+             patch("tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers), \
+             patch("tarsy.services.mcp_server_registry.MCPServerRegistry._DEFAULT_SERVERS", test_mcp_servers), \
+             patch.dict(os.environ, {}, clear=True):  # Isolate from environment variables
             # Mock LLM calls with failure logic
             llm_handler = create_failing_llm_response_handler()
             respx_mock.post(
@@ -113,7 +116,14 @@ class TestStageFailureDetectionE2E:
             mock_sessions = {"kubernetes-server": mock_session}
             mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
 
-            with patch.object(MCPClient, "list_tools", mock_list_tools), \
+            # Create a mock initialize method that sets up mock sessions without real server processes
+            async def mock_initialize(self):
+                """Mock initialization that bypasses real server startup."""
+                self.sessions = mock_sessions.copy()
+                self._initialized = True
+
+            with patch.object(MCPClient, "initialize", mock_initialize), \
+                 patch.object(MCPClient, "list_tools", mock_list_tools), \
                  patch.object(MCPClient, "call_tool", mock_call_tool):
 
                 print("⏳ Step 1: Submitting alert...")
