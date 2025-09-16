@@ -51,19 +51,14 @@ const fieldPresets = [
 const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) => {
   // Required fields
   const [alertType, setAlertType] = useState('');
-  // const [runbook, setRunbook] = useState('https://github.com/alexeykazakov/runbooks/blob/master/namespace-terminating-v2.md');
-  const [runbook, setRunbook] = useState('https://github.com/alexeykazakov/runbooks/blob/master/pod-crashlooping.md');
+  const [runbook, setRunbook] = useState('https://github.com/alexeykazakov/runbooks/blob/master/namespace-terminating-v2.md');
   
   // Dynamic key-value pairs
   const [keyValuePairs, setKeyValuePairs] = useState<KeyValuePair[]>([
     { id: generateId(), key: 'severity', value: 'critical' },
-    { id: generateId(), key: 'environment', value: 'production' },
-    // { id: generateId(), key: 'cluster', value: 'https://api.crc.testing:6443' },
-    { id: generateId(), key: 'cluster', value: 'https://api.rm2.thpm.p1.openshiftapps.com:6443/' },
-    // { id: generateId(), key: 'namespace', value: 'superman-dev' },
-    { id: generateId(), key: 'namespace', value: 'external-secrets-operator' },
-    // { id: generateId(), key: 'message', value: 'Namespace is stuck in terminating state' }
-    { id: generateId(), key: 'message', value: 'Pod is crashlooping' }
+    { id: generateId(), key: 'cluster', value: 'https://api.crc.testing:6443' },
+    { id: generateId(), key: 'namespace', value: 'superman-dev' },
+    { id: generateId(), key: 'message', value: 'Namespace is stuck in terminating state' }
   ]);
 
   const [availableAlertTypes, setAvailableAlertTypes] = useState<string[]>([]);
