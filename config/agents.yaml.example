@@ -45,7 +45,7 @@
 # - Agent-provided summarizers use investigation conversation context for intelligent summarization
 # - Configuration options:
 #   - enabled: true/false (default: true) - Enable or disable summarization for this server
-#   - size_threshold_tokens: integer (default: 2000) - Token count threshold for triggering summarization
+#   - size_threshold_tokens: integer (default: 5000) - Token count threshold for triggering summarization
 #   - summary_max_token_limit: integer (default: 1000) - Maximum tokens allowed in summary (enforced at LLM provider level)
 # - When disabled (enabled: false), all MCP tool results pass through unchanged regardless of size
 # - Different servers may need different thresholds: security data often needs higher thresholds, filesystem operations often disabled

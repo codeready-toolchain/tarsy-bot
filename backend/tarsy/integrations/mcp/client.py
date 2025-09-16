@@ -12,6 +12,7 @@ from mcp.types import Tool
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import mcp_interaction_context, mcp_list_context
+from tarsy.models.agent_config import MCPServerConfigModel
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.utils.logger import get_module_logger
@@ -77,7 +78,7 @@ class MCPClient:
         
         self._initialized = True
     
-    async def _create_session(self, server_id: str, server_config) -> ClientSession:
+    async def _create_session(self, server_id: str, server_config: MCPServerConfigModel) -> ClientSession:
         """Create and initialize a new MCP session for a server.
         
         Args:
@@ -287,7 +288,7 @@ class MCPClient:
             return result
         
         # Check size threshold
-        size_threshold = getattr(summarization_config, 'size_threshold_tokens', 2000)
+        size_threshold = getattr(summarization_config, 'size_threshold_tokens', 5000)
         estimated_tokens = self.token_counter.estimate_observation_tokens(server_name, tool_name, result)
         
         if estimated_tokens <= size_threshold:

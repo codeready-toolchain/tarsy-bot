@@ -537,7 +537,7 @@ class TestSummarizationConfig:
         config = SummarizationConfig()
         
         assert config.enabled is True
-        assert config.size_threshold_tokens == 2000
+        assert config.size_threshold_tokens == 5000
         assert config.summary_max_token_limit == 1000
     
     def test_valid_summarization_config_custom_values(self):
@@ -610,7 +610,7 @@ class TestSummarizationConfig:
         assert config.summarization is not None
         assert isinstance(config.summarization, SummarizationConfig)
         assert config.summarization.enabled is True
-        assert config.summarization.size_threshold_tokens == 2000
+        assert config.summarization.size_threshold_tokens == 5000
         assert config.summarization.summary_max_token_limit == 1000
     
     def test_mcp_server_config_with_custom_summarization(self):

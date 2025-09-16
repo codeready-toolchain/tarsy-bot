@@ -82,7 +82,7 @@ class TestSummarizationConfiguration:
         config = registry.get_server_config_safe("monitoring-server")
         assert config is not None
         assert config.summarization.enabled is True  # Default is True
-        assert config.summarization.size_threshold_tokens == 2000  # Default threshold
+        assert config.summarization.size_threshold_tokens == 5000  # Default threshold
         assert config.summarization.summary_max_token_limit == 1000  # Default limit
     
     def test_summarization_config_validation(self):

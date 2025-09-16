@@ -148,7 +148,7 @@ class SummarizationConfig(BaseModel):
         description="Whether summarization is enabled for this server"
     )
     size_threshold_tokens: int = Field(
-        default=2000,
+        default=5000,
         description="Token threshold above which results will be summarized",
         ge=100
     )

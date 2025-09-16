@@ -627,7 +627,7 @@ mcp_servers:
   kubectl:
     summarization:
       enabled: true                    # Default: true
-      size_threshold_tokens: 2000      # Default: 2K tokens
+      size_threshold_tokens: 5000      # Default: 5K tokens
       summary_max_token_limit: 1000    # Default: 1K tokens
 ```
 

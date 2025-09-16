@@ -405,7 +405,7 @@ class TestMCPServerRegistryExtended:
         # Verify summarization gets the expected default configuration
         assert server_config.summarization is not None, "Summarization config should be present"
         assert server_config.summarization.enabled is True, "Summarization should be enabled by default"
-        assert server_config.summarization.size_threshold_tokens == 2000, "Default threshold should be 2000 tokens"
+        assert server_config.summarization.size_threshold_tokens == 5000, "Default threshold should be 5000 tokens"
         assert server_config.summarization.summary_max_token_limit == 1000, "Default max summary should be 1000 tokens"
         
         # Verify data masking is also configured as expected
