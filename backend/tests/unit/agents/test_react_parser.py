@@ -858,9 +858,9 @@ class TestParameterParsing:
         result = ReActParser._parse_action_parameters(yaml_input)
         
         assert result["namespace"] == "default"
-        # The parser splits on first colon, so "labels: app=nginx" becomes "labels: app" -> "nginx"
+        # The parser splits on first colon, so "labels: app=nginx" becomes "labels: app" -> "nginx"  
         assert "labels: app" in result or "labels" in result
-        assert result["replicas"] == "3"
+        assert result["replicas"] == 3  # Now correctly converted to integer
     
     def test_parse_key_equals_value_parameters(self):
         """Test parsing key=value parameters."""
@@ -870,7 +870,7 @@ class TestParameterParsing:
         
         assert result["namespace"] == "default"
         assert result["labels"] == "app=nginx"
-        assert result["replicas"] == "3"
+        assert result["replicas"] == 3  # Now correctly converted to integer
     
     def test_parse_mixed_format_parameters(self):
         """Test parsing mixed format parameters."""

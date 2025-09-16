@@ -133,7 +133,7 @@ USER: Observation: kubernetes-server.kubectl_get: {
 ASSISTANT: Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}
 
-USER: Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: Type=Exception | Message=Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH
+USER: Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server after 2 attempts: Type=Exception | Message=Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH
 
 ASSISTANT: Thought: Let me also collect system information to understand resource constraints.
 Action: test-data-server.collect_system_info
@@ -193,7 +193,7 @@ EXPECTED_STAGES = {
             # LLM 2 - Second ReAct iteration
             {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245},
             # MCP 4 - Failed kubectl_describe attempt (testing error handling)
-            {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server', 'error_message': 'Failed to call tool kubectl_describe on kubernetes-server: Type=Exception | Message=Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH'},
+            {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server', 'error_message': 'Failed to call tool kubectl_describe on kubernetes-server after 2 attempts: Type=Exception | Message=Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH'},
             # LLM 3 - Third ReAct iteration
             {'type': 'llm', 'position': 3, 'success': True, 'conversation_index': 7, 'input_tokens': 220, 'output_tokens': 75, 'total_tokens': 295},
             # LLM 4 - Summarization of large system info result (separate LLM call, not in conversation)
@@ -477,7 +477,7 @@ Action Input: {"resource": "namespace", "name": "stuck-namespace"}"""
         # 3rd LLM interaction adds observation and gets next assistant response
         {
             "role": "user",
-            "content": """Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: Type=Exception | Message=Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH"""
+            "content": """Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server after 2 attempts: Type=Exception | Message=Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH"""
         },
         {
             "role": "assistant",
@@ -685,7 +685,7 @@ Observation: kubernetes-server.kubectl_get: {
 }
 Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: Type=Exception | Message=Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH
+Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server after 2 attempts: Type=Exception | Message=Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH
 Thought: Let me also collect system information to understand resource constraints.
 Action: test-data-server.collect_system_info
 Action Input: {"detailed": false}
@@ -811,7 +811,7 @@ Observation: kubernetes-server.kubectl_get: {
 }
 Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: Type=Exception | Message=Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH
+Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server after 2 attempts: Type=Exception | Message=Failed to call tool kubectl_describe on kubernetes-server: kubectl command not found in PATH
 Thought: Let me also collect system information to understand resource constraints.
 Action: test-data-server.collect_system_info
 Action Input: {"detailed": false}
