@@ -66,15 +66,18 @@ class MCPClient:
                 # Log env keys only to avoid exposing sensitive values
                 env_keys = sorted(server_config.connection_params.get('env', {}).keys())
                 logger.debug("  Env keys: %s", env_keys)
-                
+
                 # Create and initialize session using shared helper
                 session = await self._create_session(server_id, server_config)
                 self.sessions[server_id] = session
                 logger.info(f"Successfully initialized MCP server: {server_id}")
-                
+
             except Exception as e:
                 error_details = extract_error_details(e)
                 logger.error(f"Failed to initialize MCP server {server_id}: {error_details}")
+                # Ensure we don't leave partial state in sessions dict
+                if server_id in self.sessions:
+                    del self.sessions[server_id]
         
         self._initialized = True
     
@@ -428,39 +431,30 @@ class MCPClient:
     
     async def _recover_session(self, server_name: str) -> None:
         """Recover a failed MCP session by recreating it.
-        
+
         Args:
             server_name: Name of the server whose session needs recovery
-            
+
         Raises:
             Exception: If session recovery fails
         """
         logger.info(f"Recovering session for MCP server: {server_name}")
-        
-        # Clean up the old session first
+
+        # Remove from sessions dict - the exit stack will handle cleanup
         if server_name in self.sessions:
-            try:
-                # Try to close the old session gracefully if possible
-                old_session = self.sessions[server_name]
-                if hasattr(old_session, 'close'):
-                    await old_session.close()
-            except Exception as cleanup_error:
-                logger.debug(f"Error during session cleanup for {server_name}: {cleanup_error}")
-            finally:
-                # Remove from sessions dict regardless
-                del self.sessions[server_name]
-        
+            del self.sessions[server_name]
+
         # Get server configuration
         server_config = self.mcp_registry.get_server_config_safe(server_name)
         if not server_config:
             raise Exception(f"Server configuration not found for: {server_name}")
-        
+
         # Recreate the session using shared helper
         try:
             session = await self._create_session(server_name, server_config)
             self.sessions[server_name] = session
             logger.info(f"Successfully recovered MCP server session: {server_name}")
-            
+
         except Exception as e:
             logger.error(f"Failed to recover session for {server_name}: {extract_error_details(e)}")
             raise Exception(f"Session recovery failed for {server_name}: {str(e)}") from e
@@ -528,6 +522,8 @@ class MCPClient:
         """Close all MCP client connections."""
         try:
             await self.exit_stack.aclose()
+        except Exception as e:
+            logger.error(f"Error during MCP client cleanup: {extract_error_details(e)}")
         finally:
             # Always clean up state even if exit stack fails
             self.sessions.clear()
