@@ -33,11 +33,11 @@ requires-python = ">= 3.13"
 
 [project.optional-dependencies]
 test = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-mock>=3.10.0",
-    "pytest-cov>=4.1.0",
-    "pytest-xdist>=3.3.1",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-mock>=3.15.0",
+    "pytest-cov>=7.0.0",
+    "pytest-xdist>=3.8.0",
     "respx>=0.22.0",
 ]
 dev = [
@@ -51,12 +51,6 @@ all = [
     "ruff>=0.1.0",
     "mypy>=1.7.0",
     "pre-commit>=3.5.0",
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-mock>=3.10.0",
-    "pytest-cov>=4.1.0",
-    "pytest-xdist>=3.3.1",
-    "respx>=0.22.0",
 ]
 
 [project.urls]
@@ -72,11 +66,7 @@ build-backend = "hatchling.build"
 packages = ["tarsy"]
 
 [tool.uv]
-dev-dependencies = [
-    "pytest>=8.4.1",
-    "pytest-asyncio>=1.1.0",
-    "pytest-mock>=3.14.1",
-]
+dev-dependencies = []
 # uv-specific settings for faster dependency resolution
 resolution = "highest"
 
@@ -166,5 +156,5 @@ disallow_incomplete_defs = false
 [dependency-groups]
 dev = []
 test = [
-    "pytest-cov>=6.2.1",
+    "pytest-cov>=7.0.0",
 ]
