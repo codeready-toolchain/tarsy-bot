@@ -18,6 +18,8 @@ from unittest.mock import patch
 
 import pytest
 
+logger = logging.getLogger(__name__)
+
 
 class E2ETestIsolation:
     """Context manager for complete e2e test isolation."""
@@ -66,37 +68,52 @@ class E2ETestIsolation:
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Clean up all resources when exiting the context manager."""
+        import asyncio
+        from contextlib import suppress
         
-        # CRITICAL: Reset global history service singleton to prevent contamination
+        # Clean up resources as normal
+        
+        # 2. Stop all patches
+        for patcher in reversed(self.patches):  # Reverse order to undo patches properly
+            try:
+                patcher.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping patch during cleanup: {e}")
+        
+        # 3. Restore original environment variables
+        for key, original_value in self.original_env.items():
+            if original_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original_value
+        
+        # 4. Clean up temporary files
+        for temp_file in self.temp_files:
+            try:
+                Path(temp_file).unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning(f"Error removing temp file {temp_file}: {e}")
+        
+        # 5. Clean up temporary directory
+        if self.temp_dir:
+            try:
+                shutil.rmtree(self.temp_dir, ignore_errors=True)
+            except Exception as e:
+                logger.warning(f"Error removing temp directory {self.temp_dir}: {e}")
+        
+        # 6. Restore logging state
+        self._restore_logging_state()
+        
+        # 7. Clear tracking lists
+        self.temp_files.clear()
+        self.patches.clear()
+        self.original_env.clear()
+        
+        # 8. CRITICAL: Reset global history service singleton to prevent contamination
         with suppress(Exception):
             import tarsy.services.history_service
             tarsy.services.history_service._history_service = None
-        
-        # Restore logging state
-        self._restore_logging_state()
-        
-        # Restore original environment variables
-        for var, original_value in self.original_env.items():
-            if original_value is None:
-                os.environ.pop(var, None)
-            else:
-                os.environ[var] = original_value
-        
-        # Clean up all temporary files
-        for temp_file in self.temp_files:
-            with suppress(OSError, IOError):
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-        
-        # Clean up temporary directory
-        if self.temp_dir and self.temp_dir.exists():
-            with suppress(OSError, IOError):
-                shutil.rmtree(self.temp_dir)
-        
-        # Clean up patches
-        for patcher in reversed(self.patches):
-            with suppress(RuntimeError):
-                patcher.stop()
     
     def create_temp_database(self) -> str:
         """Create an isolated temporary database file."""
@@ -169,7 +186,7 @@ class E2ETestIsolation:
                     logger.setLevel(state['level'])
                     logger.handlers = state['handlers']
                     logger.propagate = state['propagate']
-    
+
 @pytest.fixture
 def e2e_isolation():
     """Provide complete e2e test isolation."""
