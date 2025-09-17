@@ -381,8 +381,9 @@ class MCPClient:
                             logger.debug("Data masking completed for server: %s", server_name)
                         except Exception as e:
                             logger.error("Error during data masking for server '%s': %s", server_name, e)
-                            # Continue with unmasked response rather than failing the entire call
-                            logger.warning("Continuing with unmasked response for server: %s", server_name)
+                            # Never return unmasked data - redact on masking failure
+                            response_dict = {"result": "[REDACTED: masking failure]"}
+                            raise Exception(f"Data masking failed for server '{server_name}': {str(e)}") from e
                     
                     # Apply summarization AFTER data masking (if investigation context available)
                     if investigation_conversation:
