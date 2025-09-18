@@ -22,6 +22,7 @@ services:
     command: ["oauth2-proxy", "--config=/config/oauth2-proxy-container.cfg", "--skip-auth-preflight=true"]
     volumes:
       - ./config/oauth2-proxy-container.cfg:/config/oauth2-proxy-container.cfg:ro
+      - ./config/templates:/templates:ro  # Mount custom templates
     ports:
       - "4180:4180"  # Direct OAuth2-proxy access
     depends_on:
