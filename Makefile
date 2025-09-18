@@ -50,10 +50,10 @@ setup: check-prereqs ## Complete project setup (run this first!)
 # Development targets
 .PHONY: dev
 dev: ## Start all services for development (direct backend connection)
-	@echo "$(GREEN)🚀 Starting all services in default dev mode...$(NC)"
+	@echo "$(GREEN)🚀 Starting all services in simplified dev mode...$(NC)"
 	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
-	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
-	@echo "$(YELLOW)Mode: Direct backend connection (no auth proxy)$(NC)"
+	@echo "$(BLUE)Dashboard will run on: http://localhost:5173$(NC)"
+	@echo "$(YELLOW)Mode: Direct backend connection (no containers, no auth)$(NC)"
 	@echo ""
 	@trap 'make stop' INT; \
 	( \
@@ -64,47 +64,7 @@ dev: ## Start all services for development (direct backend connection)
 		wait \
 	)
 
-.PHONY: dev-auth
-dev-auth: ## Start all services for development with oauth2-proxy authentication  
-	@echo "$(GREEN)🚀 Starting all services in auth dev mode...$(NC)"
-	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
-	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
-	@echo "$(YELLOW)Mode: OAuth2-proxy authentication (port $(OAUTH2_PROXY_PORT))$(NC)"
-	@echo "$(BLUE)Checking if oauth2-proxy is running on localhost:$(OAUTH2_PROXY_PORT)...$(NC)"
-	@if ! timeout 3 bash -c "</dev/tcp/localhost/$(OAUTH2_PROXY_PORT)" >/dev/null 2>&1; then \
-		echo "$(RED)❌ Error: oauth2-proxy is not running on localhost:$(OAUTH2_PROXY_PORT)$(NC)"; \
-		echo "$(YELLOW)💡 To auto-start oauth2-proxy, run: make dev-auth-full$(NC)"; \
-		exit 1; \
-	fi
-	@echo "$(GREEN)✓ oauth2-proxy is running$(NC)"
-	@echo ""
-	@trap 'make stop' INT; \
-	( \
-		echo "$(YELLOW)Starting backend...$(NC)" && \
-		(cd backend && make dev) & \
-		echo "$(YELLOW)Starting dashboard in auth mode...$(NC)" && \
-		(cd dashboard && npm run dev:auth) & \
-		wait \
-	)
 
-.PHONY: dev-auth-full
-dev-auth-full: ## Start all services including oauth2-proxy automatically
-	@echo "$(GREEN)🚀 Starting all services with auto oauth2-proxy...$(NC)"
-	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
-	@echo "$(BLUE)Dashboard will run on: http://localhost:$(DASHBOARD_PORT)$(NC)"
-	@echo "$(BLUE)OAuth2-proxy will run on: http://localhost:$(OAUTH2_PROXY_PORT)$(NC)"
-	@echo ""
-	@trap 'make stop' INT; \
-	( \
-		echo "$(YELLOW)Starting oauth2-proxy...$(NC)" && \
-		make oauth2-proxy-bg && \
-		sleep 3 && \
-		echo "$(YELLOW)Starting backend...$(NC)" && \
-		(cd backend && make dev) & \
-		echo "$(YELLOW)Starting dashboard in auth mode...$(NC)" && \
-		(cd dashboard && npm run dev:auth) & \
-		wait \
-	)
 
 # Individual service targets
 .PHONY: backend
@@ -115,13 +75,9 @@ backend: ## Start backend only
 .PHONY: dashboard
 dashboard: ## Start dashboard only (direct backend connection)
 	@echo "$(GREEN)Starting dashboard on http://localhost:$(DASHBOARD_PORT)$(NC)"
+	@echo "$(YELLOW)Direct backend connection to localhost:$(BACKEND_PORT)$(NC)"
 	cd dashboard && npm run dev
 
-.PHONY: dashboard-auth
-dashboard-auth: ## Start dashboard only (auth mode via oauth2-proxy)
-	@echo "$(GREEN)Starting dashboard in auth mode on http://localhost:$(DASHBOARD_PORT)$(NC)"
-	@echo "$(YELLOW)Connecting to backend via oauth2-proxy on port $(OAUTH2_PROXY_PORT)$(NC)"
-	cd dashboard && npm run dev:auth
 
 # OAuth2 Proxy targets
 .PHONY: check-oauth2-config
@@ -356,8 +312,6 @@ help: ## Show this help message
 	@echo "$(YELLOW)🚀 Quick Start:$(NC)"
 	@echo "  make setup        # First time setup"
 	@echo "  make dev          # Start all services (direct backend)"
-	@echo "  make dev-auth     # Start all services (manual oauth2-proxy)"
-	@echo "  make dev-auth-full# Start all services (auto oauth2-proxy)"
 	@echo "  make stop         # Stop all services"
 	@echo ""
 	@echo "$(YELLOW)🔐 OAuth2-Proxy:$(NC)"

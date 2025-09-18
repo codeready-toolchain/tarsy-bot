@@ -29,7 +29,7 @@ const parseEnvConfig = (): AppConfig => {
   
   // Development server settings (used in development only)
   const devServerHost = import.meta.env.VITE_DEV_SERVER_HOST || 'localhost';
-  const devServerPort = parseInt(import.meta.env.VITE_DEV_SERVER_PORT || '3000', 10);
+  const devServerPort = parseInt(import.meta.env.VITE_DEV_SERVER_PORT || '5173', 10);
   const devServerUrl = `http://${devServerHost}:${devServerPort}`;
   
   // Production URLs (only used when building for production)
@@ -75,7 +75,7 @@ export const urls = {
   
   // WebSocket endpoints
   websocket: {
-    // Simple rule: use dev server WebSocket in dev, production URL in prod
+    // Simple rule: use Vite proxy in dev (same port as frontend), production URL in prod
     base: config.isDevelopment ? `ws://${config.devServerHost}:${config.devServerPort}` : config.prodWsBaseUrl,
     connect: '/ws',
   },
