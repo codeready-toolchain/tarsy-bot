@@ -7,16 +7,18 @@ export default defineConfig(({ mode }) => {
   // Load environment variables based on mode
   const env = loadEnv(mode, process.cwd(), '');
   
-  // Backend server configuration from environment
-  const backendApiUrl = env.VITE_API_BASE_URL || 'http://localhost:4180';
-  const backendWsUrl = env.VITE_WS_BASE_URL || 'ws://localhost:4180';
+  // Development server configuration
   const devServerHost = env.VITE_DEV_SERVER_HOST || 'localhost';
-  const devServerPort = parseInt(env.VITE_DEV_SERVER_PORT || '5173', 10);
+  const devServerPort = parseInt(env.VITE_DEV_SERVER_PORT || '3000', 10);
   const devServerOrigin = `http://${devServerHost}:${devServerPort}`;
   
-  // Remove protocol for targets
-  const backendHttpTarget = backendApiUrl;
-  const backendWsTarget = backendWsUrl;
+  // Proxy target configuration - fully configurable
+  // These are the INTERNAL targets that Vite proxy forwards TO
+  // For containers: use service names (oauth2-proxy:4180)  
+  // For local dev: use localhost (localhost:4180)
+  const backendHttpTarget = env.VITE_PROXY_TARGET_HTTP || 'http://localhost:4180';
+  const backendWsTarget = env.VITE_PROXY_TARGET_WS || 'ws://localhost:4180';
+  const proxyHostHeader = env.VITE_PROXY_HOST_HEADER || 'localhost:4180';
   
   console.log('🔧 Vite Configuration:', {
     mode,
@@ -50,6 +52,8 @@ export default defineConfig(({ mode }) => {
               if (req.headers.cookie) {
                 proxyReq.setHeader('Cookie', req.headers.cookie);
               }
+              // Override host header to match OAuth2-proxy cookie domain
+              proxyReq.setHeader('Host', proxyHostHeader);
             });
           }
         },
@@ -88,6 +92,8 @@ export default defineConfig(({ mode }) => {
               if (req.headers.cookie) {
                 proxyReq.setHeader('Cookie', req.headers.cookie);
               }
+              // Override host header to match OAuth2-proxy cookie domain
+              proxyReq.setHeader('Host', proxyHostHeader);
             });
           },
         },

@@ -21,27 +21,33 @@ class APIClient {
         'Content-Type': 'application/json',
       },
     });
-
-    // Add response interceptor for error handling
+    
+    // Add response interceptor for error handling and authentication
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
-        console.error('API Error:', {
-          status: error.response?.status,
-          url: error.config?.url,
-          baseURL: error.config?.baseURL,
-          error: error.message
-        });
+        // Log API errors for debugging
+        if (error.response?.status && error.response.status >= 400) {
+          console.warn(`API Error ${error.response.status}:`, {
+            method: error.config?.method?.toUpperCase(),
+            url: error.config?.url,
+            status: error.response.status,
+            message: error.message,
+          });
+        }
         
         // Handle 401 Unauthorized - redirect to OAuth login
         if (error.response?.status === 401) {
-          console.log('🔒 401 Unauthorized detected - triggering auth redirect');
           authService.handleAuthError();
-          return Promise.reject(error); // Still reject to prevent further processing
+          return Promise.reject(error);
         }
         
-        // Preserve the original AxiosError to allow UI components to access
-        // error.response, error.response.status, error.response.data, etc.
+        // Handle CORS/network errors (no response object)
+        if (error.request && !error.response) {
+          console.warn('Network error, checking authentication');
+          authService.handleAuthError();
+        }
+        
         return Promise.reject(error);
       }
     );
@@ -75,12 +81,7 @@ class APIClient {
     try {
       const response = await this.client.get<Session[]>('/api/v1/history/active-sessions');
       
-      // Debug logging to help troubleshoot filtering issues
-      console.log('Active sessions API response:', {
-        totalSessions: Array.isArray(response.data) ? response.data.length : 0,
-        statuses: Array.isArray(response.data) ? response.data.map((s: any) => s.status) : [],
-        url: response.config?.url
-      });
+      // Active sessions fetched successfully
       
       // Backend returns a simple array, so we need to wrap it in the expected format
       if (Array.isArray(response.data)) {
@@ -111,20 +112,9 @@ class APIClient {
       queryParams.append('page_size', pageSize.toString());
       const url = `/api/v1/history/sessions?${queryParams.toString()}`;
       
-      console.log('🔍 Historical sessions - Full URL:', url);
       
       const response = await this.client.get<SessionsResponse>(url);
       
-      // Debug logging to help troubleshoot filtering issues
-      console.log('Historical sessions API response:', {
-        totalSessions: response.data?.sessions?.length || 0,
-        statuses: response.data?.sessions?.map(s => s.status) || [],
-        requestedUrl: response.config?.url,
-        actualUrl: response.request?.responseURL || 'unknown',
-        params: response.config?.params,
-        method: response.config?.method,
-        rawResponseData: response.data
-      });
       
       if (response.data && typeof response.data === 'object' && 'sessions' in response.data) {
         return response.data;
@@ -145,16 +135,7 @@ class APIClient {
     try {
       const response = await this.client.get<DetailedSession>(`/api/v1/history/sessions/${sessionId}`);
       
-      console.log('Session detail API response:', {
-        sessionId,
-        hasAlertData: !!response.data?.alert_data,
-        hasFinalAnalysis: !!response.data?.final_analysis,
-        stagesCount: response.data?.stages?.length || 0,
-        totalInteractions: response.data?.stages?.reduce(
-          (total, stage) => total + (stage.total_interactions || 0), 0
-        ) || 0,
-        status: response.data?.status
-      });
+      // Session detail fetched successfully
       
       if (response.data && typeof response.data === 'object' && 'session_id' in response.data) {
         return response.data;
@@ -175,9 +156,7 @@ class APIClient {
    */
   async getSessionSummary(sessionId: string): Promise<any> {
     try {
-      console.log(`📊 Fetching summary statistics for session: ${sessionId}`);
       const response = await this.client.get(`/api/v1/history/sessions/${sessionId}/summary`);
-      console.log('📊 Session summary API response:', response.data);
       return response.data;
     } catch (error) {
       console.error('Failed to fetch session summary:', error);
@@ -264,12 +243,6 @@ class APIClient {
       
       const response = await this.client.get<SessionsResponse>(`/api/v1/history/search?${params.toString()}`);
       
-      console.log('Search sessions API response:', {
-        searchTerm,
-        totalResults: response.data?.sessions?.length || 0,
-        limit,
-        url: response.config?.url
-      });
       
       if (response.data && typeof response.data === 'object' && 'sessions' in response.data) {
         return {
@@ -294,11 +267,6 @@ class APIClient {
     try {
       const response = await this.client.get<FilterOptions>('/api/v1/history/filter-options');
       
-      console.log('Filter options API response:', {
-        agentTypes: response.data?.agent_types?.length || 0,
-        alertTypes: response.data?.alert_types?.length || 0,
-        statusOptions: response.data?.status_options?.length || 0
-      });
       
       if (response.data && typeof response.data === 'object') {
         return response.data;
@@ -369,11 +337,6 @@ class APIClient {
       
       const response = await this.client.get<SessionsResponse>(url);
       
-      console.log('Filtered sessions API response:', {
-        totalSessions: response.data?.sessions?.length || 0,
-        appliedFilters: filters,
-        url: response.config?.url
-      });
       
       if (response.data && typeof response.data === 'object' && 'sessions' in response.data) {
         return response.data;

@@ -1,0 +1,71 @@
+# podman-compose.yml
+version: '3.8'
+services:
+  database:
+    image: mirror.gcr.io/library/postgres:16
+    environment:
+      - POSTGRES_DB=tarsy
+      - POSTGRES_USER=tarsy
+      - POSTGRES_PASSWORD=tarsy-dev-password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"  # For debugging/admin access only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tarsy"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    command: ["oauth2-proxy", "--config=/config/oauth2-proxy-container.cfg", "--skip-auth-preflight=true"]
+    volumes:
+      - ./config/oauth2-proxy-container.cfg:/config/oauth2-proxy-container.cfg:ro
+    ports:
+      - "4180:4180"  # Direct OAuth2-proxy access
+    depends_on:
+      - tarsy-backend
+
+  tarsy-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # No direct port exposure - only accessible through oauth2-proxy
+    command: ["/app/.venv/bin/uvicorn", "tarsy.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      - HISTORY_ENABLED=true
+      - DATABASE_URL=postgresql://tarsy:tarsy-dev-password@database:5432/tarsy
+    volumes:
+      - ./.env:/app/.env:ro                        # Mount environment variables
+      - ./config:/app/config:ro                    # Mount configuration files
+      - ./data:/app/data                           # Persist application data
+      - ./logs:/app/logs                           # Persist logs
+    depends_on:
+      database:
+        condition: service_healthy
+    
+  tarsy-frontend:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    command: ["npx", "vite", "dev", "--host", "0.0.0.0", "--port", "3000"]
+    ports:
+      - "3000:3000"  # Direct frontend access
+    environment:
+      - NODE_ENV=development
+      # Development server configuration (what browser uses to access frontend)
+      - VITE_DEV_SERVER_HOST=localhost  # Browser access URL
+      - VITE_DEV_SERVER_PORT=3000
+      # Production URLs (only used in production builds, ignored in dev mode)
+      - VITE_API_BASE_URL=http://localhost:4180
+      - VITE_WS_BASE_URL=ws://localhost:4180
+      # Vite proxy targets (container-to-container communication)
+      - VITE_PROXY_TARGET_HTTP=http://oauth2-proxy:4180  # Internal proxy target
+      - VITE_PROXY_TARGET_WS=ws://oauth2-proxy:4180      # Internal proxy target  
+      - VITE_PROXY_HOST_HEADER=localhost:4180            # For OAuth2 cookie compatibility
+    depends_on:
+      - oauth2-proxy
+
+volumes:
+  postgres_data:

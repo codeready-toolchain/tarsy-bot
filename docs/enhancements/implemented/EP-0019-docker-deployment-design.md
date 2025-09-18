@@ -95,31 +95,14 @@ services:
       retries: 5
 
   oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.5.1
-    command:
-      - --http-address=0.0.0.0:4180
-      - --upstream=http://tarsy-backend:8000
-      - --email-domain=*
-      - --cookie-secret=change-me-in-production
-      - --client-id=your-client-id
-      - --client-secret=your-client-secret
-      - --provider=github  # or google, oidc, etc.
-      - --skip-auth-route=GET=^/$
-      - --skip-auth-route=GET=^/api/v1/history/health
-      - --skip-auth-route=GET=^/health
-      - --api-route=^/api
-      - --api-route=^/alerts
-      - --api-route=^/alert-types
-      - --api-route=^/session-id
-      - --api-route=^/ws
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    command: ["oauth2-proxy", "--config=/config/oauth2-proxy.cfg"]
+    volumes:
+      - ./config/oauth2-proxy.cfg:/config/oauth2-proxy.cfg:ro
     ports:
       - "4180:4180"  # API proxy endpoint
     depends_on:
       - tarsy-backend
-    environment:
-      - OAUTH2_PROXY_COOKIE_SECRET=change-me-in-production
-      - OAUTH2_PROXY_CLIENT_ID=your-client-id
-      - OAUTH2_PROXY_CLIENT_SECRET=your-client-secret
 
   tarsy-backend:
     build:
@@ -527,20 +510,26 @@ make build-images
 
 ## Implementation Checklist
 
-### Phase 1: Core Container Infrastructure
-- [ ] Create Dockerfiles for backend and frontend using mirror.gcr.io base images
-- [ ] Set up complete podman-compose configuration (database, backend, frontend, oauth2-proxy)
-- [ ] Configure volume mounts for .env and config/ files
-- [ ] Configure database container with persistent storage
-- [ ] Integrate oauth2-proxy authentication for backend API access
-- [ ] Add make targets for containerized deployment (including config validation)
-- [ ] Test complete stack deployment and service interactions
+### Phase 1: Core Container Infrastructure ✅ COMPLETED
+- [x] Create Dockerfiles for backend and frontend using mirror.gcr.io base images
+- [x] Set up complete podman-compose configuration (database, backend, frontend, oauth2-proxy)
+- [x] Configure volume mounts for .env and config/ files  
+- [x] Configure database container with persistent storage
+- [x] Integrate oauth2-proxy authentication for backend API access
+- [x] Add make targets for containerized deployment (including config validation)
+- [x] Test complete stack deployment and service interactions
 
 ### Phase 2: Development Integration
 - [ ] Integrate with existing development workflow
 - [ ] Test container networking and service communication
 
-### Phase 3: Documentation
+### Phase 3: Configuration Consolidation
+- [ ] Consolidate .env file management (eliminate duplicate root/.env and backend/.env)
+- [ ] Update backend development workflow to use single configuration source
+- [ ] Create environment-specific configuration strategy
+- [ ] Update documentation to reflect unified configuration approach
+
+### Phase 4: Documentation
 - [ ] Document container deployment process
 
 ---

@@ -182,6 +182,73 @@ stop: ## Stop all running services
 	@lsof -ti:$(OAUTH2_PROXY_PORT) | xargs -r kill -9 2>/dev/null || true
 	@echo "$(GREEN)✅ All services stopped$(NC)"
 
+# Container deployment targets
+.PHONY: build-images deploy-containers stop-containers clean-containers check-config container-logs container-status
+
+build-images: ## Build all container images with podman
+	@echo "$(GREEN)Building Tarsy container images...$(NC)"
+	podman build -t tarsy-backend:latest ./backend
+	podman build -t tarsy-frontend:latest ./dashboard
+	@echo "$(GREEN)✅ Container images built$(NC)"
+
+check-config: ## Ensure required configuration files exist (internal target)
+	@echo "$(GREEN)Checking configuration files...$(NC)"
+	@if [ ! -f .env ]; then \
+		echo "$(RED)❌ Error: .env file not found$(NC)"; \
+		echo "$(YELLOW)Please create .env with your API keys and settings$(NC)"; \
+		exit 1; \
+	fi
+	@if [ ! -d config ]; then \
+		echo "$(RED)❌ Error: config/ directory not found$(NC)"; \
+		echo "$(YELLOW)Please ensure config/ directory exists with required files$(NC)"; \
+		exit 1; \
+	fi
+	@if [ ! -f config/oauth2-proxy-container.cfg ]; then \
+		if [ -f config/oauth2-proxy.cfg ]; then \
+			echo "$(YELLOW)📋 oauth2-proxy-container.cfg not found. Creating from oauth2-proxy.cfg...$(NC)"; \
+			echo "$(YELLOW)⚠️  You may need to adjust container networking addresses$(NC)"; \
+			cp config/oauth2-proxy.cfg config/oauth2-proxy-container.cfg; \
+			echo "$(GREEN)✅ Created config/oauth2-proxy-container.cfg$(NC)"; \
+		elif [ -f config/oauth2-proxy.cfg.example ]; then \
+			echo "$(YELLOW)📋 oauth2-proxy-container.cfg not found. Creating from example...$(NC)"; \
+			cp config/oauth2-proxy.cfg.example config/oauth2-proxy-container.cfg; \
+			echo "$(GREEN)✅ Created config/oauth2-proxy-container.cfg from example$(NC)"; \
+			echo "$(YELLOW)⚠️  Please review and adjust container networking addresses$(NC)"; \
+		else \
+			echo "$(RED)❌ Error: config/oauth2-proxy-container.cfg not found$(NC)"; \
+			echo "$(YELLOW)Please create config/oauth2-proxy-container.cfg$(NC)"; \
+			exit 1; \
+		fi; \
+	fi
+	@echo "$(GREEN)✅ Configuration files found$(NC)"
+
+deploy-containers: build-images check-config ## Deploy complete Tarsy stack with database and authentication
+	@echo "$(GREEN)Deploying complete Tarsy container stack...$(NC)"
+	podman-compose -f podman-compose.yml up -d
+	@echo "$(BLUE)Frontend: http://localhost:3000$(NC)"
+	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:4180$(NC)"
+	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
+	@echo "$(YELLOW)Note: Backend API secured behind oauth2-proxy authentication$(NC)"
+
+stop-containers: ## Stop all running containers
+	@echo "$(YELLOW)Stopping containers...$(NC)"
+	-podman-compose -f podman-compose.yml down 2>/dev/null || true
+	@echo "$(GREEN)✅ Containers stopped$(NC)"
+
+clean-containers: ## Remove containers, networks, and volumes
+	@echo "$(YELLOW)Cleaning up containers and volumes...$(NC)"
+	-podman-compose -f podman-compose.yml down -v 2>/dev/null || true
+	-podman system prune -f 2>/dev/null || true
+	@echo "$(GREEN)✅ Container cleanup completed$(NC)"
+
+container-logs: ## Show logs from all running containers
+	@echo "$(GREEN)Container logs:$(NC)"
+	-podman-compose logs --tail=50 2>/dev/null || echo "No containers running"
+
+container-status: ## Show container status
+	@echo "$(GREEN)Container status:$(NC)"
+	-podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "No containers running"
+
 # Testing targets (leverage backend Makefile)
 .PHONY: test
 test: ## Run all tests (backend: unit+integration+e2e, dashboard)
@@ -296,6 +363,12 @@ help: ## Show this help message
 	@echo "$(YELLOW)🔐 OAuth2-Proxy:$(NC)"
 	@echo "  make oauth2-proxy-bg      # Start oauth2-proxy in background"
 	@echo "  make oauth2-proxy-status  # Check oauth2-proxy status"
+	@echo ""
+	@echo "$(YELLOW)🐳 Container Deployment:$(NC)"
+	@echo "  make deploy-containers    # Deploy complete stack with containers"
+	@echo "  make stop-containers      # Stop all containers"
+	@echo "  make clean-containers     # Remove containers and volumes"
+	@echo "  make container-status     # Show container status"
 	@echo ""
 	@echo "$(YELLOW)📋 Available Commands:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-15s$(NC) %s\n", $$1, $$2}'

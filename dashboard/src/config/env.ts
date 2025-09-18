@@ -1,70 +1,71 @@
 /**
- * Environment Configuration
- * Centralized configuration for all environment variables and URLs
+ * Clean Environment Configuration
+ * Simple, predictable URL handling for development vs production
  */
 
 interface AppConfig {
-  // API Configuration
-  apiBaseUrl: string;
-  wsBaseUrl: string;
-  oauthProxyUrl: string;
-  
-  // Development Server Configuration
-  devServerHost: string;
-  devServerPort: number;
-  devServerUrl: string;
-  
   // Environment Info
   isDevelopment: boolean;
   isProduction: boolean;
   nodeEnv: string;
+  
+  // Development Server Configuration (for dev mode only)
+  devServerHost: string;
+  devServerPort: number;
+  devServerUrl: string;
+  
+  // Production URLs (only used in production)
+  prodApiBaseUrl: string;
+  prodWsBaseUrl: string;
 }
 
 /**
- * Parse environment variables with fallbacks
+ * Parse environment variables with simple, clear logic
  */
 const parseEnvConfig = (): AppConfig => {
-  // Get environment variables with fallbacks
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4180';
-  const wsBaseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:4180';
-  const oauthProxyUrl = import.meta.env.VITE_OAUTH_PROXY_URL || apiBaseUrl;
-  const devServerHost = import.meta.env.VITE_DEV_SERVER_HOST || 'localhost';
-  const devServerPort = parseInt(import.meta.env.VITE_DEV_SERVER_PORT || '5173', 10);
-  const nodeEnv = import.meta.env.VITE_NODE_ENV || import.meta.env.MODE || 'development';
-  
-  // Computed values
-  const devServerUrl = `http://${devServerHost}:${devServerPort}`;
   const isDevelopment = import.meta.env.DEV;
   const isProduction = import.meta.env.PROD;
+  const nodeEnv = import.meta.env.MODE || 'development';
+  
+  // Development server settings (used in development only)
+  const devServerHost = import.meta.env.VITE_DEV_SERVER_HOST || 'localhost';
+  const devServerPort = parseInt(import.meta.env.VITE_DEV_SERVER_PORT || '3000', 10);
+  const devServerUrl = `http://${devServerHost}:${devServerPort}`;
+  
+  // Production URLs (only used when building for production)
+  // In development, these are ignored in favor of Vite proxy
+  const prodApiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4180';
+  const prodWsBaseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:4180';
   
   return {
-    apiBaseUrl,
-    wsBaseUrl,
-    oauthProxyUrl,
-    devServerHost,
-    devServerPort,
-    devServerUrl,
     isDevelopment,
     isProduction,
     nodeEnv,
+    devServerHost,
+    devServerPort, 
+    devServerUrl,
+    prodApiBaseUrl,
+    prodWsBaseUrl,
   };
 };
 
 /**
  * Application configuration instance
- * Use this throughout the app instead of directly accessing import.meta.env
  */
 export const config = parseEnvConfig();
 
 /**
- * URL builders for common endpoints
+ * Clean URL configuration - ONE source of truth
+ * Development: Use relative URLs + Vite proxy
+ * Production: Use absolute URLs from environment
  */
 export const urls = {
   // API endpoints
   api: {
-    base: config.isDevelopment ? '' : config.apiBaseUrl,
+    // Simple rule: relative URLs in dev (proxy handles it), absolute in prod
+    base: config.isDevelopment ? '' : config.prodApiBaseUrl,
     health: '/api/v1/history/health',
-    activeAlerts: '/api/v1/history/active-alerts',
+    activeAlerts: '/api/v1/history/active-alerts', 
     historicalAlerts: '/api/v1/history/historical-alerts',
     activeSessions: '/api/v1/history/active-sessions',
     sessionDetail: (sessionId: string) => `/api/v1/history/sessions/${sessionId}`,
@@ -74,15 +75,17 @@ export const urls = {
   
   // WebSocket endpoints
   websocket: {
-    base: config.isDevelopment ? `ws://${config.devServerHost}:${config.devServerPort}` : config.wsBaseUrl,
+    // Simple rule: use dev server WebSocket in dev, production URL in prod
+    base: config.isDevelopment ? `ws://${config.devServerHost}:${config.devServerPort}` : config.prodWsBaseUrl,
     connect: '/ws',
   },
   
   // OAuth2 endpoints
   oauth: {
-    base: config.isDevelopment ? '' : config.oauthProxyUrl,
+    // Simple rule: relative URLs in dev (proxy handles it), absolute in prod
+    base: config.isDevelopment ? '' : config.prodApiBaseUrl,
     signIn: '/oauth2/sign_in',
-    signOut: '/oauth2/sign_out',
+    signOut: '/oauth2/sign_out', 
     userInfo: '/oauth2/userinfo',
   },
   
@@ -93,29 +96,28 @@ export const urls = {
 } as const;
 
 /**
- * Validation function to ensure all required config is present
+ * Simple validation and logging
  */
 export const validateConfig = (): void => {
-  const requiredEnvVars = [
-    { name: 'VITE_API_BASE_URL', configKey: 'apiBaseUrl' },
-    { name: 'VITE_WS_BASE_URL', configKey: 'wsBaseUrl' }
-  ] as const;
-  
-  const missing = requiredEnvVars.filter(({ name }) => !import.meta.env[name]);
-  
-  if (missing.length > 0 && !config.isDevelopment) {
-    throw new Error(`Missing required environment variables: ${missing.map(({ name }) => name).join(', ')}`);
-  }
-  
-  console.log('✅ Configuration validated successfully', {
+  console.log('✅ Clean configuration loaded:', {
     environment: config.nodeEnv,
-    apiBaseUrl: config.apiBaseUrl,
-    wsBaseUrl: config.wsBaseUrl,
     isDevelopment: config.isDevelopment,
+    
+    // Development settings
+    ...(config.isDevelopment && {
+      devServerHost: config.devServerHost,
+      devServerPort: config.devServerPort,
+      apiBase: urls.api.base || '(relative - using Vite proxy)',
+      wsBase: urls.websocket.base,
+    }),
+    
+    // Production settings
+    ...(!config.isDevelopment && {
+      apiBase: urls.api.base,
+      wsBase: urls.websocket.base,
+    }),
   });
 };
 
-// Validate configuration on module load in development
-if (config.isDevelopment) {
-  validateConfig();
-}
+// Always validate configuration on module load
+validateConfig();

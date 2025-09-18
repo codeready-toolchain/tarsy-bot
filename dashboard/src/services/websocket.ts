@@ -48,46 +48,20 @@ class WebSocketService {
     // Generate a unique user ID for this dashboard session
     this.userId = 'dashboard-' + Math.random().toString(36).substr(2, 9);
     
-    // WebSocket URL configuration
-    // In development, use OAuth2 proxy to maintain authentication
-    let wsBaseUrl: string | undefined;
-    
-    // Safety check: import.meta.env might be undefined in some environments
-  try {
-    wsBaseUrl = import.meta.env?.VITE_WS_BASE_URL;
-  } catch (error) {
-    console.warn('import.meta.env not available, falling back to default');
-    wsBaseUrl = undefined;
-  }
-  
-  if (!wsBaseUrl) {
-    // Import at runtime to avoid circular dependency issues
-    this.urlResolutionPromise = import('../config/env').then(({ urls }) => {
-      wsBaseUrl = urls.websocket.base;
+    // Use clean configuration - simple and predictable
+    import('../config/env').then(({ urls }) => {
+      const wsBaseUrl = urls.websocket.base;
       this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
       this.startHealthCheck();
-    }).catch(() => {
-      // Fallback if config import fails
-      if (import.meta.env.DEV) {
-        wsBaseUrl = 'ws://localhost:5173';
-      } else {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        wsBaseUrl = `${protocol}//${host}`;
-      }
+    }).catch((error) => {
+      console.error('Failed to load WebSocket configuration:', error);
+      // Fallback: construct URL based on current page location
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host; // Uses current page's host:port
+      const wsBaseUrl = `${protocol}//${host}`;
       this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
       this.startHealthCheck();
-    }).finally(() => {
-      // Mark URL resolution as complete
-      this.urlResolutionPromise = null;
     });
-    return; // Early return for async case
-  }
-    
-    this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
-
-    // Start periodic health check to recover from permanently disabled state
-    this.startHealthCheck();
   }
 
   /**
@@ -101,14 +75,12 @@ class WebSocketService {
       
       // If permanently disabled and it's been more than 2 minutes since last attempt
       if (this.permanentlyDisabled && timeSinceLastAttempt > 120000) {
-        console.log('🔄 Health check: Attempting to recover from permanently disabled state');
         this.resetConnectionState();
         this.connect();
       }
       
       // If not connected and not connecting, try to reconnect
       if (!this.isConnected && !this.isConnecting && !this.permanentlyDisabled) {
-        console.log('🔄 Health check: Connection lost, attempting to reconnect');
         this.connect();
       }
     }, 30000);
@@ -121,7 +93,6 @@ class WebSocketService {
     this.permanentlyDisabled = false;
     this.reconnectAttempts = 0;
     this.isConnecting = false;
-    console.log('🔄 Connection state reset - ready for new connection attempts');
   }
 
   /**
@@ -139,7 +110,6 @@ class WebSocketService {
 
     // Wait for URL resolution if still in progress
     if (this.urlResolutionPromise) {
-      console.log('🔌 Waiting for URL resolution before connecting...');
       try {
         await this.urlResolutionPromise;
       } catch (error) {
@@ -149,7 +119,6 @@ class WebSocketService {
       
       // Re-check connection state after URL resolution
       if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
-        console.log('🔌 Connection already established or in progress after URL resolution');
         return;
       }
     }
@@ -162,7 +131,6 @@ class WebSocketService {
 
     this.isConnecting = true;
     this.lastConnectionAttempt = Date.now();
-    console.log('🔌 Connecting to WebSocket:', this.url);
 
     try {
       this.ws = new WebSocket(this.url);
@@ -181,7 +149,6 @@ class WebSocketService {
           type: 'subscribe',
           channel: 'dashboard_updates'
         };
-        console.log('📤 Sending subscription message:', subscribeMessage);
         this.send(subscribeMessage);
 
         // Re-subscribe to previously tracked session channels
@@ -195,7 +162,6 @@ class WebSocketService {
       this.ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
-          console.log('📥 WebSocket message received:', message);
           this.handleMessage(message);
         } catch (error) {
           console.error('❌ Failed to parse WebSocket message:', error, 'Raw data:', event.data);
@@ -312,15 +278,11 @@ class WebSocketService {
    * Handle incoming WebSocket messages
    */
   private handleMessage(message: WebSocketMessage): void {
-    console.log('🔄 Processing WebSocket message:', message);
-    console.log('🔍 Message type:', message.type, 'Channel:', message.channel, 'Data type:', message.data?.type);
     
     // Handle message batches first
     if (message.type === 'message_batch' && message.messages) {
-      console.log(`📦 Processing message batch with ${message.count} messages`);
       const batchedMessages = message.messages;
       batchedMessages.forEach(batchedMessage => {
-        console.log('📥 Processing batched message:', batchedMessage);
         this.handleMessage(batchedMessage);
       });
       return;
@@ -329,15 +291,12 @@ class WebSocketService {
     switch (message.type) {
       case 'session_update':
         if (!message.data) {
-          console.log('⚠️  session_update message has no data property, skipping');
           return;
         }
-        console.log('📈 Handling session_update, calling', this.eventHandlers.sessionUpdate.length, 'handlers');
         this.eventHandlers.sessionUpdate.forEach(handler => handler(message.data!));
         
         // Also handle session-specific updates if this message has a channel
         if (message.channel && message.channel.startsWith('session_')) {
-          console.log(`📈 Handling session-specific update for channel: ${message.channel}`);
           const handlers = this.eventHandlers.sessionSpecific.get(message.channel);
           if (handlers) {
             handlers.forEach(handler => handler(message.data!));
@@ -345,10 +304,8 @@ class WebSocketService {
         }
         break;
       case 'session_status_change':
-        console.log('🔄 Handling session_status_change from session channel');
         // Handle session status changes from session-specific channels
         if (message.channel && message.channel.startsWith('session_')) {
-          console.log(`🔄 Session status change for channel: ${message.channel}`);
           const handlers = this.eventHandlers.sessionSpecific.get(message.channel);
           if (handlers) {
             handlers.forEach(handler => handler(message.data || message));
@@ -356,10 +313,8 @@ class WebSocketService {
         }
         break;
       case 'batched_session_updates':
-        console.log('📦 Handling batched_session_updates from session channel');
         // Handle batched timeline updates from session-specific channels
         if (message.channel && message.channel.startsWith('session_')) {
-          console.log(`📦 Batched updates for channel: ${message.channel}`);
           const handlers = this.eventHandlers.sessionSpecific.get(message.channel);
           if (handlers) {
             handlers.forEach(handler => handler(message.data || message));
@@ -368,46 +323,36 @@ class WebSocketService {
         break;
       case 'session_completed':
         if (!message.data) {
-          console.log('⚠️  session_completed message has no data property, skipping');
           return;
         }
-        console.log('✅ Handling session_completed, calling', this.eventHandlers.sessionCompleted.length, 'handlers');
         this.eventHandlers.sessionCompleted.forEach(handler => handler(message.data!));
         break;
       case 'session_failed':
         if (!message.data) {
-          console.log('⚠️  session_failed message has no data property, skipping');
           return;
         }
-        console.log('❌ Handling session_failed, calling', this.eventHandlers.sessionFailed.length, 'handlers');
         this.eventHandlers.sessionFailed.forEach(handler => handler(message.data!));
         break;
       case 'dashboard_update':
         if (!message.data) {
-          console.log('⚠️  dashboard_update message has no data property, skipping');
           return;
         }
         
         // Check if this is actually a stage_progress message disguised as dashboard_update
         if (message.data && message.data.type === 'stage_progress') {
-          console.log('🎯 Found stage_progress message within dashboard_update, redirecting to stage progress handlers');
           this.eventHandlers.stageProgress.forEach(handler => handler(message.data as StageProgressUpdate));
           // Still continue with session-specific handling below
         }
         
         // Check if this is a session-specific update (has channel property)
         if (message.channel && message.channel.startsWith('session_')) {
-          console.log(`📈 Handling dashboard_update with session data for channel: ${message.channel}`);
           const handlers = this.eventHandlers.sessionSpecific.get(message.channel);
           if (handlers && handlers.length > 0) {
-            console.log(`📈 Calling ${handlers.length} session-specific handlers for ${message.channel}`);
             handlers.forEach(handler => handler(message.data!));
           } else {
-            console.log(`⚠️  No handlers registered for session channel: ${message.channel}`);
           }
           
           // Also call regular dashboard handlers
-          console.log('📊 Also handling as regular dashboard_update, calling', this.eventHandlers.dashboardUpdate.length, 'handlers');
           this.eventHandlers.dashboardUpdate.forEach(handler => handler(message.data!));
         } else if (message.data.session_id && message.data.type !== 'system_metrics') {
           // Only try session-specific routing if:
@@ -424,17 +369,14 @@ class WebSocketService {
             
             // Also call regular dashboard handlers for certain types
             if (message.data.type === 'session_status_change' || message.data.type === 'system_metrics') {
-              console.log('📊 Also handling as regular dashboard_update, calling', this.eventHandlers.dashboardUpdate.length, 'handlers');
               this.eventHandlers.dashboardUpdate.forEach(handler => handler(message.data!));
             }
           } else {
             // No session-specific handlers registered - this is a dashboard-only update
-            console.log('📊 Handling dashboard_update, calling', this.eventHandlers.dashboardUpdate.length, 'handlers');
             this.eventHandlers.dashboardUpdate.forEach(handler => handler(message.data!));
           }
         } else {
           // Regular dashboard update (no session_id or system_metrics)
-          console.log('📊 Handling dashboard_update, calling', this.eventHandlers.dashboardUpdate.length, 'handlers');
           this.eventHandlers.dashboardUpdate.forEach(handler => handler(message.data!));
         }
         break;

@@ -37,7 +37,6 @@ function DashboardView() {
   // Debug auth state in console (development only)
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
-      console.log('🔐 Auth state:', { isAuthenticated, authLoading });
       // Make checkAuth available globally for debugging
       (window as any).checkAuth = checkAuth;
     }
@@ -118,7 +117,6 @@ function DashboardView() {
         filters.time_range_preset
       )) {
         // Use filtered API if filters are active
-        console.log('🔍 Fetching filtered historical sessions:', filters, 'Page:', pagination.page, 'PageSize:', pagination.pageSize);
         const historicalFilters: SessionFilter = {
           ...filters,
           // For historical view, include completed and failed by default unless specific status filter is applied
@@ -143,11 +141,6 @@ function DashboardView() {
         page: response.pagination.page
       }));
       
-      console.log('📊 Historical alerts updated:', {
-        totalSessions: response.sessions.length,
-        filtersApplied: applyFilters,
-        activeFilters: filters
-      });
     } catch (err) {
       const errorMessage = handleAPIError(err);
       setHistoricalError(errorMessage);
