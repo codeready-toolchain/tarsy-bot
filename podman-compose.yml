@@ -33,12 +33,13 @@ services:
       dockerfile: Dockerfile
     # No direct port exposure - only accessible through oauth2-proxy
     command: ["/app/.venv/bin/uvicorn", "tarsy.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    env_file:
+      - backend/.env                               # Load environment variables from backend/.env file
     environment:
       - HISTORY_ENABLED=true
       - DATABASE_URL=postgresql://tarsy:tarsy-dev-password@database:5432/tarsy
     volumes:
-      - ./.env:/app/.env:ro                        # Mount environment variables
-      - ./config:/app/config:ro                    # Mount configuration files
+      - ./config:/config:ro                        # Mount configuration files to expected path
       - ./data:/app/data                           # Persist application data
       - ./logs:/app/logs                           # Persist logs
     depends_on:

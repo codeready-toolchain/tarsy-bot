@@ -94,9 +94,9 @@ containers-build: ## Build all container images with podman-compose
 
 check-config: ## Ensure required configuration files exist (internal target)
 	@echo "$(GREEN)Checking configuration files...$(NC)"
-	@if [ ! -f .env ]; then \
-		echo "$(RED)❌ Error: .env file not found$(NC)"; \
-		echo "$(YELLOW)Please create .env with your API keys and settings$(NC)"; \
+	@if [ ! -f backend/.env ]; then \
+		echo "$(RED)❌ Error: backend/.env file not found$(NC)"; \
+		echo "$(YELLOW)Please create backend/.env with your API keys and settings$(NC)"; \
 		exit 1; \
 	fi
 	@if [ ! -d config ]; then \
