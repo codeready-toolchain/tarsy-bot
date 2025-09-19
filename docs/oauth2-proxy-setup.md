@@ -40,7 +40,7 @@ You need to configure an OAuth provider (GitHub, Google, etc.). Here's how to se
 
 The OAuth2-proxy configuration is in `config/oauth2-proxy.cfg`. 
 
-**📋 For a complete configuration template, see: [`config/oauth2-proxy.cfg.example`](../config/oauth2-proxy.cfg.example)**
+**📋 For a complete configuration template, see: [`config/oauth2-proxy-container.cfg.example`](../config/oauth2-proxy-container.cfg.example)**
 
 ## Container Deployment (Recommended)
 

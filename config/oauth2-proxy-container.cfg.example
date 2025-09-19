@@ -1,8 +1,8 @@
-## OAuth2 Proxy Config File
+## OAuth2 Proxy Config File - Container Version
 ## https://github.com/oauth2-proxy/oauth2-proxy
 
 ## <addr>:<port> to listen on for HTTP/HTTPS clients  
-http_address = "localhost:4180"
+http_address = "0.0.0.0:4180"
 # https_address = ":443"
 
 ## Are we running behind a reverse proxy? Will not accept headers like X-Real-Ip unless this is set.
@@ -15,12 +15,29 @@ http_address = "localhost:4180"
 ## the OAuth Redirect URL.
 # defaults to the "https://" + requested host header + "/oauth2/callback"
 # redirect_url = "https://internalapp.yourcompany.com/oauth2/callback"
-redirect_url = "http://localhost:4180/oauth2/callback"
+redirect_url = "http://localhost:8080/oauth2/callback"
 
 ## the http url(s) of the upstream endpoint. If multiple, routing is based on path
 upstreams = [
-    "http://localhost:8000"
+    "http://backend:8000"
 ]
+
+# Protect Existing Endpoints
+# - **Main.py endpoints**
+#   - `POST /alerts` (alert submission)
+#   - `GET /alert-types` (dev UI support)
+#   - `GET /session-id/{alert_id}` (session lookup)
+#   - `WebSocket /ws/dashboard/{user_id}` (dashboard WebSocket)
+# - **History controller endpoints**
+#   - `GET /api/v1/history/sessions` (list sessions)
+#   - `GET /api/v1/history/sessions/{session_id}` (session details)
+#   - `GET /api/v1/history/sessions/{session_id}/summary` (session summary)
+#   - `GET /api/v1/history/active-sessions` (active sessions)
+#   - `GET /api/v1/history/filter-options` (filter options)
+# - **Unprotected endpoints**
+#   - `GET /` (root health check)
+#   - `GET /health` (main service health check)
+#   - `GET /api/v1/history/health` (history service health check)
 
 ## Logging configuration
 #logging_filename = ""
@@ -49,8 +66,13 @@ pass_host_header = true
 set_xauthrequest = true
 set_authorization_header = true
 
-## Allow redirects to dashboard in development
-whitelist_domains = ["localhost:5173"]
+## CORS configuration for containerized development
+## OAuth2-proxy doesn't have built-in CORS support, but we'll handle it in the backend
+## For now, ensure OPTIONS requests are allowed
+# Note: CORS headers need to be handled by the backend or a reverse proxy
+
+## Allow redirects to dashboard in development (through reverse proxy)
+whitelist_domains = ["localhost:8080", "localhost"]
 
 ## Email Domains to allow authentication for (this authorizes any email on this domain)
 ## for more granular authorization use `authenticated_emails_file`
@@ -64,19 +86,19 @@ email_domains=["*"]
 ## Allow API clients to authenticate directly with JWT tokens
 ## while maintaining GitHub OAuth for web dashboard users
 skip_jwt_bearer_tokens = true
-oidc_jwks_url = "http://localhost:8000/.well-known/jwks.json"
+oidc_jwks_url = "http://tarsy-backend:8000/.well-known/jwks.json"
 skip_oidc_discovery = true
 
 ## Optional: Specify expected JWT issuer and audience for additional validation
-extra_jwt_issuers = ["http://localhost:8000=tarsy-api"]
+extra_jwt_issuers = ["http://tarsy-backend:8000=tarsy-api"]
 
 provider = "github"
 ## The OAuth Client ID, Secret
 client_id = "my-client-id"
-client_secret = "my-client-secret"
+client_secret = "my-client"
 
-github_org = "my-github-org"
-github_team = "my-github-team"
+github_org = "codeready-toolchain-teams"
+github_team = "observability"
 
 ## Scopes Added to the request
 ## It has the same behavior as the --scope flag
@@ -101,7 +123,8 @@ github_team = "my-github-team"
 skip_auth_routes = [
   "GET=^/$",
   "GET=^/api/v1/history/health",
-  "GET=^/health"
+  "GET=^/health",
+  "OPTIONS=.*"
 ]
 
 ## mark paths as API routes to get HTTP Status code 401 instead of redirect to login page
@@ -112,10 +135,10 @@ api_routes = [
 
 ## Templates
 ## optional directory with custom sign_in.html and error.html
-custom_templates_dir = "/path/to/tarsy-bot/config/templates"
+custom_templates_dir = "/templates"
 
 ## Custom sign-in logo
-custom_sign_in_logo = "/path/to/tarsy-bot/config/templates/tarsy-logo.png"
+custom_sign_in_logo = "/templates/tarsy-logo.png"
 
 ## skip SSL checking for HTTPS requests
 # ssl_insecure_skip_verify = false
@@ -135,9 +158,9 @@ custom_sign_in_logo = "/path/to/tarsy-bot/config/templates/tarsy-logo.png"
 ## Secure   - secure cookies are only sent by the browser of a HTTPS connection (recommended)
 ## HttpOnly - httponly cookies are not readable by javascript (recommended)
 cookie_name = "_oauth2_proxy"
-cookie_secret = "my-cookie-secret"
-# cookie_domains = ""
+cookie_secret = "my-coockie-secret"
+cookie_domains = ["localhost"]
 cookie_expire = "168h"
 cookie_refresh = "0"
-# cookie_secure = true
+cookie_secure = false
 cookie_httponly = false

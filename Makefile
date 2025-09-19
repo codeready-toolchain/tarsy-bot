@@ -110,9 +110,9 @@ check-config: ## Ensure required configuration files exist (internal target)
 			echo "$(YELLOW)⚠️  You may need to adjust container networking addresses$(NC)"; \
 			cp config/oauth2-proxy.cfg config/oauth2-proxy-container.cfg; \
 			echo "$(GREEN)✅ Created config/oauth2-proxy-container.cfg$(NC)"; \
-		elif [ -f config/oauth2-proxy.cfg.example ]; then \
+		elif [ -f config/oauth2-proxy-container.cfg.example ]; then \
 			echo "$(YELLOW)📋 oauth2-proxy-container.cfg not found. Creating from example...$(NC)"; \
-			cp config/oauth2-proxy.cfg.example config/oauth2-proxy-container.cfg; \
+			cp config/oauth2-proxy-container.cfg.example config/oauth2-proxy-container.cfg; \
 			echo "$(GREEN)✅ Created config/oauth2-proxy-container.cfg from example$(NC)"; \
 			echo "$(YELLOW)⚠️  Please review and adjust container networking addresses$(NC)"; \
 		else \
