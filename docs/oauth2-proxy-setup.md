@@ -28,11 +28,13 @@ You need to configure an OAuth provider (GitHub, Google, etc.). Here's how to se
 1. Go to GitHub Settings → Developer settings → OAuth Apps
 2. Click "New OAuth App"
 3. Fill in the details:
-   - **Application name**: `Tarsy-bot Development`
-   - **Homepage URL**: `http://localhost:4180`
-   - **Authorization callback URL**: `http://localhost:4180/oauth2/callback`
+   - **Application name**: `Tarsy-bot Container Deployment`
+   - **Homepage URL**: `http://localhost:8080`
+   - **Authorization callback URL**: `http://localhost:8080/oauth2/callback`
 4. Click "Register application"
 5. Save the **Client ID** and **Client Secret**
+
+> **Note**: For container deployment, OAuth2-proxy runs behind an Nginx reverse proxy on port 8080, not directly on port 4180.
 
 ## Configuration
 
@@ -40,25 +42,33 @@ The OAuth2-proxy configuration is in `config/oauth2-proxy.cfg`.
 
 **📋 For a complete configuration template, see: [`config/oauth2-proxy.cfg.example`](../config/oauth2-proxy.cfg.example)**
 
-## Starting the Service
+## Container Deployment (Recommended)
 
-### Method 1: Using Make Commands (Recommended)
+OAuth2-proxy is integrated into the containerized deployment and runs automatically:
 
 ```bash
-# Check oauth2-proxy status
-make oauth2-proxy-status
+# Deploy complete stack with OAuth2-proxy
+make containers-deploy
 
-# Start oauth2-proxy
-make oauth2-proxy
+# Check container status
+make containers-status
 
-# Start all services with oauth2-proxy automatically
-make dev-auth-full
+# View OAuth2-proxy logs
+make containers-logs
 
-# Start backend + dashboard (assumes oauth2-proxy already running)
-make dev-auth
+# Stop all containers
+make containers-stop
 ```
 
-### Method 2: Manual Start
+The OAuth2-proxy container is configured to:
+- Run behind Nginx reverse proxy on port 8080
+- Automatically protect all `/api` endpoints  
+- Handle authentication for the dashboard
+- Use the configuration from `config/oauth2-proxy-container.cfg`
+
+## Manual Configuration (Advanced)
+
+If you need to run OAuth2-proxy outside of containers:
 
 ```bash
 # Foreground (for debugging)
@@ -67,6 +77,8 @@ oauth2-proxy --config=config/oauth2-proxy.cfg
 # Background
 nohup oauth2-proxy --config=config/oauth2-proxy.cfg > logs/oauth2-proxy.log 2>&1 &
 ```
+
+> **Note**: Manual OAuth2-proxy setup is primarily for advanced debugging. The recommended approach is container deployment.
 
 ## Production Considerations
 
@@ -81,20 +93,22 @@ For production deployments:
 ## Useful Commands Reference
 
 ```bash
-# OAuth2-Proxy Management
-make oauth2-proxy-bg        # Start in background
-make oauth2-proxy-status    # Check status
-make oauth2-proxy           # Start in foreground
+# Container Deployment (with OAuth2-proxy)
+make containers-deploy      # Deploy complete stack with authentication
+make containers-start       # Start all containers (with build)
+make containers-start-fast  # Start containers (no build)
+make containers-stop        # Stop all containers
+make containers-clean       # Remove all containers and data
 
-# Development Workflows  
-make dev                    # Default (no auth)
-make dev-auth              # Manual oauth2-proxy setup
-make dev-auth-full         # Automatic oauth2-proxy setup
+# Container Management
+make containers-status      # Show container status
+make containers-logs        # Show logs from all containers
+make containers-build       # Build container images
 
-# Status and URLs
-make status                # Show all service status
-make urls                  # Show all service URLs
-make stop                  # Stop all services
+# Development (no authentication)
+make dev                    # Start development services
+make status                 # Show service status
+make stop                   # Stop development services
 ```
 
 ## Additional Resources

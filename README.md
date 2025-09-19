@@ -17,8 +17,7 @@ Inspired by the spirit of sci-fi AI, TARSy is your reliable companion for SRE op
 
 ## Prerequisites
 
-Before running TARSy, ensure you have the following tools installed:
-
+### For Development Mode
 - **Python 3.13+** - Core backend runtime
 - **Node.js 18+** - Frontend development and build tools  
 - **npm** - Node.js package manager (comes with Node.js)
@@ -26,9 +25,16 @@ Before running TARSy, ensure you have the following tools installed:
   - Install: `pip install uv`
   - Alternative: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 
+### For Container Deployment (Additional)
+- **Podman** (or Docker) - Container runtime
+- **podman-compose** - Multi-container application management
+  - Install: `pip install podman-compose`
+
 > **Quick Check**: Run `make check-prereqs` to verify all prerequisites are installed.
 
 ## Quick Start
+
+### Development Mode (Direct Backend)
 
 ```bash
 # 1. Initial setup (one-time only)
@@ -52,6 +58,34 @@ make dev
 - 🔧 **Backend API**: http://localhost:8000 (docs at /docs)
 
 **Stop all services:** `make stop`
+
+### Container Deployment (Production-like)
+
+For production-like testing with containerized services, authentication, and database:
+
+```bash
+# 1. Initial setup (one-time only)
+make setup
+
+# 2. Configure API keys and OAuth (REQUIRED)
+# Edit backend/.env and set your API keys + OAuth configuration
+# - See [OAuth2-proxy setup docs](docs/oauth2-proxy-setup.md) for GitHub OAuth setup
+# - Configure LLM providers in backend/.env (GOOGLE_API_KEY, etc.)
+
+# 3. Deploy complete containerized stack
+make containers-deploy
+```
+
+**Services will be available at:**
+- 🖥️ **TARSy Dashboard**: http://localhost:8080 (with OAuth authentication)
+- 🔧 **Backend API**: http://localhost:8080/api (protected by OAuth2-proxy)
+- 🗄️ **PostgreSQL Database**: localhost:5432 (admin access)
+
+**Container Management:**
+- **Stop containers:** `make containers-stop`
+- **View logs:** `make containers-logs` 
+- **Check status:** `make containers-status`
+- **Clean up:** `make containers-clean` (removes all containers and data)
 
 ## Key Features
 
@@ -101,24 +135,37 @@ sequenceDiagram
 
 ## Usage
 
+### Development Mode
 1. **Start All Services**: Run `make dev` to start backend and dashboard
-2. **Submit an Alert**: You can Use Manual Alert Submission at http://localhost:5173/submit-alert for testing TARSy in dev environment.
+2. **Submit an Alert**: Use Manual Alert Submission at http://localhost:5173/submit-alert for testing TARSy
 3. **Monitor via Dashboard**: Watch real-time progress updates and historical analysis at http://localhost:5173
 4. **View Results**: See detailed processing timelines and comprehensive LLM analysis
 5. **Stop Services**: Run `make stop` when finished
 
-> **Tip**: Use `make urls` to see all available service endpoints and `make status` to check which services are running.
+### Container Deployment Mode
+1. **Deploy Stack**: Run `make containers-deploy` to start all containerized services with authentication
+2. **Login**: Navigate to http://localhost:8080 and authenticate via GitHub OAuth
+3. **Submit Alert**: Use the dashboard at http://localhost:8080/submit-alert (OAuth protected)
+4. **Monitor Processing**: Watch real-time progress with full audit trail
+5. **Stop Containers**: Run `make containers-stop` when finished
 
-### Development with Authentication (Optional)
+> **Tip**: Use `make status` or `make containers-status` to check which services are running.
 
-For testing with real OAuth authentication:
+## Container Architecture
 
-```bash
-# Start all services with OAuth2-proxy authentication
-make dev-auth-full
+The containerized deployment provides a production-like environment with:
+
+- **🔐 OAuth2 Authentication**: GitHub OAuth integration via oauth2-proxy
+- **🔄 Reverse Proxy**: Nginx handles all traffic routing and CORS  
+- **🗄️ PostgreSQL Database**: Persistent storage for processing history
+- **📦 Production Builds**: Optimized frontend and backend containers
+- **🔒 Security**: All API endpoints protected behind authentication
+
+**Architecture Overview:**
 ```
-
-This mode adds [OAuth2-Proxy](https://github.com/oauth2-proxy/oauth2-proxy) authentication layer for development testing.
+Browser → Nginx (8080) → OAuth2-Proxy → Backend (FastAPI)
+                      ↘ Dashboard (Static Files)
+```
 
 **📖 For OAuth2-proxy setup instructions**: See [docs/oauth2-proxy-setup.md](docs/oauth2-proxy-setup.md)
 
