@@ -205,7 +205,7 @@ class APIClient {
    */
   async getAlertTypes(): Promise<string[]> {
     try {
-      const response = await this.client.get('/alert-types');
+      const response = await this.client.get('/api/v1/alert-types');
       return response.data;
     } catch (error) {
       console.error('Error getting alert types:', error);
@@ -219,7 +219,7 @@ class APIClient {
    */
   async getSessionIdForAlert(alertId: string): Promise<{ alert_id: string; session_id: string | null }> {
     try {
-      const response = await this.client.get(`/session-id/${alertId}`);
+      const response = await this.client.get(`/api/v1/session-id/${alertId}`);
       return response.data;
     } catch (error) {
       console.error('Error getting session ID for alert:', error);

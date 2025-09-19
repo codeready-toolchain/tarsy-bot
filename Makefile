@@ -88,8 +88,8 @@ stop: ## Stop all running services
 
 build-images: ## Build all container images with podman
 	@echo "$(GREEN)Building Tarsy container images...$(NC)"
-	podman build -t tarsy-backend:latest ./backend
-	podman build -t tarsy-frontend:latest ./dashboard
+	podman build -t backend:latest ./backend
+	podman build -t dashboard:latest ./dashboard
 	@echo "$(GREEN)✅ Container images built$(NC)"
 
 check-config: ## Ensure required configuration files exist (internal target)
@@ -126,10 +126,10 @@ check-config: ## Ensure required configuration files exist (internal target)
 deploy-containers: build-images check-config ## Deploy complete Tarsy stack with database and authentication
 	@echo "$(GREEN)Deploying complete Tarsy container stack...$(NC)"
 	podman-compose -f podman-compose.yml up -d
-	@echo "$(BLUE)Frontend: http://localhost:3000$(NC)"
-	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:4180$(NC)"
+	@echo "$(BLUE)Dashboard: http://localhost:80$(NC)"
+	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:80/api$(NC)"
 	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
-	@echo "$(YELLOW)Note: Backend API secured behind oauth2-proxy authentication$(NC)"
+	@echo "$(YELLOW)Note: All traffic routed through nginx reverse proxy with oauth2-proxy authentication$(NC)"
 
 stop-containers: ## Stop all running containers
 	@echo "$(YELLOW)Stopping containers...$(NC)"

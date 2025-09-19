@@ -103,7 +103,7 @@ class TestRealE2E:
     Simplified E2E test using HTTP-level mocking.
 
     Tests the complete system flow:
-    1. HTTP POST to /alerts endpoint
+    1. HTTP POST to /api/v1/alerts endpoint
     2. Real alert processing through AlertService
     3. Real agent execution with real hook system
     4. Real database storage via HistoryService
@@ -120,7 +120,7 @@ class TestRealE2E:
         Simplified E2E test focusing on core functionality.
 
         Flow:
-        1. POST alert to /alerts -> queued
+        1. POST alert to /api/v1/alerts -> queued
         2. Wait for processing to complete
         3. Verify session was created and completed
         4. Verify basic structure (stages exist)

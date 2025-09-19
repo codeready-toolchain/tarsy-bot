@@ -70,7 +70,7 @@ export const urls = {
     activeSessions: '/api/v1/history/active-sessions',
     sessionDetail: (sessionId: string) => `/api/v1/history/sessions/${sessionId}`,
     sessionSummary: (sessionId: string) => `/api/v1/history/sessions/${sessionId}/summary`,
-    submitAlert: '/alerts',
+    submitAlert: '/api/v1/alerts',
   },
   
   // WebSocket endpoints
