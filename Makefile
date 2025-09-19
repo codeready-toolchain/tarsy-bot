@@ -84,12 +84,12 @@ stop: ## Stop all running services
 	@echo "$(GREEN)✅ All services stopped$(NC)"
 
 # Container deployment targets
-.PHONY: build-images deploy-containers stop-containers clean-containers check-config container-logs container-status
+.PHONY: containers-build containers-deploy containers-start containers-start-fast containers-stop containers-clean check-config containers-logs containers-status
 
-build-images: ## Build all container images with podman
+containers-build: ## Build all container images with podman-compose
 	@echo "$(GREEN)Building Tarsy container images...$(NC)"
-	podman build -t backend:latest ./backend
-	podman build -t dashboard:latest ./dashboard
+	@echo "$(YELLOW)Note: Using podman-compose for consistent builds with proper build arguments$(NC)"
+	podman-compose -f podman-compose.yml build
 	@echo "$(GREEN)✅ Container images built$(NC)"
 
 check-config: ## Ensure required configuration files exist (internal target)
@@ -123,30 +123,39 @@ check-config: ## Ensure required configuration files exist (internal target)
 	fi
 	@echo "$(GREEN)✅ Configuration files found$(NC)"
 
-deploy-containers: build-images check-config ## Deploy complete Tarsy stack with database and authentication
-	@echo "$(GREEN)Deploying complete Tarsy container stack...$(NC)"
-	podman-compose -f podman-compose.yml up -d
-	@echo "$(BLUE)Dashboard: http://localhost:80$(NC)"
-	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:80/api$(NC)"
+containers-deploy: containers-clean check-config containers-start ## Deploy complete Tarsy stack with database and authentication
+
+containers-start: ## Start all running containers (with fresh build)
+	@echo "$(GREEN)Starting complete Tarsy container stack...$(NC)"
+	podman-compose -f podman-compose.yml up -d --build
+	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
+	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:8080/api$(NC)"
 	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
 	@echo "$(YELLOW)Note: All traffic routed through nginx reverse proxy with oauth2-proxy authentication$(NC)"
 
-stop-containers: ## Stop all running containers
+containers-start-fast: ## Start containers without building (faster startup)
+	@echo "$(GREEN)Starting complete Tarsy container stack (no build)...$(NC)"
+	podman-compose -f podman-compose.yml up -d
+	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
+	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:8080/api$(NC)"
+	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
+	@echo "$(YELLOW)Note: All traffic routed through nginx reverse proxy with oauth2-proxy authentication$(NC)"
+
+containers-stop: ## Stop all running containers
 	@echo "$(YELLOW)Stopping containers...$(NC)"
 	-podman-compose -f podman-compose.yml down 2>/dev/null || true
 	@echo "$(GREEN)✅ Containers stopped$(NC)"
 
-clean-containers: ## Remove containers, networks, and volumes
-	@echo "$(YELLOW)Cleaning up containers and volumes...$(NC)"
-	-podman-compose -f podman-compose.yml down -v 2>/dev/null || true
+containers-clean: containers-stop ## Stop and remove all containers, networks, and volumes
+	@echo "$(YELLOW)Cleaning up containers, networks, and volumes...$(NC)"
 	-podman system prune -f 2>/dev/null || true
 	@echo "$(GREEN)✅ Container cleanup completed$(NC)"
 
-container-logs: ## Show logs from all running containers
+containers-logs: ## Show logs from all running containers
 	@echo "$(GREEN)Container logs:$(NC)"
 	-podman-compose logs --tail=50 2>/dev/null || echo "No containers running"
 
-container-status: ## Show container status
+containers-status: ## Show container status
 	@echo "$(GREEN)Container status:$(NC)"
 	-podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "No containers running"
 
@@ -255,10 +264,10 @@ help: ## Show this help message
 	@echo "  make stop         # Stop all services"
 	@echo ""
 	@echo "$(YELLOW)🐳 Container Deployment:$(NC)"
-	@echo "  make deploy-containers    # Deploy complete stack with containers"
-	@echo "  make stop-containers      # Stop all containers"
-	@echo "  make clean-containers     # Remove containers and volumes"
-	@echo "  make container-status     # Show container status"
+	@echo "  make containers-deploy    # Deploy complete stack with containers"
+	@echo "  make containers-stop      # Stop all containers"
+	@echo "  make containers-clean     # Remove containers and volumes"
+	@echo "  make containers-status    # Show container status"
 	@echo ""
 	@echo "$(YELLOW)📋 Available Commands:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-15s$(NC) %s\n", $$1, $$2}'

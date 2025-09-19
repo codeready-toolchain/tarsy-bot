@@ -155,7 +155,9 @@ class AuthService {
     if (config.isDevelopment) {
       console.log('Logging out user');
     }
-    window.location.href = '/oauth2/sign_out';
+    // Redirect to login page after logout (encode the URL for rd parameter)
+    const redirectUrl = encodeURIComponent(window.location.origin + '/');
+    window.location.href = `/oauth2/sign_out?rd=${redirectUrl}`;
   }
 
   /**
