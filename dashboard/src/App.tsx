@@ -6,6 +6,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import DashboardView from './components/DashboardView';
 import SessionDetailWrapper from './components/SessionDetailWrapper';
 import ManualAlertSubmission from './components/ManualAlertSubmission';
+import NotFoundPage from './components/NotFoundPage';
 
 /**
  * Main App component for the Tarsy Dashboard - Enhanced with Conversation View
@@ -29,8 +30,8 @@ function App() {
             {/* Manual Alert Submission route - EP-0018 */}
             <Route path="/submit-alert" element={<ManualAlertSubmission />} />
             
-            {/* Catch-all route redirects to dashboard */}
-            <Route path="*" element={<DashboardView />} />
+            {/* Catch-all route shows 404 page */}
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Router>
       </AuthProvider>
