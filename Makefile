@@ -1,4 +1,4 @@
-# Tarsy-bot - Development Makefile
+# Tarsy - Development Makefile
 # ===================================
 
 .DEFAULT_GOAL := help
@@ -13,7 +13,6 @@ NC := \033[0m # No Color
 # Service ports
 BACKEND_PORT := 8000
 DASHBOARD_PORT := 5173
-OAUTH2_PROXY_PORT := 4180
 
 # Prerequisites check
 .PHONY: check-prereqs
@@ -64,8 +63,6 @@ dev: ## Start all services for development (direct backend connection)
 		wait \
 	)
 
-
-
 # Individual service targets
 .PHONY: backend
 backend: ## Start backend only
@@ -78,64 +75,12 @@ dashboard: ## Start dashboard only (direct backend connection)
 	@echo "$(YELLOW)Direct backend connection to localhost:$(BACKEND_PORT)$(NC)"
 	cd dashboard && npm run dev
 
-
-# OAuth2 Proxy targets
-.PHONY: check-oauth2-config
-check-oauth2-config: ## Ensure oauth2-proxy config exists (internal target)
-	@if [ ! -f config/oauth2-proxy.cfg ]; then \
-		if [ -f config/oauth2-proxy.cfg.example ]; then \
-			echo "$(YELLOW)📋 Config file not found. Copying from example...$(NC)"; \
-			cp config/oauth2-proxy.cfg.example config/oauth2-proxy.cfg; \
-			echo "$(GREEN)✅ Created config/oauth2-proxy.cfg from example$(NC)"; \
-		else \
-			echo "$(RED)❌ Error: config/oauth2-proxy.cfg not found$(NC)"; \
-			echo "$(YELLOW)Please create config/oauth2-proxy.cfg or provide config/oauth2-proxy.cfg.example$(NC)"; \
-			exit 1; \
-		fi; \
-	fi
-
-.PHONY: oauth2-proxy
-oauth2-proxy: check-oauth2-config ## Start oauth2-proxy only
-	@echo "$(GREEN)Starting oauth2-proxy on http://localhost:$(OAUTH2_PROXY_PORT)$(NC)"
-	@echo "$(BLUE)Config: config/oauth2-proxy.cfg$(NC)"
-	@echo "$(YELLOW)Proxying to backend on localhost:$(BACKEND_PORT)$(NC)"
-	oauth2-proxy --config=config/oauth2-proxy.cfg
-
-.PHONY: oauth2-proxy-bg
-oauth2-proxy-bg: check-oauth2-config ## Start oauth2-proxy in background
-	@echo "$(GREEN)Starting oauth2-proxy in background...$(NC)"
-	@mkdir -p logs
-	@if lsof -i:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then \
-		echo "$(YELLOW)⚠️  OAuth2-proxy already running on port $(OAUTH2_PROXY_PORT)$(NC)"; \
-	else \
-		echo "$(BLUE)Config: config/oauth2-proxy.cfg$(NC)"; \
-		echo "$(YELLOW)Proxying to backend on localhost:$(BACKEND_PORT)$(NC)"; \
-		nohup oauth2-proxy --config=config/oauth2-proxy.cfg > logs/oauth2-proxy.log 2>&1 & \
-		sleep 2; \
-		if lsof -i:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then \
-			echo "$(GREEN)✅ OAuth2-proxy started successfully$(NC)"; \
-		else \
-			echo "$(RED)❌ Failed to start oauth2-proxy$(NC)"; \
-		fi; \
-	fi
-
-.PHONY: oauth2-proxy-status
-oauth2-proxy-status: ## Check if oauth2-proxy is running
-	@if lsof -i:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then \
-		echo "$(GREEN)✅ OAuth2-proxy is running on port $(OAUTH2_PROXY_PORT)$(NC)"; \
-		echo "$(BLUE)Access URL: http://localhost:$(OAUTH2_PROXY_PORT)$(NC)"; \
-	else \
-		echo "$(RED)❌ OAuth2-proxy is not running$(NC)"; \
-		echo "$(YELLOW)Start with: make oauth2-proxy-bg$(NC)"; \
-	fi
-
 # Stop services
 .PHONY: stop
 stop: ## Stop all running services
 	@echo "$(YELLOW)Stopping all services...$(NC)"
 	$(MAKE) -C backend stop
 	@lsof -ti:$(DASHBOARD_PORT) | xargs -r kill -9 2>/dev/null || true
-	@lsof -ti:$(OAUTH2_PROXY_PORT) | xargs -r kill -9 2>/dev/null || true
 	@echo "$(GREEN)✅ All services stopped$(NC)"
 
 # Container deployment targets
@@ -278,7 +223,6 @@ status: ## Show which services are running and project status
 	@echo "=========================="
 	@echo "Backend (port $(BACKEND_PORT)): $$(if lsof -i:$(BACKEND_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
 	@echo "Dashboard (port $(DASHBOARD_PORT)): $$(if lsof -i:$(DASHBOARD_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
-	@echo "OAuth2-Proxy (port $(OAUTH2_PROXY_PORT)): $$(if lsof -i:$(OAUTH2_PROXY_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
 	@echo ""
 	$(MAKE) -C backend status
 
@@ -294,10 +238,6 @@ urls: ## Display service URLs and endpoints
 	@echo "  API Server:      http://localhost:$(BACKEND_PORT)"
 	@echo "  API Docs:        http://localhost:$(BACKEND_PORT)/docs"
 	@echo "  Health Check:    http://localhost:$(BACKEND_PORT)/health"
-	@echo ""
-	@echo "$(BLUE)🔐 Authentication (Auth Mode):$(NC)"
-	@echo "  OAuth2-Proxy:    http://localhost:$(OAUTH2_PROXY_PORT)"
-	@echo "    - Access dashboard via proxy for auth testing"
 
 .PHONY: logs
 logs: ## Show recent logs from all services
@@ -313,10 +253,6 @@ help: ## Show this help message
 	@echo "  make setup        # First time setup"
 	@echo "  make dev          # Start all services (direct backend)"
 	@echo "  make stop         # Stop all services"
-	@echo ""
-	@echo "$(YELLOW)🔐 OAuth2-Proxy:$(NC)"
-	@echo "  make oauth2-proxy-bg      # Start oauth2-proxy in background"
-	@echo "  make oauth2-proxy-status  # Check oauth2-proxy status"
 	@echo ""
 	@echo "$(YELLOW)🐳 Container Deployment:$(NC)"
 	@echo "  make deploy-containers    # Deploy complete stack with containers"
