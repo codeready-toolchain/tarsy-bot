@@ -115,44 +115,57 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
 
     fetchSessionIdWithRetry();
 
-    // Handle dashboard updates for this specific alert/session
-    const handleDashboardUpdate = (update: any) => {
-      console.log('🔄 Alert processing update:', update);
+    // Handle connection changes
+    const handleConnectionChange = (connected: boolean) => {
+      console.log('🔗 WebSocket connection changed:', connected);
+      setWsConnected(connected);
+      setWsError(connected ? null : 'Connection lost');
+    };
 
-      // Guard: Filter updates by session ID when available
-      const updateSessionId = update.session_id || update.alert_id || update.sessionId || update.alertId;
-      
-      if (sessionId && updateSessionId) {
-        // We have both session ID and update session ID - filter precisely
-        if (updateSessionId !== sessionId) {
-          console.log('🚫 Ignoring update for different session:', updateSessionId, 'vs expected:', sessionId);
-          return;
-        }
-        console.log('✅ Processing update for matching session:', update.type, 'session:', updateSessionId);
-      } else if (sessionId && !updateSessionId) {
-        // We have session ID but update doesn't - process system-wide updates
-        if (['system_metrics', 'connection_status'].includes(update.type)) {
-          console.log('📊 Processing system-wide update:', update.type);
-        } else {
-          console.log('📝 Processing update without session identifier:', update.type, '(allowed)');
-        }
-      } else if (!sessionId && updateSessionId) {
-        // Session ID not yet available, but update has one - process during initialization
-        console.log('⏳ Processing update during session ID fetch:', update.type, 'session:', updateSessionId);
-      } else {
-        // Neither has session ID - process all updates
-        console.log('📝 Processing update (no session filtering):', update.type);
+    // Set up basic connection monitoring
+    const unsubscribeConnection = webSocketService.onConnectionChange(handleConnectionChange);
+    
+    return () => {
+      isMountedRef.current = false; // Mark component as unmounted
+      unsubscribeConnection();
+    };
+  }, [alertId]);
+
+  // Set up session-specific WebSocket subscription when sessionId becomes available
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+
+    console.log('🔌 Subscribing to session updates for:', sessionId);
+    
+    // Ensure WebSocket is connected before subscribing
+    const setupSubscription = async () => {
+      try {
+        await webSocketService.connect();
+        
+        // Subscribe to the session channel on the server
+        webSocketService.subscribeToSessionChannel(sessionId);
+      } catch (error) {
+        console.error('Failed to connect to WebSocket before subscription:', error);
       }
-
+    };
+    
+    setupSubscription();
+    
+    // Handle session-specific updates
+    const handleSessionUpdate = (update: any) => {
+      
       // Handle different types of updates
       let updatedStatus: ProcessingStatus | null = null;
 
       if (update.type === 'session_status_change') {
+        console.log('📋 Session status changed to:', update.status);
         updatedStatus = {
           alert_id: alertId,
           status: update.status === 'completed' ? 'completed' : 
                  update.status === 'failed' ? 'error' : 'processing',
-          progress: 0, // We'll use indeterminate progress
+          progress: 0,
           current_step: update.status === 'completed' ? 'Processing completed' : 
                        update.status === 'failed' ? 'Processing failed' : 'Processing...',
           timestamp: new Date().toISOString(),
@@ -192,31 +205,26 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
         // Call onComplete callback when processing is done (success or failure)
         if ((updatedStatus.status === 'completed' || updatedStatus.status === 'error') && 
             onCompleteRef.current && !didCompleteRef.current) {
+          console.log('✅ Alert processing complete. Status:', updatedStatus.status);
           didCompleteRef.current = true; // Mark as completed to prevent duplicate calls
           setTimeout(() => {
-            if (onCompleteRef.current) onCompleteRef.current();
+            if (onCompleteRef.current) {
+              onCompleteRef.current();
+            }
           }, 1000);
         }
       }
     };
-
-    // Handle connection changes
-    const handleConnectionChange = (connected: boolean) => {
-      console.log('🔗 WebSocket connection changed:', connected);
-      setWsConnected(connected);
-      setWsError(connected ? null : 'Connection lost');
-    };
-
-    // Subscribe to dashboard updates
-    const unsubscribeDashboard = webSocketService.onDashboardUpdate(handleDashboardUpdate);
-    const unsubscribeConnection = webSocketService.onConnectionChange(handleConnectionChange);
+    
+    // Set up the session-specific event handler
+    const sessionChannel = `session_${sessionId}`;
+    const unsubscribeSession = webSocketService.onSessionSpecificUpdate(sessionChannel, handleSessionUpdate);
 
     return () => {
-      isMountedRef.current = false; // Mark component as unmounted
-      unsubscribeDashboard();
-      unsubscribeConnection();
+      webSocketService.unsubscribeFromSessionChannel(sessionId);
+      unsubscribeSession();
     };
-  }, [alertId]);
+  }, [sessionId, alertId]); // Dependencies: sessionId and alertId
 
   const getStatusColor = (status: string) => {
     switch (status) {
