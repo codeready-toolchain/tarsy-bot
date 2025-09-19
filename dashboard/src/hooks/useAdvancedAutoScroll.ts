@@ -172,6 +172,13 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
     }, 1500);
   }, []);
 
+  // Track mouse interactions that might lead to scrolling (like scroll bar usage)
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    // Mark any mouse down as potential user interaction
+    // This covers scroll bar dragging which doesn't trigger wheel events
+    markUserInteraction();
+  }, [markUserInteraction]);
+
   const handleKeydown = useCallback((e: KeyboardEvent) => {
     const scrollKeys = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar'];
     if (scrollKeys.includes(e.key)) {
@@ -299,6 +306,7 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
     // Setup user interaction listeners
     window.addEventListener('wheel', markUserInteraction, { passive: true });
     window.addEventListener('touchstart', markUserInteraction, { passive: true });
+    window.addEventListener('mousedown', handleMouseDown, { passive: true });
     window.addEventListener('keydown', handleKeydown);
 
     // Setup mutation observer
@@ -309,6 +317,7 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
       window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('wheel', markUserInteraction as any);
       window.removeEventListener('touchstart', markUserInteraction as any);
+      window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('keydown', handleKeydown);
       
       if (mutationObserverRef.current) {
@@ -340,7 +349,7 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
         console.log('🧹 AdvancedAutoScroll: Cleaned up');
       }
     };
-  }, [enabled, handleScroll, setupMutationObserver, isAtBottom, debug]);
+  }, [enabled, handleScroll, handleMouseDown, setupMutationObserver, isAtBottom, debug]);
 
   // Re-setup observer when selector changes
   useEffect(() => {
