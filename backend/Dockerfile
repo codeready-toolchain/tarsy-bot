@@ -3,10 +3,13 @@ FROM mirror.gcr.io/library/python:3.13-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including Node.js for MCP servers
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for dependency management
