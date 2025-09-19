@@ -174,10 +174,23 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
 
   // Track mouse interactions that might lead to scrolling (like scroll bar usage)
   const handleMouseDown = useCallback((e: MouseEvent) => {
-    // Mark any mouse down as potential user interaction
-    // This covers scroll bar dragging which doesn't trigger wheel events
-    markUserInteraction();
-  }, [markUserInteraction]);
+    userInteractionRef.current = true;
+    // Clear existing timeout but don't start a new one
+    if (clearUserInteractionTimeoutRef.current) {
+      clearTimeout(clearUserInteractionTimeoutRef.current);
+      clearUserInteractionTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleMouseUp = useCallback((e: MouseEvent) => {
+    // Start the TTL timer when mouse is released
+    if (clearUserInteractionTimeoutRef.current) {
+      clearTimeout(clearUserInteractionTimeoutRef.current);
+    }
+    clearUserInteractionTimeoutRef.current = setTimeout(() => {
+      userInteractionRef.current = false;
+    }, 1500);
+  }, []);
 
   const handleKeydown = useCallback((e: KeyboardEvent) => {
     const scrollKeys = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar'];
@@ -307,6 +320,7 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
     window.addEventListener('wheel', markUserInteraction, { passive: true });
     window.addEventListener('touchstart', markUserInteraction, { passive: true });
     window.addEventListener('mousedown', handleMouseDown, { passive: true });
+    window.addEventListener('mouseup', handleMouseUp, { passive: true });
     window.addEventListener('keydown', handleKeydown);
 
     // Setup mutation observer
@@ -318,6 +332,7 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
       window.removeEventListener('wheel', markUserInteraction as any);
       window.removeEventListener('touchstart', markUserInteraction as any);
       window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('keydown', handleKeydown);
       
       if (mutationObserverRef.current) {
@@ -349,7 +364,7 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
         console.log('🧹 AdvancedAutoScroll: Cleaned up');
       }
     };
-  }, [enabled, handleScroll, handleMouseDown, setupMutationObserver, isAtBottom, debug]);
+  }, [enabled, handleScroll, handleMouseDown, handleMouseUp, setupMutationObserver, isAtBottom, debug]);
 
   // Re-setup observer when selector changes
   useEffect(() => {
