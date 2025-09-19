@@ -506,8 +506,8 @@ function SessionDetailPageBase({
           
 
 
-          {/* Auto-scroll toggle - only show for active sessions */}
-          {session && (session.status === 'in_progress' || session.status === 'pending') && (
+          {/* Auto-scroll toggle */}
+          {session && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
               <FormControlLabel
                 control={

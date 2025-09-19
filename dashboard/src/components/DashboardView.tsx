@@ -620,7 +620,7 @@ function DashboardView() {
                 <CircularProgress size={18} sx={{ color: 'inherit' }} />
               </Tooltip>
             )}
-            
+
             {/* Connection Status Indicator - Subtle badge in top right */}
             <Tooltip 
               title={wsConnected 
