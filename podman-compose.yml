@@ -1,5 +1,4 @@
 # podman-compose.yml
-version: '5.4'
 services:
   database:
     image: mirror.gcr.io/library/postgres:17

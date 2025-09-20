@@ -64,6 +64,18 @@ export default defineConfig(({ mode }) => {
             changeOrigin: true,
             secure: false,
             ws: true,
+            ...(isContainerMode && {
+              configure: (proxy: any, _options: any) => {
+                proxy.on('proxyReqWs', (proxyReq: any, req: any, _socket: any, _options: any, _head: any) => {
+                  if (req.headers.cookie) {
+                    proxyReq.setHeader('cookie', req.headers.cookie);
+                  }
+                  if (req.headers.host) {
+                    proxyReq.setHeader('host', req.headers.host);
+                  }
+                });
+              }
+            })
           },
         };
 

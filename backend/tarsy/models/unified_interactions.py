@@ -147,7 +147,7 @@ class LLMInteraction(SQLModel, table=True):
     total_tokens: Optional[int] = Field(None, ge=0, description="Total tokens used")
     
     @model_validator(mode="after")
-    def validate_token_consistency(self):
+    def validate_token_consistency(self) -> "LLMInteraction":
         """Validate and ensure consistency of token fields."""
         if self.input_tokens is not None and self.output_tokens is not None:
             computed_total = self.input_tokens + self.output_tokens

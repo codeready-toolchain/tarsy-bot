@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from sqlalchemy.pool import StaticPool
 
 from tarsy.database.init_db import (
     create_database_tables,
@@ -26,7 +27,7 @@ class TestCreateDatabaseTables:
     
     def test_create_database_tables_success(self):
         """Test successful database table creation."""
-        with patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
+        with patch('tarsy.database.init_db.create_database_engine') as mock_create_db_engine, \
              patch('tarsy.database.init_db.SQLModel') as mock_sqlmodel, \
              patch('tarsy.database.init_db.Session') as mock_session, \
              patch('tarsy.database.init_db.logger') as mock_logger, \
@@ -34,7 +35,7 @@ class TestCreateDatabaseTables:
             
             # Mock engine and session
             mock_engine = Mock()
-            mock_create_engine.return_value = mock_engine
+            mock_create_db_engine.return_value = mock_engine
             mock_session_instance = Mock()
             mock_session.return_value.__enter__.return_value = mock_session_instance
             mock_exec_result = Mock()
@@ -52,11 +53,7 @@ class TestCreateDatabaseTables:
             result = create_database_tables("sqlite:///test.db")
             
             assert result is True
-            mock_create_engine.assert_called_once_with(
-                "sqlite:///test.db",
-                echo=False,
-                connect_args={"check_same_thread": False}
-            )
+            mock_create_db_engine.assert_called_once_with("sqlite:///test.db")
             mock_metadata.create_all.assert_called_once_with(mock_engine)
             mock_session.assert_called_once_with(mock_engine)
             
@@ -178,26 +175,22 @@ class TestDatabaseConnection:
     def test_database_connection_scenarios(self):
         """Test database connection with various scenarios."""
         # Test successful connection with URL
-        with patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
+        with patch('tarsy.database.init_db.create_database_engine') as mock_create_db_engine, \
              patch('tarsy.database.init_db.Session') as mock_session:
             
             mock_engine = Mock()
-            mock_create_engine.return_value = mock_engine
+            mock_create_db_engine.return_value = mock_engine
             mock_session_instance = Mock()
             mock_session.return_value.__enter__.return_value = mock_session_instance
             mock_session_instance.exec.return_value.first.return_value = [1]
             
             result = test_database_connection("sqlite:///test.db")
             assert result is True
-            mock_create_engine.assert_called_once_with(
-                "sqlite:///test.db",
-                echo=False,
-                connect_args={"check_same_thread": False}
-            )
+            mock_create_db_engine.assert_called_once_with("sqlite:///test.db")
         
         # Test successful connection from settings
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
-             patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
+             patch('tarsy.database.init_db.create_database_engine') as mock_create_db_engine, \
              patch('tarsy.database.init_db.Session') as mock_session:
             
             mock_settings = Mock()
@@ -206,18 +199,14 @@ class TestDatabaseConnection:
             mock_get_settings.return_value = mock_settings
             
             mock_engine = Mock()
-            mock_create_engine.return_value = mock_engine
+            mock_create_db_engine.return_value = mock_engine
             mock_session_instance = Mock()
             mock_session.return_value.__enter__.return_value = mock_session_instance
             mock_session_instance.exec.return_value.first.return_value = [1]
             
             result = test_database_connection()
             assert result is True
-            mock_create_engine.assert_called_once_with(
-                "sqlite:///history.db",
-                echo=False,
-                connect_args={"check_same_thread": False}
-            )
+            mock_create_db_engine.assert_called_once_with("sqlite:///history.db")
         
         # Test history disabled
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings:
@@ -257,7 +246,6 @@ class TestGetDatabaseInfo:
             result = get_database_info()
             expected = {
                 "enabled": True,
-                "database_url": "sqlite:///history.db",
                 "database_name": "history.db",
                 "retention_days": 90,
                 "connection_test": True
@@ -273,7 +261,6 @@ class TestGetDatabaseInfo:
             result = get_database_info()
             expected = {
                 "enabled": False,
-                "database_url": None,
                 "database_name": None,
                 "retention_days": None,
                 "connection_test": False
@@ -294,7 +281,6 @@ class TestGetDatabaseInfo:
             result = get_database_info()
             expected = {
                 "enabled": True,
-                "database_url": "sqlite:///history.db", 
                 "database_name": "history.db",
                 "retention_days": 90,
                 "connection_test": False
@@ -480,6 +466,7 @@ class TestCreateDatabaseEngine:
         mock_create_engine.assert_called_once_with(
             database_url,
             echo=False,
+            poolclass=StaticPool,
             connect_args={"check_same_thread": False}
         )
         assert result == mock_engine

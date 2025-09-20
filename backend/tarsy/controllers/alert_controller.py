@@ -10,7 +10,7 @@ import json
 import re
 import uuid
 from datetime import datetime
-from typing import Dict, List
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
@@ -25,12 +25,12 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["alerts"])
 
 # Track currently processing alert keys to prevent duplicates
-processing_alert_keys: Dict[AlertKey, str] = {}  # alert_key -> alert_id mapping
+processing_alert_keys: dict[AlertKey, str] = {}  # alert_key -> alert_id mapping
 alert_keys_lock = asyncio.Lock()  # Protect the processing_alert_keys dict
 
 
-@router.get("/alert-types", response_model=List[str])
-async def get_alert_types():
+@router.get("/alert-types", response_model=list[str])
+async def get_alert_types() -> list[str]:
     """Get supported alert types for the development/testing web interface.
     
     This endpoint returns a list of alert types used only for dropdown selection
@@ -48,7 +48,7 @@ async def get_alert_types():
 
 
 @router.get("/session-id/{alert_id}")
-async def get_session_id(alert_id: str):
+async def get_session_id(alert_id: str) -> dict[str, str | None]:
     """Get session ID for an alert.
     Needed for dashboard websocket subscription because
     the client which sent the alert request needs to know the session ID (generated later)
@@ -72,26 +72,38 @@ async def get_session_id(alert_id: str):
 
 
 @router.post("/alerts", response_model=AlertResponse)
-async def submit_alert(request: Request):
+async def submit_alert(request: Request) -> AlertResponse:
     """Submit a new alert for processing with flexible data structure and comprehensive error handling."""
     try:
         # Check content length (prevent extremely large payloads)
-        content_length = request.headers.get("content-length")
-        MAX_PAYLOAD_SIZE = 10 * 1024 * 1024  # 10MB limit
-        
-        if content_length and int(content_length) > MAX_PAYLOAD_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail={
-                    "error": "Payload too large",
-                    "message": f"Request payload exceeds maximum size of {MAX_PAYLOAD_SIZE/1024/1024}MB",
-                    "max_size_mb": MAX_PAYLOAD_SIZE/1024/1024
-                }
-            )
+        MAX_PAYLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+        content_length_raw = request.headers.get("content-length")
+        try:
+            if content_length_raw is not None and int(content_length_raw) > MAX_PAYLOAD_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail={
+                        "error": "Payload too large",
+                        "message": f"Request payload exceeds maximum size of {MAX_PAYLOAD_SIZE/1024/1024}MB",
+                        "max_size_mb": MAX_PAYLOAD_SIZE/1024/1024,
+                    },
+                )
+        except ValueError:
+            # Ignore invalid Content-Length; we'll enforce after reading the body
+            pass
         
         # Parse JSON with error handling
         try:
             body = await request.body()
+            if len(body) > MAX_PAYLOAD_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail={
+                        "error": "Payload too large",
+                        "message": f"Request payload exceeds maximum size of {MAX_PAYLOAD_SIZE/1024/1024}MB",
+                        "max_size_mb": MAX_PAYLOAD_SIZE/1024/1024,
+                    },
+                )
             if not body:
                 raise HTTPException(
                     status_code=400,
@@ -199,9 +211,35 @@ async def submit_alert(request: Request):
                 }
             )
         
-        # Check for suspicious patterns in runbook URL
-        if alert_data.runbook and not re.match(r'^https?://', alert_data.runbook):
-            logger.warning(f"Suspicious runbook URL format: {alert_data.runbook}")
+        # Validate runbook URL scheme for security
+        if alert_data.runbook:
+            runbook_url = alert_data.runbook.strip()
+            try:
+                parsed_url = urlparse(runbook_url)
+                scheme = parsed_url.scheme.lower()
+                
+                if not scheme or scheme not in ("http", "https"):
+                    logger.error(f"Rejected unsafe runbook URL scheme '{scheme}': {runbook_url}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "Invalid runbook URL scheme",
+                            "message": f"Runbook URL must use http or https protocol. Received scheme: '{scheme}'",
+                            "field": "runbook",
+                            "allowed_schemes": ["http", "https"],
+                            "rejected_url": runbook_url
+                        }
+                    )
+            except ValueError as e:
+                logger.error(f"Invalid runbook URL format: {runbook_url} - {str(e)}")
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "Invalid runbook URL format",
+                        "message": f"Runbook URL is malformed: {str(e)}",
+                        "field": "runbook"
+                    }
+                )
         
         # Apply defaults for missing fields (inline normalization)
         normalized_data = alert_data.data.copy() if alert_data.data else {}
@@ -272,7 +310,21 @@ async def submit_alert(request: Request):
             processing_alert_keys[alert_key] = alert_id
         
         # Start background processing with normalized data
-        asyncio.create_task(process_alert_background(alert_id, alert_context))
+        try:
+            asyncio.create_task(process_alert_background(alert_id, alert_context))
+        except Exception as e:
+            # Clean up deduplication map on task creation failure
+            async with alert_keys_lock:
+                processing_alert_keys.pop(alert_key, None)
+            logger.error(f"Failed to create background task for alert {alert_id}: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Task creation failed",
+                    "message": "Unable to start background processing for the alert",
+                    "alert_id": alert_id
+                }
+            )
         
         logger.info(f"Alert {alert_id} submitted successfully with type: {alert_data.alert_type}")
         

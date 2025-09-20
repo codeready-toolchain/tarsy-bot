@@ -10,6 +10,7 @@ from abc import ABC
 from typing import Any, Generic, Optional, TypeVar
 
 from sqlalchemy import Engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import Session, SQLModel, select
 
@@ -172,7 +173,8 @@ class DatabaseManager:
                 expire_on_commit=False
             )
             
-            logger.info(f"Database initialized with URL: {self.database_url}")
+            safe_url = make_url(self.database_url).render_as_string(hide_password=True)
+            logger.info(f"Database initialized with URL: {safe_url}")
         except Exception as e:
             logger.error(f"Failed to initialize database: {str(e)}")
             raise

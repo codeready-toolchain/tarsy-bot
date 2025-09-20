@@ -140,7 +140,8 @@ def isolated_test_settings():
         else:
             api_key = ""
             
-        return base_config.model_copy(update={"api_key": api_key})
+        cfg = LLMProviderConfig.model_validate(base_config)
+        return cfg.model_copy(update={"api_key": api_key})
     
     settings.get_llm_config = mock_get_llm_config
     return settings

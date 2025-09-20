@@ -49,7 +49,7 @@ class WebSocketService {
     this.userId = 'dashboard-' + Math.random().toString(36).substr(2, 9);
     
     // Use clean configuration - simple and predictable
-    import('../config/env').then(({ urls }) => {
+    this.urlResolutionPromise = import('../config/env').then(({ urls }) => {
       const wsBaseUrl = urls.websocket.base;
       this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
       this.startHealthCheck();
@@ -61,6 +61,8 @@ class WebSocketService {
       const wsBaseUrl = `${protocol}//${host}`;
       this.url = `${wsBaseUrl}/ws/dashboard/${this.userId}`;
       this.startHealthCheck();
+      // Return a fulfilled value to ensure promise path resolves
+      return;
     });
   }
 

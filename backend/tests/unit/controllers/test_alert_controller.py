@@ -6,7 +6,6 @@ to controllers/alert_controller.py for better code organization.
 """
 
 import asyncio
-import json
 import uuid
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -299,23 +298,39 @@ class TestSubmitAlertEndpoint:
         assert response.status_code == 413
 
     @patch('tarsy.main.alert_service')
-    def test_submit_alert_suspicious_runbook_url(
+    def test_submit_alert_unsafe_runbook_url_rejected(
         self, mock_alert_service, client, valid_alert_data
     ):
-        """Test alert submission with suspicious runbook URL."""
-        from tarsy.models.alert import AlertResponse
-        
-        # Mock process_alert to return a proper AlertResponse
-        mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-            alert_id="test-alert-123",
-            status="queued",
-            message="Alert submitted for processing and validation completed"
-        ))
-        
-        valid_alert_data["runbook"] = "file:///etc/passwd"  # Suspicious URL
+        """Test alert submission with unsafe runbook URL schemes gets rejected."""
+        valid_alert_data["runbook"] = "file:///etc/passwd"  # Unsafe URL scheme
         
         response = client.post("/api/v1/alerts", json=valid_alert_data)
-        assert response.status_code == 200  # Should still process but log warning
+        assert response.status_code == 400
+        data = response.json()
+        
+        assert data["detail"]["error"] == "Invalid runbook URL scheme"
+        assert "file" in data["detail"]["message"]
+        assert data["detail"]["field"] == "runbook"
+        assert data["detail"]["allowed_schemes"] == ["http", "https"]
+
+    @pytest.mark.parametrize("unsafe_url", [
+        "file:///etc/passwd",
+        "ssh://user@host/path",
+        "data:text/html,<script>alert(1)</script>",
+        "javascript:alert(document.cookie)",
+        "ftp://internal.server/file",
+        "ldap://directory.service/query",
+        "gopher://old.protocol/path"
+    ])
+    def test_submit_alert_various_unsafe_url_schemes(self, client, valid_alert_data, unsafe_url):
+        """Test that various unsafe URL schemes are rejected."""
+        valid_alert_data["runbook"] = unsafe_url
+        
+        response = client.post("/api/v1/alerts", json=valid_alert_data)
+        assert response.status_code == 400
+        data = response.json()
+        assert data["detail"]["error"] == "Invalid runbook URL scheme"
+        assert data["detail"]["field"] == "runbook"
 
     @patch('tarsy.main.alert_service')
     @patch('asyncio.create_task')
@@ -338,6 +353,44 @@ class TestSubmitAlertEndpoint:
         mock_alert_service.register_alert_id.assert_called_once()
         # Verify background task was created
         mock_create_task.assert_called_once()
+
+    def test_submit_alert_invalid_content_length_header(self, client, valid_alert_data):
+        """Test that invalid Content-Length headers are handled gracefully."""
+        import json
+        
+        # Test with invalid Content-Length header
+        response = client.post(
+            "/api/v1/alerts",
+            data=json.dumps(valid_alert_data),
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": "invalid-number"
+            }
+        )
+        
+        # Should proceed to process the body size after reading
+        # The actual body size enforcement will catch oversized payloads
+        assert response.status_code in [200, 400, 413, 422]  # Various valid outcomes
+
+    def test_submit_alert_post_read_size_verification(self, client, valid_alert_data):
+        """Test that payload size is verified after reading, regardless of Content-Length header."""
+        import json
+        
+        # Create oversized payload (over 10MB)
+        oversized_data = valid_alert_data.copy()
+        oversized_data["data"] = {"large_field": "x" * (11 * 1024 * 1024)}  # 11MB
+        
+        # Test with missing Content-Length header (should still be caught)
+        response = client.post(
+            "/api/v1/alerts",
+            data=json.dumps(oversized_data),
+            headers={"Content-Type": "application/json"}  # No Content-Length
+        )
+        
+        # Should be rejected due to post-read size verification
+        assert response.status_code == 413
+        data = response.json()
+        assert data["detail"]["error"] == "Payload too large"
 
 
 @pytest.mark.unit 

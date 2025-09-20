@@ -8,7 +8,9 @@ import logging
 from typing import Optional
 from urllib.parse import urlparse
 
+from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, text
 
 from tarsy.config.settings import get_settings, Settings
@@ -44,7 +46,7 @@ def detect_database_type(database_url: str) -> str:
         raise ValueError(f"Unsupported database scheme: {scheme}")
 
 
-def create_database_engine(database_url: str, settings: Optional[Settings] = None):
+def create_database_engine(database_url: str, settings: Optional[Settings] = None) -> Engine:
     """
     Create database engine with type-specific optimizations.
     
@@ -78,12 +80,22 @@ def create_database_engine(database_url: str, settings: Optional[Settings] = Non
         )
     else:  # SQLite
         # SQLite-specific configuration
-        connect_args = {"check_same_thread": False} if "sqlite" in database_url else {}
-        return create_engine(
-            database_url,
-            echo=False,
-            connect_args=connect_args
-        )
+        connect_args = {"check_same_thread": False}
+        
+        # Special handling for SQLite in-memory databases
+        if database_url == "sqlite:///:memory:" or database_url.startswith("sqlite:///:memory:"):
+            return create_engine(
+                database_url,
+                echo=False,
+                poolclass=StaticPool,
+                connect_args=connect_args
+            )
+        else:
+            return create_engine(
+                database_url,
+                echo=False,
+                connect_args=connect_args
+            )
 
 
 def create_database_tables(database_url: str) -> bool:
@@ -204,10 +216,10 @@ def get_database_info() -> dict:
         
         return {
             "enabled": settings.history_enabled,
-            "database_url": settings.database_url if settings.history_enabled else None,
+            # Omit DSN to avoid credential leakage
             "database_name": settings.database_url.split('/')[-1] if settings.history_enabled else None,
             "retention_days": settings.history_retention_days if settings.history_enabled else None,
-            "connection_test": test_database_connection() if settings.history_enabled else False
+            "connection_test": test_database_connection() if settings.history_enabled else False,
         }
         
     except Exception as e:

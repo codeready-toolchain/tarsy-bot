@@ -6,7 +6,7 @@ http_address = "0.0.0.0:4180"
 # https_address = ":443"
 
 ## Are we running behind a reverse proxy? Will not accept headers like X-Real-Ip unless this is set.
-# reverse_proxy = true
+reverse_proxy = true
 
 ## TLS Settings
 # tls_cert_file = ""
@@ -158,9 +158,9 @@ custom_sign_in_logo = "/templates/tarsy-logo.png"
 ## Secure   - secure cookies are only sent by the browser of a HTTPS connection (recommended)
 ## HttpOnly - httponly cookies are not readable by javascript (recommended)
 cookie_name = "_oauth2_proxy"
-cookie_secret = "my-coockie-secret"
+cookie_secret = "REPLACE_WITH_BASE64_32_BYTE_SECRET"
 cookie_domains = ["localhost"]
 cookie_expire = "168h"
 cookie_refresh = "0"
 cookie_secure = false
-cookie_httponly = false
+cookie_httponly = true

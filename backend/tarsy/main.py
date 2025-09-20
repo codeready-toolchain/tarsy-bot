@@ -7,7 +7,7 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, AsyncGenerator
 import base64
 from pathlib import Path
 
@@ -41,7 +41,7 @@ alert_processing_semaphore: Optional[asyncio.Semaphore] = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     global alert_service, dashboard_manager, alert_processing_semaphore
     
@@ -271,7 +271,7 @@ async def get_jwks(response: Response) -> JSONResponse:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"JWKS endpoint error: {str(e)}", exc_info=True)
+        logger.exception(f"JWKS endpoint error: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail={
@@ -281,7 +281,7 @@ async def get_jwks(response: Response) -> JSONResponse:
         ) from e
 
 @app.websocket("/ws/dashboard/{user_id}")
-async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
+async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
     """WebSocket endpoint for dashboard real-time updates."""
     if dashboard_manager is None:
         await websocket.close(code=1011, reason="Service not initialized")
@@ -321,11 +321,11 @@ async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        logger.error(f"Dashboard WebSocket error for user {user_id}: {str(e)}")
+        logger.exception(f"Dashboard WebSocket error for user {user_id}: {str(e)}")
     finally:
         dashboard_manager.disconnect(user_id)
 
-async def process_alert_background(alert_id: str, alert: ChainContext):
+async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
     """Background task to process an alert with comprehensive error handling and concurrency control."""
     if alert_processing_semaphore is None or alert_service is None:
         logger.error(f"Cannot process alert {alert_id}: services not initialized")
@@ -377,9 +377,8 @@ async def process_alert_background(alert_id: str, alert: ChainContext):
             # Catch-all for unexpected errors
             duration = (datetime.now() - start_time).total_seconds()
             error_msg = f"Unexpected processing error: {str(e)}"
-            logger.error(
-                f"Alert {alert_id} unexpected error after {duration:.2f}s: {error_msg}", 
-                exc_info=True
+            logger.exception(
+                f"Alert {alert_id} unexpected error after {duration:.2f}s: {error_msg}"
             )
         
         finally:

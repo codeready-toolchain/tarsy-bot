@@ -35,7 +35,24 @@ const parseEnvConfig = (): AppConfig => {
   // Production URLs (only used when building for production)
   // In development, these are ignored in favor of Vite proxy
   const prodApiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4180';
-  const prodWsBaseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:4180';
+  
+  // Derive WebSocket URL from API URL if not explicitly set
+  let prodWsBaseUrl = import.meta.env.VITE_WS_BASE_URL;
+  if (!prodWsBaseUrl) {
+    try {
+      const apiUrl = new URL(prodApiBaseUrl);
+      // Don't derive from localhost fallback - use hardcoded default instead
+      if (apiUrl.hostname === 'localhost') {
+        prodWsBaseUrl = 'ws://localhost:4180';
+      } else {
+        const wsScheme = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+        prodWsBaseUrl = `${wsScheme}//${apiUrl.host}${apiUrl.pathname}`;
+      }
+    } catch {
+      // If URL parsing fails, fall back to localhost default
+      prodWsBaseUrl = 'ws://localhost:4180';
+    }
+  }
   
   return {
     isDevelopment,
