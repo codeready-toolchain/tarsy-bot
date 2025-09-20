@@ -1,6 +1,6 @@
-# OAuth2-Proxy Setup for Tarsy-bot
+# OAuth2-Proxy Setup for TARSy
 
-This guide covers setting up [OAuth2-Proxy](https://github.com/oauth2-proxy/oauth2-proxy) for authentication testing with the Tarsy-bot dashboard.
+This guide covers setting up [OAuth2-Proxy](https://github.com/oauth2-proxy/oauth2-proxy) for authentication testing with the TARSy dashboard.
 
 ## Table of Contents
 - [Installation](#installation)
@@ -28,7 +28,7 @@ You need to configure an OAuth provider (GitHub, Google, etc.). Here's how to se
 1. Go to GitHub Settings → Developer settings → OAuth Apps
 2. Click "New OAuth App"
 3. Fill in the details:
-   - **Application name**: `Tarsy-bot Container Deployment`
+   - **Application name**: `TARSy Container Deployment`
    - **Homepage URL**: `http://localhost:8080`
    - **Authorization callback URL**: `http://localhost:8080/oauth2/callback`
 4. Click "Register application"
@@ -47,8 +47,11 @@ The OAuth2-proxy configuration is in `config/oauth2-proxy.cfg`.
 OAuth2-proxy is integrated into the containerized deployment and runs automatically:
 
 ```bash
-# Deploy complete stack with OAuth2-proxy
+# Deploy complete stack with OAuth2-proxy (preserves database)
 make containers-deploy
+
+# OR deploy fresh stack (clean rebuild including database)
+make containers-deploy-fresh
 
 # Check container status
 make containers-status
@@ -94,21 +97,23 @@ For production deployments:
 
 ```bash
 # Container Deployment (with OAuth2-proxy)
-make containers-deploy      # Deploy complete stack with authentication
-make containers-start       # Start all containers (with build)
-make containers-start-fast  # Start containers (no build)
-make containers-stop        # Stop all containers
-make containers-clean       # Remove all containers and data
+make containers-deploy        # Deploy stack (rebuild apps, preserve database)
+make containers-deploy-fresh  # Deploy fresh stack (rebuild everything)
+make containers-start         # Start all containers (with build)
+make containers-start-fast    # Start containers (no build)
+make containers-stop          # Stop all containers
+make containers-clean         # Remove all containers and data
 
 # Container Management
-make containers-status      # Show container status
-make containers-logs        # Show logs from all containers
-make containers-build       # Build container images
+make containers-status        # Show container status
+make containers-logs          # Show logs from all containers
+make containers-build         # Build container images
+make containers-build-app     # Build only application containers
 
 # Development (no authentication)
-make dev                    # Start development services
-make status                 # Show service status
-make stop                   # Stop development services
+make dev                      # Start development services
+make status                   # Show service status
+make stop                     # Stop development services
 ```
 
 ## Additional Resources

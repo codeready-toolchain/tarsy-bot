@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TARSy-bot is an intelligent Site Reliability Engineering (SRE) agent that automatically processes alerts, retrieves runbooks, and uses MCP (Model Context Protocol) servers to gather system information for comprehensive incident analysis. The system implements a multi-layer agent architecture with flexible alert processing capabilities.
+TARSy is an intelligent Site Reliability Engineering (SRE) agent that automatically processes alerts, retrieves runbooks, and uses MCP (Model Context Protocol) servers to gather system information for comprehensive incident analysis. The system implements a multi-layer agent architecture with flexible alert processing capabilities.
 
 ## Development Commands
 

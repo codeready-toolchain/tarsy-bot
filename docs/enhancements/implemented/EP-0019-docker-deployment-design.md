@@ -49,7 +49,7 @@ The Docker deployment provides:
 
 #### Component Interactions
 
-1. Developer runs `make deploy-containers` for full containerized stack
+1. Developer runs `make containers-deploy` for full containerized stack
 2. Podman builds images from Dockerfiles using mirror.gcr.io base images
 3. Podman-compose orchestrates all services (database, backend, frontend, oauth2-proxy)
 4. oauth2-proxy handles authentication for backend API requests only (port 4180)
@@ -251,8 +251,8 @@ The existing oauth2-proxy authentication layer is always included in the contain
 
 The system provides two distinct deployment approaches:
 
-1. **Local Development** (existing): Use `make dev`, `make dev-full`, `make dev-full-auth`, etc. for local development with optional authentication
-2. **Containerized Deployment** (new): Use `make deploy-containers` for complete containerized stack with integrated authentication
+1. **Local Development** (existing): Use `make dev` for local development without authentication
+2. **Containerized Deployment** (new): Use `make containers-deploy` for containerized stack with integrated authentication
 
 This separation allows developers to choose between local development flexibility and containerized consistency with built-in security.
 
@@ -337,21 +337,24 @@ Add these targets to the root Makefile to support container deployment:
 
 ```makefile
 # Container deployment targets
-.PHONY: build-images deploy-containers stop-containers clean-containers
+.PHONY: containers-build containers-deploy containers-deploy-fresh containers-start containers-stop containers-clean
 
-build-images: ## Build all container images with podman
+containers-build: ## Build all container images with podman-compose
 	@echo "$(GREEN)Building Tarsy container images...$(NC)"
-	podman build -t tarsy-backend:latest ./backend
-	podman build -t tarsy-frontend:latest ./dashboard
+	podman-compose -f podman-compose.yml build
 	@echo "$(GREEN)✅ Container images built$(NC)"
 
-deploy-containers: build-images check-config ## Deploy complete Tarsy stack with database and authentication
-	@echo "$(GREEN)Deploying complete Tarsy container stack...$(NC)"
-	podman-compose -f podman-compose.yml up -d
-	@echo "$(BLUE)Frontend: http://localhost:3000$(NC)"
-	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:4180$(NC)"
+containers-deploy: check-config containers-restart-app ## Deploy Tarsy stack (rebuild apps, preserve database)
+
+containers-deploy-fresh: containers-clean check-config containers-start ## Deploy complete fresh Tarsy stack (rebuild everything including database)
+
+containers-start: ## Start all running containers (with fresh build)
+	@echo "$(GREEN)Starting complete Tarsy container stack...$(NC)"
+	podman-compose -f podman-compose.yml up -d --build
+	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
+	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:8080/api$(NC)"
 	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
-	@echo "$(YELLOW)Note: Backend API secured behind oauth2-proxy authentication$(NC)"
+	@echo "$(YELLOW)Note: All traffic routed through nginx reverse proxy with oauth2-proxy authentication$(NC)"
 
 check-config: ## Ensure required configuration files exist (internal target)
 	@echo "$(GREEN)Checking configuration files...$(NC)"
@@ -367,22 +370,21 @@ check-config: ## Ensure required configuration files exist (internal target)
 	fi
 	@echo "$(GREEN)✅ Configuration files found$(NC)"
 
-stop-containers: ## Stop all running containers
+containers-stop: ## Stop all running containers
 	@echo "$(YELLOW)Stopping containers...$(NC)"
 	-podman-compose -f podman-compose.yml down 2>/dev/null || true
 	@echo "$(GREEN)✅ Containers stopped$(NC)"
 
-clean-containers: ## Remove containers, networks, and volumes
-	@echo "$(YELLOW)Cleaning up containers and volumes...$(NC)"
-	-podman-compose -f podman-compose.yml down -v 2>/dev/null || true
+containers-clean: containers-stop ## Stop and remove all containers, networks, and volumes
+	@echo "$(YELLOW)Cleaning up containers, networks, and volumes...$(NC)"
 	-podman system prune -f 2>/dev/null || true
 	@echo "$(GREEN)✅ Container cleanup completed$(NC)"
 
-container-logs: ## Show logs from all running containers
+containers-logs: ## Show logs from all running containers
 	@echo "$(GREEN)Container logs:$(NC)"
 	-podman-compose logs --tail=50 2>/dev/null || echo "No containers running"
 
-container-status: ## Show container status
+containers-status: ## Show container status
 	@echo "$(GREEN)Container status:$(NC)"
 	-podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "No containers running"
 ```
@@ -394,7 +396,7 @@ container-status: ## Show container status
 #### Unit Testing
 ```bash
 # Test container builds
-make build-images
+make containers-build
 
 # Verify images created
 podman images | grep tarsy
@@ -413,19 +415,19 @@ curl http://localhost:8000/health
 
 ```bash
 # Deploy complete containerized stack (includes config validation)
-make deploy-containers
+make containers-deploy
 
-# Test frontend direct access
-curl http://localhost:3000  # Should work - frontend directly accessible
+# Test dashboard access
+curl http://localhost:8080  # Should work - dashboard accessible through reverse proxy
 
 # Test database connectivity (for admin/debugging)
 psql -h localhost -U tarsy -d tarsy  # Should connect
 
 # Test oauth2-proxy API access (will redirect to auth provider for unauthenticated requests)
-curl -I http://localhost:4180/api/v1/history/health
+curl -I http://localhost:8080/api/v1/history/health
 
 # Test authenticated API access (requires browser session or token)
-curl -H "Authorization: Bearer <token>" http://localhost:4180/api/v1/history/health
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/history/health
 
 # Test backend isolation (should fail - backend not directly accessible)
 curl http://localhost:8000/health  # Should fail - not exposed
@@ -434,27 +436,30 @@ curl http://localhost:8000/health  # Should fail - not exposed
 pg_isready -h localhost -U tarsy  # Should work - admin access available
 
 # Cleanup
-make clean-containers
+make containers-clean
 ```
 
 ### Development Workflow
 
 #### Container Development
 ```bash
-# Build and deploy containers
-make deploy-containers
+# Build and deploy containers (preserves database)
+make containers-deploy
+
+# OR deploy fresh containers (clean database)
+make containers-deploy-fresh
 
 # Check application status
 make status
 
 # View container logs
-make container-logs
+make containers-logs
 
 # Check container status
-make container-status
+make containers-status
 
 # Stop when done
-make stop-containers
+make containers-stop
 ```
 
 #### Debugging Containers
@@ -482,8 +487,8 @@ podman ps --filter "status=exited" --filter "status=dead"
 podman-compose restart tarsy-backend
 
 # Full service recovery
-make clean-containers
-make deploy-containers
+make containers-clean
+make containers-deploy-fresh
 ```
 
 ### Build Error Handling
@@ -493,8 +498,8 @@ make deploy-containers
 podman build --no-cache -t tarsy-backend:latest ./backend
 
 # Force rebuild
-podman rmi tarsy-backend:latest tarsy-frontend:latest
-make build-images
+podman rmi tarsy-backend:latest tarsy-dashboard:latest
+make containers-build
 ```
 
 ## Documentation Requirements

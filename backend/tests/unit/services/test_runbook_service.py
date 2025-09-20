@@ -53,7 +53,7 @@ class TestRunbookServiceInitialization:
             assert "Accept" in service.headers
             assert "User-Agent" in service.headers
             assert service.headers["Accept"] == "application/vnd.github.v3.raw"
-            assert service.headers["User-Agent"] == "Tarsy-bot/1.0"
+            assert service.headers["User-Agent"] == "TARSy/1.0"
             
             # Check authorization header
             if expected_authorization:
@@ -199,7 +199,7 @@ class TestRunbookDownload:
         github_url = "https://github.com/user/repo/blob/master/runbook.md"
         expected_headers = {
             "Accept": "application/vnd.github.v3.raw",
-            "User-Agent": "Tarsy-bot/1.0",
+            "User-Agent": "TARSy/1.0",
             "Authorization": "token test_token"
         }
         
@@ -280,7 +280,7 @@ class TestAuthenticationHandling:
             headers = call_args[1]["headers"]
             assert "Authorization" not in headers
             assert headers["Accept"] == "application/vnd.github.v3.raw"
-            assert headers["User-Agent"] == "Tarsy-bot/1.0"
+            assert headers["User-Agent"] == "TARSy/1.0"
             assert result == "Public content"
     
     async def test_download_with_authentication(self):

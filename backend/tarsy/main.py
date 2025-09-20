@@ -1,5 +1,5 @@
 """
-Tarsy-bot - FastAPI Application
+TARSy - FastAPI Application
 Main entry point for the tarsy backend service.
 """
 
@@ -120,9 +120,9 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title="Tarsy-bot",
+    title="TARSy",
     description="Automated incident response agent using AI and MCP servers",
-    version="1.0.0",
+    version="0.0.1",
     lifespan=lifespan
 )
 

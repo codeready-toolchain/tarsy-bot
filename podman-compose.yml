@@ -1,8 +1,8 @@
 # podman-compose.yml
-version: '3.8'
+version: '5.4'
 services:
   database:
-    image: mirror.gcr.io/library/postgres:16
+    image: mirror.gcr.io/library/postgres:17
     environment:
       - POSTGRES_DB=tarsy
       - POSTGRES_USER=tarsy

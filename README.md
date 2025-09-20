@@ -2,7 +2,7 @@
 [![codecov](https://codecov.io/gh/codeready-toolchain/tarsy-bot/branch/master/graph/badge.svg)](https://codecov.io/gh/codeready-toolchain/tarsy-bot)
 
 <div align="center">
-  <img src="./docs/img/TARSy-logo.png" alt="TARSy-bot" width="100"/>
+  <img src="./docs/img/TARSy-logo.png" alt="TARSy" width="100"/>
 </div>
 
 **TARSy** is an intelligent Site Reliability Engineering system that automatically processes alerts through sequential agent chains, retrieves runbooks, and uses MCP (Model Context Protocol) servers to gather system information for comprehensive multi-stage incident analysis.
@@ -73,7 +73,9 @@ make setup
 # - Configure LLM providers in backend/.env (GOOGLE_API_KEY, etc.)
 
 # 3. Deploy complete containerized stack
-make containers-deploy
+make containers-deploy        # Preserves database data (recommended)
+# OR for fresh start:
+make containers-deploy-fresh  # Clean rebuild including database
 ```
 
 **Services will be available at:**
@@ -82,6 +84,8 @@ make containers-deploy
 - 🗄️ **PostgreSQL Database**: localhost:5432 (admin access)
 
 **Container Management:**
+- **Update apps (preserve database):** `make containers-deploy`
+- **Fresh deployment:** `make containers-deploy-fresh` 
 - **Stop containers:** `make containers-stop`
 - **View logs:** `make containers-logs` 
 - **Check status:** `make containers-status`
@@ -143,7 +147,7 @@ sequenceDiagram
 5. **Stop Services**: Run `make stop` when finished
 
 ### Container Deployment Mode
-1. **Deploy Stack**: Run `make containers-deploy` to start all containerized services with authentication
+1. **Deploy Stack**: Run `make containers-deploy` (preserves database) or `make containers-deploy-fresh` (clean start)
 2. **Login**: Navigate to http://localhost:8080 and authenticate via GitHub OAuth
 3. **Submit Alert**: Use the dashboard at http://localhost:8080/submit-alert (OAuth protected)
 4. **Monitor Processing**: Watch real-time progress with full audit trail
@@ -210,7 +214,7 @@ If you're already logged into your OpenShift/Kubernetes cluster:
 oc whoami
 oc cluster-info
 
-# TARSy-bot will automatically use your current kubeconfig
+# TARSy will automatically use your current kubeconfig
 # Default location: ~/.kube/config or $KUBECONFIG
 ```
 
