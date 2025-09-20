@@ -10,7 +10,8 @@ import uuid
 from typing import List, Optional
 from enum import Enum
 from sqlmodel import Column, Field, SQLModel, Index
-from sqlalchemy import JSON, TypeDecorator
+from sqlalchemy import JSON, TypeDecorator, BigInteger
+from sqlalchemy.dialects.postgresql import JSONB, BIGINT
 from pydantic import field_validator, model_validator
 from tarsy.utils.timestamp import now_us
 
@@ -72,6 +73,13 @@ class PydanticJSONType(TypeDecorator):
     """Custom SQLAlchemy type for Pydantic model JSON serialization."""
     impl = JSON
     
+    def load_dialect_impl(self, dialect):
+        # Use JSONB for PostgreSQL for better performance and GIN index support
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(JSONB())
+        else:
+            return dialect.type_descriptor(JSON())
+    
     def process_bind_param(self, value, dialect):
         if value is not None:
             # Convert Pydantic model to dict for JSON serialization
@@ -93,7 +101,8 @@ class LLMInteraction(SQLModel, table=True):
     # Enhanced table configuration with specialized indexes
     __table_args__ = (
         # PostgreSQL-specific GIN index for efficient JSONB conversation queries
-        Index('ix_llm_interactions_conversation', 'conversation', postgresql_using='gin'),
+        Index('ix_llm_interactions_conversation', 'conversation', 
+              postgresql_using='gin', postgresql_ops={'conversation': 'jsonb_path_ops'}),
     )
     
     interaction_id: str = Field(
@@ -114,7 +123,7 @@ class LLMInteraction(SQLModel, table=True):
     )
     timestamp_us: int = Field(
         default_factory=now_us,
-        index=True,
+        sa_column=Column(BIGINT, index=True),
         description="Interaction timestamp (microseconds since epoch UTC)"
     )
     duration_ms: int = Field(default=0, description="Interaction duration in milliseconds")
@@ -192,8 +201,8 @@ class MCPInteraction(SQLModel, table=True):
     )
     timestamp_us: int = Field(
         default_factory=now_us,
-        description="Communication timestamp (microseconds since epoch UTC)",
-        index=True
+        sa_column=Column(BIGINT, index=True),
+        description="Communication timestamp (microseconds since epoch UTC)"
     )
     duration_ms: int = Field(default=0, description="Communication duration in milliseconds")
     success: bool = Field(default=True, description="Whether communication succeeded")
@@ -220,8 +229,8 @@ class MCPInteraction(SQLModel, table=True):
     )
     
     # Runtime-specific fields (not persisted to DB when None)
-    start_time_us: Optional[int] = Field(None, description="Start time in microseconds")
-    end_time_us: Optional[int] = Field(None, description="End time in microseconds")
+    start_time_us: Optional[int] = Field(None, sa_column=Column(BIGINT), description="Start time in microseconds")
+    end_time_us: Optional[int] = Field(None, sa_column=Column(BIGINT), description="End time in microseconds")
     
     # Note: Relationship to AlertSession removed to avoid circular import issues
     # The session_id foreign key provides the necessary database linkage

@@ -84,15 +84,20 @@ stop: ## Stop all running services
 	@echo "$(GREEN)✅ All services stopped$(NC)"
 
 # Container deployment targets
-.PHONY: containers-build containers-build-app containers-deploy containers-deploy-fresh containers-restart-app containers-start containers-start-fast containers-stop containers-clean check-config containers-logs containers-status
+.PHONY: containers-build containers-build-app containers-deploy containers-deploy-fresh containers-restart-app containers-start containers-start-fast containers-stop containers-clean check-config containers-logs containers-status sync-backend-deps
 
-containers-build: ## Build all container images with podman-compose
+sync-backend-deps: ## Sync backend dependencies (update uv.lock if pyproject.toml changed)
+	@echo "$(GREEN)Syncing backend dependencies...$(NC)"
+	@cd backend && uv sync
+	@echo "$(GREEN)✅ Backend dependencies synced$(NC)"
+
+containers-build: sync-backend-deps ## Build all container images with podman-compose
 	@echo "$(GREEN)Building Tarsy container images...$(NC)"
 	@echo "$(YELLOW)Note: Using podman-compose for consistent builds with proper build arguments$(NC)"
 	COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml build
 	@echo "$(GREEN)✅ Container images built$(NC)"
 
-containers-build-app: ## Build only application containers (backend, dashboard) - preserves database
+containers-build-app: sync-backend-deps ## Build only application containers (backend, dashboard) - preserves database
 	@echo "$(GREEN)Building Tarsy application container images (preserving database)...$(NC)"
 	COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml build backend dashboard
 	@echo "$(GREEN)✅ Application container images built$(NC)"
@@ -132,7 +137,7 @@ containers-deploy: check-config containers-restart-app ## Deploy Tarsy stack (re
 
 containers-deploy-fresh: containers-clean check-config containers-start ## Deploy complete fresh Tarsy stack (rebuild everything including database)
 
-containers-start: ## Start all running containers (with fresh build)
+containers-start: sync-backend-deps ## Start all running containers (with fresh build)
 	@echo "$(GREEN)Starting complete Tarsy container stack...$(NC)"
 	COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml up -d --build
 	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
@@ -140,7 +145,7 @@ containers-start: ## Start all running containers (with fresh build)
 	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
 	@echo "$(YELLOW)Note: All traffic routed through nginx reverse proxy with oauth2-proxy authentication$(NC)"
 
-containers-restart-app: ## Restart application containers (preserve database)
+containers-restart-app: sync-backend-deps ## Restart application containers (preserve database)
 	@echo "$(GREEN)Restarting application containers (preserving database)...$(NC)"
 	@echo "$(YELLOW)Stopping application containers...$(NC)"
 	-COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml stop reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
@@ -173,7 +178,7 @@ containers-clean: containers-stop ## Stop and remove all containers, networks, a
 
 containers-logs: ## Show logs from all running containers
 	@echo "$(GREEN)Container logs:$(NC)"
-	-COMPOSE_PROJECT_NAME=tarsy podman-compose logs --tail=50 2>/dev/null || echo "No containers running"
+	@COMPOSE_PROJECT_NAME=tarsy podman-compose logs --tail=50 || echo "No containers running"
 
 containers-status: ## Show container status
 	@echo "$(GREEN)Container status:$(NC)"
@@ -284,6 +289,7 @@ help: ## Show this help message
 	@echo "  make stop         # Stop all services"
 	@echo ""
 	@echo "$(YELLOW)🐳 Container Deployment:$(NC)"
+	@echo "  make sync-backend-deps        # Sync backend dependencies (update uv.lock)"
 	@echo "  make containers-deploy        # Deploy stack (rebuild apps, preserve database)"
 	@echo "  make containers-deploy-fresh  # Deploy fresh stack (rebuild everything)"
 	@echo "  make containers-stop          # Stop all containers"
