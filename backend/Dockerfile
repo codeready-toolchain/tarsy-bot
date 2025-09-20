@@ -24,8 +24,16 @@ RUN uv sync --frozen
 # Copy application code
 COPY . .
 
-# Create data and logs directories
-RUN mkdir -p /app/data /app/logs
+# Create a non-root user for security
+RUN groupadd --gid 65532 appuser \
+    && useradd --uid 65532 --gid 65532 --no-create-home --shell /bin/false appuser
+
+# Create data and logs directories with proper ownership
+RUN mkdir -p /app/data /app/logs \
+    && chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER 65532:65532
 
 # Expose port
 EXPOSE 8000
