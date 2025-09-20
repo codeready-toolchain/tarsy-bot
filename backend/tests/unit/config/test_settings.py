@@ -7,8 +7,7 @@ Tests critical configuration loading, validation, and template functionality.
 import os
 import tempfile
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from tarsy.config.settings import Settings, is_testing, get_settings
 
@@ -392,24 +391,51 @@ class TestSettingsDatabaseURL:
         with patch('tarsy.config.settings.is_testing', return_value=True):
             settings = Settings()
             
-            assert settings.history_database_url == "sqlite:///:memory:"
+            assert settings.database_url == "sqlite:///:memory:"
     
     def test_database_url_production_environment(self):
         """Test database URL in production environment."""
         with patch('tarsy.config.settings.is_testing', return_value=False):
             settings = Settings()
             
-            assert settings.history_database_url == "sqlite:///history.db"
+            assert settings.database_url == "sqlite:///history.db"
     
     def test_database_url_explicit_override(self):
         """Test explicit database URL override."""
         explicit_url = "postgresql://user:pass@host:5432/db"
         
         with patch('tarsy.config.settings.is_testing', return_value=True):
-            settings = Settings(history_database_url=explicit_url)
+            settings = Settings(database_url=explicit_url)
             
             # Should use explicit URL even in test environment
-            assert settings.history_database_url == explicit_url
+            assert settings.database_url == explicit_url
+    
+    def test_postgresql_pool_settings_defaults(self):
+        """Test PostgreSQL connection pool settings have correct defaults."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings()
+            
+            assert settings.postgres_pool_size == 5
+            assert settings.postgres_max_overflow == 10
+            assert settings.postgres_pool_timeout == 30
+            assert settings.postgres_pool_recycle == 3600
+            assert settings.postgres_pool_pre_ping is True
+    
+    def test_postgresql_pool_settings_override(self):
+        """Test PostgreSQL connection pool settings can be overridden."""
+        settings = Settings(
+            postgres_pool_size=15,
+            postgres_max_overflow=25,
+            postgres_pool_timeout=60,
+            postgres_pool_recycle=7200,
+            postgres_pool_pre_ping=False
+        )
+        
+        assert settings.postgres_pool_size == 15
+        assert settings.postgres_max_overflow == 25
+        assert settings.postgres_pool_timeout == 60
+        assert settings.postgres_pool_recycle == 7200
+        assert settings.postgres_pool_pre_ping is False
 
 
 @pytest.mark.unit

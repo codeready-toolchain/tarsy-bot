@@ -297,7 +297,7 @@ async def health_check(
                 details={
                     "database_connection": "ok",
                     "history_enabled": True,
-                    "database_url": history_service.settings.history_database_url.split('/')[-1]  # Just the DB name for security
+                    "database_url": history_service.settings.database_url.split('/')[-1]  # Just the DB name for security
                 }
             )
         else:

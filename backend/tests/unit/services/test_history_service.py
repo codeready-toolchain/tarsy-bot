@@ -44,7 +44,7 @@ class TestHistoryService:
         """Test service initialization for various scenarios."""
         mock_settings = MockFactory.create_mock_settings(
             history_enabled=history_enabled,
-            history_database_url=expected_url
+            database_url=expected_url
         )
         
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
@@ -53,7 +53,7 @@ class TestHistoryService:
             assert service.enabled == expected_enabled  # Test enabled property
             if history_enabled:
                 assert service.settings.history_enabled == True
-                assert service.settings.history_database_url == expected_url
+                assert service.settings.database_url == expected_url
     
     @pytest.mark.parametrize("failure_type,expected_result,expected_attempted,expected_healthy", [
         ("success", True, True, True),  # Successful initialization
@@ -68,7 +68,7 @@ class TestHistoryService:
         # Create mock settings based on scenario
         mock_settings = MockFactory.create_mock_settings(
             history_enabled=failure_type != "disabled",
-            history_database_url="sqlite:///test.db" if failure_type != "disabled" else None
+            database_url="sqlite:///test.db" if failure_type != "disabled" else None
         )
         
         # Set up database manager based on scenario
@@ -755,7 +755,7 @@ class TestHistoryServiceErrorHandling:
         """Create HistoryService that simulates various error conditions."""
         mock_settings = Mock(spec=Settings)
         mock_settings.history_enabled = True
-        mock_settings.history_database_url = "sqlite:///test_history.db"
+        mock_settings.database_url = "sqlite:///test_history.db"
         mock_settings.history_retention_days = 90
         
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
@@ -931,7 +931,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
         """Create HistoryService instance for testing."""
         with patch('tarsy.services.history_service.get_settings') as mock_settings:
             mock_settings.return_value.history_enabled = True
-            mock_settings.return_value.history_database_url = "sqlite:///test.db"
+            mock_settings.return_value.database_url = "sqlite:///test.db"
             mock_settings.return_value.history_retention_days = 90
             
             service = HistoryService()

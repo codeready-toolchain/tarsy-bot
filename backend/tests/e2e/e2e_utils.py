@@ -267,7 +267,7 @@ class E2ETestUtils:
             AssertionError: If submission fails or response is invalid
         """
         print("🚀 Submitting alert")
-        response = e2e_test_client.post("/alerts", json=alert_data)
+        response = e2e_test_client.post("/api/v1/alerts", json=alert_data)
         assert response.status_code == 200
 
         response_data = response.json()

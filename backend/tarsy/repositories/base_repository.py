@@ -9,9 +9,12 @@ import logging
 from abc import ABC
 from typing import Any, Generic, Optional, TypeVar
 
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import Session, SQLModel, select
+
+from tarsy.database.init_db import create_database_engine
 
 logger = logging.getLogger(__name__)
 
@@ -148,30 +151,10 @@ class DatabaseManager:
         self.session_factory: Optional[sessionmaker] = None
         
     def initialize(self) -> None:
-        """Initialize database engine and session factory."""
+        """Initialize database engine and session factory using optimized configuration."""
         try:
-            # Configure SQLite-specific options for better concurrency
-            connect_args = {}
-            engine_kwargs = {
-                "echo": False,  # Set to True for SQL debugging
-                "pool_pre_ping": True,  # Verify connections before use
-            }
-            
-            if self.database_url.startswith('sqlite'):
-                connect_args = {
-                    "check_same_thread": False,  # Allow multiple threads
-                    "timeout": 30,  # 30 second timeout for locks
-                    "isolation_level": None,  # Use autocommit mode
-                }
-                engine_kwargs["connect_args"] = connect_args
-            else:
-                # For non-SQLite databases (PostgreSQL, MySQL, etc.)
-                engine_kwargs.update({
-                    "pool_timeout": 30,  # Connection pool timeout
-                    "pool_recycle": 300,  # Recycle connections every 5 minutes
-                })
-            
-            self.engine = create_engine(self.database_url, **engine_kwargs)
+            # Use the enhanced database engine creation with type-specific optimizations
+            self.engine = create_database_engine(self.database_url)
             
             # Enable WAL mode for SQLite for better concurrency
             if self.database_url.startswith('sqlite'):
@@ -190,7 +173,8 @@ class DatabaseManager:
                 expire_on_commit=False
             )
             
-            logger.info(f"Database initialized with URL: {self.database_url}")
+            safe_url = make_url(self.database_url).render_as_string(hide_password=True)
+            logger.info(f"Database initialized with URL: {safe_url}")
         except Exception as e:
             logger.error(f"Failed to initialize database: {str(e)}")
             raise

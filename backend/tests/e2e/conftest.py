@@ -49,7 +49,7 @@ class E2ETestIsolation:
         
         # Store original environment variables we'll modify
         env_vars_to_isolate = [
-            "KUBECONFIG", "HISTORY_DATABASE_URL", "HISTORY_ENABLED",
+            "KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
             "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
             "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
             "LLM_PROVIDER",
@@ -223,7 +223,7 @@ current-context: test-context
     test_agents_path = current_dir / "test_agents.yaml"
     
     # Set isolated environment variables
-    e2e_isolation.set_isolated_env("HISTORY_DATABASE_URL", test_db_url)
+    e2e_isolation.set_isolated_env("DATABASE_URL", test_db_url)
     e2e_isolation.set_isolated_env("HISTORY_ENABLED", "true")
     e2e_isolation.set_isolated_env("AGENT_CONFIG_PATH", str(test_agents_path))
     e2e_isolation.set_isolated_env("OPENAI_API_KEY", "test-key-123")
@@ -234,7 +234,7 @@ current-context: test-context
     settings = Settings()
     
     # Override specific values after creation to ensure they're isolated
-    settings.history_database_url = test_db_url
+    settings.database_url = test_db_url
     settings.history_enabled = True
     settings.agent_config_path = str(test_agents_path)
     settings.openai_api_key = "test-key-123"
@@ -270,7 +270,7 @@ def ensure_e2e_isolation(request):
     # Store original environment for e2e tests
     original_env = {}
     e2e_env_vars = [
-        "TESTING", "KUBECONFIG", "HISTORY_DATABASE_URL", "HISTORY_ENABLED",
+        "TESTING", "KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
         "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
         "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
         "LLM_PROVIDER"
@@ -356,7 +356,7 @@ def pytest_runtest_teardown(item):
         
         # Clean up environment variables that might have been modified
         test_env_vars = [
-            "KUBECONFIG", "HISTORY_DATABASE_URL", "HISTORY_ENABLED",
+            "KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
             "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
             "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
             "LLM_PROVIDER"

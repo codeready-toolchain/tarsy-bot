@@ -120,7 +120,8 @@ backend/coverage.*
 # Configuration files (keep .example files)
 config/agents.yaml
 config/llm_providers.yaml
-config/oauth2-proxy.cfg
+config/*.cfg
+!config/*.cfg.example
 
 # JWT Authentication Keys (CRITICAL: Never commit private keys!)
 config/keys/jwt_private_key.pem

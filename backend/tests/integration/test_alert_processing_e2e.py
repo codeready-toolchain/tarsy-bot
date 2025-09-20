@@ -875,7 +875,7 @@ class TestAlertDuplicateDetection:
         }
         
         # Send first alert
-        response1 = client.post("/alerts", json=alert_data)
+        response1 = client.post("/api/v1/alerts", json=alert_data)
         assert response1.status_code == 200
         data1 = response1.json()
         assert data1["status"] == "queued"
@@ -926,7 +926,7 @@ class TestAlertDuplicateDetection:
             }
         }
         
-        response1 = client.post("/alerts", json=alert1_data)
+        response1 = client.post("/api/v1/alerts", json=alert1_data)
         assert response1.status_code == 200
         data1 = response1.json()
         assert data1["status"] == "queued"
@@ -944,7 +944,7 @@ class TestAlertDuplicateDetection:
             }
         }
         
-        response2 = client.post("/alerts", json=alert2_data)
+        response2 = client.post("/api/v1/alerts", json=alert2_data)
         assert response2.status_code == 200
         data2 = response2.json()
         
