@@ -267,8 +267,13 @@ llm_providers:
 - **Environment-based configuration** using Pydantic BaseSettings
 - **LLM provider management** with built-in defaults and YAML merging
 - **API keys, timeouts, concurrency limits**
-- **Database and service configuration**
+- **Database and service configuration** (dual SQLite/PostgreSQL support)
 - **Template variable defaults**
+
+**📍 Deployment Modes**: TARSy supports multiple deployment approaches:
+- **Development Mode**: `make dev` - Direct backend + dashboard (SQLite)
+- **Container Mode**: `make containers-deploy` - Full stack with authentication (PostgreSQL)
+- **Hybrid Testing**: Mix of local and containerized components as needed
 
 **📍 LLM Configuration Process**:
 1. **Load built-in providers** from `builtin_config.py`
@@ -921,7 +926,7 @@ graph LR
     end
     
     subgraph "Storage & API"
-        DB[(SQLite Database)]
+        DB[(History Database<br/>SQLite: Development<br/>PostgreSQL: Containers)]
         API[REST API Endpoints]
     end
     
@@ -952,6 +957,33 @@ graph LR
 - **Complete session lifecycle management** from creation to completion
 - **Graceful degradation** when database unavailable (history capture disabled)
 - **Retry mechanisms** with exponential backoff for database operations
+
+#### Database Configuration
+
+**📍 Dual Database Support**: TARSy supports both SQLite and PostgreSQL based on deployment mode:
+
+- **Development Mode**: SQLite (`history.db`) - zero configuration, file-based
+- **Container Mode**: PostgreSQL - production-ready with connection pooling
+- **Configuration**: Determined by `DATABASE_URL` environment variable
+- **Migration**: Database-agnostic SQLModel allows switching without code changes
+
+**Database Selection Examples**:
+```bash
+# Development (auto-default)
+DATABASE_URL=""  # → sqlite:///history.db
+
+# Container deployment (set by podman-compose.yml)  
+DATABASE_URL="postgresql://tarsy:password@database:5432/tarsy"
+
+# Custom configurations
+DATABASE_URL="sqlite:///./data/custom.db"
+DATABASE_URL="postgresql+psycopg2://user:pass@localhost/tarsy"
+```
+
+**📍 Database Engine Creation**: `backend/tarsy/database/init_db.py`
+- **Automatic type detection** from connection string format
+- **PostgreSQL optimizations**: Connection pooling, BIGINT timestamps, JSONB support
+- **SQLite optimizations**: WAL mode, thread safety, file-based persistence
 
 **Session Lifecycle**:
 ```python

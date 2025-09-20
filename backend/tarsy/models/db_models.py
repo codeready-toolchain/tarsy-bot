@@ -10,7 +10,8 @@ import uuid
 from typing import Optional
 
 from sqlmodel import Column, Field, SQLModel, Index
-from sqlalchemy import JSON
+from sqlalchemy import JSON, BigInteger
+from sqlalchemy.dialects.postgresql import BIGINT
 
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.utils.timestamp import now_us
@@ -75,12 +76,13 @@ class AlertSession(SQLModel, table=True):
     
     started_at_us: int = Field(
         default_factory=now_us,
-        description="Session start timestamp (microseconds since epoch UTC)",
-        index=True
+        sa_column=Column(BIGINT, index=True),
+        description="Session start timestamp (microseconds since epoch UTC)"
     )
     
     completed_at_us: Optional[int] = Field(
         default=None,
+        sa_column=Column(BIGINT),
         description="Session completion timestamp (microseconds since epoch UTC)"
     )
     
@@ -140,8 +142,8 @@ class StageExecution(SQLModel, table=True):
     
     # Execution tracking
     status: str = Field(description="Stage execution status (pending|active|completed|failed)")
-    started_at_us: Optional[int] = Field(default=None, description="Stage start timestamp")
-    completed_at_us: Optional[int] = Field(default=None, description="Stage completion timestamp")
+    started_at_us: Optional[int] = Field(default=None, sa_column=Column(BIGINT), description="Stage start timestamp")
+    completed_at_us: Optional[int] = Field(default=None, sa_column=Column(BIGINT), description="Stage completion timestamp")
     duration_ms: Optional[int] = Field(default=None, description="Stage execution duration")
     stage_output: Optional[dict] = Field(
         default=None, 

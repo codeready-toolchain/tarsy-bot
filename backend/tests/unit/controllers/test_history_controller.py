@@ -1169,7 +1169,7 @@ class TestHistoryControllerResponseFormat:
         
         # Add settings mock
         mock_settings = Mock()
-        mock_settings.history_database_url = "sqlite:///test_history.db"
+        mock_settings.database_url = "sqlite:///test_history.db"
         mock_settings.history_enabled = True
         mock_settings.history_retention_days = 90
         service.settings = mock_settings

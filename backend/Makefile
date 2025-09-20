@@ -131,7 +131,7 @@ dev-debug: check-venv ## Start development server with debug logging
 .PHONY: run
 run: check-venv ## Start development server with manual venv activation
 	@echo "$(GREEN)Starting development server (manual venv)...$(NC)"
-	.venv/bin/uvicorn tarsy.main:app --reload --port 8000
+	.venv/bin/uvicorn tarsy.main:app --reload --host 0.0.0.0 --port 8000
 
 .PHONY: stop
 stop: ## Stop backend server running on port 8000

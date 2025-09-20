@@ -149,7 +149,7 @@ function ManualAlertSubmission() {
         {backendStatus === 'error' && (
           <Alert severity="error" sx={{ mb: 3 }}>
             <Typography variant="body2">
-              <strong>Backend Unavailable:</strong> The Tarsy-bot backend is not responding. 
+              <strong>Backend Unavailable:</strong> The TARSy backend is not responding. 
               Please ensure the backend server is running on port 8000.
             </Typography>
           </Alert>
@@ -171,7 +171,7 @@ function ManualAlertSubmission() {
         {/* Footer */}
         <Box mt={6} textAlign="center">
           <Typography variant="body2" color="text.secondary">
-            Tarsy-bot v1.0 - Powered by AI and MCP Servers
+            TARSy v1.0 - Powered by AI and MCP Servers
           </Typography>
           <Typography variant="caption" color="text.secondary" display="block" mt={1}>
             Submit alerts to get automated runbook analysis and system diagnostics

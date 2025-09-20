@@ -54,7 +54,7 @@ def mock_settings():
     
     # History/Database settings - use in-memory database for integration tests
     settings.history_enabled = True
-    settings.history_database_url = "sqlite:///:memory:"
+    settings.database_url = "sqlite:///:memory:"
     
     # Updated LLM providers configuration to match EP-0013
     settings.llm_providers = {
@@ -973,7 +973,7 @@ def history_service_with_test_db(history_test_database_engine):
     # Mock settings for history service
     mock_settings = Mock()
     mock_settings.history_enabled = True
-    mock_settings.history_database_url = "sqlite:///:memory:"
+    mock_settings.database_url = "sqlite:///:memory:"
     mock_settings.history_retention_days = 90
     
     with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):

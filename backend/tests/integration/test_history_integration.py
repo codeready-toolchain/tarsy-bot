@@ -81,7 +81,7 @@ class TestHistoryServiceIntegration:
         # Mock settings to use the same in-memory database
         mock_settings = Mock()
         mock_settings.history_enabled = True  
-        mock_settings.history_database_url = "sqlite:///:memory:"
+        mock_settings.database_url = "sqlite:///:memory:"
         mock_settings.history_retention_days = 90
         
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
@@ -564,7 +564,7 @@ class TestAlertServiceHistoryIntegration:
         """Create mock settings."""
         settings = Mock()
         settings.history_enabled = True
-        settings.history_database_url = "sqlite:///:memory:"
+        settings.database_url = "sqlite:///:memory:"
         settings.history_retention_days = 90
         # Add required LLM settings to prevent iteration error
         settings.llm_providers = {}

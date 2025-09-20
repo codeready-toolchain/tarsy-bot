@@ -19,7 +19,7 @@ class RunbookService:
         # GitHub API headers
         self.headers = {
             "Accept": "application/vnd.github.v3.raw",
-            "User-Agent": "Tarsy-bot/1.0"
+            "User-Agent": "TARSy/1.0"
         }
         
         # Only add Authorization header if we have a valid (non-placeholder) token

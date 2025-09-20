@@ -1,0 +1,72 @@
+# podman-compose.yml
+services:
+  database:
+    image: mirror.gcr.io/library/postgres:17
+    environment:
+      - POSTGRES_DB=tarsy
+      - POSTGRES_USER=tarsy
+      - POSTGRES_PASSWORD=tarsy-dev-password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"  # For debugging/admin access only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tarsy"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    command: ["oauth2-proxy", "--config=/config/oauth2-proxy-container.cfg", "--skip-auth-preflight=true"]
+    volumes:
+      - ./config/oauth2-proxy-container.cfg:/config/oauth2-proxy-container.cfg:ro
+      - ./config/templates:/templates:ro  # Mount custom templates
+    # No direct port exposure - accessed only through reverse proxy
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # No direct port exposure - only accessible through oauth2-proxy
+    command: ["/app/.venv/bin/uvicorn", "tarsy.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    env_file:
+      - backend/.env                               # Load environment variables from backend/.env file
+    environment:
+      - HISTORY_ENABLED=true
+      - DATABASE_URL=postgresql://tarsy:tarsy-dev-password@database:5432/tarsy
+    volumes:
+      - ./config:/config:ro                        # Mount configuration files to expected path
+      - ./data:/app/data                           # Persist application data
+      - ./logs:/app/logs                           # Persist logs
+    depends_on:
+      database:
+        condition: service_healthy
+    
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        # Build-time environment variables for production build
+        - VITE_API_BASE_URL=http://localhost:8080
+        - VITE_WS_BASE_URL=ws://localhost:8080
+    # No direct ports exposed - accessed only through reverse proxy
+    # nginx serves React production build on port 80 inside container
+    depends_on:
+      - oauth2-proxy
+
+  reverse-proxy:
+    image: mirror.gcr.io/library/nginx:alpine
+    ports:
+      - "8080:80"  # Main access point - external port 8080, internal port 80
+    volumes:
+      - ./config/nginx-reverse-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - dashboard
+      - oauth2-proxy
+
+volumes:
+  postgres_data:

@@ -96,7 +96,7 @@ def isolated_test_settings():
     
     # Create a mock settings object that behaves like Settings but allows modification
     settings = Mock(spec=Settings)
-    settings.history_database_url = "sqlite:///:memory:"
+    settings.database_url = "sqlite:///:memory:"
     settings.history_enabled = True
     settings.history_retention_days = 90
     settings.google_api_key = "test-google-key"
@@ -140,7 +140,8 @@ def isolated_test_settings():
         else:
             api_key = ""
             
-        return base_config.model_copy(update={"api_key": api_key})
+        cfg = LLMProviderConfig.model_validate(base_config)
+        return cfg.model_copy(update={"api_key": api_key})
     
     settings.get_llm_config = mock_get_llm_config
     return settings
