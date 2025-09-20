@@ -99,15 +99,13 @@ For production deployments:
 # Container Deployment (with OAuth2-proxy)
 make containers-deploy        # Deploy stack (rebuild apps, preserve database)
 make containers-deploy-fresh  # Deploy fresh stack (rebuild everything)
-make containers-start         # Start all containers (with build)
-make containers-start-fast    # Start containers (no build)
+make containers-start         # Start containers (no build)  
 make containers-stop          # Stop all containers
 make containers-clean         # Remove all containers and data
 
 # Container Management
 make containers-status        # Show container status
 make containers-logs          # Show logs from all containers
-make containers-build         # Build container images
 make containers-build-app     # Build only application containers
 
 # Development (no authentication)

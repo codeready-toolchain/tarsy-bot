@@ -39,8 +39,6 @@ services:
       - DATABASE_URL=postgresql://tarsy:tarsy-dev-password@database:5432/tarsy
     volumes:
       - ./config:/config:ro                        # Mount configuration files to expected path
-      - ./data:/app/data                           # Persist application data
-      - ./logs:/app/logs                           # Persist logs
     depends_on:
       database:
         condition: service_healthy
@@ -54,7 +52,7 @@ services:
         - VITE_API_BASE_URL=http://localhost:8080
         - VITE_WS_BASE_URL=ws://localhost:8080
     # No direct ports exposed - accessed only through reverse proxy
-    # nginx serves React production build on port 80 inside container
+    # nginx serves React production build on port 8080 inside container
     depends_on:
       - oauth2-proxy
 
