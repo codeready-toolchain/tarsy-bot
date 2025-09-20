@@ -14,6 +14,9 @@ NC := \033[0m # No Color
 BACKEND_PORT := 8000
 DASHBOARD_PORT := 5173
 
+# Container management
+PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml
+
 # Prerequisites check
 .PHONY: check-prereqs
 check-prereqs: ## Check if required tools are installed
@@ -84,22 +87,16 @@ stop: ## Stop all running services
 	@echo "$(GREEN)✅ All services stopped$(NC)"
 
 # Container deployment targets
-.PHONY: containers-build containers-build-app containers-deploy containers-deploy-fresh containers-restart-app containers-start containers-start-fast containers-stop containers-clean check-config containers-logs containers-status sync-backend-deps
+.PHONY: containers-build-app containers-deploy containers-deploy-fresh containers-start containers-stop containers-clean containers-clean-images containers-deep-clean containers-db-reset check-config containers-logs containers-status sync-backend-deps
 
 sync-backend-deps: ## Sync backend dependencies (update uv.lock if pyproject.toml changed)
 	@echo "$(GREEN)Syncing backend dependencies...$(NC)"
 	@cd backend && uv sync
 	@echo "$(GREEN)✅ Backend dependencies synced$(NC)"
 
-containers-build: sync-backend-deps ## Build all container images with podman-compose
-	@echo "$(GREEN)Building Tarsy container images...$(NC)"
-	@echo "$(YELLOW)Note: Using podman-compose for consistent builds with proper build arguments$(NC)"
-	COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml build
-	@echo "$(GREEN)✅ Container images built$(NC)"
-
 containers-build-app: sync-backend-deps ## Build only application containers (backend, dashboard) - preserves database
 	@echo "$(GREEN)Building Tarsy application container images (preserving database)...$(NC)"
-	COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml build backend dashboard
+	$(PODMAN_COMPOSE) build backend dashboard
 	@echo "$(GREEN)✅ Application container images built$(NC)"
 
 check-config: ## Ensure required configuration files exist (internal target)
@@ -133,42 +130,38 @@ check-config: ## Ensure required configuration files exist (internal target)
 	fi
 	@echo "$(GREEN)✅ Configuration files found$(NC)"
 
-containers-deploy: check-config containers-restart-app ## Deploy Tarsy stack (rebuild apps, preserve database)
-
-containers-deploy-fresh: containers-clean check-config containers-start ## Deploy complete fresh Tarsy stack (rebuild everything including database)
-
-containers-start: sync-backend-deps ## Start all running containers (with fresh build)
-	@echo "$(GREEN)Starting complete Tarsy container stack...$(NC)"
-	COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml up -d --build
-	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
-	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:8080/api$(NC)"
-	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
-	@echo "$(YELLOW)Note: All traffic routed through nginx reverse proxy with oauth2-proxy authentication$(NC)"
-
-containers-restart-app: sync-backend-deps ## Restart application containers (preserve database)
-	@echo "$(GREEN)Restarting application containers (preserving database)...$(NC)"
+containers-deploy: check-config ## Deploy Tarsy stack (smart default: rebuild apps, preserve database)
+	@echo "$(GREEN)Deploying Tarsy application stack (preserving database)...$(NC)"
 	@echo "$(YELLOW)Stopping application containers...$(NC)"
-	-COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml stop reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
+	-$(PODMAN_COMPOSE) stop reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
 	@echo "$(YELLOW)Removing application containers...$(NC)"
-	-COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml rm -f reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
+	-$(PODMAN_COMPOSE) rm -f reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
 	@echo "$(YELLOW)Building and starting application containers...$(NC)"
-	COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml up -d --build backend dashboard oauth2-proxy reverse-proxy
+	$(PODMAN_COMPOSE) up -d --build backend dashboard oauth2-proxy reverse-proxy
 	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
 	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:8080/api$(NC)"
 	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
-	@echo "$(GREEN)✅ Application containers restarted (database preserved)$(NC)"
+	@echo "$(GREEN)✅ Application deployment completed$(NC)"
 
-containers-start-fast: ## Start containers without building (faster startup)
-	@echo "$(GREEN)Starting complete Tarsy container stack (no build)...$(NC)"
-	COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml up -d
+containers-deploy-fresh: containers-clean check-config ## Deploy complete fresh Tarsy stack (rebuild everything including database)
+	@echo "$(GREEN)Starting complete fresh Tarsy container stack...$(NC)"
+	$(PODMAN_COMPOSE) up -d --build
 	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
 	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:8080/api$(NC)"
 	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
-	@echo "$(YELLOW)Note: All traffic routed through nginx reverse proxy with oauth2-proxy authentication$(NC)"
+	@echo "$(GREEN)✅ Fresh deployment completed$(NC)"
+
+containers-start: ## Start containers (quick restart after stop)
+	@echo "$(GREEN)Starting Tarsy container stack...$(NC)"
+	$(PODMAN_COMPOSE) up -d
+	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
+	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:8080/api$(NC)"
+	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
+	@echo "$(GREEN)✅ Containers started$(NC)"
 
 containers-stop: ## Stop all running containers
 	@echo "$(YELLOW)Stopping containers...$(NC)"
-	-COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml down 2>/dev/null || true
+	-$(PODMAN_COMPOSE) down 2>/dev/null || true
 	@echo "$(GREEN)✅ Containers stopped$(NC)"
 
 containers-clean: containers-stop ## Stop and remove all containers, networks, and volumes
@@ -176,9 +169,41 @@ containers-clean: containers-stop ## Stop and remove all containers, networks, a
 	-podman system prune -f 2>/dev/null || true
 	@echo "$(GREEN)✅ Container cleanup completed$(NC)"
 
+containers-clean-images: ## Remove all project-related container images (aggressive cleanup)
+	@echo "$(YELLOW)Removing all Tarsy container images...$(NC)"
+	@echo "$(RED)⚠️  This will require rebuilding images on next deployment$(NC)"
+	-podman images --filter "reference=tarsy*" --format "{{.Repository}}:{{.Tag}}" | xargs -r podman rmi -f 2>/dev/null || true
+	-podman images --filter "reference=localhost/tarsy*" --format "{{.Repository}}:{{.Tag}}" | xargs -r podman rmi -f 2>/dev/null || true
+	@echo "$(GREEN)✅ Project images removed$(NC)"
+
+containers-deep-clean: containers-clean containers-clean-images ## Complete cleanup: containers, volumes, networks, and all images
+	@echo "$(YELLOW)Removing database volumes...$(NC)"
+	-podman volume rm tarsy-bot_postgres_data tarsy_postgres_data 2>/dev/null || true
+	@echo "$(GREEN)✅ Deep cleanup completed - everything removed$(NC)"
+
+containers-db-reset: ## Reset database volume (fixes PostgreSQL version conflicts)
+	@echo "$(YELLOW)⚠️  This will delete all database data!$(NC)"
+	@printf "Are you sure? [y/N] "; \
+	read REPLY; \
+	case "$$REPLY" in \
+		[Yy]|[Yy][Ee][Ss]) \
+			echo "$(YELLOW)Stopping database container...$(NC)"; \
+			-$(PODMAN_COMPOSE) stop database 2>/dev/null || true; \
+			echo "$(YELLOW)Removing database volume...$(NC)"; \
+			-podman volume rm tarsy-bot_postgres_data 2>/dev/null || true; \
+			-podman volume rm tarsy_postgres_data 2>/dev/null || true; \
+			echo "$(YELLOW)Starting fresh database...$(NC)"; \
+			$(PODMAN_COMPOSE) up -d database; \
+			echo "$(GREEN)✅ Database volume reset completed$(NC)"; \
+			;; \
+		*) \
+			echo "$(GREEN)Cancelled$(NC)"; \
+			;; \
+	esac
+
 containers-logs: ## Show logs from all running containers
 	@echo "$(GREEN)Container logs:$(NC)"
-	@COMPOSE_PROJECT_NAME=tarsy podman-compose logs --tail=50 || echo "No containers running"
+	@$(PODMAN_COMPOSE) logs --tail=50 || echo "No containers running"
 
 containers-status: ## Show container status
 	@echo "$(GREEN)Container status:$(NC)"
@@ -289,12 +314,13 @@ help: ## Show this help message
 	@echo "  make stop         # Stop all services"
 	@echo ""
 	@echo "$(YELLOW)🐳 Container Deployment:$(NC)"
-	@echo "  make sync-backend-deps        # Sync backend dependencies (update uv.lock)"
-	@echo "  make containers-deploy        # Deploy stack (rebuild apps, preserve database)"
+	@echo "  make containers-deploy        # Deploy stack (smart: rebuild apps, preserve database)"
 	@echo "  make containers-deploy-fresh  # Deploy fresh stack (rebuild everything)"
+	@echo "  make containers-start         # Start containers (quick restart after stop)"
 	@echo "  make containers-stop          # Stop all containers"
-	@echo "  make containers-clean         # Remove containers and volumes"
-	@echo "  make containers-status        # Show container status"
+	@echo "  make containers-db-reset      # Reset database volume (fixes version conflicts)"
+	@echo "  make containers-clean         # Remove containers, volumes, and networks"
+	@echo "  make sync-backend-deps        # Sync backend dependencies (update uv.lock)"
 	@echo ""
 	@echo "$(YELLOW)📋 Available Commands:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-15s$(NC) %s\n", $$1, $$2}'
