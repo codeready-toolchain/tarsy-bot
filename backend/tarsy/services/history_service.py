@@ -183,7 +183,7 @@ class HistoryService:
         self._initialization_attempted = True
         
         try:
-            self.db_manager = DatabaseManager(self.settings.history_database_url)
+            self.db_manager = DatabaseManager(self.settings.database_url)
             self.db_manager.initialize()
             self.db_manager.create_tables()
             self._is_healthy = True

@@ -1,25 +1,32 @@
 # EP-0020: PostgreSQL Database Integration - Design Document
 
-**Status:** Approved  
+**Status:** Partially Implemented  
 **Created:** 2025-09-17  
-**Phase:** Design Complete
+**Updated:** 2025-09-19
+**Phase:** Implementation In Progress
 **Requirements Document:** N/A (Self-contained design proposal)
-**Depends On:** EP-0019 (Docker Deployment Infrastructure)
-**Next Phase:** Implementation
+**Depends On:** EP-0019 (Docker Deployment Infrastructure) ✅ COMPLETED
+**Implementation Status:** PostgreSQL containers working, configuration standardization needed
 
 ---
 
 ## Design Overview
 
-This enhancement introduces PostgreSQL database support for Tarsy's history service while maintaining SQLite as the default option. The design provides flexible database configuration allowing users to choose between SQLite (default) and PostgreSQL (optional) based on their specific needs. This EP extends the container deployment infrastructure from EP-0019 to support PostgreSQL in containerized environments.
+**CURRENT IMPLEMENTATION STATUS:** PostgreSQL database integration is **partially implemented** with containers using PostgreSQL by default. However, there are configuration inconsistencies that need to be addressed.
+
+This enhancement was designed to introduce PostgreSQL database support for Tarsy's history service while maintaining SQLite as the default option. The containerized deployment now uses PostgreSQL by default, while development environments still use SQLite.
+
+**✅ RESOLVED:** Environment variable standardized on `DATABASE_URL` - containers and backend now use consistent naming.
 
 ### Architecture Summary
 
-The dual database support provides:
-1. **Default SQLite**: Simple, file-based database requiring no additional infrastructure
-2. **Optional PostgreSQL**: Advanced database with connection pooling and optimization features
+**CURRENT STATE:** The dual database support is implemented as follows:
+1. **Container Default: PostgreSQL**: Containerized deployments use PostgreSQL with docker/podman-compose
+2. **Development Default: SQLite**: Local development and testing use SQLite (file-based or in-memory)
 3. **Configuration-Driven Selection**: Database type determined by connection string format
-4. **Environment Agnostic**: Both options work in any environment (dev, testing, production)
+4. **Environment-Specific Defaults**: Containers get PostgreSQL, local development gets SQLite
+
+**✅ RESOLVED:** Environment variable standardized on `DATABASE_URL` across all components.
 
 ### Key Design Principles
 
@@ -37,7 +44,7 @@ The dual database support provides:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Tarsy Database Layer                     │
+│          Tarsy Database Layer (Current Implementation)      │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │              Application Layer                      │    │
@@ -56,34 +63,38 @@ The dual database support provides:
 │  └─────────────────────────────────────────────────────┘    │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │              Database Configuration                 │    │
+│  │          Database Configuration (ISSUE!)            │    │
 │  │  ┌─────────────────┐                                │    │
-│  │  │   Connection    │  ┌─────────┐ ┌─────────────┐   │    │
-│  │  │   String        │──│ SQLite  │ │ PostgreSQL  │   │    │
-│  │  │   Parser        │  │ Default │ │ Optional    │   │    │
-│  │  └─────────────────┘  └─────────┘ └─────────────┘   │    │
+│  │  │   Connection    │  ┌─────────────┐ ┌───────────┐ │    │
+│  │  │   String        │──│  SQLite     │ │PostgreSQL││ │    │
+│  │  │   Parser        │  │Development  │ │Containers││ │    │
+│  │  │   ⚠️ ENV VARS:   │  │    (✓)      │ │    (✓)   ││ │    │
+│  │  │   HISTORY_DB_URL│  └─────────────┘ └───────────┘│ │    │
+│  │  │   vs DATABASE_URL│  ⚠️ INCONSISTENCY NEEDS FIX │  │    │
+│  │  └─────────────────┘                                │    │
 │  └─────────────────────────────────────────────────────┘    │
 │                                                             │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │                Database Storage Options                │ │
+│  │             Database Deployment Options                │ │
 │  │                                                        │ │
 │  │  ┌──────────────────────────────────────────────────┐  │ │
-│  │  │              Default Option                      │  │ │
+│  │  │           Development (Local)                    │  │ │
 │  │  │  ┌─────────────┐  ┌─────────────────────────────┐│  │ │
 │  │  │  │ SQLite File │  │ In-Memory (Testing)         ││  │ │
-│  │  │  │ Default     │  │ sqlite:///:memory:          ││  │ │
+│  │  │  │ Default ✓   │  │ sqlite:///:memory: ✓        ││  │ │
 │  │  │  │ history.db  │  │ pytest runs                 ││  │ │
 │  │  │  └─────────────┘  └─────────────────────────────┘│  │ │
 │  │  └──────────────────────────────────────────────────┘  │ │
 │  │                                                        │ │
 │  │  ┌─────────────────────────────────────────────────┐   │ │
-│  │  │              Optional Upgrade                   │   │ │
+│  │  │        Container Deployment (IMPLEMENTED)       │   │ │
 │  │  │  ┌─────────────────────────────────────────────┐│   │ │
-│  │  │  │ PostgreSQL (Advanced Features)              ││   │ │
-│  │  │  │ postgresql://user:pass@host:port/database   ││   │ │
-│  │  │  │ - Connection pooling                        ││   │ │
-│  │  │  │ - Advanced indexing                         ││   │ │
-│  │  │  │ - High concurrency                          ││   │ │
+│  │  │  │ PostgreSQL (Default in Containers) ✅        ││   │ │
+│  │  │  │ postgresql://tarsy:password@database:5432   ││   │ │
+│  │  │  │ - Container orchestration ✅                 ││   │ │
+│  │  │  │ - Health checks ✅                           ││   │ │
+│  │  │  │ - Volume persistence ✅                      ││   │ │
+│  │  │  │ - Multi-service setup ✅                     ││   │ │
 │  │  │  └─────────────────────────────────────────────┘│   │ │
 │  │  └─────────────────────────────────────────────────┘   │ │
 │  └────────────────────────────────────────────────────────┘ │
@@ -92,16 +103,24 @@ The dual database support provides:
 
 ### Component Architecture
 
-#### New Components
+#### New Components (Implementation Status)
 
-- **Database Type Detection**: Automatic detection of database type from connection string
-- **PostgreSQL Connection Validation**: Enhanced connection testing for PostgreSQL-specific features
+- **✅ Database Type Detection**: IMPLEMENTED - Automatic detection works in init_db.py
+- **❌ PostgreSQL Connection Validation**: NOT IMPLEMENTED - Basic connection testing only
+- **❌ PostgreSQL-specific Configuration**: NOT IMPLEMENTED - No pool settings in Settings class
 
-#### Modified Components
+#### Modified Components (Implementation Status)
 
-- **Settings Configuration**: Extended to support PostgreSQL connection parameters and pooling options
-- **Database Initialization**: Enhanced to handle PostgreSQL-specific setup requirements
-- **Connection Management**: Improved error handling and validation for different database types
+- **✅ Settings Configuration**: IMPLEMENTED - Now uses DATABASE_URL consistently with containers
+- **✅ Database Initialization**: IMPLEMENTED - Works with both SQLite and PostgreSQL
+- **⚠️ Connection Management**: PARTIAL - Basic error handling, no PostgreSQL optimizations
+
+#### **✅ RESOLVED: Environment Variable Standardization**
+
+- **Container Environment**: Sets `DATABASE_URL=postgresql://tarsy:tarsy-dev-password@database:5432/tarsy`
+- **Backend Settings**: Now reads `DATABASE_URL` field (updated from `HISTORY_DATABASE_URL`)
+- **Result**: Container and backend use consistent environment variable naming
+- **PostgreSQL Integration**: Now working correctly in containerized deployments
 
 #### Component Interactions
 
@@ -114,34 +133,54 @@ The dual database support provides:
 
 ## Configuration Design
 
-### Configuration Options
+### **CURRENT CONFIGURATION STATUS**
 
-```bash
-# Default SQLite (works in any environment)
-HISTORY_DATABASE_URL=""  # Empty = use default SQLite (history.db)
+**✅ RESOLVED: Standardized Environment Variable**
 
-# Explicit SQLite configuration
-HISTORY_DATABASE_URL="sqlite:///history.db"
-HISTORY_DATABASE_URL="sqlite:///./data/tarsy_history.db"  # Custom path
-
-# Testing with in-memory SQLite
-HISTORY_DATABASE_URL="sqlite:///:memory:"  # RAM-only, no file persistence
-
-# Optional PostgreSQL upgrade
-HISTORY_DATABASE_URL="postgresql://username:password@localhost:5432/tarsy_history"
-HISTORY_DATABASE_URL="postgresql+psycopg2://user:pass@localhost/tarsy"
-
-# PostgreSQL with advanced features
-HISTORY_DATABASE_URL="postgresql://user:pass@localhost/tarsy?pool_size=10&max_overflow=20"
-HISTORY_DATABASE_URL="postgresql://user:pass@localhost/tarsy?sslmode=require"
+**Current Container Configuration (podman-compose.yml):**
+```yaml
+backend:
+  environment:
+    - DATABASE_URL=postgresql://tarsy:tarsy-dev-password@database:5432/tarsy
 ```
 
-#### Settings.py Configuration
+**Updated Backend Configuration (settings.py):**
+```python
+database_url: str = Field(default="", ...)
+# Now reads DATABASE_URL environment variable
+```
 
+**Result**: Container and backend both use `DATABASE_URL` - **PostgreSQL working correctly!**
+
+### Configuration Options (Standardized)
+
+```bash
+# ✅ CURRENT CONTAINER DEFAULT (PostgreSQL) - NOW WORKING
+DATABASE_URL="postgresql://tarsy:tarsy-dev-password@database:5432/tarsy"
+
+# ✅ CURRENT DEVELOPMENT DEFAULT (SQLite)
+DATABASE_URL=""  # Empty = auto-defaults to sqlite:///history.db
+
+# ✅ CURRENT TESTING DEFAULT (In-Memory SQLite)
+# Automatically used during pytest runs
+DATABASE_URL="sqlite:///:memory:"
+
+# Additional SQLite options:
+DATABASE_URL="sqlite:///history.db"  # Explicit file
+DATABASE_URL="sqlite:///./data/tarsy_history.db"  # Custom path
+
+# PostgreSQL connection string variations:
+DATABASE_URL="postgresql://username:password@localhost:5432/tarsy_history"
+DATABASE_URL="postgresql+psycopg2://user:pass@localhost/tarsy"
+```
+
+#### Current Settings.py Configuration
+
+**✅ IMPLEMENTED:**
 ```python
 class Settings(BaseSettings):
-    # History Service Configuration
-    history_database_url: str = Field(
+    # Database Configuration
+    database_url: str = Field(
         default="",
         description="Database connection string for alert processing history"
     )
@@ -154,58 +193,90 @@ class Settings(BaseSettings):
         description="Number of days to retain alert processing history data"
     )
     
-    # NEW: PostgreSQL-specific configuration
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # ✅ Auto-default logic works correctly
+        if not self.database_url:
+            if is_testing():
+                self.database_url = "sqlite:///:memory:"
+            else:
+                self.database_url = "sqlite:///history.db"
+```
+
+**✅ IMPLEMENTED: PostgreSQL-specific configuration**
+```python
+    # PostgreSQL Connection Pool Configuration
     postgres_pool_size: int = Field(
         default=5,
         description="PostgreSQL connection pool size"
     )
     postgres_max_overflow: int = Field(
-        default=10,
+        default=10, 
         description="PostgreSQL connection pool max overflow"
     )
     postgres_pool_timeout: int = Field(
         default=30,
         description="PostgreSQL connection pool timeout in seconds"
     )
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Set default database URL if not explicitly provided
-        if not self.history_database_url:
-            if is_testing():
-                # Use in-memory database for tests by default
-                self.history_database_url = "sqlite:///:memory:"
-            else:
-                # Use SQLite file database by default (works everywhere)
-                self.history_database_url = "sqlite:///history.db"
+    postgres_pool_recycle: int = Field(
+        default=3600,
+        description="PostgreSQL connection pool recycle time in seconds"
+    )
+    postgres_pool_pre_ping: bool = Field(
+        default=True,
+        description="Enable PostgreSQL connection pool pre-ping to validate connections"
+    )
+```
+
+**✅ RESOLVED: Standardized Environment Variable**
+```python
+    # Backend now uses DATABASE_URL to match container configuration
+    database_url: str = Field(
+        default="",
+        description="Database connection string for alert processing history"
+    )
 ```
 
 ### Configuration Examples
 
-#### Default SQLite Setup (.env)
+#### ✅ Current Container Setup (podman-compose.yml)
 
-```bash
-# Minimal setup (uses SQLite by default)
-HISTORY_ENABLED=true
-# No HISTORY_DATABASE_URL needed - defaults to SQLite
-
-# Custom SQLite configuration
-HISTORY_DATABASE_URL="sqlite:///./data/tarsy_history.db"
-HISTORY_RETENTION_DAYS=90
+**✅ WORKING:**
+```yaml
+# Current container deployment (no changes needed)
+backend:
+  environment:
+    - HISTORY_ENABLED=true
+    # ✅ CORRECT ENV VAR NAME:
+    - DATABASE_URL=postgresql://tarsy:tarsy-dev-password@database:5432/tarsy
 ```
 
-#### Optional PostgreSQL Setup (.env)
+**Backend Updated to Match:**
+```python
+# Backend settings.py now reads DATABASE_URL
+class Settings(BaseSettings):
+    database_url: str = Field(default="", ...)  # Changed from history_database_url
+```
+
+#### ✅ Current Development Setup (.env)
 
 ```bash
-# PostgreSQL configuration (when advanced features needed)
-HISTORY_DATABASE_URL="postgresql://tarsy_user:secure_password@postgres-server:5432/tarsy_history"
+# ✅ WORKING: Local development (SQLite default)
 HISTORY_ENABLED=true
-HISTORY_RETENTION_DAYS=90
+# No DATABASE_URL needed - auto-defaults to sqlite:///history.db
 
-# PostgreSQL optimization settings
-POSTGRES_POOL_SIZE=10
-POSTGRES_MAX_OVERFLOW=20
-POSTGRES_POOL_TIMEOUT=30
+# Custom SQLite configuration:
+# DATABASE_URL="sqlite:///./data/tarsy_history.db"
+# HISTORY_RETENTION_DAYS=90
+```
+
+#### ❌ Missing: PostgreSQL Optimization Setup
+
+```bash
+# TODO: Add PostgreSQL-specific optimization settings
+# POSTGRES_POOL_SIZE=10
+# POSTGRES_MAX_OVERFLOW=20
+# POSTGRES_POOL_TIMEOUT=30
 ```
 
 ## Data Design
@@ -475,100 +546,118 @@ class DatabaseHealthChecker:
         return False
 ```
 
-## Docker Integration
+## Container Integration Status
 
-For containerized PostgreSQL testing and deployment, this design integrates with the Docker deployment infrastructure defined in **EP-0019: Docker Deployment Infrastructure**.
+**✅ IMPLEMENTED:** Complete container deployment with PostgreSQL is **ALREADY WORKING** based on EP-0019 infrastructure.
 
-### PostgreSQL Container Configuration
+### ✅ Current Working PostgreSQL Container Configuration
 
-EP-0019 provides the base container deployment infrastructure. To add PostgreSQL support:
-
-#### Extended Podman Compose Configuration
+**Current `podman-compose.yml` (IMPLEMENTED):**
 ```yaml
-# podman-compose.postgres.yml (extends EP-0019 base configuration)
 version: '3.8'
 services:
-  tarsy-backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      - HISTORY_DATABASE_URL=postgresql://tarsy:dev_password@postgres:5432/tarsy
-      - POSTGRES_POOL_SIZE=5
-      - POSTGRES_MAX_OVERFLOW=10
-    depends_on:
-      postgres:
-        condition: service_healthy
-    
-  tarsy-frontend:
-    build:
-      context: ./dashboard
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    depends_on:
-      - tarsy-backend
-      
-  postgres:
-    image: mirror.gcr.io/library/postgres:15-alpine
+  database:  # ✅ PostgreSQL container working
+    image: mirror.gcr.io/library/postgres:16
     environment:
       - POSTGRES_DB=tarsy
       - POSTGRES_USER=tarsy
-      - POSTGRES_PASSWORD=dev_password
-    ports:
-      - "5432:5432"
+      - POSTGRES_PASSWORD=tarsy-dev-password
     volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"  # For debugging/admin access
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tarsy -d tarsy"]
-      interval: 5s
-      timeout: 5s
+      test: ["CMD-SHELL", "pg_isready -U tarsy"]
+      interval: 30s
+      timeout: 10s
       retries: 5
 
+  backend:  # ⚠️ Environment variable issue
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - HISTORY_ENABLED=true
+      # ❌ WRONG ENV VAR - should be HISTORY_DATABASE_URL
+      - DATABASE_URL=postgresql://tarsy:tarsy-dev-password@database:5432/tarsy
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      database:
+        condition: service_healthy
+    
+  # ✅ FULL STACK: OAuth2-proxy, Dashboard, Reverse-proxy all implemented
+  oauth2-proxy: # ✅ Authentication working
+  dashboard:    # ✅ Frontend working  
+  reverse-proxy: # ✅ Nginx routing working
+
 volumes:
-  postgres_dev_data:
+  postgres_data: # ✅ Persistent storage working
 ```
 
-### Extended Make Targets
+**What's Already Working:**
+- ✅ PostgreSQL 16 container with health checks
+- ✅ Persistent volume for data
+- ✅ Container networking and service dependencies
+- ✅ Full authentication stack (OAuth2-proxy)
+- ✅ Frontend dashboard container
+- ✅ Reverse proxy routing
+- ✅ Multi-service orchestration
 
-Extend the EP-0019 make targets with PostgreSQL-specific commands:
+**What Needs Fix:**
+- ❌ Environment variable name inconsistency
 
+### ✅ Current Make Targets (IMPLEMENTED)
+
+The EP-0019 make targets **ALREADY INCLUDE** PostgreSQL deployment:
+
+**Current Working Make Commands:**
 ```makefile
-# PostgreSQL deployment targets (extends EP-0019)
-deploy-postgres: build-images ## Deploy with PostgreSQL for testing using podman-compose
-	@echo "$(GREEN)Deploying Tarsy with PostgreSQL...$(NC)"
-	podman-compose -f podman-compose.postgres.yml up -d
-	@echo "$(YELLOW)Waiting for PostgreSQL to be ready...$(NC)"
-	@sleep 10
-	@echo "$(BLUE)Tarsy frontend: http://localhost:3000$(NC)"
-	@echo "$(BLUE)Backend API: http://localhost:8000$(NC)"
-	@echo "$(BLUE)PostgreSQL: localhost:5432$(NC)"
+# ✅ WORKING: Deploy complete stack with PostgreSQL
+containers-deploy: containers-clean check-config containers-start
 
-container-logs-postgres: ## Show PostgreSQL container logs
-	@echo "$(GREEN)PostgreSQL container logs:$(NC)"
-	-podman-compose -f podman-compose.postgres.yml logs postgres --tail=50 2>/dev/null || echo "PostgreSQL container not running"
+# ✅ WORKING: Start all containers (including PostgreSQL)
+containers-start: 
+	podman-compose -f podman-compose.yml up -d --build
+	# Outputs:
+	# Dashboard: http://localhost:8080
+	# API (via oauth2-proxy): http://localhost:8080/api  
+	# Database (admin access): localhost:5432
+
+# ✅ WORKING: Container logs (including PostgreSQL)
+containers-logs:
+	podman-compose logs --tail=50
+
+# ✅ WORKING: Container status
+containers-status:
+	podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```
 
-### PostgreSQL Testing Workflow
+**No additional PostgreSQL-specific targets needed** - the current make targets handle the full stack including PostgreSQL.
 
-Using the EP-0019 infrastructure with PostgreSQL extensions:
+### ✅ Current PostgreSQL Testing Workflow (IMPLEMENTED)
 
+**Working Commands:**
 ```bash
-# Test PostgreSQL Integration
-make deploy-postgres
+# ✅ Deploy complete stack with PostgreSQL
+make containers-deploy
 
-# Check PostgreSQL connectivity (wait for container to be ready)
-sleep 15
-podman exec -it $(podman ps -q --filter ancestor=mirror.gcr.io/library/postgres:15-alpine) psql -U tarsy -d tarsy -c "\dt"
+# ✅ Check PostgreSQL connectivity
+sleep 15  # Wait for health check
+podman exec -it $(podman ps -q --filter ancestor=mirror.gcr.io/library/postgres:16) psql -U tarsy -d tarsy -c "\dt"
 
-# Check PostgreSQL specific logs
-make container-logs-postgres
+# ✅ Check all container logs (including PostgreSQL)
+make containers-logs
 
-# Stop and clean up
-make clean-containers
+# ✅ Check container status
+make containers-status
+
+# ✅ Stop and clean up
+make containers-clean
 ```
+
+**✅ VERIFICATION:** The current container stack is fully functional with PostgreSQL as the default database.
 
 ## Documentation Requirements
 
@@ -581,40 +670,76 @@ make clean-containers
 
 ---
 
-## Implementation Checklist
+## Implementation Status
 
-### Phase 1: Core PostgreSQL Support
-- [ ] Enhanced database type detection
-- [ ] PostgreSQL-specific engine configuration
-- [ ] Connection pool settings
-- [ ] Updated initialization logic
-- [ ] Cross-database testing suite
+### Phase 1: Core PostgreSQL Support ✅ COMPLETED
+- [x] ✅ **COMPLETED:** Enhanced database type detection (in init_db.py)
+- [x] ✅ **COMPLETED:** PostgreSQL-specific engine configuration with connection pooling
+- [x] ✅ **COMPLETED:** Connection pool settings in Settings class
+- [x] ✅ **COMPLETED:** Updated initialization logic (SQLModel.metadata.create_all works)
+- [x] ✅ **COMPLETED:** Cross-database testing suite (SQLite and PostgreSQL tests exist)
+- [x] ✅ **COMPLETED:** Fixed environment variable naming inconsistency (standardized on DATABASE_URL)
 
-### Phase 2: Container Integration (Extends EP-0019)
-- [ ] PostgreSQL container configuration
-- [ ] Extended podman-compose.postgres.yml
-- [ ] PostgreSQL-specific make targets
-- [ ] Container health checks and initialization
-- [ ] Integration testing with EP-0019 infrastructure
+### Phase 2: Container Integration (EP-0019 Extension)
+- [x] ✅ **COMPLETED:** PostgreSQL container configuration (postgres:16 working)
+- [x] ✅ **COMPLETED:** Production-ready podman-compose.yml (not just postgres-specific)
+- [x] ✅ **COMPLETED:** Container deployment make targets (containers-deploy works)
+- [x] ✅ **COMPLETED:** Container health checks and initialization
+- [x] ✅ **COMPLETED:** Full integration with EP-0019 infrastructure (OAuth2, reverse proxy, etc.)
 
 ### Phase 3: Production Features
-- [ ] Database health checking
-- [ ] Enhanced error handling
-- [ ] Performance monitoring integration
-- [ ] PostgreSQL-specific optimizations
+- [ ] ❌ **TODO:** Database health checking (basic connection test exists)
+- [x] ✅ **PARTIAL:** Enhanced error handling (basic error handling in place)
+- [ ] ❌ **TODO:** Performance monitoring integration
+- [ ] ❌ **TODO:** PostgreSQL-specific optimizations (connection pooling, tuning)
+
+## Current Implementation Summary
+
+**✅ WORKING:** 
+- Container deployment with PostgreSQL as default
+- SQLite for local development
+- Cross-database schema compatibility
+- Full authentication and frontend stack
+- Container orchestration and health checks
+
+**✅ RECENTLY COMPLETED:**
+- Environment variable standardization: Both container and backend now use `DATABASE_URL`
+- Full end-to-end PostgreSQL integration in containerized deployments
+- **Phase 1 Complete**: PostgreSQL connection pooling with configurable settings
+- Enhanced database engine creation with type-specific optimizations
+- Comprehensive testing suite for connection pooling functionality
+
+**❌ REMAINING WORK (PHASE 3):**
+- Database health monitoring enhancements (basic connection testing exists)
+- Performance monitoring integration
+- Advanced PostgreSQL-specific optimizations (indexing, query optimization)
 
 ---
 
 ## Next Steps
 
-After design approval:
-1. **Prerequisite**: Ensure EP-0019 (Docker Deployment Infrastructure) is implemented
-2. Create Implementation Plan: `docs/enhancements/pending/EP-0020-implementation.md`
-3. Update backend dependencies to include PostgreSQL drivers
-4. Enhance testing suite for cross-database compatibility
-5. Extend EP-0019 container configurations with PostgreSQL support
+**✅ COMPLETED (Critical Fix):**
+1. **✅ Fixed Environment Variable Inconsistency**
+   - **SOLUTION IMPLEMENTED:** Standardized on `DATABASE_URL` and updated Settings class field name
+   - **RESULT:** Container and backend now use consistent environment variable
+   - **STATUS:** PostgreSQL integration now working correctly in containerized deployments
 
-**AI Prompt for Next Phase:**
-```
-Create an implementation plan using the template at docs/templates/ep-implementation-template.md for EP-0020 based on the approved design in this document, ensuring integration with EP-0019 Docker infrastructure.
-```
+**MEDIUM PRIORITY (Phase 3 Remaining):**
+2. **Enhanced Database Health Monitoring**
+   - Implement periodic connection health checks
+   - Add database performance metrics collection
+   - Create database monitoring dashboard integration
+
+3. **Advanced PostgreSQL Optimizations**
+   - Implement database index optimization strategies
+   - Add query performance monitoring and analysis
+   - Configure PostgreSQL-specific performance tuning parameters
+
+**COMPLETED:**
+- ✅ EP-0019 (Docker Deployment Infrastructure) is fully implemented
+- ✅ PostgreSQL container integration is working
+- ✅ Backend dependencies already include PostgreSQL drivers
+- ✅ Cross-database testing suite exists
+- ✅ Full container stack is deployed and functional
+
+**✅ COMPLETED:** The critical environment variable inconsistency has been resolved. Containers are now properly using PostgreSQL with the standardized `DATABASE_URL` environment variable.

@@ -1046,7 +1046,7 @@ class MockFactory:
         
         # Mock settings
         service.settings = Mock()
-        service.settings.history_database_url = "sqlite:///test.db"
+        service.settings.database_url = "sqlite:///test.db"
         
         # Create default return values using SessionFactory
         # Mock get_sessions_list (returns PaginatedSessions) 

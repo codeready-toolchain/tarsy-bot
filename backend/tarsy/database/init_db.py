@@ -6,17 +6,84 @@ Handles database schema creation and initialization for the history service.
 
 import logging
 from typing import Optional
+from urllib.parse import urlparse
 
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, text
 
-from tarsy.config.settings import get_settings
+from tarsy.config.settings import get_settings, Settings
 
 # Import all SQLModel table classes to ensure they are registered for schema creation
 from tarsy.models.db_models import AlertSession, StageExecution  # noqa: F401
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction  # noqa: F401
 
 logger = logging.getLogger(__name__)
+
+
+def detect_database_type(database_url: str) -> str:
+    """
+    Detect database type from connection URL.
+    
+    Args:
+        database_url: Database connection string
+        
+    Returns:
+        Database type ('postgresql' or 'sqlite')
+        
+    Raises:
+        ValueError: For unsupported database schemes
+    """
+    parsed = urlparse(database_url)
+    scheme = parsed.scheme.lower()
+    
+    if scheme.startswith('postgresql'):
+        return 'postgresql'
+    elif scheme.startswith('sqlite'):
+        return 'sqlite'
+    else:
+        raise ValueError(f"Unsupported database scheme: {scheme}")
+
+
+def create_database_engine(database_url: str, settings: Optional[Settings] = None):
+    """
+    Create database engine with type-specific optimizations.
+    
+    Args:
+        database_url: Database connection string
+        settings: Settings instance (will get default if None)
+        
+    Returns:
+        SQLAlchemy engine configured for the database type
+    """
+    if settings is None:
+        settings = get_settings()
+        
+    db_type = detect_database_type(database_url)
+    
+    if db_type == 'postgresql':
+        # PostgreSQL-specific configuration with connection pooling
+        return create_engine(
+            database_url,
+            echo=False,
+            pool_size=settings.postgres_pool_size,
+            max_overflow=settings.postgres_max_overflow,
+            pool_timeout=settings.postgres_pool_timeout,
+            pool_recycle=settings.postgres_pool_recycle,
+            pool_pre_ping=settings.postgres_pool_pre_ping,
+            # PostgreSQL-specific connection parameters
+            connect_args={
+                "application_name": "tarsy",
+                "options": "-c timezone=UTC"
+            }
+        )
+    else:  # SQLite
+        # SQLite-specific configuration
+        connect_args = {"check_same_thread": False} if "sqlite" in database_url else {}
+        return create_engine(
+            database_url,
+            echo=False,
+            connect_args=connect_args
+        )
 
 
 def create_database_tables(database_url: str) -> bool:
@@ -30,8 +97,8 @@ def create_database_tables(database_url: str) -> bool:
         True if tables created successfully, False otherwise
     """
     try:
-        # Create engine
-        engine = create_engine(database_url, echo=False)
+        # Create engine with type-specific optimizations
+        engine = create_database_engine(database_url)
         
         # Create all tables defined in SQLModel models
         SQLModel.metadata.create_all(engine)
@@ -71,19 +138,19 @@ def initialize_database() -> bool:
             return True
         
         # Validate configuration
-        if not settings.history_database_url:
-            logger.error("History database URL not configured but history service is enabled")
+        if not settings.database_url:
+            logger.error("Database URL not configured but history service is enabled")
             return False
         
         if settings.history_retention_days <= 0:
             logger.warning(f"Invalid retention days ({settings.history_retention_days}), using default 90 days")
         
         # Create database tables
-        success = create_database_tables(settings.history_database_url)
+        success = create_database_tables(settings.database_url)
         
         if success:
             logger.info("History database initialization completed successfully")
-            logger.info(f"Database: {settings.history_database_url.split('/')[-1]}")
+            logger.info(f"Database: {settings.database_url.split('/')[-1]}")
             logger.info(f"Retention policy: {settings.history_retention_days} days")
         else:
             logger.error("History database initialization failed")
@@ -110,10 +177,10 @@ def test_database_connection(database_url: Optional[str] = None) -> bool:
             settings = get_settings()
             if not settings.history_enabled:
                 return False
-            database_url = settings.history_database_url
+            database_url = settings.database_url
         
-        # Create engine and test connection
-        engine = create_engine(database_url, echo=False)
+        # Create engine with optimizations and test connection
+        engine = create_database_engine(database_url)
         
         with Session(engine) as session:
             # Simple connectivity test
@@ -137,8 +204,8 @@ def get_database_info() -> dict:
         
         return {
             "enabled": settings.history_enabled,
-            "database_url": settings.history_database_url if settings.history_enabled else None,
-            "database_name": settings.history_database_url.split('/')[-1] if settings.history_enabled else None,
+            "database_url": settings.database_url if settings.history_enabled else None,
+            "database_name": settings.database_url.split('/')[-1] if settings.history_enabled else None,
             "retention_days": settings.history_retention_days if settings.history_enabled else None,
             "connection_test": test_database_connection() if settings.history_enabled else False
         }

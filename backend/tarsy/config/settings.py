@@ -73,8 +73,8 @@ class Settings(BaseSettings):
         description="Maximum data points before stopping processing (when combined with min iterations)"
     )
     
-    # History Service Configuration
-    history_database_url: str = Field(
+    # Database Configuration
+    database_url: str = Field(
         default="",
         description="Database connection string for alert processing history"
     )
@@ -85,6 +85,28 @@ class Settings(BaseSettings):
     history_retention_days: int = Field(
         default=90,
         description="Number of days to retain alert processing history data"
+    )
+    
+    # PostgreSQL Connection Pool Configuration
+    postgres_pool_size: int = Field(
+        default=5,
+        description="PostgreSQL connection pool size"
+    )
+    postgres_max_overflow: int = Field(
+        default=10,
+        description="PostgreSQL connection pool max overflow"
+    )
+    postgres_pool_timeout: int = Field(
+        default=30,
+        description="PostgreSQL connection pool timeout in seconds"
+    )
+    postgres_pool_recycle: int = Field(
+        default=3600,
+        description="PostgreSQL connection pool recycle time in seconds"
+    )
+    postgres_pool_pre_ping: bool = Field(
+        default=True,
+        description="Enable PostgreSQL connection pool pre-ping to validate connections"
     )
     
     # Concurrency Control Configuration
@@ -119,13 +141,13 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Set default database URL based on environment if not explicitly provided
-        if not self.history_database_url:
+        if not self.database_url:
             if is_testing():
                 # Use in-memory database for tests by default
-                self.history_database_url = "sqlite:///:memory:"
+                self.database_url = "sqlite:///:memory:"
             else:
                 # Use file database for dev/production
-                self.history_database_url = "sqlite:///history.db"
+                self.database_url = "sqlite:///history.db"
     
     model_config = SettingsConfigDict(
         env_file=".env",
