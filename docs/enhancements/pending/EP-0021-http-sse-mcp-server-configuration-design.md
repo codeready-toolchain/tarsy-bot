@@ -1,23 +1,22 @@
-# EP-0021: HTTP and SSE MCP Server Configuration Support
+# EP-0021: HTTP MCP Server Configuration Support
 
 ## Implementation Status 🚧
 
 **🔄 PENDING: Phase 1** - Configuration Model Extensions  
 **🔄 PENDING: Phase 2** - MCP Client Transport Layer  
 **🔄 PENDING: Phase 3** - HTTP Client Integration  
-**🔄 PENDING: Phase 4** - SSE Client Integration  
-**🔄 PENDING: Phase 5** - Registry and Validation  
-**🔄 PENDING: Phase 6** - Testing and Documentation  
+**🔄 PENDING: Phase 4** - Registry and Validation  
+**🔄 PENDING: Phase 5** - Testing and Documentation  
 
 ## Problem Statement
 
 **Note**: This design follows the official [MCP Streamable HTTP Transport specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports) which uses a single endpoint with JSON-RPC messages, not REST-style multiple endpoints.
 
-The current MCP server implementation only supports **stdio transport**, limiting integration with modern MCP servers that provide HTTP and SSE (Server-Sent Events) endpoints:
+The current MCP server implementation only supports **stdio transport**, limiting integration with modern MCP servers that provide HTTP endpoints:
 
 1. **Transport Limitation**: Only stdio-based MCP servers can be configured via `StdioServerParameters`
-2. **Modern MCP Servers**: Many production MCP servers expose HTTP/SSE endpoints for better scalability and deployment flexibility
-3. **Network Integration**: HTTP/SSE transports enable containerized, remote, and cloud-based MCP server deployments
+2. **Modern MCP Servers**: Many production MCP servers expose HTTP endpoints for better scalability and deployment flexibility
+3. **Network Integration**: HTTP transports enable containerized, remote, and cloud-based MCP server deployments
 4. **Limited Ecosystem**: Restricted to command-line MCP servers, missing web-based and service-oriented implementations
 
 **Current Flow**:
@@ -27,24 +26,23 @@ MCP Client → StdioServerParameters → subprocess.Popen → stdin/stdout commu
 
 **Missing Capabilities**:
 ```
-MCP Client → HTTP Transport → REST endpoints
-MCP Client → SSE Transport → Server-Sent Events streams
+MCP Client → HTTP Transport → JSON-RPC over HTTP
 ```
 
 ## Solution Overview
 
-Extend the MCP server configuration system to support **HTTP and SSE transports** with a clean, unified configuration approach:
+Extend the MCP server configuration system to support **HTTP transports** with a clean, unified configuration approach:
 
-1. **Multi-Transport Architecture**: Support stdio, HTTP, and SSE transports with unified configuration
+1. **Multi-Transport Architecture**: Support stdio and HTTP transports with unified configuration
 2. **Transport-Specific Parameters**: Dedicated configuration models for each transport type
 3. **Connection Management**: Abstract transport layer with consistent session interface
 4. **Service Discovery**: Support for URL-based MCP server endpoints
-5. **Security Integration**: Authentication and TLS support for HTTP/SSE transports
+5. **Security Integration**: Authentication and TLS support for HTTP transports
 6. **Unified Configuration**: All transport types use the same structured configuration format
 
 **Target Architecture**:
 ```
-MCP Client → Transport Factory → [Stdio|HTTP|SSE] Transport → Unified Session Interface
+MCP Client → Transport Factory → [Stdio|HTTP] Transport → Unified Session Interface
 ```
 
 ## Key MCP Specification Clarifications
@@ -53,7 +51,7 @@ Based on the [official MCP Transport specification](https://modelcontextprotocol
 
 ### **Single Endpoint Pattern**
 - MCP servers provide **one HTTP endpoint** (e.g., `/mcp`) for all operations
-- Both POST (for sending JSON-RPC messages) and GET (for SSE streams) use the same endpoint
+- POST requests are used for sending JSON-RPC messages
 
 ### **JSON-RPC Message Format**
 - All communications use **JSON-RPC 2.0** format
@@ -101,16 +99,6 @@ local-dev-mcp:
     url: "http://localhost:3000/mcp"  # HTTP OK for development/testing
     bearer_token: "${DEV_MCP_TOKEN}"  # Development token
     timeout: 10
-
-# SSE Transport (production) - with bearer token authentication over HTTPS
-monitoring-sse:
-  transport:
-    type: "sse"
-    url: "https://monitoring.internal:8000/mcp"  # HTTPS for production
-    bearer_token: "${MONITORING_ACCESS_TOKEN}"  # Pre-configured bearer token
-    timeout: 60
-    reconnect: true
-    max_retries: 3
 ```
 
 ### **3. Security and Authentication (Machine-to-Machine)**
@@ -146,8 +134,7 @@ class TransportType(str, Enum):
     """Supported MCP transport types."""
     
     STDIO = "stdio"
-    HTTP = "http" 
-    SSE = "sse"
+    HTTP = "http"
 
 class BaseTransportConfig(BaseModel):
     """Base configuration for MCP transports."""
@@ -182,37 +169,6 @@ class HTTPTransportConfig(BaseTransportConfig):
         description="Verify SSL certificates (recommended for production)"
     )
 
-class SSETransportConfig(BaseTransportConfig):
-    """Configuration for Server-Sent Events transport per MCP Streamable HTTP specification."""
-    
-    type: TransportType = Field(default=TransportType.SSE, description="Transport type")
-    url: HttpUrl = Field(..., description="Single MCP endpoint URL (same as HTTP)")
-    bearer_token: Optional[str] = Field(
-        default=None,
-        description="Bearer access token for machine-to-machine authentication",
-        min_length=1
-    )
-    headers: Optional[Dict[str, str]] = Field(
-        default_factory=dict,
-        description="Additional HTTP headers (excluding Authorization - managed by bearer token)"
-    )
-    reconnect: bool = Field(
-        default=True,
-        description="Auto-reconnect on connection loss"
-    )
-    reconnect_interval: int = Field(
-        default=5,
-        description="Reconnection interval in seconds"
-    )
-    max_retries: int = Field(
-        default=3,
-        description="Maximum reconnection attempts"
-    )
-    verify_ssl: bool = Field(
-        default=True,
-        description="Verify SSL certificates (recommended for production)"
-    )
-
 ```
 
 ### **2. Transport Factory and Interface**
@@ -230,8 +186,7 @@ from tarsy.models.agent_config import TransportConfig
 from tarsy.models.mcp_transport_config import (
     TransportType,
     StdioTransportConfig,
-    HTTPTransportConfig,
-    SSETransportConfig
+    HTTPTransportConfig
 )
 from tarsy.utils.logger import get_module_logger
 
@@ -287,9 +242,6 @@ class MCPTransportFactory:
         elif transport_type == TransportType.HTTP:
             from .http_transport import HTTPTransport
             return HTTPTransport(server_id, transport)
-        elif transport_type == TransportType.SSE:
-            from .sse_transport import SSETransport
-            return SSETransport(server_id, transport)
         else:
             raise ValueError(f"Unsupported transport type: {transport_type}")
     
@@ -591,206 +543,7 @@ class HTTPTransport(MCPTransport):
         return self.session is not None and not self.session.closed
 ```
 
-### **5. SSE Transport Implementation**
-
-**Location**: `backend/tarsy/integrations/mcp/transport/sse_transport.py` (new file)
-
-```python
-"""SSE (Server-Sent Events) transport implementation for MCP servers."""
-
-import json
-import asyncio
-from typing import Dict, Any, Optional, AsyncGenerator
-import aiohttp
-from mcp import ClientSession
-from mcp.types import Tool
-
-from .factory import MCPTransport
-from tarsy.models.mcp_transport_config import SSETransportConfig
-from tarsy.utils.logger import get_module_logger
-from tarsy.utils.error_details import extract_error_details
-
-logger = get_module_logger(__name__)
-
-class SSEMCPSession(ClientSession):
-    """SSE-based MCP session implementation."""
-    
-    def __init__(self, server_id: str, config: SSETransportConfig, event_stream: AsyncGenerator):
-        self.server_id = server_id
-        self.config = config
-        self.event_stream = event_stream
-        self._initialized = False
-        self._request_id = 0
-        self._pending_requests: Dict[int, asyncio.Event] = {}
-        self._request_results: Dict[int, Any] = {}
-        self._tools_cache: Optional[List[Tool]] = None
-        self._stream_task: Optional[asyncio.Task] = None
-    
-    async def initialize(self):
-        """Initialize SSE MCP session."""
-        if self._initialized:
-            return
-        
-        # Start background task to process SSE events
-        self._stream_task = asyncio.create_task(self._process_events())
-        
-        # Send initialization request
-        await self._send_request("initialize", {})
-        
-        self._initialized = True
-        logger.info(f"SSE MCP session initialized for server: {self.server_id}")
-    
-    async def list_tools(self):
-        """List tools via SSE."""
-        if self._tools_cache:
-            return type('ToolsResult', (), {'tools': self._tools_cache})()
-        
-        result = await self._send_request("list_tools", {})
-        tools = [Tool(**tool) for tool in result.get("tools", [])]
-        self._tools_cache = tools
-        return type('ToolsResult', (), {'tools': tools})()
-    
-    async def call_tool(self, tool_name: str, parameters: Dict[str, Any]):
-        """Call tool via SSE."""
-        result = await self._send_request("call_tool", {
-            "name": tool_name,
-            "parameters": parameters
-        })
-        
-        return type('ToolResult', (), {
-            'content': [type('Content', (), {'text': json.dumps(result)})()]
-        })()
-    
-    async def _send_request(self, method: str, params: Dict[str, Any]) -> Any:
-        """Send request via SSE and wait for response."""
-        request_id = self._get_next_request_id()
-        
-        # Create event for this request
-        response_event = asyncio.Event()
-        self._pending_requests[request_id] = response_event
-        
-        # Send request (implementation depends on SSE server protocol)
-        request_data = {
-            "id": request_id,
-            "method": method,
-            "params": params
-        }
-        
-        # Wait for response with timeout
-        try:
-            await asyncio.wait_for(response_event.wait(), timeout=self.config.timeout)
-            result = self._request_results.pop(request_id)
-            return result
-        except asyncio.TimeoutError:
-            logger.error(f"SSE request {request_id} timed out")
-            raise Exception(f"SSE request timed out: {method}")
-        finally:
-            # Cleanup
-            self._pending_requests.pop(request_id, None)
-            self._request_results.pop(request_id, None)
-    
-    async def _process_events(self):
-        """Process incoming SSE events."""
-        try:
-            async for event in self.event_stream:
-                if event.type == 'message':
-                    await self._handle_message(event.data)
-        except Exception as e:
-            logger.error(f"Error processing SSE events: {extract_error_details(e)}")
-    
-    async def _handle_message(self, data: str):
-        """Handle SSE message."""
-        try:
-            message = json.loads(data)
-            request_id = message.get("id")
-            
-            if request_id in self._pending_requests:
-                self._request_results[request_id] = message.get("result")
-                self._pending_requests[request_id].set()
-        except json.JSONDecodeError:
-            logger.warning(f"Invalid JSON in SSE message: {data}")
-    
-    def _get_next_request_id(self) -> int:
-        """Get next request ID."""
-        self._request_id += 1
-        return self._request_id
-    
-    async def close(self):
-        """Close SSE session."""
-        if self._stream_task:
-            self._stream_task.cancel()
-        self._pending_requests.clear()
-        self._request_results.clear()
-
-class SSETransport(MCPTransport):
-    """SSE transport for MCP servers."""
-    
-    def __init__(self, server_id: str, config: SSETransportConfig):
-        self.server_id = server_id
-        self.config = config
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.mcp_session: Optional[SSEMCPSession] = None
-    
-    async def create_session(self) -> ClientSession:
-        """Create SSE MCP session."""
-        if self.mcp_session:
-            return self.mcp_session
-        
-        # Create HTTP session for SSE
-        timeout = aiohttp.ClientTimeout(total=None)  # No timeout for SSE
-        self.session = aiohttp.ClientSession(timeout=timeout)
-        
-        # Connect to SSE endpoint
-        headers = self._build_headers()
-        event_stream = self._create_event_stream(headers)
-        
-        self.mcp_session = SSEMCPSession(self.server_id, self.config, event_stream)
-        await self.mcp_session.initialize()
-        
-        return self.mcp_session
-    
-    async def _create_event_stream(self, headers: Dict[str, str]) -> AsyncGenerator:
-        """Create SSE event stream."""
-        url = str(self.config.url)
-        
-        async with self.session.get(url, headers=headers) as response:
-            response.raise_for_status()
-            
-            async for line in response.content:
-                line = line.decode('utf-8').strip()
-                if line.startswith('data: '):
-                    data = line[6:]  # Remove 'data: ' prefix
-                    yield type('Event', (), {'type': 'message', 'data': data})()
-    
-    def _build_headers(self) -> Dict[str, str]:
-        """Build headers for SSE connection with bearer token per MCP Authorization specification."""
-        headers = dict(self.config.headers or {})
-        headers['Accept'] = 'text/event-stream'
-        headers['Cache-Control'] = 'no-cache'
-        
-        # Add Authorization header with Bearer token if configured
-        if self.config.bearer_token:
-            # Per MCP spec: Must use Authorization header with Bearer token format
-            headers["Authorization"] = f"Bearer {self.config.bearer_token}"
-
-        return headers
-    
-    async def close(self):
-        """Close SSE transport."""
-        if self.mcp_session:
-            await self.mcp_session.close()
-        if self.session:
-            await self.session.close()
-        self.session = None
-        self.mcp_session = None
-    
-    @property
-    def is_connected(self) -> bool:
-        """Check if SSE transport is connected."""
-        return self.session is not None and not self.session.closed
-```
-
-### **6. Enhanced MCP Client**
+### **5. Enhanced MCP Client**
 
 **Location**: `backend/tarsy/integrations/mcp/client.py` (enhanced existing file)
 
@@ -864,7 +617,7 @@ class MCPClient:
             self._initialized = False
 ```
 
-### **7. Configuration Model Updates**
+### **6. Configuration Model Updates**
 
 **Location**: `backend/tarsy/models/agent_config.py` (enhanced existing file)
 
@@ -872,10 +625,10 @@ class MCPClient:
 from typing import Union
 from pydantic import Field, discriminator
 
-from tarsy.models.mcp_transport_config import StdioTransportConfig, HTTPTransportConfig, SSETransportConfig
+from tarsy.models.mcp_transport_config import StdioTransportConfig, HTTPTransportConfig
 
 # Transport configuration union with discriminator
-TransportConfig = Union[StdioTransportConfig, HTTPTransportConfig, SSETransportConfig]
+TransportConfig = Union[StdioTransportConfig, HTTPTransportConfig]
 
 class MCPServerConfigModel(BaseModel):
     """Enhanced MCP server configuration with multi-transport support."""
@@ -884,12 +637,12 @@ class MCPServerConfigModel(BaseModel):
     
     transport: TransportConfig = Field(
         ...,
-        description="Transport-specific configuration (stdio, HTTP, or SSE)",
+        description="Transport-specific configuration (stdio or HTTP)",
         discriminator='type'
     )
 ```
 
-### **8. Registry Enhancement**
+### **7. Registry Enhancement**
 
 **Location**: `backend/tarsy/services/mcp_server_registry.py` (enhanced existing file)
 
@@ -912,7 +665,7 @@ class MCPServerRegistry:
             raise
 ```
 
-### **9. Dependencies and Requirements**
+### **8. Dependencies and Requirements**
 
 **Location**: `backend/pyproject.toml` (add new dependencies)
 
@@ -920,7 +673,7 @@ class MCPServerRegistry:
 [tool.poetry.dependencies]
 # Existing dependencies...
 
-# HTTP/SSE transport support
+# HTTP transport support
 aiohttp = "^3.9.0"
 ```
 
@@ -1009,32 +762,7 @@ aiohttp = "^3.9.0"
 
 **Verification:** HTTP MCP servers can be configured and communicate successfully with proper authentication.
 
-### **Phase 4: SSE Client Integration**
-
-**Deliverables:**
-- SSE transport implementation
-- Event stream processing
-- Reconnection and error recovery
-
-**Tasks:**
-1. **SSE Transport Implementation** (`backend/tarsy/integrations/mcp/transport/sse_transport.py`)
-   - Implement SSE-based MCP session
-   - Add event stream processing with asyncio
-   - Support reconnection and connection recovery
-
-2. **SSE Session Management**
-   - Bidirectional communication over SSE
-   - Request/response correlation
-   - Connection state monitoring
-
-3. **SSE Testing**
-   - Mock SSE MCP server for testing
-   - Event processing and correlation testing
-   - Reconnection behavior testing
-
-**Verification:** SSE MCP servers can be configured and maintain persistent connections with proper event handling.
-
-### **Phase 5: Registry and Validation**
+### **Phase 4: Registry and Validation**
 
 **Deliverables:**
 - Simplified registry using automatic Pydantic validation
@@ -1054,7 +782,7 @@ aiohttp = "^3.9.0"
 
 **Verification:** Registry validates all transport configurations, examples work correctly.
 
-### **Phase 6: Testing and Documentation**
+### **Phase 5: Testing and Documentation**
 
 **Deliverables:**
 - Comprehensive test suite
@@ -1062,7 +790,7 @@ aiohttp = "^3.9.0"
 
 **Tasks:**
 1. **Integration Testing**
-   - End-to-end tests with HTTP/SSE MCP servers
+   - End-to-end tests with HTTP MCP servers
    - Authentication flow testing
    - Error recovery scenario testing
 
@@ -1132,20 +860,6 @@ mcp_servers:
       Local development MCP server for testing.
       HTTP is acceptable for localhost development scenarios.
     
-  # Production SSE server (HTTPS recommended)
-  monitoring-dashboard:
-    server_id: "monitoring-dashboard"
-    server_type: "monitoring"
-    enabled: true
-    transport:
-      type: "sse"
-      url: "https://monitoring.internal:8000/mcp"  # HTTPS for production
-      bearer_token: "${MONITORING_ACCESS_TOKEN}"  # Pre-configured bearer token
-      reconnect: true
-      timeout: 60
-    instructions: |
-      Real-time monitoring with bearer token authentication via MCP Streamable HTTP with SSE.
-      Suitable for server-to-server communication without OAuth flows.
 ```
 
 ### **Environment Variables**
@@ -1155,7 +869,6 @@ mcp_servers:
 
 # Production tokens (use with HTTPS endpoints)
 AZURE_MCP_ACCESS_TOKEN="your-bearer-access-token-for-azure-mcp"
-MONITORING_ACCESS_TOKEN="your-bearer-access-token-for-monitoring-mcp"
 
 # Development tokens (can use with HTTP localhost endpoints)
 DEV_MCP_TOKEN="dev-token-for-local-testing"
