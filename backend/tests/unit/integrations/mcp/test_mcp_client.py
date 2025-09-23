@@ -33,11 +33,21 @@ class TestMCPClientInitialization:
     @pytest.fixture
     def mock_registry(self):
         """Mock MCP server registry."""
+        from tarsy.models.mcp_transport_config import TransportType
+        
         registry = Mock(spec=MCPServerRegistry)
         registry.get_all_server_ids.return_value = ["test-server"]
+        
+        # Create mock transport config with proper type
+        mock_transport = Mock()
+        mock_transport.type = TransportType.STDIO
+        mock_transport.command = "test"
+        mock_transport.args = []
+        mock_transport.env = {}
+        
         registry.get_server_config_safe.return_value = Mock(
             enabled=True,
-            connection_params={"command": "test", "args": []}
+            transport=mock_transport
         )
         return registry
     
@@ -65,21 +75,21 @@ class TestMCPClientInitialization:
         """Test successful server initialization."""
         client = MCPClient(mock_settings, mock_registry)
         
-        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
-             patch('tarsy.integrations.mcp.client.StdioServerParameters') as mock_params, \
-             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session:
-            
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory:
+            # Mock transport and session
+            mock_transport = AsyncMock()
             mock_session = AsyncMock()
-            # stdio_client is expected to return a tuple of (read_stream, write_stream)
-            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
-            # ClientSession context manager returns the session
-            mock_client_session.return_value.__aenter__.return_value = mock_session
+            mock_transport.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport
             
             await client.initialize()
             
             assert client._initialized == True
             assert "test-server" in client.sessions
+            assert "test-server" in client.transports
             mock_registry.get_all_server_ids.assert_called_once()
+            mock_factory.create_transport.assert_called_once()
+            mock_transport.create_session.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_initialize_skips_disabled_servers(self, mock_settings, mock_registry):
@@ -97,14 +107,15 @@ class TestMCPClientInitialization:
         """Test initialization handles individual server errors."""
         client = MCPClient(mock_settings, mock_registry)
         
-        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio:
-            mock_stdio.side_effect = Exception("Server connection failed")
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory:
+            mock_factory.create_transport.side_effect = Exception("Server connection failed")
             
             # Should not raise exception, just log error
             await client.initialize()
             
             assert client._initialized == True
             assert len(client.sessions) == 0
+            assert len(client.transports) == 0
 
 
 @pytest.mark.unit
@@ -560,25 +571,32 @@ class TestMCPClientIntegration:
         # Setup mocks for complete workflow
         mock_registry = Mock()
         mock_registry.get_all_server_ids.return_value = ["integration-server"]
+        from tarsy.models.mcp_transport_config import TransportType
+        
+        # Create mock transport config
+        mock_transport = Mock()
+        mock_transport.type = TransportType.STDIO
+        mock_transport.command = "test"
+        mock_transport.args = []
+        mock_transport.env = {}
+        
         mock_registry.get_server_config_safe.return_value = Mock(
             enabled=True,
-            connection_params={"command": "test", "args": []},
+            transport=mock_transport,
             data_masking=Mock(enabled=False)
         )
         
         client = MCPClient(Mock(), mock_registry)
         
-        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory, \
              patch('tarsy.integrations.mcp.client.mcp_list_context') as mock_list_context, \
-             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_call_context, \
-             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session:
+             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_call_context:
             
-            # Setup session mock
+            # Setup transport and session mocks
+            mock_transport_instance = AsyncMock()
             mock_session = AsyncMock()
-            # stdio_client returns (read_stream, write_stream)
-            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
-            # ClientSession context manager returns the session
-            mock_client_session.return_value.__aenter__.return_value = mock_session
+            mock_transport_instance.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport_instance
             
             # Setup tool listing
             mock_tool = Tool(
@@ -642,13 +660,22 @@ class TestMCPClientSummarization:
     @pytest.fixture
     def mock_registry_with_summarization(self):
         """Mock MCP server registry with summarization config."""
+        from tarsy.models.mcp_transport_config import TransportType
+        
         registry = Mock(spec=MCPServerRegistry)
         registry.get_all_server_ids.return_value = ["test-server"]
         
         # Mock server config with summarization enabled
         server_config = Mock()
         server_config.enabled = True
-        server_config.connection_params = {"command": "test", "args": []}
+        
+        # Create mock transport config
+        mock_transport = Mock()
+        mock_transport.type = TransportType.STDIO
+        mock_transport.command = "test"
+        mock_transport.args = []
+        mock_transport.env = {}
+        server_config.transport = mock_transport
         
         # Mock summarization config
         summarization_config = Mock()
@@ -693,15 +720,15 @@ class TestMCPClientSummarization:
         # Create large result that exceeds the low threshold
         large_result = {"result": "x" * 1000}  # Large result to trigger summarization
         
-        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
-             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory, \
              patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
-            # Setup mocks
+            # Setup transport and session mocks
+            mock_transport = AsyncMock()
             mock_session = AsyncMock()
             mock_session.call_tool.return_value = Mock(content=large_result["result"])
-            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
-            mock_client_session.return_value.__aenter__.return_value = mock_session
+            mock_transport.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
             mock_ctx.get_request_id.return_value = "test-req-123"
@@ -739,15 +766,15 @@ class TestMCPClientSummarization:
         # Create small result that doesn't exceed threshold
         small_result = {"result": "small"}
         
-        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
-             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory, \
              patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
-            # Setup mocks
+            # Setup transport and session mocks
+            mock_transport = AsyncMock()
             mock_session = AsyncMock()
             mock_session.call_tool.return_value = Mock(content=small_result["result"])
-            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
-            mock_client_session.return_value.__aenter__.return_value = mock_session
+            mock_transport.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
             mock_ctx.get_request_id.return_value = "test-req-456"
@@ -784,15 +811,15 @@ class TestMCPClientSummarization:
         
         large_result = {"result": "x" * 1000}  # Large result
         
-        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
-             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory, \
              patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
-            # Setup mocks
+            # Setup transport and session mocks
+            mock_transport = AsyncMock()
             mock_session = AsyncMock()
             mock_session.call_tool.return_value = Mock(content=large_result["result"])
-            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
-            mock_client_session.return_value.__aenter__.return_value = mock_session
+            mock_transport.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
             mock_ctx.get_request_id.return_value = "test-req-789"
@@ -818,13 +845,22 @@ class TestMCPClientSummarization:
     @pytest.mark.asyncio
     async def test_call_tool_summarization_disabled_by_config(self, mock_settings, mock_summarizer, sample_conversation):
         """Test call_tool respects disabled summarization configuration."""
+        from tarsy.models.mcp_transport_config import TransportType
+        
         # Arrange - Registry with summarization disabled
         registry = Mock(spec=MCPServerRegistry)
         registry.get_all_server_ids.return_value = ["test-server"]
         
         server_config = Mock()
         server_config.enabled = True
-        server_config.connection_params = {"command": "test", "args": []}
+        
+        # Create mock transport config
+        mock_transport = Mock()
+        mock_transport.type = TransportType.STDIO
+        mock_transport.command = "test"
+        mock_transport.args = []
+        mock_transport.env = {}
+        server_config.transport = mock_transport
         
         # Disabled summarization config
         summarization_config = Mock()
@@ -842,15 +878,15 @@ class TestMCPClientSummarization:
         
         large_result = {"result": "x" * 1000}
         
-        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
-             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory, \
              patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
-            # Setup mocks
+            # Setup transport and session mocks
+            mock_transport = AsyncMock()
             mock_session = AsyncMock()
             mock_session.call_tool.return_value = Mock(content=large_result["result"])
-            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
-            mock_client_session.return_value.__aenter__.return_value = mock_session
+            mock_transport.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
             mock_ctx.get_request_id.return_value = "test-req-disabled"
@@ -891,15 +927,15 @@ class TestMCPClientSummarization:
         
         large_result = {"result": "x" * 1000}
         
-        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
-             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory, \
              patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
-            # Setup mocks
+            # Setup transport and session mocks
+            mock_transport = AsyncMock()
             mock_session = AsyncMock()
             mock_session.call_tool.return_value = Mock(content=large_result["result"])
-            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
-            mock_client_session.return_value.__aenter__.return_value = mock_session
+            mock_transport.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
             mock_ctx.get_request_id.return_value = "test-req-error"
@@ -936,15 +972,15 @@ class TestMCPClientSummarization:
         
         large_result = {"result": "x" * 1000}
         
-        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
-             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory, \
              patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
-            # Setup mocks  
+            # Setup transport and session mocks
+            mock_transport = AsyncMock()
             mock_session = AsyncMock()
             mock_session.call_tool.return_value = Mock(content=large_result["result"])
-            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
-            mock_client_session.return_value.__aenter__.return_value = mock_session
+            mock_transport.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
             mock_ctx.get_request_id.return_value = "test-req-no-config"
@@ -973,13 +1009,22 @@ class TestMCPClientSummarization:
     @pytest.mark.asyncio
     async def test_call_tool_custom_summarization_thresholds(self, mock_settings, mock_summarizer, sample_conversation):
         """Test call_tool respects custom summarization thresholds."""
+        from tarsy.models.mcp_transport_config import TransportType
+        
         # Arrange - Registry with custom threshold
         registry = Mock(spec=MCPServerRegistry)
         registry.get_all_server_ids.return_value = ["test-server"]
         
         server_config = Mock()
         server_config.enabled = True
-        server_config.connection_params = {"command": "test", "args": []}
+        
+        # Create mock transport config
+        mock_transport = Mock()
+        mock_transport.type = TransportType.STDIO
+        mock_transport.command = "test"
+        mock_transport.args = []
+        mock_transport.env = {}
+        server_config.transport = mock_transport
         
         # Custom summarization config with higher threshold
         summarization_config = Mock()
@@ -999,15 +1044,15 @@ class TestMCPClientSummarization:
         
         medium_result = {"result": "x" * 300}
         
-        with patch('tarsy.integrations.mcp.client.stdio_client') as mock_stdio, \
-             patch('tarsy.integrations.mcp.client.ClientSession') as mock_client_session, \
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory, \
              patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
             
-            # Setup mocks
+            # Setup transport and session mocks
+            mock_transport = AsyncMock()
             mock_session = AsyncMock()
             mock_session.call_tool.return_value = Mock(content=medium_result["result"])
-            mock_stdio.return_value.__aenter__.return_value = (AsyncMock(), AsyncMock())
-            mock_client_session.return_value.__aenter__.return_value = mock_session
+            mock_transport.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
             mock_ctx.get_request_id.return_value = "test-req-threshold"

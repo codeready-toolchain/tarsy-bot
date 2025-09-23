@@ -818,7 +818,7 @@ aiohttp = "^3.9.0"
 
 **Verification:** Registry validates all transport configurations, examples work correctly.
 
-### **Phase 5: Testing and Documentation**
+### **Phase 5: Testing, Cleanup and Documentation**
 
 **Deliverables:**
 - Comprehensive test suite
@@ -830,7 +830,9 @@ aiohttp = "^3.9.0"
    - Authentication flow testing
    - Error recovery scenario testing
 
-2. **Documentation Updates**
+2. **Cleanin up old/legacy code**
+
+3. **Documentation Updates**
    - API documentation for new transport features
    - Configuration reference documentation
    - Security considerations and best practices

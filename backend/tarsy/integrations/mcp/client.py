@@ -6,13 +6,14 @@ import json
 from contextlib import AsyncExitStack
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp import ClientSession
 from mcp.types import Tool
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import mcp_interaction_context, mcp_list_context
 from tarsy.models.agent_config import MCPServerConfigModel
+from tarsy.models.mcp_transport_config import TransportType
+from tarsy.integrations.mcp.transport.factory import MCPTransportFactory, MCPTransport
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.utils.logger import get_module_logger
@@ -41,6 +42,7 @@ class MCPClient:
         self.summarizer = summarizer  # Optional agent-provided summarizer
         self.token_counter = TokenCounter()  # For size threshold detection
         self.sessions: Dict[str, ClientSession] = {}
+        self.transports: Dict[str, MCPTransport] = {}  # Transport instances
         self.exit_stack = AsyncExitStack()
         self._initialized = False
     
@@ -61,10 +63,12 @@ class MCPClient:
                 logger.debug("Initializing MCP server '%s' with configuration:", server_id)
                 logger.debug("  Server type: %s", server_config.server_type)
                 logger.debug("  Enabled: %s", server_config.enabled)
-                logger.debug("  Command: %s", server_config.connection_params.get('command'))
-                logger.debug("  Args: %s", server_config.connection_params.get('args', []))
-                # Log env keys only to avoid exposing sensitive values
-                env_keys = sorted(server_config.connection_params.get('env', {}).keys())
+                logger.debug("  Transport type: %s", server_config.transport.type)
+                logger.debug("  Command: %s", getattr(server_config.transport, 'command', 'N/A'))
+                logger.debug("  Args: %s", getattr(server_config.transport, 'args', []))
+                # Log env keys only to avoid exposing sensitive values  
+                env = getattr(server_config.transport, 'env', {})
+                env_keys = sorted(env.keys()) if env else []
                 logger.debug("  Env keys: %s", env_keys)
 
                 # Create and initialize session using shared helper
@@ -94,44 +98,30 @@ class MCPClient:
         Raises:
             Exception: If session creation fails
         """
-        # Determine how to access connection parameters based on server_config structure
-        if hasattr(server_config, 'connection_params'):
-            # Standard config from registry (during initialization)
-            command = server_config.connection_params.get("command")
-            args = server_config.connection_params.get("args", [])
-            env = server_config.connection_params.get("env", {})
-        else:
-            # Direct config attributes (during recovery)
-            command = server_config.command
-            args = server_config.args or []
-            env = server_config.env or {}
-        
-        # Create server parameters for stdio connection
-        server_params = StdioServerParameters(
-            command=command,
-            args=args,
-            env=env
-        )
-        
-        logger.debug(f"Creating session for '{server_id}' with command: {command}")
-        logger.debug(f"Args: {args}")
-        env_keys = sorted(env.keys()) if env else []
-        logger.debug(f"Env keys: {env_keys}")
-        
-        # Connect to the server
-        read_stream, write_stream = await self.exit_stack.enter_async_context(
-            stdio_client(server_params)
-        )
-        
-        # Create session
-        session = await self.exit_stack.enter_async_context(
-            ClientSession(read_stream, write_stream)
-        )
-        
-        # Initialize the session
-        await session.initialize()
-        
-        return session
+        try:
+            # Get already-parsed transport configuration
+            transport_config = server_config.transport
+            
+            # Create transport instance
+            transport = MCPTransportFactory.create_transport(
+                server_id, 
+                transport_config, 
+                self.exit_stack if transport_config.type == TransportType.STDIO else None
+            )
+            
+            # Store transport for lifecycle management
+            self.transports[server_id] = transport
+            
+            # Create session via transport
+            session = await transport.create_session()
+            
+            logger.info(f"Created {transport_config.type.value} session for server: {server_id}")
+            return session
+            
+        except Exception as e:
+            error_details = extract_error_details(e)
+            logger.error(f"Failed to create session for {server_id}: {error_details}")
+            raise
     
     async def list_tools(
         self,
@@ -520,12 +510,21 @@ class MCPClient:
         mcp_comm_logger.error(f"=== END LIST TOOLS ERROR [ID: {request_id}] ===")
 
     async def close(self):
-        """Close all MCP client connections."""
+        """Close all MCP client connections and transports."""
+        # Close all transports
+        for server_id, transport in self.transports.items():
+            try:
+                await transport.close()
+            except Exception as e:
+                logger.error(f"Error closing transport for {server_id}: {extract_error_details(e)}")
+        
+        # Close exit stack (for stdio transports)
         try:
             await self.exit_stack.aclose()
         except Exception as e:
             logger.error(f"Error during MCP client cleanup: {extract_error_details(e)}")
         finally:
-            # Always clean up state even if exit stack fails
+            # Always clean up state even if cleanup fails
             self.sessions.clear()
+            self.transports.clear()
             self._initialized = False 
