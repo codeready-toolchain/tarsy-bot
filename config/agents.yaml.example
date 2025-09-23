@@ -143,7 +143,6 @@ mcp_servers:
       type: "http"  # HTTP transport type
       url: "https://mcp-api.example.com/mcp"  # MCP endpoint URL
       bearer_token: "${MCP_BEARER_TOKEN}"  # Bearer token for authentication
-      verify_ssl: true  # Verify SSL certificates (recommended for production)
       timeout: 30  # Request timeout in seconds
       headers:
         User-Agent: "tarsy/1.0"

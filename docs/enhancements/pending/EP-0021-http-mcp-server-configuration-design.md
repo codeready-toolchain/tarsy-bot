@@ -831,6 +831,8 @@ aiohttp = "^3.9.0"
    - Error recovery scenario testing
 
 2. **Cleanin up old/legacy code**
+    - Remove all legacy and unused code
+    - Keep only new, clean implementation
 
 3. **Documentation Updates**
    - API documentation for new transport features

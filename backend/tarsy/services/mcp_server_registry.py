@@ -78,13 +78,23 @@ class MCPServerRegistry:
                 resolved_summary = self._create_config_summary(resolved_config, server_id)
                 logger.debug("Resolved config summary: %s", resolved_summary)
                 
-                self.static_servers[server_id] = MCPServerConfig(**resolved_config)
-                logger.debug("Successfully added built-in MCP server: %s", server_id)
+                server_instance = MCPServerConfig(**resolved_config)
+                self.static_servers[server_id] = server_instance
+                
+                # Log validated transport type
+                transport_type = server_instance.transport.type
+                logger.info("Successfully added built-in MCP server '%s' with %s transport", 
+                           server_id, transport_type)
             except TemplateResolutionError as e:
                 logger.error("Template resolution failed for built-in MCP server '%s': %s", server_id, e)
                 # Use original config without template resolution as fallback
-                self.static_servers[server_id] = MCPServerConfig(**server_config)
-                logger.warning("Using original configuration for '%s' due to template resolution failure", server_id)
+                fallback_instance = MCPServerConfig(**server_config)
+                self.static_servers[server_id] = fallback_instance
+                
+                # Log validated transport type even for fallback
+                transport_type = fallback_instance.transport.type
+                logger.warning("Using original configuration for '%s' with %s transport due to template resolution failure", 
+                             server_id, transport_type)
         
         # Add configured servers if provided
         if configured_servers:
@@ -93,14 +103,23 @@ class MCPServerRegistry:
                     # Convert MCPServerConfigModel to dict and apply template resolution
                     server_dict = server_config.model_dump()
                     resolved_dict = self.template_resolver.resolve_configuration(server_dict)
-                    self.static_servers[server_id] = MCPServerConfig(**resolved_dict)
-                    logger.debug("Added configured MCP server with template resolution: %s", server_id)
+                    configured_instance = MCPServerConfig(**resolved_dict)
+                    self.static_servers[server_id] = configured_instance
+                    
+                    # Log validated transport type
+                    transport_type = configured_instance.transport.type
+                    logger.info("Added configured MCP server '%s' with %s transport", server_id, transport_type)
                 except TemplateResolutionError as e:
                     logger.error("Template resolution failed for configured MCP server '%s': %s", server_id, e)
                     # Use original config without template resolution as fallback
                     server_dict = server_config.model_dump()
-                    self.static_servers[server_id] = MCPServerConfig(**server_dict)
-                    logger.warning("Using original configuration for '%s' due to template resolution failure", server_id)
+                    fallback_configured_instance = MCPServerConfig(**server_dict)
+                    self.static_servers[server_id] = fallback_configured_instance
+                    
+                    # Log validated transport type even for fallback
+                    transport_type = fallback_configured_instance.transport.type
+                    logger.warning("Using original configuration for '%s' with %s transport due to template resolution failure", 
+                                 server_id, transport_type)
             
             logger.info("Added %d configured MCP servers", len(configured_servers))
         
@@ -176,8 +195,8 @@ class MCPServerRegistry:
         """
         Create a sanitized summary of server configuration for logging.
         
-        Removes sensitive data like environment variable values to prevent
-        secret leakage in debug logs.
+        Removes sensitive data like bearer tokens and environment variable values 
+        to prevent secret leakage in debug logs.
         
         Args:
             config: Server configuration dictionary
@@ -192,19 +211,42 @@ class MCPServerRegistry:
             "enabled": config.get("enabled", True)
         }
         
-        # Safely include connection_params without sensitive data
-        if "connection_params" in config:
-            conn_params = config["connection_params"]
-            summary["connection_params"] = {
-                "command": conn_params.get("command"),
-                "args": conn_params.get("args", [])
+        # Safely include transport configuration without sensitive data
+        if "transport" in config:
+            transport = config["transport"]
+            transport_summary = {
+                "type": transport.get("type", "unknown")
             }
             
-            # For env, only show keys to avoid exposing sensitive values
-            if "env" in conn_params and conn_params["env"]:
-                env_keys = sorted(conn_params["env"].keys())
-                summary["connection_params"]["env_keys"] = env_keys
-            else:
-                summary["connection_params"]["env_keys"] = []
+            # Include transport-specific details without sensitive information
+            if transport.get("type") == "stdio":
+                transport_summary.update({
+                    "command": transport.get("command"),
+                    "args": transport.get("args", [])
+                })
+                
+                # For env, only show keys to avoid exposing sensitive values
+                if "env" in transport and transport["env"]:
+                    env_keys = sorted(transport["env"].keys())
+                    transport_summary["env_keys"] = env_keys
+                else:
+                    transport_summary["env_keys"] = []
+                    
+            elif transport.get("type") == "http":
+                transport_summary.update({
+                    "url": transport.get("url"),
+                    "timeout": transport.get("timeout", 30),
+                    "verify_ssl": transport.get("verify_ssl", True),
+                    "has_bearer_token": "bearer_token" in transport and transport["bearer_token"] is not None
+                })
+                
+                # For headers, only show keys to avoid exposing sensitive values
+                if "headers" in transport and transport["headers"]:
+                    header_keys = sorted(transport["headers"].keys())
+                    transport_summary["header_keys"] = header_keys
+                else:
+                    transport_summary["header_keys"] = []
+            
+            summary["transport"] = transport_summary
         
         return summary 
