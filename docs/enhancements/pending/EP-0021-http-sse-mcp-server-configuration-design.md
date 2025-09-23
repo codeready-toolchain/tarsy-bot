@@ -67,7 +67,7 @@ Based on the [official MCP Transport specification](https://modelcontextprotocol
 
 ### **1. Transport Configuration Strategy**
 - **Unified Interface**: All transports implement common `MCPTransport` interface
-- **Transport-Specific Config**: Dedicated parameter models for HTTP/SSE configuration
+- **Transport-Specific Config**: Dedicated parameter models for HTTP configuration
 - **Explicit Transport Types**: Transport type must be explicitly specified in configuration
 - **Connection Pooling**: Reuse HTTP connections for performance
 
@@ -429,7 +429,7 @@ class HTTPMCPSession(ClientSession):
         """Send JSON-RPC request to MCP endpoint."""
         headers = self._build_headers()
         headers["Content-Type"] = "application/json"
-        headers["Accept"] = "application/json, text/event-stream"
+        headers["Accept"] = "application/json"
         
         # Add protocol version header
         headers["MCP-Protocol-Version"] = "2025-06-18"
@@ -450,31 +450,12 @@ class HTTPMCPSession(ClientSession):
             if "Mcp-Session-Id" in response.headers and not self._session_id:
                 self._session_id = response.headers["Mcp-Session-Id"]
             
-            # Handle both JSON and SSE responses
+            # Handle JSON response
             content_type = response.headers.get("Content-Type", "")
             if "application/json" in content_type:
                 return await response.json()
-            elif "text/event-stream" in content_type:
-                # Handle SSE response (for requests that may return server messages)
-                return await self._handle_sse_response(response)
             else:
                 raise Exception(f"Unexpected content type: {content_type}")
-    
-    async def _handle_sse_response(self, response) -> Dict[str, Any]:
-        """Handle SSE response stream for JSON-RPC responses."""
-        async for line in response.content:
-            line_str = line.decode('utf-8').strip()
-            if line_str.startswith('data: '):
-                data = line_str[6:]  # Remove 'data: ' prefix
-                try:
-                    message = json.loads(data)
-                    # Return the JSON-RPC response
-                    if message.get("jsonrpc") == "2.0" and "result" in message:
-                        return message
-                except json.JSONDecodeError:
-                    continue
-        
-        raise Exception("No valid JSON-RPC response in SSE stream")
     
     def _build_headers(self) -> Dict[str, str]:
         """Build HTTP headers with bearer token authentication per MCP Authorization specification."""
