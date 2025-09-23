@@ -189,7 +189,11 @@ class E2ETestUtils:
             "server_id": "kubernetes-server",
             "server_type": "test",
             "enabled": True,
-            "connection_params": {"command": "echo", "args": command_args},
+            "transport": {
+                "type": "stdio",
+                "command": "echo",
+                "args": command_args
+            },
             "instructions": instructions,
             "data_masking": {"enabled": False}
         }
@@ -210,9 +214,46 @@ class E2ETestUtils:
             "server_id": "test-data-server",
             "server_type": "test",
             "enabled": True,
-            "connection_params": {"command": "echo", "args": command_args},
+            "transport": {
+                "type": "stdio",
+                "command": "echo",
+                "args": command_args
+            },
             "instructions": instructions,
             "data_masking": {"enabled": False}
+        }
+
+    @staticmethod
+    def create_simple_http_server_mcp_config(
+        url: str = "http://test-mcp-server.local/mcp", 
+        bearer_token: str = "test-bearer-token-123",
+        instructions: str = "HTTP MCP server for e2e testing"
+    ) -> Dict[str, Any]:
+        """
+        Create a simple HTTP MCP server configuration for testing.
+
+        Args:
+            url: HTTP endpoint URL
+            bearer_token: Bearer token for authentication
+            instructions: Instructions for the MCP server
+
+        Returns:
+            MCP server configuration dictionary
+        """
+        return {
+            "server_id": "test-http-server",
+            "server_type": "test-http",
+            "enabled": True,
+            "transport": {
+                "type": "http",
+                "url": url,
+                "bearer_token": bearer_token,
+                "verify_ssl": False,
+                "timeout": 10
+            },
+            "instructions": instructions,
+            "data_masking": {"enabled": False},
+            "summarization": {"enabled": False}
         }
 
     @staticmethod

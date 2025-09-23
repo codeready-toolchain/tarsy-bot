@@ -223,8 +223,8 @@ class TestRealE2E:
 
                     # Define mock response content and token usage for each interaction
                     # These values are used to test llm interaction, token tracking at interaction, stage, and session levels
-                    # Expected stage token usage totals: data-collection=1310(regular)+150(summarization)=1460, verification=650, analysis=600
-                    # Expected session tolen usage total: 2710 tokens (1950 input + 760 output)
+                    # Expected stage token usage totals: data-collection=1570(regular)+150(summarization)=1720, verification=650, analysis=600
+                    # Expected session token usage total: 2970 tokens (2150 input + 820 output)
                     mock_response_map = {
                         1: { # Data collection - Initial analysis
                             "response_content": """Thought: I need to get namespace information first.
@@ -243,25 +243,31 @@ Action: test-data-server.collect_system_info
 Action Input: {"detailed": false}""",
                             "input_tokens": 220, "output_tokens": 75, "total_tokens": 295
                            },
-                        4: { # Data collection - Tool result summarization
+                        4: { # Data collection - Tool result summarization (happens right after collect_system_info)
                             "response_content": """Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK.""",
                             "input_tokens": 100, "output_tokens": 50, "total_tokens": 150
                            },
-                        5: { # Data collection - Final analysis
+                        5: { # Data collection - HTTP API call (continues after summarization)
+                            "response_content": """Thought: Let me also check the API server status via HTTP.
+Action: test-http-server.get_api_status
+Action Input: {"include_metrics": true}""",
+                            "input_tokens": 200, "output_tokens": 60, "total_tokens": 260
+                           },
+                        6: { # Data collection - Final analysis
                             "response_content": """Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.""",
                             "input_tokens": 315, "output_tokens": 125, "total_tokens": 440
                            },
-                        6: { # Verification - Check
+                        7: { # Verification - Check
                             "response_content": """Thought: I need to verify the namespace status.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                             "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
                            },
-                        7: { # Verification - Summary
+                        8: { # Verification - Summary
                             "response_content": """Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion.""",
                             "input_tokens": 280, "output_tokens": 110, "total_tokens": 390
                            },
-                        8: { # Analysis - Final
+                        9: { # Analysis - Final
                             "response_content": """Based on previous stages, the namespace is stuck due to finalizers.""",
                             "input_tokens": 420, "output_tokens": 180, "total_tokens": 600
                            },
@@ -453,9 +459,62 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
 
             return mock_session
 
-        # Create mock MCP sessions for both servers
+        def create_http_mcp_session_mock():
+            """Create a mock MCP session for the HTTP test-http-server."""
+            mock_session = AsyncMock()
+
+            async def mock_call_tool(tool_name, _parameters):
+                # Create mock result object for HTTP MCP server tool calls
+                if tool_name == "get_api_status":
+                    return {
+                        "result": {
+                            "status": "healthy",
+                            "version": "v1.28.0",
+                            "metrics": {
+                                "requests_per_second": 45,
+                                "response_time_ms": 120,
+                                "error_rate_percent": 0.02
+                            },
+                            "components": {
+                                "etcd": "healthy",
+                                "scheduler": "healthy",
+                                "controller-manager": "healthy"
+                            }
+                        }
+                    }
+                else:
+                    return {"result": f"Mock HTTP response for tool: {tool_name}"}
+
+            async def mock_list_tools():
+                # Create proper Tool object for HTTP server
+                mock_tool = Tool(
+                    name="get_api_status",
+                    description="Get Kubernetes API server status and health metrics via HTTP",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "include_metrics": {
+                                "type": "boolean",
+                                "description": "Whether to include performance metrics",
+                            }
+                        },
+                    }
+                )
+
+                # Return object with .tools attribute (matching MCP SDK API)
+                mock_result = Mock()
+                mock_result.tools = [mock_tool]
+                return mock_result
+
+            mock_session.call_tool.side_effect = mock_call_tool
+            mock_session.list_tools.side_effect = mock_list_tools
+
+            return mock_session
+
+        # Create mock MCP sessions for all servers
         mock_kubernetes_session = create_mcp_session_mock()
         mock_custom_session = create_custom_mcp_session_mock()
+        mock_http_session = create_http_mcp_session_mock()
 
         # Create test MCP server configurations using shared utilities
         k8s_config = E2ETestUtils.create_simple_kubernetes_mcp_config(
@@ -466,10 +525,17 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             command_args=["test-data-server-ready"],
             instructions="Test data collection server for e2e testing"
         )
+        # HTTP server configuration
+        http_config = E2ETestUtils.create_simple_http_server_mcp_config(
+            url="http://test-mcp-server.local/mcp",
+            bearer_token="test-bearer-token-123",
+            instructions="HTTP MCP server for e2e testing"
+        )
 
         test_mcp_servers = E2ETestUtils.create_test_mcp_servers(BUILTIN_MCP_SERVERS, {
             "kubernetes-server": k8s_config,
-            "test-data-server": data_config
+            "test-data-server": data_config,
+            "test-http-server": http_config
         })
 
         # Apply comprehensive mocking with test MCP server config
@@ -489,10 +555,17 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             # 2. Mock runbook HTTP calls using shared utility
             E2ETestUtils.setup_runbook_mocking(respx_mock)
 
+            # 2b. Mock HTTP MCP server endpoint
+            # HTTP MCP server is mocked at the session level (see mock_http_session above)
+            
+            # Note: HTTP transport is mocked at MCP session level, not network level
+            # The HTTP MCP server endpoint is handled by mock_http_session above
+
             # 3. Mock MCP client using shared utility with custom sessions
             mock_sessions = {
                 "kubernetes-server": mock_kubernetes_session,
                 "test-data-server": mock_custom_session,
+                "test-http-server": mock_http_session,
             }
             mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
 
@@ -595,10 +668,10 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         ), f"Processing took too long: {processing_duration_ms}ms"
 
         # Verify session-level token usage totals (sum of all stages)
-        # Expected totals: data-collection(1060+400=1460) + verification(470+180=650) + analysis(420+180=600)
-        expected_session_input_tokens = 1950  # 1060 + 470 + 420
-        expected_session_output_tokens = 760   # 400 + 180 + 180  
-        expected_session_total_tokens = 2710   # 1460 + 650 + 600
+        # Expected totals: data-collection(1260+460=1720) + verification(470+180=650) + analysis(420+180=600)
+        expected_session_input_tokens = 2150  # 1260 + 470 + 420
+        expected_session_output_tokens = 820   # 460 + 180 + 180  
+        expected_session_total_tokens = 2970   # 1720 + 650 + 600
         
         actual_session_input_tokens = session_data.get("session_input_tokens")
         actual_session_output_tokens = session_data.get("session_output_tokens")
