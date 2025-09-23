@@ -35,7 +35,7 @@ class TestMCPServerRegistryEnvFileIntegration:
                         "server_id": "test-kubernetes-server",
                         "server_type": "kubernetes",
                         "enabled": True,
-                        "connection_params": {
+                        "transport": {"type": "stdio",
                             "command": "npx",
                             "args": ["-y", "kubernetes-mcp-server@latest", "--kubeconfig", "${TEST_KUBECONFIG_PRIORITY}"]
                         },
@@ -58,7 +58,7 @@ class TestMCPServerRegistryEnvFileIntegration:
                     test_config = registry.get_server_config("test-kubernetes-server")
                     
                     # Should use .env file value, not system environment
-                    kubeconfig_arg = test_config.connection_params["args"][-1]
+                    kubeconfig_arg = test_config.transport.args[-1]
                     assert kubeconfig_arg == "/env/file/kubeconfig"
                     
             finally:
@@ -82,7 +82,7 @@ CUSTOM_SERVER_TIMEOUT=60
                     server_id="custom-server",
                     server_type="custom",
                     enabled=True,
-                    connection_params={
+                    transport={"type": "stdio",
                         "command": "custom-mcp-server",
                         "args": [
                             "--token", "${CUSTOM_SERVER_TOKEN}",
@@ -113,7 +113,7 @@ CUSTOM_SERVER_TIMEOUT=60
                 # Test resolution
                 custom_config = registry.get_server_config("custom-server")
                 
-                args = custom_config.connection_params["args"]
+                args = custom_config.transport.args
                 assert args[1] == "secret123"  # --token value
                 assert args[3] == "https://custom.api.com"  # --url value
                 assert args[5] == "60"  # --timeout value
@@ -136,7 +136,7 @@ CUSTOM_SERVER_TIMEOUT=60
                     server_id="priority-test-server",
                     server_type="test",
                     enabled=True,
-                    connection_params={
+                    transport={"type": "stdio",
                         "command": "test-server",
                         "args": [
                             "--high", "${TEST_HIGH_PRIORITY_VAR}",      # From .env file
@@ -175,7 +175,7 @@ CUSTOM_SERVER_TIMEOUT=60
                     
                     test_config = registry.get_server_config("priority-test-server")
                     
-                    args = test_config.connection_params["args"]
+                    args = test_config.transport.args
                     assert args[1] == "env_file_value"      # .env file wins
                     assert args[3] == "system_env_value"    # system env used
                     assert args[5] == "settings_default"    # settings default used
@@ -205,7 +205,7 @@ CUSTOM_SERVER_TIMEOUT=60
             
             # Should use system environment value
             kubeconfig_arg = None
-            args = k8s_config.connection_params["args"]
+            args = k8s_config.transport.args
             for i, arg in enumerate(args):
                 if arg == "--kubeconfig" and i + 1 < len(args):
                     kubeconfig_arg = args[i + 1]
@@ -263,7 +263,7 @@ VALID_VAR2=another_valid
             server_id="error-test-server",
             server_type="test",
             enabled=True,
-            connection_params={
+            transport={"type": "stdio",
                 "command": "test-server",
                 "args": ["--missing", "${COMPLETELY_MISSING_VAR}"]
             }

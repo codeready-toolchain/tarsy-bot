@@ -52,7 +52,7 @@ class TestMCPServerRegistryTemplateResolution:
                 
                 # Verify template was resolved with our known value
                 kubeconfig_arg = None
-                args = k8s_config.connection_params["args"]
+                args = k8s_config.transport.args
                 for i, arg in enumerate(args):
                     if arg == "--kubeconfig" and i + 1 < len(args):
                         kubeconfig_arg = args[i + 1]
@@ -89,7 +89,7 @@ class TestMCPServerRegistryTemplateResolution:
                 
                 # Verify template was resolved with Settings default
                 kubeconfig_arg = None
-                args = k8s_config.connection_params["args"]
+                args = k8s_config.transport.args
                 for i, arg in enumerate(args):
                     if arg == "--kubeconfig" and i + 1 < len(args):
                         kubeconfig_arg = args[i + 1]
@@ -127,7 +127,7 @@ class TestMCPServerRegistryTemplateResolution:
                     config = registry.get_server_config("template-server")
                     
                     # Verify templates were resolved
-                    assert config.connection_params["args"] == [
+                    assert config.transport.args == [
                         "--token", "secret123", "--url", "http://test.com"
                     ]
             finally:
@@ -140,7 +140,9 @@ class TestMCPServerRegistryTemplateResolution:
                 server_id="mixed-server",
                 server_type="test", 
                 enabled=True,
-                connection_params={
+                transport={
+                    "type": "stdio",
+                    "command": "test",
                     "args": ["--kubeconfig", "${KUBECONFIG}", "--token", "${MISSING_TOKEN}"]
                 }
             )
@@ -156,8 +158,8 @@ class TestMCPServerRegistryTemplateResolution:
             config = registry.get_server_config("mixed-server")
             
             # Should use original template strings due to fallback
-            assert "${KUBECONFIG}" in config.connection_params["args"]
-            assert "${MISSING_TOKEN}" in config.connection_params["args"]
+            assert "${KUBECONFIG}" in config.transport.args
+            assert "${MISSING_TOKEN}" in config.transport.args
     
     def test_template_resolution_fallback_on_error(self):
         """Test that registry falls back to original config when template resolution fails."""
@@ -174,7 +176,7 @@ class TestMCPServerRegistryTemplateResolution:
             config = registry.get_server_config("failing-server")
             
             # Original template string should be preserved since resolution failed
-            assert "${DEFINITELY_MISSING_VAR}" in config.connection_params["args"]
+            assert "${DEFINITELY_MISSING_VAR}" in config.transport.args
     
     def test_settings_integration_without_settings(self):
         """Test that registry works without Settings parameter (backwards compatibility)."""
@@ -199,7 +201,7 @@ class TestMCPServerRegistryTemplateResolution:
                     registry = MCPServerRegistry()
                     
                     k8s_config = registry.get_server_config("kubernetes-server")
-                    assert "/env/kubeconfig" in k8s_config.connection_params["args"]
+                    assert "/env/kubeconfig" in k8s_config.transport.args
                     
             finally:
                 os.unlink(f.name)
@@ -234,12 +236,12 @@ class TestMCPServerRegistryTemplateResolution:
                     config = registry.get_server_config("complex-server")
                     
                     # Verify all templates resolved correctly
-                    assert config.connection_params["command"] == "complex-production"
-                    assert config.connection_params["args"] == ["--endpoint", "https://api.company.com:8443/api"]
+                    assert config.transport.command == "complex-production"
+                    assert config.transport.args == ["--endpoint", "https://api.company.com:8443/api"]
                     # CONFIG_PATH should be expanded absolute path, not tilde literal
-                    assert ".kube/config" in config.connection_params["env"]["CONFIG_PATH"]
-                    assert "~" not in config.connection_params["env"]["CONFIG_PATH"]
-                    assert config.connection_params["env"]["AUTH_TOKEN"] == "bearer-token-123"  # .env file
+                    assert ".kube/config" in config.transport.env["CONFIG_PATH"]
+                    assert "~" not in config.transport.env["CONFIG_PATH"]
+                    assert config.transport.env["AUTH_TOKEN"] == "bearer-token-123"  # .env file
                     
             finally:
                 os.unlink(f.name)
@@ -281,7 +283,9 @@ class TestMCPServerRegistryTemplateSettings:
                             server_id="custom-defaults-server",
                             server_type="test",
                             enabled=True,
-                            connection_params={
+                            transport={
+                                "type": "stdio",
+                                "command": "test",
                                 "args": ["--kubeconfig", "${KUBECONFIG}", "--custom", "${CUSTOM_VAR}"]
                             }
                         )
@@ -293,7 +297,7 @@ class TestMCPServerRegistryTemplateSettings:
                         config = registry.get_server_config("custom-defaults-server")
                         
                         # Verify custom defaults were used
-                        assert config.connection_params["args"] == [
+                        assert config.transport.args == [
                             "--kubeconfig", "/custom/default/kubeconfig",
                             "--custom", "custom-default-value"
                         ]
@@ -311,7 +315,9 @@ class TestMCPServerRegistryTemplateSettings:
                 server_id="override-server",
                 server_type="test",
                 enabled=True,
-                connection_params={
+                transport={
+                    "type": "stdio",
+                    "command": "test",
                     "args": ["--value", "${TEST_VAR}"]
                 }
             )
@@ -323,6 +329,6 @@ class TestMCPServerRegistryTemplateSettings:
             config = registry.get_server_config("override-server")
             
             # Environment should override default
-            assert config.connection_params["args"] == ["--value", "environment-value"]
+            assert config.transport.args == ["--value", "environment-value"]
             # The default value should not appear in the result
-            assert "should-not-be-used" not in str(config.connection_params["args"])
+            assert "should-not-be-used" not in str(config.transport.args)

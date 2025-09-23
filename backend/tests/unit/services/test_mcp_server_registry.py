@@ -100,9 +100,9 @@ class TestMCPServerRegistryInitialization:
             # Verify MCPServerConfigModel was called with correct parameters
             mock_mcp_config.assert_called_once_with(
                 server_id="test-server",
-                server_type="test", 
+                server_type="test",
                 enabled=True,
-                connection_params={"command": "test", "args": ["--test"], "env": {}},
+                transport={"type": "stdio", "command": "test", "args": ["--test"], "env": {}},
                 instructions="Test MCP server for testing"
             )
             
@@ -306,9 +306,9 @@ class TestDefaultConfigurations:
         assert k8s_config.server_id == "kubernetes-server"
         assert k8s_config.server_type == "kubernetes"
         assert k8s_config.enabled is True
-        assert k8s_config.connection_params is not None
-        assert "command" in k8s_config.connection_params
-        assert "args" in k8s_config.connection_params
+        assert k8s_config.transport is not None
+        assert k8s_config.transport.command is not None
+        assert k8s_config.transport.args is not None
         assert k8s_config.instructions is not None
         assert len(k8s_config.instructions) > 0
 
@@ -368,7 +368,7 @@ class TestEdgeCases:
                 "server_id": long_server_id,
                 "server_type": "test",
                 "enabled": True,
-                "connection_params": {"command": "test", "args": []},
+                "transport": {"type": "stdio", "command": "test", "args": []},
                 "instructions": "Very long instructions " * 100  # Very long instructions
             }
         }
@@ -444,8 +444,8 @@ class TestRegistryLogging:
     def test_initialization_logging_with_custom_config(self, caplog):
         """Test logging with custom server configuration."""
         custom_config = {
-            "server1": {"server_id": "server1", "server_type": "test", "enabled": True, "connection_params": {"command": "test", "args": []}},
-            "server2": {"server_id": "server2", "server_type": "test", "enabled": True, "connection_params": {"command": "test", "args": []}}
+            "server1": {"server_id": "server1", "server_type": "test", "enabled": True, "transport": {"type": "stdio", "command": "test", "args": []}},
+            "server2": {"server_id": "server2", "server_type": "test", "enabled": True, "transport": {"type": "stdio", "command": "test", "args": []}}
         }
         
         with caplog.at_level("INFO"):
@@ -495,7 +495,7 @@ class TestServerConfigObjectIntegration:
                 "server_id": "test-server",
                 "server_type": "integration",
                 "enabled": False,
-                "connection_params": {"host": "localhost", "port": 8080},
+                "transport": {"type": "stdio", "command": "test", "args": []},
                 "instructions": "Test server instructions"
             }
         }
@@ -506,7 +506,8 @@ class TestServerConfigObjectIntegration:
         assert config.server_id == "test-server"
         assert config.server_type == "integration"
         assert config.enabled is False
-        assert config.connection_params == {"host": "localhost", "port": 8080}
+        assert config.transport.command == "test"
+        assert config.transport.args == []
         assert config.instructions == "Test server instructions"
     
     def test_server_config_immutability_after_creation(self):

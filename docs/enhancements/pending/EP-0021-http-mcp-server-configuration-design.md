@@ -73,9 +73,10 @@ Based on the [official MCP Transport specification](https://modelcontextprotocol
 
 ### **2. Configuration Structure Design**
 ```yaml
-# Stdio Transport
+# Stdio Transport - explicit type required for discriminated unions
 kubernetes-server:
   transport:
+    type: "stdio"  # Required discriminator field
     command: "npx"
     args: ["-y", "kubernetes-mcp-server@latest"]
     env:
@@ -84,7 +85,7 @@ kubernetes-server:
 # HTTP Transport (production) - with bearer token authentication over HTTPS
 azure-mcp-http:
   transport:
-    type: "http"
+    type: "http"  # Required discriminator field
     url: "https://azure-mcp.example.com/mcp"  # Single MCP endpoint (HTTPS for production)
     bearer_token: "${AZURE_MCP_ACCESS_TOKEN}"  # Pre-configured bearer token
     timeout: 30
@@ -95,7 +96,7 @@ azure-mcp-http:
 # HTTP Transport (development) - HTTP allowed for local testing
 local-dev-mcp:
   transport:
-    type: "http"
+    type: "http"  # Required discriminator field
     url: "http://localhost:3000/mcp"  # HTTP OK for development/testing
     bearer_token: "${DEV_MCP_TOKEN}"  # Development token
     timeout: 10
@@ -126,9 +127,8 @@ local-dev-mcp:
 """MCP transport configuration models."""
 
 from enum import Enum
-from typing import Dict, Any, Optional, Union, List
-from pydantic import BaseModel, Field, HttpUrl, validator
-from urllib.parse import urlparse
+from typing import Dict, Any, Optional, List, Literal
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 class TransportType(str, Enum):
     """Supported MCP transport types."""
@@ -139,22 +139,53 @@ class TransportType(str, Enum):
 class BaseTransportConfig(BaseModel):
     """Base configuration for MCP transports."""
     
-    type: TransportType = Field(..., description="Transport type identifier")
-    timeout: Optional[int] = Field(default=30, description="Connection timeout in seconds")
+    type: str = Field(..., description="Transport type identifier")
+    timeout: Optional[int] = Field(
+        default=30, 
+        description="Connection timeout in seconds",
+        ge=1,
+        le=300
+    )
 
 class StdioTransportConfig(BaseTransportConfig):
     """Configuration for stdio transport (existing functionality)."""
     
-    type: TransportType = Field(default=TransportType.STDIO, description="Transport type")
-    command: str = Field(..., description="Command to execute")
-    args: Optional[List[str]] = Field(default_factory=list, description="Command arguments")
-    env: Optional[Dict[str, str]] = Field(default_factory=dict, description="Environment variables")
+    type: Literal["stdio"] = Field(
+        default="stdio", 
+        description="Transport type - automatically set to 'stdio'"
+    )
+    command: str = Field(
+        ..., 
+        description="Command to execute for the MCP server",
+        min_length=1
+    )
+    args: Optional[List[str]] = Field(
+        default_factory=list, 
+        description="Command line arguments for the MCP server"
+    )
+    env: Optional[Dict[str, str]] = Field(
+        default_factory=dict, 
+        description="Environment variables for the MCP server process"
+    )
+
+    @field_validator('command')
+    def validate_command_not_empty(cls, v: str) -> str:
+        """Validate that command is not empty or only whitespace."""
+        if not v or not v.strip():
+            raise ValueError("Command cannot be empty")
+        return v.strip()
 
 class HTTPTransportConfig(BaseTransportConfig):
     """Configuration for HTTP transport per MCP Streamable HTTP specification."""
     
-    type: TransportType = Field(default=TransportType.HTTP, description="Transport type")
-    url: HttpUrl = Field(..., description="Single MCP endpoint URL")
+    type: Literal["http"] = Field(
+        default="http", 
+        description="Transport type - automatically set to 'http'"
+    )
+    url: HttpUrl = Field(
+        ..., 
+        description="Single MCP endpoint URL (e.g., 'https://api.example.com/mcp')"
+    )
     bearer_token: Optional[str] = Field(
         default=None,
         description="Bearer access token for machine-to-machine authentication",
@@ -162,12 +193,36 @@ class HTTPTransportConfig(BaseTransportConfig):
     )
     headers: Optional[Dict[str, str]] = Field(
         default_factory=dict,
-        description="Additional HTTP headers (excluding Authorization - managed by bearer token)"
+        description="Additional HTTP headers (Authorization header managed by bearer_token)"
     )
     verify_ssl: bool = Field(
         default=True,
-        description="Verify SSL certificates (recommended for production)"
+        description="Verify SSL certificates (strongly recommended for production)"
     )
+
+    # Note: HttpUrl automatically validates that scheme is http or https
+
+    @field_validator('bearer_token')
+    def validate_bearer_token_format(cls, v: Optional[str]) -> Optional[str]:
+        """Validate bearer token format if provided."""
+        if v is not None:
+            v = v.strip()
+            if not v:
+                raise ValueError("Bearer token cannot be empty if provided")
+            if any(char in v for char in ['\n', '\r', '\t']):
+                raise ValueError("Bearer token cannot contain newlines, carriage returns, or tabs")
+        return v
+
+    @field_validator('headers')
+    def validate_headers_no_auth(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+        """Validate that Authorization header is not manually set (use bearer_token instead)."""
+        if v:
+            auth_headers = [key.lower() for key in v.keys() if key.lower() == 'authorization']
+            if auth_headers:
+                raise ValueError(
+                    "Do not set 'Authorization' header manually - use 'bearer_token' field instead"
+                )
+        return v
 
 ```
 
@@ -806,6 +861,7 @@ mcp_servers:
     server_type: "kubernetes"
     enabled: true
     transport:
+      type: "stdio"  # Required discriminator field
       command: "npx"
       args: ["-y", "kubernetes-mcp-server@latest", "--read-only"]
       env:

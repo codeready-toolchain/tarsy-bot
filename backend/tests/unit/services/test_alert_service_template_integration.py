@@ -84,7 +84,7 @@ class TestAlertServiceTemplateIntegration:
                         k8s_config = alert_service.mcp_server_registry.get_server_config("kubernetes-server")
                         
                         # Verify template was resolved with .env file variable
-                        assert "/integration/test/kubeconfig" in k8s_config.connection_params["args"]
+                        assert "/integration/test/kubeconfig" in k8s_config.transport.args
                         
             finally:
                 os.unlink(f.name)
@@ -123,8 +123,8 @@ class TestAlertServiceTemplateIntegration:
                             k8s_config = alert_service.mcp_server_registry.get_server_config("kubernetes-server")
                             
                             # Verify expanded default was used (not tilde literal)
-                            assert ".kube/config" in str(k8s_config.connection_params["args"])
-                            assert "~" not in str(k8s_config.connection_params["args"])
+                            assert ".kube/config" in str(k8s_config.transport.args)
+                            assert "~" not in str(k8s_config.transport.args)
                             
             finally:
                 os.unlink(f.name)
@@ -200,8 +200,10 @@ mcp_servers:
     server_id: custom-k8s-server
     server_type: kubernetes
     enabled: true
-    connection_params:
-      kubeconfig: "/custom/path/kubeconfig"
+    transport:
+      type: "stdio"
+      command: "npx"
+      args: ["-y", "kubernetes-mcp-server@latest", "--kubeconfig", "/custom/path/kubeconfig"]
     instructions: "Custom Kubernetes troubleshooting"
         """
         
@@ -249,7 +251,7 @@ mcp_servers:
                 assert k8s_config.server_id == "custom-k8s-server"
                 assert k8s_config.server_type == "kubernetes"
                 assert k8s_config.enabled is True
-                assert "/custom/path/kubeconfig" in str(k8s_config.connection_params)
+                assert "/custom/path/kubeconfig" in str(k8s_config.transport.args)
                 
                 # Verify chain configuration was loaded
                 assert len(alert_service.parsed_config.agent_chains) == 2

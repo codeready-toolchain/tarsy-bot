@@ -81,7 +81,8 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
         "server_id": "kubernetes-server",
         "server_type": "kubernetes",
         "enabled": True,
-        "connection_params": {
+        "transport": {
+            "type": "stdio",
             "command": "npx",
             "args": ["-y", "kubernetes-mcp-server@latest", "--read-only", "--disable-destructive", "--kubeconfig", "${KUBECONFIG}"]
         },
@@ -101,7 +102,8 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
     #     "server_id": "argocd-server", 
     #     "server_type": "argocd",
     #     "enabled": True,
-    #     "connection_params": {
+    #     "transport": {
+    #         "type": "stdio",
     #         "command": "npx",
     #         "args": ["-y", "argocd-mcp-server@latest", "--server", "${ARGOCD_SERVER}", "--auth-token", "${ARGOCD_TOKEN}"]
     #     },

@@ -151,7 +151,7 @@ class TestMCPServerRegistryIntegration:
                 "server_id": "test-server",
                 "server_type": "test",
                 "enabled": True,
-                "connection_params": {"command": "test"},
+                "transport": {"type": "stdio", "command": "test"},
                 "instructions": "Test instructions"
             }
         }

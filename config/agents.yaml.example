@@ -57,6 +57,10 @@
 # =============================================================================
 # Define custom MCP servers that agents can use for specialized functionality.
 # These extend the built-in MCP servers and can be referenced by any agent.
+#
+# TRANSPORT TYPES:
+# - "stdio": Command-line MCP servers (most common) - requires command field
+# - "http": HTTP endpoint MCP servers - requires url field, optional bearer_token, verify_ssl
 
 mcp_servers:
   # Security-focused MCP server for threat analysis and security operations
@@ -64,11 +68,12 @@ mcp_servers:
     server_id: "security-server"
     server_type: "security"
     enabled: true
-    connection_params:
+    transport:
+      type: "stdio"  # Required discriminator field
       # Example: Custom security MCP server command with templated arguments
       command: "/opt/security-mcp/server"
       args: ["--mode", "production", "--log-level", "info", "--token", "${SECURITY_SERVER_TOKEN}"]
-      environment:
+      env:
         SECURITY_DB_URL: "postgresql://user:pass@security-db:5432/security"
         API_TIMEOUT: "30"
     instructions: |
@@ -104,10 +109,11 @@ mcp_servers:
     server_id: "monitoring-server"
     server_type: "monitoring"
     enabled: true
-    connection_params:
+    transport:
+      type: "stdio"  # Required discriminator field  
       command: "npx"
       args: ["-y", "@example/monitoring-mcp-server@latest", "--prometheus-url", "${PROMETHEUS_URL}", "--grafana-token", "${GRAFANA_TOKEN}"]
-      environment:
+      env:
         PROMETHEUS_URL: "http://prometheus:9090"
         GRAFANA_URL: "http://grafana:3000"
         ALERT_MANAGER_URL: "http://alertmanager:9093"
@@ -128,15 +134,44 @@ mcp_servers:
       size_threshold_tokens: 3000      # Higher threshold for metrics data (can be voluminous)
       summary_max_token_limit: 800     # Concise summaries for metrics and performance data
 
+  # HTTP MCP server example (using new HTTP transport)
+  http-mcp-server:
+    server_id: "http-mcp-server"
+    server_type: "http-based"
+    enabled: false  # Disabled by default - enable when HTTP endpoint is configured
+    transport:
+      type: "http"  # HTTP transport type
+      url: "https://mcp-api.example.com/mcp"  # MCP endpoint URL
+      bearer_token: "${MCP_BEARER_TOKEN}"  # Bearer token for authentication
+      verify_ssl: true  # Verify SSL certificates (recommended for production)
+      timeout: 30  # Request timeout in seconds
+      headers:
+        User-Agent: "tarsy/1.0"
+        Accept: "application/json"
+    instructions: |
+      HTTP-based MCP server instructions:
+      - This server communicates via HTTP/HTTPS instead of command-line
+      - Supports bearer token authentication for secure access
+      - Uses JSON-RPC 2.0 protocol over HTTP as per MCP specification
+      - SSL verification is recommended for production endpoints
+    data_masking:
+      enabled: true
+      pattern_groups: ["basic"]
+    summarization:
+      enabled: true
+      size_threshold_tokens: 4000
+      summary_max_token_limit: 1000
+
   # Custom cloud provider MCP server (example for AWS-specific operations)
   aws-server:
     server_id: "aws-server"
     server_type: "cloud"
     enabled: false  # Disabled by default - enable when AWS credentials are configured
-    connection_params:
+    transport:
+      type: "stdio"  # Required discriminator field
       command: "/usr/local/bin/aws-mcp-server"
       args: ["--region", "${AWS_DEFAULT_REGION}", "--access-key", "${AWS_ACCESS_KEY_ID}"]
-      environment:
+      env:
         AWS_PROFILE: "production"
         AWS_DEFAULT_REGION: "us-west-2"
     instructions: |
@@ -358,7 +393,7 @@ agent_chains:
 #
 # 4. REQUIRED FIELDS:
 #    - Agents must have at least one alert_type and one mcp_server
-#    - MCP servers must have server_id, server_type, and connection_params
+#    - MCP servers must have server_id, server_type, and transport (with type field)
 #    - All fields marked as required in the Pydantic models must be present
 #
 # 5. AGENT CHAIN VALIDATION:

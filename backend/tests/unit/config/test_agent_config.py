@@ -91,7 +91,8 @@ class TestConfigurationLoaderFileHandling:
                 "security-server": {
                     "server_id": "security-server",
                     "server_type": "security",
-                    "connection_params": {
+                    "transport": {
+                        "type": "stdio",
                         "command": "python",
                         "args": ["-m", "security.mcp"]
                     },
@@ -207,7 +208,7 @@ class TestConfigurationLoaderValidation:
                 "custom-server": MCPServerConfigModel(
                     server_id="custom-server",
                     server_type="custom",
-                    connection_params={"command": "test"},
+                    transport={"type": "stdio", "command": "test"},
                     enabled=True
                 )
             }
@@ -274,7 +275,7 @@ class TestConfigurationLoaderValidation:
                 "kubernetes-server": MCPServerConfigModel(
                     server_id="kubernetes-server",
                     server_type="kubernetes",
-                    connection_params={"command": "test"},
+                    transport={"type": "stdio", "command": "test"},
                     enabled=True
                 )
             }
@@ -328,17 +329,17 @@ class TestConfigurationLoaderValidation:
         
         assert "has no MCP servers configured" in str(exc_info.value)
     
-    def test_validate_configuration_completeness_no_connection_params(self):
-        """Test configuration completeness validation - missing connection params."""
+    def test_validate_configuration_completeness_no_transport(self):
+        """Test configuration completeness validation - missing transport."""
         # Create a valid config first, then manipulate it
         server_config = MCPServerConfigModel(
             server_id="test-server",
             server_type="test",
-            connection_params={"temp": "value"},
+            transport={"type": "stdio", "command": "test"},
             enabled=True
         )
-        # Bypass Pydantic validation by directly setting the attribute
-        server_config.connection_params = {}
+        # Bypass Pydantic validation by directly setting the attribute to None
+        server_config.transport = None
         
         config = CombinedConfigModel(
             agents={},
@@ -350,7 +351,7 @@ class TestConfigurationLoaderValidation:
         with pytest.raises(ConfigurationError) as exc_info:
             loader._validate_configuration_completeness(config)
         
-        assert "has no connection parameters configured" in str(exc_info.value)
+        assert "has no transport configured" in str(exc_info.value)
     
     def test_validate_configuration_completeness_disabled_server_warning(self, caplog):
         """Test warning for disabled servers that are referenced."""
@@ -364,7 +365,7 @@ class TestConfigurationLoaderValidation:
                 "disabled-server": MCPServerConfigModel(
                     server_id="disabled-server",
                     server_type="test",
-                    connection_params={"command": "test"},
+                    transport={"type": "stdio", "command": "test"},
                     enabled=False  # Disabled server
                 )
             }
@@ -526,7 +527,7 @@ class TestConfigurationLoaderErrorFormatting:
                         "server_id": "test-server",
                         "server_type": "test",
                         "enabled": "not a boolean",  # Should be boolean
-                        "connection_params": {"command": "test"}
+                        "transport": {"type": "stdio", "command": "test"}
                     }
                 }
             )
@@ -634,7 +635,8 @@ class TestConfigurationLoaderIntegration:
                 "security-scanner": {
                     "server_id": "security-scanner",
                     "server_type": "security",
-                    "connection_params": {
+                    "transport": {
+                        "type": "stdio",
                         "command": "python",
                         "args": ["-m", "security.scanner"]
                     },

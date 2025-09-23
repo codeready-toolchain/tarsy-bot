@@ -49,7 +49,7 @@ class TestKubernetesAgentInitialization:
             server_id="kubernetes-server",
             server_type="kubernetes",
             enabled=True,
-            connection_params={"command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"]},
+            transport={"type": "stdio", "command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"]},
             instructions="Kubernetes server instructions"
         )
         registry.get_server_configs.return_value = [server_config]
@@ -215,7 +215,7 @@ class TestKubernetesAgentInheritedFunctionality:
             server_id="kubernetes-server",
             server_type="kubernetes",
             enabled=True,
-            connection_params={"command": "npx"},
+            transport={"type": "stdio", "command": "npx"},
             instructions="K8s instructions"
         )
         mock_registry.get_server_configs.return_value = [server_config]
@@ -324,7 +324,7 @@ class TestKubernetesAgentLLMIntegration:
             server_id="kubernetes-server",
             server_type="kubernetes",
             enabled=True,
-            connection_params={"command": "test"},
+            transport={"type": "stdio", "command": "test"},
             instructions="Test K8s instructions"
         )
         mock_registry.get_server_configs.return_value = [server_config]
@@ -356,7 +356,7 @@ class TestKubernetesAgentMCPIntegration:
             server_id="kubernetes-server",
             server_type="kubernetes",
             enabled=True,
-            connection_params={"command": "test"},
+            transport={"type": "stdio", "command": "test"},
             instructions="K8s instructions"
         )
         mock_registry.get_server_configs.return_value = [server_config]
@@ -482,7 +482,7 @@ class TestKubernetesAgentIntegrationScenarios:
             server_id="kubernetes-server",
             server_type="kubernetes", 
             enabled=True,
-            connection_params={"command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"]},
+            transport={"type": "stdio", "command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"]},
             instructions="Prioritize namespace-level resources for troubleshooting."
         )
         mock_registry.get_server_configs.return_value = [server_config]
@@ -735,7 +735,7 @@ class TestKubernetesAgentSummarization:
             server_id="kubernetes-server",
             server_type="kubernetes",
             enabled=True,
-            connection_params={"command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"]},
+            transport={"type": "stdio", "command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"]},
             instructions="Kubernetes server instructions"
         )
         mock_mcp_registry.get_server_configs.return_value = [server_config]

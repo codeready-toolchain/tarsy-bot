@@ -303,7 +303,8 @@ def mock_mcp_server_config():
         server_id="kubernetes-server",
         server_type="kubernetes",
         enabled=True,
-        connection_params={
+        transport={
+            "type": "stdio",
             "command": "npx",
             "args": ["-y", "kubernetes-mcp-server@latest"]
         },

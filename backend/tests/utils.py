@@ -1183,7 +1183,8 @@ class MCPServerFactory:
             "server_id": "kubernetes-server",
             "server_type": "kubernetes",
             "enabled": True,
-            "connection_params": {
+            "transport": {
+                "type": "stdio",
                 "command": "kubectl",
                 "args": ["proxy", "--port=8001"],
                 "env": {"KUBECONFIG": "/path/to/kubeconfig"}
@@ -1200,7 +1201,8 @@ class MCPServerFactory:
             "server_id": "docker-server",
             "server_type": "docker",
             "enabled": True,
-            "connection_params": {
+            "transport": {
+                "type": "stdio",
                 "command": "docker",
                 "args": ["run", "--rm", "-it"],
                 "env": {"DOCKER_HOST": "unix:///var/run/docker.sock"}
@@ -1217,7 +1219,8 @@ class MCPServerFactory:
             "server_id": "test-server",
             "server_type": "test",
             "enabled": True,
-            "connection_params": {
+            "transport": {
+                "type": "stdio",
                 "command": "test",
                 "args": ["--test"],
                 "env": {}
@@ -1234,7 +1237,8 @@ class MCPServerFactory:
             "server_id": "disabled-server",
             "server_type": "test",
             "enabled": False,
-            "connection_params": {
+            "transport": {
+                "type": "stdio",
                 "command": "disabled",
                 "args": [],
                 "env": {}
@@ -1251,7 +1255,8 @@ class MCPServerFactory:
             "server_id": "custom-server",
             "server_type": "custom",
             "enabled": True,
-            "connection_params": {
+            "transport": {
+                "type": "stdio",
                 "command": "custom",
                 "args": ["--custom"],
                 "env": {"CUSTOM_ENV": "custom_value"}
@@ -1741,7 +1746,7 @@ class MCPServerMaskingFactory:
             "server_id": "test-server",
             "server_type": "test",
             "enabled": True,
-            "connection_params": {"command": "test", "args": []},
+            "transport": {"type": "stdio", "command": "test", "args": []},
             "instructions": "Test server with masking",
             "data_masking": MCPServerMaskingFactory.create_basic_masking_config()
         }
@@ -1755,7 +1760,7 @@ class MCPServerMaskingFactory:
             "server_id": "secure-server",
             "server_type": "secure",
             "enabled": True,
-            "connection_params": {"command": "secure", "args": []},
+            "transport": {"type": "stdio", "command": "secure", "args": []},
             "instructions": "Secure server with comprehensive masking",
             "data_masking": MCPServerMaskingFactory.create_comprehensive_masking_config()
         }
@@ -1771,7 +1776,8 @@ class MCPServerMaskingFactory:
             "server_id": "template-server",
             "server_type": "test",
             "enabled": True,
-            "connection_params": {
+            "transport": {
+                "type": "stdio",
                 "command": "test-server",
                 "args": ["--token", "${TEST_TOKEN}", "--url", "${TEST_URL}"]
             }
@@ -1786,7 +1792,8 @@ class MCPServerMaskingFactory:
             "server_id": "complex-server",
             "server_type": "test",
             "enabled": True,
-            "connection_params": {
+            "transport": {
+                "type": "stdio",
                 "command": "complex-${SERVER_TYPE}",
                 "args": ["--endpoint", "https://${HOST}:${PORT}/api"],
                 "env": {
@@ -1805,7 +1812,9 @@ class MCPServerMaskingFactory:
             "server_id": "failing-server",
             "server_type": "test",
             "enabled": True,
-            "connection_params": {
+            "transport": {
+                "type": "stdio",
+                "command": "test",
                 "args": ["--missing", "${DEFINITELY_MISSING_VAR}"]
             }
         }

@@ -369,10 +369,10 @@ class ConfigurationLoader:
         
         # Check for MCP servers without required fields (should be caught by Pydantic, but double-check)
         for server_id, server_config in config.mcp_servers.items():
-            if not server_config.connection_params:
+            if not server_config.transport:
                 raise ConfigurationError(
-                    f"MCP server '{server_id}' has no connection parameters configured. "
-                    f"Each MCP server must have connection parameters."
+                    f"MCP server '{server_id}' has no transport configured. "
+                    f"Each MCP server must have transport configuration."
                 )
         
         # Warn about disabled MCP servers that are still referenced

@@ -20,20 +20,20 @@ class TestMCPServerRegistryExtended:
                 server_id="security-tools",
                 server_type="security",
                 enabled=True,
-                connection_params={"host": "localhost", "port": 8080},
+                transport={"type": "stdio", "command": "test", "env": {"HOST": "localhost", "PORT": "8080"}},
                 instructions="Security analysis tools"
             ),
             "monitoring-server": MCPServerConfigModel(
                 server_id="monitoring-server",
                 server_type="monitoring",
                 enabled=True,
-                connection_params={"endpoint": "http://monitoring.local"}
+                transport={"type": "stdio", "command": "monitoring", "env": {"ENDPOINT": "http://monitoring.local"}}
             ),
             "disabled-server": MCPServerConfigModel(
                 server_id="disabled-server",
                 server_type="test",
                 enabled=False,
-                connection_params={"command": "/usr/bin/test-server"}
+                transport={"type": "stdio", "command": "/usr/bin/test-server"}
             )
         }
 
@@ -74,7 +74,7 @@ class TestMCPServerRegistryExtended:
                 server_id="security-tools",
                 server_type="security",
                 enabled=True,
-                connection_params={"host": "localhost"},
+                transport={"type": "stdio", "command": "test", "env": {"HOST": "localhost"}},
                 instructions="Security tools"
             )
         }
@@ -86,7 +86,7 @@ class TestMCPServerRegistryExtended:
         
         assert server_config.server_type == "security"
         assert server_config.enabled is True
-        assert server_config.connection_params == {"host": "localhost"}
+        assert server_config.transport.env == {"HOST": "localhost"}
         assert server_config.instructions == "Security tools"
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
@@ -98,14 +98,14 @@ class TestMCPServerRegistryExtended:
         security_config = registry.get_server_config("security-tools")
         assert security_config.server_type == "security"
         assert security_config.enabled is True
-        assert security_config.connection_params == {"host": "localhost", "port": 8080}
+        assert security_config.transport.env == {"HOST": "localhost", "PORT": "8080"}
         assert security_config.instructions == "Security analysis tools"
         
         # Check monitoring-server
         monitoring_config = registry.get_server_config("monitoring-server")
         assert monitoring_config.server_type == "monitoring"
         assert monitoring_config.enabled is True
-        assert monitoring_config.connection_params == {"endpoint": "http://monitoring.local"}
+        assert monitoring_config.transport.env == {"ENDPOINT": "http://monitoring.local"}
         assert monitoring_config.instructions == ""  # Default empty string, not None
         
         # Check disabled server
@@ -131,7 +131,7 @@ class TestMCPServerRegistryExtended:
                 server_id="security-tools",
                 server_type="security",
                 enabled=True,
-                connection_params={"command": "/usr/bin/security-server"}
+                transport={"type": "stdio", "command": "/usr/bin/security-server"}
             )
         }
         
@@ -166,7 +166,7 @@ class TestMCPServerRegistryExtended:
                 server_id="kubernetes-server",
                 server_type="custom-kubernetes",  # Different from built-in
                 enabled=False,  # Different from built-in
-                connection_params={"command": "/usr/bin/custom-k8s-server"},
+                transport={"type": "stdio", "command": "/usr/bin/custom-k8s-server"},
                 instructions="Custom Kubernetes server"
             )
         }
@@ -254,7 +254,7 @@ class TestMCPServerRegistryExtended:
                 server_id="only-server",
                 server_type="custom",
                 enabled=True,
-                connection_params={"command": "/usr/bin/only-server"}
+                transport={"type": "stdio", "command": "/usr/bin/only-server"}
             )
         }
         
@@ -310,7 +310,7 @@ class TestMCPServerRegistryExtended:
                 server_id="Security-Tools",
                 server_type="security",
                 enabled=True,
-                connection_params={"command": "/usr/bin/Security-Tools"}
+                transport={"type": "stdio", "command": "/usr/bin/Security-Tools"}
             )
         }
         
@@ -331,7 +331,7 @@ class TestMCPServerRegistryExtended:
             "minimal-server": MCPServerConfigModel(
                 server_id="minimal-server",
                 server_type="minimal",
-                connection_params={}  # Minimal connection params
+                transport={"type": "stdio", "command": "test"}  # Minimal transport
             )
         }
         
@@ -340,7 +340,7 @@ class TestMCPServerRegistryExtended:
         server_config = registry.get_server_config("minimal-server")
         assert server_config.server_type == "minimal"
         assert server_config.enabled is True  # Default value
-        assert server_config.connection_params == {}  # Default value
+        assert server_config.transport.command == "test"  # Has basic transport
         assert server_config.instructions == ""  # Default value (empty string, not None)
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {})
@@ -351,11 +351,15 @@ class TestMCPServerRegistryExtended:
                 server_id="full-server",
                 server_type="comprehensive",
                 enabled=True,
-                connection_params={
-                    "host": "example.com",
-                    "port": 9090,
-                    "ssl": True,
-                    "timeout": 30
+                transport={
+                    "type": "stdio", 
+                    "command": "test",
+                    "env": {
+                        "HOST": "example.com",
+                        "PORT": "9090", 
+                        "SSL": "True",
+                        "TIMEOUT": "30"
+                    }
                 },
                 instructions="Comprehensive server with all configuration options"
             )
@@ -366,10 +370,10 @@ class TestMCPServerRegistryExtended:
         server_config = registry.get_server_config("full-server")
         assert server_config.server_type == "comprehensive"
         assert server_config.enabled is True
-        assert server_config.connection_params["host"] == "example.com"
-        assert server_config.connection_params["port"] == 9090
-        assert server_config.connection_params["ssl"] is True
-        assert server_config.connection_params["timeout"] == 30
+        assert server_config.transport.env["HOST"] == "example.com"
+        assert server_config.transport.env["PORT"] == "9090"
+        assert server_config.transport.env["SSL"] == "True"
+        assert server_config.transport.env["TIMEOUT"] == "30"
         assert server_config.instructions == "Comprehensive server with all configuration options"
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
@@ -380,7 +384,7 @@ class TestMCPServerRegistryExtended:
                 server_id="complex-server_v2.0-beta",
                 server_type="complex",
                 enabled=True,
-                connection_params={"command": "/usr/bin/complex-server_v2.0-beta"}
+                transport={"type": "stdio", "command": "/usr/bin/complex-server_v2.0-beta"}
             )
         }
         

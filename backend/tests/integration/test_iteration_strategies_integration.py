@@ -298,7 +298,8 @@ mcp_servers:
     server_id: security-tools
     server_type: security
     enabled: true
-    connection_params:
+    transport:
+      type: "stdio"
       command: "/usr/bin/security-scanner"
     instructions: "Security analysis tools"
   
@@ -306,8 +307,11 @@ mcp_servers:
     server_id: monitoring-server
     server_type: monitoring
     enabled: true
-    connection_params:
-      endpoint: "http://monitoring.local:9090"
+    transport:
+      type: "stdio"
+      command: "monitoring-mcp"
+      env:
+        ENDPOINT: "http://monitoring.local:9090"
     instructions: "Performance monitoring tools"
         """
         
@@ -382,8 +386,12 @@ mcp_servers:
     server_id: test-k8s-server
     server_type: kubernetes
     enabled: true
-    connection_params:
-      kubeconfig: "/tmp/kubeconfig"
+    transport:
+      type: "stdio"
+      command: "npx"
+      args: ["-y", "kubernetes-mcp-server@latest"]
+      env:
+        KUBECONFIG: "/tmp/kubeconfig"
     instructions: "Kubernetes troubleshooting"
         """
         
@@ -497,7 +505,9 @@ mcp_servers:
     server_id: test-server
     server_type: test
     enabled: true
-    connection_params: {}
+    transport:
+      type: "stdio"
+      command: "test"
         """
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:

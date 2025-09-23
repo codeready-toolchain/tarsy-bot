@@ -42,7 +42,8 @@ mcp_servers:
     server_id: "test-data-server"
     server_type: "custom"
     enabled: true
-    connection_params:
+    transport:
+      type: "stdio"
       command: "echo"
       args: ["test-data-server-ready"]
     instructions: "Simple data collection server for testing - provides system information gathering tools"

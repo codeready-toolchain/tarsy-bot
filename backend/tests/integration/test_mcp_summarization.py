@@ -26,7 +26,7 @@ class TestSummarizationConfiguration:
                 "server_id": "security-server",
                 "server_type": "security",
                 "enabled": True,
-                "connection_params": {"command": "security-mcp"},
+                "transport": {"type": "stdio", "command": "security-mcp"},
                 "instructions": "Security analysis",
                 "summarization": {
                     "enabled": True,
@@ -38,7 +38,7 @@ class TestSummarizationConfiguration:
                 "server_id": "filesystem-server", 
                 "server_type": "filesystem",
                 "enabled": True,
-                "connection_params": {"command": "filesystem-mcp"},
+                "transport": {"type": "stdio", "command": "filesystem-mcp"},
                 "instructions": "File operations",
                 "summarization": {
                     "enabled": False  # Disabled for filesystem
@@ -69,7 +69,7 @@ class TestSummarizationConfiguration:
                 "server_id": "monitoring-server",
                 "server_type": "monitoring", 
                 "enabled": True,
-                "connection_params": {"command": "monitoring-mcp"},
+                "transport": {"type": "stdio", "command": "monitoring-mcp"},
                 "instructions": "Monitoring operations"
                 # No summarization section - should get defaults
             }

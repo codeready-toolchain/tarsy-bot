@@ -75,7 +75,7 @@ class TestMCPServerRegistryMaskingIntegration:
                 "server_id": "dev-server",
                 "server_type": "development",
                 "enabled": True,
-                "connection_params": {"command": "dev", "args": []},
+                "transport": {"type": "stdio", "command": "dev", "args": []},
                 "instructions": "Development server with disabled masking",
                 "data_masking": {
                     "enabled": False,
@@ -100,7 +100,7 @@ class TestMCPServerRegistryMaskingIntegration:
                 "server_id": "no-masking-server",
                 "server_type": "basic",
                 "enabled": True,
-                "connection_params": {"command": "basic", "args": []},
+                "transport": {"type": "stdio", "command": "basic", "args": []},
                 "instructions": "Basic server without masking"
                 # No data_masking field - should default to None
             },
@@ -108,7 +108,7 @@ class TestMCPServerRegistryMaskingIntegration:
                 "server_id": "basic-masking-server",
                 "server_type": "secured",
                 "enabled": True,
-                "connection_params": {"command": "secured", "args": []},
+                "transport": {"type": "stdio", "command": "secured", "args": []},
                 "instructions": "Server with basic masking",
                 "data_masking": {
                     "enabled": True,
@@ -119,7 +119,7 @@ class TestMCPServerRegistryMaskingIntegration:
                 "server_id": "disabled-masking-server",
                 "server_type": "test",
                 "enabled": True,
-                "connection_params": {"command": "test", "args": []},
+                "transport": {"type": "stdio", "command": "test", "args": []},
                 "instructions": "Test server with disabled masking",
                 "data_masking": {
                     "enabled": False
@@ -158,7 +158,7 @@ class TestMCPServerRegistryMaskingServiceIntegration:
                 "server_id": "masked-server",
                 "server_type": "production",
                 "enabled": True,
-                "connection_params": {"command": "prod", "args": []},
+                "transport": {"type": "stdio", "command": "prod", "args": []},
                 "instructions": "Production server with masking",
                 "data_masking": {
                     "enabled": True,
@@ -191,7 +191,7 @@ class TestMCPServerRegistryMaskingServiceIntegration:
                     "server_id": "invalid-server",
                     "server_type": "test",
                     "enabled": True,
-                    "connection_params": {"command": "test", "args": []},
+                    "transport": {"type": "stdio", "command": "test", "args": []},
                     "instructions": "Server with invalid masking config",
                     "data_masking": {
                         "enabled": True,
@@ -216,7 +216,8 @@ class TestMCPServerRegistryMaskingServiceIntegration:
                 "server_id": "kubernetes-prod",
                 "server_type": "kubernetes",
                 "enabled": True,
-                "connection_params": {
+                "transport": {
+                    "type": "stdio",
                     "command": "npx",
                     "args": ["-y", "kubernetes-mcp-server@latest"]
                 },
@@ -239,7 +240,8 @@ class TestMCPServerRegistryMaskingServiceIntegration:
                 "server_id": "kubernetes-dev",
                 "server_type": "kubernetes",
                 "enabled": True,
-                "connection_params": {
+                "transport": {
+                    "type": "stdio",
                     "command": "npx",
                     "args": ["-y", "kubernetes-mcp-server@latest", "--dev"]
                 },
@@ -254,7 +256,7 @@ class TestMCPServerRegistryMaskingServiceIntegration:
                 "server_id": "simple-server",
                 "server_type": "simple",
                 "enabled": True,
-                "connection_params": {"command": "simple", "args": []},
+                "transport": {"type": "stdio", "command": "simple", "args": []},
                 "instructions": "Simple server with no sensitive data"
                 # No masking configuration
             }
@@ -301,7 +303,7 @@ class TestMCPServerRegistryMaskingEdgeCases:
                 "server_id": "empty-masking-server",
                 "server_type": "test",
                 "enabled": True,
-                "connection_params": {"command": "test", "args": []},
+                "transport": {"type": "stdio", "command": "test", "args": []},
                 "instructions": "Server with empty masking config",
                 "data_masking": {}  # Empty masking config should use defaults
             }
@@ -325,7 +327,7 @@ class TestMCPServerRegistryMaskingEdgeCases:
                 "server_id": "serializable-server",
                 "server_type": "test",
                 "enabled": True,
-                "connection_params": {"command": "test", "args": []},
+                "transport": {"type": "stdio", "command": "test", "args": []},
                 "instructions": "Server for serialization testing",
                 "data_masking": {
                     "enabled": True,

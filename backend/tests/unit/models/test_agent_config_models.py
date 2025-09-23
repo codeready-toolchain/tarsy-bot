@@ -117,7 +117,7 @@ class TestMCPServerConfigModel:
             "server_id": "security-tools",
             "server_type": "security",
             "enabled": True,
-            "connection_params": {"host": "localhost", "port": 8080},
+            "transport": {"type": "stdio", "command": "test", "args": []},
             "instructions": "Security analysis tools"
         }
         
@@ -126,7 +126,8 @@ class TestMCPServerConfigModel:
         assert config.server_id == "security-tools"
         assert config.server_type == "security"
         assert config.enabled is True
-        assert config.connection_params == {"host": "localhost", "port": 8080}
+        assert config.transport.command == "test"
+        assert config.transport.args == []
         assert config.instructions == "Security analysis tools"
 
     def test_minimal_valid_mcp_server_config(self):
@@ -134,7 +135,7 @@ class TestMCPServerConfigModel:
         config_data = {
             "server_id": "security-tools",
             "server_type": "security",
-            "connection_params": {}
+            "transport": {"type": "stdio", "command": "minimal"}
         }
         
         config = MCPServerConfigModel(**config_data)
@@ -142,7 +143,8 @@ class TestMCPServerConfigModel:
         assert config.server_id == "security-tools"
         assert config.server_type == "security"
         assert config.enabled is True  # Default value
-        assert config.connection_params == {}  # Default value
+        assert config.transport.command == "minimal"
+        assert config.transport.args == []  # Default value
         assert config.instructions == ""
 
     def test_disabled_mcp_server_config(self):
@@ -151,7 +153,7 @@ class TestMCPServerConfigModel:
             "server_id": "disabled-server",
             "server_type": "monitoring",
             "enabled": False,
-            "connection_params": {}
+            "transport": {"type": "stdio", "command": "disabled"}
         }
         
         config = MCPServerConfigModel(**config_data)
@@ -164,7 +166,7 @@ class TestMCPServerConfigModel:
             "server_id": "security-tools",
             "server_type": "security",
             "enabled": True,
-            "connection_params": {"host": "localhost", "port": 8080},
+            "transport": {"type": "stdio", "command": "test", "args": []},
             "instructions": "Security analysis tools"
         }
         
@@ -175,7 +177,7 @@ class TestMCPServerConfigModel:
         valid_data = {
             "server_id": "security-tools",
             "server_type": "security",
-            "connection_params": {}
+            "transport": {"type": "stdio", "command": "test"}
         }
         
         required_fields = ["server_id", "server_type"]
@@ -183,16 +185,16 @@ class TestMCPServerConfigModel:
 
     def test_invalid_field_types(self):
         """Test that invalid field types fail validation."""
-        # connection_params as string instead of dict
+        # transport as string instead of dict
         with pytest.raises(ValidationError) as exc_info:
             MCPServerConfigModel(
                 server_id="security-tools",
                 server_type="security",
-                connection_params="localhost:8080"
+                transport="localhost:8080"
             )
             
         errors = exc_info.value.errors()
-        assert any(e["loc"] == ("connection_params",) for e in errors)
+        assert any(e["loc"] == ("transport",) for e in errors)
 
 @pytest.mark.unit
 class TestCombinedConfigModel:
@@ -215,12 +217,12 @@ class TestCombinedConfigModel:
                 "security-tools": {
                     "server_id": "security-tools",
                     "server_type": "security",
-                    "connection_params": {}
+                    "transport": {"type": "stdio", "command": "security"}
                 },
                 "monitoring-server": {
                     "server_id": "monitoring-server",
                     "server_type": "monitoring",
-                    "connection_params": {}
+                    "transport": {"type": "stdio", "command": "monitoring"}
                 }
             }
         }
@@ -254,7 +256,7 @@ class TestCombinedConfigModel:
                 "security-tools": {
                     "server_id": "wrong-id",  # Should match key "security-tools"
                     "server_type": "security",
-                    "connection_params": {"command": "/usr/bin/security"}
+                    "transport": {"type": "stdio", "command": "/usr/bin/security"}
                 }
             }
         }
@@ -276,12 +278,12 @@ class TestCombinedConfigModel:
                 "security-tools": {
                     "server_id": "wrong-id-1",      
                     "server_type": "security",
-                    "connection_params": {"command": "/usr/bin/security"}
+                    "transport": {"type": "stdio", "command": "/usr/bin/security"}
                 },
                 "monitoring-server": {
                     "server_id": "wrong-id-2",
                     "server_type": "monitoring",
-                    "connection_params": {"command": "/usr/bin/monitoring"}
+                    "transport": {"type": "stdio", "command": "/usr/bin/monitoring"}
                 }
             }
         }
@@ -380,7 +382,7 @@ class TestCombinedConfigModel:
                 "security-tools": {
                     "server_id": "security-tools",
                     "server_type": "security",
-                    "connection_params": {}
+                    "transport": {"type": "stdio", "command": "security"}
                 }
             },
             "agent_chains": {
@@ -424,7 +426,7 @@ class TestCombinedConfigModel:
                 "security-tools": {
                     "server_id": "security-tools",
                     "server_type": "security",
-                    "connection_params": {}
+                    "transport": {"type": "stdio", "command": "security"}
                 }
             },
             "agent_chains": {
@@ -601,7 +603,7 @@ class TestSummarizationConfig:
         server_config_data = {
             "server_id": "test-server",
             "server_type": "monitoring", 
-            "connection_params": {"command": "test"},
+            "transport": {"type": "stdio", "command": "test"},
         }
         
         config = MCPServerConfigModel(**server_config_data)
@@ -618,7 +620,7 @@ class TestSummarizationConfig:
         server_config_data = {
             "server_id": "test-server",
             "server_type": "monitoring",
-            "connection_params": {"command": "test"},
+            "transport": {"type": "stdio", "command": "test"},
             "summarization": {
                 "enabled": False,
                 "size_threshold_tokens": 5000,
