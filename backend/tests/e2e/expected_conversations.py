@@ -58,10 +58,6 @@ For Kubernetes operations:
 
 Simple data collection server for testing - provides system information gathering tools
 
-## Http-Api Server Instructions
-
-HTTP MCP server for testing HTTP transport functionality - provides API-based tools
-
 ## Agent-Specific Instructions
 
 You are a Kubernetes data collection specialist. Your role is to gather comprehensive 
@@ -94,10 +90,6 @@ Available tools:
 3. **test-data-server.collect_system_info**: Collect basic system information like CPU, memory, and disk usage
     **Parameters**:
     - detailed (optional, boolean): Whether to return detailed system info
-
-4. **test-http-server.get_api_status**: Get Kubernetes API server status and health metrics via HTTP
-    **Parameters**:
-    - include_metrics (optional, boolean): Whether to include performance metrics
 
 Question: Investigate this test-kubernetes alert and provide stage-specific analysis.
 
@@ -188,34 +180,32 @@ Format:
 EXPECTED_STAGES = {
     'data-collection': {
         'llm_count': 6,  # 5 regular interactions plus 1 tool result summarization interaction  
-        'mcp_count': 7,  # Tool discovery calls + tool execution calls are all tracked as MCP interactions
+        'mcp_count': 6,  # Tool discovery calls + tool execution calls are all tracked as MCP interactions
         'interactions': [
             # MCP 1 - Tool list discovery for kubernetes-server (first interaction)
             {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # MCP 2 - Tool list discovery for test-data-server (returns 1 tool: collect_system_info)
             {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
-            # MCP 3 - Tool list discovery for test-http-server (returns 1 tool: get_api_status)
-            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-http-server'},
             # LLM 1 - Initial ReAct iteration
             {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330},
-            # MCP 4 - Successful kubectl_get attempt
-            {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            # MCP 3 - Successful kubectl_get attempt
+            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Second ReAct iteration
             {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245},
-            # MCP 5 - Failed kubectl_describe attempt (testing error handling)
-            {'type': 'mcp', 'position': 5, 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server', 'error_message': "Failed to call tool kubectl_describe on kubernetes-server after 2 attempts: Type=McpError | Message=tool 'kubectl_describe' not found: tool not found | error=ErrorData(code=-32602, message=\"tool 'kubectl_describe' not found: tool not found\", data=None)"},
+            # MCP 4 - Failed kubectl_describe attempt (testing error handling)
+            {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server', 'error_message': "Failed to call tool kubectl_describe on kubernetes-server after 2 attempts: Type=McpError | Message=tool 'kubectl_describe' not found: tool not found | error=ErrorData(code=-32602, message=\"tool 'kubectl_describe' not found: tool not found\", data=None)"},
             # LLM 3 - Third ReAct iteration
             {'type': 'llm', 'position': 3, 'success': True, 'conversation_index': 7, 'input_tokens': 220, 'output_tokens': 75, 'total_tokens': 295},
             # LLM 4 - Summarization of large system info result (separate LLM call, not in conversation)
             # The summarization interaction happens within the collect_system_info MCP call interaction, so it's recorded before the MCP interaction
             {'type': 'llm', 'position': 4, 'success': True, 'conversation': EXPECTED_DATA_COLLECTION_SUMMARIZATION_CONVERSATION, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150},
-            # MCP 6 - Successful collect_system_info call (will trigger summarization)
-            {'type': 'mcp', 'position': 6, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
-            # LLM 5 - Fourth ReAct iteration (HTTP server call) - continues after system info
+            # MCP 5 - Successful collect_system_info call (will trigger summarization)
+            {'type': 'mcp', 'position': 5, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
+            # LLM 5 - Fourth ReAct iteration (kubectl events call) - continues after system info
             {'type': 'llm', 'position': 5, 'success': True, 'conversation_index': 9, 'input_tokens': 200, 'output_tokens': 60, 'total_tokens': 260},
-            # MCP 7 - Successful get_api_status call (HTTP server)
-            {'type': 'mcp', 'position': 7, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_api_status', 'server_name': 'test-http-server'},
-            # LLM 6 - Final completion with HTTP observation
+            # MCP 6 - Successful kubectl_get events call
+            {'type': 'mcp', 'position': 6, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            # LLM 6 - Final completion with events observation
             {'type': 'llm', 'position': 6, 'success': True, 'conversation_index': 11, 'input_tokens': 315, 'output_tokens': 125, 'total_tokens': 440}
         ]
     },
@@ -295,10 +285,6 @@ For Kubernetes operations:
 ## Custom Server Instructions
 
 Simple data collection server for testing - provides system information gathering tools
-
-## Http-Api Server Instructions
-
-HTTP MCP server for testing HTTP transport functionality - provides API-based tools
 
 ## Agent-Specific Instructions
 
@@ -442,10 +428,6 @@ Available tools:
     **Parameters**:
     - detailed (optional, boolean): Whether to return detailed system info
 
-4. **test-http-server.get_api_status**: Get Kubernetes API server status and health metrics via HTTP
-    **Parameters**:
-    - include_metrics (optional, boolean): Whether to include performance metrics
-
 Question: Investigate this test-kubernetes alert and provide stage-specific analysis.
 
 ## Alert Details
@@ -516,19 +498,18 @@ Action Input: {"detailed": false}"""
         },
         {
             "role": "assistant",
-            "content": """Thought: Let me also check the API server status via HTTP.
-Action: test-http-server.get_api_status
-Action Input: {"include_metrics": true}"""
+            "content": """Thought: Let me gather more information about the current state.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "events", "namespace": "test-namespace"}"""
         },
-        # 5th LLM interaction - Gets HTTP API status and provides final answer
         {
             "role": "user",
-            "content": """Observation: test-http-server.get_api_status: {
-  "result": "{'result': {'status': 'healthy', 'version': 'v1.28.0', 'metrics': {'requests_per_second': 45, 'response_time_ms': 120, 'error_rate_percent': 0.02}, 'components': {'etcd': 'healthy', 'scheduler': 'healthy', 'controller-manager': 'healthy'}}}"
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "Mock kubectl get events response"
 }"""
         },
         {
-            "role": "assistant",
+            "role": "assistant", 
             "content": """Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion."""
         }
     ]
@@ -727,11 +708,11 @@ Action Input: {"detailed": false}
 Observation: test-data-server.collect_system_info: {
   "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
 }
-Thought: Let me also check the API server status via HTTP.
-Action: test-http-server.get_api_status
-Action Input: {"include_metrics": true}
-Observation: test-http-server.get_api_status: {
-  "result": "{'result': {'status': 'healthy', 'version': 'v1.28.0', 'metrics': {'requests_per_second': 45, 'response_time_ms': 120, 'error_rate_percent': 0.02}, 'components': {'etcd': 'healthy', 'scheduler': 'healthy', 'controller-manager': 'healthy'}}}"
+Thought: Let me gather more information about the current state.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "events", "namespace": "test-namespace"}
+Observation: kubernetes-server.kubectl_get: {
+  "result": "Mock kubectl get events response"
 }
 Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
 <!-- Analysis Result END -->
@@ -859,11 +840,11 @@ Action Input: {"detailed": false}
 Observation: test-data-server.collect_system_info: {
   "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
 }
-Thought: Let me also check the API server status via HTTP.
-Action: test-http-server.get_api_status
-Action Input: {"include_metrics": true}
-Observation: test-http-server.get_api_status: {
-  "result": "{'result': {'status': 'healthy', 'version': 'v1.28.0', 'metrics': {'requests_per_second': 45, 'response_time_ms': 120, 'error_rate_percent': 0.02}, 'components': {'etcd': 'healthy', 'scheduler': 'healthy', 'controller-manager': 'healthy'}}}"
+Thought: Let me gather more information about the current state.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "events", "namespace": "test-namespace"}
+Observation: kubernetes-server.kubectl_get: {
+  "result": "Mock kubectl get events response"
 }
 Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
 <!-- Analysis Result END -->

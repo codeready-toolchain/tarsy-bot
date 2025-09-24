@@ -18,7 +18,6 @@ agents:
     mcp_servers:
       - "kubernetes-server"  # Use built-in kubernetes server for simplicity
       - "test-data-server"   # Custom server for additional data collection
-      - "test-http-server"   # HTTP server for testing HTTP transport
 
   # Analysis Agent for root cause analysis
   AnalysisAgent:
@@ -54,25 +53,6 @@ mcp_servers:
       enabled: true
       size_threshold_tokens: 100    # Low threshold to trigger summarization in tests
       summary_max_token_limit: 50  # Reasonable limit for test summaries
-
-  test-http-server:
-    server_id: "test-http-server"
-    server_type: "http-api"
-    enabled: true
-    transport:
-      type: "http"
-      url: "http://test-mcp-server.local/mcp"
-      bearer_token: "test-bearer-token-123"
-      verify_ssl: false  # OK for testing
-      timeout: 10
-      headers:
-        User-Agent: "tarsy-e2e-test/1.0"
-        Accept: "application/json"
-    instructions: "HTTP MCP server for testing HTTP transport functionality - provides API-based tools"
-    data_masking:
-      enabled: false
-    summarization:
-      enabled: false  # No summarization for HTTP testing
 
 # Agent chains configuration - this is the key part for our test
 agent_chains:

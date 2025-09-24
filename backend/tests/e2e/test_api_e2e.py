@@ -247,12 +247,12 @@ Action Input: {"detailed": false}""",
                             "response_content": """Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK.""",
                             "input_tokens": 100, "output_tokens": 50, "total_tokens": 150
                            },
-                        5: { # Data collection - HTTP API call (continues after summarization)
-                            "response_content": """Thought: Let me also check the API server status via HTTP.
-Action: test-http-server.get_api_status
-Action Input: {"include_metrics": true}""",
+                        5: { # Data collection - Additional investigation (continues after summarization)
+                            "response_content": """Thought: Let me gather more information about the current state.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "events", "namespace": "test-namespace"}""",
                             "input_tokens": 200, "output_tokens": 60, "total_tokens": 260
-                           },
+                        },
                         6: { # Data collection - Final analysis
                             "response_content": """Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.""",
                             "input_tokens": 315, "output_tokens": 125, "total_tokens": 440
@@ -459,62 +459,9 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
 
             return mock_session
 
-        def create_http_mcp_session_mock():
-            """Create a mock MCP session for the HTTP test-http-server."""
-            mock_session = AsyncMock()
-
-            async def mock_call_tool(tool_name, _parameters):
-                # Create mock result object for HTTP MCP server tool calls
-                if tool_name == "get_api_status":
-                    return {
-                        "result": {
-                            "status": "healthy",
-                            "version": "v1.28.0",
-                            "metrics": {
-                                "requests_per_second": 45,
-                                "response_time_ms": 120,
-                                "error_rate_percent": 0.02
-                            },
-                            "components": {
-                                "etcd": "healthy",
-                                "scheduler": "healthy",
-                                "controller-manager": "healthy"
-                            }
-                        }
-                    }
-                else:
-                    return {"result": f"Mock HTTP response for tool: {tool_name}"}
-
-            async def mock_list_tools():
-                # Create proper Tool object for HTTP server
-                mock_tool = Tool(
-                    name="get_api_status",
-                    description="Get Kubernetes API server status and health metrics via HTTP",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "include_metrics": {
-                                "type": "boolean",
-                                "description": "Whether to include performance metrics",
-                            }
-                        },
-                    }
-                )
-
-                # Return object with .tools attribute (matching MCP SDK API)
-                mock_result = Mock()
-                mock_result.tools = [mock_tool]
-                return mock_result
-
-            mock_session.call_tool.side_effect = mock_call_tool
-            mock_session.list_tools.side_effect = mock_list_tools
-
-            return mock_session
-
         # Create mock MCP sessions for all servers
         mock_kubernetes_session = create_mcp_session_mock()
         mock_custom_session = create_custom_mcp_session_mock()
-        mock_http_session = create_http_mcp_session_mock()
 
         # Create test MCP server configurations using shared utilities
         k8s_config = E2ETestUtils.create_simple_kubernetes_mcp_config(
@@ -525,17 +472,10 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             command_args=["test-data-server-ready"],
             instructions="Test data collection server for e2e testing"
         )
-        # HTTP server configuration
-        http_config = E2ETestUtils.create_simple_http_server_mcp_config(
-            url="http://test-mcp-server.local/mcp",
-            bearer_token="test-bearer-token-123",
-            instructions="HTTP MCP server for e2e testing"
-        )
 
         test_mcp_servers = E2ETestUtils.create_test_mcp_servers(BUILTIN_MCP_SERVERS, {
             "kubernetes-server": k8s_config,
-            "test-data-server": data_config,
-            "test-http-server": http_config
+            "test-data-server": data_config
         })
 
         # Apply comprehensive mocking with test MCP server config
@@ -555,17 +495,10 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             # 2. Mock runbook HTTP calls using shared utility
             E2ETestUtils.setup_runbook_mocking(respx_mock)
 
-            # 2b. Mock HTTP MCP server endpoint
-            # HTTP MCP server is mocked at the session level (see mock_http_session above)
-            
-            # Note: HTTP transport is mocked at MCP session level, not network level
-            # The HTTP MCP server endpoint is handled by mock_http_session above
-
             # 3. Mock MCP client using shared utility with custom sessions
             mock_sessions = {
                 "kubernetes-server": mock_kubernetes_session,
                 "test-data-server": mock_custom_session,
-                "test-http-server": mock_http_session,
             }
             mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
 
