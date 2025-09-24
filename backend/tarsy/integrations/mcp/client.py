@@ -414,11 +414,6 @@ class MCPClient:
                     error_msg = f"Failed to call tool {tool_name} on {server_name} after {max_retries} attempts: {error_details}"
                     self._log_mcp_error(server_name, tool_name, error_details, request_id)
                     raise Exception(error_msg) from e
-            
-            # This should never be reached, but just in case
-            error_msg = f"Failed to call tool {tool_name} on {server_name} after {max_retries} attempts"
-            self._log_mcp_error(server_name, tool_name, "Max retries exceeded", request_id)
-            raise Exception(error_msg)
     
     async def _recover_session(self, server_name: str) -> None:
         """Recover a failed MCP session by recreating it.
