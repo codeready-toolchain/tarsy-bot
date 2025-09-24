@@ -8,7 +8,7 @@ from tarsy.integrations.mcp.transport.factory import MCPTransportFactory
 from tarsy.models.mcp_transport_config import StdioTransportConfig, HTTPTransportConfig, TRANSPORT_STDIO, TRANSPORT_HTTP
 
 
-async def test_stdio_transport():
+async def test_stdio_transport() -> None:
     """Test stdio transport creation."""
     print("🔧 Testing Stdio Transport...")
     
@@ -27,14 +27,14 @@ async def test_stdio_transport():
         )
         
         print(f"✅ Created stdio transport: {type(transport).__name__}")
-        print(f"   - Server ID: test-stdio-server")
+        print("   - Server ID: test-stdio-server")
         print(f"   - Transport type: {stdio_config.type}")
         print(f"   - Command: {stdio_config.command}")
         print(f"   - Args: {stdio_config.args}")
         print(f"   - Connected: {transport.is_connected}")
 
 
-async def test_http_transport():
+async def test_http_transport() -> None:
     """Test HTTP transport creation."""
     print("\n🌐 Testing HTTP Transport...")
     
@@ -53,7 +53,7 @@ async def test_http_transport():
     )
     
     print(f"✅ Created HTTP transport: {type(transport).__name__}")
-    print(f"   - Server ID: test-http-server")
+    print("   - Server ID: test-http-server")
     print(f"   - Transport type: {http_config.type}")
     print(f"   - URL: {http_config.url}")
     print(f"   - Has bearer token: {bool(http_config.bearer_token)}")
@@ -65,7 +65,7 @@ async def test_http_transport():
     await transport.close()
 
 
-async def test_transport_type_validation():
+async def test_transport_type_validation() -> None:
     """Test transport type validation."""
     print("\n🔍 Testing Transport Type Validation...")
     
@@ -91,7 +91,7 @@ async def test_transport_type_validation():
         print(f"✅ Correctly rejected invalid transport type: {e}")
 
 
-async def main():
+async def main() -> None:
     """Run all validation tests."""
     print("🚀 Phase 2 Transport Factory Validation")
     print("=" * 50)

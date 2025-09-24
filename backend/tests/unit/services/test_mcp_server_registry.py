@@ -383,7 +383,7 @@ class TestEdgeCases:
                 "server_id": "",
                 "server_type": "empty",
                 "enabled": True,
-                 "connection_params": {"command": "test", "args": []}
+                 "transport": {"type": "stdio", "command": "test", "args": []}
             }
         }
         

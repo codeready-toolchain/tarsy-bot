@@ -80,7 +80,7 @@ class TestTemplateResolver:
                 "server_id": "kubernetes-server",
                 "server_type": "kubernetes",
                 "enabled": True,
-                "connection_params": {
+                "transport": {
                     "command": "npx",
                     "args": [
                         "-y", 
@@ -92,8 +92,8 @@ class TestTemplateResolver:
                 "instructions": "Use kubeconfig at ${TEST_KUBECONFIG_UNIQUE}"
             }
             result = self.resolver.resolve_configuration(config)
-            assert result["connection_params"]["args"][3] == "/path/to/config"
-            assert result["connection_params"]["args"][5] == "prod"
+            assert result["transport"]["args"][3] == "/path/to/config"
+            assert result["transport"]["args"][5] == "prod"
             assert "Use kubeconfig at /path/to/config" in result["instructions"]
     
     def test_missing_variable_raises_error(self):
@@ -215,18 +215,18 @@ class TestConvenienceFunctions:
         with patch.dict(os.environ, {'SERVER_TOKEN': 'token123'}):
             config = {
                 "server_id": "test-server",
-                "connection_params": {
+                "transport": {
                     "args": ["--token", "${SERVER_TOKEN}"]
                 }
             }
             result = resolve_mcp_server_config(config)
-            assert result["connection_params"]["args"][1] == "token123"
+            assert result["transport"]["args"][1] == "token123"
     
     def test_resolve_mcp_server_config_missing_var(self):
         """Test convenience function with missing variable."""
         config = {
             "server_id": "test-server",
-            "connection_params": {
+            "transport": {
                 "args": ["--token", "${MISSING_TOKEN}"]
             }
         }
@@ -240,17 +240,17 @@ class TestConvenienceFunctions:
         
         config = {
             "server_id": "test-server",
-            "connection_params": {
+            "transport": {
                 "args": ["--token", "${SERVER_TOKEN}"]
             }
         }
         result = resolve_mcp_server_config(config, settings=mock_settings)
-        assert result["connection_params"]["args"][1] == "default_token"
+        assert result["transport"]["args"][1] == "default_token"
     
     def test_validate_mcp_server_templates(self):
         """Test the convenience function for template validation."""
         config = {
-            "connection_params": {
+            "transport": {
                 "args": ["--token", "${MISSING_TOKEN}", "--host", "${MISSING_HOST}"]
             }
         }

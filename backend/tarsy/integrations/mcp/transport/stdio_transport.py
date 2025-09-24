@@ -15,7 +15,7 @@ logger = get_module_logger(__name__)
 class StdioTransport(MCPTransport):
     """Stdio transport wrapper to integrate existing functionality into unified transport architecture."""
     
-    def __init__(self, server_id: str, config: StdioTransportConfig, exit_stack: AsyncExitStack):
+    def __init__(self, server_id: str, config: StdioTransportConfig, exit_stack: AsyncExitStack) -> None:
         """
         Initialize stdio transport.
         
@@ -65,10 +65,20 @@ class StdioTransport(MCPTransport):
         logger.info(f"Stdio session created for server: {self.server_id}")
         return self.session
     
-    async def close(self):
-        """Close stdio transport (handled automatically by exit_stack)."""
+    async def close(self) -> None:
+        """Close stdio transport and cleanup all owned resources."""
         if self._connected:
             logger.info(f"Closing stdio transport for server: {self.server_id}")
+            
+            try:
+                # Close all async context managers managed by exit_stack
+                # This will properly cleanup stdio streams, client session, and subprocess
+                await self.exit_stack.aclose()
+                logger.info(f"Successfully closed all resources for server: {self.server_id}")
+            except Exception as e:
+                logger.error(f"Failed to close resources for server {self.server_id}: {e}")
+            
+            # Set flags to indicate transport is closed
             self._connected = False
             self.session = None
     

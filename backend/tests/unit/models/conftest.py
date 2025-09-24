@@ -134,7 +134,7 @@ def sample_agent_config_data():
         "alert_types": ["kubernetes"],
         "mcp_servers": ["kubernetes-server"],
         "iteration_strategy": "react",
-        "connection_params": {
+        "transport": {
             "kubeconfig": "/path/to/kubeconfig",
             "context": "production"
         }

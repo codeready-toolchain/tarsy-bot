@@ -163,14 +163,14 @@ class TestMCPServerRegistryTemplateResolution:
     
     def test_template_resolution_fallback_on_error(self):
         """Test that registry falls back to original config when template resolution fails."""
-        # Create a server config with template that will fail
-        config_with_template = {
-            "failing-server": MCPServerMaskingFactory.create_failing_template_server_config()
+        # Register server via configured_servers to ensure availability
+        configured_servers = {
+            "failing-server": MCPServerConfigModel(**MCPServerMaskingFactory.create_failing_template_server_config())
         }
         
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
-            registry = MCPServerRegistry(config=config_with_template, settings=settings)
+            registry = MCPServerRegistry(configured_servers=configured_servers, settings=settings)
             
             # Should succeed but use original (non-resolved) config as fallback
             config = registry.get_server_config("failing-server")

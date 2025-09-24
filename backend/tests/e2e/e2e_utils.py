@@ -7,7 +7,7 @@ to reduce duplication and improve maintainability.
 
 import asyncio
 import time
-from typing import Tuple, Dict, Any, List, Callable
+from typing import Tuple, Dict, Any, List, Callable, Optional
 from unittest.mock import AsyncMock, Mock
 
 import httpx
@@ -174,7 +174,7 @@ class E2ETestUtils:
         return mock_list_tools, mock_call_tool
 
     @staticmethod
-    def create_simple_kubernetes_mcp_config(command_args: List[str] = ["test"], instructions: str = "Test server") -> Dict[str, Any]:
+    def create_simple_kubernetes_mcp_config(command_args: Optional[List[str]] = None, instructions: str = "Test server") -> Dict[str, Any]:
         """
         Create a simple kubernetes MCP server configuration for testing.
 
@@ -185,6 +185,8 @@ class E2ETestUtils:
         Returns:
             MCP server configuration dictionary
         """
+        if command_args is None:
+            command_args = ["test"]
         return {
             "server_id": "kubernetes-server",
             "server_type": "test",
@@ -199,7 +201,7 @@ class E2ETestUtils:
         }
 
     @staticmethod
-    def create_simple_data_server_mcp_config(command_args: List[str] = ["test"], instructions: str = "Test data server") -> Dict[str, Any]:
+    def create_simple_data_server_mcp_config(command_args: Optional[List[str]] = None, instructions: str = "Test data server") -> Dict[str, Any]:
         """
         Create a simple data server MCP server configuration for testing.
 
@@ -210,6 +212,8 @@ class E2ETestUtils:
         Returns:
             MCP server configuration dictionary
         """
+        if command_args is None:
+            command_args = ["test"]
         return {
             "server_id": "test-data-server",
             "server_type": "test",

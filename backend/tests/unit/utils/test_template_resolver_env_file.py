@@ -318,7 +318,7 @@ MCP_SERVER_TIMEOUT=30
                     "server_id": "test-server",
                     "server_type": "custom",
                     "enabled": True,
-                    "connection_params": {
+                    "transport": {
                         "command": "custom-server",
                         "args": [
                             "--token", "${MCP_SERVER_TOKEN}",
@@ -336,11 +336,11 @@ MCP_SERVER_TIMEOUT=30
                 result = resolver.resolve_configuration(config)
                 
                 # Verify all templates were resolved from .env file
-                assert result["connection_params"]["args"][1] == "secret123"
-                assert result["connection_params"]["args"][3] == "https://api.example.com"
-                assert result["connection_params"]["args"][5] == "30"
-                assert result["connection_params"]["env"]["API_TOKEN"] == "secret123"
-                assert result["connection_params"]["env"]["BASE_URL"] == "https://api.example.com"
+                assert result["transport"]["args"][1] == "secret123"
+                assert result["transport"]["args"][3] == "https://api.example.com"
+                assert result["transport"]["args"][5] == "30"
+                assert result["transport"]["env"]["API_TOKEN"] == "secret123"
+                assert result["transport"]["env"]["BASE_URL"] == "https://api.example.com"
                 assert "Connect to https://api.example.com with timeout 30s" in result["instructions"]
                 
             finally:
