@@ -266,14 +266,14 @@ class TestHTTPTransportConfig:
         assert config.headers == valid_headers
 
         # Should reject manual Authorization header
-        with pytest.raises(ValidationError, match="Do not set 'Authorization' header manually"):
+        with pytest.raises(ValidationError, match="Use 'bearer_token' field instead"):
             HTTPTransportConfig(**base_config, headers={"Authorization": "Bearer token"})
 
         # Case-insensitive check for Authorization header
-        with pytest.raises(ValidationError, match="Do not set 'Authorization' header manually"):
+        with pytest.raises(ValidationError, match="Use 'bearer_token' field instead"):
             HTTPTransportConfig(**base_config, headers={"authorization": "Bearer token"})
 
-        with pytest.raises(ValidationError, match="Do not set 'Authorization' header manually"):
+        with pytest.raises(ValidationError, match="Use 'bearer_token' field instead"):
             HTTPTransportConfig(**base_config, headers={"AUTHORIZATION": "Bearer token"})
 
     def test_verify_ssl_validation(self):

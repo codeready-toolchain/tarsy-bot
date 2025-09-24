@@ -46,9 +46,22 @@ class StdioTransport(MCPTransport):
         
         # Use existing MCP SDK stdio client with exit_stack management
         stdio_context = stdio_client(stdio_params)
-        self.session = await self.exit_stack.enter_async_context(stdio_context)
-        self._connected = True
         
+        # Enter the context to get the streams
+        streams = await self.exit_stack.enter_async_context(stdio_context)
+        read_stream, write_stream = streams
+        
+        # Create ClientSession as async context manager
+        session_context = ClientSession(read_stream, write_stream)
+        session = await self.exit_stack.enter_async_context(session_context)
+        
+        # Initialize the connection
+        logger.info(f"Initializing stdio session for server: {self.server_id}")
+        await session.initialize()
+        logger.info(f"Stdio session initialization completed for server: {self.server_id}")
+        
+        self.session = session
+        self._connected = True
         logger.info(f"Stdio session created for server: {self.server_id}")
         return self.session
     

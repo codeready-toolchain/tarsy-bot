@@ -83,17 +83,23 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
         "server_type": "kubernetes",
         "enabled": True,
         "transport": {
-            "type": TRANSPORT_SSE,
-            "url": "http://localhost:8081/sse",
-            # "bearer_token": "test-bearer-token-123",
-            # "verify_ssl": False,
-            "timeout": 10
+            "type": TRANSPORT_STDIO,
+            "command": "npx",
+            "args": ["-y", "kubernetes-mcp-server@latest", "--read-only", "--disable-destructive", "--kubeconfig", "${KUBECONFIG}"]
         },
-
         # "transport": {
-        #     "type": TRANSPORT_STDIO,
-        #     "command": "npx",
-        #     "args": ["-y", "kubernetes-mcp-server@latest", "--read-only", "--disable-destructive", "--kubeconfig", "${KUBECONFIG}"]
+        #     "type": TRANSPORT_SSE,
+        #     "url": "http://localhost:8081/sse",
+        #     # "bearer_token": "${KUBE_MCP_SERVER_TOKEN}",
+        #     # "verify_ssl": False,
+        #     "timeout": 10
+        # },
+        # "transport": {
+        #     "type": TRANSPORT_HTTP,
+        #     "url": "http://localhost:8081/mcp",
+        #     # "bearer_token": "${KUBE_MCP_SERVER_TOKEN}",
+        #     # "verify_ssl": False,
+        #     "timeout": 10
         # },
         "instructions": """For Kubernetes operations:
 - Be careful with cluster-scoped resource listings in large clusters
