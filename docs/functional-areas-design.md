@@ -183,9 +183,11 @@ BUILTIN_AGENTS = {
 mcp_servers:
   security-scanner:
     server_id: "security-scanner"
-    command: "npx"
-    args: ["@security/scanner-mcp-server@latest"]
     enabled: true
+    transport:
+      type: "stdio"
+      command: "npx"
+      args: ["@security/scanner-mcp-server@latest"]
     
 agents:
   security-analyst:
@@ -536,7 +538,8 @@ graph TB
 #### Key Components
 
 **📍 MCP Client**: `backend/tarsy/integrations/mcp/client.py`
-- **Official MCP SDK integration** using stdio transport
+- **Official MCP SDK integration** supporting stdio, HTTP, and SSE transports
+- **Multi-transport architecture** with automatic transport selection based on configuration
 - **Session management** with AsyncExitStack for proper cleanup
 - **Tool discovery** and execution coordination
 - **Integrated data masking** on all tool responses
@@ -553,13 +556,16 @@ async with mcp_interaction_context(session_id, server_name, tool_name, parameter
 - **Built-in + YAML server merging** with conflict detection  
 - **Template variable resolution** for environment-specific values
 
-**Built-in MCP Server Example**:
+**MCP Server Transport Examples**:
+
+**Stdio Transport (Built-in)**:
 ```python
-# From builtin_config.py
+# From builtin_config.py - Traditional command-line MCP server
 "kubernetes-server": {
     "server_id": "kubernetes-server",
     "enabled": True,
-    "connection_params": {
+    "transport": {
+        "type": "stdio",
         "command": "npx",
         "args": ["-y", "kubernetes-mcp-server@latest", "--read-only", 
                 "--disable-destructive", "--kubeconfig", "${KUBECONFIG}"]
@@ -572,6 +578,64 @@ async with mcp_interaction_context(session_id, server_name, tool_name, parameter
     }
 }
 ```
+
+**HTTP Transport Configuration**:
+```yaml
+# In agents.yaml - HTTP endpoint MCP server
+mcp_servers:
+  http-api-server:
+    server_id: "http-api-server"
+    enabled: true
+    transport:
+      type: "http"
+      url: "https://api.example.com/mcp"
+      bearer_token: "${MCP_API_TOKEN}"
+      timeout: 30
+      verify_ssl: true
+      headers:
+        User-Agent: "tarsy/1.0"
+    instructions: "HTTP-based MCP server for API integrations"
+    data_masking:
+      enabled: true
+      pattern_groups: ["basic", "secrets"]
+```
+
+**SSE Transport Configuration**:
+```yaml
+# In agents.yaml - Server-Sent Events MCP server  
+mcp_servers:
+  streaming-server:
+    server_id: "streaming-server"
+    enabled: true
+    transport:
+      type: "sse"
+      url: "https://streaming-api.example.com/sse"
+      bearer_token: "${SSE_API_TOKEN}"
+      timeout: 15
+      sse_read_timeout: 300
+      verify_ssl: true
+      headers:
+        Accept: "text/event-stream"
+    instructions: "SSE-based MCP server for real-time data streams"
+    data_masking:
+      enabled: true
+      pattern_groups: ["security"]
+```
+
+#### MCP Transport Types
+
+**Transport Selection**: TARSy supports three MCP transport protocols:
+
+- **`stdio`**: Traditional command-line MCP servers (most common)
+  - **Configuration**: `command` and `args` fields
+
+- **`http`**: HTTP endpoint MCP servers using JSON-RPC over HTTP
+  - **Configuration**: `url`, optional `bearer_token`, `timeout`, `headers`
+
+- **`sse`**: Server-Sent Events MCP servers for real-time streaming
+  - **Configuration**: `url`, `sse_read_timeout`, optional `bearer_token`
+
+**Transport Auto-Detection**: The MCP client automatically selects the appropriate transport based on the `transport.type` field in server configuration.
 
 #### Agent-Server Assignment
 

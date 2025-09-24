@@ -61,6 +61,7 @@
 # TRANSPORT TYPES:
 # - "stdio": Command-line MCP servers (most common) - requires command field
 # - "http": HTTP endpoint MCP servers - requires url field, optional bearer_token, verify_ssl
+# - "sse": Server-Sent Events MCP servers - requires url field, optional bearer_token, sse_read_timeout
 
 mcp_servers:
   # Security-focused MCP server for threat analysis and security operations
@@ -134,7 +135,7 @@ mcp_servers:
       size_threshold_tokens: 3000      # Higher threshold for metrics data (can be voluminous)
       summary_max_token_limit: 800     # Concise summaries for metrics and performance data
 
-  # HTTP MCP server example (using new HTTP transport)
+  # HTTP MCP server example (using HTTP transport)
   http-mcp-server:
     server_id: "http-mcp-server"
     server_type: "http-based"
@@ -144,6 +145,7 @@ mcp_servers:
       url: "https://mcp-api.example.com/mcp"  # MCP endpoint URL
       bearer_token: "${MCP_BEARER_TOKEN}"  # Bearer token for authentication
       timeout: 30  # Request timeout in seconds
+      verify_ssl: true  # SSL certificate verification (recommended for production)
       headers:
         User-Agent: "tarsy/1.0"
         Accept: "application/json"
@@ -160,6 +162,36 @@ mcp_servers:
       enabled: true
       size_threshold_tokens: 4000
       summary_max_token_limit: 1000
+
+  # SSE MCP server example (using Server-Sent Events transport)
+  sse-mcp-server:
+    server_id: "sse-mcp-server"
+    server_type: "streaming"
+    enabled: false  # Disabled by default - enable when SSE endpoint is configured
+    transport:
+      type: "sse"  # SSE transport type
+      url: "https://streaming-mcp.example.com/sse"  # SSE endpoint URL (supports endpoint discovery)
+      bearer_token: "${MCP_SSE_TOKEN}"  # Bearer token for authentication
+      timeout: 30  # HTTP request timeout in seconds
+      sse_read_timeout: 300  # SSE stream read timeout in seconds (longer for persistent connections)
+      verify_ssl: true  # SSL certificate verification (recommended for production)
+      headers:
+        User-Agent: "tarsy/1.0"
+        Accept: "text/event-stream"
+    instructions: |
+      Server-Sent Events (SSE) MCP server instructions:
+      - This server uses SSE for real-time streaming communication
+      - Supports long-lived persistent connections for continuous data flow
+      - Uses endpoint discovery for automatic SSE endpoint configuration
+      - Ideal for monitoring systems, log streaming, and real-time analytics
+      - Bearer token authentication for secure persistent connections
+    data_masking:
+      enabled: true
+      pattern_groups: ["basic"]
+    summarization:
+      enabled: true
+      size_threshold_tokens: 3500  # Slightly lower threshold for streaming data
+      summary_max_token_limit: 800   # Concise summaries for streaming content
 
   # Custom cloud provider MCP server (example for AWS-specific operations)
   aws-server:

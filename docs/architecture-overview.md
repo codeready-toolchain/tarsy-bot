@@ -154,7 +154,8 @@ The AI combines all four to make intelligent decisions about investigation appro
     prometheus-server:
       server_id: "prometheus-server"
       enabled: true
-      connection_params:
+      transport:
+        type: "stdio"
         command: "npx"
         args: ["-y", "prometheus-mcp-server@latest", "--url", "${PROMETHEUS_URL}"]
       instructions: |
