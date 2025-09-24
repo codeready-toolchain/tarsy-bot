@@ -1118,7 +1118,7 @@ GET /api/v1/history/sessions?start_date_us=1734476400000000&end_date_us=17345627
 **Purpose**: User interface and live system monitoring  
 **Key Responsibility**: Providing real-time visibility and historical analysis
 
-TARSy provides a comprehensive SRE dashboard for operational monitoring with optinal integrated manual alert submission capability. Real-time updates flow through a sophisticated WebSocket system integrated with the hook architecture.
+TARSy provides a comprehensive SRE dashboard for operational monitoring with optional integrated manual alert submission capability. Real-time updates flow through a sophisticated WebSocket system integrated with the hook architecture.
 
 #### UI Architecture
 
