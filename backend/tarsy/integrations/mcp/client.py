@@ -12,8 +12,8 @@ from mcp.types import Tool
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import mcp_interaction_context, mcp_list_context
 from tarsy.models.agent_config import MCPServerConfigModel
-from tarsy.models.mcp_transport_config import TransportType
 from tarsy.integrations.mcp.transport.factory import MCPTransportFactory, MCPTransport
+from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.utils.logger import get_module_logger
@@ -106,7 +106,7 @@ class MCPClient:
             transport = MCPTransportFactory.create_transport(
                 server_id, 
                 transport_config, 
-                self.exit_stack if transport_config.type == TransportType.STDIO else None
+                self.exit_stack if transport_config.type == TRANSPORT_STDIO else None
             )
             
             # Store transport for lifecycle management
@@ -115,7 +115,7 @@ class MCPClient:
             # Create session via transport
             session = await transport.create_session()
             
-            logger.info(f"Created {transport_config.type.value} session for server: {server_id}")
+            logger.info(f"Created {transport_config.type} session for server: {server_id}")
             return session
             
         except Exception as e:

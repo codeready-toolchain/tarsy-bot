@@ -4,7 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from tarsy.models.mcp_transport_config import (
-    TransportType,
+    TRANSPORT_STDIO,
+    TRANSPORT_HTTP,
     BaseTransportConfig,
     StdioTransportConfig,
     HTTPTransportConfig
@@ -12,19 +13,18 @@ from tarsy.models.mcp_transport_config import (
 
 
 @pytest.mark.unit
-class TestTransportType:
-    """Test cases for TransportType enum."""
+class TestTransportConstants:
+    """Test cases for transport type constants."""
 
-    def test_enum_values(self):
-        """Test that enum has correct values."""
-        assert TransportType.STDIO == "stdio"
-        assert TransportType.HTTP == "http"
+    def test_constant_values(self):
+        """Test that constants have correct values."""
+        assert TRANSPORT_STDIO == "stdio"
+        assert TRANSPORT_HTTP == "http"
 
-    def test_enum_membership(self):
-        """Test enum membership."""
-        assert "stdio" in TransportType
-        assert "http" in TransportType
-        assert "invalid" not in TransportType
+    def test_constants_are_strings(self):
+        """Test that constants are strings."""
+        assert isinstance(TRANSPORT_STDIO, str)
+        assert isinstance(TRANSPORT_HTTP, str)
 
 
 @pytest.mark.unit  

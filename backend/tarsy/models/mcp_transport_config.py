@@ -5,16 +5,13 @@ stdio and HTTP transports with proper validation and type safety. Uses discrimin
 unions to automatically handle transport type resolution.
 """
 
-from enum import Enum
 from typing import Dict, Optional, List, Literal
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
-class TransportType(str, Enum):
-    """Supported MCP transport types."""
-    
-    STDIO = "stdio"
-    HTTP = "http"
+# Transport type constants
+TRANSPORT_STDIO = "stdio"
+TRANSPORT_HTTP = "http"
 
 
 class BaseTransportConfig(BaseModel):

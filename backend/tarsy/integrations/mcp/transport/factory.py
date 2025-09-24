@@ -5,9 +5,10 @@ from typing import Optional, Any, Union
 from mcp import ClientSession
 
 from tarsy.models.mcp_transport_config import (
-    TransportType,
     StdioTransportConfig,
-    HTTPTransportConfig
+    HTTPTransportConfig,
+    TRANSPORT_STDIO,
+    TRANSPORT_HTTP
 )
 from tarsy.utils.logger import get_module_logger
 
@@ -62,10 +63,10 @@ class MCPTransportFactory:
         """
         transport_type = transport.type
         
-        if transport_type == TransportType.STDIO:
+        if transport_type == TRANSPORT_STDIO:
             from .stdio_transport import StdioTransport
             return StdioTransport(server_id, transport, exit_stack)
-        elif transport_type == TransportType.HTTP:
+        elif transport_type == TRANSPORT_HTTP:
             from .http_transport import HTTPTransport
             return HTTPTransport(server_id, transport)
         else:

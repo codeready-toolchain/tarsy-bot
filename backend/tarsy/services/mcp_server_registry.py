@@ -10,6 +10,7 @@ including both built-in and configured servers.
 from typing import Any, Dict, List, Optional
 
 from ..models.agent_config import MCPServerConfigModel as MCPServerConfig
+from ..models.mcp_transport_config import TRANSPORT_STDIO, TRANSPORT_HTTP
 from ..utils.logger import get_module_logger
 from ..config.builtin_config import BUILTIN_MCP_SERVERS
 from ..utils.template_resolver import TemplateResolver, TemplateResolutionError
@@ -219,7 +220,7 @@ class MCPServerRegistry:
             }
             
             # Include transport-specific details without sensitive information
-            if transport.get("type") == "stdio":
+            if transport.get("type") == TRANSPORT_STDIO:
                 transport_summary.update({
                     "command": transport.get("command"),
                     "args": transport.get("args", [])
@@ -232,7 +233,7 @@ class MCPServerRegistry:
                 else:
                     transport_summary["env_keys"] = []
                     
-            elif transport.get("type") == "http":
+            elif transport.get("type") == TRANSPORT_HTTP:
                 transport_summary.update({
                     "url": transport.get("url"),
                     "timeout": transport.get("timeout", 30),

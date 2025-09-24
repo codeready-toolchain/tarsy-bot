@@ -5,7 +5,7 @@ import asyncio
 from contextlib import AsyncExitStack
 
 from tarsy.integrations.mcp.transport.factory import MCPTransportFactory
-from tarsy.models.mcp_transport_config import StdioTransportConfig, HTTPTransportConfig, TransportType
+from tarsy.models.mcp_transport_config import StdioTransportConfig, HTTPTransportConfig, TRANSPORT_STDIO, TRANSPORT_HTTP
 
 
 async def test_stdio_transport():
@@ -69,12 +69,12 @@ async def test_transport_type_validation():
     """Test transport type validation."""
     print("\n🔍 Testing Transport Type Validation...")
     
-    # Test enum values
-    stdio_type = TransportType.STDIO
-    http_type = TransportType.HTTP
+    # Test constants
+    stdio_type = TRANSPORT_STDIO
+    http_type = TRANSPORT_HTTP
     
-    print(f"✅ TransportType.STDIO = {stdio_type}")
-    print(f"✅ TransportType.HTTP = {http_type}")
+    print(f"✅ TRANSPORT_STDIO = {stdio_type}")
+    print(f"✅ TRANSPORT_HTTP = {http_type}")
     
     # Test invalid type handling
     try:

@@ -33,14 +33,14 @@ class TestMCPClientInitialization:
     @pytest.fixture
     def mock_registry(self):
         """Mock MCP server registry."""
-        from tarsy.models.mcp_transport_config import TransportType
+        from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
         
         registry = Mock(spec=MCPServerRegistry)
         registry.get_all_server_ids.return_value = ["test-server"]
         
         # Create mock transport config with proper type
         mock_transport = Mock()
-        mock_transport.type = TransportType.STDIO
+        mock_transport.type = TRANSPORT_STDIO
         mock_transport.command = "test"
         mock_transport.args = []
         mock_transport.env = {}
@@ -571,11 +571,11 @@ class TestMCPClientIntegration:
         # Setup mocks for complete workflow
         mock_registry = Mock()
         mock_registry.get_all_server_ids.return_value = ["integration-server"]
-        from tarsy.models.mcp_transport_config import TransportType
+        from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
         
         # Create mock transport config
         mock_transport = Mock()
-        mock_transport.type = TransportType.STDIO
+        mock_transport.type = TRANSPORT_STDIO
         mock_transport.command = "test"
         mock_transport.args = []
         mock_transport.env = {}
@@ -660,7 +660,7 @@ class TestMCPClientSummarization:
     @pytest.fixture
     def mock_registry_with_summarization(self):
         """Mock MCP server registry with summarization config."""
-        from tarsy.models.mcp_transport_config import TransportType
+        from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
         
         registry = Mock(spec=MCPServerRegistry)
         registry.get_all_server_ids.return_value = ["test-server"]
@@ -671,7 +671,7 @@ class TestMCPClientSummarization:
         
         # Create mock transport config
         mock_transport = Mock()
-        mock_transport.type = TransportType.STDIO
+        mock_transport.type = TRANSPORT_STDIO
         mock_transport.command = "test"
         mock_transport.args = []
         mock_transport.env = {}
@@ -845,7 +845,7 @@ class TestMCPClientSummarization:
     @pytest.mark.asyncio
     async def test_call_tool_summarization_disabled_by_config(self, mock_settings, mock_summarizer, sample_conversation):
         """Test call_tool respects disabled summarization configuration."""
-        from tarsy.models.mcp_transport_config import TransportType
+        from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
         
         # Arrange - Registry with summarization disabled
         registry = Mock(spec=MCPServerRegistry)
@@ -856,7 +856,7 @@ class TestMCPClientSummarization:
         
         # Create mock transport config
         mock_transport = Mock()
-        mock_transport.type = TransportType.STDIO
+        mock_transport.type = TRANSPORT_STDIO
         mock_transport.command = "test"
         mock_transport.args = []
         mock_transport.env = {}
@@ -1009,7 +1009,7 @@ class TestMCPClientSummarization:
     @pytest.mark.asyncio
     async def test_call_tool_custom_summarization_thresholds(self, mock_settings, mock_summarizer, sample_conversation):
         """Test call_tool respects custom summarization thresholds."""
-        from tarsy.models.mcp_transport_config import TransportType
+        from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
         
         # Arrange - Registry with custom threshold
         registry = Mock(spec=MCPServerRegistry)
@@ -1020,7 +1020,7 @@ class TestMCPClientSummarization:
         
         # Create mock transport config
         mock_transport = Mock()
-        mock_transport.type = TransportType.STDIO
+        mock_transport.type = TRANSPORT_STDIO
         mock_transport.command = "test"
         mock_transport.args = []
         mock_transport.env = {}
