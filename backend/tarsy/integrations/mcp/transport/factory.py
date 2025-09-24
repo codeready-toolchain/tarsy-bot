@@ -1,22 +1,18 @@
 """MCP transport factory for creating transport instances."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Any, Union
+from typing import Optional, Any
 from mcp import ClientSession
 
 from tarsy.models.mcp_transport_config import (
-    StdioTransportConfig,
-    HTTPTransportConfig,
+    TransportConfig,
     TRANSPORT_STDIO,
-    TRANSPORT_HTTP
+    TRANSPORT_HTTP,
+    TRANSPORT_SSE,
 )
 from tarsy.utils.logger import get_module_logger
 
 logger = get_module_logger(__name__)
-
-# Type alias for transport configuration union
-TransportConfig = Union[StdioTransportConfig, HTTPTransportConfig]
-
 
 class MCPTransport(ABC):
     """Abstract base class for MCP transports."""
@@ -69,5 +65,8 @@ class MCPTransportFactory:
         elif transport_type == TRANSPORT_HTTP:
             from .http_transport import HTTPTransport
             return HTTPTransport(server_id, transport)
+        elif transport_type == TRANSPORT_SSE:
+            from .sse_transport import SSETransport
+            return SSETransport(server_id, transport)
         else:
             raise ValueError(f"Unsupported transport type: {transport_type}")

@@ -10,10 +10,10 @@ This module contains all configuration models
 """
 
 import re
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 from .constants import IterationStrategy
-from .mcp_transport_config import StdioTransportConfig, HTTPTransportConfig
+from .mcp_transport_config import TransportConfig
 
 
 # =============================================================================
@@ -161,14 +161,6 @@ class SummarizationConfig(BaseModel):
 
 
 # =============================================================================
-# TRANSPORT CONFIGURATION UNION TYPE
-# =============================================================================
-
-# Transport configuration union with discriminator for automatic type resolution
-TransportConfig = Union[StdioTransportConfig, HTTPTransportConfig]
-
-
-# =============================================================================
 # AGENT CONFIGURATION MODELS
 # =============================================================================
 
@@ -206,7 +198,7 @@ class MCPServerConfigModel(BaseModel):
     
     Defines how to connect to and use an MCP server, including transport-specific
     configuration and specialized instructions for the server's capabilities.
-    Supports both stdio and HTTP transports via discriminated unions.
+    Supports stdio, HTTP, and SSE transports via discriminated unions.
     """
     
     model_config = ConfigDict(
@@ -230,7 +222,7 @@ class MCPServerConfigModel(BaseModel):
     )
     transport: TransportConfig = Field(
         ...,
-        description="Transport-specific configuration (stdio or HTTP)",
+        description="Transport-specific configuration (stdio, HTTP, or SSE)",
         discriminator='type'
     )
     instructions: str = Field(

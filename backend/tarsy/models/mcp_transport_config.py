@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 # Transport type constants
 TRANSPORT_STDIO = "stdio"
-TRANSPORT_HTTP = "http"
+TRANSPORT_HTTP = "http"  
+TRANSPORT_SSE = "sse"
 
 
 class BaseTransportConfig(BaseModel):
@@ -59,25 +60,20 @@ class StdioTransportConfig(BaseTransportConfig):
         return v.strip()
 
 
-class HTTPTransportConfig(BaseTransportConfig):
-    """Configuration for HTTP transport per MCP Streamable HTTP specification.
+class HTTPBasedTransportConfig(BaseTransportConfig):
+    """Base configuration for HTTP-based transports (HTTP and SSE).
     
-    This transport type uses HTTP/HTTPS endpoints to communicate with MCP servers
-    using JSON-RPC 2.0 protocol over HTTP. Supports bearer token authentication
-    and SSL verification options.
+    Contains common fields and validation for transports that use HTTP/HTTPS
+    endpoints with bearer token authentication and SSL verification.
     """
     
-    type: Literal["http"] = Field(
-        default="http", 
-        description="Transport type - automatically set to 'http'"
-    )
     url: HttpUrl = Field(
         ..., 
-        description="Single MCP endpoint URL (e.g., 'https://api.example.com/mcp')"
+        description="MCP endpoint URL (e.g., 'https://api.example.com/mcp')"
     )
     bearer_token: Optional[str] = Field(
         default=None,
-        description="Bearer access token for machine-to-machine authentication",
+        description="Bearer access token for authentication",
         min_length=1
     )
     headers: Optional[Dict[str, str]] = Field(
@@ -88,30 +84,62 @@ class HTTPTransportConfig(BaseTransportConfig):
         default=True,
         description="Verify SSL certificates (strongly recommended for production)"
     )
-
-    # Note: HttpUrl automatically validates that scheme is http or https
+    timeout: float = Field(
+        default=30.0,
+        description="HTTP timeout for requests (seconds)",
+        ge=1.0
+    )
 
     @field_validator('bearer_token')
     def validate_bearer_token_format(cls, v: Optional[str]) -> Optional[str]:
         """Validate bearer token format if provided."""
         if v is not None:
-            # Remove any whitespace
             v = v.strip()
             if not v:
                 raise ValueError("Bearer token cannot be empty if provided")
-            # Basic validation - should not contain spaces or special characters that would break HTTP headers
             if any(char in v for char in ['\n', '\r', '\t']):
                 raise ValueError("Bearer token cannot contain newlines, carriage returns, or tabs")
         return v
 
     @field_validator('headers')
     def validate_headers_no_auth(cls, v: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
-        """Validate that Authorization header is not manually set (use bearer_token instead)."""
-        if v:
-            # Check for Authorization header (case-insensitive)
-            auth_headers = [key.lower() for key in v.keys() if key.lower() == 'authorization']
-            if auth_headers:
-                raise ValueError(
-                    "Do not set 'Authorization' header manually - use 'bearer_token' field instead"
-                )
+        """Ensure Authorization header is not manually set (use bearer_token instead)."""
+        if v and any(key.lower() == 'authorization' for key in v.keys()):
+            raise ValueError("Use 'bearer_token' field instead of manually setting Authorization header")
         return v
+
+
+class HTTPTransportConfig(HTTPBasedTransportConfig):
+    """Configuration for HTTP transport per MCP Streamable HTTP specification.
+    
+    This transport type uses HTTP/HTTPS endpoints to communicate with MCP servers
+    using JSON-RPC 2.0 protocol over HTTP with auto-detection of JSON-RPC vs SSE modes.
+    """
+    
+    type: Literal["http"] = Field(
+        default="http", 
+        description="Transport type - automatically set to 'http'"
+    )
+
+
+class SSETransportConfig(HTTPBasedTransportConfig):
+    """Configuration for SSE transport using dedicated MCP SDK SSE client.
+    
+    This transport type uses Server-Sent Events (SSE) for incoming messages
+    and HTTP POST for outgoing messages. Optimized for real-time streaming
+    applications with endpoint discovery protocol.
+    """
+    
+    type: Literal["sse"] = Field(
+        default="sse",
+        description="Transport type - automatically set to 'sse'"
+    )
+    sse_read_timeout: float = Field(
+        default=300.0,  # 5 minutes - SSE connections need longer timeouts
+        description="SSE read timeout for event stream (seconds)",
+        ge=10.0
+    )
+
+
+# Union type for transport configurations
+TransportConfig = StdioTransportConfig | HTTPTransportConfig | SSETransportConfig

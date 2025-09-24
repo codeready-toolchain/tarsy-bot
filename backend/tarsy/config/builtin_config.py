@@ -18,7 +18,7 @@ import copy
 from typing import Dict, Any
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
-from tarsy.models.mcp_transport_config import TRANSPORT_HTTP, TRANSPORT_STDIO
+from tarsy.models.mcp_transport_config import TRANSPORT_HTTP, TRANSPORT_STDIO, TRANSPORT_SSE
 
 
 # ==============================================================================
@@ -83,8 +83,8 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
         "server_type": "kubernetes",
         "enabled": True,
         "transport": {
-            "type": TRANSPORT_HTTP,
-            "url": "http://localhost:8081/mcp",
+            "type": TRANSPORT_SSE,
+            "url": "http://localhost:8081/sse",
             # "bearer_token": "test-bearer-token-123",
             # "verify_ssl": False,
             "timeout": 10

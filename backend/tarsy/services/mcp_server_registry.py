@@ -10,7 +10,7 @@ including both built-in and configured servers.
 from typing import Any, Dict, List, Optional
 
 from ..models.agent_config import MCPServerConfigModel as MCPServerConfig
-from ..models.mcp_transport_config import TRANSPORT_STDIO, TRANSPORT_HTTP
+from ..models.mcp_transport_config import TRANSPORT_STDIO, TRANSPORT_HTTP, TRANSPORT_SSE
 from ..utils.logger import get_module_logger
 from ..config.builtin_config import BUILTIN_MCP_SERVERS
 from ..utils.template_resolver import TemplateResolver, TemplateResolutionError
@@ -237,6 +237,22 @@ class MCPServerRegistry:
                 transport_summary.update({
                     "url": transport.get("url"),
                     "timeout": transport.get("timeout", 30),
+                    "verify_ssl": transport.get("verify_ssl", True),
+                    "has_bearer_token": "bearer_token" in transport and transport["bearer_token"] is not None
+                })
+                
+                # For headers, only show keys to avoid exposing sensitive values
+                if "headers" in transport and transport["headers"]:
+                    header_keys = sorted(transport["headers"].keys())
+                    transport_summary["header_keys"] = header_keys
+                else:
+                    transport_summary["header_keys"] = []
+                    
+            elif transport.get("type") == TRANSPORT_SSE:
+                transport_summary.update({
+                    "url": transport.get("url"),
+                    "timeout": transport.get("timeout", 30),
+                    "sse_read_timeout": transport.get("sse_read_timeout", 300),
                     "verify_ssl": transport.get("verify_ssl", True),
                     "has_bearer_token": "bearer_token" in transport and transport["bearer_token"] is not None
                 })
