@@ -143,15 +143,56 @@ def sample_agent_config_data():
 
 @pytest.fixture
 def sample_mcp_server_config_data():
-    """Sample data for MCP server config model tests."""
+    """Sample data for MCP server config model tests (stdio transport)."""
     return {
         "server_id": "kubernetes-server",
-        "command": "kubectl",
-        "args": ["proxy", "--port=8001"],
-        "env": {
-            "KUBECONFIG": "/path/to/kubeconfig"
-        },
-        "enabled": True
+        "server_type": "kubernetes",
+        "enabled": True,
+        "transport": {
+            "type": "stdio",
+            "command": "kubectl",
+            "args": ["proxy", "--port=8001"],
+            "env": {
+                "KUBECONFIG": "/path/to/kubeconfig"
+            }
+        }
+    }
+
+
+@pytest.fixture
+def sample_mcp_server_http_config_data():
+    """Sample data for MCP server config model tests (HTTP transport)."""
+    return {
+        "server_id": "monitoring-server",
+        "server_type": "monitoring", 
+        "enabled": True,
+        "transport": {
+            "type": "http",
+            "url": "https://api.monitoring.example.com/mcp",
+            "bearer_token": "token_abc123",
+            "headers": {"User-Agent": "TARSy-Bot/1.0"},
+            "verify_ssl": True,
+            "timeout": 30.0
+        }
+    }
+
+
+@pytest.fixture  
+def sample_mcp_server_sse_config_data():
+    """Sample data for MCP server config model tests (SSE transport)."""
+    return {
+        "server_id": "realtime-server",
+        "server_type": "realtime",
+        "enabled": True,
+        "transport": {
+            "type": "sse",
+            "url": "https://stream.realtime.example.com/mcp",
+            "bearer_token": "token_xyz789",
+            "headers": {"Accept": "text/event-stream"},
+            "verify_ssl": True,
+            "timeout": 30.0,
+            "sse_read_timeout": 300.0
+        }
     }
 
 

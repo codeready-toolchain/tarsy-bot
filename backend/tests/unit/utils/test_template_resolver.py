@@ -81,6 +81,7 @@ class TestTemplateResolver:
                 "server_type": "kubernetes",
                 "enabled": True,
                 "transport": {
+                    "type": "stdio",
                     "command": "npx",
                     "args": [
                         "-y", 
@@ -216,6 +217,7 @@ class TestConvenienceFunctions:
             config = {
                 "server_id": "test-server",
                 "transport": {
+                    "type": "stdio",
                     "args": ["--token", "${SERVER_TOKEN}"]
                 }
             }
@@ -227,6 +229,7 @@ class TestConvenienceFunctions:
         config = {
             "server_id": "test-server",
             "transport": {
+                "type": "stdio",
                 "args": ["--token", "${MISSING_TOKEN}"]
             }
         }
@@ -241,6 +244,7 @@ class TestConvenienceFunctions:
         config = {
             "server_id": "test-server",
             "transport": {
+                "type": "stdio",
                 "args": ["--token", "${SERVER_TOKEN}"]
             }
         }
@@ -251,6 +255,7 @@ class TestConvenienceFunctions:
         """Test the convenience function for template validation."""
         config = {
             "transport": {
+                "type": "stdio",
                 "args": ["--token", "${MISSING_TOKEN}", "--host", "${MISSING_HOST}"]
             }
         }
