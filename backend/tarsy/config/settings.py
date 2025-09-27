@@ -7,6 +7,7 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import quote_plus
 
 import yaml
 from pydantic import Field
@@ -167,7 +168,7 @@ class Settings(BaseSettings):
                 self.database_url = "sqlite:///:memory:"
             elif self.database_password:
                 # Compose PostgreSQL URL from separate components if password is provided
-                self.database_url = f"postgresql://{self.database_user}:{self.database_password}@{self.database_host}:{self.database_port}/{self.database_name}"
+                self.database_url = f"postgresql://{quote_plus(self.database_user)}:{quote_plus(self.database_password)}@{self.database_host}:{self.database_port}/{self.database_name}"
             else:
                 # Use file database for dev/production when no PostgreSQL credentials
                 self.database_url = "sqlite:///history.db"

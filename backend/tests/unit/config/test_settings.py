@@ -529,8 +529,8 @@ class TestSettingsDatabaseURL:
                 database_password="p@ssw0rd!#$%"
             )
             
-            # Should compose URL with special characters
-            expected_url = "postgresql://tarsy:p@ssw0rd!#$%@localhost:5432/tarsy"
+            # Should compose URL with URL-encoded special characters
+            expected_url = "postgresql://tarsy:p%40ssw0rd%21%23%24%25@localhost:5432/tarsy"
             assert settings.database_url == expected_url
 
     def test_database_configuration_priority_order(self):
