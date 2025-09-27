@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tarsy-database
+  namespace: tarsy
+spec:
+  selector:
+    component: database
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tarsy-backend
+  namespace: tarsy
+spec:
+  selector:
+    component: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+    - name: oauth2-proxy
+      port: 4180
+      targetPort: 4180
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tarsy-dashboard
+  namespace: tarsy
+spec:
+  selector:
+    component: dashboard
+  ports:
+    - port: 8080
+      targetPort: 8080
+

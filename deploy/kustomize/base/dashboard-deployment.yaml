@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tarsy-dashboard
+  namespace: tarsy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: dashboard
+  template:
+    metadata:
+      labels:
+        component: dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: tarsy-dashboard:latest
+          ports:
+            - containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"

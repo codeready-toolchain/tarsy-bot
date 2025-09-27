@@ -130,4 +130,7 @@ config/keys/*.pem
 
 # Temporary files
 tmp/
-temp/ 
+temp/
+
+# OpenShift deployment config files (user-specific, not committed)
+/deploy/kustomize/base/config/*

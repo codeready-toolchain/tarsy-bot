@@ -1,0 +1,77 @@
+# Main dashboard route
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: tarsy-dashboard
+  namespace: tarsy
+spec:
+  host: tarsy-dev.apps.your-cluster.com
+  to:
+    kind: Service
+    name: tarsy-dashboard
+    weight: 100
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+---
+# API routes through OAuth2 proxy
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: tarsy-api
+  namespace: tarsy
+spec:
+  host: tarsy-dev.apps.your-cluster.com
+  path: /api
+  to:
+    kind: Service
+    name: tarsy-backend
+    weight: 100
+  port:
+    targetPort: 4180
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+---
+# OAuth2 authentication routes
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: tarsy-oauth
+  namespace: tarsy
+spec:
+  host: tarsy-dev.apps.your-cluster.com
+  path: /oauth2
+  to:
+    kind: Service
+    name: tarsy-backend
+    weight: 100
+  port:
+    targetPort: 4180
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+---
+# WebSocket routes through OAuth2 proxy
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: tarsy-websocket
+  namespace: tarsy
+spec:
+  host: tarsy-dev.apps.your-cluster.com
+  path: /ws
+  to:
+    kind: Service
+    name: tarsy-backend
+    weight: 100
+  port:
+    targetPort: 4180
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

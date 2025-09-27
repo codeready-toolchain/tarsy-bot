@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tarsy-backend
+  namespace: tarsy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: backend
+  template:
+    metadata:
+      labels:
+        component: backend
+    spec:
+      containers:
+        - name: backend
+          image: tarsy-backend:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-secret
+                  key: password
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tarsy-secrets
+                  key: google-api-key
+                  optional: true
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tarsy-secrets
+                  key: github-token
+          envFrom:
+            - configMapRef:
+                name: tarsy-config
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: logs
+              mountPath: /app/logs
+            - name: agents-config
+              mountPath: /app/config/agents.yaml
+              subPath: agents.yaml
+            - name: llm-providers-config
+              mountPath: /app/config/llm_providers.yaml
+              subPath: llm_providers.yaml
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:latest
+          command:
+            - oauth2-proxy
+            - --config=/config/oauth2-proxy.cfg
+          ports:
+            - containerPort: 4180
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: client-id
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: cookie-secret
+          volumeMounts:
+            - name: oauth2-config
+              mountPath: /config
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+        - name: agents-config
+          configMap:
+            name: agents-config
+        - name: llm-providers-config
+          configMap:
+            name: llm-providers-config
+        - name: oauth2-config
+          configMap:
+            name: oauth2-config
