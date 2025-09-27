@@ -437,6 +437,123 @@ class TestSettingsDatabaseURL:
         assert settings.postgres_pool_recycle == 7200
         assert settings.postgres_pool_pre_ping is False
 
+    def test_database_url_composed_from_components(self):
+        """Test database URL composed from separate components."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings(
+                database_host="db.example.com",
+                database_port=5433,
+                database_user="myuser",
+                database_password="mypass",
+                database_name="mydb"
+            )
+            
+            expected_url = "postgresql://myuser:mypass@db.example.com:5433/mydb"
+            assert settings.database_url == expected_url
+
+    def test_database_url_composed_with_defaults(self):
+        """Test database URL composed with default values."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings(database_password="testpass")
+            
+            # Should use defaults for other components
+            expected_url = "postgresql://tarsy:testpass@localhost:5432/tarsy"
+            assert settings.database_url == expected_url
+
+    def test_database_url_no_password_falls_back_to_sqlite(self):
+        """Test that without password, falls back to SQLite."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings(
+                database_host="db.example.com",
+                database_user="myuser",
+                database_name="mydb"
+                # No password provided
+            )
+            
+            # Should fall back to SQLite
+            assert settings.database_url == "sqlite:///history.db"
+
+    def test_database_url_empty_password_falls_back_to_sqlite(self):
+        """Test that empty password falls back to SQLite."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings(
+                database_host="db.example.com", 
+                database_password="",  # Empty password
+                database_user="myuser"
+            )
+            
+            # Should fall back to SQLite
+            assert settings.database_url == "sqlite:///history.db"
+
+    def test_database_url_explicit_overrides_composition(self):
+        """Test explicit database_url overrides component composition."""
+        explicit_url = "postgresql://explicit:user@explicit.host:9999/explicitdb"
+        
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings(
+                database_url=explicit_url,
+                database_host="should.be.ignored.com",
+                database_password="should_be_ignored",
+                database_user="ignored_user"
+            )
+            
+            # Should use explicit URL, not composed one
+            assert settings.database_url == explicit_url
+
+    def test_database_url_testing_overrides_composition(self):
+        """Test testing environment overrides component composition."""
+        with patch('tarsy.config.settings.is_testing', return_value=True):
+            settings = Settings(
+                database_host="production.db.com",
+                database_password="prodpass",
+                database_user="produser"
+            )
+            
+            # Should use in-memory SQLite for testing, ignoring components
+            assert settings.database_url == "sqlite:///:memory:"
+
+    def test_database_component_defaults(self):
+        """Test database component default values."""
+        settings = Settings()
+        
+        assert settings.database_host == "localhost"
+        assert settings.database_port == 5432
+        assert settings.database_user == "tarsy"
+        assert settings.database_password == ""
+        assert settings.database_name == "tarsy"
+
+    def test_database_url_with_special_characters_in_password(self):
+        """Test database URL composition with special characters in password."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings(
+                database_password="p@ssw0rd!#$%"
+            )
+            
+            # Should compose URL with special characters
+            expected_url = "postgresql://tarsy:p@ssw0rd!#$%@localhost:5432/tarsy"
+            assert settings.database_url == expected_url
+
+    def test_database_configuration_priority_order(self):
+        """Test the priority order: explicit URL > composed URL > SQLite fallback."""
+        # Test 1: Explicit URL has highest priority
+        explicit_url = "postgresql://explicit:pass@host:5432/db"
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings(
+                database_url=explicit_url,
+                database_password="ignored"
+            )
+            assert settings.database_url == explicit_url
+
+        # Test 2: Composed URL when password provided but no explicit URL
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings(database_password="testpass")
+            assert settings.database_url == "postgresql://tarsy:testpass@localhost:5432/tarsy"
+
+        # Test 3: SQLite fallback when no explicit URL and no password
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings()
+            assert settings.database_url == "sqlite:///history.db"
+
 
 @pytest.mark.unit
 class TestGetSettings:

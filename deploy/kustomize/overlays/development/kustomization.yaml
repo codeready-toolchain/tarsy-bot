@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: tarsy-dev
 
 resources:
-  - deploy/kustomize/base
+  - ../../base
 
 namePrefix: dev-
 
@@ -19,23 +19,14 @@ configMapGenerator:
       - LLM_PROVIDER=google-default
       - HISTORY_ENABLED=true
       - HISTORY_RETENTION_DAYS=90
-      - DATABASE_URL=postgresql://tarsy:$(DATABASE_PASSWORD)@dev-tarsy-database:5432/tarsy
       - HOST=0.0.0.0
       - PORT=8000
       - LOG_LEVEL=DEBUG
       - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000
-  - name: agents-config
-    behavior: create
-    files:
-      - agents.yaml=config/agents.yaml
-  - name: llm-providers-config
-    behavior: create
-    files:
-      - llm_providers.yaml=config/llm_providers.yaml
-  - name: oauth2-config
-    behavior: create
-    files:
-      - oauth2-proxy.cfg=config/oauth2-proxy-container.cfg
+      - DATABASE_HOST=dev-tarsy-database
+      - DATABASE_PORT=5432
+      - DATABASE_USER=tarsy
+      - DATABASE_NAME=tarsy
 
 images:
   - name: tarsy-backend

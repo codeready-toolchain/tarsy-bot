@@ -131,7 +131,7 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 		else \
 			echo "$(RED)❌ Error: No agents.yaml or agents.yaml.example found$(NC)"; \
 			exit 1; \
-		fi \
+		fi; \
 	fi
 	@if [ ! -f deploy/kustomize/base/config/llm_providers.yaml ]; then \
 		if [ -f config/llm_providers.yaml ]; then \
@@ -144,7 +144,7 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 		else \
 			echo "$(RED)❌ Error: No llm_providers.yaml or llm_providers.yaml.example found$(NC)"; \
 			exit 1; \
-		fi \
+		fi; \
 	fi
 	@if [ ! -f deploy/kustomize/base/config/oauth2-proxy-container.cfg ]; then \
 		if [ -f config/oauth2-proxy-container.cfg ]; then \
@@ -157,7 +157,7 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 		else \
 			echo "$(RED)❌ Error: No oauth2-proxy-container.cfg or oauth2-proxy-container.cfg.example found$(NC)"; \
 			exit 1; \
-		fi \
+		fi; \
 	fi
 	@echo "$(BLUE)Syncing config files to overlay directory...$(NC)"
 	@cp deploy/kustomize/base/config/agents.yaml overlays/development/

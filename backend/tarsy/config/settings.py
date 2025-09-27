@@ -78,6 +78,26 @@ class Settings(BaseSettings):
         default="",
         description="Database connection string for alert processing history"
     )
+    database_host: str = Field(
+        default="localhost",
+        description="Database host"
+    )
+    database_port: int = Field(
+        default=5432,
+        description="Database port"
+    )
+    database_user: str = Field(
+        default="tarsy",
+        description="Database username"
+    )
+    database_password: str = Field(
+        default="",
+        description="Database password"
+    )
+    database_name: str = Field(
+        default="tarsy",
+        description="Database name"
+    )
     history_enabled: bool = Field(
         default=True,
         description="Enable/disable history capture for alert processing"
@@ -145,8 +165,11 @@ class Settings(BaseSettings):
             if is_testing():
                 # Use in-memory database for tests by default
                 self.database_url = "sqlite:///:memory:"
+            elif self.database_password:
+                # Compose PostgreSQL URL from separate components if password is provided
+                self.database_url = f"postgresql://{self.database_user}:{self.database_password}@{self.database_host}:{self.database_port}/{self.database_name}"
             else:
-                # Use file database for dev/production
+                # Use file database for dev/production when no PostgreSQL credentials
                 self.database_url = "sqlite:///history.db"
     
     model_config = SettingsConfigDict(
