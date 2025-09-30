@@ -5,6 +5,7 @@ Provides a singleton service for tracking and retrieving non-fatal
 system warnings that should be visible in the dashboard.
 """
 
+import uuid
 from typing import Dict, List, Optional
 
 from tarsy.models.system_models import SystemWarning
@@ -47,7 +48,7 @@ class SystemWarningsService:
             warning_id: Unique identifier for the warning
         """
         timestamp = now_us()
-        warning_id = f"{category}_{timestamp}"
+        warning_id = str(uuid.uuid4())
 
         # Create Pydantic model instance
         self._warnings[warning_id] = SystemWarning(

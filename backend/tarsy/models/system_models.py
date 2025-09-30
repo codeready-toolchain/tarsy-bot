@@ -33,7 +33,7 @@ class SystemWarning(BaseModel):
 
         json_schema_extra = {
             "example": {
-                "warning_id": "mcp_initialization_1706616000000000",
+                "warning_id": "550e8400-e29b-41d4-a716-446655440000",
                 "category": "mcp_initialization",
                 "message": "MCP Server 'kubernetes-server' failed to initialize",
                 "details": "Connection timeout after 30 seconds",

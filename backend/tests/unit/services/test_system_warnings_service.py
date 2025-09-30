@@ -1,5 +1,7 @@
 """Unit tests for SystemWarningsService."""
 
+import uuid
+
 import pytest
 
 from tarsy.models.system_models import SystemWarning
@@ -44,7 +46,9 @@ class TestSystemWarningsService:
             message="MCP Server 'kubernetes-server' failed to initialize",
         )
 
-        assert warning_id.startswith("mcp_initialization_")
+        # Verify warning_id is a valid UUID
+        assert uuid.UUID(warning_id)
+        
         warnings = service.get_warnings()
         assert len(warnings) == 1
         assert warnings[0].category == WarningCategory.MCP_INITIALIZATION
@@ -121,11 +125,14 @@ class TestSystemWarningsService:
         """Test that each warning gets a unique ID."""
         service = SystemWarningsService()
 
-        # Add same warning twice (should get different IDs due to timestamp)
+        # Add same warning twice (should get different IDs due to UUID generation)
         id1 = service.add_warning("test_category", "test message")
         id2 = service.add_warning("test_category", "test message")
 
         assert id1 != id2
+        # Verify both are valid UUIDs
+        assert uuid.UUID(id1)
+        assert uuid.UUID(id2)
 
         warnings = service.get_warnings()
         assert len(warnings) == 2

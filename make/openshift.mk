@@ -26,8 +26,8 @@ OPENSHIFT_TARGETS := openshift-check openshift-login-registry openshift-create-n
                      openshift-create-secrets openshift-check-config-files \
                      openshift-apply openshift-deploy \
                      openshift-redeploy openshift-status \
-                     openshift-urls openshift-logs-backend openshift-logs-dashboard \
-                     openshift-logs-database openshift-clean openshift-clean-images
+                     openshift-urls openshift-logs openshift-logs-dashboard \
+                     openshift-clean openshift-clean-images
 
 ifneq ($(filter $(OPENSHIFT_TARGETS),$(MAKECMDGOALS)),)
     -include deploy/openshift.env
@@ -191,21 +191,22 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 		exit 1; \
 	fi
 	@echo -e "$(BLUE)Replacing placeholders in oauth2-proxy config...$(NC)"
-	@sed -i 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg
+	@sed -i.bak 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg
 	@if [ -n "$(GITHUB_ORG)" ]; then \
 		echo "  Setting GitHub org restriction: $(GITHUB_ORG)"; \
-		sed -i 's|{{GITHUB_ORG_CONFIG}}|github_org = "$(GITHUB_ORG)"|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
+		sed -i.bak 's|{{GITHUB_ORG_CONFIG}}|github_org = "$(GITHUB_ORG)"|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
 	else \
 		echo "  No GitHub org restriction (allowing all authenticated users)"; \
-		sed -i 's|{{GITHUB_ORG_CONFIG}}|# github_org = "your-github-org"  # Not set - allowing all authenticated users|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
+		sed -i.bak 's|{{GITHUB_ORG_CONFIG}}|# github_org = "your-github-org"  # Not set - allowing all authenticated users|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
 	fi
 	@if [ -n "$(GITHUB_TEAM)" ]; then \
 		echo "  Setting GitHub team restriction: $(GITHUB_TEAM)"; \
-		sed -i 's|{{GITHUB_TEAM_CONFIG}}|github_team = "$(GITHUB_TEAM)"|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
+		sed -i.bak 's|{{GITHUB_TEAM_CONFIG}}|github_team = "$(GITHUB_TEAM)"|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
 	else \
 		echo "  No GitHub team restriction"; \
-		sed -i 's|{{GITHUB_TEAM_CONFIG}}|# github_team = "your-team"  # Not set|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
+		sed -i.bak 's|{{GITHUB_TEAM_CONFIG}}|# github_team = "your-team"  # Not set|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
 	fi
+	@rm -f deploy/kustomize/overlays/development/oauth2-proxy-container.cfg.bak
 	@echo -e "$(GREEN)✅ Deployment configuration files ready$(NC)"
 
 # Deploy targets
