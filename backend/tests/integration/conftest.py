@@ -238,8 +238,13 @@ def mock_llm_manager():
     """Mock LLM manager for testing."""
     manager = Mock(spec=LLMManager)
     manager.is_available.return_value = True
-    manager.list_available_providers.return_value = ["gemini", "openai"]
-    manager.get_availability_status.return_value = {"gemini": "available", "openai": "available"}
+    manager.list_available_providers.return_value = ["google-default", "openai-default", "xai-default", "anthropic-default"]
+    manager.get_availability_status.return_value = {
+        "google-default": "available",
+        "openai-default": "available",
+        "xai-default": "available",
+        "anthropic-default": "available"
+    }
     
     # Create mock client
     mock_client = Mock(spec=LLMClient)

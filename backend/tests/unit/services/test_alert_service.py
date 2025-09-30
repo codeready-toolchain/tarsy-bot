@@ -91,6 +91,7 @@ class TestAlertServiceAsyncInitialization:
         """Create AlertService with mocked dependencies."""
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None  # Prevent agent config loading
+        mock_settings.llm_provider = "test-provider"  # Add configured provider
         
         with patch('tarsy.services.alert_service.RunbookService'), \
              patch('tarsy.services.alert_service.get_history_service'), \
@@ -106,6 +107,7 @@ class TestAlertServiceAsyncInitialization:
             service.mcp_client = AsyncMock()
             service.llm_manager = Mock()
             service.llm_manager.is_available.return_value = True
+            service.llm_manager.list_available_providers.return_value = ["test-provider"]
             service.agent_factory = mock_agent_factory.return_value
             
             yield service
@@ -134,8 +136,8 @@ class TestAlertServiceAsyncInitialization:
     async def test_initialize_llm_unavailable(self, alert_service):
         """Test initialization failure when LLM is unavailable."""
         alert_service.llm_manager.is_available.return_value = False
-        alert_service.llm_manager.list_available_providers.return_value = ["provider1"]
-        alert_service.llm_manager.get_availability_status.return_value = {"status": "error"}
+        alert_service.llm_manager.list_available_providers.return_value = ["test-provider"]
+        alert_service.llm_manager.get_availability_status.return_value = {"test-provider": False}
         
         with pytest.raises(Exception, match="No LLM providers are available"):
             await alert_service.initialize()

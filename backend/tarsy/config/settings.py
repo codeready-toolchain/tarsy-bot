@@ -210,65 +210,93 @@ class Settings(BaseSettings):
     
     @property
     def llm_providers(self) -> Dict[str, LLMProviderConfig]:
-        """Get merged LLM providers configuration (built-in defaults + YAML overrides)."""
-        try:
-            # Start with built-in defaults from builtin_config
-            merged_providers = get_builtin_llm_providers()
-            
-            # Load and merge YAML if file exists
-            yaml_providers = self._load_yaml_providers()
-            if yaml_providers:
-                merged_providers.update(yaml_providers)
-            
-            return merged_providers
-        except Exception as e:
-            # Log error and fall back to built-in defaults
-            from tarsy.utils.logger import get_module_logger
-            logger = get_module_logger(__name__)
-            logger.error(f"Failed to load LLM providers configuration: {e}")
-            return get_builtin_llm_providers()
+        """
+        Get merged LLM providers configuration (built-in defaults + YAML overrides).
+        Fails fast if YAML file exists but is invalid.
+        
+        Raises:
+            Exception: If LLM providers configuration file exists but is invalid
+        """
+        # Start with built-in defaults from builtin_config
+        merged_providers = get_builtin_llm_providers()
+        
+        # Load and merge YAML if file exists
+        # Note: _load_yaml_providers will raise if file exists but is invalid
+        yaml_providers = self._load_yaml_providers()
+        if yaml_providers:
+            merged_providers.update(yaml_providers)
+        
+        return merged_providers
     
     def _load_yaml_providers(self) -> Optional[Dict[str, LLMProviderConfig]]:
-        """Load LLM providers from YAML configuration file."""
-        try:
-            config_path = Path(self.llm_config_path)
-            if not config_path.exists():
-                return None
+        """
+        Load LLM providers from YAML configuration file.
+        Fails fast if file exists but is invalid (syntax error or validation error).
+        
+        Returns:
+            Dict of validated providers, or None if file doesn't exist
             
+        Raises:
+            yaml.YAMLError: If YAML syntax is invalid
+            Exception: If provider configuration is invalid
+        """
+        from tarsy.utils.logger import get_module_logger
+        logger = get_module_logger(__name__)
+        
+        config_path = Path(self.llm_config_path)
+        
+        # If file doesn't exist, return None (use built-ins - OK)
+        if not config_path.exists():
+            logger.debug(f"LLM providers config file not found at {config_path}, using built-in providers only")
+            return None
+        
+        # File exists - it MUST be valid! Fail fast on errors.
+        try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 yaml_config = yaml.safe_load(f)
-                
-            if not yaml_config or 'llm_providers' not in yaml_config:
+            
+            # Empty file is OK - use built-ins
+            if not yaml_config:
+                logger.warning(f"LLM providers config file is empty: {config_path}")
                 return None
+            
+            # File must have llm_providers section if not empty
+            if 'llm_providers' not in yaml_config:
+                logger.critical(f"LLM providers config file exists but missing 'llm_providers' section: {config_path}")
+                raise ValueError(f"Invalid LLM providers config: missing 'llm_providers' section in {config_path}")
             
             providers = yaml_config['llm_providers']
             
             # Validate YAML providers using Pydantic
             validated_providers: Dict[str, LLMProviderConfig] = {}
+            validation_errors = []
+            
             for provider_name, config_dict in providers.items():
                 try:
                     # Validate using Pydantic BaseModel
                     config = LLMProviderConfig.model_validate(config_dict)
                     validated_providers[provider_name] = config
                 except Exception as e:
-                    from tarsy.utils.logger import get_module_logger
-                    logger = get_module_logger(__name__)
-                    logger.error(f"Invalid LLM provider config '{provider_name}': {e}")
-                    # Skip invalid configs instead of failing completely
-                    continue
+                    validation_errors.append(f"Provider '{provider_name}': {e}")
             
+            # If any providers failed validation, fail fast
+            if validation_errors:
+                error_msg = "\n  - ".join(validation_errors)
+                logger.critical(f"LLM providers config validation errors in {config_path}:\n  - {error_msg}")
+                raise ValueError(f"Invalid LLM provider configurations in {config_path}. Errors:\n  - {error_msg}")
+            
+            logger.info(f"Loaded {len(validated_providers)} LLM providers from {config_path}")
             return validated_providers
             
         except yaml.YAMLError as e:
-            from tarsy.utils.logger import get_module_logger
-            logger = get_module_logger(__name__)
-            logger.error(f"YAML parsing error in {self.llm_config_path}: {e}")
-            return None
+            logger.critical(f"YAML syntax error in {config_path}: {e}")
+            raise
+        except ValueError:
+            # Re-raise validation errors
+            raise
         except Exception as e:
-            from tarsy.utils.logger import get_module_logger
-            logger = get_module_logger(__name__)
-            logger.error(f"Error loading YAML providers from {self.llm_config_path}: {e}")
-            return None
+            logger.critical(f"Failed to load LLM providers from {config_path}: {e}")
+            raise
     
     def get_template_default(self, var_name: str) -> Optional[str]:
         """

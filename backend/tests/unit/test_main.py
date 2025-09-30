@@ -236,6 +236,48 @@ class TestMainLifespan:
         # Verify initialization was attempted
         deps['init_db'].assert_called_once()
 
+    @patch('tarsy.main.get_settings')
+    @patch('sys.exit')
+    async def test_lifespan_exits_when_alert_service_init_fails(
+        self, mock_sys_exit, mock_get_settings, mock_lifespan_dependencies
+    ):
+        """Test that application exits when AlertService initialization fails."""
+        deps = mock_lifespan_dependencies
+        
+        # Setup mocks
+        mock_get_settings.return_value = Mock(
+            log_level="INFO",
+            max_concurrent_alerts=5,
+            history_enabled=True,
+            cors_origins=["*"]
+        )
+        deps['init_db'].return_value = True
+        
+        # Make AlertService initialization fail (e.g., invalid config)
+        deps['alert_service'].initialize.side_effect = Exception(
+            "Configured LLM provider 'invalid-provider' not found in loaded configuration"
+        )
+        
+        # Mock sys.exit to prevent actual exit during test
+        mock_sys_exit.side_effect = SystemExit(1)
+        
+        # Test lifespan manager - should exit with error code 1
+        @asynccontextmanager 
+        async def test_lifespan(app):
+            async with lifespan(app):
+                yield
+        
+        # Expect SystemExit to be raised
+        with pytest.raises(SystemExit):
+            async with test_lifespan(app):
+                pass
+        
+        # Verify sys.exit was called with error code 1
+        mock_sys_exit.assert_called_once_with(1)
+        
+        # Verify initialization was attempted
+        deps['alert_service'].initialize.assert_called_once()
+
 
 @pytest.mark.unit
 class TestMainEndpoints:

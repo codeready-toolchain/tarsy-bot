@@ -566,6 +566,8 @@ class TestAlertServiceHistoryIntegration:
         settings.history_enabled = True
         settings.database_url = "sqlite:///:memory:"
         settings.history_retention_days = 90
+        settings.agent_config_path = None  # No agent config for integration tests
+        settings.llm_provider = "openai"  # Set configured provider
         # Add required LLM settings to prevent iteration error
         settings.llm_providers = {}
         settings.llm_default_provider = "openai"
@@ -581,6 +583,7 @@ class TestAlertServiceHistoryIntegration:
         
         # Mock LLM manager to appear available
         service.llm_manager.is_available = Mock(return_value=True)
+        service.llm_manager.list_available_providers = Mock(return_value=["openai"])
         
         # Mock runbook service to return test content
         service.runbook_service.download_runbook = AsyncMock(return_value="Test runbook content")

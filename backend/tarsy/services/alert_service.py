@@ -105,48 +105,78 @@ class AlertService:
     def _load_agent_configuration(self):
         """
         Load agent configuration from the configured file path.
+        Fails fast if file exists but is invalid (configuration error).
         
         Returns:
             CombinedConfigModel: Parsed configuration with agents and MCP servers
+            
+        Raises:
+            ConfigurationError: If configuration file exists but is invalid
         """
+        import os
+        from tarsy.models.agent_config import CombinedConfigModel
+        
+        config_path = self.settings.agent_config_path
+        
+        # If no path configured, use built-ins
+        if not config_path:
+            logger.info("No agent configuration path set, using built-in agents only")
+            return CombinedConfigModel(agents={}, mcp_servers={})
+        
+        # If file doesn't exist, use built-ins (OK for dev environments)
+        if not os.path.exists(config_path):
+            logger.info(f"Agent configuration file not found at {config_path}, using built-in agents only")
+            return CombinedConfigModel(agents={}, mcp_servers={})
+        
+        # File exists - it MUST be valid! Fail fast on errors.
         try:
-            config_loader = ConfigurationLoader(self.settings.agent_config_path)
+            config_loader = ConfigurationLoader(config_path)
             parsed_config = config_loader.load_and_validate()
-
-            logger.info(f"Successfully loaded agent configuration from {self.settings.agent_config_path}: "
+            
+            logger.info(f"Successfully loaded agent configuration from {config_path}: "
                        f"{len(parsed_config.agents)} agents, {len(parsed_config.mcp_servers)} MCP servers")
-
+            
             return parsed_config
-
+            
         except ConfigurationError as e:
-            logger.error(f"Configuration error loading {self.settings.agent_config_path}: {e}")
-            logger.warning("Continuing with built-in agents only")
-            # Return empty configuration to continue with built-in agents
-            from tarsy.models.agent_config import CombinedConfigModel
-            return CombinedConfigModel(agents={}, mcp_servers={})
-
+            logger.critical(f"Agent configuration file exists but is invalid: {e}")
+            logger.critical(f"Configuration errors must be fixed. File: {config_path}")
+            raise  # Fail fast - configuration error
+            
         except Exception as e:
-            logger.error(f"Unexpected error loading agent configuration: {e}")
-            logger.warning("Continuing with built-in agents only")
-            # Return empty configuration to continue with built-in agents
-            from tarsy.models.agent_config import CombinedConfigModel
-            return CombinedConfigModel(agents={}, mcp_servers={})
+            logger.critical(f"Failed to load agent configuration from {config_path}: {e}")
+            raise
 
     async def initialize(self):
         """
         Initialize the service and all dependencies.
+        Validates configuration completeness (not runtime availability).
         """
         try:
             # Initialize MCP client
             await self.mcp_client.initialize()
             
-            # Validate LLM availability
+            # Validate that configured LLM provider NAME exists in configuration
+            # Note: We check configuration, not runtime availability (API keys work, etc)
+            configured_provider = self.settings.llm_provider
+            available_providers = self.llm_manager.list_available_providers()
+            
+            if configured_provider not in available_providers:
+                raise Exception(
+                    f"Configured LLM provider '{configured_provider}' not found in loaded configuration. "
+                    f"Available providers: {available_providers}. "
+                    f"Check your llm_providers.yaml and LLM_PROVIDER environment variable. "
+                    f"Note: Provider must be defined and have an API key configured."
+                )
+            
+            # Validate at least one LLM provider is available
+            # This checks if ANY provider initialized (has config and API key)
             if not self.llm_manager.is_available():
-                available_providers = self.llm_manager.list_available_providers()
                 status = self.llm_manager.get_availability_status()
                 raise Exception(
                     f"No LLM providers are available. "
-                    f"Configured providers: {available_providers}, Status: {status}"
+                    f"At least one provider must have a valid API key. "
+                    f"Provider status: {status}"
                 )
             
             # Initialize agent factory with dependencies
@@ -158,6 +188,7 @@ class AlertService:
             )
             
             logger.info("AlertService initialized successfully")
+            logger.info(f"Using LLM provider: {configured_provider}")
             
         except Exception as e:
             logger.error(f"Failed to initialize AlertService: {str(e)}")

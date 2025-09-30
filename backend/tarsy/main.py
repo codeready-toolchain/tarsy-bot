@@ -77,11 +77,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as e:
             logger.error(f"Failed to cleanup orphaned sessions during startup: {str(e)}")
     
-    alert_service = AlertService(settings)
-    dashboard_manager = DashboardConnectionManager()
-    
-    # Startup
-    await alert_service.initialize()
+    # Initialize AlertService - fail fast on critical configuration errors
+    try:
+        alert_service = AlertService(settings)
+        dashboard_manager = DashboardConnectionManager()
+        
+        # Startup
+        await alert_service.initialize()
+    except Exception as e:
+        logger.critical(
+            f"Failed to initialize AlertService: {str(e)}. "
+            "This indicates a critical configuration error - exiting to allow restart."
+        )
+        import sys
+        sys.exit(1)  # Exit with error code
     
     # Initialize dashboard broadcaster
     await dashboard_manager.initialize_broadcaster()

@@ -178,7 +178,7 @@ class TestSettingsYAMLConfiguration:
         assert set(providers.keys()) == set(builtin_providers.keys())
     
     def test_yaml_provider_validation_invalid_type(self):
-        """Test validation rejects providers with invalid type."""
+        """Test validation fails fast with invalid provider type."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             content = {
                 'llm_providers': {
@@ -192,38 +192,20 @@ class TestSettingsYAMLConfiguration:
             import yaml
             yaml.safe_dump(content, f)
             
-            with patch('tarsy.utils.logger.get_module_logger') as mock_get_logger:
-                mock_logger = mock_get_logger.return_value
-                settings = Settings(llm_config_path=f.name)
-                providers = settings.llm_providers
-                
-                # Should log validation error
-                mock_logger.error.assert_called()
-                error_message = str(mock_logger.error.call_args)
-                # Pydantic validation error should mention the field validation failure
-                assert ("validation error" in error_message.lower() and 
-                       ("type" in error_message.lower() or "literal_error" in error_message.lower()))
-                
-                # Invalid provider should not be included
-                assert 'invalid-provider' not in providers
+            # Should raise ValueError for invalid configuration
+            settings = Settings(llm_config_path=f.name)
+            with pytest.raises(ValueError, match="Invalid LLM provider configurations"):
+                _ = settings.llm_providers
             
             os.unlink(f.name)
     
     def test_yaml_provider_validation_missing_fields(self, missing_fields_yaml_file):
-        """Test validation rejects providers with missing required fields."""
+        """Test validation fails fast with missing required fields."""
         settings = Settings(llm_config_path=missing_fields_yaml_file)
-        providers = settings.llm_providers
         
-        # Invalid provider should not be included due to missing required fields
-        assert 'incomplete-provider' not in providers
-        
-        # Should only contain valid built-in providers
-        from tarsy.config.builtin_config import get_builtin_llm_providers
-        builtin_providers = get_builtin_llm_providers()
-        
-        # All returned providers should be built-in ones (invalid provider rejected)
-        for provider_name in providers:
-            assert provider_name in builtin_providers
+        # Should raise ValueError for invalid configuration (missing required fields)
+        with pytest.raises(ValueError, match="Invalid LLM provider configurations"):
+            _ = settings.llm_providers
 
 
 @pytest.mark.unit
