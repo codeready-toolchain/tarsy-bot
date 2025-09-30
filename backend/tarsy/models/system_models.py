@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 class WarningCategory:
     """Constants for system warning categories."""
     
-    MCP_INITIALIZATION = "mcp_initialization"
-    LLM_INITIALIZATION = "llm_initialization"
-    RUNBOOK_SERVICE = "runbook_service"
+    MCP_INITIALIZATION: str = "mcp_initialization"
+    LLM_INITIALIZATION: str = "llm_initialization"
+    RUNBOOK_SERVICE: str = "runbook_service"
 
 
 class SystemWarning(BaseModel):
@@ -20,7 +20,7 @@ class SystemWarning(BaseModel):
     warning_id: str = Field(..., description="Unique identifier for the warning")
     category: str = Field(
         ...,
-        description="Warning category (mcp_initialization, runbook_service, database)",
+        description="Warning category, one of WarningCategory values",
     )
     message: str = Field(..., description="User-facing warning message")
     details: Optional[str] = Field(

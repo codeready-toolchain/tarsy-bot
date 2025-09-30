@@ -31,6 +31,10 @@ OPENSHIFT_TARGETS := openshift-check openshift-login-registry openshift-create-n
 
 ifneq ($(filter $(OPENSHIFT_TARGETS),$(MAKECMDGOALS)),)
     -include deploy/openshift.env
+    # Validate that ROUTE_HOST is defined for targets that need it
+    ifndef ROUTE_HOST
+        $(error ROUTE_HOST is not defined. Please define ROUTE_HOST in deploy/openshift.env)
+    endif
 endif
 
 # Prerequisites for OpenShift workflow
