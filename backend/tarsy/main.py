@@ -154,6 +154,9 @@ app.add_middleware(
 app.include_router(history_router, tags=["history"])
 app.include_router(alert_router, tags=["alerts"])
 
+from tarsy.controllers.system_controller import router as system_router
+app.include_router(system_router, prefix="/api/v1", tags=["system"])
+
 
 @app.get("/")
 async def root() -> Dict[str, str]:
@@ -191,6 +194,29 @@ async def health_check() -> Dict[str, Any]:
                 "retention_days": db_info.get("retention_days") if db_info.get("enabled") else None
             }
         }
+        
+        # Add system warnings
+        from tarsy.services.system_warnings_service import get_warnings_service
+        warnings_service = get_warnings_service()
+        warnings = warnings_service.get_warnings()
+        
+        if warnings:
+            health_status["warnings"] = [
+                {
+                    "category": w.category,
+                    "message": w.message,
+                    "timestamp": w.timestamp
+                }
+                for w in warnings
+            ]
+            health_status["warning_count"] = len(warnings)
+            
+            # If there are warnings, mark status as degraded
+            if health_status["status"] == "healthy":
+                health_status["status"] = "degraded"
+        else:
+            health_status["warnings"] = []
+            health_status["warning_count"] = 0
         
         return health_status
         

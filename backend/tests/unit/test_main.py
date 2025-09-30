@@ -377,6 +377,88 @@ class TestMainEndpoints:
             if isinstance(db_status, Exception):
                 assert str(db_status) in data["error"]
 
+    @patch('tarsy.main.get_database_info')
+    def test_health_endpoint_with_warnings(self, mock_db_info, client):
+        """Test health endpoint includes system warnings."""
+        from tarsy.services.system_warnings_service import (
+            SystemWarningsService,
+            get_warnings_service,
+        )
+
+        # Reset singleton for clean test
+        SystemWarningsService._instance = None
+
+        # Mock database as healthy
+        mock_db_info.return_value = {
+            "enabled": True,
+            "connection_test": True,
+            "retention_days": 30,
+        }
+
+        # Add some warnings
+        warnings_service = get_warnings_service()
+        warnings_service.add_warning(
+            "mcp_initialization",
+            "MCP Server 'kubernetes-server' failed to initialize",
+            "Connection timeout",
+        )
+        warnings_service.add_warning(
+            "runbook_service", "Runbook service disabled"
+        )
+
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Status should be degraded due to warnings
+        assert data["status"] == "degraded"
+
+        # Verify warnings are present
+        assert "warnings" in data
+        assert "warning_count" in data
+        assert data["warning_count"] == 2
+        assert len(data["warnings"]) == 2
+
+        # Verify warning structure
+        warning1 = data["warnings"][0]
+        assert "category" in warning1
+        assert "message" in warning1
+        assert "timestamp" in warning1
+        assert warning1["category"] == "mcp_initialization"
+        assert (
+            warning1["message"]
+            == "MCP Server 'kubernetes-server' failed to initialize"
+        )
+
+    @patch('tarsy.main.get_database_info')
+    def test_health_endpoint_without_warnings(self, mock_db_info, client):
+        """Test health endpoint without warnings."""
+        from tarsy.services.system_warnings_service import SystemWarningsService
+
+        # Reset singleton for clean test
+        SystemWarningsService._instance = None
+
+        # Mock database as healthy
+        mock_db_info.return_value = {
+            "enabled": True,
+            "connection_test": True,
+            "retention_days": 30,
+        }
+
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Status should be healthy
+        assert data["status"] == "healthy"
+
+        # Verify warnings fields are present but empty
+        assert "warnings" in data
+        assert "warning_count" in data
+        assert data["warning_count"] == 0
+        assert data["warnings"] == []
+
+
 @pytest.mark.unit
 class TestWebSocketEndpoint:
     """Test WebSocket endpoint."""

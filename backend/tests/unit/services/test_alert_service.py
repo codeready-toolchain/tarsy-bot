@@ -144,11 +144,30 @@ class TestAlertServiceAsyncInitialization:
     
     @pytest.mark.asyncio
     async def test_initialize_mcp_client_failure(self, alert_service):
-        """Test initialization failure when MCP client initialization fails."""
+        """Test initialization continues when MCP client initialization fails with warning."""
+        from tarsy.services.system_warnings_service import (
+            SystemWarningsService,
+            get_warnings_service,
+        )
+
+        # Reset singleton for clean test
+        SystemWarningsService._instance = None
+
         alert_service.mcp_client.initialize.side_effect = Exception("MCP init failed")
-        
-        with pytest.raises(Exception, match="MCP init failed"):
-            await alert_service.initialize()
+
+        # Should NOT raise - initialization continues with warning
+        await alert_service.initialize()
+
+        # Verify warning was added
+        warnings_service = get_warnings_service()
+        warnings = warnings_service.get_warnings()
+        assert len(warnings) == 1
+        assert warnings[0].category == "mcp_initialization"
+        assert "MCP servers failed to initialize" in warnings[0].message
+        assert "MCP init failed" in warnings[0].message
+
+        # Verify agent factory was still initialized
+        assert alert_service.agent_factory is not None
 
 
 @pytest.mark.unit

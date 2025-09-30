@@ -264,6 +264,33 @@ def get_builtin_chain_definitions() -> Dict[str, Dict[str, Any]]:
     return copy.deepcopy(BUILTIN_CHAIN_DEFINITIONS)
 
 
+# ==============================================================================
+# BUILT-IN DEFAULT RUNBOOK
+# ==============================================================================
+
+DEFAULT_RUNBOOK_CONTENT = """# Generic Troubleshooting Guide
+
+## Investigation Steps
+
+1. **Analyze the alert** - Review the provided alert data and identify the affected system/service
+2. **Gather context** - Use available tools to check current system state and recent changes
+3. **Identify root cause** - Investigate potential causes based on the alert type and symptoms
+4. **Assess impact** - Determine scope and severity of the issue
+5. **Recommend actions** - Suggest safe investigation or remediation steps
+
+## Guidelines
+
+- Verify information before suggesting changes
+- Consider dependencies and potential side effects
+- Document findings and actions taken
+"""
+
+
+# ==============================================================================
+# CONVENIENCE ACCESSORS
+# ==============================================================================
+
+
 def get_builtin_llm_providers() -> Dict[str, LLMProviderConfig]:
     """Get all built-in LLM provider configurations."""
     # Create deep copies of BaseModel instances

@@ -259,7 +259,15 @@ class TestAuthenticationHandling:
     """Test GitHub authentication handling."""
     
     async def test_download_without_authentication(self):
-        """Test download without GitHub token."""
+        """Test download without GitHub token returns default runbook."""
+        from tarsy.services.system_warnings_service import (
+            SystemWarningsService,
+            get_warnings_service,
+        )
+
+        # Reset singleton for clean test
+        SystemWarningsService._instance = None
+
         settings = Mock(spec=Settings)
         settings.github_token = None
         
@@ -267,21 +275,23 @@ class TestAuthenticationHandling:
             mock_client_instance = AsyncMock()
             mock_client.return_value = mock_client_instance
             
-            mock_response = Mock()
-            mock_response.text = "Public content"
-            mock_response.raise_for_status = Mock()
-            mock_client_instance.get.return_value = mock_response
-            
             service = RunbookService(settings)
             result = await service.download_runbook("https://github.com/user/repo/blob/master/public.md")
             
-            # Should not include Authorization header
-            call_args = mock_client_instance.get.call_args
-            headers = call_args[1]["headers"]
-            assert "Authorization" not in headers
-            assert headers["Accept"] == "application/vnd.github.v3.raw"
-            assert headers["User-Agent"] == "TARSy/1.0"
-            assert result == "Public content"
+            # Should return default runbook without making HTTP call
+            assert "Generic Troubleshooting Guide" in result
+            assert "Investigation Steps" in result
+            assert "Analyze the alert" in result
+            
+            # Should NOT have called the HTTP client (returns default immediately)
+            mock_client_instance.get.assert_not_called()
+            
+            # Verify warning was added during init
+            warnings_service = get_warnings_service()
+            warnings = warnings_service.get_warnings()
+            assert len(warnings) == 1
+            assert warnings[0].category == "runbook_service"
+            assert "GitHub token not configured" in warnings[0].message
     
     async def test_download_with_authentication(self):
         """Test download with GitHub token."""

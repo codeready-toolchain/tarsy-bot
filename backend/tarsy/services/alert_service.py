@@ -147,20 +147,36 @@ class AlertService:
             logger.critical(f"Failed to load agent configuration from {config_path}: {e}")
             raise
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """
         Initialize the service and all dependencies.
         Validates configuration completeness (not runtime availability).
         """
         try:
             # Initialize MCP client
-            await self.mcp_client.initialize()
-            
+            try:
+                await self.mcp_client.initialize()
+            except Exception as mcp_error:
+                # MCP initialization failed - critical but not fatal
+                logger.critical(f"MCP client initialization failed: {mcp_error}")
+
+                from tarsy.services.system_warnings_service import (
+                    get_warnings_service,
+                )
+
+                warnings = get_warnings_service()
+                warnings.add_warning(
+                    "mcp_initialization",
+                    f"MCP servers failed to initialize: {str(mcp_error)}",
+                    details="MCP-dependent tools will be unavailable. Check MCP server configuration and connectivity.",
+                )
+                # Don't raise - continue without MCP functionality
+
             # Validate that configured LLM provider NAME exists in configuration
             # Note: We check configuration, not runtime availability (API keys work, etc)
             configured_provider = self.settings.llm_provider
             available_providers = self.llm_manager.list_available_providers()
-            
+
             if configured_provider not in available_providers:
                 raise Exception(
                     f"Configured LLM provider '{configured_provider}' not found in loaded configuration. "
@@ -168,7 +184,7 @@ class AlertService:
                     f"Check your llm_providers.yaml and LLM_PROVIDER environment variable. "
                     f"Note: Provider must be defined and have an API key configured."
                 )
-            
+
             # Validate at least one LLM provider is available
             # This checks if ANY provider initialized (has config and API key)
             if not self.llm_manager.is_available():
@@ -178,18 +194,18 @@ class AlertService:
                     f"At least one provider must have a valid API key. "
                     f"Provider status: {status}"
                 )
-            
+
             # Initialize agent factory with dependencies
             self.agent_factory = AgentFactory(
                 llm_client=self.llm_manager,
                 mcp_client=self.mcp_client,
                 mcp_registry=self.mcp_server_registry,
-                agent_configs=self.parsed_config.agents
+                agent_configs=self.parsed_config.agents,
             )
-            
+
             logger.info("AlertService initialized successfully")
             logger.info(f"Using LLM provider: {configured_provider}")
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize AlertService: {str(e)}")
             raise
