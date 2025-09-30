@@ -260,6 +260,7 @@ class TestAuthenticationHandling:
     
     async def test_download_without_authentication(self):
         """Test download without GitHub token returns default runbook."""
+        from tarsy.models.system_models import WarningCategory
         from tarsy.services.system_warnings_service import (
             SystemWarningsService,
             get_warnings_service,
@@ -290,7 +291,7 @@ class TestAuthenticationHandling:
             warnings_service = get_warnings_service()
             warnings = warnings_service.get_warnings()
             assert len(warnings) == 1
-            assert warnings[0].category == "runbook_service"
+            assert warnings[0].category == WarningCategory.RUNBOOK_SERVICE
             assert "GitHub token not configured" in warnings[0].message
     
     async def test_download_with_authentication(self):

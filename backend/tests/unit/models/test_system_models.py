@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from tarsy.models.system_models import SystemWarning
+from tarsy.models.system_models import SystemWarning, WarningCategory
 
 
 @pytest.mark.unit
@@ -14,14 +14,14 @@ class TestSystemWarning:
         """Test creating a valid SystemWarning."""
         warning = SystemWarning(
             warning_id="mcp_initialization_1706616000000000",
-            category="mcp_initialization",
+            category=WarningCategory.MCP_INITIALIZATION,
             message="MCP Server 'kubernetes-server' failed to initialize",
             details="Connection timeout after 30 seconds",
             timestamp=1706616000000000,
         )
 
         assert warning.warning_id == "mcp_initialization_1706616000000000"
-        assert warning.category == "mcp_initialization"
+        assert warning.category == WarningCategory.MCP_INITIALIZATION
         assert warning.message == "MCP Server 'kubernetes-server' failed to initialize"
         assert warning.details == "Connection timeout after 30 seconds"
         assert warning.timestamp == 1706616000000000
@@ -30,13 +30,13 @@ class TestSystemWarning:
         """Test creating a SystemWarning without optional details."""
         warning = SystemWarning(
             warning_id="runbook_service_1706616001000000",
-            category="runbook_service",
+            category=WarningCategory.RUNBOOK_SERVICE,
             message="Runbook service disabled",
             timestamp=1706616001000000,
         )
 
         assert warning.warning_id == "runbook_service_1706616001000000"
-        assert warning.category == "runbook_service"
+        assert warning.category == WarningCategory.RUNBOOK_SERVICE
         assert warning.message == "Runbook service disabled"
         assert warning.details is None
         assert warning.timestamp == 1706616001000000

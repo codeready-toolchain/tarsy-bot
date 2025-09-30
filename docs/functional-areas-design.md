@@ -1114,6 +1114,16 @@ GET /api/v1/history/sessions?start_date_us=1734476400000000&end_date_us=17345627
 
 **📍 Dashboard Integration**: History API powers both the SRE dashboard timeline view and provides data for real-time progress updates.
 
+#### System Health & Warnings API
+
+**📍 REST API**: `backend/tarsy/controllers/system_controller.py`
+
+**Core Endpoints**:
+- **`GET /health`** - Main health check with service status and system warnings
+- **`GET /api/v1/system/warnings`** - Active system warnings (MCP/LLM init failures, etc.)
+
+The system warnings API surfaces critical but non-fatal initialization errors (MCP server failures, LLM provider issues, missing runbook service configuration) that don't prevent startup but affect functionality. Warnings are displayed in the dashboard UI and included in the main health endpoint response.
+
 ### 9. Dashboard & Real-time Monitoring
 **Purpose**: User interface and live system monitoring  
 **Key Responsibility**: Providing real-time visibility and historical analysis

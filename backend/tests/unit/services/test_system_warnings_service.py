@@ -35,17 +35,19 @@ class TestSystemWarningsService:
 
     def test_add_warning_basic(self) -> None:
         """Test adding a basic warning."""
+        from tarsy.models.system_models import WarningCategory
+
         service = SystemWarningsService()
 
         warning_id = service.add_warning(
-            category="mcp_initialization",
+            category=WarningCategory.MCP_INITIALIZATION,
             message="MCP Server 'kubernetes-server' failed to initialize",
         )
 
         assert warning_id.startswith("mcp_initialization_")
         warnings = service.get_warnings()
         assert len(warnings) == 1
-        assert warnings[0].category == "mcp_initialization"
+        assert warnings[0].category == WarningCategory.MCP_INITIALIZATION
         assert (
             warnings[0].message
             == "MCP Server 'kubernetes-server' failed to initialize"
@@ -54,17 +56,19 @@ class TestSystemWarningsService:
 
     def test_add_warning_with_details(self) -> None:
         """Test adding a warning with details."""
+        from tarsy.models.system_models import WarningCategory
+
         service = SystemWarningsService()
 
         warning_id = service.add_warning(
-            category="runbook_service",
+            category=WarningCategory.RUNBOOK_SERVICE,
             message="Runbook service disabled",
             details="Set GITHUB_TOKEN environment variable to enable",
         )
 
         warnings = service.get_warnings()
         assert len(warnings) == 1
-        assert warnings[0].category == "runbook_service"
+        assert warnings[0].category == WarningCategory.RUNBOOK_SERVICE
         assert warnings[0].message == "Runbook service disabled"
         assert (
             warnings[0].details == "Set GITHUB_TOKEN environment variable to enable"
@@ -73,10 +77,12 @@ class TestSystemWarningsService:
 
     def test_add_multiple_warnings(self) -> None:
         """Test adding multiple warnings."""
+        from tarsy.models.system_models import WarningCategory
+
         service = SystemWarningsService()
 
-        id1 = service.add_warning("mcp_initialization", "MCP error 1")
-        id2 = service.add_warning("runbook_service", "Runbook error")
+        id1 = service.add_warning(WarningCategory.MCP_INITIALIZATION, "MCP error 1")
+        id2 = service.add_warning(WarningCategory.RUNBOOK_SERVICE, "Runbook error")
         id3 = service.add_warning("mcp_initialization", "MCP error 2")
 
         warnings = service.get_warnings()

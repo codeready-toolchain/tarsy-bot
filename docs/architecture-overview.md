@@ -52,6 +52,7 @@ graph LR
 - Dashboard shows live chain processing status with stage-by-stage progress
 - Complete audit trail of what each stage and agent did and why
 - Stage execution tracking with detailed performance metrics
+- System health warnings for initialization issues (MCP/LLM failures, configuration)
 - SREs can observe and learn from multi-stage decision processes
 
 ## How It Works

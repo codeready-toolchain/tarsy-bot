@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
-import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult } from '../types';
+import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult, SystemWarning } from '../types';
 import { authService } from './auth';
 
 // API base URL configuration  
@@ -176,6 +176,25 @@ class APIClient {
       return response.data;
     } catch (error) {
       console.error('Health check failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get system warnings
+   * Returns active system warnings (MCP failures, runbook service issues, etc.)
+   */
+  async getSystemWarnings(): Promise<SystemWarning[]> {
+    try {
+      const response = await this.client.get<SystemWarning[]>('/api/v1/system/warnings');
+      
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else {
+        throw new Error('Invalid system warnings response format');
+      }
+    } catch (error) {
+      console.error('Failed to fetch system warnings:', error);
       throw error;
     }
   }

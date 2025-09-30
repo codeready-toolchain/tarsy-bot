@@ -245,6 +245,7 @@ def mock_llm_manager():
         "xai-default": "available",
         "anthropic-default": "available"
     }
+    manager.get_failed_providers = Mock(return_value={})  # No failed providers by default
     
     # Create mock client
     mock_client = Mock(spec=LLMClient)

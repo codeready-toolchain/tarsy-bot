@@ -41,6 +41,7 @@ class RunbookService:
         else:
             # Add warning if GitHub token is missing
             from tarsy.config.builtin_config import DEFAULT_RUNBOOK_CONTENT
+            from tarsy.models.system_models import WarningCategory
             from tarsy.services.system_warnings_service import get_warnings_service
 
             logger.warning(
@@ -49,7 +50,7 @@ class RunbookService:
 
             warnings = get_warnings_service()
             warnings.add_warning(
-                "runbook_service",
+                WarningCategory.RUNBOOK_SERVICE,
                 "Runbook service disabled: GitHub token not configured. Using built-in default runbook.",
                 details="Set GITHUB_TOKEN environment variable to enable GitHub runbook integration.",
             )

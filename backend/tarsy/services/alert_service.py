@@ -159,6 +159,7 @@ class AlertService:
             # Check for failed servers and create individual warnings
             failed_servers = self.mcp_client.get_failed_servers()
             if failed_servers:
+                from tarsy.models.system_models import WarningCategory
                 from tarsy.services.system_warnings_service import (
                     get_warnings_service,
                 )
@@ -167,7 +168,7 @@ class AlertService:
                 for server_id, error_msg in failed_servers.items():
                     logger.critical(f"MCP server '{server_id}' failed to initialize: {error_msg}")
                     warnings.add_warning(
-                        "mcp_initialization",
+                        WarningCategory.MCP_INITIALIZATION,
                         f"MCP Server '{server_id}' failed to initialize: {error_msg}",
                         details=f"Check {server_id} configuration and connectivity. MCP-dependent tools from this server will be unavailable.",
                     )
@@ -194,6 +195,24 @@ class AlertService:
                     f"At least one provider must have a valid API key. "
                     f"Provider status: {status}"
                 )
+            
+            # Check for failed LLM providers and create individual warnings
+            # Note: Only providers with API keys that failed to initialize are tracked
+            failed_providers = self.llm_manager.get_failed_providers()
+            if failed_providers:
+                from tarsy.models.system_models import WarningCategory
+                from tarsy.services.system_warnings_service import (
+                    get_warnings_service,
+                )
+                warnings = get_warnings_service()
+                
+                for provider_name, error_msg in failed_providers.items():
+                    logger.critical(f"LLM provider '{provider_name}' failed to initialize: {error_msg}")
+                    warnings.add_warning(
+                        WarningCategory.LLM_INITIALIZATION,
+                        f"LLM Provider '{provider_name}' failed to initialize: {error_msg}",
+                        details=f"Check {provider_name} configuration (base_url, SSL settings, network connectivity). This provider will be unavailable.",
+                    )
 
             # Initialize agent factory with dependencies
             self.agent_factory = AgentFactory(

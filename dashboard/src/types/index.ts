@@ -583,3 +583,16 @@ export interface ProcessingStatusProps {
   alertId: string;
   onComplete?: () => void;
 }
+
+// System Warning types
+export interface SystemWarning {
+  warning_id: string;
+  category: string;
+  message: string;
+  details?: string | null;
+  timestamp: number; // Unix timestamp in microseconds
+}
+
+export interface SystemWarningBannerProps {
+  pollInterval?: number; // Polling interval in milliseconds (default: 30000)
+}

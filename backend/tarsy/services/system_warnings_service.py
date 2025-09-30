@@ -39,7 +39,7 @@ class SystemWarningsService:
         Add a system warning.
 
         Args:
-            category: Warning category (e.g., "mcp_initialization")
+            category: Warning category (use WarningCategory constants)
             message: User-facing warning message
             details: Optional detailed error information
 

@@ -109,6 +109,7 @@ class TestAlertServiceAsyncInitialization:
             service.llm_manager = Mock()
             service.llm_manager.is_available.return_value = True
             service.llm_manager.list_available_providers.return_value = ["test-provider"]
+            service.llm_manager.get_failed_providers = Mock(return_value={})  # No failed providers by default
             service.agent_factory = mock_agent_factory.return_value
             
             yield service
@@ -146,6 +147,7 @@ class TestAlertServiceAsyncInitialization:
     @pytest.mark.asyncio
     async def test_initialize_mcp_client_failure(self, alert_service):
         """Test initialization continues when MCP servers fail with individual warnings."""
+        from tarsy.models.system_models import WarningCategory
         from tarsy.services.system_warnings_service import (
             SystemWarningsService,
             get_warnings_service,
@@ -169,16 +171,57 @@ class TestAlertServiceAsyncInitialization:
         assert len(warnings) == 2
         
         # Check first warning (argocd-server)
-        assert warnings[0].category == "mcp_initialization"
+        assert warnings[0].category == WarningCategory.MCP_INITIALIZATION
         assert "argocd-server" in warnings[0].message
         assert "FileNotFoundError" in warnings[0].message
         assert "Check argocd-server configuration" in warnings[0].details
         
         # Check second warning (github-server)
-        assert warnings[1].category == "mcp_initialization"
+        assert warnings[1].category == WarningCategory.MCP_INITIALIZATION
         assert "github-server" in warnings[1].message
         assert "ConnectionError" in warnings[1].message
         assert "Check github-server configuration" in warnings[1].details
+
+        # Verify agent factory was still initialized
+        assert alert_service.agent_factory is not None
+    
+    @pytest.mark.asyncio
+    async def test_initialize_llm_provider_failures(self, alert_service):
+        """Test initialization continues when non-configured LLM providers fail with individual warnings."""
+        from tarsy.models.system_models import WarningCategory
+        from tarsy.services.system_warnings_service import (
+            SystemWarningsService,
+            get_warnings_service,
+        )
+
+        # Reset singleton for clean test
+        SystemWarningsService._instance = None
+
+        # Simulate two LLM providers failing (but configured provider still works)
+        alert_service.llm_manager.get_failed_providers.return_value = {
+            "openai-custom": "Connection refused: https://custom-api.openai.com",
+            "anthropic-dev": "Invalid base_url configuration"
+        }
+
+        # Should NOT raise - initialization continues with warnings
+        await alert_service.initialize()
+
+        # Verify individual warnings were added for each failed provider
+        warnings_service = get_warnings_service()
+        warnings = warnings_service.get_warnings()
+        assert len(warnings) == 2
+        
+        # Check first warning (openai-custom)
+        assert warnings[0].category == WarningCategory.LLM_INITIALIZATION
+        assert "openai-custom" in warnings[0].message
+        assert "Connection refused" in warnings[0].message
+        assert "Check openai-custom configuration" in warnings[0].details
+        
+        # Check second warning (anthropic-dev)
+        assert warnings[1].category == WarningCategory.LLM_INITIALIZATION
+        assert "anthropic-dev" in warnings[1].message
+        assert "Invalid base_url" in warnings[1].message
+        assert "Check anthropic-dev configuration" in warnings[1].details
 
         # Verify agent factory was still initialized
         assert alert_service.agent_factory is not None

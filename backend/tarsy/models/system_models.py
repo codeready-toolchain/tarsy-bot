@@ -5,6 +5,15 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+# Warning category constants
+class WarningCategory:
+    """Constants for system warning categories."""
+    
+    MCP_INITIALIZATION = "mcp_initialization"
+    LLM_INITIALIZATION = "llm_initialization"
+    RUNBOOK_SERVICE = "runbook_service"
+
+
 class SystemWarning(BaseModel):
     """Represents a system-level warning."""
 

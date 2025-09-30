@@ -387,18 +387,24 @@ class LLMManager:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.clients: Dict[str, LLMClient] = {}
+        self.failed_providers: Dict[str, str] = {}  # provider_name -> error_message
         self._initialize_clients()
     
     def _initialize_clients(self):
         """Initialize LLM clients using unified implementation."""
         # Initialize each configured LLM provider
         for provider_name in self.settings.llm_providers.keys():
+            config = None
+            has_api_key = False
+            
             try:
                 config = self.settings.get_llm_config(provider_name)
                 
                 if not config.api_key:
                     logger.warning(f"Skipping {provider_name}: No API key provided")
-                    continue
+                    continue  # Don't track as failure - this is expected
+                
+                has_api_key = True  # Mark that we have an API key
                 
                 # Use unified client for all providers
                 client = LLMClient(provider_name, config)
@@ -406,7 +412,20 @@ class LLMManager:
                 logger.info(f"Initialized LLM client: {provider_name}")
                 
             except Exception as e:
-                logger.error(f"Failed to initialize LLM client {provider_name}: {str(e)}")
+                error_msg = str(e)
+                logger.error(f"Failed to initialize LLM client {provider_name}: {error_msg}")
+                # Track failure only if API key was provided (unexpected failure)
+                if has_api_key:
+                    self.failed_providers[provider_name] = error_msg
+    
+    def get_failed_providers(self) -> Dict[str, str]:
+        """
+        Get dictionary of failed LLM providers.
+        
+        Returns:
+            Dict[provider_name, error_message] for providers that failed to initialize
+        """
+        return self.failed_providers.copy()
     
     def get_client(self, provider: str = None) -> Optional[LLMClient]:
         """Get an LLM client by provider name."""

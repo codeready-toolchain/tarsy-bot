@@ -7,6 +7,7 @@ import DashboardLayout from './DashboardLayout';
 import FilterPanel from './FilterPanel';
 import LoginButton from './LoginButton';
 import UserMenu from './UserMenu';
+import { SystemWarningBanner } from './SystemWarningBanner';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient, handleAPIError } from '../services/api';
 import { webSocketService } from '../services/websocket';
@@ -703,6 +704,11 @@ function DashboardView() {
           <ListItemText>Manual Alert Submission</ListItemText>
         </MenuItem>
       </Menu>
+
+      {/* System Warning Banner - displays non-fatal system errors */}
+      <Box sx={{ mt: 2 }}>
+        <SystemWarningBanner />
+      </Box>
 
       {/* Phase 6: Advanced Filter Panel */}
       <FilterPanel
