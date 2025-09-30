@@ -26,6 +26,22 @@ oc patch configs.imageregistry.operator.openshift.io/cluster \
 ## Configuration
 
 ### 1. Set Environment Variables
+
+You have two options:
+
+**Option A: Use environment file (recommended)**
+```bash
+# Copy the template
+cp deploy/openshift.env.template deploy/openshift.env
+
+# Edit with your values
+vi deploy/openshift.env
+
+# The Makefile will automatically load it when you run OpenShift targets (e.g., make openshift-dev)
+# This file is ONLY loaded for openshift-* targets, not for local dev targets
+```
+
+**Option B: Export manually**
 ```bash
 # Required: LLM API keys
 export GOOGLE_API_KEY=your-actual-google-api-key-here
@@ -67,13 +83,16 @@ vi deploy/kustomize/base/config/oauth2-proxy-container.cfg  # OAuth2 proxy setti
 make openshift-dev
 ```
 
+**Note**: If `deploy/openshift.env` exists, it will be automatically loaded when running OpenShift targets. This file does NOT affect local development targets (like `make dev`). If the file doesn't exist, ensure environment variables are exported manually.
+
 This will:
-1. ✅ Check environment variables are set
-2. ✅ Create secrets from environment variables
-3. ✅ Check/copy config files from examples
-4. ✅ Build and push images to OpenShift registry
-5. ✅ Deploy all manifests to `tarsy-dev` namespace
-6. ✅ Show application URLs
+1. ✅ Load environment variables (from `deploy/openshift.env` if present)
+2. ✅ Check environment variables are set
+3. ✅ Create secrets from environment variables
+4. ✅ Check/copy config files from examples
+5. ✅ Build and push images to OpenShift registry
+6. ✅ Deploy all manifests to `tarsy-dev` namespace
+7. ✅ Show application URLs
 
 ### Development Iterations
 ```bash

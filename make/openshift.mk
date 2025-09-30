@@ -18,82 +18,102 @@ IMAGE_TAG := dev
 # Container management (reuse existing)
 PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml
 
+# Auto-load deploy/openshift.env ONLY when running OpenShift targets
+# Check if any OpenShift target is in the command line goals
+OPENSHIFT_TARGETS := openshift-check openshift-login-registry openshift-create-namespace \
+                     openshift-build-backend openshift-build-dashboard openshift-build-all \
+                     openshift-push-backend openshift-push-dashboard openshift-push-all \
+                     openshift-create-secrets openshift-check-config-files \
+                     openshift-deploy-only openshift-deploy openshift-dev \
+                     openshift-redeploy openshift-quick openshift-status \
+                     openshift-urls openshift-logs-backend openshift-logs-dashboard \
+                     openshift-logs-database openshift-clean openshift-clean-images
+
+ifneq ($(filter $(OPENSHIFT_TARGETS),$(MAKECMDGOALS)),)
+    -include deploy/openshift.env
+endif
+
 # Prerequisites for OpenShift workflow
 .PHONY: openshift-check
 openshift-check: ## Check OpenShift login and registry access
-	@echo "$(BLUE)Checking OpenShift prerequisites...$(NC)"
+	@echo -e "$(BLUE)Checking OpenShift prerequisites...$(NC)"
 	@if ! command -v oc >/dev/null 2>&1; then \
-		echo "$(RED)❌ Error: oc (OpenShift CLI) not found$(NC)"; \
-		echo "$(YELLOW)Please install the OpenShift CLI: https://docs.openshift.com/container-platform/latest/cli_reference/openshift_cli/getting-started-cli.html$(NC)"; \
+		echo -e "$(RED)❌ Error: oc (OpenShift CLI) not found$(NC)"; \
+		echo -e "$(YELLOW)Please install the OpenShift CLI: https://docs.openshift.com/container-platform/latest/cli_reference/openshift_cli/getting-started-cli.html$(NC)"; \
 		exit 1; \
 	fi
 	@if ! oc whoami >/dev/null 2>&1; then \
-		echo "$(RED)❌ Error: Not logged into OpenShift$(NC)"; \
-		echo "$(YELLOW)Please log in with: oc login$(NC)"; \
+		echo -e "$(RED)❌ Error: Not logged into OpenShift$(NC)"; \
+		echo -e "$(YELLOW)Please log in with: oc login$(NC)"; \
 		exit 1; \
 	fi
 	@if [ "$(OPENSHIFT_REGISTRY)" = "registry.not.found" ]; then \
-		echo "$(RED)❌ Error: OpenShift internal registry not exposed$(NC)"; \
-		echo "$(YELLOW)Please expose the registry with:$(NC)"; \
-		echo "$(YELLOW)  oc patch configs.imageregistry.operator.openshift.io/cluster --patch '{\"spec\":{\"defaultRoute\":true}}' --type=merge$(NC)"; \
+		echo -e "$(RED)❌ Error: OpenShift internal registry not exposed$(NC)"; \
+		echo -e "$(YELLOW)Please expose the registry with:$(NC)"; \
+		echo -e "$(YELLOW)  oc patch configs.imageregistry.operator.openshift.io/cluster --patch '{\"spec\":{\"defaultRoute\":true}}' --type=merge$(NC)"; \
 		exit 1; \
 	fi
-	@echo "$(GREEN)✓ OpenShift CLI available$(NC)"
-	@echo "$(GREEN)✓ Logged in as: $(shell oc whoami)$(NC)"  
-	@echo "$(GREEN)✓ Registry available at: $(OPENSHIFT_REGISTRY)$(NC)"
+	@echo -e "$(GREEN)✓ OpenShift CLI available$(NC)"
+	@echo -e "$(GREEN)✓ Logged in as: $(shell oc whoami)$(NC)"  
+	@echo -e "$(GREEN)✓ Registry available at: $(OPENSHIFT_REGISTRY)$(NC)"
 
 .PHONY: openshift-login-registry
 openshift-login-registry: openshift-check ## Login podman to OpenShift internal registry
-	@echo "$(BLUE)Logging podman into OpenShift registry...$(NC)"
-	@podman login -u $(shell oc whoami) -p $(shell oc whoami -t) $(OPENSHIFT_REGISTRY)
-	@echo "$(GREEN)✅ Podman logged into OpenShift registry$(NC)"
+	@echo -e "$(BLUE)Logging podman into OpenShift registry...$(NC)"
+	@# Note: --tls-verify=false is used for development environments with self-signed certs
+	@podman login --tls-verify=false -u $(shell oc whoami) -p $(shell oc whoami -t) $(OPENSHIFT_REGISTRY)
+	@echo -e "$(GREEN)✅ Podman logged into OpenShift registry$(NC)"
 
 .PHONY: openshift-create-namespace
 openshift-create-namespace: openshift-check ## Create development namespace if it doesn't exist
-	@echo "$(BLUE)Ensuring namespace $(OPENSHIFT_NAMESPACE) exists...$(NC)"
+	@echo -e "$(BLUE)Ensuring namespace $(OPENSHIFT_NAMESPACE) exists...$(NC)"
 	@oc get namespace $(OPENSHIFT_NAMESPACE) >/dev/null 2>&1 || oc create namespace $(OPENSHIFT_NAMESPACE)
-	@echo "$(GREEN)✅ Namespace $(OPENSHIFT_NAMESPACE) ready$(NC)"
+	@echo -e "$(GREEN)✅ Namespace $(OPENSHIFT_NAMESPACE) ready$(NC)"
 
-# Build targets (reuse existing build logic)
+# Build targets (use plain podman build for OpenShift, independent of compose)
 .PHONY: openshift-build-backend
 openshift-build-backend: sync-backend-deps openshift-login-registry ## Build backend image locally
-	@echo "$(GREEN)Building backend image locally...$(NC)"
-	$(PODMAN_COMPOSE) build backend
-	@echo "$(GREEN)✅ Backend image built$(NC)"
+	@echo -e "$(GREEN)Building backend image for OpenShift...$(NC)"
+	@podman build -t localhost/tarsy_backend:latest -f backend/Dockerfile backend/
+	@echo -e "$(GREEN)✅ Backend image built$(NC)"
 
 .PHONY: openshift-build-dashboard  
 openshift-build-dashboard: openshift-login-registry ## Build dashboard image locally
-	@echo "$(GREEN)Building dashboard image locally...$(NC)"
-	$(PODMAN_COMPOSE) build dashboard
-	@echo "$(GREEN)✅ Dashboard image built$(NC)"
+	@echo -e "$(GREEN)Building dashboard image for OpenShift...$(NC)"
+	@echo -e "$(YELLOW)Using Route Host: $(ROUTE_HOST)$(NC)"
+	@podman build -t localhost/tarsy_dashboard:latest \
+		--build-arg VITE_API_BASE_URL="" \
+		--build-arg VITE_WS_BASE_URL="wss://$(ROUTE_HOST)" \
+		-f dashboard/Dockerfile dashboard/
+	@echo -e "$(GREEN)✅ Dashboard image built with OpenShift URLs$(NC)"
 
 .PHONY: openshift-build-all
 openshift-build-all: openshift-build-backend openshift-build-dashboard ## Build all images locally
-	@echo "$(GREEN)✅ All images built$(NC)"
+	@echo -e "$(GREEN)✅ All images built$(NC)"
 
 # Push targets
 .PHONY: openshift-push-backend
 openshift-push-backend: openshift-build-backend openshift-create-namespace ## Push backend image to OpenShift registry
-	@echo "$(GREEN)Pushing backend image to OpenShift registry...$(NC)"
-	@podman tag localhost/tarsy-backend:latest $(BACKEND_IMAGE):$(IMAGE_TAG)
-	@podman push $(BACKEND_IMAGE):$(IMAGE_TAG)
-	@echo "$(GREEN)✅ Backend image pushed: $(BACKEND_IMAGE):$(IMAGE_TAG)$(NC)"
+	@echo -e "$(GREEN)Pushing backend image to OpenShift registry...$(NC)"
+	@podman tag localhost/tarsy_backend:latest $(BACKEND_IMAGE):$(IMAGE_TAG)
+	@podman push --tls-verify=false $(BACKEND_IMAGE):$(IMAGE_TAG)
+	@echo -e "$(GREEN)✅ Backend image pushed: $(BACKEND_IMAGE):$(IMAGE_TAG)$(NC)"
 
 .PHONY: openshift-push-dashboard
 openshift-push-dashboard: openshift-build-dashboard openshift-create-namespace ## Push dashboard image to OpenShift registry  
-	@echo "$(GREEN)Pushing dashboard image to OpenShift registry...$(NC)"
-	@podman tag localhost/tarsy-dashboard:latest $(DASHBOARD_IMAGE):$(IMAGE_TAG)
-	@podman push $(DASHBOARD_IMAGE):$(IMAGE_TAG)
-	@echo "$(GREEN)✅ Dashboard image pushed: $(DASHBOARD_IMAGE):$(IMAGE_TAG)$(NC)"
+	@echo -e "$(GREEN)Pushing dashboard image to OpenShift registry...$(NC)"
+	@podman tag localhost/tarsy_dashboard:latest $(DASHBOARD_IMAGE):$(IMAGE_TAG)
+	@podman push --tls-verify=false $(DASHBOARD_IMAGE):$(IMAGE_TAG)
+	@echo -e "$(GREEN)✅ Dashboard image pushed: $(DASHBOARD_IMAGE):$(IMAGE_TAG)$(NC)"
 
 .PHONY: openshift-push-all
 openshift-push-all: openshift-push-backend openshift-push-dashboard ## Build and push all images to OpenShift registry
-	@echo "$(GREEN)✅ All images built and pushed to OpenShift registry$(NC)"
+	@echo -e "$(GREEN)✅ All images built and pushed to OpenShift registry$(NC)"
 
 # Secret management
 .PHONY: openshift-create-secrets
 openshift-create-secrets: openshift-check openshift-create-namespace ## Create secrets from environment variables
-	@echo "$(GREEN)Creating secrets from environment variables...$(NC)"
+	@echo -e "$(GREEN)Creating secrets from environment variables...$(NC)"
 	@if [ -z "$$GOOGLE_API_KEY" ]; then \
 		echo "$(RED)❌ Error: GOOGLE_API_KEY environment variable not set$(NC)"; \
 		echo "$(YELLOW)Please set: export GOOGLE_API_KEY=your-actual-google-api-key$(NC)"; \
@@ -114,11 +134,11 @@ openshift-create-secrets: openshift-check openshift-create-namespace ## Create s
 		-p OAUTH2_CLIENT_ID="$$OAUTH2_CLIENT_ID" \
 		-p OAUTH2_CLIENT_SECRET="$$OAUTH2_CLIENT_SECRET" | \
 		oc apply -f -
-	@echo "$(GREEN)✅ Secrets created in namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
+	@echo -e "$(GREEN)✅ Secrets created in namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
 
 .PHONY: openshift-check-config-files
 openshift-check-config-files: ## Check that required config files exist in deploy location
-	@echo "$(BLUE)Checking deployment configuration files...$(NC)"
+	@echo -e "$(BLUE)Checking deployment configuration files...$(NC)"
 	@mkdir -p deploy/kustomize/base/config
 	@if [ ! -f deploy/kustomize/base/config/agents.yaml ]; then \
 		if [ -f config/agents.yaml ]; then \
@@ -159,108 +179,134 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 			exit 1; \
 		fi; \
 	fi
-	@echo "$(BLUE)Syncing config files to overlay directory...$(NC)"
-	@cp deploy/kustomize/base/config/agents.yaml overlays/development/
-	@cp deploy/kustomize/base/config/llm_providers.yaml overlays/development/
-	@cp deploy/kustomize/base/config/oauth2-proxy-container.cfg overlays/development/
-	@echo "$(GREEN)✅ Deployment configuration files ready$(NC)"
+	@echo -e "$(BLUE)Syncing config files to overlay directory...$(NC)"
+	@mkdir -p deploy/kustomize/overlays/development/templates
+	@cp deploy/kustomize/base/config/agents.yaml deploy/kustomize/overlays/development/
+	@cp deploy/kustomize/base/config/llm_providers.yaml deploy/kustomize/overlays/development/
+	@cp deploy/kustomize/base/config/oauth2-proxy-container.cfg deploy/kustomize/overlays/development/
+	@if [ -d config/templates ]; then \
+		cp -r config/templates/* deploy/kustomize/overlays/development/templates/; \
+	else \
+		echo "$(RED)❌ Error: No config/templates directory found$(NC)"; \
+		exit 1; \
+	fi
+	@echo -e "$(BLUE)Replacing placeholders in oauth2-proxy config...$(NC)"
+	@sed -i 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg
+	@if [ -n "$(GITHUB_ORG)" ]; then \
+		echo "  Setting GitHub org restriction: $(GITHUB_ORG)"; \
+		sed -i 's|{{GITHUB_ORG_CONFIG}}|github_org = "$(GITHUB_ORG)"|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
+	else \
+		echo "  No GitHub org restriction (allowing all authenticated users)"; \
+		sed -i 's|{{GITHUB_ORG_CONFIG}}|# github_org = "your-github-org"  # Not set - allowing all authenticated users|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
+	fi
+	@if [ -n "$(GITHUB_TEAM)" ]; then \
+		echo "  Setting GitHub team restriction: $(GITHUB_TEAM)"; \
+		sed -i 's|{{GITHUB_TEAM_CONFIG}}|github_team = "$(GITHUB_TEAM)"|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
+	else \
+		echo "  No GitHub team restriction"; \
+		sed -i 's|{{GITHUB_TEAM_CONFIG}}|# github_team = "your-team"  # Not set|g' deploy/kustomize/overlays/development/oauth2-proxy-container.cfg; \
+	fi
+	@echo -e "$(GREEN)✅ Deployment configuration files ready$(NC)"
 
 # Deploy targets
 .PHONY: openshift-deploy
 openshift-deploy: openshift-create-secrets openshift-push-all openshift-check-config-files ## Complete deployment: secrets, images, and manifests
-	@echo "$(GREEN)Deploying application to OpenShift...$(NC)"
-	@oc apply -k overlays/development/
-	@echo "$(GREEN)✅ Deployed to OpenShift namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
-	@echo "$(BLUE)Check status with: make openshift-status$(NC)"
+	@echo -e "$(GREEN)Deploying application to OpenShift...$(NC)"
+	@oc apply -k deploy/kustomize/overlays/development/
+	@echo -e "$(GREEN)✅ Deployed to OpenShift namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
+	@echo -e "$(BLUE)Check status with: make openshift-status$(NC)"
 
 .PHONY: openshift-deploy-only
 openshift-deploy-only: openshift-check openshift-check-config-files ## Deploy manifests only (assumes secrets and images exist)
-	@echo "$(GREEN)Deploying manifests to OpenShift...$(NC)"
-	@oc apply -k overlays/development/
-	@echo "$(GREEN)✅ Manifests deployed to OpenShift namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
+	@echo -e "$(GREEN)Deploying manifests to OpenShift...$(NC)"
+	@echo -e "$(BLUE)Replacing {{ROUTE_HOST}} with $(ROUTE_HOST)...$(NC)"
+	@sed -i.bak 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/base/routes.yaml
+	@oc apply -k deploy/kustomize/overlays/development/
+	@mv deploy/kustomize/base/routes.yaml.bak deploy/kustomize/base/routes.yaml
+	@echo -e "$(GREEN)✅ Manifests deployed to OpenShift namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
 
 # Status and info targets  
 .PHONY: openshift-status
 openshift-status: openshift-check ## Show OpenShift deployment status
-	@echo "$(GREEN)OpenShift Deployment Status$(NC)"
+	@echo -e "$(GREEN)OpenShift Deployment Status$(NC)"
 	@echo "=============================="
-	@echo "$(BLUE)Namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
+	@echo -e "$(BLUE)Namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
 	@echo ""
-	@echo "$(YELLOW)Pods:$(NC)"
+	@echo -e "$(YELLOW)Pods:$(NC)"
 	@oc get pods -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || echo "No pods found"
 	@echo ""
-	@echo "$(YELLOW)Services:$(NC)"  
+	@echo -e "$(YELLOW)Services:$(NC)"  
 	@oc get services -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || echo "No services found"
 	@echo ""
-	@echo "$(YELLOW)Routes:$(NC)"
+	@echo -e "$(YELLOW)Routes:$(NC)"
 	@oc get routes -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || echo "No routes found"
 	@echo ""
-	@echo "$(YELLOW)ImageStreams:$(NC)"
+	@echo -e "$(YELLOW)ImageStreams:$(NC)"
 	@oc get imagestreams -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || echo "No imagestreams found"
 
 .PHONY: openshift-logs
 openshift-logs: openshift-check ## Show logs from backend pod
-	@echo "$(GREEN)Backend logs:$(NC)"
+	@echo -e "$(GREEN)Backend logs:$(NC)"
 	@oc logs -l component=backend -n $(OPENSHIFT_NAMESPACE) --tail=50 2>/dev/null || echo "No backend pods found"
 
 .PHONY: openshift-logs-dashboard
 openshift-logs-dashboard: openshift-check ## Show logs from dashboard pod
-	@echo "$(GREEN)Dashboard logs:$(NC)"
+	@echo -e "$(GREEN)Dashboard logs:$(NC)"
 	@oc logs -l component=dashboard -n $(OPENSHIFT_NAMESPACE) --tail=50 2>/dev/null || echo "No dashboard pods found"
 
 .PHONY: openshift-urls
 openshift-urls: openshift-check ## Show OpenShift application URLs
-	@echo "$(GREEN)OpenShift Application URLs$(NC)"
+	@echo -e "$(GREEN)OpenShift Application URLs$(NC)"
 	@echo "============================="
 	@DASHBOARD_URL=$$(oc get route dev-tarsy-dashboard -n $(OPENSHIFT_NAMESPACE) -o jsonpath='{.spec.host}' 2>/dev/null); \
 	if [ -n "$$DASHBOARD_URL" ]; then \
-		echo "$(BLUE)🌍 Dashboard: https://$$DASHBOARD_URL$(NC)"; \
-		echo "$(BLUE)🔧 API: https://$$DASHBOARD_URL/api$(NC)"; \
-		echo "$(BLUE)🔐 OAuth: https://$$DASHBOARD_URL/oauth2$(NC)"; \
-		echo "$(BLUE)🔌 WebSocket: https://$$DASHBOARD_URL/ws$(NC)"; \
+		echo -e "$(BLUE)🌍 Dashboard: https://$$DASHBOARD_URL$(NC)"; \
+		echo -e "$(BLUE)🔧 API: https://$$DASHBOARD_URL/api$(NC)"; \
+		echo -e "$(BLUE)🔐 OAuth: https://$$DASHBOARD_URL/oauth2$(NC)"; \
+		echo -e "$(BLUE)🔌 WebSocket: https://$$DASHBOARD_URL/ws$(NC)"; \
 	else \
-		echo "$(RED)No routes found in namespace $(OPENSHIFT_NAMESPACE)$(NC)"; \
+		echo -e "$(RED)No routes found in namespace $(OPENSHIFT_NAMESPACE)$(NC)"; \
 	fi
 
 # Cleanup targets
 .PHONY: openshift-clean
 openshift-clean: openshift-check ## Delete all resources from OpenShift
-	@echo "$(YELLOW)⚠️  This will delete all Tarsy resources from OpenShift!$(NC)"
+	@echo -e "$(YELLOW)⚠️  This will delete all Tarsy resources from OpenShift!$(NC)"
 	@printf "Are you sure? [y/N] "; \
 	read REPLY; \
 	case "$$REPLY" in \
 		[Yy]|[Yy][Ee][Ss]) \
-			echo "$(YELLOW)Deleting OpenShift resources...$(NC)"; \
+			echo -e "$(YELLOW)Deleting OpenShift resources...$(NC)"; \
 			oc delete -k deploy/kustomize/overlays/development/ 2>/dev/null || true; \
-			echo "$(GREEN)✅ OpenShift resources deleted$(NC)"; \
+			echo -e "$(GREEN)✅ OpenShift resources deleted$(NC)"; \
 			;; \
 		*) \
-			echo "$(GREEN)Cancelled$(NC)"; \
+			echo -e "$(GREEN)Cancelled$(NC)"; \
 			;; \
 	esac
 
 .PHONY: openshift-clean-images
 openshift-clean-images: openshift-check ## Delete images from OpenShift registry
-	@echo "$(YELLOW)⚠️  This will delete Tarsy images from OpenShift registry!$(NC)"
+	@echo -e "$(YELLOW)⚠️  This will delete Tarsy images from OpenShift registry!$(NC)"
 	@printf "Are you sure? [y/N] "; \
 	read REPLY; \
 	case "$$REPLY" in \
 		[Yy]|[Yy][Ee][Ss]) \
-			echo "$(YELLOW)Deleting images from ImageStreams...$(NC)"; \
+			echo -e "$(YELLOW)Deleting images from ImageStreams...$(NC)"; \
 			oc delete imagestream tarsy-backend -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
 			oc delete imagestream tarsy-dashboard -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
-			echo "$(GREEN)✅ Images deleted from registry$(NC)"; \
+			echo -e "$(GREEN)✅ Images deleted from registry$(NC)"; \
 			;; \
 		*) \
-			echo "$(GREEN)Cancelled$(NC)"; \
+			echo -e "$(GREEN)Cancelled$(NC)"; \
 			;; \
 	esac
 
 # Development workflow targets
 .PHONY: openshift-dev
 openshift-dev: openshift-deploy openshift-urls ## Complete dev workflow: secrets, build, push, deploy, and show URLs
-	@echo "$(GREEN)🚀 OpenShift development deployment complete!$(NC)"
-	@echo "$(YELLOW)💡 Tips:$(NC)"
+	@echo -e "$(GREEN)🚀 OpenShift development deployment complete!$(NC)"
+	@echo -e "$(YELLOW)💡 Tips:$(NC)"
 	@echo "  - Check status: make openshift-status"
 	@echo "  - View logs: make openshift-logs"  
 	@echo "  - Redeploy: make openshift-redeploy"
@@ -268,8 +314,8 @@ openshift-dev: openshift-deploy openshift-urls ## Complete dev workflow: secrets
 
 .PHONY: openshift-redeploy
 openshift-redeploy: openshift-push-all openshift-deploy-only ## Quick redeploy: rebuild images and update deployment
-	@echo "$(GREEN)✅ Quick redeploy completed$(NC)"
+	@echo -e "$(GREEN)✅ Quick redeploy completed$(NC)"
 
 .PHONY: openshift-quick
 openshift-quick: openshift-deploy-only openshift-urls ## Quick deploy manifests only (no image rebuild)
-	@echo "$(GREEN)✅ Quick manifest deployment completed$(NC)"
+	@echo -e "$(GREEN)✅ Quick manifest deployment completed$(NC)"

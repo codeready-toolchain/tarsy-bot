@@ -34,7 +34,8 @@ const parseEnvConfig = (): AppConfig => {
   
   // Production URLs (only used when building for production)
   // In development, these are ignored in favor of Vite proxy
-  const prodApiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4180';
+  // Use ?? instead of || to allow empty string (for relative URLs)
+  const prodApiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4180';
   
   // Derive WebSocket URL from API URL if not explicitly set
   let prodWsBaseUrl = import.meta.env.VITE_WS_BASE_URL;

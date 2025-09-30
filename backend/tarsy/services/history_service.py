@@ -612,36 +612,34 @@ class HistoryService:
             
         Returns:
             PaginatedSessions model or None if unavailable
+            
+        Raises:
+            RuntimeError: If repository is unavailable
         """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    raise RuntimeError("History repository unavailable - cannot retrieve sessions list")
-                
-                # Extract filters or use defaults
-                filters = filters or {}
-                
-                # Use regular method that returns PaginatedSessions model directly
-                paginated_sessions = repo.get_alert_sessions(
-                    status=filters.get('status'),
-                    agent_type=filters.get('agent_type'),
-                    alert_type=filters.get('alert_type'),
-                    search=filters.get('search'),
-                    start_date_us=filters.get('start_date_us'),
-                    end_date_us=filters.get('end_date_us'),
-                    page=page,
-                    page_size=page_size
-                )
-                
-                # Add the applied filters to the model
-                if paginated_sessions and filters:
-                    paginated_sessions.filters_applied = filters
-                
-                return paginated_sessions
-                
-        except Exception as e:
-            logger.error(f"Failed to get sessions list: {str(e)}")
-            return None
+        with self.get_repository() as repo:
+            if not repo:
+                raise RuntimeError("History repository unavailable - cannot retrieve sessions list")
+            
+            # Extract filters or use defaults
+            filters = filters or {}
+            
+            # Use regular method that returns PaginatedSessions model directly
+            paginated_sessions = repo.get_alert_sessions(
+                status=filters.get('status'),
+                agent_type=filters.get('agent_type'),
+                alert_type=filters.get('alert_type'),
+                search=filters.get('search'),
+                start_date_us=filters.get('start_date_us'),
+                end_date_us=filters.get('end_date_us'),
+                page=page,
+                page_size=page_size
+            )
+            
+            # Add the applied filters to the model
+            if paginated_sessions and filters:
+                paginated_sessions.filters_applied = filters
+            
+            return paginated_sessions
 
     def test_database_connection(self) -> bool:
         """
@@ -693,17 +691,15 @@ class HistoryService:
         
         Returns:
             List of active AlertSession instances
+            
+        Raises:
+            RuntimeError: If repository is unavailable
         """
-        try:
-            with self.get_repository() as repo:
-                if not repo:
-                    raise RuntimeError("History repository unavailable - cannot retrieve active sessions")
-                
-                return repo.get_active_sessions()
-                
-        except Exception as e:
-            logger.error(f"Failed to get active sessions: {str(e)}")
-            return []
+        with self.get_repository() as repo:
+            if not repo:
+                raise RuntimeError("History repository unavailable - cannot retrieve active sessions")
+            
+            return repo.get_active_sessions()
 
     def get_filter_options(self) -> FilterOptions:
         """

@@ -5,10 +5,10 @@ metadata:
   name: tarsy-dashboard
   namespace: tarsy
 spec:
-  host: tarsy-dev.apps.your-cluster.com
+  host: tarsy-dev.apps.rosa.dn93j-882v4-nvp.jav8.p3.openshiftapps.com
   to:
     kind: Service
-    name: tarsy-dashboard
+    name: dev-tarsy-dashboard
     weight: 100
   port:
     targetPort: 8080
@@ -24,11 +24,11 @@ metadata:
   name: tarsy-api
   namespace: tarsy
 spec:
-  host: tarsy-dev.apps.your-cluster.com
+  host: tarsy-dev.apps.rosa.dn93j-882v4-nvp.jav8.p3.openshiftapps.com
   path: /api
   to:
     kind: Service
-    name: tarsy-backend
+    name: dev-tarsy-backend
     weight: 100
   port:
     targetPort: 4180
@@ -44,11 +44,11 @@ metadata:
   name: tarsy-oauth
   namespace: tarsy
 spec:
-  host: tarsy-dev.apps.your-cluster.com
+  host: tarsy-dev.apps.rosa.dn93j-882v4-nvp.jav8.p3.openshiftapps.com
   path: /oauth2
   to:
     kind: Service
-    name: tarsy-backend
+    name: dev-tarsy-backend
     weight: 100
   port:
     targetPort: 4180
@@ -64,11 +64,11 @@ metadata:
   name: tarsy-websocket
   namespace: tarsy
 spec:
-  host: tarsy-dev.apps.your-cluster.com
+  host: tarsy-dev.apps.rosa.dn93j-882v4-nvp.jav8.p3.openshiftapps.com
   path: /ws
   to:
     kind: Service
-    name: tarsy-backend
+    name: dev-tarsy-backend
     weight: 100
   port:
     targetPort: 4180

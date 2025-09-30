@@ -133,4 +133,9 @@ tmp/
 temp/
 
 # OpenShift deployment config files (user-specific, not committed)
-/deploy/kustomize/base/config/*
+/deploy/kustomize/base/config/*.yaml
+/deploy/kustomize/base/config/*.cfg
+/deploy/kustomize/overlays/development/*.yaml
+/deploy/kustomize/overlays/development/*.cfg
+/deploy/kustomize/overlays/development/templates/
+/deploy/openshift.env

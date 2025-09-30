@@ -14,20 +14,6 @@ resources:
 commonLabels:
   app: tarsy
 
-configMapGenerator:
-  - name: agents-config
-    behavior: create
-    files:
-      - agents.yaml=config/agents.yaml
-  - name: llm-providers-config
-    behavior: create
-    files:
-      - llm_providers.yaml=config/llm_providers.yaml
-  - name: oauth2-config
-    behavior: create
-    files:
-      - oauth2-proxy.cfg=config/oauth2-proxy-container.cfg
-
 images:
   - name: tarsy-backend
     newTag: latest

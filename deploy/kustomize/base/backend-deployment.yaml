@@ -16,6 +16,7 @@ spec:
       containers:
         - name: backend
           image: tarsy-backend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           env:
@@ -95,6 +96,9 @@ spec:
             - name: oauth2-config
               mountPath: /config
               readOnly: true
+            - name: oauth2-templates
+              mountPath: /templates
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /ping
@@ -128,3 +132,6 @@ spec:
         - name: oauth2-config
           configMap:
             name: oauth2-config
+        - name: oauth2-templates
+          configMap:
+            name: oauth2-templates

@@ -173,7 +173,7 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
   }, []);
 
   // Track pointer interactions that might lead to scrolling (unified mouse/touch/pen)
-  const handlePointerDown = useCallback((e: PointerEvent) => {
+  const handlePointerDown = useCallback((_e: PointerEvent) => {
     userInteractionRef.current = true;
     // Clear existing timeout but don't start a new one
     if (clearUserInteractionTimeoutRef.current) {
@@ -182,7 +182,7 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
     }
   }, []);
 
-  const handlePointerUp = useCallback((e: PointerEvent) => {
+  const handlePointerUp = useCallback((_e: PointerEvent) => {
     // Start the TTL timer when pointer is released
     if (clearUserInteractionTimeoutRef.current) {
       clearTimeout(clearUserInteractionTimeoutRef.current);

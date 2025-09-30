@@ -139,6 +139,12 @@ async def list_sessions(
         
     except HTTPException:
         raise
+    except RuntimeError as e:
+        # Database unavailable - return 503
+        raise HTTPException(
+            status_code=503,
+            detail=f"History service unavailable: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -355,6 +361,12 @@ async def get_active_sessions(
             }
             for session in active_sessions
         ]
+    except RuntimeError as e:
+        # Database unavailable - return 503
+        raise HTTPException(
+            status_code=503, 
+            detail=f"History service unavailable: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get active sessions: {str(e)}")
 
@@ -372,6 +384,12 @@ async def get_filter_options(
         filter_options = history_service.get_filter_options()
         return filter_options
         
+    except RuntimeError as e:
+        # Database unavailable - return 503
+        raise HTTPException(
+            status_code=503, 
+            detail=f"History service unavailable: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get filter options: {str(e)}")
 

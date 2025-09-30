@@ -343,20 +343,24 @@ class TestHistoryService:
                 mock_get_repo.return_value.__enter__.return_value = None
                 mock_get_repo.return_value.__exit__.return_value = None
             
-            result = history_service.get_sessions_list(
-                filters={"status": "completed"} if service_enabled else None,
-                page=1,
-                page_size=20
-            )
-            
             if service_enabled:
+                result = history_service.get_sessions_list(
+                    filters={"status": "completed"},
+                    page=1,
+                    page_size=20
+                )
                 assert result is not None
                 assert len(result.sessions) == expected_sessions
                 assert result.pagination.total_items == expected_count
-            else:
-                assert result is None
-            if service_enabled:
                 dependencies['repository'].get_alert_sessions.assert_called_once()
+            else:
+                # When repository is unavailable, should raise RuntimeError
+                with pytest.raises(RuntimeError, match="History repository unavailable"):
+                    history_service.get_sessions_list(
+                        filters=None,
+                        page=1,
+                        page_size=20
+                    )
     
     @pytest.mark.unit
     def test_get_session_details_success(self, history_service):
@@ -805,9 +809,17 @@ class TestHistoryServiceErrorHandling:
             result = history_service_with_errors.update_session_status("test", "completed")
             assert result == False
             
-            # get_sessions_list returns None when repository unavailable
-            result = history_service_with_errors.get_sessions_list()
-            assert result is None
+            # get_sessions_list raises RuntimeError when repository unavailable
+            with pytest.raises(RuntimeError, match="History repository unavailable"):
+                history_service_with_errors.get_sessions_list()
+            
+            # get_active_sessions raises RuntimeError when repository unavailable
+            with pytest.raises(RuntimeError, match="History repository unavailable"):
+                history_service_with_errors.get_active_sessions()
+            
+            # get_filter_options raises RuntimeError when repository unavailable
+            with pytest.raises(RuntimeError, match="History repository unavailable"):
+                history_service_with_errors.get_filter_options()
     
     @pytest.mark.unit
     def test_exception_handling_in_operations(self, history_service_with_errors):

@@ -11,8 +11,24 @@ namePrefix: dev-
 commonLabels:
   environment: development
 
-
 configMapGenerator:
+  - name: agents-config
+    behavior: create
+    files:
+      - agents.yaml
+  - name: llm-providers-config
+    behavior: create
+    files:
+      - llm_providers.yaml
+  - name: oauth2-config
+    behavior: create
+    files:
+      - oauth2-proxy.cfg=oauth2-proxy-container.cfg
+  - name: oauth2-templates
+    behavior: create
+    files:
+      - sign_in.html=templates/sign_in.html
+      - tarsy-logo.png=templates/tarsy-logo.png
   - name: tarsy-config
     behavior: create
     literals:
@@ -27,6 +43,8 @@ configMapGenerator:
       - DATABASE_PORT=5432
       - DATABASE_USER=tarsy
       - DATABASE_NAME=tarsy
+      - AGENT_CONFIG_PATH=/app/config/agents.yaml
+      - LLM_CONFIG_PATH=/app/config/llm_providers.yaml
 
 images:
   - name: tarsy-backend
