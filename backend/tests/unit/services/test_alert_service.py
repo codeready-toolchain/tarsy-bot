@@ -105,6 +105,7 @@ class TestAlertServiceAsyncInitialization:
             
             # Setup mocks for initialize()
             service.mcp_client = AsyncMock()
+            service.mcp_client.get_failed_servers = Mock(return_value={})  # No failed servers by default
             service.llm_manager = Mock()
             service.llm_manager.is_available.return_value = True
             service.llm_manager.list_available_providers.return_value = ["test-provider"]
@@ -144,7 +145,7 @@ class TestAlertServiceAsyncInitialization:
     
     @pytest.mark.asyncio
     async def test_initialize_mcp_client_failure(self, alert_service):
-        """Test initialization continues when MCP client initialization fails with warning."""
+        """Test initialization continues when MCP servers fail with individual warnings."""
         from tarsy.services.system_warnings_service import (
             SystemWarningsService,
             get_warnings_service,
@@ -153,18 +154,31 @@ class TestAlertServiceAsyncInitialization:
         # Reset singleton for clean test
         SystemWarningsService._instance = None
 
-        alert_service.mcp_client.initialize.side_effect = Exception("MCP init failed")
+        # Simulate two MCP servers failing
+        alert_service.mcp_client.get_failed_servers.return_value = {
+            "argocd-server": "Type=FileNotFoundError | Message=[Errno 2] No such file or directory",
+            "github-server": "Type=ConnectionError | Message=Connection refused"
+        }
 
-        # Should NOT raise - initialization continues with warning
+        # Should NOT raise - initialization continues with warnings
         await alert_service.initialize()
 
-        # Verify warning was added
+        # Verify individual warnings were added for each failed server
         warnings_service = get_warnings_service()
         warnings = warnings_service.get_warnings()
-        assert len(warnings) == 1
+        assert len(warnings) == 2
+        
+        # Check first warning (argocd-server)
         assert warnings[0].category == "mcp_initialization"
-        assert "MCP servers failed to initialize" in warnings[0].message
-        assert "MCP init failed" in warnings[0].message
+        assert "argocd-server" in warnings[0].message
+        assert "FileNotFoundError" in warnings[0].message
+        assert "Check argocd-server configuration" in warnings[0].details
+        
+        # Check second warning (github-server)
+        assert warnings[1].category == "mcp_initialization"
+        assert "github-server" in warnings[1].message
+        assert "ConnectionError" in warnings[1].message
+        assert "Check github-server configuration" in warnings[1].details
 
         # Verify agent factory was still initialized
         assert alert_service.agent_factory is not None

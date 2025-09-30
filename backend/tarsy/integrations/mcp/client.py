@@ -45,6 +45,7 @@ class MCPClient:
         self.transports: Dict[str, MCPTransport] = {}  # Transport instances
         self.exit_stack = AsyncExitStack()
         self._initialized = False
+        self.failed_servers: Dict[str, str] = {}  # server_id -> error_message
     
     async def initialize(self):
         """Initialize MCP servers based on registry configuration."""
@@ -79,11 +80,22 @@ class MCPClient:
             except Exception as e:
                 error_details = extract_error_details(e)
                 logger.error(f"Failed to initialize MCP server {server_id}: {error_details}")
+                # Track failed server for warning generation
+                self.failed_servers[server_id] = error_details
                 # Ensure we don't leave partial state in sessions dict
                 if server_id in self.sessions:
                     del self.sessions[server_id]
         
         self._initialized = True
+    
+    def get_failed_servers(self) -> Dict[str, str]:
+        """
+        Get dictionary of failed MCP servers.
+        
+        Returns:
+            Dict[server_id, error_message] for servers that failed to initialize
+        """
+        return self.failed_servers.copy()
     
     async def _create_session(self, server_id: str, server_config: MCPServerConfigModel) -> ClientSession:
         """Create and initialize a new MCP session for a server.

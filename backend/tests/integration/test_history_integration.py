@@ -135,6 +135,7 @@ class TestHistoryServiceIntegration:
     def mock_mcp_client(self):
         """Create mock MCP client."""
         client = AsyncMock()
+        client.get_failed_servers = Mock(return_value={})  # No failed servers by default
         client.list_tools.return_value = [
             {"name": "kubectl_get_namespace", "description": "Get namespace information"},
             {"name": "kubectl_describe_namespace", "description": "Describe namespace details"}

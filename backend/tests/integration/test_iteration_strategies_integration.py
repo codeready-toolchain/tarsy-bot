@@ -61,6 +61,7 @@ class TestIterationStrategiesIntegration:
     def mock_mcp_client(self):
         """Mock MCP client for testing."""
         client = Mock()
+        client.get_failed_servers = Mock(return_value={})  # No failed servers by default
         client.list_tools = AsyncMock(return_value={
             "kubernetes-server": [
                 Tool(name="kubectl-get-pods", description="Get pods", inputSchema={"type": "object", "properties": {}}),
@@ -485,7 +486,9 @@ class TestIterationStrategyErrorHandling:
     
     @pytest.fixture
     def mock_mcp_client(self):
-        return Mock()
+        client = Mock()
+        client.get_failed_servers = Mock(return_value={})  # No failed servers by default
+        return client
     
     @pytest.fixture
     def mock_mcp_registry(self):

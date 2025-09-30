@@ -154,23 +154,23 @@ class AlertService:
         """
         try:
             # Initialize MCP client
-            try:
-                await self.mcp_client.initialize()
-            except Exception as mcp_error:
-                # MCP initialization failed - critical but not fatal
-                logger.critical(f"MCP client initialization failed: {mcp_error}")
-
+            await self.mcp_client.initialize()
+            
+            # Check for failed servers and create individual warnings
+            failed_servers = self.mcp_client.get_failed_servers()
+            if failed_servers:
                 from tarsy.services.system_warnings_service import (
                     get_warnings_service,
                 )
-
                 warnings = get_warnings_service()
-                warnings.add_warning(
-                    "mcp_initialization",
-                    f"MCP servers failed to initialize: {str(mcp_error)}",
-                    details="MCP-dependent tools will be unavailable. Check MCP server configuration and connectivity.",
-                )
-                # Don't raise - continue without MCP functionality
+                
+                for server_id, error_msg in failed_servers.items():
+                    logger.critical(f"MCP server '{server_id}' failed to initialize: {error_msg}")
+                    warnings.add_warning(
+                        "mcp_initialization",
+                        f"MCP Server '{server_id}' failed to initialize: {error_msg}",
+                        details=f"Check {server_id} configuration and connectivity. MCP-dependent tools from this server will be unavailable.",
+                    )
 
             # Validate that configured LLM provider NAME exists in configuration
             # Note: We check configuration, not runtime availability (API keys work, etc)

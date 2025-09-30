@@ -391,6 +391,10 @@ problematic-pod-12345   0/1     Terminating   0          45m"""
     
     # Use AsyncMock with side_effect to track calls and return dynamic responses
     client.call_tool = AsyncMock(side_effect=mock_call_tool_sync)
+    
+    # Mock get_failed_servers - return empty dict (no failures by default)
+    client.get_failed_servers = Mock(return_value={})
+    
     return client
 
 
