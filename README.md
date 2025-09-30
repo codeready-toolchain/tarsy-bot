@@ -91,6 +91,19 @@ make containers-deploy-fresh  # Clean rebuild including database
 - **Check status:** `make containers-status`
 - **Clean up:** `make containers-clean` (removes all containers and data)
 
+### OpenShift/Kubernetes Deployment
+
+For deploying TARSy to OpenShift or Kubernetes clusters:
+
+```bash
+# Complete deployment with local builds
+make openshift-deploy
+```
+
+**📖 For complete OpenShift deployment guide**: See [deploy/README.md](deploy/README.md)
+
+This deployment is designed for development and testing environments, serving as a reference for production deployments in separate repositories.
+
 ## Key Features
 
 - **🛠️ Configuration-Based Agents**: Deploy new agents and chain definitions via YAML configuration without code changes

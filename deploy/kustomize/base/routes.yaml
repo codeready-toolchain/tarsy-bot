@@ -5,7 +5,7 @@ metadata:
   name: tarsy-dashboard
   namespace: tarsy
 spec:
-  host: tarsy-dev.apps.rosa.dn93j-882v4-nvp.jav8.p3.openshiftapps.com
+  host: {{ROUTE_HOST}}
   to:
     kind: Service
     name: dev-tarsy-dashboard
@@ -24,7 +24,7 @@ metadata:
   name: tarsy-api
   namespace: tarsy
 spec:
-  host: tarsy-dev.apps.rosa.dn93j-882v4-nvp.jav8.p3.openshiftapps.com
+  host: {{ROUTE_HOST}}
   path: /api
   to:
     kind: Service
@@ -44,7 +44,7 @@ metadata:
   name: tarsy-oauth
   namespace: tarsy
 spec:
-  host: tarsy-dev.apps.rosa.dn93j-882v4-nvp.jav8.p3.openshiftapps.com
+  host: {{ROUTE_HOST}}
   path: /oauth2
   to:
     kind: Service
@@ -64,7 +64,7 @@ metadata:
   name: tarsy-websocket
   namespace: tarsy
 spec:
-  host: tarsy-dev.apps.rosa.dn93j-882v4-nvp.jav8.p3.openshiftapps.com
+  host: {{ROUTE_HOST}}
   path: /ws
   to:
     kind: Service

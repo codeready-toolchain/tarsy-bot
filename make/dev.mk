@@ -13,36 +13,36 @@ BACKEND_PORT := 8000
 DASHBOARD_PORT := 5173
 
 # Container management
-PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml
+PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman-compose -f deploy/podman-compose.yml
 
 # Prerequisites check
 .PHONY: check-prereqs
 check-prereqs: ## Check if required tools are installed
-	@echo "$(BLUE)Checking prerequisites...$(NC)"
+	@echo -e "$(BLUE)Checking prerequisites...$(NC)"
 	@command -v python3 >/dev/null 2>&1 || (echo "$(RED)✗ Python 3 not found$(NC)" && exit 1)
 	@command -v node >/dev/null 2>&1 || (echo "$(RED)✗ Node.js not found$(NC)" && exit 1)  
 	@command -v npm >/dev/null 2>&1 || (echo "$(RED)✗ npm not found$(NC)" && exit 1)
 	@command -v uv >/dev/null 2>&1 || (echo "$(RED)✗ uv not found. Install from: https://docs.astral.sh/uv/$(NC)" && exit 1)
-	@echo "$(GREEN)✓ All prerequisites found$(NC)"
+	@echo -e "$(GREEN)✓ All prerequisites found$(NC)"
 
 # Setup targets
 .PHONY: setup
 setup: check-prereqs ## Complete project setup (run this first!)
-	@echo "$(GREEN)🚀 Setting up TARSy development environment...$(NC)"
-	@echo "$(BLUE)Setting up backend...$(NC)"
+	@echo -e "$(GREEN)🚀 Setting up TARSy development environment...$(NC)"
+	@echo -e "$(BLUE)Setting up backend...$(NC)"
 	$(MAKE) -C backend install
 	@if [ ! -f backend/.env ]; then \
-		echo "$(YELLOW)Creating backend/.env from template...$(NC)"; \
+		echo -e "$(YELLOW)Creating backend/.env from template...$(NC)"; \
 		cp backend/env.template backend/.env; \
-		echo "$(YELLOW)⚠️  IMPORTANT: Edit backend/.env with your API keys!$(NC)"; \
+		echo -e "$(YELLOW)⚠️  IMPORTANT: Edit backend/.env with your API keys!$(NC)"; \
 	else \
-		echo "$(GREEN)✓ backend/.env already exists - keeping your configuration$(NC)"; \
+		echo -e "$(GREEN)✓ backend/.env already exists - keeping your configuration$(NC)"; \
 	fi
-	@echo "$(BLUE)Setting up dashboard...$(NC)"
+	@echo -e "$(BLUE)Setting up dashboard...$(NC)"
 	cd dashboard && npm install
-	@echo "$(GREEN)✅ Setup completed! Run 'make dev' to start all services$(NC)"
+	@echo -e "$(GREEN)✅ Setup completed! Run 'make dev' to start all services$(NC)"
 	@echo ""
-	@echo "$(YELLOW)Next steps:$(NC)"
+	@echo -e "$(YELLOW)Next steps:$(NC)"
 	@echo "1. Edit backend/.env with your API keys"
 	@echo "2. Run 'make dev' to start all services"
 	@echo "3. Visit the URLs shown by 'make urls'"
@@ -50,16 +50,16 @@ setup: check-prereqs ## Complete project setup (run this first!)
 # Development targets
 .PHONY: dev
 dev: ## Start all services for development (direct backend connection)
-	@echo "$(GREEN)🚀 Starting all services in simplified dev mode...$(NC)"
-	@echo "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
-	@echo "$(BLUE)Dashboard will run on: http://localhost:5173$(NC)"
-	@echo "$(YELLOW)Mode: Direct backend connection (no containers, no auth)$(NC)"
+	@echo -e "$(GREEN)🚀 Starting all services in simplified dev mode...$(NC)"
+	@echo -e "$(BLUE)Backend will run on: http://localhost:$(BACKEND_PORT)$(NC)"
+	@echo -e "$(BLUE)Dashboard will run on: http://localhost:5173$(NC)"
+	@echo -e "$(YELLOW)Mode: Direct backend connection (no containers, no auth)$(NC)"
 	@echo ""
 	@trap 'make stop' INT; \
 	( \
-		echo "$(YELLOW)Starting backend...$(NC)" && \
+		echo -e "$(YELLOW)Starting backend...$(NC)" && \
 		(cd backend && make dev) & \
-		echo "$(YELLOW)Starting dashboard...$(NC)" && \
+		echo -e "$(YELLOW)Starting dashboard...$(NC)" && \
 		(cd dashboard && npm run dev) & \
 		wait \
 	)
@@ -67,157 +67,166 @@ dev: ## Start all services for development (direct backend connection)
 # Individual service targets
 .PHONY: backend
 backend: ## Start backend only
-	@echo "$(GREEN)Starting backend on http://localhost:$(BACKEND_PORT)$(NC)"
+	@echo -e "$(GREEN)Starting backend on http://localhost:$(BACKEND_PORT)$(NC)"
 	$(MAKE) -C backend dev
 
 .PHONY: dashboard
 dashboard: ## Start dashboard only (direct backend connection)
-	@echo "$(GREEN)Starting dashboard on http://localhost:$(DASHBOARD_PORT)$(NC)"
-	@echo "$(YELLOW)Direct backend connection to localhost:$(BACKEND_PORT)$(NC)"
+	@echo -e "$(GREEN)Starting dashboard on http://localhost:$(DASHBOARD_PORT)$(NC)"
+	@echo -e "$(YELLOW)Direct backend connection to localhost:$(BACKEND_PORT)$(NC)"
 	cd dashboard && npm run dev
 
 # Stop services
 .PHONY: stop
 stop: ## Stop all running services
-	@echo "$(YELLOW)Stopping all services...$(NC)"
+	@echo -e "$(YELLOW)Stopping all services...$(NC)"
 	$(MAKE) -C backend stop
 	@lsof -ti:$(DASHBOARD_PORT) | xargs -r kill -9 2>/dev/null || true
-	@echo "$(GREEN)✅ All services stopped$(NC)"
+	@echo -e "$(GREEN)✅ All services stopped$(NC)"
 
 # Container deployment targets
 .PHONY: containers-build-app containers-deploy containers-deploy-fresh containers-start containers-stop containers-clean containers-clean-images containers-deep-clean containers-db-reset check-config containers-logs containers-status sync-backend-deps
 
 sync-backend-deps: ## Sync backend dependencies (update uv.lock if pyproject.toml changed)
-	@echo "$(GREEN)Syncing backend dependencies...$(NC)"
+	@echo -e "$(GREEN)Syncing backend dependencies...$(NC)"
 	@cd backend && uv sync
-	@echo "$(GREEN)✅ Backend dependencies synced$(NC)"
+	@echo -e "$(GREEN)✅ Backend dependencies synced$(NC)"
 
 containers-build-app: sync-backend-deps ## Build only application containers (backend, dashboard) - preserves database
-	@echo "$(GREEN)Building Tarsy application container images (preserving database)...$(NC)"
+	@echo -e "$(GREEN)Building Tarsy application container images (preserving database)...$(NC)"
 	$(PODMAN_COMPOSE) build backend dashboard
-	@echo "$(GREEN)✅ Application container images built$(NC)"
+	@echo -e "$(GREEN)✅ Application container images built$(NC)"
 
 check-config: ## Ensure required configuration files exist (internal target)
-	@echo "$(GREEN)Checking configuration files...$(NC)"
+	@echo -e "$(GREEN)Checking configuration files...$(NC)"
 	@if [ ! -f backend/.env ]; then \
-		echo "$(RED)❌ Error: backend/.env file not found$(NC)"; \
-		echo "$(YELLOW)Please create backend/.env with your API keys and settings$(NC)"; \
+		echo -e "$(RED)❌ Error: backend/.env file not found$(NC)"; \
+		echo -e "$(YELLOW)Please create backend/.env with your API keys and settings$(NC)"; \
 		exit 1; \
 	fi
 	@if [ ! -d config ]; then \
-		echo "$(RED)❌ Error: config/ directory not found$(NC)"; \
-		echo "$(YELLOW)Please ensure config/ directory exists with required files$(NC)"; \
+		echo -e "$(RED)❌ Error: config/ directory not found$(NC)"; \
+		echo -e "$(YELLOW)Please ensure config/ directory exists with required files$(NC)"; \
 		exit 1; \
 	fi
 	@if [ ! -f config/oauth2-proxy-container.cfg ]; then \
 		if [ -f config/oauth2-proxy.cfg ]; then \
-			echo "$(YELLOW)📋 oauth2-proxy-container.cfg not found. Creating from oauth2-proxy.cfg...$(NC)"; \
-			echo "$(YELLOW)⚠️  You may need to adjust container networking addresses$(NC)"; \
+			echo -e "$(YELLOW)📋 oauth2-proxy-container.cfg not found. Creating from oauth2-proxy.cfg...$(NC)"; \
+			echo -e "$(YELLOW)⚠️  You may need to adjust container networking addresses$(NC)"; \
 			cp config/oauth2-proxy.cfg config/oauth2-proxy-container.cfg; \
-			echo "$(GREEN)✅ Created config/oauth2-proxy-container.cfg$(NC)"; \
+			echo -e "$(GREEN)✅ Created config/oauth2-proxy-container.cfg$(NC)"; \
 		elif [ -f config/oauth2-proxy-container.cfg.example ]; then \
-			echo "$(YELLOW)📋 oauth2-proxy-container.cfg not found. Creating from example...$(NC)"; \
+			echo -e "$(YELLOW)📋 oauth2-proxy-container.cfg not found. Creating from example...$(NC)"; \
 			cp config/oauth2-proxy-container.cfg.example config/oauth2-proxy-container.cfg; \
-			echo "$(GREEN)✅ Created config/oauth2-proxy-container.cfg from example$(NC)"; \
-			echo "$(YELLOW)⚠️  Please review and adjust container networking addresses$(NC)"; \
+			echo -e "$(GREEN)✅ Created config/oauth2-proxy-container.cfg from example$(NC)"; \
+			echo -e "$(YELLOW)⚠️  Please review and adjust container networking addresses$(NC)"; \
 		else \
-			echo "$(RED)❌ Error: config/oauth2-proxy-container.cfg not found$(NC)"; \
-			echo "$(YELLOW)Please create config/oauth2-proxy-container.cfg$(NC)"; \
+			echo -e "$(RED)❌ Error: config/oauth2-proxy-container.cfg not found$(NC)"; \
+			echo -e "$(YELLOW)Please create config/oauth2-proxy-container.cfg$(NC)"; \
 			exit 1; \
 		fi; \
 	fi
-	@echo "$(GREEN)✅ Configuration files found$(NC)"
+	@echo -e "$(GREEN)✅ Configuration files found$(NC)"
 
 containers-deploy: check-config ## Deploy Tarsy stack (smart default: rebuild apps, preserve database)
-	@echo "$(GREEN)Deploying Tarsy application stack (preserving database)...$(NC)"
-	@echo "$(YELLOW)Stopping application containers...$(NC)"
+	@echo -e "$(GREEN)Deploying Tarsy application stack (preserving database)...$(NC)"
+	@echo -e "$(YELLOW)Stopping application containers...$(NC)"
 	-$(PODMAN_COMPOSE) stop reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
-	@echo "$(YELLOW)Removing application containers...$(NC)"
+	@echo -e "$(YELLOW)Removing application containers...$(NC)"
 	-$(PODMAN_COMPOSE) rm -f reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
-	@echo "$(YELLOW)Building and starting application containers...$(NC)"
+	@echo -e "$(YELLOW)Building and starting application containers...$(NC)"
 	$(PODMAN_COMPOSE) up -d --build backend dashboard oauth2-proxy reverse-proxy
-	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
-	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:8080/api$(NC)"
-	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
-	@echo "$(GREEN)✅ Application deployment completed$(NC)"
+	@echo ""
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(BLUE)🌐 Dashboard:          http://localhost:8080$(NC)"
+	@echo -e "$(BLUE)🔧 API (oauth2-proxy): http://localhost:8080/api$(NC)"
+	@echo -e "$(BLUE)🗄️  Database (admin):   localhost:5432$(NC)"
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(GREEN)✅ Application deployment completed$(NC)"
 
 containers-deploy-fresh: containers-clean check-config ## Deploy complete fresh Tarsy stack (rebuild everything including database)
-	@echo "$(GREEN)Starting complete fresh Tarsy container stack...$(NC)"
+	@echo -e "$(GREEN)Starting complete fresh Tarsy container stack...$(NC)"
 	$(PODMAN_COMPOSE) up -d --build
-	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
-	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:8080/api$(NC)"
-	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
-	@echo "$(GREEN)✅ Fresh deployment completed$(NC)"
+	@echo ""
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(BLUE)🌐 Dashboard:          http://localhost:8080$(NC)"
+	@echo -e "$(BLUE)🔧 API (oauth2-proxy): http://localhost:8080/api$(NC)"
+	@echo -e "$(BLUE)🗄️  Database (admin):   localhost:5432$(NC)"
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(GREEN)✅ Fresh deployment completed$(NC)"
 
 containers-start: ## Start containers (quick restart after stop)
-	@echo "$(GREEN)Starting Tarsy container stack...$(NC)"
+	@echo -e "$(GREEN)Starting Tarsy container stack...$(NC)"
 	$(PODMAN_COMPOSE) up -d
-	@echo "$(BLUE)Dashboard: http://localhost:8080$(NC)"
-	@echo "$(BLUE)API (via oauth2-proxy): http://localhost:8080/api$(NC)"
-	@echo "$(BLUE)Database (admin access): localhost:5432$(NC)"
-	@echo "$(GREEN)✅ Containers started$(NC)"
+	@echo ""
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(BLUE)🌐 Dashboard:          http://localhost:8080$(NC)"
+	@echo -e "$(BLUE)🔧 API (oauth2-proxy): http://localhost:8080/api$(NC)"
+	@echo -e "$(BLUE)🗄️  Database (admin):   localhost:5432$(NC)"
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(GREEN)✅ Containers started$(NC)"
 
 containers-stop: ## Stop all running containers
-	@echo "$(YELLOW)Stopping containers...$(NC)"
+	@echo -e "$(YELLOW)Stopping containers...$(NC)"
 	-$(PODMAN_COMPOSE) down 2>/dev/null || true
-	@echo "$(GREEN)✅ Containers stopped$(NC)"
+	@echo -e "$(GREEN)✅ Containers stopped$(NC)"
 
 containers-clean: containers-stop ## Stop and remove all containers, networks, and volumes
-	@echo "$(YELLOW)Cleaning up containers, networks, and volumes...$(NC)"
+	@echo -e "$(YELLOW)Cleaning up containers, networks, and volumes...$(NC)"
 	-podman system prune -f 2>/dev/null || true
-	@echo "$(GREEN)✅ Container cleanup completed$(NC)"
+	@echo -e "$(GREEN)✅ Container cleanup completed$(NC)"
 
 containers-clean-images: ## Remove all project-related container images (aggressive cleanup)
-	@echo "$(YELLOW)Removing all Tarsy container images...$(NC)"
-	@echo "$(RED)⚠️  This will require rebuilding images on next deployment$(NC)"
+	@echo -e "$(YELLOW)Removing all Tarsy container images...$(NC)"
+	@echo -e "$(RED)⚠️  This will require rebuilding images on next deployment$(NC)"
 	-podman images --filter "reference=tarsy*" --format "{{.Repository}}:{{.Tag}}" | xargs -r podman rmi -f 2>/dev/null || true
 	-podman images --filter "reference=localhost/tarsy*" --format "{{.Repository}}:{{.Tag}}" | xargs -r podman rmi -f 2>/dev/null || true
-	@echo "$(GREEN)✅ Project images removed$(NC)"
+	@echo -e "$(GREEN)✅ Project images removed$(NC)"
 
 containers-deep-clean: containers-clean containers-clean-images ## Complete cleanup: containers, volumes, networks, and all images
-	@echo "$(YELLOW)Removing database volumes...$(NC)"
+	@echo -e "$(YELLOW)Removing database volumes...$(NC)"
 	-podman volume rm tarsy-bot_postgres_data tarsy_postgres_data 2>/dev/null || true
-	@echo "$(GREEN)✅ Deep cleanup completed - everything removed$(NC)"
+	@echo -e "$(GREEN)✅ Deep cleanup completed - everything removed$(NC)"
 
 containers-db-reset: ## Reset database volume (fixes PostgreSQL version conflicts)
-	@echo "$(YELLOW)⚠️  This will delete all database data!$(NC)"
+	@echo -e "$(YELLOW)⚠️  This will delete all database data!$(NC)"
 	@printf "Are you sure? [y/N] "; \
 	read REPLY; \
 	case "$$REPLY" in \
 		[Yy]|[Yy][Ee][Ss]) \
-			echo "$(YELLOW)Stopping database container...$(NC)"; \
+			echo -e "$(YELLOW)Stopping database container...$(NC)"; \
 			-$(PODMAN_COMPOSE) stop database 2>/dev/null || true; \
-			echo "$(YELLOW)Removing database volume...$(NC)"; \
+			echo -e "$(YELLOW)Removing database volume...$(NC)"; \
 			-podman volume rm tarsy-bot_postgres_data 2>/dev/null || true; \
 			-podman volume rm tarsy_postgres_data 2>/dev/null || true; \
-			echo "$(YELLOW)Starting fresh database...$(NC)"; \
+			echo -e "$(YELLOW)Starting fresh database...$(NC)"; \
 			$(PODMAN_COMPOSE) up -d database; \
-			echo "$(GREEN)✅ Database volume reset completed$(NC)"; \
+			echo -e "$(GREEN)✅ Database volume reset completed$(NC)"; \
 			;; \
 		*) \
-			echo "$(GREEN)Cancelled$(NC)"; \
+			echo -e "$(GREEN)Cancelled$(NC)"; \
 			;; \
 	esac
 
 containers-logs: ## Show logs from all running containers
-	@echo "$(GREEN)Container logs:$(NC)"
+	@echo -e "$(GREEN)Container logs:$(NC)"
 	@$(PODMAN_COMPOSE) logs --tail=50 || echo "No containers running"
 
 containers-status: ## Show container status
-	@echo "$(GREEN)Container status:$(NC)"
+	@echo -e "$(GREEN)Container status:$(NC)"
 	-podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "No containers running"
 
 # Build targets
 .PHONY: build
 build: ## Build for production
-	@echo "$(GREEN)Building all components...$(NC)"
+	@echo -e "$(GREEN)Building all components...$(NC)"
 	cd dashboard && npm run build
-	@echo "$(GREEN)✅ Build completed$(NC)"
+	@echo -e "$(GREEN)✅ Build completed$(NC)"
 
 # Status and info targets
 .PHONY: status
 status: ## Show which services are running and project status
-	@echo "$(GREEN)TARSy Service Status$(NC)"
+	@echo -e "$(GREEN)TARSy Service Status$(NC)"
 	@echo "=========================="
 	@echo "Backend (port $(BACKEND_PORT)): $$(if lsof -i:$(BACKEND_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
 	@echo "Dashboard (port $(DASHBOARD_PORT)): $$(if lsof -i:$(DASHBOARD_PORT) >/dev/null 2>&1; then echo '$(GREEN)Running$(NC)'; else echo '$(RED)Stopped$(NC)'; fi)"
@@ -226,13 +235,13 @@ status: ## Show which services are running and project status
 
 .PHONY: urls
 urls: ## Display service URLs and endpoints
-	@echo "$(GREEN)TARSy Service URLs$(NC)"
+	@echo -e "$(GREEN)TARSy Service URLs$(NC)"
 	@echo "======================"
-	@echo "$(BLUE)🌍 Frontend Applications:$(NC)"
+	@echo -e "$(BLUE)🌍 Frontend Applications:$(NC)"
 	@echo "  SRE Dashboard:   http://localhost:$(DASHBOARD_PORT)"
 	@echo "    - Manual Alert Submission: http://localhost:$(DASHBOARD_PORT)/submit-alert"
 	@echo ""
-	@echo "$(BLUE)🔧 Backend Services:$(NC)"
+	@echo -e "$(BLUE)🔧 Backend Services:$(NC)"
 	@echo "  API Server:      http://localhost:$(BACKEND_PORT)"
 	@echo "  API Docs:        http://localhost:$(BACKEND_PORT)/docs"
 	@echo "  Health Check:    http://localhost:$(BACKEND_PORT)/health"

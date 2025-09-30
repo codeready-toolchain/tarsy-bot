@@ -1,8 +1,29 @@
-# TARSy OpenShift Deployment
+# TARSy Deployment
+
+Deployment options for TARSy in various environments.
+
+## Deployment Options
+
+### 1. Local Container Deployment (podman-compose)
+For local development with containerized services:
+```bash
+make containers-deploy
+```
+See main [README.md](../README.md) for details.
+
+### 2. OpenShift/Kubernetes Deployment
+For deploying to OpenShift clusters (this guide):
+```bash
+make openshift-deploy
+```
+
+---
+
+## OpenShift Deployment Guide
 
 Simple deployment for TARSy on OpenShift for development and testing.
 
-## Overview
+### Overview
 
 Deploys TARSy stack to OpenShift using local builds + internal registry:
 - **Backend**: Python FastAPI + OAuth2-proxy sidecar
@@ -80,7 +101,7 @@ vi deploy/kustomize/base/config/oauth2-proxy-container.cfg  # OAuth2 proxy setti
 ### Complete Deployment
 ```bash
 # Build images, create secrets, and deploy
-make openshift-dev
+make openshift-deploy
 ```
 
 **Note**: If `deploy/openshift.env` exists, it will be automatically loaded when running OpenShift targets. This file does NOT affect local development targets (like `make dev`). If the file doesn't exist, ensure environment variables are exported manually.
@@ -92,18 +113,17 @@ This will:
 4. ✅ Check/copy config files from examples
 5. ✅ Build and push images to OpenShift registry
 6. ✅ Deploy all manifests to `tarsy-dev` namespace
-7. ✅ Show application URLs
 
 ### Development Iterations
 ```bash
 # After code changes, rebuild and redeploy
 make openshift-redeploy
 
-# After config file changes, redeploy manifests
-make openshift-deploy-only
+# After config file changes, just apply manifests
+make openshift-apply
 
-# Just update manifests (no image rebuild)
-make openshift-quick
+# Show application URLs
+make openshift-urls
 ```
 
 ### Check Status

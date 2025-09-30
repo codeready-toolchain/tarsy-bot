@@ -16,7 +16,7 @@ DASHBOARD_IMAGE := $(OPENSHIFT_REGISTRY)/$(OPENSHIFT_NAMESPACE)/tarsy-dashboard
 IMAGE_TAG := dev
 
 # Container management (reuse existing)
-PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman-compose -f podman-compose.yml
+PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman-compose -f deploy/podman-compose.yml
 
 # Auto-load deploy/openshift.env ONLY when running OpenShift targets
 # Check if any OpenShift target is in the command line goals
@@ -24,8 +24,8 @@ OPENSHIFT_TARGETS := openshift-check openshift-login-registry openshift-create-n
                      openshift-build-backend openshift-build-dashboard openshift-build-all \
                      openshift-push-backend openshift-push-dashboard openshift-push-all \
                      openshift-create-secrets openshift-check-config-files \
-                     openshift-deploy-only openshift-deploy openshift-dev \
-                     openshift-redeploy openshift-quick openshift-status \
+                     openshift-apply openshift-deploy \
+                     openshift-redeploy openshift-status \
                      openshift-urls openshift-logs-backend openshift-logs-dashboard \
                      openshift-logs-database openshift-clean openshift-clean-images
 
@@ -115,13 +115,13 @@ openshift-push-all: openshift-push-backend openshift-push-dashboard ## Build and
 openshift-create-secrets: openshift-check openshift-create-namespace ## Create secrets from environment variables
 	@echo -e "$(GREEN)Creating secrets from environment variables...$(NC)"
 	@if [ -z "$$GOOGLE_API_KEY" ]; then \
-		echo "$(RED)❌ Error: GOOGLE_API_KEY environment variable not set$(NC)"; \
-		echo "$(YELLOW)Please set: export GOOGLE_API_KEY=your-actual-google-api-key$(NC)"; \
+		echo -e "$(RED)❌ Error: GOOGLE_API_KEY environment variable not set$(NC)"; \
+		echo -e "$(YELLOW)Please set: export GOOGLE_API_KEY=your-actual-google-api-key$(NC)"; \
 		exit 1; \
 	fi
 	@if [ -z "$$GITHUB_TOKEN" ]; then \
-		echo "$(RED)❌ Error: GITHUB_TOKEN environment variable not set$(NC)"; \
-		echo "$(YELLOW)Please set: export GITHUB_TOKEN=your-github-token$(NC)"; \
+		echo -e "$(RED)❌ Error: GITHUB_TOKEN environment variable not set$(NC)"; \
+		echo -e "$(YELLOW)Please set: export GITHUB_TOKEN=your-github-token$(NC)"; \
 		exit 1; \
 	fi
 	@oc process -f deploy/secrets-template.yaml \
@@ -142,40 +142,40 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 	@mkdir -p deploy/kustomize/base/config
 	@if [ ! -f deploy/kustomize/base/config/agents.yaml ]; then \
 		if [ -f config/agents.yaml ]; then \
-			echo "$(YELLOW)📋 Copying agents.yaml to deployment location...$(NC)"; \
+			echo -e "$(YELLOW)📋 Copying agents.yaml to deployment location...$(NC)"; \
 			cp config/agents.yaml deploy/kustomize/base/config/; \
 		elif [ -f config/agents.yaml.example ]; then \
-			echo "$(YELLOW)📋 Creating agents.yaml from example in deployment location...$(NC)"; \
+			echo -e "$(YELLOW)📋 Creating agents.yaml from example in deployment location...$(NC)"; \
 			cp config/agents.yaml.example deploy/kustomize/base/config/agents.yaml; \
-			echo "$(YELLOW)📝 Please customize deploy/kustomize/base/config/agents.yaml for your needs$(NC)"; \
+			echo -e "$(YELLOW)📝 Please customize deploy/kustomize/base/config/agents.yaml for your needs$(NC)"; \
 		else \
-			echo "$(RED)❌ Error: No agents.yaml or agents.yaml.example found$(NC)"; \
+			echo -e "$(RED)❌ Error: No agents.yaml or agents.yaml.example found$(NC)"; \
 			exit 1; \
 		fi; \
 	fi
 	@if [ ! -f deploy/kustomize/base/config/llm_providers.yaml ]; then \
 		if [ -f config/llm_providers.yaml ]; then \
-			echo "$(YELLOW)📋 Copying llm_providers.yaml to deployment location...$(NC)"; \
+			echo -e "$(YELLOW)📋 Copying llm_providers.yaml to deployment location...$(NC)"; \
 			cp config/llm_providers.yaml deploy/kustomize/base/config/; \
 		elif [ -f config/llm_providers.yaml.example ]; then \
-			echo "$(YELLOW)📋 Creating llm_providers.yaml from example in deployment location...$(NC)"; \
+			echo -e "$(YELLOW)📋 Creating llm_providers.yaml from example in deployment location...$(NC)"; \
 			cp config/llm_providers.yaml.example deploy/kustomize/base/config/llm_providers.yaml; \
-			echo "$(YELLOW)📝 Please customize deploy/kustomize/base/config/llm_providers.yaml for your needs$(NC)"; \
+			echo -e "$(YELLOW)📝 Please customize deploy/kustomize/base/config/llm_providers.yaml for your needs$(NC)"; \
 		else \
-			echo "$(RED)❌ Error: No llm_providers.yaml or llm_providers.yaml.example found$(NC)"; \
+			echo -e "$(RED)❌ Error: No llm_providers.yaml or llm_providers.yaml.example found$(NC)"; \
 			exit 1; \
 		fi; \
 	fi
 	@if [ ! -f deploy/kustomize/base/config/oauth2-proxy-container.cfg ]; then \
 		if [ -f config/oauth2-proxy-container.cfg ]; then \
-			echo "$(YELLOW)📋 Copying oauth2-proxy-container.cfg to deployment location...$(NC)"; \
+			echo -e "$(YELLOW)📋 Copying oauth2-proxy-container.cfg to deployment location...$(NC)"; \
 			cp config/oauth2-proxy-container.cfg deploy/kustomize/base/config/; \
 		elif [ -f config/oauth2-proxy-container.cfg.example ]; then \
-			echo "$(YELLOW)📋 Creating oauth2-proxy-container.cfg from example in deployment location...$(NC)"; \
+			echo -e "$(YELLOW)📋 Creating oauth2-proxy-container.cfg from example in deployment location...$(NC)"; \
 			cp config/oauth2-proxy-container.cfg.example deploy/kustomize/base/config/oauth2-proxy-container.cfg; \
-			echo "$(YELLOW)📝 Please customize deploy/kustomize/base/config/oauth2-proxy-container.cfg for your needs$(NC)"; \
+			echo -e "$(YELLOW)📝 Please customize deploy/kustomize/base/config/oauth2-proxy-container.cfg for your needs$(NC)"; \
 		else \
-			echo "$(RED)❌ Error: No oauth2-proxy-container.cfg or oauth2-proxy-container.cfg.example found$(NC)"; \
+			echo -e "$(RED)❌ Error: No oauth2-proxy-container.cfg or oauth2-proxy-container.cfg.example found$(NC)"; \
 			exit 1; \
 		fi; \
 	fi
@@ -187,7 +187,7 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 	@if [ -d config/templates ]; then \
 		cp -r config/templates/* deploy/kustomize/overlays/development/templates/; \
 	else \
-		echo "$(RED)❌ Error: No config/templates directory found$(NC)"; \
+		echo -e "$(RED)❌ Error: No config/templates directory found$(NC)"; \
 		exit 1; \
 	fi
 	@echo -e "$(BLUE)Replacing placeholders in oauth2-proxy config...$(NC)"
@@ -216,14 +216,14 @@ openshift-deploy: openshift-create-secrets openshift-push-all openshift-check-co
 	@echo -e "$(GREEN)✅ Deployed to OpenShift namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
 	@echo -e "$(BLUE)Check status with: make openshift-status$(NC)"
 
-.PHONY: openshift-deploy-only
-openshift-deploy-only: openshift-check openshift-check-config-files ## Deploy manifests only (assumes secrets and images exist)
-	@echo -e "$(GREEN)Deploying manifests to OpenShift...$(NC)"
+.PHONY: openshift-apply
+openshift-apply: openshift-check openshift-check-config-files ## Apply manifests only (assumes secrets and images exist)
+	@echo -e "$(GREEN)Applying manifests to OpenShift...$(NC)"
 	@echo -e "$(BLUE)Replacing {{ROUTE_HOST}} with $(ROUTE_HOST)...$(NC)"
 	@sed -i.bak 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/base/routes.yaml
 	@oc apply -k deploy/kustomize/overlays/development/
 	@mv deploy/kustomize/base/routes.yaml.bak deploy/kustomize/base/routes.yaml
-	@echo -e "$(GREEN)✅ Manifests deployed to OpenShift namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
+	@echo -e "$(GREEN)✅ Manifests applied to OpenShift namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
 
 # Status and info targets  
 .PHONY: openshift-status
@@ -303,19 +303,6 @@ openshift-clean-images: openshift-check ## Delete images from OpenShift registry
 	esac
 
 # Development workflow targets
-.PHONY: openshift-dev
-openshift-dev: openshift-deploy openshift-urls ## Complete dev workflow: secrets, build, push, deploy, and show URLs
-	@echo -e "$(GREEN)🚀 OpenShift development deployment complete!$(NC)"
-	@echo -e "$(YELLOW)💡 Tips:$(NC)"
-	@echo "  - Check status: make openshift-status"
-	@echo "  - View logs: make openshift-logs"  
-	@echo "  - Redeploy: make openshift-redeploy"
-	@echo "  - Update config: edit config/*.yaml then make openshift-redeploy"
-
 .PHONY: openshift-redeploy
-openshift-redeploy: openshift-push-all openshift-deploy-only ## Quick redeploy: rebuild images and update deployment
-	@echo -e "$(GREEN)✅ Quick redeploy completed$(NC)"
-
-.PHONY: openshift-quick
-openshift-quick: openshift-deploy-only openshift-urls ## Quick deploy manifests only (no image rebuild)
-	@echo -e "$(GREEN)✅ Quick manifest deployment completed$(NC)"
+openshift-redeploy: openshift-push-all openshift-apply ## Rebuild images and update deployment
+	@echo -e "$(GREEN)✅ Redeploy completed$(NC)"
