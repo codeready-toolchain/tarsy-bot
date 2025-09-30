@@ -58,7 +58,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize database for history service
     db_init_success = initialize_database()
     if not db_init_success and settings.history_enabled:
-        logger.warning("History database initialization failed - continuing with history service disabled")
+        logger.critical(
+            "History service is enabled but database initialization failed. "
+            "This is a critical dependency - exiting to allow restart."
+        )
+        import sys
+        sys.exit(1)  # Exit with error code
     
     # Clean up any orphaned sessions from previous backend crashes
     # This should happen after database initialization but before processing new alerts
