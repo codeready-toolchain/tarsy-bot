@@ -365,6 +365,17 @@ async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str) -> No
     finally:
         dashboard_manager.disconnect(user_id)
 
+def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) -> None:
+    """
+    Mark a session as failed if alert context is available.
+    
+    Args:
+        alert: Alert context containing session_id
+        error_msg: Error message describing the failure
+    """
+    if alert and hasattr(alert, 'session_id') and alert_service:
+        alert_service._update_session_error(alert.session_id, error_msg)
+
 async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
     """Background task to process an alert with comprehensive error handling and concurrency control."""
     if alert_processing_semaphore is None or alert_service is None:
@@ -397,21 +408,25 @@ async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
             # Configuration or data validation errors
             error_msg = f"Invalid alert data: {str(e)}"
             logger.error(f"Alert {alert_id} validation failed: {error_msg}")
+            mark_session_as_failed(alert, error_msg)
             
         except TimeoutError as e:
             # Processing timeout
             error_msg = str(e)
             logger.error(f"Alert {alert_id} processing timeout: {error_msg}")
+            mark_session_as_failed(alert, error_msg)
             
         except ConnectionError as e:
             # Network or external service errors
             error_msg = f"Connection error during processing: {str(e)}"
             logger.error(f"Alert {alert_id} connection error: {error_msg}")
+            mark_session_as_failed(alert, error_msg)
             
         except MemoryError as e:
             # Memory issues with large payloads
             error_msg = "Processing failed due to memory constraints (payload too large)"
             logger.error(f"Alert {alert_id} memory error: {error_msg}")
+            mark_session_as_failed(alert, error_msg)
             
         except Exception as e:
             # Catch-all for unexpected errors
@@ -420,6 +435,7 @@ async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
             logger.exception(
                 f"Alert {alert_id} unexpected error after {duration:.2f}s: {error_msg}"
             )
+            mark_session_as_failed(alert, error_msg)
         
         finally:
             # Clean up alert key tracking regardless of success or failure

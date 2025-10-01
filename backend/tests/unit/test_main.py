@@ -612,11 +612,18 @@ class TestBackgroundProcessing:
         """Test background processing with timeout."""
         # Make process_alert hang
         mock_alert_service.process_alert = AsyncMock(side_effect=asyncio.sleep(1000))
+        mock_alert_service._update_session_error = Mock()
         
         with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.main.asyncio.wait_for', side_effect=asyncio.TimeoutError()):
             # Should not raise exception, should handle timeout gracefully
             await process_alert_background("alert-123", mock_alert_data)
+        
+        # Verify session was marked as failed
+        mock_alert_service._update_session_error.assert_called_once()
+        call_args = mock_alert_service._update_session_error.call_args
+        assert call_args[0][0] == mock_alert_data.session_id
+        assert "timeout" in call_args[0][1].lower()
 
     @patch('tarsy.main.alert_service')
     @patch('tarsy.controllers.alert_controller.processing_alert_keys', {})
@@ -667,12 +674,19 @@ class TestBackgroundProcessing:
         mock_alert_service.process_alert = AsyncMock(
             side_effect=Exception("Processing failed")
         )
+        mock_alert_service._update_session_error = Mock()
         
         with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)):
             # Should not raise exception, should handle gracefully
             await process_alert_background("alert-123", mock_alert_data)
         
         mock_alert_service.process_alert.assert_called_once()
+        
+        # Verify session was marked as failed
+        mock_alert_service._update_session_error.assert_called_once()
+        call_args = mock_alert_service._update_session_error.call_args
+        assert call_args[0][0] == mock_alert_data.session_id
+        assert "processing error" in call_args[0][1].lower()
 
 
 @pytest.mark.unit
