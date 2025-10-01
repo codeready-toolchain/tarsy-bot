@@ -172,6 +172,52 @@ class DashboardBroadcaster:
             
             return valid_messages
     
+    async def flush_session_buffer(self, channel: str) -> int:
+        """
+        Flush buffered messages for a session channel when a client subscribes.
+        
+        This fixes the race condition where:
+        1. Alert fails quickly (before UI subscribes to session channel)
+        2. Status updates are buffered
+        3. Session is archived
+        4. UI subscribes to session channel (too late - session already archived)
+        5. No more messages will be sent, so buffer never flushes
+        
+        Solution: Immediately flush buffer when someone subscribes to a session channel.
+        
+        Args:
+            channel: Session channel to flush (e.g., "session_{session_id}")
+            
+        Returns:
+            Number of messages sent to subscribers
+        """
+        if not ChannelType.is_session_channel(channel):
+            logger.debug(f"Ignoring flush request for non-session channel: {channel}")
+            return 0
+        
+        subscribers = self.connection_manager.get_channel_subscribers(channel)
+        if not subscribers:
+            logger.debug(f"No subscribers for {channel}, cannot flush buffer")
+            return 0
+        
+        buffered_messages = await self._get_and_clear_buffer(channel)
+        if not buffered_messages:
+            logger.debug(f"No buffered messages for {channel}")
+            return 0
+        
+        logger.info(f"Flushing {len(buffered_messages)} buffered messages for {channel} (triggered by subscription)")
+        
+        sent_count = 0
+        for buffered_msg in buffered_messages:
+            for user_id in subscribers:
+                if not self._should_throttle_user(user_id, channel):
+                    if await self.connection_manager.send_to_user(user_id, buffered_msg):
+                        sent_count += 1
+                        self._record_user_message(user_id, channel)
+        
+        logger.info(f"Flushed buffer for {channel}: sent {sent_count} messages to {len(subscribers)} subscriber(s)")
+        return sent_count
+    
     async def broadcast_message(
         self, 
         channel: str, 
@@ -196,6 +242,7 @@ class DashboardBroadcaster:
         # Solution: Buffer session messages until first subscriber, then flush all at once
         if not subscribers and ChannelType.is_session_channel(channel):
             message_dict = message.model_dump() if hasattr(message, 'model_dump') else message
+            logger.info(f"No subscribers for session channel {channel}, buffering message: {message_dict.get('type', 'unknown')}")
             await self._add_message_to_buffer(channel, message_dict)
             return 0
         
@@ -209,7 +256,7 @@ class DashboardBroadcaster:
         if ChannelType.is_session_channel(channel):
             buffered_messages = await self._get_and_clear_buffer(channel)
             if buffered_messages:
-                logger.debug(f"First subscriber detected! Flushing {len(buffered_messages)} buffered messages for {channel}")
+                logger.info(f"First subscriber detected! Flushing {len(buffered_messages)} buffered messages for {channel}")
                 
                 # Send buffered messages directly to avoid recursion through broadcast_message
                 for buffered_msg in buffered_messages:

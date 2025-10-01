@@ -332,7 +332,7 @@ class TestSessionStatusManagement:
         new_status = "completed"
         details = {"progress_percentage": 100}
         
-        sent_count = await update_service.process_session_status_change(session_id, new_status, details)
+        await update_service.process_session_status_change(session_id, new_status, details)
         
         # Verify session was updated but start_time preserved
         session = update_service.active_sessions.get(session_id)  # May be None if archived
@@ -343,10 +343,8 @@ class TestSessionStatusManagement:
             assert session.progress_percentage == 100
             assert session.start_time == original_session.start_time  # Preserved
         
-        # Verify session was archived for completion statuses
-        if new_status in ["completed", "error", "timeout"]:
-            # Session should be removed from active sessions
-            assert session_id not in update_service.active_sessions
+        # Verify session archiving behavior is tested in dedicated test class below
+        # (See TestSessionArchiving for comprehensive archiving tests)
     
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -366,6 +364,146 @@ class TestSessionStatusManagement:
         await update_service.process_session_status_change(session_id, "completed")
         
         # Verify session was archived (removed from active sessions)
+        assert session_id not in update_service.active_sessions
+
+
+class TestSessionArchiving:
+    """Test session archiving with terminal statuses using enum values."""
+    
+    @pytest.fixture
+    def mock_broadcaster(self):
+        """Mock broadcaster."""
+        broadcaster = AsyncMock()
+        broadcaster.broadcast_dashboard_update = AsyncMock(return_value=3)
+        broadcaster.broadcast_session_update = AsyncMock(return_value=2)
+        return broadcaster
+    
+    @pytest.fixture
+    def update_service(self, mock_broadcaster):
+        """Create service instance."""
+        return DashboardUpdateService(mock_broadcaster)
+    
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    @pytest.mark.parametrize("terminal_status", [
+        "completed",
+        "failed",
+    ])
+    async def test_terminal_statuses_archive_session(self, update_service, mock_broadcaster, terminal_status):
+        """Test that all terminal statuses properly archive sessions.
+        
+        This test uses AlertSessionStatus enum values to ensure sessions are archived
+        for all terminal statuses. This would have caught the bug where 'failed' 
+        sessions weren't being archived because the code checked for 'error' instead.
+        """
+        from tarsy.models.constants import AlertSessionStatus
+        
+        # Verify test is using actual enum values
+        assert terminal_status in AlertSessionStatus.terminal_values()
+        
+        session_id = f"session_{terminal_status}"
+        
+        # Create active session
+        update_service.active_sessions[session_id] = SessionSummary(
+            session_id=session_id,
+            status="in_progress",
+            llm_interactions=3,
+            mcp_communications=2
+        )
+        
+        # Verify session exists before status change
+        assert session_id in update_service.active_sessions
+        
+        # Update to terminal status
+        await update_service.process_session_status_change(session_id, terminal_status)
+        
+        # Verify session was archived (removed from active sessions)
+        assert session_id not in update_service.active_sessions, \
+            f"Session with status '{terminal_status}' should be archived but wasn't"
+    
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    @pytest.mark.parametrize("non_terminal_status", [
+        "pending",
+        "in_progress",
+    ])
+    async def test_non_terminal_statuses_do_not_archive(self, update_service, mock_broadcaster, non_terminal_status):
+        """Test that non-terminal statuses do NOT archive sessions."""
+        from tarsy.models.constants import AlertSessionStatus
+        
+        # Verify test is using actual enum values
+        assert non_terminal_status in AlertSessionStatus.active_values()
+        
+        session_id = f"session_{non_terminal_status}"
+        
+        # Create session
+        update_service.active_sessions[session_id] = SessionSummary(
+            session_id=session_id,
+            status="pending",
+            llm_interactions=1
+        )
+        
+        # Update to non-terminal status
+        await update_service.process_session_status_change(session_id, non_terminal_status)
+        
+        # Verify session was NOT archived (still in active sessions)
+        assert session_id in update_service.active_sessions, \
+            f"Session with status '{non_terminal_status}' should NOT be archived but was"
+    
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_failed_status_archives_session_with_error(self, update_service, mock_broadcaster):
+        """Test that 'failed' status properly archives session with error details.
+        
+        This specifically tests the bug fix where 'failed' status wasn't being
+        recognized as a terminal status because the code was checking for 'error'.
+        """
+        from tarsy.models.constants import AlertSessionStatus
+        
+        session_id = "failed_session_with_error"
+        error_message = "Processing failed due to invalid GitHub token"
+        
+        # Create active session
+        update_service.active_sessions[session_id] = SessionSummary(
+            session_id=session_id,
+            status="in_progress",
+            llm_interactions=2,
+            errors_count=1
+        )
+        
+        # Verify session exists
+        assert session_id in update_service.active_sessions
+        
+        # Update to failed status with error details
+        await update_service.process_session_status_change(
+            session_id, 
+            AlertSessionStatus.FAILED.value,
+            details={"error_message": error_message}
+        )
+        
+        # Verify session was archived despite being a failure
+        assert session_id not in update_service.active_sessions, \
+            "Failed session should be archived but wasn't - this was the original bug!"
+    
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_multiple_status_transitions_final_archive(self, update_service, mock_broadcaster):
+        """Test session through multiple status transitions, ensuring final terminal status archives."""
+        
+        session_id = "transition_session"
+        
+        # Start with pending
+        await update_service.process_session_status_change(session_id, "pending")
+        assert session_id in update_service.active_sessions
+        
+        # Move to in_progress
+        await update_service.process_session_status_change(session_id, "in_progress")
+        assert session_id in update_service.active_sessions
+        
+        # Move to completed (terminal)
+        await update_service.process_session_status_change(session_id, "completed")
+        
+        # Should be archived now
         assert session_id not in update_service.active_sessions
 
 

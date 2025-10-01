@@ -69,8 +69,20 @@ class DashboardConnectionManager:
             
             logger.info(f"Dashboard connection disconnected for user: {user_id}")
     
-    def subscribe_to_channel(self, user_id: str, channel: str):
-        """Subscribe user to a specific channel."""
+    async def subscribe_to_channel(self, user_id: str, channel: str) -> bool:
+        """
+        Subscribe user to a specific channel.
+        
+        For session channels, this will immediately flush any buffered messages
+        to fix the race condition where alerts complete before the UI subscribes.
+        
+        Args:
+            user_id: User identifier
+            channel: Channel name to subscribe to
+            
+        Returns:
+            True if subscription was successful, False otherwise
+        """
         if user_id not in self.user_subscriptions:
             self.user_subscriptions[user_id] = set()
         
@@ -87,6 +99,17 @@ class DashboardConnectionManager:
         self.channel_subscribers[channel].add(user_id)
         
         logger.info(f"User {user_id} subscribed to channel: {channel}")
+        
+        # Immediately flush buffered messages for session channels
+        # This fixes the race condition where:
+        # 1. Alert completes/fails quickly (before UI subscribes)
+        # 2. Status updates are buffered
+        # 3. Session is archived (no more messages will be sent)
+        # 4. UI subscribes (too late - buffer never flushes because no new messages)
+        # Solution: Flush buffer immediately upon subscription
+        if self.broadcaster and ChannelType.is_session_channel(channel):
+            await self.broadcaster.flush_session_buffer(channel)
+        
         return True
     
     def unsubscribe_from_channel(self, user_id: str, channel: str):
@@ -168,7 +191,7 @@ class DashboardConnectionManager:
             
             # Handle subscription/unsubscription
             if action == "subscribe":
-                self.subscribe_to_channel(user_id, channel)
+                await self.subscribe_to_channel(user_id, channel)
             elif action == "unsubscribe":
                 self.unsubscribe_from_channel(user_id, channel)
             

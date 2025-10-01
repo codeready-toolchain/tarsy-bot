@@ -295,7 +295,18 @@ class WebSocketService {
         if (!message.data) {
           return;
         }
+        // Call generic session update handlers
         this.eventHandlers.sessionUpdate.forEach(handler => handler(message.data!));
+        
+        // Also call session-specific handlers for this session
+        // This is needed for buffered messages that come through as 'session_update'
+        if (message.session_id) {
+          const sessionChannel = `session_${message.session_id}`;
+          const sessionHandlers = this.eventHandlers.sessionSpecific.get(sessionChannel);
+          if (sessionHandlers && sessionHandlers.length > 0) {
+            sessionHandlers.forEach(handler => handler(message.data!));
+          }
+        }
         
         // Also handle session-specific updates if this message has a channel
         if (message.channel && message.channel.startsWith('session_')) {

@@ -22,7 +22,7 @@ logger = get_module_logger(__name__)
 class SessionSummary:
     """Summary information for active sessions."""
     session_id: str
-    status: str  # "active", "completed", "error", "timeout"
+    status: str  # Valid values from AlertSessionStatus enum: "pending", "in_progress", "completed", "failed"
     agent_type: Optional[str] = None
     start_time: Optional[datetime] = None
     last_activity: Optional[datetime] = None
@@ -138,16 +138,18 @@ class DashboardUpdateService:
         details: Optional[Dict[str, Any]] = None
     ) -> int:
         """
-        Process session status change (started, completed, error, etc.).
+        Process session status change.
         
         Args:
             session_id: Session identifier
-            status: New session status
+            status: New session status (from AlertSessionStatus enum: 'pending', 'in_progress', 'completed', 'failed')
             details: Additional status details
             
         Returns:
             Number of clients the update was sent to
         """
+        logger.debug(f"Processing session status change for {session_id}: status={status}")
+        
         # Update session summary
         if session_id not in self.active_sessions:
             self.active_sessions[session_id] = SessionSummary(
@@ -156,9 +158,11 @@ class DashboardUpdateService:
                 start_time=datetime.now(),
                 last_activity=datetime.now()
             )
+            logger.debug(f"Created new session summary for {session_id}")
         else:
             self.active_sessions[session_id].status = status
             self.active_sessions[session_id].last_activity = datetime.now()
+            logger.debug(f"Updated existing session summary for {session_id}")
         
         # Add details if provided
         if details:
@@ -180,12 +184,19 @@ class DashboardUpdateService:
         if details:
             status_update.update(details)
         
+        logger.info(f"Broadcasting session status update for {session_id}: status={status}")
+        
         # Broadcast immediately for status changes
         sent_count = await self._broadcast_update(status_update)
         
+        logger.info(f"Session status update for {session_id} sent to {sent_count} clients")
+        
         # Move to history if session is completed
-        if status in ["completed", "error", "timeout"]:
+        # Use enum to ensure we catch all terminal statuses consistently
+        from tarsy.models.constants import AlertSessionStatus
+        if status in AlertSessionStatus.terminal_values():
             self._archive_session(session_id)
+            logger.debug(f"Archived session {session_id} after terminal status: {status}")
         
         return sent_count
     
@@ -284,13 +295,9 @@ class DashboardUpdateService:
     async def _broadcast_update(self, update: Dict[str, Any]) -> int:
         """Broadcast single update via broadcaster."""
         try:
-            # Add debug logging to understand message routing
-            logger.debug(f"_broadcast_update called with update: {update}")
-            
             # If this update is session-specific (contains session_id), send to both channels
             if 'session_id' in update:
                 session_id = update['session_id']
-                logger.debug(f"Broadcasting session-specific update for session {session_id}: {update['type']}")
                 
                 # Send to session-specific channel for detail views
                 session_count = await self.broadcaster.broadcast_session_update(session_id, update)
@@ -298,12 +305,10 @@ class DashboardUpdateService:
                 # FIXED: Send ALL session-specific updates to dashboard channel too
                 # This includes llm_interaction, mcp_communication, and session_status_change
                 # This ensures the dashboard receives real-time updates during processing
-                logger.debug(f"Also broadcasting session update to dashboard channel: {update['type']}")
                 dashboard_count = await self.broadcaster.broadcast_dashboard_update(update)
                 return session_count + dashboard_count
             else:
                 # Send general updates to dashboard channel
-                logger.debug(f"Broadcasting general dashboard update: {update['type']}")
                 return await self.broadcaster.broadcast_dashboard_update(update)
         except Exception as e:
             logger.error(f"Failed to broadcast dashboard update: {str(e)}")

@@ -210,6 +210,7 @@ export interface WebSocketMessage {
   data?: SessionUpdate | ChainProgressUpdate | StageProgressUpdate | any; // Allow any data type for dashboard_update messages
   timestamp_us?: number; // Unix timestamp (microseconds since epoch)
   channel?: string; // Dashboard updates include channel info
+  session_id?: string; // Session ID for buffered session updates
   messages?: WebSocketMessage[]; // For message_batch type
   count?: number; // For message_batch type
   timestamp?: string; // Alternative timestamp format for batches

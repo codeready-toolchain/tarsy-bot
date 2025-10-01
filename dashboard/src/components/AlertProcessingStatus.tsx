@@ -155,12 +155,10 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     
     // Handle session-specific updates
     const handleSessionUpdate = (update: any) => {
-      
       // Handle different types of updates
       let updatedStatus: ProcessingStatus | null = null;
 
       if (update.type === 'session_status_change') {
-        console.log('📋 Session status changed to:', update.status);
         updatedStatus = {
           alert_id: alertId,
           status: update.status === 'completed' ? 'completed' : 

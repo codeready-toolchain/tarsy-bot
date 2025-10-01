@@ -352,26 +352,34 @@ class HistoryService:
                                 details['error_message'] = error_message
                             if final_analysis:
                                 details['final_analysis'] = final_analysis
+                            
+                            logger.debug(f"Scheduling dashboard status update for session {session_id} with status '{status}'")
                                 
                             # Process session status change for dashboard updates
                             import asyncio
                             try:
                                 loop = asyncio.get_running_loop()
                                 # In async context: schedule task on current loop
-                                loop.create_task(
+                                task = loop.create_task(
                                     dashboard_manager.update_service.process_session_status_change(
                                         session_id, status, details
                                     )
                                 )
+                                # Add task name for debugging
+                                task.set_name(f"dashboard_update_{session_id}")
+                                logger.debug(f"Created dashboard update task for session {session_id}")
                             except RuntimeError:
                                 # No running loop: run synchronously
+                                logger.debug(f"No running loop detected, using asyncio.run() for session {session_id}")
                                 asyncio.run(
                                     dashboard_manager.update_service.process_session_status_change(
                                         session_id, status, details
                                     )
                                 )
+                        else:
+                            logger.warning(f"Dashboard manager or update service not available for session {session_id}")
                     except Exception as e:
-                        logger.warning(f"Failed to notify dashboard update service: {e}")
+                        logger.warning(f"Failed to notify dashboard update service for session {session_id}: {e}", exc_info=True)
                         
                 return success
         

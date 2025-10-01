@@ -85,6 +85,7 @@ function ManualAlertSubmission() {
             <Box>
               {currentAlert && (
                 <AlertProcessingStatus
+                  key={currentAlert.alert_id}
                   alertId={currentAlert.alert_id}
                   onComplete={handleProcessingComplete}
                 />
@@ -100,6 +101,7 @@ function ManualAlertSubmission() {
               {currentAlert && (
                 <>
                   <AlertProcessingStatus
+                    key={currentAlert.alert_id}
                     alertId={currentAlert.alert_id}
                     onComplete={handleProcessingComplete}
                   />

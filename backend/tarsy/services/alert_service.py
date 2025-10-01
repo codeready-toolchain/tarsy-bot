@@ -742,7 +742,7 @@ class AlertService:
         
         Args:
             session_id: Session ID to complete
-            status: Final status (e.g., 'completed', 'error')
+            status: Final status (must be from AlertSessionStatus enum: 'completed' or 'failed')
             final_analysis: Final formatted analysis if status is completed successfully
         """
         try:
