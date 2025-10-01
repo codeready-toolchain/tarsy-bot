@@ -483,7 +483,8 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         with respx.mock() as respx_mock, \
              patch("tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers), \
              patch("tarsy.services.mcp_server_registry.MCPServerRegistry._DEFAULT_SERVERS", test_mcp_servers), \
-             patch.dict(os.environ, {}, clear=True):  # Isolate from environment variables
+             patch.dict(os.environ, {}, clear=True), \
+             E2ETestUtils.setup_runbook_service_patching():  # Patch runbook service for consistent behavior
             # 1. Mock LLM API calls (preserves LLM hooks!)
             llm_handler = create_llm_response_handler()
 
@@ -491,9 +492,6 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             respx_mock.post(
                 url__regex=r".*(openai\.com|anthropic\.com|api\.x\.ai|generativelanguage\.googleapis\.com|googleapis\.com).*"
             ).mock(side_effect=llm_handler)
-
-            # 2. Mock runbook HTTP calls using shared utility
-            E2ETestUtils.setup_runbook_mocking(respx_mock)
 
             # 3. Mock MCP client using shared utility with custom sessions
             mock_sessions = {
@@ -515,7 +513,8 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                     "🔧 Using the real AlertService with test MCP server config and mocking..."
                 )
                 # All internal services are real, hooks work perfectly!
-                # HTTP calls (LLM, runbooks) are mocked via respx
+                # LLM HTTP calls are mocked via respx
+                # Runbook service is patched directly for consistent behavior
                 # MCP server config replaced with test config to avoid external NPM packages
                 # MCP calls handled by mock session that provides kubectl tools
 

@@ -102,15 +102,13 @@ class TestStageFailureDetectionE2E:
         with respx.mock() as respx_mock, \
              patch("tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers), \
              patch("tarsy.services.mcp_server_registry.MCPServerRegistry._DEFAULT_SERVERS", test_mcp_servers), \
-             patch.dict(os.environ, {}, clear=True):  # Isolate from environment variables
+             patch.dict(os.environ, {}, clear=True), \
+             E2ETestUtils.setup_runbook_service_patching(content="# Mock Runbook"):  # Patch runbook service
             # Mock LLM calls with failure logic
             llm_handler = create_failing_llm_response_handler()
             respx_mock.post(
                 url__regex=r".*(openai\.com|anthropic\.com|api\.x\.ai|generativelanguage\.googleapis\.com|googleapis\.com).*"
             ).mock(side_effect=llm_handler)
-
-            # Setup runbook mocking using shared utility
-            E2ETestUtils.setup_runbook_mocking(respx_mock, content="# Mock Runbook")
 
             # Create MCP client patches using shared utility
             mock_sessions = {"kubernetes-server": mock_session}

@@ -10,7 +10,6 @@ import time
 from typing import Tuple, Dict, Any, List, Callable, Optional
 from unittest.mock import AsyncMock, Mock
 
-import httpx
 from mcp.types import Tool
 
 
@@ -127,16 +126,35 @@ class E2ETestUtils:
         return test_servers
 
     @staticmethod
-    def setup_runbook_mocking(respx_mock, content: str = "# Mock Runbook\nTest runbook content") -> None:
+    def setup_runbook_service_patching(content: str = "# Mock Runbook\nTest runbook content"):
         """
-        Setup HTTP mocking for runbook sources.
-
+        Setup direct patching of RunbookService.download_runbook method.
+        
+        This provides consistent behavior regardless of GitHub token configuration:
+        - With GitHub token: Bypasses HTTP request and returns mock content
+        - Without GitHub token: Bypasses default runbook and returns mock content
+        
+        Returns a patch context manager that should be used in a 'with' statement.
+        
         Args:
-            respx_mock: The respx mock object
             content: Content to return for runbook requests
+            
+        Returns:
+            patch context manager
+            
+        Example:
+            with E2ETestUtils.setup_runbook_service_patching():
+                # Test code here
         """
-        respx_mock.get(url__regex=r".*(github\.com|runbooks\.example\.com).*").mock(
-            return_value=httpx.Response(200, text=content)
+        from unittest.mock import patch
+        
+        async def mock_download_runbook(self, url: str) -> str:
+            """Mock download_runbook that returns consistent content."""
+            return content
+        
+        return patch(
+            'tarsy.services.runbook_service.RunbookService.download_runbook',
+            mock_download_runbook
         )
 
     @staticmethod
