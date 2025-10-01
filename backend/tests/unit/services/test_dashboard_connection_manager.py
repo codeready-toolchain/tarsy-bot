@@ -106,6 +106,57 @@ class TestDashboardConnectionManager:
             assert user_id in connection_manager.user_subscriptions
             assert len(connection_manager.user_subscriptions[user_id]) == 0
 
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_session_channel_subscription_flushes_buffer(self, connection_manager, mock_websocket):
+        """Test that subscribing to a session channel triggers buffer flush."""
+        from unittest.mock import AsyncMock, MagicMock
+        
+        # Setup mock broadcaster
+        mock_broadcaster = MagicMock()
+        mock_broadcaster.flush_session_buffer = AsyncMock()
+        connection_manager.broadcaster = mock_broadcaster
+        
+        # Setup active connection
+        user_id = "test_user"
+        session_channel = "session_abc123"
+        connection_manager.active_connections[user_id] = mock_websocket
+        
+        # Subscribe to session channel
+        success = await connection_manager.subscribe_to_channel(user_id, session_channel)
+        
+        # Verify subscription succeeded
+        assert success is True
+        assert session_channel in connection_manager.user_subscriptions[user_id]
+        
+        # Verify buffer flush was called for session channel
+        mock_broadcaster.flush_session_buffer.assert_called_once_with(session_channel)
+    
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_non_session_channel_subscription_no_flush(self, connection_manager, mock_websocket):
+        """Test that subscribing to non-session channels does NOT trigger buffer flush."""
+        from unittest.mock import AsyncMock, MagicMock
+        
+        # Setup mock broadcaster
+        mock_broadcaster = MagicMock()
+        mock_broadcaster.flush_session_buffer = AsyncMock()
+        connection_manager.broadcaster = mock_broadcaster
+        
+        # Setup active connection
+        user_id = "test_user"
+        connection_manager.active_connections[user_id] = mock_websocket
+        
+        # Subscribe to dashboard channel (non-session)
+        success = await connection_manager.subscribe_to_channel(user_id, ChannelType.DASHBOARD_UPDATES)
+        
+        # Verify subscription succeeded
+        assert success is True
+        assert ChannelType.DASHBOARD_UPDATES in connection_manager.user_subscriptions[user_id]
+        
+        # Verify buffer flush was NOT called for non-session channel
+        mock_broadcaster.flush_session_buffer.assert_not_called()
+
     @pytest.mark.unit
     def test_unsubscribe_from_channel(self, connection_manager, mock_websocket):
         """Test unsubscribing user from a channel."""

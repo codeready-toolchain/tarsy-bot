@@ -8,7 +8,7 @@ performance and user experience.
 
 import asyncio
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 from dataclasses import dataclass
 
 from tarsy.utils.logger import get_module_logger
@@ -18,12 +18,22 @@ from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
 
 logger = get_module_logger(__name__)
 
+# Type alias for session status - derived from AlertSessionStatus enum values
+# This provides compile-time type safety while maintaining
+# the enum as the single source of truth
+SessionStatusLiteral = Literal[
+    AlertSessionStatus.PENDING.value,
+    AlertSessionStatus.IN_PROGRESS.value,
+    AlertSessionStatus.COMPLETED.value,
+    AlertSessionStatus.FAILED.value
+]
+
 
 @dataclass
 class SessionSummary:
     """Summary information for active sessions."""
     session_id: str
-    status: str  # Valid values from AlertSessionStatus enum: "pending", "in_progress", "completed", "failed"
+    status: SessionStatusLiteral  # Must be a valid AlertSessionStatus enum value
     agent_type: Optional[str] = None
     start_time: Optional[datetime] = None
     last_activity: Optional[datetime] = None
@@ -64,14 +74,14 @@ class DashboardUpdateService:
         self.session_tracker_task: Optional[asyncio.Task] = None
         self.running = False
     
-    async def start(self):
+    async def start(self) -> None:
         """Start background tasks for session tracking."""
         if not self.running:
             self.running = True
             self.session_tracker_task = asyncio.create_task(self._session_tracker())
             logger.info("DashboardUpdateService started")
     
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop background tasks."""
         self.running = False
         
@@ -135,7 +145,7 @@ class DashboardUpdateService:
     async def process_session_status_change(
         self, 
         session_id: str, 
-        status: str, 
+        status: SessionStatusLiteral, 
         details: Optional[Dict[str, Any]] = None
     ) -> int:
         """
@@ -143,7 +153,7 @@ class DashboardUpdateService:
         
         Args:
             session_id: Session identifier
-            status: New session status (from AlertSessionStatus enum: 'pending', 'in_progress', 'completed', 'failed')
+            status: New session status (must be a valid AlertSessionStatus enum value)
             details: Additional status details
             
         Returns:
@@ -229,7 +239,7 @@ class DashboardUpdateService:
     
     # Private methods
     
-    def _update_session_from_llm(self, session_id: str, interaction_data: Dict[str, Any]):
+    def _update_session_from_llm(self, session_id: str, interaction_data: Dict[str, Any]) -> None:
         """Update session summary from LLM interaction."""
         if session_id not in self.active_sessions:
             self.active_sessions[session_id] = SessionSummary(
@@ -247,7 +257,7 @@ class DashboardUpdateService:
         if not interaction_data.get('success', True):
             session.errors_count += 1
     
-    def _update_session_from_mcp(self, session_id: str, communication_data: Dict[str, Any]):
+    def _update_session_from_mcp(self, session_id: str, communication_data: Dict[str, Any]) -> None:
         """Update session summary from MCP communication."""
         if session_id not in self.active_sessions:
             self.active_sessions[session_id] = SessionSummary(
@@ -314,13 +324,13 @@ class DashboardUpdateService:
             logger.error(f"Failed to broadcast dashboard update: {str(e)}")
             return 0
     
-    def _archive_session(self, session_id: str):
+    def _archive_session(self, session_id: str) -> None:
         """Remove completed session from active sessions."""
         if session_id in self.active_sessions:
             del self.active_sessions[session_id]
             logger.debug(f"Archived completed session: {session_id}")
     
-    async def _session_tracker(self):
+    async def _session_tracker(self) -> None:
         """Background task to track session changes and send heartbeats."""
         while self.running:
             try:
