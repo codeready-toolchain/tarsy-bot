@@ -87,14 +87,15 @@ class TestDashboardConnectionManager:
         ("test_user", ChannelType.DASHBOARD_UPDATES, True, True),  # Active user subscription
         ("inactive_user", ChannelType.DASHBOARD_UPDATES, False, False),  # Inactive user subscription
     ])
+    @pytest.mark.asyncio
     @pytest.mark.unit
-    def test_subscribe_scenarios(self, connection_manager, mock_websocket, user_id, channel, is_active, expected_success):
+    async def test_subscribe_scenarios(self, connection_manager, mock_websocket, user_id, channel, is_active, expected_success):
         """Test subscribing users to channels for various scenarios."""
         if is_active:
             # Set up connection
             connection_manager.active_connections[user_id] = mock_websocket
         
-        success = connection_manager.subscribe_to_channel(user_id, channel)
+        success = await connection_manager.subscribe_to_channel(user_id, channel)
         
         assert success is expected_success
         if expected_success:

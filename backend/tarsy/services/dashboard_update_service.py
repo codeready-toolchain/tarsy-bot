@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from tarsy.utils.logger import get_module_logger
 
+from tarsy.models.constants import AlertSessionStatus
 from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
 
 logger = get_module_logger(__name__)
@@ -193,7 +194,6 @@ class DashboardUpdateService:
         
         # Move to history if session is completed
         # Use enum to ensure we catch all terminal statuses consistently
-        from tarsy.models.constants import AlertSessionStatus
         if status in AlertSessionStatus.terminal_values():
             self._archive_session(session_id)
             logger.debug(f"Archived session {session_id} after terminal status: {status}")
@@ -234,7 +234,7 @@ class DashboardUpdateService:
         if session_id not in self.active_sessions:
             self.active_sessions[session_id] = SessionSummary(
                 session_id=session_id,
-                status="active",
+                status=AlertSessionStatus.IN_PROGRESS.value,
                 start_time=datetime.now(),
                 last_activity=datetime.now()
             )
@@ -252,7 +252,7 @@ class DashboardUpdateService:
         if session_id not in self.active_sessions:
             self.active_sessions[session_id] = SessionSummary(
                 session_id=session_id,
-                status="active",
+                status=AlertSessionStatus.IN_PROGRESS.value,
                 start_time=datetime.now(),
                 last_activity=datetime.now()
             )

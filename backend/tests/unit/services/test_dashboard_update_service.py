@@ -156,7 +156,7 @@ class TestLLMInteractionProcessing:
         assert session.llm_interactions == 1
         assert session.interactions_count == 1
         assert session.errors_count == 0
-        assert session.status == "active"
+        assert session.status == "in_progress"
     
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -213,7 +213,7 @@ class TestMCPInteractionProcessing:
         assert session.interactions_count == 1
         assert session.errors_count == 0
 
-        assert session.status == "active"
+        assert session.status == "in_progress"
         
         # Verify broadcast was called
         mock_broadcaster.broadcast_session_update.assert_called_once()
@@ -389,7 +389,7 @@ class TestSessionArchiving:
         "completed",
         "failed",
     ])
-    async def test_terminal_statuses_archive_session(self, update_service, mock_broadcaster, terminal_status):
+    async def test_terminal_statuses_archive_session(self, update_service, terminal_status):
         """Test that all terminal statuses properly archive sessions.
         
         This test uses AlertSessionStatus enum values to ensure sessions are archived
@@ -427,7 +427,7 @@ class TestSessionArchiving:
         "pending",
         "in_progress",
     ])
-    async def test_non_terminal_statuses_do_not_archive(self, update_service, mock_broadcaster, non_terminal_status):
+    async def test_non_terminal_statuses_do_not_archive(self, update_service, non_terminal_status):
         """Test that non-terminal statuses do NOT archive sessions."""
         from tarsy.models.constants import AlertSessionStatus
         
@@ -452,7 +452,7 @@ class TestSessionArchiving:
     
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_failed_status_archives_session_with_error(self, update_service, mock_broadcaster):
+    async def test_failed_status_archives_session_with_error(self, update_service):
         """Test that 'failed' status properly archives session with error details.
         
         This specifically tests the bug fix where 'failed' status wasn't being
@@ -487,7 +487,7 @@ class TestSessionArchiving:
     
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_multiple_status_transitions_final_archive(self, update_service, mock_broadcaster):
+    async def test_multiple_status_transitions_final_archive(self, update_service):
         """Test session through multiple status transitions, ensuring final terminal status archives."""
         
         session_id = "transition_session"
