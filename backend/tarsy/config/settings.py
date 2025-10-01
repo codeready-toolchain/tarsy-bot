@@ -135,9 +135,9 @@ class Settings(BaseSettings):
         default=5,
         description="Maximum number of alerts that can be processed concurrently"
     )
-    alert_queue_timeout: int = Field(
-        default=300,
-        description="Timeout in seconds for alerts waiting in queue"
+    alert_processing_timeout: int = Field(
+        default=600,
+        description="Timeout in seconds for processing a single alert (default: 10 minutes)"
     )
     
     # Agent Configuration

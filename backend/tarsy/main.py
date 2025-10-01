@@ -392,13 +392,14 @@ async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
             
             # Process with timeout to prevent hanging
             try:
-                # Set a reasonable timeout (e.g., 10 minutes for alert processing)
+                # Use configurable timeout for alert processing
+                timeout_seconds = settings.alert_processing_timeout
                 await asyncio.wait_for(
                     alert_service.process_alert(alert, alert_id=alert_id),
-                    timeout=600  # 10 minutes
+                    timeout=timeout_seconds
                 )
             except asyncio.TimeoutError:
-                raise TimeoutError(f"Alert processing exceeded timeout limit of 10 minutes")
+                raise TimeoutError(f"Alert processing exceeded timeout limit of {timeout_seconds}s")
             
             # Calculate processing duration
             duration = (datetime.now() - start_time).total_seconds()
