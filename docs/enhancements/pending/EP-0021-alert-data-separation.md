@@ -581,15 +581,15 @@ The LLM receives the entire structure as-is and can interpret it contextually.
    - `backend/tests/e2e/conftest.py`
    - `backend/tests/unit/models/test_context_factories.py`
 
-6. Update test expectations
-   - `backend/tests/e2e/expected_conversations.py` (if prompt format changes)
-   - Unit tests that check ChainContext structure
-
 ### Phase 5: Prompt Template Updates
-7. Update `backend/tarsy/agents/prompts/alert_section_template.py`
+6. Update `backend/tarsy/agents/prompts/alert_section_template.py`
    - Separate "Alert Metadata" and "Alert Data" sections
    - Show metadata fields explicitly
    - Show client data as-is
+
+7. Update test expectations
+   - `backend/tests/e2e/expected_conversations.py`
+   - Unit tests that check ChainContext structure
 
 ### Phase 6: Validation
 8. Run full test suite

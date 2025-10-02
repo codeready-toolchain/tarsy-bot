@@ -6,53 +6,56 @@ to build complex prompts with proper formatting and type handling.
 """
 
 import json
-from typing import Any, Dict
+
 from langchain_core.prompts import PromptTemplate
+
+from tarsy.models.alert import ProcessingAlert
 
 
 class AlertSectionTemplate:
-    """Formats alert data with intelligent type handling."""
+    """
+    Formats alert data with separate metadata and client data sections.
+    
+    Shows:
+    1. Alert Metadata: Our normalized fields (alert_type, severity, timestamp, etc.)
+    2. Alert Data: Client's pristine data (preserved exactly as received)
+    """
     
     template = PromptTemplate.from_template("""## Alert Details
 
-{formatted_alert_data}""")
+{formatted_content}""")
     
-    def format(self, alert_data: Dict[str, Any]) -> str:
-        formatted_data = self._format_alert_entries(alert_data)
-        return self.template.format(formatted_alert_data=formatted_data)
-    
-    def _format_alert_entries(self, alert_data: Dict[str, Any]) -> str:
-        if not alert_data:
-            return "No alert data provided."
+    def format(self, processing_alert: ProcessingAlert) -> str:
+        """
+        Format ProcessingAlert into sections for LLM prompts.
         
-        lines = []
-        for key, value in alert_data.items():
-            formatted_key = key.replace('_', ' ').title()
-            formatted_value = self._format_value(value)
-            lines.append(f"**{formatted_key}:** {formatted_value}")
+        Args:
+            processing_alert: ProcessingAlert with metadata and client data
+            
+        Returns:
+            Formatted string with metadata and data sections
+        """
+        sections = []
         
-        return "\n".join(lines)
-    
-    def _format_value(self, value) -> str:
-        """Format value with type-appropriate formatting."""
-        if isinstance(value, (dict, list)):
-            return f"\n```json\n{json.dumps(value, indent=2, ensure_ascii=False)}\n```"
-        elif isinstance(value, str):
-            if value.startswith(("{", "[")):
-                try:
-                    parsed = json.loads(value)
-                    return f"\n```json\n{json.dumps(parsed, indent=2, ensure_ascii=False)}\n```"
-                except json.JSONDecodeError:
-                    return value
-            elif '\n' in value:
-                return f"\n```\n{value}\n```"
-            else:
-                return value
-        elif value is None:
-            return "N/A"
+        # Section 1: Alert Metadata
+        sections.append("### Alert Metadata")
+        sections.append(f"**Alert Type:** {processing_alert.alert_type}")
+        sections.append(f"**Severity:** {processing_alert.severity}")
+        sections.append(f"**Timestamp:** {processing_alert.timestamp}")
+        sections.append(f"**Environment:** {processing_alert.environment}")
+        
+        # Section 2: Alert Data (Client's pristine data)
+        sections.append("")
+        sections.append("### Alert Data")
+        if processing_alert.alert_data:
+            sections.append("```json")
+            sections.append(json.dumps(processing_alert.alert_data, indent=2, ensure_ascii=False))
+            sections.append("```")
         else:
-            return str(value)
-
+            sections.append("No additional alert data provided.")
+        
+        formatted_content = "\n".join(sections)
+        return self.template.format(formatted_content=formatted_content)
 
 class RunbookSectionTemplate:
     """Formats runbook content."""
