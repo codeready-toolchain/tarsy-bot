@@ -543,8 +543,14 @@ def flexible_alert_to_api_format(flexible_alert: dict) -> ChainContext:
     """
     normalized_data = flexible_alert.get("data", {}).copy()
     
-    # Add core fields
-    normalized_data.pop("runbook", flexible_alert["runbook"])
+    # Extract runbook safely (from normalized_data or flexible_alert)
+    runbook = flexible_alert.get("runbook")
+    if "runbook" in normalized_data:
+        runbook = normalized_data.pop("runbook")
+    else:
+        normalized_data.pop("runbook", None)  # Ensure it's not in normalized_data
+    
+    # Extract other metadata fields
     severity = normalized_data.pop("severity", flexible_alert.get("severity", "warning"))
     timestamp = normalized_data.pop("timestamp", flexible_alert.get("timestamp", now_us()))
     environment = normalized_data.pop("environment", "production")
@@ -556,6 +562,7 @@ def flexible_alert_to_api_format(flexible_alert: dict) -> ChainContext:
         severity=severity,
         timestamp=timestamp,
         environment=environment,
+        runbook_url=runbook,
         alert_data=normalized_data
     )
     

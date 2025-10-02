@@ -122,11 +122,13 @@ class TestHistoryServiceIntegration:
         return Alert(
             alert_type="NamespaceTerminating",
             severity="high",
-            environment="production",
-            cluster="k8s-prod",
-            namespace="stuck-namespace",
-            message="Namespace is stuck in Terminating state",
-            runbook="namespace-terminating.md"
+            runbook="namespace-terminating.md",
+            data={
+                "environment": "production",
+                "cluster": "k8s-prod",
+                "namespace": "stuck-namespace",
+                "message": "Namespace is stuck in Terminating state"
+            }
         )
     
     @pytest.fixture
@@ -186,17 +188,12 @@ class TestHistoryServiceIntegration:
         # Override alert_data with sample alert data by creating a new ProcessingAlert
         from tarsy.models.alert import ProcessingAlert
         chain_context.processing_alert = ProcessingAlert(
-            alert_type=chain_context.processing_alert.alert_type,
-            severity=chain_context.processing_alert.severity,
+            alert_type=sample_alert.alert_type,
+            severity=sample_alert.severity or "warning",
             timestamp=chain_context.processing_alert.timestamp,
-            environment=sample_alert.data.get('environment', ''),
-            alert_data={
-                "alert_type": sample_alert.alert_type,
-                "environment": sample_alert.data.get('environment', ''),
-                "cluster": sample_alert.data.get('cluster', ''),
-                "namespace": sample_alert.data.get('namespace', ''),
-                "message": sample_alert.data.get('message', '')
-            }
+            environment=sample_alert.data.get('environment', 'production'),
+            runbook_url=sample_alert.runbook,
+            alert_data=sample_alert.data
         )
         
         result = history_service_with_db.create_session(
@@ -402,15 +399,8 @@ class TestHistoryServiceIntegration:
                 agent=agent_type
             )
             
-            # Override alert_data with test data by creating a new ProcessingAlert
-            from tarsy.models.alert import ProcessingAlert
-            chain_context.processing_alert = ProcessingAlert(
-                alert_type=alert_type,
-                severity=chain_context.processing_alert.severity,
-                timestamp=chain_context.processing_alert.timestamp,
-                environment="test",
-                alert_data={"alert_type": alert_type, "environment": "test"}
-            )
+            # create_test_context_and_chain already provides rich test data
+            # (alert_type, environment, cluster, namespace, message)
             
             # Use the service to create session (simulating real workflow)
             result = history_service_with_db.create_session(
@@ -498,14 +488,15 @@ class TestHistoryServiceIntegration:
             agent="GenericAgent"  # Fallback agent
         )
         
-        # Override with empty data to test error handling by creating a new ProcessingAlert
+        # Use real fixture data even in error handling path (error is empty alert_id, not empty data)
         from tarsy.models.alert import ProcessingAlert
         chain_context.processing_alert = ProcessingAlert(
-            alert_type=chain_context.processing_alert.alert_type,
-            severity=chain_context.processing_alert.severity,
+            alert_type=sample_alert.alert_type,
+            severity=sample_alert.severity or "warning",
             timestamp=chain_context.processing_alert.timestamp,
-            environment=chain_context.processing_alert.environment,
-            alert_data={}
+            environment=sample_alert.data.get('environment', 'production'),
+            runbook_url=sample_alert.runbook,
+            alert_data=sample_alert.data
         )
         
         result = history_service_with_db.create_session(
@@ -562,10 +553,11 @@ class TestHistoryServiceIntegration:
         from tarsy.models.alert import ProcessingAlert
         chain_context.processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            severity=chain_context.processing_alert.severity,
+            severity=sample_alert.severity or "warning",
             timestamp=chain_context.processing_alert.timestamp,
-            environment=chain_context.processing_alert.environment,
-            alert_data={"alert_type": sample_alert.alert_type}
+            environment=sample_alert.data.get('environment', 'production'),
+            runbook_url=sample_alert.runbook,
+            alert_data=sample_alert.data
         )
         
         result = history_service_with_db.create_session(
@@ -662,11 +654,13 @@ class TestAlertServiceHistoryIntegration:
         return Alert(
             alert_type="NamespaceTerminating",
             severity="high",
-            environment="production",
-            cluster="k8s-prod",
-            namespace="stuck-namespace",
-            message="Namespace is stuck in Terminating state",
-            runbook="namespace-terminating.md"
+            runbook="namespace-terminating.md",
+            data={
+                "environment": "production",
+                "cluster": "k8s-prod",
+                "namespace": "stuck-namespace",
+                "message": "Namespace is stuck in Terminating state"
+            }
         )
     
     @pytest.mark.asyncio

@@ -869,7 +869,6 @@ class TestChainErrorAggregation:
         """Create ChainContext with mixed successful and failed stage results."""
         from tarsy.models.agent_execution_result import AgentExecutionResult
         from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
         from tarsy.models.alert import ProcessingAlert
         
         processing_alert = ProcessingAlert(
@@ -945,10 +944,8 @@ class TestChainErrorAggregation:
         """Test error aggregation with single stage failure."""
         from tarsy.models.agent_execution_result import AgentExecutionResult
         from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
         
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="test_alert",
@@ -984,10 +981,8 @@ class TestChainErrorAggregation:
         """Test error aggregation when no stage failures exist (edge case)."""
         from tarsy.models.agent_execution_result import AgentExecutionResult
         from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
         
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="test_alert",
@@ -1022,7 +1017,6 @@ class TestChainErrorAggregation:
     def test_aggregate_stage_errors_empty_context(self, alert_service):
         """Test error aggregation with empty stage context."""
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="test_alert",
@@ -1046,7 +1040,6 @@ class TestChainErrorAggregation:
     def test_aggregate_stage_errors_mixed_result_types(self, alert_service):
         """Test error aggregation handles different result types gracefully."""
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="test_alert",
@@ -1067,7 +1060,6 @@ class TestChainErrorAggregation:
         # Add valid failed result
         from tarsy.models.agent_execution_result import AgentExecutionResult
         from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
         
         failed_result = AgentExecutionResult(
             status=StageStatus.FAILED,
@@ -1141,7 +1133,6 @@ class TestEnhancedChainExecution:
         )
         
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="test_alert",
@@ -1159,7 +1150,6 @@ class TestEnhancedChainExecution:
         # Mock agents - some successful, some failing
         from tarsy.models.agent_execution_result import AgentExecutionResult
         from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
         
         successful_agent = AsyncMock()
         successful_agent.process_alert.return_value = AgentExecutionResult(
@@ -1232,7 +1222,6 @@ class TestEnhancedChainExecution:
         )
         
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="test_alert",
@@ -1250,7 +1239,6 @@ class TestEnhancedChainExecution:
         # Mock successful agent
         from tarsy.models.agent_execution_result import AgentExecutionResult
         from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
         
         successful_agent = AsyncMock()
         successful_agent.process_alert.return_value = AgentExecutionResult(
@@ -1293,7 +1281,6 @@ class TestEnhancedChainExecution:
         )
         
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="test_alert",
@@ -1390,7 +1377,6 @@ class TestFullErrorPropagation:
         # Create failing agents
         from tarsy.models.agent_execution_result import AgentExecutionResult
         from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
         
         failing_agent_1 = AsyncMock()
         failing_agent_1.process_alert.return_value = AgentExecutionResult(
@@ -1425,7 +1411,6 @@ class TestFullErrorPropagation:
         
         # Create chain context with runbook URL
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="error-test",
@@ -1481,7 +1466,6 @@ class TestFullErrorPropagation:
         # Create single failing agent
         from tarsy.models.agent_execution_result import AgentExecutionResult
         from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
         
         failing_agent = AsyncMock()
         failing_agent.process_alert.return_value = AgentExecutionResult(
@@ -1502,7 +1486,6 @@ class TestFullErrorPropagation:
         
         # Create chain context with runbook URL
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="error-test",
