@@ -314,17 +314,11 @@ class TestAlertProcessing:
         # Mock LLM availability
         dependencies['llm_manager'].is_available.return_value = True
         
-        # Convert Alert object to dictionary for the new interface
-        alert_dict = alert_to_api_format(sample_alert)
-        
-        # Create ChainContext from alert_dict for the new interface
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        # Convert Alert object to ChainContext using the fixed helper
+        chain_context = alert_to_api_format(sample_alert)
+        # Update session_id for this test
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         
         # Process alert with required alert_id parameter
         result = await service.process_alert(chain_context, "test_alert_123")
@@ -341,10 +335,10 @@ class TestAlertProcessing:
         
         # Verify ChainContext contains the expected data
         assert isinstance(chain_context, ChainContext)
-        assert chain_context.alert_data == alert_dict.alert_data
+        assert chain_context.processing_alert.alert_data == sample_alert.data
         assert chain_context.runbook_content == "Mock runbook content"
         assert chain_context.session_id is not None
-        assert chain_context.alert_type == alert_dict.alert_type
+        assert chain_context.processing_alert.alert_type == sample_alert.alert_type
 
 
     @pytest.mark.asyncio
@@ -370,14 +364,9 @@ class TestAlertProcessing:
         dependencies['llm_manager'].is_available.return_value = True
         
         # Convert to dict and test
-        alert_dict = alert_to_api_format(unsupported_alert)
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        chain_context = alert_to_api_format(unsupported_alert)
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         result = await service.process_alert(chain_context, "test_alert_123")
         
         assert "No agent for alert type 'UnsupportedAlertType'" in result
@@ -401,14 +390,9 @@ class TestAlertProcessing:
         dependencies['llm_manager'].is_available.return_value = True
         service.agent_factory.create_agent.side_effect = ValueError("Agent creation failed")
         
-        alert_dict = alert_to_api_format(sample_alert)
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        chain_context = alert_to_api_format(sample_alert)
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         result = await service.process_alert(chain_context, "test_alert_123")
         
         # Verify that the system handles agent creation failure gracefully
@@ -443,14 +427,9 @@ class TestAlertProcessing:
         service.agent_factory.create_agent.return_value = mock_agent
         service.agent_factory.get_agent.return_value = mock_agent
         
-        alert_dict = alert_to_api_format(sample_alert)
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        chain_context = alert_to_api_format(sample_alert)
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         result = await service.process_alert(chain_context, "test_alert_123")
         
         assert "Chain processing failed" in result  # Chain architecture error format
@@ -467,14 +446,9 @@ class TestAlertProcessing:
         
         dependencies['llm_manager'].is_available.return_value = False
         
-        alert_dict = alert_to_api_format(sample_alert)
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        chain_context = alert_to_api_format(sample_alert)
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         result = await service.process_alert(chain_context, "test_alert_123")
         
         assert "No LLM providers are available" in result
@@ -492,14 +466,9 @@ class TestAlertProcessing:
         service.agent_factory = None
         dependencies['llm_manager'].is_available.return_value = True
         
-        alert_dict = alert_to_api_format(sample_alert)
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        chain_context = alert_to_api_format(sample_alert)
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         result = await service.process_alert(chain_context, "test_alert_123")
         
         assert "Agent factory not initialized" in result
@@ -523,14 +492,9 @@ class TestAlertProcessing:
         dependencies['llm_manager'].is_available.return_value = True
         dependencies['runbook'].download_runbook = AsyncMock(side_effect=Exception("Runbook download failed"))
         
-        alert_dict = alert_to_api_format(sample_alert)
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        chain_context = alert_to_api_format(sample_alert)
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         result = await service.process_alert(chain_context, "test_alert_123")
         
         assert "Runbook download failed" in result
@@ -673,14 +637,9 @@ class TestResponseFormatting:
     
     def test_format_success_response(self, alert_service, sample_alert):
         """Test formatting successful response."""
-        alert_dict = alert_to_api_format(sample_alert)
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        chain_context = alert_to_api_format(sample_alert)
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         
         result = alert_service._format_success_response(
             chain_context=chain_context,
@@ -700,14 +659,9 @@ class TestResponseFormatting:
     
     def test_format_success_response_without_timestamp(self, alert_service, sample_alert):
         """Test formatting successful response without timestamp."""
-        alert_dict = alert_to_api_format(sample_alert)
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        chain_context = alert_to_api_format(sample_alert)
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         
         result = alert_service._format_success_response(
             chain_context=chain_context,
@@ -722,14 +676,9 @@ class TestResponseFormatting:
     
     def test_format_error_response_basic(self, alert_service, sample_alert):
         """Test formatting basic error response."""
-        alert_dict = alert_to_api_format(sample_alert)
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        chain_context = alert_to_api_format(sample_alert)
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         
         result = alert_service._format_error_response(
             chain_context=chain_context,
@@ -742,14 +691,9 @@ class TestResponseFormatting:
     
     def test_format_error_response_with_agent(self, alert_service, sample_alert):
         """Test formatting error response with agent information."""
-        alert_dict = alert_to_api_format(sample_alert)
-        chain_context = ChainContext(
-            alert_type=alert_dict.alert_type,
-            alert_data=alert_dict.alert_data,
-            session_id=str(uuid.uuid4()),
-            current_stage_name="test-stage",
-            runbook_content=None
-        )
+        chain_context = alert_to_api_format(sample_alert)
+        chain_context.session_id = str(uuid.uuid4())
+        chain_context.current_stage_name = "test-stage"
         
         result = alert_service._format_error_response(
             chain_context=chain_context,
@@ -926,10 +870,17 @@ class TestChainErrorAggregation:
         from tarsy.models.agent_execution_result import AgentExecutionResult
         from tarsy.models.constants import StageStatus
         from tarsy.utils.timestamp import now_us
+        from tarsy.models.alert import ProcessingAlert
         
-        chain_context = ChainContext(
+        processing_alert = ProcessingAlert(
             alert_type="test_alert",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test_session",
             current_stage_name="test_stage"
         )
@@ -996,9 +947,18 @@ class TestChainErrorAggregation:
         from tarsy.models.constants import StageStatus
         from tarsy.utils.timestamp import now_us
         
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test_alert",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test_session",
             current_stage_name="test_stage"
         )
@@ -1026,9 +986,18 @@ class TestChainErrorAggregation:
         from tarsy.models.constants import StageStatus
         from tarsy.utils.timestamp import now_us
         
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test_alert",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test_session",
             current_stage_name="test_stage"
         )
@@ -1052,9 +1021,18 @@ class TestChainErrorAggregation:
     
     def test_aggregate_stage_errors_empty_context(self, alert_service):
         """Test error aggregation with empty stage context."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test_alert",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test_session",
             current_stage_name="test_stage"
         )
@@ -1067,9 +1045,18 @@ class TestChainErrorAggregation:
     
     def test_aggregate_stage_errors_mixed_result_types(self, alert_service):
         """Test error aggregation handles different result types gracefully."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test_alert",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test_session",
             current_stage_name="test_stage"
         )
@@ -1153,9 +1140,18 @@ class TestEnhancedChainExecution:
             description='Test chain with failures'
         )
         
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test_alert",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test_session",
             current_stage_name="test_stage"
         )
@@ -1235,9 +1231,18 @@ class TestEnhancedChainExecution:
             description='Test chain success'
         )
         
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test_alert",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test_session",
             current_stage_name="test_stage"
         )
@@ -1287,9 +1292,18 @@ class TestEnhancedChainExecution:
             description='Test chain with exception'
         )
         
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test_alert",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test_session",
             current_stage_name="test_stage"
         )
@@ -1410,12 +1424,21 @@ class TestFullErrorPropagation:
         service.agent_factory.get_agent.side_effect = mock_get_agent
         
         # Create chain context with runbook URL
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="error-test",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
             alert_data={
                 "test": "error_data",
                 "runbook": "https://example.com/test-runbook"
-            },
+            }
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id=str(uuid.uuid4()),
             current_stage_name="test_stage"
         )
@@ -1478,12 +1501,21 @@ class TestFullErrorPropagation:
         service.agent_factory.get_agent.side_effect = mock_get_agent
         
         # Create chain context with runbook URL
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="error-test",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
             alert_data={
                 "test": "single_error",
                 "runbook": "https://example.com/single-test-runbook"
-            },
+            }
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id=str(uuid.uuid4()),
             current_stage_name="test_stage"
         )

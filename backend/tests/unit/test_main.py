@@ -547,13 +547,22 @@ class TestBackgroundProcessing:
     @pytest.fixture
     def mock_alert_data(self):
         """Mock alert processing data."""
-        return ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="kubernetes",
+            severity="high",
+            timestamp=now_us(),
+            environment="production",
             alert_data={
                 "namespace": "production",
                 "pod": "api-server-123",
                 "severity": "high"
-            },
+            }
+        )
+        return ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session-123",
             current_stage_name="test-stage"
         )
@@ -638,9 +647,18 @@ class TestBackgroundProcessing:
             await process_alert_background("alert-123", None)
             
             # Test with valid ChainContext but process_alert fails
-            valid_alert = ChainContext(
-                alert_type="test", 
-                alert_data={"key": "value"},
+            from tarsy.models.alert import ProcessingAlert
+            from tarsy.utils.timestamp import now_us
+            
+            processing_alert = ProcessingAlert(
+                alert_type="test",
+                severity="warning",
+                timestamp=now_us(),
+                environment="production",
+                alert_data={"key": "value"}
+            )
+            valid_alert = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
                 session_id="test-session",
                 current_stage_name="test-stage"
             )

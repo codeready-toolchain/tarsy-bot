@@ -89,9 +89,18 @@ class TestSimpleReActController:
     @pytest.fixture
     def sample_context(self, mock_agent):
         """Create sample stage context for ReAct testing."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"alert": "TestAlert", "severity": "high"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"alert": "TestAlert", "severity": "high"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session-123",
             current_stage_name="analysis"
         )
@@ -121,9 +130,18 @@ class TestSimpleReActController:
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_no_agent(self, controller):
         """Test ReAct analysis loop with missing agent reference."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"pod": "test-pod", "namespace": "default"},  # EP-0012: alert_data must not be empty
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"pod": "test-pod", "namespace": "default"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session-123",
             current_stage_name="analysis"
         )
@@ -297,9 +315,18 @@ class TestReactFinalAnalysisController:
     @pytest.fixture
     def sample_context(self, mock_agent):
         """Create sample stage context for final analysis testing."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"alert": "TestAlert", "severity": "high"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"alert": "TestAlert", "severity": "high"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session-123",
             current_stage_name="analysis"
         )
@@ -345,9 +372,18 @@ class TestReactFinalAnalysisController:
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_no_agent(self, controller):
         """Test final analysis loop with missing agent reference."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"pod": "test-pod", "namespace": "default"},  # EP-0012: alert_data must not be empty
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"pod": "test-pod", "namespace": "default"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session-123",
             current_stage_name="analysis"
         )
@@ -374,9 +410,18 @@ class TestReactFinalAnalysisController:
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_minimal_context(self, controller, mock_agent, mock_llm_client, mock_prompt_builder):
         """Test final analysis with minimal context."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"alert": "TestAlert"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"alert": "TestAlert"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session-123",
             current_stage_name="analysis"
         )
@@ -474,9 +519,18 @@ class TestReactStageController:
     @pytest.fixture
     def sample_context(self, mock_agent):
         """Create sample stage context for partial analysis testing."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"alert": "TestAlert", "severity": "high"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"alert": "TestAlert", "severity": "high"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session-789",
             current_stage_name="analysis"
         )
@@ -511,9 +565,18 @@ class TestReactStageController:
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_no_agent(self, controller):
         """Test partial analysis loop with missing agent reference."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"pod": "test-pod", "namespace": "default"},  # EP-0012: alert_data must not be empty
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"pod": "test-pod", "namespace": "default"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session-123",
             current_stage_name="analysis"
         )

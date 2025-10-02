@@ -484,13 +484,22 @@ class TestBaseAgentErrorHandling:
 
         from tarsy.models.processing_context import ChainContext
 
-        alert_processing_data = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            alert_data=sample_alert.data,
-            session_id="test-session-123",
-            current_stage_name="test-stage",
-            runbook_content="runbook content",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert.data
         )
+        alert_processing_data = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-123",
+            current_stage_name="test-stage"
+        )
+        alert_processing_data.runbook_content = "runbook content"
         result = await base_agent.process_alert(alert_processing_data)
 
         assert result.status.value == "failed"
@@ -521,13 +530,22 @@ class TestBaseAgentErrorHandling:
         # Create ChainContext for new interface
         from tarsy.models.processing_context import ChainContext
 
-        alert_processing_data = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            alert_data=sample_alert.data,
-            session_id="test-session-success",
-            current_stage_name="test-stage",
-            runbook_content="runbook content",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert.data
         )
+        alert_processing_data = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-success",
+            current_stage_name="test-stage"
+        )
+        alert_processing_data.runbook_content = "runbook content"
 
         result = await base_agent.process_alert(alert_processing_data)
 
@@ -609,13 +627,22 @@ class TestBaseAgent:
         base_agent.analyze_alert = AsyncMock(return_value="Test analysis")
 
         # Convert Alert to ChainContext for new interface
-        alert_processing_data = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            alert_data=sample_alert.model_dump(),
-            session_id="test-session-123",
-            current_stage_name="test-stage",
-            runbook_content="test runbook content",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert.model_dump()
         )
+        alert_processing_data = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-123",
+            current_stage_name="test-stage"
+        )
+        alert_processing_data.runbook_content = "test runbook content"
 
         # EP-0012 Clean Implementation: process_alert only accepts ChainContext
         result = await base_agent.process_alert(alert_processing_data)
@@ -645,13 +672,22 @@ class TestBaseAgent:
         base_agent.analyze_alert = AsyncMock(return_value="Test analysis")
 
         # Convert Alert to ChainContext for new interface
-        alert_processing_data = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            alert_data=sample_alert.model_dump(),
-            session_id="test-session-123",
-            current_stage_name="test-stage",
-            runbook_content="test runbook content",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert.model_dump()
         )
+        alert_processing_data = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-123",
+            current_stage_name="test-stage"
+        )
+        alert_processing_data.runbook_content = "test runbook content"
 
         # EP-0012 Clean Implementation: process_alert only accepts ChainContext
         result = await base_agent.process_alert(alert_processing_data)
@@ -702,13 +738,22 @@ class TestPhase3ProcessAlertOverload:
     async def test_process_alert_with_chain_context(self, base_agent):
         """Test overloaded process_alert with ChainContext (new path)."""
         # Create ChainContext directly
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="kubernetes",
-            alert_data={"pod": "failing-pod", "message": "Pod failing"},
-            session_id="test-session-new",
-            current_stage_name="analysis",
-            runbook_content="test runbook",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"pod": "failing-pod", "message": "Pod failing"}
         )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-new",
+            current_stage_name="analysis"
+        )
+        chain_context.runbook_content = "test runbook"
 
         result = await base_agent.process_alert(chain_context)
 
@@ -724,11 +769,20 @@ class TestPhase3ProcessAlertOverload:
     ):
         """Test that ChainContext ignores conflicting session_id parameter
         with warning."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="kubernetes",
-            alert_data={"pod": "failing-pod"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"pod": "failing-pod"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="context-session-id",
-            current_stage_name="analysis",
+            current_stage_name="analysis"
         )
 
         # EP-0012 Clean Implementation: process_alert only accepts ChainContext
@@ -752,11 +806,20 @@ class TestPhase4PromptSystemOverload:
         )
 
         # Create test contexts
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="kubernetes",
-            alert_data={"pod": "test-pod", "message": "Pod failing"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"pod": "test-pod", "message": "Pod failing"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session",
-            current_stage_name="analysis",
+            current_stage_name="analysis"
         )
 
         available_tools = AvailableTools()  # Empty tools

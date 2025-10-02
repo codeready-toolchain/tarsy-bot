@@ -85,17 +85,26 @@ class TestMultiStageChainExecution:
         # without the complexity of full AlertService initialization
         
         # Create initial chain context
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="integration-test",
+            severity="high",
+            timestamp=now_us(),
+            environment="production",
             alert_data={
                 "severity": "high",
                 "cluster": "test-cluster",
                 "namespace": "default"
-            },
-            session_id="test-session-123",
-            current_stage_name="analysis",
-            runbook_content="Test runbook content"
+            }
         )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        chain_context.runbook_content = "Test runbook content"
         
         session_id = "test-session-123"
         agents = mock_agents_with_data_flow
@@ -139,9 +148,18 @@ class TestMultiStageChainExecution:
     
     async def test_stage_isolation_and_progression(self, simple_two_stage_chain, mock_agents_with_data_flow):
         """Test that stages are isolated but can access previous stage data."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="integration-test",
-            alert_data={"test": "isolation"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "isolation"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="isolation-test-session",
             current_stage_name="data-collection"
         )
@@ -201,9 +219,18 @@ class TestChainExecutionErrorHandling:
         )
         
         # Create initial chain context
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="failure-test",
-            alert_data={"test": "failure scenario"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "failure scenario"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="failure-test-session",
             current_stage_name="success-stage"
         )

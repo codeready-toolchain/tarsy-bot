@@ -124,21 +124,36 @@ class TestIterationStrategiesIntegration:
         
         # Process alert with both strategies
         from tarsy.models.processing_context import ChainContext
-        chain_context_react = ChainContext(
-            alert_type="kubernetes",  # sample_alert_data is dict, not Alert object
-            alert_data=sample_alert_data,
-            session_id="test-session-react",
-            current_stage_name="analysis",
-            runbook_content=sample_runbook
-        )
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
         
-        chain_context_react_stage = ChainContext(
+        processing_alert_react = ProcessingAlert(
             alert_type="kubernetes",
-            alert_data=sample_alert_data,
-            session_id="test-session-react-stage",
-            current_stage_name="analysis",
-            runbook_content=sample_runbook
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert_data
         )
+        chain_context_react = ChainContext.from_processing_alert(
+            processing_alert=processing_alert_react,
+            session_id="test-session-react",
+            current_stage_name="analysis"
+        )
+        chain_context_react.runbook_content = sample_runbook
+        
+        processing_alert_react_stage = ProcessingAlert(
+            alert_type="kubernetes",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert_data
+        )
+        chain_context_react_stage = ChainContext.from_processing_alert(
+            processing_alert=processing_alert_react_stage,
+            session_id="test-session-react-stage",
+            current_stage_name="analysis"
+        )
+        chain_context_react_stage.runbook_content = sample_runbook
         
         react_result = await react_agent.process_alert(chain_context_react)
         
@@ -204,21 +219,36 @@ class TestIterationStrategiesIntegration:
         
         # Process alerts
         from tarsy.models.processing_context import ChainContext
-        chain_context_react_stage = ChainContext(
-            alert_type="kubernetes",  # sample_alert_data is dict, not Alert object
-            alert_data=sample_alert_data,
-            session_id="test-config-react-stage",
-            current_stage_name="analysis",
-            runbook_content=sample_runbook
-        )
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
         
-        chain_context_react = ChainContext(
+        processing_alert_react_stage = ProcessingAlert(
             alert_type="kubernetes",
-            alert_data=sample_alert_data,
-            session_id="test-config-react",
-            current_stage_name="analysis",
-            runbook_content=sample_runbook
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert_data
         )
+        chain_context_react_stage = ChainContext.from_processing_alert(
+            processing_alert=processing_alert_react_stage,
+            session_id="test-config-react-stage",
+            current_stage_name="analysis"
+        )
+        chain_context_react_stage.runbook_content = sample_runbook
+        
+        processing_alert_react = ProcessingAlert(
+            alert_type="kubernetes",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert_data
+        )
+        chain_context_react = ChainContext.from_processing_alert(
+            processing_alert=processing_alert_react,
+            session_id="test-config-react",
+            current_stage_name="analysis"
+        )
+        chain_context_react.runbook_content = sample_runbook
         
         react_stage_result = await react_stage_agent.process_alert(chain_context_react_stage)
         
@@ -445,21 +475,36 @@ mcp_servers:
             
             # Process alerts with both agents
             from tarsy.models.processing_context import ChainContext
-            chain_context_react_stage = ChainContext(
-                alert_type="kubernetes",  # sample_alert_data is dict, not Alert object
-                alert_data=sample_alert_data,
-                session_id="yaml-react-stage-test",
-                current_stage_name="analysis",
-                runbook_content=sample_runbook
-            )
+            from tarsy.models.alert import ProcessingAlert
+            from tarsy.utils.timestamp import now_us
             
-            chain_context_react = ChainContext(
+            processing_alert_react_stage = ProcessingAlert(
                 alert_type="kubernetes",
-                alert_data=sample_alert_data,
-                session_id="yaml-react-test",
-                current_stage_name="analysis",
-                runbook_content=sample_runbook
+                severity="warning",
+                timestamp=now_us(),
+                environment="production",
+                alert_data=sample_alert_data
             )
+            chain_context_react_stage = ChainContext.from_processing_alert(
+                processing_alert=processing_alert_react_stage,
+                session_id="yaml-react-stage-test",
+                current_stage_name="analysis"
+            )
+            chain_context_react_stage.runbook_content = sample_runbook
+            
+            processing_alert_react = ProcessingAlert(
+                alert_type="kubernetes",
+                severity="warning",
+                timestamp=now_us(),
+                environment="production",
+                alert_data=sample_alert_data
+            )
+            chain_context_react = ChainContext.from_processing_alert(
+                processing_alert=processing_alert_react,
+                session_id="yaml-react-test",
+                current_stage_name="analysis"
+            )
+            chain_context_react.runbook_content = sample_runbook
             
             react_stage_result = await react_stage_agent.process_alert(chain_context_react_stage)
             

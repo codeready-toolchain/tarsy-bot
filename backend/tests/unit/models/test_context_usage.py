@@ -28,11 +28,11 @@ class TestNewChainContextUsage:
         context = create_test_chain_context()
         
         # Verify basic properties
-        assert context.alert_type == "kubernetes"
+        assert context.processing_alert.alert_type == "kubernetes"
         assert context.session_id == "test-session-123"
         assert context.current_stage_name == "analysis"
-        assert isinstance(context.alert_data, dict)
-        assert context.alert_data["pod"] == "test-pod"
+        assert isinstance(context.processing_alert.alert_data, dict)
+        assert context.processing_alert.alert_data["pod"] == "test-pod"
         
         # Test methods
         original_data = context.processing_alert.alert_data.copy()
@@ -46,9 +46,9 @@ class TestNewChainContextUsage:
         """Test ChainContext with runbook content."""
         context = ChainContextFactory.create_with_runbook()
         
-        assert context.alert_type == "kubernetes"
-        assert "failing-pod" in context.alert_data["pod"]
-        assert context.alert_data["severity"] == "critical"
+        assert context.processing_alert.alert_type == "kubernetes"
+        assert "failing-pod" in context.processing_alert.alert_data["pod"]
+        assert context.processing_alert.alert_data.get("severity") is None  # Client data might not have severity since it's in metadata now
         assert context.chain_id == "k8s-troubleshooting-chain"
         
         runbook = context.get_runbook_content()
@@ -86,7 +86,7 @@ class TestNewChainContextUsage:
         """Test ChainContext with complex, nested alert data."""
         context = ChainContextFactory.create_complex_alert_data()
         
-        assert context.alert_type == "KubernetesPodCrashLooping"
+        assert context.processing_alert.alert_type == "KubernetesPodCrashLooping"
         
         # Test accessing nested data
         alert_data = context.processing_alert.alert_data.copy()
@@ -184,7 +184,8 @@ class TestNewStageContextUsage:
         
         # Verify Kubernetes-specific setup
         assert context.alert_data["pod"] == "failing-pod"
-        assert context.alert_data["severity"] == "critical"
+        # severity is now in metadata, not in client alert_data
+        assert context.chain_context.processing_alert.severity == "critical"
         assert context.agent_name == "KubernetesAgent"
         assert "kubernetes-server" in context.mcp_servers
         

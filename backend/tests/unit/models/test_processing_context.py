@@ -64,15 +64,25 @@ class TestChainContext:
     
     def test_chain_context_creation(self):
         """Test creating ChainContext with all required fields."""
-        context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
+        processing_alert = ProcessingAlert(
             alert_type="kubernetes",
-            alert_data={"pod": "failing-pod", "namespace": "default"},
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={"pod": "failing-pod", "namespace": "default"}
+        )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="session-123",
             current_stage_name="analysis"
         )
         
-        assert context.alert_type == "kubernetes"
-        assert context.alert_data["pod"] == "failing-pod"
+        assert context.processing_alert.alert_type == "kubernetes"
+        assert context.processing_alert.alert_data["pod"] == "failing-pod"
         assert context.session_id == "session-123"
         assert context.current_stage_name == "analysis"
         assert context.stage_outputs == {}
@@ -81,6 +91,9 @@ class TestChainContext:
     
     def test_chain_context_with_optional_fields(self):
         """Test ChainContext with optional fields populated."""
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
         stage_result = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="TestAgent",
@@ -88,14 +101,21 @@ class TestChainContext:
             result_summary="Stage completed successfully"
         )
         
-        context = ChainContext(
+        processing_alert = ProcessingAlert(
             alert_type="aws",
-            alert_data={"instance_id": "i-123"},
-            session_id="session-456",
-            current_stage_name="investigation",
-            runbook_content="# Investigation Runbook",
-            chain_id="chain-789"
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={"instance_id": "i-123"}
         )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="session-456",
+            current_stage_name="investigation"
+        )
+        context.runbook_content = "# Investigation Runbook"
+        context.chain_id = "chain-789"
         context.add_stage_result("previous_stage", stage_result)
         
         assert context.runbook_content == "# Investigation Runbook"
@@ -105,10 +125,20 @@ class TestChainContext:
     
     def test_get_original_alert_data(self):
         """Test getting original alert data as copy."""
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
         original_data = {"key": "value", "number": 42}
-        context = ChainContext(
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data=original_data,
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data=original_data
+        )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session",
             current_stage_name="test-stage"
         )
@@ -125,10 +155,20 @@ class TestChainContext:
     
     def test_get_runbook_content(self):
         """Test getting runbook content with defaults."""
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
         # Test with no runbook content
-        context = ChainContext(
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={"test": "data"}
+        )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session",
             current_stage_name="test-stage"
         )
@@ -140,9 +180,19 @@ class TestChainContext:
     
     def test_add_stage_result(self):
         """Test adding stage results."""
-        context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={"test": "data"}
+        )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session",
             current_stage_name="current-stage"
         )
@@ -169,9 +219,19 @@ class TestChainContext:
     
     def test_get_previous_stages_results_empty(self):
         """Test getting previous stages when none exist."""
-        context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={"test": "data"}
+        )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session",
             current_stage_name="first-stage"
         )
@@ -181,9 +241,19 @@ class TestChainContext:
     
     def test_get_previous_stages_results_with_completed_stages(self):
         """Test getting previous stages with completed results."""
-        context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={"test": "data"}
+        )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session",
             current_stage_name="current-stage"
         )
@@ -213,9 +283,19 @@ class TestChainContext:
     
     def test_get_previous_stages_results_preserves_order(self):
         """Test that previous stages results preserve insertion order."""
-        context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"test": "data"},
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={"test": "data"}
+        )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session",
             current_stage_name="current-stage"
         )
@@ -253,39 +333,51 @@ class TestChainContext:
         assert results[2] == ("stage3", result3)
     
     def test_chain_context_field_validation(self):
-        """Test field validation in ChainContext."""
-        # Test empty alert_type
+        """Test field validation in ChainContext and ProcessingAlert."""
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
+        # Test empty alert_type in ProcessingAlert
         with pytest.raises(ValidationError):
-            ChainContext(
+            ProcessingAlert(
                 alert_type="",
-                alert_data={"test": "data"},
-                session_id="test-session",
-                current_stage_name="test-stage"
+                severity="warning",
+                timestamp=int(time.time() * 1_000_000),
+                environment="production",
+                runbook_url=None,
+                alert_data={"test": "data"}
             )
         
-        # Test empty alert_data - EP-0012 validation should reject this
-        with pytest.raises(ValidationError):
-            ChainContext(
-                alert_type="test",
-                alert_data={},  # Empty dict should raise ValidationError
-                session_id="test-session", 
-                current_stage_name="test-stage"
-            )
+        # Empty alert_data is now allowed (client might not have extra data)
+        # Create valid ProcessingAlert with empty alert_data
+        processing_alert = ProcessingAlert(
+            alert_type="test",
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={}  # Empty is now allowed
+        )
+        # Should not raise
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session",
+            current_stage_name="test-stage"
+        )
+        assert context.processing_alert.alert_data == {}
         
-        # Test empty session_id
+        # Test empty session_id in ChainContext
         with pytest.raises(ValidationError):
-            ChainContext(
-                alert_type="test",
-                alert_data={"test": "data"},
+            ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
                 session_id="",
                 current_stage_name="test-stage"
             )
         
-        # Test empty current_stage_name
+        # Test empty current_stage_name in ChainContext
         with pytest.raises(ValidationError):
-            ChainContext(
-                alert_type="test",
-                alert_data={"test": "data"},
+            ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
                 session_id="test-session",
                 current_stage_name=""
             )
@@ -387,7 +479,7 @@ class TestStageContext:
         alert_data["modified"] = "value"
         
         # Original data should not be modified
-        assert "modified" not in chain_context.alert_data
+        assert "modified" not in chain_context.processing_alert.alert_data
     
     def test_stage_context_previous_stages_empty(self):
         """Test StageContext with no previous stages."""

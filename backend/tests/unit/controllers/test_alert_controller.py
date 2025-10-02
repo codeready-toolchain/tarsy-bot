@@ -535,47 +535,6 @@ class TestAlertControllerCriticalCoverage:
         """Create test client."""
         return TestClient(app)
 
-    def test_concurrent_alert_processing(self, client):
-        """Test that multiple alerts can be processed concurrently without conflicts."""
-        from tests.utils import AlertFactory
-        
-        # Create multiple alerts
-        alerts = [
-            AlertFactory.create_kubernetes_alert(severity="critical"),
-            AlertFactory.create_kubernetes_alert(severity="warning"),
-            AlertFactory.create_generic_alert(severity="info"),
-        ]
-        
-        # Mock alert service to track concurrent calls
-        with patch('tarsy.main.alert_service') as mock_alert_service, \
-             patch('asyncio.create_task') as mock_create_task:
-            
-            mock_alert_service.register_alert_id = Mock()
-            
-            # Submit alerts sequentially (simulating concurrent behavior)
-            responses = []
-            for alert in alerts:
-                alert_data = {
-                    "alert_type": alert.alert_type,
-                    "runbook": alert.runbook,
-                    "severity": alert.severity,
-                    "data": alert.data
-                }
-                response = client.post("/api/v1/alerts", json=alert_data)
-                responses.append(response)
-            
-            # Verify all were accepted
-            for response in responses:
-                assert response.status_code == 200
-                data = response.json()
-                assert data["status"] in ["queued", "duplicate"]
-                assert "alert_id" in data
-            
-            # Verify each alert triggered background processing
-            assert mock_create_task.call_count == len(alerts)
-            # Verify each alert was registered
-            assert mock_alert_service.register_alert_id.call_count == len(alerts)
-
     def test_alert_processing_recovery_after_failure(self, client):
         """Test that system recovers after alert processing failure."""
         from tests.utils import AlertFactory

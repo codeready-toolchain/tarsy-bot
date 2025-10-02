@@ -388,7 +388,7 @@ async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
             logger.info(f"Starting background processing for alert {alert_id}")
             
             # Log alert processing start
-            logger.info(f"Processing alert {alert_id} of type '{alert.alert_type}' with {len(alert.alert_data)} data fields")
+            logger.info(f"Processing alert {alert_id} of type '{alert.processing_alert.alert_type}' with {len(alert.processing_alert.alert_data)} data fields")
             
             # Process with timeout to prevent hanging
             try:

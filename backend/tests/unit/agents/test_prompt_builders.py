@@ -25,7 +25,26 @@ class TestPromptBuilding:
     @pytest.fixture
     def mock_stage_context(self):
         """Create mock StageContext with proper ToolWithServer objects for testing."""
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
         context = Mock()
+        
+        # Create proper ProcessingAlert for chain_context
+        processing_alert = ProcessingAlert(
+            alert_type="kubernetes",
+            severity="critical",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={
+                'title': 'Test Alert',
+                'severity': 'critical',
+                'description': 'Test alert description'
+            }
+        )
+        context.chain_context.processing_alert = processing_alert
+        
+        # StageContext.alert_data property returns a copy
         context.alert_data = {
             'title': 'Test Alert',
             'severity': 'critical',
@@ -33,7 +52,6 @@ class TestPromptBuilding:
         }
         context.runbook_content = "Test runbook content"
         context.format_previous_stages_context.return_value = "No previous stage context available."
-        context.chain_context.alert_type = "kubernetes"
         
         # Create proper ToolWithServer objects with official MCP Tool objects
         get_pods_tool = ToolWithServer(
@@ -365,7 +383,27 @@ class TestPromptIntegration:
     @pytest.fixture
     def full_mock_context(self):
         """Create comprehensive mock StageContext."""
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
         context = Mock()
+        
+        # Create proper ProcessingAlert for chain_context
+        processing_alert = ProcessingAlert(
+            alert_type="kubernetes-pod",
+            severity="high",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={
+                'title': 'Pod CrashLoopBackOff',
+                'severity': 'high',
+                'description': 'Multiple pods crashing in production namespace',
+                'labels': {'env': 'production', 'team': 'platform'}
+            }
+        )
+        context.chain_context.processing_alert = processing_alert
+        
+        # StageContext.alert_data property returns a copy
         context.alert_data = {
             'title': 'Pod CrashLoopBackOff',
             'severity': 'high',
@@ -384,7 +422,6 @@ class TestPromptIntegration:
 Stage 1 (Detection): Identified CrashLoopBackOff in prod namespace
 Stage 2 (Initial): Found resource constraints and recent deployment
         """.strip()
-        context.chain_context.alert_type = "kubernetes-pod"
         # Create proper ToolWithServer objects with official MCP Tool objects
         get_pods_tool = ToolWithServer(
             server="kubectl",

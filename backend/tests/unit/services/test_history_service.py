@@ -142,9 +142,18 @@ class TestHistoryService:
             )
             from tarsy.models.processing_context import ChainContext
             
-            chain_context = ChainContext(
+            from tarsy.models.alert import ProcessingAlert
+            from tarsy.utils.timestamp import now_us
+            
+            processing_alert = ProcessingAlert(
                 alert_type="test_alert",
-                alert_data={"alert_type": "test", "environment": "test"},
+                severity="warning",
+                timestamp=now_us(),
+                environment="test",
+                alert_data={"alert_type": "test", "environment": "test"}
+            )
+            chain_context = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
                 session_id="test-session-id",
                 current_stage_name="test_stage"
             )
@@ -783,9 +792,18 @@ class TestHistoryServiceErrorHandling:
             )
             from tarsy.models.processing_context import ChainContext
             
-            chain_context = ChainContext(
+            from tarsy.models.alert import ProcessingAlert
+            from tarsy.utils.timestamp import now_us
+            
+            processing_alert = ProcessingAlert(
                 alert_type="alert",
-                alert_data={"test": "data"},
+                severity="warning",
+                timestamp=now_us(),
+                environment="production",
+                alert_data={"test": "data"}
+            )
+            chain_context = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
                 session_id="test-session-id",
                 current_stage_name="test_stage"
             )
@@ -835,9 +853,18 @@ class TestHistoryServiceErrorHandling:
             )
             from tarsy.models.processing_context import ChainContext
             
-            chain_context = ChainContext(
+            from tarsy.models.alert import ProcessingAlert
+            from tarsy.utils.timestamp import now_us
+            
+            processing_alert = ProcessingAlert(
                 alert_type="alert",
-                alert_data={"test": "data"},
+                severity="warning",
+                timestamp=now_us(),
+                environment="production",
+                alert_data={"test": "data"}
+            )
+            chain_context = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
                 session_id="test-session-id",
                 current_stage_name="test_stage"
             )

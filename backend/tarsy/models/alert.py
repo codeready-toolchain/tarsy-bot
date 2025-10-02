@@ -80,6 +80,7 @@ class ProcessingAlert(BaseModel):
     # === Processing Metadata (our fields) ===
     alert_type: str = Field(
         ..., 
+        min_length=1,
         description="Alert type (always set)"
     )
     severity: str = Field(

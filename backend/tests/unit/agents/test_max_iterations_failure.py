@@ -99,9 +99,18 @@ class TestReactControllerMaxIterationsFailure:
     @pytest.fixture
     def sample_context(self, mock_agent):
         """Create sample stage context."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"alert": "TestAlert"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"alert": "TestAlert"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="session-123",
             current_stage_name="analysis"
         )
@@ -204,9 +213,18 @@ class TestReactFinalAnalysisControllerFailureDetection:
     @pytest.fixture
     def sample_context(self, mock_agent):
         """Create sample stage context."""
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type="test",
-            alert_data={"alert": "TestAlert"},
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"alert": "TestAlert"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="session-456",
             current_stage_name="final-diagnosis"
         )

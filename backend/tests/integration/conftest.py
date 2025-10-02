@@ -468,14 +468,14 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                 ], session_id=chain_context.session_id)
                 
                 # Extract namespace from alert data for tool calls
-                namespace = chain_context.alert_data.get('namespace', 'default')
+                namespace = chain_context.processing_alert.alert_data.get('namespace', 'default')
                 
                 # Simulate calling MCP client for tool listing and execution (iterative analysis)
                 await mock_mcp_client.list_tools(session_id=chain_context.session_id, server_name="kubernetes-server")
                 await mock_mcp_client.call_tool("kubernetes-server", "kubectl_get_namespace", {"namespace": namespace})
                 
                 # Create comprehensive analysis including all relevant data from the alert
-                alert_data = chain_context.alert_data
+                alert_data = chain_context.processing_alert.alert_data
                 analysis_parts = [f"Namespace '{namespace}' analyzed."]
                 
                 # Include service-specific information
@@ -570,7 +570,7 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                 
                 # Generate analysis that includes comprehensive alert data content
                 # Determine service/entity name from different alert types
-                alert_data = chain_context.alert_data
+                alert_data = chain_context.processing_alert.alert_data
                 service_name = "unknown service"
                 if 'service' in alert_data:
                     service_name = alert_data['service']

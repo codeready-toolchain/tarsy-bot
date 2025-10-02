@@ -361,13 +361,22 @@ class TestServiceInteractionPatterns:
         
         # Create ChainContext for the new architecture
         from tarsy.models.processing_context import ChainContext
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            alert_data=sample_alert.data,
-            session_id="test-session-integration",
-            current_stage_name="analysis",
-            runbook_content=sample_runbook_content
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert.data
         )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-integration",
+            current_stage_name="analysis"
+        )
+        chain_context.runbook_content = sample_runbook_content
         
         # Act
         result = await agent.process_alert(chain_context)
@@ -406,13 +415,22 @@ class TestErrorPropagationBetweenComponents:
         
         # Act
         from tarsy.models.processing_context import ChainContext
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            alert_data=sample_alert.data,
-            session_id="test-session-integration",
-            current_stage_name="analysis",
-            runbook_content=sample_runbook_content
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert.data
         )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-integration",
+            current_stage_name="analysis"
+        )
+        chain_context.runbook_content = sample_runbook_content
         result = await agent.process_alert(chain_context)
         
         # Assert - Agent should handle MCP errors gracefully
@@ -439,13 +457,22 @@ class TestErrorPropagationBetweenComponents:
         
         # Act
         from tarsy.models.processing_context import ChainContext
-        chain_context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            alert_data=sample_alert.data,
-            session_id="test-session-integration",
-            current_stage_name="analysis",
-            runbook_content=sample_runbook_content
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=sample_alert.data
         )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-integration",
+            current_stage_name="analysis"
+        )
+        chain_context.runbook_content = sample_runbook_content
         result = await agent.process_alert(chain_context)
         
         # Assert - Agent should handle LLM errors gracefully and now correctly fails with our new logic

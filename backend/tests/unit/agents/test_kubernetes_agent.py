@@ -523,6 +523,10 @@ class TestKubernetesAgentIntegrationScenarios:
     @pytest.mark.asyncio
     async def test_complete_analysis_workflow(self, full_kubernetes_agent_setup):
         """Test complete workflow from alert to analysis."""
+        from tarsy.models.processing_context import ChainContext
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
         agent, mock_llm, mock_mcp, mock_registry = full_kubernetes_agent_setup
         
         # Mock the MCP client
@@ -565,14 +569,19 @@ class TestKubernetesAgentIntegrationScenarios:
         runbook_content = "# Kubernetes Pod Troubleshooting\\n..."
         
         # Create ChainContext for new interface
-        from tarsy.models.processing_context import ChainContext
-        chain_context = ChainContext(
+        processing_alert = ProcessingAlert(
             alert_type=pod_crash_alert.alert_type,
-            alert_data=pod_crash_alert.data,
-            session_id="test-session-123",
-            current_stage_name="analysis",
-            runbook_content=runbook_content
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=pod_crash_alert.data
         )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        chain_context.runbook_content = runbook_content
         
         result = await agent.process_alert(chain_context)
         
@@ -612,6 +621,10 @@ class TestKubernetesAgentIntegrationScenarios:
     @pytest.mark.asyncio
     async def test_error_recovery_and_fallback(self, full_kubernetes_agent_setup):
         """Test that agent fails gracefully when MCP connection fails."""
+        from tarsy.models.processing_context import ChainContext
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
         agent, mock_llm, mock_mcp, mock_registry = full_kubernetes_agent_setup
         
         # Mock MCP configuration error
@@ -644,13 +657,19 @@ class TestKubernetesAgentIntegrationScenarios:
         )
         
         from tarsy.models.processing_context import ChainContext
-        chain_context = ChainContext(
+        processing_alert = ProcessingAlert(
             alert_type=pod_crash_alert.alert_type,
-            alert_data=pod_crash_alert.data,
-            session_id="test-session-123",
-            current_stage_name="analysis",
-            runbook_content="runbook"
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=pod_crash_alert.data
         )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        chain_context.runbook_content = "runbook"
         result = await agent.process_alert(chain_context)
         
         # Agent should fail when it can't list tools since it can't perform its primary function
@@ -660,6 +679,10 @@ class TestKubernetesAgentIntegrationScenarios:
     @pytest.mark.asyncio
     async def test_multiple_tool_iterations(self, full_kubernetes_agent_setup):
         """Test handling of multiple MCP tool iterations."""
+        from tarsy.models.processing_context import ChainContext
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
         agent, mock_llm, mock_mcp, mock_registry = full_kubernetes_agent_setup
         
         # Mock iterative tool calls with properly structured tool data
@@ -702,13 +725,19 @@ class TestKubernetesAgentIntegrationScenarios:
         )
         
         from tarsy.models.processing_context import ChainContext
-        chain_context = ChainContext(
+        processing_alert = ProcessingAlert(
             alert_type=pod_crash_alert.alert_type,
-            alert_data=pod_crash_alert.data,
-            session_id="test-session-123",
-            current_stage_name="analysis",
-            runbook_content="runbook"
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data=pod_crash_alert.data
         )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        chain_context.runbook_content = "runbook"
         result = await agent.process_alert(chain_context)
         
         assert result.status.value == "completed"
