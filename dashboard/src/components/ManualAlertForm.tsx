@@ -156,10 +156,8 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
         validationErrors.push('Alert Type is required');
       }
       
-      if (!runbook || runbook.trim().length === 0) {
-        validationErrors.push('Runbook URL is required');
-      } else {
-        // Validate runbook URL format
+      // Validate runbook URL format only if provided (optional field)
+      if (runbook && runbook.trim().length > 0) {
         try {
           new URL(runbook);
         } catch (urlError) {
@@ -240,9 +238,13 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
       // Build alert data
       const alertData: any = {
         alert_type: alertType.trim(),
-        runbook: runbook.trim(),
         data: {}
       };
+      
+      // Only include runbook if provided
+      if (runbook && runbook.trim().length > 0) {
+        alertData.runbook = runbook.trim();
+      }
 
       // Add processed key-value pairs to data with type conversion
       processedPairs.forEach(pair => {
@@ -431,12 +433,11 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
 
               <TextField
                 fullWidth
-                label="Runbook URL"
+                label="Runbook URL (Optional)"
                 value={runbook}
                 onChange={(e) => setRunbook(e.target.value)}
                 placeholder="https://github.com/org/repo/blob/master/runbooks/alert.md"
-                required
-                helperText="URL to the processing runbook"
+                helperText="URL to the processing runbook (uses built-in default if not provided)"
               />
             </Stack>
 
