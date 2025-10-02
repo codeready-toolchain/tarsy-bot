@@ -42,13 +42,13 @@ class AlertKey(BaseModel):
         import hashlib
         
         # Generate deterministic hash from alert data (excluding timestamp for duplicate detection)
-        alert_data_for_hash = context.alert_data.copy()
+        alert_data_for_hash = context.processing_alert.alert_data.copy()
         alert_data_for_hash.pop('timestamp', None)  # Remove timestamp to allow duplicate detection
         
         data_json = json.dumps(alert_data_for_hash, sort_keys=True, separators=(',', ':'))
         content_hash = hashlib.sha256(data_json.encode('utf-8')).hexdigest()[:12]
         
-        return cls(alert_type=context.alert_type, content_hash=content_hash)
+        return cls(alert_type=context.processing_alert.alert_type, content_hash=content_hash)
     
     def __str__(self) -> str:
         """String representation used as the actual key."""

@@ -268,9 +268,9 @@ class HistoryService:
                 session = AlertSession(
                     session_id=chain_context.session_id,
                     alert_id=alert_id,
-                    alert_data=chain_context.alert_data,
+                    alert_data=chain_context.processing_alert.alert_data,
                     agent_type=agent_type,
-                    alert_type=chain_context.alert_type,
+                    alert_type=chain_context.processing_alert.alert_type,
                     status=AlertSessionStatus.PENDING.value,
                     chain_id=chain_definition.chain_id,
                     chain_definition=chain_definition.model_dump()  # Store as JSON-serializable dict

@@ -56,7 +56,7 @@ class PromptBuilder:
         
         # Build question
         question = ANALYSIS_QUESTION_TEMPLATE.format(
-            alert_type=context.chain_context.alert_type,
+            alert_type=context.chain_context.processing_alert.alert_type,
             alert_section=alert_section,
             runbook_section=runbook_section,
             chain_context=chain_context
@@ -92,7 +92,7 @@ class PromptBuilder:
         # Build question
         stage_name = context.stage_name or "analysis"
         question = STAGE_ANALYSIS_QUESTION_TEMPLATE.format(
-            alert_type=context.chain_context.alert_type,
+            alert_type=context.chain_context.processing_alert.alert_type,
             alert_section=alert_section,
             runbook_section=runbook_section,
             chain_context=chain_context,
