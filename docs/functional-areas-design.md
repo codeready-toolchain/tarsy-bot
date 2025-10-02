@@ -87,11 +87,11 @@ sequenceDiagram
 - **Alert model**: Simple, flexible structure (see `backend/tarsy/models/alert.py`)
 ```python
 class Alert(BaseModel):
-    alert_type: str          # Required - determines chain selection
-    runbook: str             # Required - GitHub runbook URL  
-    data: Dict[str, Any]     # Flexible JSON payload
-    severity: Optional[str]  # Defaults to "warning"
-    timestamp: Optional[int] # Defaults to current time
+    alert_type: str               # Required - determines chain selection
+    runbook: Optional[str]        # Optional - GitHub runbook URL (uses built-in default if not provided)
+    data: Dict[str, Any]          # Flexible JSON payload
+    severity: Optional[str]       # Defaults to "warning"
+    timestamp: Optional[int]      # Defaults to current time (microseconds)
 ```
 
 **📍 Core Service**: `backend/tarsy/services/alert_service.py`
@@ -355,12 +355,21 @@ chains:
 **📍 Unified Data Model**: `backend/tarsy/models/processing_context.py`
 ```python
 class ChainContext(BaseModel):
-    alert_type: str                    # Determines chain selection
-    alert_data: Dict[str, Any]         # Original alert payload
+    processing_alert: ProcessingAlert  # Composed alert with metadata + pristine client data
     session_id: str                    # Links to history tracking
+    current_stage_name: str            # Currently executing stage
     stage_outputs: Dict[str, AgentExecutionResult]  # Accumulated stage results
     runbook_content: Optional[str]     # Downloaded once per chain
     chain_id: Optional[str]            # Executing chain identifier
+
+# ProcessingAlert separates internal metadata from client data
+class ProcessingAlert(BaseModel):
+    alert_type: str                    # Determines chain selection
+    severity: str                      # Alert severity level
+    timestamp: int                     # Microsecond timestamp
+    environment: str                   # Target environment
+    runbook_url: Optional[str]         # Optional runbook URL
+    alert_data: Dict[str, Any]         # Pristine client data (not polluted with metadata)
 ```
 
 **Stage Data Accumulation**: Each stage sees all previous stage outputs, enabling progressive analysis and building upon previous work.

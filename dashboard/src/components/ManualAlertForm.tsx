@@ -381,7 +381,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
         
         <Typography variant="body2" color="text.secondary" paragraph>
           Use this form to submit alerts with flexible data structures. 
-          Only Alert Type and Runbook are required - add any additional fields as key-value pairs.
+          Only Alert Type is required - Runbook URL is optional (uses built-in default if not provided). Add any additional fields as key-value pairs.
         </Typography>
 
         {error && (

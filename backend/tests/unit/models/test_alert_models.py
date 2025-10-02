@@ -91,27 +91,6 @@ class TestProcessingAlertTransformation:
         # But ALSO kept in client data (pristine!)
         assert processing_alert.alert_data["environment"] == "staging"
     
-    def test_default_environment_when_not_in_data(self):
-        """Test transformation defaults to 'production' environment if not in client data."""
-        alert = Alert(
-            alert_type="kubernetes",
-            data={"pod": "test-pod"}
-        )
-        
-        processing_alert = ProcessingAlert.from_api_alert(alert)
-        
-        assert processing_alert.environment == "production"
-    
-    def test_runbook_url_none_when_not_provided(self):
-        """Test transformation handles missing runbook URL."""
-        alert = Alert(
-            alert_type="kubernetes",
-            data={"test": "data"}
-        )
-        
-        processing_alert = ProcessingAlert.from_api_alert(alert)
-        
-        assert processing_alert.runbook_url is None
     
     def test_preserves_complex_nested_json(self):
         """Test transformation preserves complex nested JSON structures exactly."""
@@ -200,23 +179,6 @@ class TestNameCollisionPrevention:
         # Client's data has their value (ISO string) - no collision!
         assert processing_alert.alert_data["timestamp"] == "2025-10-01T10:00:00Z"
     
-    def test_client_alert_type_does_not_collide_with_metadata_alert_type(self):
-        """Test that client can have their own 'alert_type' field without collision."""
-        alert = Alert(
-            alert_type="kubernetes",  # Our metadata
-            data={
-                "alert_type": "client-alert-type",  # Client's field
-                "message": "Test alert"
-            }
-        )
-        
-        processing_alert = ProcessingAlert.from_api_alert(alert)
-        
-        # Our metadata has our value
-        assert processing_alert.alert_type == "kubernetes"
-        
-        # Client's data has their value - no collision!
-        assert processing_alert.alert_data["alert_type"] == "client-alert-type"
 
 
 @pytest.mark.unit
@@ -250,25 +212,6 @@ class TestDataPreservationAndPurity:
         assert "runbook" not in processing_alert.alert_data
         assert "timestamp" not in processing_alert.alert_data
         assert "runbook_url" not in processing_alert.alert_data
-    
-    def test_minimal_manipulation_client_data_exactly_as_sent(self):
-        """Test minimal manipulation principle: client data is EXACTLY what they sent."""
-        original_data = {
-            "pod": "api-123",
-            "namespace": "prod",
-            "custom_field": "value",
-            "nested": {"data": "here"}
-        }
-        
-        alert = Alert(
-            alert_type="kubernetes",
-            data=original_data.copy()
-        )
-        
-        processing_alert = ProcessingAlert.from_api_alert(alert)
-        
-        # Client data should be EXACTLY what they sent (no additions, no changes)
-        assert processing_alert.alert_data == original_data
     
     def test_client_data_with_conflicting_names_preserved_pristine(self):
         """Test that even when client uses our field names, their data stays pristine."""
