@@ -195,11 +195,6 @@ class TestSubmitAlertEndpoint:
             400,
             "Invalid alert_type"
         ),
-        (
-            {"alert_type": "test", "runbook": "", "data": {}},
-            400,
-            "Invalid runbook"
-        ),
     ])
     @patch('tarsy.main.alert_service')
     def test_submit_alert_input_validation(
@@ -232,12 +227,15 @@ class TestSubmitAlertEndpoint:
         
         # Additional checks for specific error types
         if expected_error == "Empty request body":
-            assert "expected_fields" in data["detail"]
+            assert "required_fields" in data["detail"]
+            assert "optional_fields" in data["detail"]
         elif expected_error == "Invalid data structure":
             assert "received_type" in data["detail"]
         elif expected_error == "Validation failed":
             assert "validation_errors" in data["detail"]
-        elif expected_error in ["Invalid alert_type", "Invalid runbook"]:
+            assert "required_fields" in data["detail"]
+            assert "optional_fields" in data["detail"]
+        elif expected_error == "Invalid alert_type":
             assert "field" in data["detail"]
 
     def test_submit_alert_duplicate_detection(self, client, valid_alert_data):
@@ -348,6 +346,36 @@ class TestSubmitAlertEndpoint:
         
         response = client.post("/api/v1/alerts", json=minimal_data)
         assert response.status_code == 200
+        
+        # Verify alert_service.register_alert_id was called
+        mock_alert_service.register_alert_id.assert_called_once()
+        # Verify background task was created
+        mock_create_task.assert_called_once()
+
+    @patch('tarsy.main.alert_service')
+    @patch('asyncio.create_task')
+    def test_submit_alert_without_runbook(
+        self, mock_create_task, mock_alert_service, client
+    ):
+        """Test alert submission without runbook field (should use built-in default)."""
+        # Mock alert_service methods
+        mock_alert_service.register_alert_id = Mock()
+        
+        alert_data_no_runbook = {
+            "alert_type": "test_alert",
+            "data": {
+                "namespace": "test-namespace",
+                "message": "Test alert without runbook"
+            }
+        }
+        
+        response = client.post("/api/v1/alerts", json=alert_data_no_runbook)
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["status"] == "queued"
+        assert "alert_id" in data
+        assert len(data["alert_id"]) == 36  # UUID format
         
         # Verify alert_service.register_alert_id was called
         mock_alert_service.register_alert_id.assert_called_once()

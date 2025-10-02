@@ -30,24 +30,17 @@ def alert_to_api_format(alert: Alert) -> ChainContext:
     """
     Convert an Alert object to the ChainContext format that AlertService expects.
     
-    This matches the format created in main.py lines 350-353.
+    This matches the format created in the alert controller using NormalizedAlertData.
     """
-    # Create normalized_data that matches what the API layer does
-    normalized_data = alert.data.copy() if alert.data else {}
+    from tarsy.models.alert import NormalizedAlertData
     
-    # Add core fields (matching API logic)
-    normalized_data["runbook"] = alert.runbook
-    normalized_data["severity"] = alert.severity or "warning"
-    normalized_data["timestamp"] = alert.timestamp or now_us()
-    
-    # Add default environment if not present
-    if "environment" not in normalized_data:
-        normalized_data["environment"] = "production"
+    # Use the type-safe normalization (same as controller)
+    normalized_data = NormalizedAlertData.from_alert(alert)
     
     # Return ChainContext instance that AlertService expects
     return ChainContext(
         alert_type=alert.alert_type,
-        alert_data=normalized_data,
+        alert_data=normalized_data.to_dict(),
         session_id=f"test-session-{hash(str(alert.data))}",  # EP-0012: Generate test session ID from alert data
         current_stage_name="initial"  # Default stage for tests
     )
@@ -219,4 +212,16 @@ def minimal_alert():
         alert_type="test",
         runbook="https://example.com/minimal-runbook",
         data={}
+    )
+
+
+@pytest.fixture
+def alert_without_runbook():
+    """Create an alert without runbook (should use built-in default)."""
+    return Alert(
+        alert_type="test",
+        data={
+            "environment": "production",
+            "message": "Test alert without runbook"
+        }
     ) 

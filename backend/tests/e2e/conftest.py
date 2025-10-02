@@ -330,9 +330,10 @@ def e2e_realistic_kubernetes_alert():
     return {
         "alert_type": "test-kubernetes", 
         "runbook": "https://runbooks.example.com/k8s-namespace-stuck",
-        "alert_data": {
+        "severity": "warning",  # Top-level field in Alert model
+        # Note: timestamp will be generated if not provided
+        "data": {  # User-provided data fields
             "namespace": "test-namespace",
-            "severity": "warning", 
             "description": "Namespace stuck in Terminating state",
             "cluster": "test-cluster",
             "labels": {
@@ -341,8 +342,7 @@ def e2e_realistic_kubernetes_alert():
             },
             "annotations": {
                 "finalizers": "kubernetes.io/pv-protection"
-            },
-            "timestamp": "2024-01-15T10:30:00Z"
+            }
         }
     }
 

@@ -277,14 +277,15 @@ class AlertService:
             self._update_session_status(chain_context.session_id, AlertSessionStatus.IN_PROGRESS.value)
             
             # Step 3: Extract runbook from alert data and download once per chain
+            # If no runbook URL provided, use the built-in default runbook
             runbook = chain_context.get_runbook_url()
-            if not runbook:
-                error_msg = "No runbook specified in alert data"
-                logger.error(error_msg)
-                self._update_session_error(chain_context.session_id, error_msg)
-                return self._format_error_response(chain_context, error_msg)
-            
-            runbook_content = await self.runbook_service.download_runbook(runbook)
+            if runbook:
+                logger.debug(f"Downloading runbook from: {runbook}")
+                runbook_content = await self.runbook_service.download_runbook(runbook)
+            else:
+                logger.debug("No runbook URL provided, using built-in default runbook")
+                from tarsy.config.builtin_config import DEFAULT_RUNBOOK_CONTENT
+                runbook_content = DEFAULT_RUNBOOK_CONTENT
             
             # Step 4: Set up chain context
             chain_context.set_chain_context(chain_definition.chain_id)
