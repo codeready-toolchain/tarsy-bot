@@ -35,9 +35,9 @@ class TestNewChainContextUsage:
         assert context.alert_data["pod"] == "test-pod"
         
         # Test methods
-        original_data = context.get_original_alert_data()
-        assert original_data == context.alert_data
-        assert original_data is not context.alert_data  # Should be a copy
+        original_data = context.processing_alert.alert_data.copy()
+        assert original_data == context.processing_alert.alert_data
+        assert original_data is not context.processing_alert.alert_data  # Should be a copy
         
         assert context.get_runbook_content() == ""  # No runbook set
         assert context.get_previous_stages_results() == []  # No previous stages
@@ -89,7 +89,7 @@ class TestNewChainContextUsage:
         assert context.alert_type == "KubernetesPodCrashLooping"
         
         # Test accessing nested data
-        alert_data = context.get_original_alert_data()
+        alert_data = context.processing_alert.alert_data.copy()
         assert alert_data["pod_info"]["name"] == "api-server-7d4b9c8f6-xyz123"
         assert alert_data["pod_info"]["restart_count"] == 15
         assert alert_data["cluster_info"]["region"] == "us-east-1"
@@ -392,10 +392,10 @@ class TestNewModelsInRealScenarios:
         )
         
         # Should handle large data efficiently
-        assert len(context.alert_data["large_list"]) == 1000
-        assert len(context.alert_data["nested_data"]) == 100
+        assert len(context.processing_alert.alert_data["large_list"]) == 1000
+        assert len(context.processing_alert.alert_data["nested_data"]) == 100
         
         # Property access should still be fast
-        original = context.get_original_alert_data()
+        original = context.processing_alert.alert_data.copy()
         assert original == large_data
         assert original is not large_data  # Should be a copy

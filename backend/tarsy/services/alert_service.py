@@ -278,7 +278,7 @@ class AlertService:
             
             # Step 3: Extract runbook from alert data and download once per chain
             # If no runbook URL provided, use the built-in default runbook
-            runbook = chain_context.get_runbook_url()
+            runbook = chain_context.processing_alert.runbook_url
             if runbook:
                 logger.debug(f"Downloading runbook from: {runbook}")
                 runbook_content = await self.runbook_service.download_runbook(runbook)

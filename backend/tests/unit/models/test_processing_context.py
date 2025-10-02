@@ -113,7 +113,7 @@ class TestChainContext:
             current_stage_name="test-stage"
         )
         
-        retrieved_data = context.get_original_alert_data()
+        retrieved_data = context.processing_alert.alert_data.copy()
         
         # Should be a copy, not the same object
         assert retrieved_data == original_data
@@ -121,7 +121,7 @@ class TestChainContext:
         
         # Modifying retrieved data shouldn't affect original
         retrieved_data["new_key"] = "new_value"
-        assert "new_key" not in context.alert_data
+        assert "new_key" not in context.processing_alert.alert_data
     
     def test_get_runbook_content(self):
         """Test getting runbook content with defaults."""

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from .agent_execution_result import AgentExecutionResult
 from .constants import StageStatus
+from .alert import ProcessingAlert
 from mcp.types import Tool
 
 if TYPE_CHECKING:
@@ -39,34 +40,61 @@ class AvailableTools(BaseModel):
 
 class ChainContext(BaseModel):
     """
-    Context for entire chain processing session:
+    Context for entire chain processing session.
     
-    - session_id is always included (no separate parameter passing)
-    - stage_outputs has correct type annotation (AgentExecutionResult, not Dict)
-    - API-only methods (get_severity, get_environment) removed
-    - Stage execution order preserved via Dict insertion order
+    Uses composition to keep ProcessingAlert as a single source of truth
+    for alert metadata and client data, while ChainContext manages session
+    and execution state.
+    
+    This design follows the principle: "Different purposes deserve different models"
+    - ProcessingAlert = Alert state (metadata + client data)
+    - ChainContext = Session state (alert + execution + history)
     """
     model_config: ConfigDict = ConfigDict(extra="forbid", frozen=False)
     
-    # Core data - session_id is now required field
-    alert_type: str = Field(..., description="Type of alert (kubernetes, aws, etc.)", min_length=1)
-    alert_data: Dict[str, Any] = Field(..., description="Flexible client alert data", min_length=1)
-    session_id: str = Field(..., description="Processing session ID", min_length=1)
+    # === Alert state (composed) ===
+    processing_alert: ProcessingAlert = Field(
+        ..., 
+        description="Complete alert state including metadata and client data"
+    )
     
-    # Chain execution state
+    # === Session state ===
+    session_id: str = Field(..., description="Processing session ID", min_length=1)
     current_stage_name: str = Field(..., description="Currently executing stage name", min_length=1)
     stage_outputs: Dict[str, AgentExecutionResult] = Field(
         default_factory=dict,
-        description="Results from completed stages (FIXED: correct type annotation)"
+        description="Results from completed stages"
     )
     
-    # Processing support
+    # === Processing support ===
     runbook_content: Optional[str] = Field(None, description="Downloaded runbook content")
     chain_id: Optional[str] = Field(None, description="Chain identifier")
     
-    def get_original_alert_data(self) -> Dict[str, Any]:
-        """Get clean original alert data without processing artifacts."""
-        return self.alert_data.copy()
+    @classmethod
+    def from_processing_alert(
+        cls,
+        processing_alert: ProcessingAlert,
+        session_id: str,
+        current_stage_name: str = "initializing"
+    ) -> "ChainContext":
+        """
+        Create ChainContext from ProcessingAlert.
+        
+        This is the preferred way to create ChainContext from API alerts.
+        
+        Args:
+            processing_alert: Processed alert with metadata
+            session_id: Processing session ID
+            current_stage_name: Initial stage name
+            
+        Returns:
+            ChainContext ready for processing
+        """
+        return cls(
+            processing_alert=processing_alert,
+            session_id=session_id,
+            current_stage_name=current_stage_name
+        )
     
     def get_runbook_content(self) -> str:
         """Get downloaded runbook content."""
@@ -88,10 +116,6 @@ class ChainContext(BaseModel):
     def add_stage_result(self, stage_name: str, result: AgentExecutionResult):
         """Add result from a completed stage."""
         self.stage_outputs[stage_name] = result
-    
-    def get_runbook_url(self) -> Optional[str]:
-        """Extract runbook URL from alert data."""
-        return self.alert_data.get('runbook')
     
     def set_chain_context(self, chain_id: str, stage_name: Optional[str] = None):
         """Set chain context information."""
@@ -119,7 +143,7 @@ class StageContext:
     @property
     def alert_data(self) -> Dict[str, Any]:
         """Alert data from chain context."""
-        return self.chain_context.get_original_alert_data()
+        return self.chain_context.processing_alert.alert_data.copy()
     
     @property
     def runbook_content(self) -> str:
