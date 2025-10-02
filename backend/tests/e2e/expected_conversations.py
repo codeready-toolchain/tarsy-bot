@@ -212,11 +212,11 @@ EXPECTED_STAGES = {
             {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server', 'error_message': "Failed to call tool kubectl_describe on kubernetes-server after 2 attempts: Type=McpError | Message=tool 'kubectl_describe' not found: tool not found | error=ErrorData(code=-32602, message=\"tool 'kubectl_describe' not found: tool not found\", data=None)"},
             # LLM 3 - Third ReAct iteration
             {'type': 'llm', 'position': 3, 'success': True, 'conversation_index': 7, 'input_tokens': 220, 'output_tokens': 75, 'total_tokens': 295},
-            # LLM 4 - Summarization of large system info result (separate LLM call, not in conversation)
-            # The summarization interaction happens within the collect_system_info MCP call interaction, so it's recorded before the MCP interaction
-            {'type': 'llm', 'position': 4, 'success': True, 'conversation': EXPECTED_DATA_COLLECTION_SUMMARIZATION_CONVERSATION, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150},
-            # MCP 5 - Successful collect_system_info call (will trigger summarization)
+            # MCP 5 - Successful collect_system_info call (stores actual result, then triggers summarization)
             {'type': 'mcp', 'position': 5, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
+            # LLM 4 - Summarization of large system info result (separate LLM call after MCP interaction stored)
+            # The summarization interaction now happens AFTER the MCP interaction is stored to DB with actual result
+            {'type': 'llm', 'position': 4, 'success': True, 'conversation': EXPECTED_DATA_COLLECTION_SUMMARIZATION_CONVERSATION, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150},
             # LLM 5 - Fourth ReAct iteration (kubectl events call) - continues after system info
             {'type': 'llm', 'position': 5, 'success': True, 'conversation_index': 9, 'input_tokens': 200, 'output_tokens': 60, 'total_tokens': 260},
             # MCP 6 - Successful kubectl_get events call

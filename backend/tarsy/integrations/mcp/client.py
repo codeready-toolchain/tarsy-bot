@@ -324,6 +324,11 @@ class MCPClient:
     async def call_tool(self, server_name: str, tool_name: str, parameters: Dict[str, Any], session_id: str, stage_execution_id: Optional[str] = None, investigation_conversation: Optional['LLMConversation'] = None) -> Dict[str, Any]:
         """Call a specific tool on an MCP server with optional investigation context for summarization.
         
+        Timeline: This method ensures correct interaction ordering in history:
+        1. MCP interaction stored with actual tool result
+        2. Summarization LLM interaction (if triggered)
+        3. Summary returned to agent for conversation
+        
         Args:
             server_name: Name of the MCP server
             tool_name: Name of the tool to call
@@ -337,6 +342,9 @@ class MCPClient:
         
         if server_name not in self.sessions:
             raise Exception(f"MCP server not found: {server_name}")
+        
+        # Variable to store the actual result for later summarization (if needed)
+        actual_result: Optional[Dict[str, Any]] = None
         
         # Use typed hook context for clean data flow
         async with mcp_interaction_context(session_id, server_name, tool_name, parameters, stage_execution_id) as ctx:
@@ -387,23 +395,19 @@ class MCPClient:
                             response_dict = {"result": "[REDACTED: masking failure]"}
                             raise Exception(f"Data masking failed for server '{server_name}': {str(e)}") from e
                     
-                    # Apply summarization AFTER data masking (if investigation context available)
-                    if investigation_conversation:
-                        response_dict = await self._maybe_summarize_result(
-                            server_name, tool_name, response_dict, investigation_conversation, 
-                            session_id, stage_execution_id
-                        )
-                    
-                    # Log the successful response (after masking and optional summarization)
+                    # Log the successful response with ACTUAL result (before optional summarization)
                     self._log_mcp_response(server_name, tool_name, response_dict, request_id)
                     
-                    # Update the interaction with result data
+                    # Store ACTUAL result in interaction (this is what goes to DB)
                     ctx.interaction.tool_result = response_dict
                     
                     # Complete the typed context with success
+                    # This triggers MCP hooks and stores the interaction to DB with actual result
                     await ctx.complete_success({})
                     
-                    return response_dict
+                    # Store actual result for potential summarization outside the context
+                    actual_result = response_dict
+                    break  # Success, exit retry loop
                         
                 except Exception as e:
                     error_details = extract_error_details(e)
@@ -426,6 +430,19 @@ class MCPClient:
                     error_msg = f"Failed to call tool {tool_name} on {server_name} after {max_retries} attempts: {error_details}"
                     self._log_mcp_error(server_name, tool_name, error_details, request_id)
                     raise Exception(error_msg) from e
+        
+        # MCP interaction is now stored in DB with actual result
+        # Now perform summarization if needed (creates separate LLM interaction with later timestamp)
+        if actual_result and investigation_conversation:
+            summarized_result = await self._maybe_summarize_result(
+                server_name, tool_name, actual_result, investigation_conversation, 
+                session_id, stage_execution_id
+            )
+            # Return summary for agent conversation
+            return summarized_result
+        
+        # Return actual result if no summarization needed
+        return actual_result
     
     async def _recover_session(self, server_name: str) -> None:
         """Recover a failed MCP session by recreating it.
