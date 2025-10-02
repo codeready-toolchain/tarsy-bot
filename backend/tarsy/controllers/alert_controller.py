@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 
-from tarsy.models.alert import Alert, AlertResponse, NormalizedAlertData
+from tarsy.models.alert import Alert, AlertResponse, ProcessingAlert
 from tarsy.models.alert_processing import AlertKey
 from tarsy.utils.logger import get_logger
 
@@ -232,10 +232,9 @@ async def submit_alert(request: Request) -> AlertResponse:
                     }
                 )
         
-        # Normalize alert data using type-safe model
-        normalized_data = NormalizedAlertData.from_alert(alert_data)
+        # Transform API alert to ProcessingAlert (adds metadata, keeps data pristine)
+        processing_alert = ProcessingAlert.from_api_alert(alert_data)
         
-        # Create alert structure for processing using ChainContext
         # Generate unique session ID
         session_id = str(uuid.uuid4())
         
@@ -243,9 +242,9 @@ async def submit_alert(request: Request) -> AlertResponse:
         from tarsy.models.processing_context import ChainContext
         from tarsy.main import process_alert_background, alert_service
         
-        alert_context = ChainContext(
-            alert_type=alert_data.alert_type,
-            alert_data=normalized_data.to_dict(),
+        # Create ChainContext from ProcessingAlert
+        alert_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id=session_id,
             current_stage_name="initializing"  # Will be updated to actual stage names from config during execution
         )
