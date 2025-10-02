@@ -553,7 +553,7 @@ def flexible_alert_to_api_format(flexible_alert: dict) -> ChainContext:
     # Extract other metadata fields
     severity = normalized_data.pop("severity", flexible_alert.get("severity", "warning"))
     timestamp = normalized_data.pop("timestamp", flexible_alert.get("timestamp", now_us()))
-    environment = normalized_data.pop("environment", "production")
+    environment = normalized_data.pop("environment", flexible_alert.get("environment", "production"))
     
     from tarsy.models.alert import ProcessingAlert
     
