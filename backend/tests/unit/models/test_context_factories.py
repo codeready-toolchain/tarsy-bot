@@ -10,6 +10,7 @@ from typing import List
 from unittest.mock import Mock
 
 from tarsy.models.agent_execution_result import AgentExecutionResult
+from tarsy.models.alert import ProcessingAlert
 from tarsy.models.constants import StageStatus
 from tarsy.models.processing_context import (
     AvailableTools,
@@ -26,9 +27,16 @@ class ChainContextFactory:
     @staticmethod
     def create_basic() -> ChainContext:
         """Create a basic ChainContext for testing."""
-        return ChainContext(
+        processing_alert = ProcessingAlert(
             alert_type="kubernetes",
-            alert_data={"pod": "test-pod", "namespace": "default"},
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={"pod": "test-pod", "namespace": "default"}
+        )
+        return ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="test-session-123",
             current_stage_name="analysis"
         )
@@ -36,30 +44,44 @@ class ChainContextFactory:
     @staticmethod
     def create_with_runbook() -> ChainContext:
         """Create ChainContext with runbook content."""
-        return ChainContext(
-            alert_type="kubernetes", 
+        processing_alert = ProcessingAlert(
+            alert_type="kubernetes",
+            severity="critical",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url="https://example.com/runbook",
             alert_data={
                 "pod": "failing-pod",
                 "namespace": "production",
-                "severity": "critical",
                 "error": "CrashLoopBackOff"
-            },
-            session_id="prod-session-456",
-            current_stage_name="investigation",
-            runbook_content="# Pod Failure Runbook\n\n## Investigation Steps\n1. Check pod logs\n2. Verify resource limits",
-            chain_id="k8s-troubleshooting-chain"
+            }
         )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="prod-session-456",
+            current_stage_name="investigation"
+        )
+        context.runbook_content = "# Pod Failure Runbook\n\n## Investigation Steps\n1. Check pod logs\n2. Verify resource limits"
+        context.chain_id = "k8s-troubleshooting-chain"
+        return context
     
     @staticmethod
     def create_with_stage_results() -> ChainContext:
         """Create ChainContext with completed stage results."""
-        context = ChainContext(
+        processing_alert = ProcessingAlert(
             alert_type="aws",
-            alert_data={"instance_id": "i-1234567890abcdef0", "region": "us-east-1"},
-            session_id="aws-session-789",
-            current_stage_name="remediation",
-            chain_id="aws-ec2-chain"
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={"instance_id": "i-1234567890abcdef0", "region": "us-east-1"}
         )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="aws-session-789",
+            current_stage_name="remediation"
+        )
+        context.chain_id = "aws-ec2-chain"
         
         # Add completed data collection stage
         data_collection_result = AgentExecutionResult(
@@ -126,9 +148,16 @@ class ChainContextFactory:
             }
         }
         
-        return ChainContext(
+        processing_alert = ProcessingAlert(
             alert_type="KubernetesPodCrashLooping",
-            alert_data=complex_data,
+            severity="critical",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data=complex_data
+        )
+        return ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="complex-session-999",
             current_stage_name="triage"
         )

@@ -296,14 +296,25 @@ class TestStageContext:
     
     def create_test_chain_context(self) -> ChainContext:
         """Create a test ChainContext for StageContext tests."""
-        return ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
+        processing_alert = ProcessingAlert(
             alert_type="kubernetes",
-            alert_data={"pod": "test-pod", "namespace": "default"},
-            session_id="test-session-123",
-            current_stage_name="analysis",
-            runbook_content="# Test Runbook\nAnalyze the pod failure.",
-            chain_id="test-chain"
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data={"pod": "test-pod", "namespace": "default"}
         )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-123",
+            current_stage_name="analysis"
+        )
+        context.runbook_content = "# Test Runbook\nAnalyze the pod failure."
+        context.chain_id = "test-chain"
+        return context
     
     def create_test_available_tools(self) -> AvailableTools:
         """Create test AvailableTools for StageContext tests."""

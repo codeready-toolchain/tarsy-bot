@@ -20,7 +20,7 @@ os.environ["TESTING"] = "true"
 # Import all database models to ensure they're registered with SQLModel.metadata
 import tarsy.models.db_models  # noqa: F401
 import tarsy.models.unified_interactions  # noqa: F401
-from tarsy.models.alert import Alert
+from tarsy.models.alert import Alert, ProcessingAlert
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.processing_context import ChainContext
 from tarsy.utils.timestamp import now_us
@@ -30,17 +30,14 @@ def alert_to_api_format(alert: Alert) -> ChainContext:
     """
     Convert an Alert object to the ChainContext format that AlertService expects.
     
-    This matches the format created in the alert controller using NormalizedAlertData.
+    This matches the format created in the alert controller using ProcessingAlert.
     """
-    from tarsy.models.alert import NormalizedAlertData
-    
-    # Use the type-safe normalization (same as controller)
-    normalized_data = NormalizedAlertData.from_alert(alert)
+    # Transform API alert to ProcessingAlert (adds metadata, keeps data pristine)
+    processing_alert = ProcessingAlert.from_api_alert(alert)
     
     # Return ChainContext instance that AlertService expects
-    return ChainContext(
-        alert_type=alert.alert_type,
-        alert_data=normalized_data.to_dict(),
+    return ChainContext.from_processing_alert(
+        processing_alert=processing_alert,
         session_id=f"test-session-{hash(str(alert.data))}",  # EP-0012: Generate test session ID from alert data
         current_stage_name="initial"  # Default stage for tests
     )

@@ -384,9 +384,19 @@ class TestNewModelsInRealScenarios:
             }
         }
         
-        context = ChainContext(
+        from tarsy.models.alert import ProcessingAlert
+        import time
+        
+        processing_alert = ProcessingAlert(
             alert_type="large-data-test",
-            alert_data=large_data,
+            severity="warning",
+            timestamp=int(time.time() * 1_000_000),
+            environment="production",
+            runbook_url=None,
+            alert_data=large_data
+        )
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
             session_id="large-data-session",
             current_stage_name="processing"
         )
