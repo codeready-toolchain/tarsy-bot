@@ -341,6 +341,13 @@ class ReActParser:
         """
         Parse action input parameters from various formats.
         
+        Supports:
+        - JSON format: {"key": "value", "key2": "value2"}
+        - Comma-separated: key: value, key2: value2
+        - Newline-separated: key: value\nkey2: value2
+        - Key=value format: key=value, key2=value2
+        - Mixed separators (commas and newlines)
+        
         Moved from builders.convert_action_to_tool_call() logic.
         """
         parameters: Dict[str, Any] = {}
@@ -358,10 +365,13 @@ class ReActParser:
             else:
                 parameters = {'input': parsed_json}
         except json.JSONDecodeError:
-            # Fallback: Handle YAML-like format: "apiVersion: v1, kind: Namespace, name: superman-dev"
-            # or key=value format
-            for part in action_input.split(','):
-                part = part.strip()
+            # Fallback: Handle multiple formats
+            # Split on both commas AND newlines to handle both separators
+            # Replace newlines with commas first for unified processing
+            normalized_input = action_input.replace('\n', ',')
+            parts = [p.strip() for p in normalized_input.split(',') if p.strip()]
+            
+            for part in parts:
                 if ':' in part and '=' not in part:
                     # YAML-like format (key: value)
                     key, value = part.split(':', 1)

@@ -958,6 +958,62 @@ class TestParameterParsing:
         result = ReActParser._parse_action_parameters(json_dict)
         
         assert result == {"key": "value", "number": 123}
+    
+    def test_parse_newline_separated_parameters(self):
+        """Test parsing newline-separated parameters (common LLM output format)."""
+        newline_input = """command: mycommand param1
+user: batman
+workload: silver-slug-81"""
+        
+        result = ReActParser._parse_action_parameters(newline_input)
+        
+        assert result["command"] == "mycommand param1"
+        assert result["user"] == "batman"
+        assert result["workload"] == "silver-slug-81"
+    
+    def test_parse_mixed_comma_newline_parameters(self):
+        """Test parsing mixed comma and newline separators."""
+        mixed_input = """namespace: default, labels: app=nginx
+replicas: 3
+enabled: true"""
+        
+        result = ReActParser._parse_action_parameters(mixed_input)
+        
+        assert result["namespace"] == "default"
+        assert result["replicas"] == 3
+        assert result["enabled"] is True
+    
+    def test_parse_newline_parameters_with_colon_in_value(self):
+        """Test parsing newline-separated parameters where values contain colons (e.g. apiVersion: v1)."""
+        newline_input = """apiVersion: v1
+kind: Secret
+namespace: superman-dev"""
+        
+        result = ReActParser._parse_action_parameters(newline_input)
+        
+        assert result["apiVersion"] == "v1"
+        assert result["kind"] == "Secret"
+        assert result["namespace"] == "superman-dev"
+    
+    def test_parse_full_response_with_colon_parameters(self):
+        """Test parsing full ReAct response with parameters containing colons."""
+        response = """Thought: I need to get the secret resource
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Secret
+namespace: superman-dev
+"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.THOUGHT_ACTION
+        assert result.has_action is True
+        assert result.action == "kubernetes-server.resources_list"
+        assert result.tool_call.server == "kubernetes-server"
+        assert result.tool_call.tool == "resources_list"
+        assert result.tool_call.parameters["apiVersion"] == "v1"
+        assert result.tool_call.parameters["kind"] == "Secret"
+        assert result.tool_call.parameters["namespace"] == "superman-dev"
 
 
 @pytest.mark.unit

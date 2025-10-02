@@ -362,7 +362,17 @@ CRITICAL FORMATTING REQUIREMENTS:
 1. ALWAYS include colons after section headers: "Thought:", "Action:", "Action Input:"
 2. Each section must start on a NEW LINE - never continue on the same line
 3. Always add a blank line after "Action Input:" before stopping
-4. For Action Input, provide ONLY parameter values (no YAML, no code blocks, no triple backticks)
+4. For Action Input parameters, use key: value format (first param on same line, rest on new lines):
+   
+   Example - multiple parameters:
+   
+   Action Input: namespace: kube-system
+   name: coredns-abc123
+   labels: app=coredns
+   
+   Example - single parameter:
+   
+   Action Input: namespace: default
 
 ⚠️ ABSOLUTELY CRITICAL: STOP AFTER "Action Input:" ⚠️
 5. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
@@ -623,7 +633,17 @@ CRITICAL FORMATTING REQUIREMENTS:
 1. ALWAYS include colons after section headers: "Thought:", "Action:", "Action Input:"
 2. Each section must start on a NEW LINE - never continue on the same line
 3. Always add a blank line after "Action Input:" before stopping
-4. For Action Input, provide ONLY parameter values (no YAML, no code blocks, no triple backticks)
+4. For Action Input parameters, use key: value format (first param on same line, rest on new lines):
+   
+   Example - multiple parameters:
+   
+   Action Input: namespace: kube-system
+   name: coredns-abc123
+   labels: app=coredns
+   
+   Example - single parameter:
+   
+   Action Input: namespace: default
 
 ⚠️ ABSOLUTELY CRITICAL: STOP AFTER "Action Input:" ⚠️
 5. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
