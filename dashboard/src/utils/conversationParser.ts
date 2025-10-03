@@ -318,6 +318,8 @@ export function parseStageConversation(stage: StageExecution): StageConversation
     // Get interaction type from interaction_type field
     const interactionType = getInteractionStepType(interaction.details ?? interaction);
     
+    console.log(`🔍 Processing ${interactionType} interaction in stage "${stage.stage_name}", ${assistantMessages.length} assistant messages`);
+    
     if (interactionType === 'summarization') {
       // For summarization interactions, only process the last assistant message
       const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];

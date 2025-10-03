@@ -80,14 +80,26 @@ def upgrade() -> None:
                 )
             """))
         else:
-            # SQLite fallback - simpler text-based detection
+            # SQLite - JSON-based detection of last assistant message
             connection.execute(sa.text("""
                 UPDATE llm_interactions 
                 SET interaction_type = 'final_analysis'
                 WHERE interaction_type != 'summarization'
-                AND (
-                    conversation LIKE '%Final Answer:%'
-                    AND conversation LIKE '%"role": "assistant"%'
+                AND interaction_id IN (
+                    SELECT llm.interaction_id
+                    FROM llm_interactions llm,
+                         json_each(json_extract(llm.conversation, '$.messages')) msg
+                    WHERE msg.value->>'role' = 'assistant'
+                    AND msg.key = (
+                        SELECT MAX(m2.key) 
+                        FROM json_each(json_extract(llm.conversation, '$.messages')) m2
+                        WHERE m2.value->>'role' = 'assistant'
+                        AND m2.value IS NOT NULL
+                    )
+                    AND (
+                        msg.value->>'content' LIKE 'Final Answer:%'
+                        OR msg.value->>'content' LIKE '%' || CHAR(10) || 'Final Answer:%'
+                    )
                 )
             """))
         
