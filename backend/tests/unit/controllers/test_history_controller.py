@@ -1038,8 +1038,8 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        with patch("tarsy.controllers.history_controller.get_current_version") as mock_version, \
-             patch("tarsy.controllers.history_controller.get_pending_migrations") as mock_pending:
+        with patch("tarsy.database.migrations.get_current_version") as mock_version, \
+             patch("tarsy.database.migrations.get_pending_migrations") as mock_pending:
             
             mock_version.return_value = "ae85467a75d2"
             mock_pending.return_value = []
@@ -1071,8 +1071,8 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        with patch("tarsy.controllers.history_controller.get_current_version") as mock_version, \
-             patch("tarsy.controllers.history_controller.get_pending_migrations") as mock_pending:
+        with patch("tarsy.database.migrations.get_current_version") as mock_version, \
+             patch("tarsy.database.migrations.get_pending_migrations") as mock_pending:
             
             mock_version.return_value = "ae85467a75d2"
             mock_pending.return_value = ["b1234567890a", "c2345678901b"]
@@ -1102,7 +1102,7 @@ class TestHistoryControllerEndpoints:
         # Override FastAPI dependency
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
-        with patch("tarsy.controllers.history_controller.get_current_version") as mock_version:
+        with patch("tarsy.database.migrations.get_current_version") as mock_version:
             
             # Simulate error getting migration status
             mock_version.side_effect = Exception("Alembic error")

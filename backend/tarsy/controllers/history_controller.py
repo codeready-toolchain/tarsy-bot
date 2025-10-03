@@ -13,7 +13,6 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
-from tarsy.database.migrations import get_current_version, get_pending_migrations
 from tarsy.utils.logger import get_logger
 from tarsy.models.history_models import (
     DetailedSession,
@@ -299,7 +298,9 @@ async def health_check(
         # Test database connectivity
         test_result = history_service.test_database_connection()
         
-        # Get migration status
+        # Get migration status (import here to avoid circular imports)
+        from tarsy.database.migrations import get_current_version, get_pending_migrations
+        
         migration_status = {}
         try:
             if history_service.settings.database_url:

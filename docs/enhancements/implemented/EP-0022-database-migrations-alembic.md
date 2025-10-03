@@ -353,20 +353,17 @@ Stores current schema version (e.g., `"002_add_column_example"`).
 4. Update `backend/README.md` with migration workflow
 
 ### Phase 7: Production Preparation ✅ COMPLETED
-1. ✅ Add migration health check to `/system/info` endpoint:
-   - Created `DatabaseInfo` and `SystemInfo` models in `tarsy/models/system_models.py`
-   - Added `GET /api/v1/system/info` endpoint to `tarsy/controllers/system_controller.py`
-   - Returns database migration status including:
+1. ✅ Add migration health check to `/api/v1/history/health` endpoint:
+   - Enhanced existing health endpoint in `tarsy/controllers/history_controller.py`
+   - Migration status now included in health check response:
      - `schema_version`: Current migration ID (or null if none)
      - `pending_migrations`: List of unapplied migration IDs
-     - `migrations_enabled`: Whether history service is enabled
-   - Comprehensive error handling for database connection issues
-   - 5 unit tests added covering all scenarios:
-     - Migrations enabled with current version
-     - Pending migrations detection
-     - Migrations disabled
-     - Error handling
-     - Fresh database (no version yet)
+   - Uses lazy imports to avoid circular dependencies
+   - Comprehensive error handling - gracefully degrades on errors
+   - 3 unit tests added covering migration status scenarios:
+     - Health check with migration status (current version, no pending)
+     - Health check with pending migrations
+     - Health check with migration status errors (graceful degradation)
    - Documented in README.md
 
 ## Technical Notes
