@@ -115,7 +115,7 @@ class TestInitializeDatabase:
         """Test database initialization with various scenarios."""
         # Test successful initialization
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
-             patch('tarsy.database.init_db.create_database_tables') as mock_create_tables, \
+             patch('tarsy.database.init_db.run_migrations') as mock_run_migrations, \
              patch('tarsy.database.init_db.logger') as mock_logger:
             
             mock_settings = Mock()
@@ -123,11 +123,11 @@ class TestInitializeDatabase:
             mock_settings.database_url = "sqlite:///history.db"
             mock_settings.history_retention_days = 90
             mock_get_settings.return_value = mock_settings
-            mock_create_tables.return_value = True
+            mock_run_migrations.return_value = True
             
             result = initialize_database()
             assert result is True
-            mock_create_tables.assert_called_once_with("sqlite:///history.db")
+            mock_run_migrations.assert_called_once_with("sqlite:///history.db")
         
         # Test history disabled
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
@@ -152,9 +152,9 @@ class TestInitializeDatabase:
             result = initialize_database()
             assert result is False
         
-        # Test table creation failure
+        # Test migration failure
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
-             patch('tarsy.database.init_db.create_database_tables') as mock_create_tables, \
+             patch('tarsy.database.init_db.run_migrations') as mock_run_migrations, \
              patch('tarsy.database.init_db.logger') as mock_logger:
             
             mock_settings = Mock()
@@ -162,7 +162,7 @@ class TestInitializeDatabase:
             mock_settings.database_url = "sqlite:///history.db"
             mock_settings.history_retention_days = 90
             mock_get_settings.return_value = mock_settings
-            mock_create_tables.return_value = False
+            mock_run_migrations.return_value = False
             
             result = initialize_database()
             assert result is False
@@ -305,11 +305,9 @@ class TestDatabaseInitIntegration:
     """Test integration scenarios for database initialization."""
     
     def test_full_initialization_flow_success(self):
-        """Test the full database initialization flow."""
+        """Test the full database initialization flow with migrations."""
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
-             patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
-             patch('tarsy.database.init_db.SQLModel') as mock_sqlmodel, \
-             patch('tarsy.database.init_db.Session') as mock_session, \
+             patch('tarsy.database.init_db.run_migrations') as mock_run_migrations, \
              patch('tarsy.database.init_db.logger') as mock_logger:
             
             # Mock settings
@@ -319,28 +317,14 @@ class TestDatabaseInitIntegration:
             mock_settings.history_retention_days = 60
             mock_get_settings.return_value = mock_settings
             
-            # Mock successful database creation
-            mock_engine = Mock()
-            mock_create_engine.return_value = mock_engine
-            mock_session_instance = Mock()
-            mock_session.return_value.__enter__.return_value = mock_session_instance
-            mock_session_instance.exec.return_value.first.return_value = 1
-            mock_metadata = Mock()
-            mock_sqlmodel.metadata = mock_metadata
+            # Mock successful migration
+            mock_run_migrations.return_value = True
             
             result = initialize_database()
             
             assert result is True
-            # Verify the complete flow was executed
-            # get_settings is called twice: once in initialize_database and once in create_database_engine
-            assert mock_get_settings.call_count == 2
-            mock_create_engine.assert_called_once_with(
-                "sqlite:///test_history.db",
-                echo=False,
-                connect_args={"check_same_thread": False}
-            )
-            mock_metadata.create_all.assert_called_once_with(mock_engine)
-            mock_session.assert_called_once_with(mock_engine)
+            # Verify migrations were run
+            mock_run_migrations.assert_called_once_with("sqlite:///test_history.db")
             
             # Verify success logging
             call_args_list = mock_logger.info.call_args_list

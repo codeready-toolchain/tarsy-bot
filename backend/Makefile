@@ -47,26 +47,26 @@ test: check-test-deps test-unit test-integration test-e2e ## Run all tests (unit
 .PHONY: test-unit
 test-unit: check-test-deps ## Run unit tests only
 	@echo "$(GREEN)Running unit tests...$(NC)"
-	bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/unit/ -v --tb=short'
+	TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/unit/ -v --tb=short
 
 .PHONY: test-integration
 test-integration: check-test-deps ## Run integration tests only
 	@echo "$(GREEN)Running integration tests...$(NC)"
-	bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/integration/ -v --tb=short'
+	TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/integration/ -v --tb=short
 
 .PHONY: test-e2e
 test-e2e: check-test-deps ## Run end-to-end tests only (one by one for isolation)
 	@echo "$(GREEN)Running end-to-end tests sequentially...$(NC)"
 	@echo "$(YELLOW)Running first E2E test...$(NC)"
-	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/test_api_e2e.py -v --tb=short -m e2e' || exit 1
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_api_e2e.py -v --tb=short -m e2e || exit 1
 	@echo "$(YELLOW)Running second E2E test...$(NC)"
-	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/e2e/test_stage_failure_detection_e2e.py -v --tb=short -m e2e' || exit 1
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_stage_failure_detection_e2e.py -v --tb=short -m e2e || exit 1
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
 
 .PHONY: test-coverage
 test-coverage: check-test-deps ## Run unit and integration tests with coverage report (no e2e-tests for stability)
 	@echo "$(GREEN)Running unit and integration tests with coverage...$(NC)"
-	@bash -c 'source .venv/bin/activate && TESTING=true python -m pytest $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing --tb=short'
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing --tb=short
 	@echo "$(GREEN)All tests with coverage completed!$(NC)"
 
 # Code Quality
