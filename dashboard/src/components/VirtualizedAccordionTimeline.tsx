@@ -193,7 +193,11 @@ const InteractionItem = React.memo(({ index, style, data }: {
           overflow: 'hidden',
           transition: 'all 0.2s ease-in-out',
           border: interaction.type === 'llm' 
-            ? '2px solid #90caf9' 
+            ? interaction.details?.interaction_type === 'summarization'
+              ? '2px solid rgba(237, 108, 2, 0.5)'  // Orange for summarization
+              : interaction.details?.interaction_type === 'final_analysis'
+              ? '2px solid rgba(46, 125, 50, 0.5)'  // Green for final analysis
+              : '2px solid rgba(25, 118, 210, 0.5)'  // Blue for investigation
             : interaction.type === 'mcp'
             ? '2px solid #ce93d8'
             : '2px solid #ffcc02',
@@ -203,7 +207,11 @@ const InteractionItem = React.memo(({ index, style, data }: {
             elevation: 4,
             transform: 'translateY(-1px)',
             border: interaction.type === 'llm' 
-              ? '2px solid #42a5f5' 
+              ? interaction.details?.interaction_type === 'summarization'
+                ? '2px solid rgba(237, 108, 2, 0.8)'  // Darker orange on hover
+                : interaction.details?.interaction_type === 'final_analysis'
+                ? '2px solid rgba(46, 125, 50, 0.8)'  // Darker green on hover
+                : '2px solid rgba(25, 118, 210, 0.8)'  // Darker blue on hover
               : interaction.type === 'mcp'
               ? '2px solid #ba68c8'
               : '2px solid #ffa000'
@@ -224,9 +232,32 @@ const InteractionItem = React.memo(({ index, style, data }: {
             </Avatar>
             
             <Box sx={{ flex: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                {interaction.step_description}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  {interaction.step_description}
+                </Typography>
+                
+                {/* Show interaction type for LLM interactions */}
+                {interaction.type === 'llm' && interaction.details?.interaction_type && (
+                  <Chip 
+                    label={
+                      interaction.details.interaction_type === 'investigation' ? 'Investigation' :
+                      interaction.details.interaction_type === 'summarization' ? 'Summarization' :
+                      interaction.details.interaction_type === 'final_analysis' ? 'Final Analysis' :
+                      'LLM'
+                    }
+                    size="small"
+                    color={
+                      interaction.details.interaction_type === 'investigation' ? 'primary' :
+                      interaction.details.interaction_type === 'summarization' ? 'warning' :
+                      interaction.details.interaction_type === 'final_analysis' ? 'success' :
+                      'default'
+                    }
+                    sx={{ fontSize: '0.7rem', height: 20, fontWeight: 600 }}
+                  />
+                )}
+              </Box>
+              
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="caption" color="text.secondary">
                   {formatTimestamp(interaction.timestamp_us, 'short')}

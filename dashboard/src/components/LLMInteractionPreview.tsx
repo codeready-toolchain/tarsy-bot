@@ -7,6 +7,40 @@ interface LLMInteractionPreviewProps {
   showFullPreview?: boolean;
 }
 
+// Helper to get interaction type styling
+const getInteractionTypeStyle = (interactionType: string) => {
+  switch (interactionType) {
+    case 'investigation':
+      return {
+        label: 'Investigation',
+        color: 'primary' as const,
+        bgColor: 'rgba(25, 118, 210, 0.08)',
+        borderColor: 'rgba(25, 118, 210, 0.3)'
+      };
+    case 'summarization':
+      return {
+        label: 'Summarization',
+        color: 'warning' as const,
+        bgColor: 'rgba(237, 108, 2, 0.08)',
+        borderColor: 'rgba(237, 108, 2, 0.4)'
+      };
+    case 'final_analysis':
+      return {
+        label: 'Final Analysis',
+        color: 'success' as const,
+        bgColor: 'rgba(46, 125, 50, 0.08)',
+        borderColor: 'rgba(46, 125, 50, 0.4)'
+      };
+    default:
+      return {
+        label: 'LLM',
+        color: 'default' as const,
+        bgColor: 'transparent',
+        borderColor: 'divider'
+      };
+  }
+};
+
 /**
  * LLMInteractionPreview component
  * Shows condensed preview of LLM interactions with first/last sentences of Thought and full Action
@@ -141,11 +175,21 @@ function LLMInteractionPreview({
   const { thought, action } = parseThoughtAndAction(responseText);
   const { first: firstThought, lastTwo: lastThoughts, hasMore } = getThoughtPreview(thought);
   const { actionCommand, actionInput } = parseActionDetails(action);
+  
+  // Get interaction type styling
+  const interactionType = interaction.interaction_type || 'investigation';
+  const typeStyle = getInteractionTypeStyle(interactionType);
 
   if (!showFullPreview) {
-    // Compact version - just show if there's thought/action content
+    // Compact version - show interaction type badge
     return (
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Chip 
+          label={typeStyle.label} 
+          size="small" 
+          color={typeStyle.color}
+          sx={{ fontWeight: 600 }}
+        />
         {thought && (
           <Chip 
             label="Thought" 
@@ -170,6 +214,16 @@ function LLMInteractionPreview({
   if (isFailed) {
     return (
       <Box sx={{ mt: 1 }}>
+        {/* Interaction Type Badge */}
+        <Box sx={{ mb: 1, display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Chip 
+            label={typeStyle.label} 
+            size="small" 
+            color={typeStyle.color}
+            sx={{ fontWeight: 600, fontSize: '0.7rem' }}
+          />
+        </Box>
+        
         <Typography variant="caption" sx={{ 
           fontWeight: 600, 
           color: 'error.main',
@@ -207,6 +261,16 @@ function LLMInteractionPreview({
 
   return (
     <Box sx={{ mt: 1 }}>
+      {/* Interaction Type Badge */}
+      <Box sx={{ mb: 1.5, display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Chip 
+          label={typeStyle.label} 
+          size="small" 
+          color={typeStyle.color}
+          sx={{ fontWeight: 600, fontSize: '0.7rem' }}
+        />
+      </Box>
+      
       {/* Thought Preview */}
       {thought && (
         <Box sx={{ mb: 2 }}>

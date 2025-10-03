@@ -18,8 +18,8 @@ import JsonDisplay from './JsonDisplay';
 
 interface ConversationStepProps {
   step: ConversationStepData;
-  stepIndex: number;
-  isLastStep: boolean;
+  stepIndex?: number;
+  isLastStep?: boolean;
 }
 
 // Helper function to get step emoji and styling
@@ -29,37 +29,49 @@ const getStepStyle = (type: string, success: boolean = true) => {
       return {
         emoji: '💭',
         color: 'text.primary',
-        bgColor: 'transparent'
+        bgColor: 'rgba(25, 118, 210, 0.04)',  // Subtle blue tint
+        borderColor: 'rgba(25, 118, 210, 0.3)',
+        fontStyle: 'italic' as const
       };
     case 'action':
       return {
         emoji: '🔧',
         color: success ? 'primary.main' : 'error.main',
-        bgColor: success ? 'primary.light' : 'error.light'
+        bgColor: success ? 'rgba(66, 66, 66, 0.03)' : 'rgba(211, 47, 47, 0.04)',
+        borderColor: success ? 'rgba(66, 66, 66, 0.3)' : 'rgba(211, 47, 47, 0.4)',
+        fontStyle: 'normal' as const
       };
     case 'analysis':
       return {
         emoji: '🎯',
         color: 'success.main',
-        bgColor: 'success.light'
+        bgColor: 'rgba(46, 125, 50, 0.04)',  // Subtle green tint
+        borderColor: 'rgba(46, 125, 50, 0.4)',
+        fontStyle: 'normal' as const
       };
     case 'summarization':
       return {
         emoji: '📋',
-        color: 'info.main',
-        bgColor: 'info.light'
+        color: 'text.primary',  // Readable dark text instead of orange
+        bgColor: 'rgba(237, 108, 2, 0.04)',  // Subtle amber tint
+        borderColor: 'rgba(237, 108, 2, 0.4)',  // Slightly stronger border for distinction
+        fontStyle: 'normal' as const
       };
     case 'error':
       return {
         emoji: '❌',
         color: 'error.main',
-        bgColor: 'transparent'
+        bgColor: 'rgba(211, 47, 47, 0.04)',
+        borderColor: 'rgba(211, 47, 47, 0.4)',
+        fontStyle: 'normal' as const
       };
     default:
       return {
         emoji: '•',
         color: 'text.secondary',
-        bgColor: 'transparent'
+        bgColor: 'transparent',
+        borderColor: 'divider',
+        fontStyle: 'normal' as const
       };
   }
 };
@@ -69,9 +81,7 @@ const getStepStyle = (type: string, success: boolean = true) => {
  * Displays thoughts, actions, analysis, and errors with appropriate styling
  */
 function ConversationStep({ 
-  step, 
-  stepIndex, 
-  isLastStep 
+  step 
 }: ConversationStepProps) {
   const [isActionExpanded, setIsActionExpanded] = useState(false);
   const [isAnalysisExpanded, setIsAnalysisExpanded] = useState(false);
@@ -133,14 +143,19 @@ function ConversationStep({
     <Box sx={{
       py: 2,
       px: 2,
-      mb: 1,
+      mb: 1.5,
       borderRadius: 2,
-      backgroundColor: stepIndex % 2 === 0 ? 'grey.50' : 'background.paper',
+      backgroundColor: style.bgColor,
       border: '1px solid',
       borderColor: 'divider',
+      borderLeft: '4px solid',
+      borderLeftColor: style.borderColor,
+      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+      transition: 'all 0.2s ease-in-out',
       '&:hover': {
-        backgroundColor: stepIndex % 2 === 0 ? 'grey.50' : 'action.hover',
-        borderColor: 'primary.light'
+        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
+        borderLeftColor: step.type === 'error' ? 'error.main' : style.color,
+        transform: 'translateX(2px)'
       }
     }}>
       {/* Step Content */}
@@ -376,7 +391,8 @@ function ConversationStep({
                   lineHeight: 1.6,
                   fontSize: '0.95rem',
                   color: style.color,
-                  flex: 1
+                  flex: 1,
+                  fontStyle: style.fontStyle
                 }}
               >
                 {step.content}
@@ -496,6 +512,7 @@ function ConversationStep({
               <Collapse in={isActionExpanded}>
                 <Box sx={{ 
                   mt: 1,
+                  ml: 2,  // Indent to show it's a response
                   borderRadius: 2,
                   overflow: 'hidden',
                   border: '1px solid',
@@ -566,16 +583,7 @@ function ConversationStep({
         </Box>
       </Box>
 
-      {/* Step Divider */}
-      {!isLastStep && (
-        <Box sx={{ 
-          height: 1, 
-          bgcolor: 'divider', 
-          my: 2,
-          ml: 3.5, // Align with content, offset by emoji width
-          opacity: 0.3
-        }} />
-      )}
+      {/* Step Divider - removed as spacing is now handled by mb on container */}
     </Box>
   );
 }

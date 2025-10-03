@@ -30,8 +30,12 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage }: FinalAnaly
   const [isNewlyUpdated, setIsNewlyUpdated] = useState<boolean>(false);
 
   // Auto-expand when analysis first becomes available or changes significantly
+  // Only show "Updated" indicator during active processing, not for historical sessions
   useEffect(() => {
     if (analysis && analysis !== prevAnalysis) {
+      // Check if session is actively being processed
+      const isActiveSession = sessionStatus === 'in_progress' || sessionStatus === 'pending';
+      
       // If this is the first time analysis appears, or if it's significantly different
       const isFirstTime = !prevAnalysis && analysis;
       const isSignificantChange = prevAnalysis && analysis && 
@@ -40,16 +44,22 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage }: FinalAnaly
       if (isFirstTime) {
         console.log('🎯 Final analysis first received, auto-expanding');
         setAnalysisExpanded(true);
-        setIsNewlyUpdated(true);
+        // Only show "Updated" indicator if session is actively processing
+        if (isActiveSession) {
+          setIsNewlyUpdated(true);
+        }
       } else if (isSignificantChange) {
         console.log('🎯 Final analysis significantly updated');
-        setIsNewlyUpdated(true);
+        // Only show "Updated" indicator if session is actively processing
+        if (isActiveSession) {
+          setIsNewlyUpdated(true);
+        }
       }
       
       setPrevAnalysis(analysis);
       
       // Clear the "newly updated" indicator after a few seconds
-      if (isFirstTime || isSignificantChange) {
+      if ((isFirstTime || isSignificantChange) && isActiveSession) {
         const timer = setTimeout(() => {
           setIsNewlyUpdated(false);
         }, 3000);
@@ -57,7 +67,7 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage }: FinalAnaly
         return () => clearTimeout(timer);
       }
     }
-  }, [analysis, prevAnalysis]);
+  }, [analysis, prevAnalysis, sessionStatus]);
 
   // Handle copy to clipboard
   const handleCopyAnalysis = async () => {
