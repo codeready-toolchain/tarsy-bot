@@ -40,16 +40,24 @@ export interface ParsedSession {
 }
 
 /**
- * Check if an LLM interaction is a summarization interaction based on system message
+ * Get the interaction step type from the interaction_type field
+ * 
+ * All LLM interactions have this field set by the backend. If missing, it's a data integrity error.
+ * 
+ * @param interaction - LLM interaction detail or full interaction object
+ * @returns 'investigation' | 'summarization' | 'final_analysis'
  */
-function isSummarizationInteraction(messages: LLMMessage[]): boolean {
-  const systemMessage = messages.find(msg => msg.role === 'system');
-  if (!systemMessage) return false;
+function getInteractionStepType(interaction: LLMEventDetails | LLMInteractionDetail | any): string {
+  // Get interaction_type from the details first (for full interaction objects)
+  const interactionType = interaction?.details?.interaction_type ?? interaction?.interaction_type;
   
-  const content = systemMessage.content.toLowerCase();
-  return content.includes('summarizing technical output') ||
-         content.includes('your specific task is to summarize') ||
-         content.includes('expert at summarizing technical output');
+  if (!interactionType) {
+    // This should never happen - all records have this field
+    console.error('LLM interaction missing required interaction_type field - data integrity issue', interaction);
+    return 'investigation'; // Safe fallback
+  }
+  
+  return interactionType;
 }
 
 /**
@@ -307,10 +315,10 @@ export function parseStageConversation(stage: StageExecution): StageConversation
     // Each interaction contains the FULL conversation history, so we need to extract only NEW content
     const assistantMessages = messages.filter(msg => msg.role === 'assistant');
     
-    // Check if this is a summarization interaction
-    const isSummarization = isSummarizationInteraction(messages);
+    // Get interaction type from interaction_type field
+    const interactionType = getInteractionStepType(interaction.details ?? interaction);
     
-    if (isSummarization) {
+    if (interactionType === 'summarization') {
       // For summarization interactions, only process the last assistant message
       const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
       if (lastAssistantMessage) {
@@ -337,12 +345,43 @@ export function parseStageConversation(stage: StageExecution): StageConversation
           }
         }
       }
+    } else if (interactionType === 'final_analysis') {
+      // For final_analysis interactions, extract only the Final Answer content
+      const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
+      if (lastAssistantMessage) {
+        const candidateSteps: ConversationStepData[] = [];
+        const parsed = parseReActMessage(lastAssistantMessage.content);
+        
+        // Extract Final Answer content
+        if (parsed.finalAnswer) {
+          candidateSteps.push({
+            type: 'analysis',
+            content: parsed.finalAnswer,
+            timestamp_us: timestamp,
+            success: true
+          });
+          console.log(`🔍 Found final_analysis content in stage "${stage.stage_name}": ${parsed.finalAnswer.length} characters`);
+        }
+        
+        // Only add steps that are truly new
+        for (const candidateStep of candidateSteps) {
+          const isDuplicate = stageSeenSteps.some(seenStep => 
+            areStepsSimilar(candidateStep, seenStep)
+          );
+          
+          if (!isDuplicate) {
+            steps.push(candidateStep);
+            stageSeenSteps.push(candidateStep);
+          }
+        }
+      }
     } else {
-      // Regular ReAct interactions - process all assistant messages
+      // Investigation interactions (default) - process all assistant messages for ReAct pattern
+      // This includes: thoughts, actions, and any Final Answer that appears mid-stage
       for (const message of assistantMessages) {
         const candidateSteps: ConversationStepData[] = [];
         
-        // Regular ReAct interaction - parse for thoughts, actions, analysis
+        // Investigation interaction - parse for thoughts, actions, and potential analysis
         const parsed = parseReActMessage(message.content);
         
         // Debug logging for parsing (only for analysis steps)

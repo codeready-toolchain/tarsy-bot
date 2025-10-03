@@ -1,4 +1,3 @@
-// Updated session types for EP-0010 (SessionOverview model)
 export interface Session {
   session_id: string;
   alert_id: string;
@@ -22,7 +21,7 @@ export interface Session {
   failed_stages: number;
   current_stage_index: number | null;
   
-  // NEW: Session-level token aggregations (EP-0009)
+  // Session-level token aggregations
   session_input_tokens: number | null;
   session_output_tokens: number | null;  
   session_total_tokens: number | null;
@@ -36,7 +35,6 @@ export interface InteractionSummary {
   duration_ms: number | null;
 }
 
-// Updated stage execution for EP-0010 (DetailedStage model)
 export interface StageExecution {
   execution_id: string;
   session_id: string;
@@ -51,7 +49,7 @@ export interface StageExecution {
   stage_output: any | null;
   error_message: string | null;
   
-  // Direct interaction arrays (EP-0010 structure)
+  // Direct interaction arrays
   llm_interactions: LLMInteractionDetail[];
   mcp_communications: MCPInteractionDetail[];
   
@@ -64,13 +62,12 @@ export interface StageExecution {
   stage_interactions_duration_ms: number | null;
   chronological_interactions: InteractionDetail[];
   
-  // NEW: Stage-level token aggregations (EP-0009)
+  // Stage-level token aggregations
   stage_input_tokens?: number | null;
   stage_output_tokens?: number | null;
   stage_total_tokens?: number | null;
 }
 
-// Updated detailed session for EP-0010 (DetailedSession model)
 export interface DetailedSession extends Session {
   // Full session details
   alert_data: AlertData;
@@ -86,7 +83,7 @@ export interface DetailedSession extends Session {
   chain_id: string;
   current_stage_index: number | null;
   
-  // Stage executions with all their interactions (EP-0010 improvement)
+  // Stage executions with all their interactions
   stages: StageExecution[];
 }
 
@@ -95,7 +92,7 @@ export interface AlertData {
   [key: string]: any; // Can contain any fields
 }
 
-// EP-0010: Updated interaction structures matching backend models
+// Interaction structures matching backend models
 
 // Base interaction fields (shared by LLM and MCP)
 export interface BaseInteraction {
@@ -107,23 +104,25 @@ export interface BaseInteraction {
   stage_execution_id?: string | null;
 }
 
-// LLM message structure (from backend) - EP-0014 enhanced
+// LLM message structure (from backend)
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
 }
 
-// LLM conversation structure (EP-0014)
+// LLM conversation structure
 export interface LLMConversation {
   messages: LLMMessage[];
 }
 
-// LLM event details (EP-0014 structure with conversation field)
+// LLM event details
 export interface LLMEventDetails {
-  // EP-0014: New conversation field replaces messages array
   conversation?: LLMConversation;
   // Legacy messages field for backward compatibility during transition
   messages?: LLMMessage[];
+  
+  // Interaction type discriminator
+  interaction_type: string;  // 'investigation' | 'summarization' | 'final_analysis'
   
   model_name: string;
   temperature: number | null;
@@ -136,7 +135,7 @@ export interface LLMEventDetails {
   tool_results: any | null;
 }
 
-// MCP event details (EP-0010 structure)  
+// MCP event details
 export interface MCPEventDetails {
   tool_name?: string | null;
   server_name: string;
@@ -149,7 +148,7 @@ export interface MCPEventDetails {
   duration_ms?: number | null;
 }
 
-// Complete interaction types (EP-0010)
+// Complete interaction types
 export interface LLMInteractionDetail extends BaseInteraction {
   type: 'llm';
   details: LLMEventDetails;
@@ -431,7 +430,6 @@ export interface EnhancedHistoricalAlertsListProps extends HistoricalAlertsListP
   onPageSizeChange?: (pageSize: number) => void;
 }
 
-// Updated interaction details props for EP-0010
 export interface InteractionDetailsProps {
   type: 'llm' | 'mcp' | 'system';
   details: LLMEventDetails | MCPEventDetails | SystemEvent;
@@ -547,7 +545,7 @@ export interface StageCardProps {
   onToggle?: () => void;
 }
 
-// EP-0018: Manual Alert Submission types
+// Manual Alert Submission types
 export interface AlertSubmissionResponse {
   alert_id: string;
   status: string;

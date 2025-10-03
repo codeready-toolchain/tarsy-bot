@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseStageConversation, parseSessionConversation } from '../../utils/conversationParser'
-import type { StageExecution, DetailedSession, MCPInteraction, LLMInteraction } from '../../types'
+import type { StageExecution, DetailedSession } from '../../types'
 
 describe('conversationParser - MCP Error Handling', () => {
   it('should extract error messages from failed MCP tool calls', () => {
@@ -23,6 +23,7 @@ describe('conversationParser - MCP Error Handling', () => {
         step_description: 'AI Analysis',
         details: {
           model_name: 'test-model',
+          interaction_type: 'investigation',
           conversation: {
             messages: [{
               role: 'system',
@@ -38,7 +39,11 @@ describe('conversationParser - MCP Error Handling', () => {
           success: true,
           total_tokens: 150,
           input_tokens: 50,
-          output_tokens: 100
+          output_tokens: 100,
+          temperature: null,
+          error_message: null,
+          tool_calls: null,
+          tool_results: null
         }
       }],
       mcp_communications: [{
@@ -58,8 +63,15 @@ describe('conversationParser - MCP Error Handling', () => {
           error_message: 'Failed to call tool unhealthyApplications on argocd-server: Type=McpError | Message=Get "https://argocd.example.com/api/v1/applications": net/http: invalid header field value for "Authorization"'
         }
       }],
-      total_interactions: 2
-    } as StageExecution
+      total_interactions: 2,
+      stage_output: null,
+      error_message: null,
+      llm_interaction_count: 1,
+      mcp_communication_count: 1,
+      stage_input_tokens: null,
+      stage_output_tokens: null,
+      stage_total_tokens: null
+    } as unknown as StageExecution
 
     const result = parseStageConversation(mockStage)
     
@@ -98,6 +110,7 @@ describe('conversationParser - MCP Error Handling', () => {
         step_description: 'AI Analysis',
         details: {
           model_name: 'test-model',
+          interaction_type: 'investigation',
           conversation: {
             messages: [{
               role: 'system',
@@ -110,7 +123,14 @@ describe('conversationParser - MCP Error Handling', () => {
               content: 'I will get the Kubernetes pods.\n\nThought: I should use the kubectl tool to get pods.\n\nAction: kubectl_get_pods\nAction Input: {"namespace": "default"}\n\nObservation: Found 3 pods running in the default namespace.\n\nThought: Successfully retrieved the pod information.'
             }]
           },
-          success: true
+          success: true,
+          temperature: null,
+          error_message: null,
+          input_tokens: null,
+          output_tokens: null,
+          total_tokens: null,
+          tool_calls: null,
+          tool_results: null
         }
       }],
       mcp_communications: [{
@@ -130,8 +150,15 @@ describe('conversationParser - MCP Error Handling', () => {
           error_message: null
         }
       }],
-      total_interactions: 2
-    } as StageExecution
+      total_interactions: 2,
+      stage_output: null,
+      error_message: null,
+      llm_interaction_count: 1,
+      mcp_communication_count: 1,
+      stage_input_tokens: null,
+      stage_output_tokens: null,
+      stage_total_tokens: null
+    } as unknown as StageExecution
 
     const result = parseStageConversation(mockStage)
     
@@ -179,6 +206,7 @@ describe('conversationParser - MCP Error Handling', () => {
           step_description: 'Mixed Actions',
           details: {
             model_name: 'test-model',
+            interaction_type: 'investigation',
             conversation: {
               messages: [{
                 role: 'system',
@@ -191,7 +219,14 @@ describe('conversationParser - MCP Error Handling', () => {
                 content: 'I will perform the actions.\n\nThought: Let me start with the first tool.\n\nAction: successfulTool\nAction Input: {}\n\nObservation: Success\n\nThought: Now let me try the second tool.\n\nAction: failingTool\nAction Input: {}\n\nObservation: Error occurred.'
               }]
             },
-            success: true
+            success: true,
+            temperature: null,
+            error_message: null,
+            input_tokens: null,
+            output_tokens: null,
+            total_tokens: null,
+            tool_calls: null,
+            tool_results: null
           }
         }],
         mcp_communications: [{
@@ -227,10 +262,30 @@ describe('conversationParser - MCP Error Handling', () => {
             error_message: 'Tool execution failed: Connection timeout'
           }
         }],
-        total_interactions: 3
+        total_interactions: 3,
+        stage_output: null,
+        error_message: null,
+        llm_interaction_count: 1,
+        mcp_communication_count: 2,
+        stage_input_tokens: null,
+        stage_output_tokens: null,
+        stage_total_tokens: null
       }],
-      total_interactions: 3
-    } as DetailedSession
+      total_interactions: 3,
+      final_analysis: null,
+      session_metadata: {},
+      chain_definition: null,
+      current_stage_id: null,
+      current_stage_index: 0,
+      chain_id: null,
+      session_input_tokens: null,
+      session_output_tokens: null,
+      session_total_tokens: null,
+      duration_ms: 2000,
+      created_at: null,
+      updated_at: null,
+      chronological_interactions: []
+    } as unknown as DetailedSession
 
     const result = parseSessionConversation(mockSession)
     
