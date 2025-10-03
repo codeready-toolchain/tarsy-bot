@@ -1025,6 +1025,101 @@ class TestHistoryControllerEndpoints:
         
         assert data["status"] == "unhealthy"
         assert "error" in data["details"]
+    
+    @pytest.mark.unit
+    def test_health_check_includes_migration_status(self, app, client, mock_history_service):
+        """Test that health check includes migration status."""
+        from unittest.mock import patch
+        
+        mock_history_service.is_enabled = True
+        mock_history_service.test_database_connection.return_value = True
+        mock_history_service.settings.database_url = "sqlite:///test.db"
+        
+        # Override FastAPI dependency
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        with patch("tarsy.controllers.history_controller.get_current_version") as mock_version, \
+             patch("tarsy.controllers.history_controller.get_pending_migrations") as mock_pending:
+            
+            mock_version.return_value = "ae85467a75d2"
+            mock_pending.return_value = []
+            
+            response = client.get("/api/v1/history/health")
+            
+            # Clean up
+            app.dependency_overrides.clear()
+            
+            assert response.status_code == 200
+            data = response.json()
+            
+            assert data["status"] == "healthy"
+            details = data["details"]
+            assert "schema_version" in details
+            assert details["schema_version"] == "ae85467a75d2"
+            assert "pending_migrations" in details
+            assert details["pending_migrations"] == []
+    
+    @pytest.mark.unit
+    def test_health_check_with_pending_migrations(self, app, client, mock_history_service):
+        """Test health check when there are pending migrations."""
+        from unittest.mock import patch
+        
+        mock_history_service.is_enabled = True
+        mock_history_service.test_database_connection.return_value = True
+        mock_history_service.settings.database_url = "sqlite:///test.db"
+        
+        # Override FastAPI dependency
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        with patch("tarsy.controllers.history_controller.get_current_version") as mock_version, \
+             patch("tarsy.controllers.history_controller.get_pending_migrations") as mock_pending:
+            
+            mock_version.return_value = "ae85467a75d2"
+            mock_pending.return_value = ["b1234567890a", "c2345678901b"]
+            
+            response = client.get("/api/v1/history/health")
+            
+            # Clean up
+            app.dependency_overrides.clear()
+            
+            assert response.status_code == 200
+            data = response.json()
+            
+            assert data["status"] == "healthy"
+            details = data["details"]
+            assert details["schema_version"] == "ae85467a75d2"
+            assert details["pending_migrations"] == ["b1234567890a", "c2345678901b"]
+    
+    @pytest.mark.unit
+    def test_health_check_migration_status_error_handling(self, app, client, mock_history_service):
+        """Test health check gracefully handles migration status errors."""
+        from unittest.mock import patch
+        
+        mock_history_service.is_enabled = True
+        mock_history_service.test_database_connection.return_value = True
+        mock_history_service.settings.database_url = "sqlite:///test.db"
+        
+        # Override FastAPI dependency
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        with patch("tarsy.controllers.history_controller.get_current_version") as mock_version:
+            
+            # Simulate error getting migration status
+            mock_version.side_effect = Exception("Alembic error")
+            
+            response = client.get("/api/v1/history/health")
+            
+            # Clean up
+            app.dependency_overrides.clear()
+            
+            assert response.status_code == 200
+            data = response.json()
+            
+            # Service should still report as healthy (database connection works)
+            assert data["status"] == "healthy"
+            details = data["details"]
+            # Migration status should gracefully degrade
+            assert "migration_status_error" in details
 
 
 class TestHistoryControllerValidation:

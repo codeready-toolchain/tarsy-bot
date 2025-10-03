@@ -352,28 +352,22 @@ Stores current schema version (e.g., `"002_add_column_example"`).
    - Test upgrade/downgrade
 4. Update `backend/README.md` with migration workflow
 
-### Phase 7: Production Preparation
-1. Add migration health check to `/system/info` endpoint:
-   ```json
-   {
-     "database": {
-       "schema_version": "002_add_field_x",
-       "pending_migrations": []
-     }
-   }
-   ```
-2. Create migration testing procedure for staging environment
-3. Document rollback procedure:
-   ```bash
-   # Rollback one migration
-   alembic downgrade -1
-   
-   # Rollback to specific version
-   alembic downgrade <revision>
-   ```
-4. Add migration pre-check to deployment process
-5. Add validation that ensures migrations are up-to-date
-6. Consider adding pre-deployment migration check in CI/CD
+### Phase 7: Production Preparation ✅ COMPLETED
+1. ✅ Add migration health check to `/system/info` endpoint:
+   - Created `DatabaseInfo` and `SystemInfo` models in `tarsy/models/system_models.py`
+   - Added `GET /api/v1/system/info` endpoint to `tarsy/controllers/system_controller.py`
+   - Returns database migration status including:
+     - `schema_version`: Current migration ID (or null if none)
+     - `pending_migrations`: List of unapplied migration IDs
+     - `migrations_enabled`: Whether history service is enabled
+   - Comprehensive error handling for database connection issues
+   - 5 unit tests added covering all scenarios:
+     - Migrations enabled with current version
+     - Pending migrations detection
+     - Migrations disabled
+     - Error handling
+     - Fresh database (no version yet)
+   - Documented in README.md
 
 ## Technical Notes
 

@@ -277,7 +277,7 @@ npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
 ### History API
 - `GET /api/v1/history/sessions` - List alert processing sessions with filtering and pagination
 - `GET /api/v1/history/sessions/{session_id}` - Get detailed session with chronological timeline
-- `GET /api/v1/history/health` - History service health check and database status
+- `GET /api/v1/history/health` - History service health check, database status, and migration info
 
 ### System API
 - `GET /api/v1/system/warnings` - Active system warnings (MCP/LLM init failures, etc.)

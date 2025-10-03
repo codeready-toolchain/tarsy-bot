@@ -8,10 +8,12 @@ Uses Unix timestamps (microseconds since epoch) throughout for optimal
 performance and consistency with the rest of the system.
 """
 
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
+from tarsy.database.migrations import get_current_version, get_pending_migrations
 from tarsy.utils.logger import get_logger
 from tarsy.models.history_models import (
     DetailedSession,
@@ -25,6 +27,8 @@ from tarsy.models.api_models import (
 )
 from tarsy.utils.timestamp import now_us
 from tarsy.services.history_service import HistoryService, get_history_service
+
+migration_logger = logging.getLogger(__name__)
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -295,6 +299,24 @@ async def health_check(
         # Test database connectivity
         test_result = history_service.test_database_connection()
         
+        # Get migration status
+        migration_status = {}
+        try:
+            if history_service.settings.database_url:
+                current_version = get_current_version(history_service.settings.database_url)
+                pending = get_pending_migrations(history_service.settings.database_url)
+                migration_status = {
+                    "schema_version": current_version,
+                    "pending_migrations": pending
+                }
+        except Exception as e:
+            migration_logger.warning(f"Failed to retrieve migration status in health check: {e}")
+            migration_status = {
+                "schema_version": None,
+                "pending_migrations": [],
+                "migration_status_error": str(e)
+            }
+        
         if test_result:
             return HealthCheckResponse(
                 service="alert_processing_history",
@@ -303,7 +325,8 @@ async def health_check(
                 details={
                     "database_connection": "ok",
                     "history_enabled": True,
-                    "database_url": history_service.settings.database_url.split('/')[-1]  # Just the DB name for security
+                    "database_url": history_service.settings.database_url.split('/')[-1],  # Just the DB name for security
+                    **migration_status
                 }
             )
         else:
@@ -314,7 +337,8 @@ async def health_check(
                 details={
                     "database_connection": "failed",
                     "history_enabled": True,
-                    "error": "Database connection test failed"
+                    "error": "Database connection test failed",
+                    **migration_status
                 }
             )
             
