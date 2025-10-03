@@ -91,6 +91,19 @@ class IterationStrategy(str, Enum):
     REACT_FINAL_ANALYSIS = "react-final-analysis"   # ReAct final analysis only, no tools
 
 
+class LLMInteractionType(str, Enum):
+    """
+    Types of LLM interactions for categorization and UI rendering.
+    
+    - INVESTIGATION: ReAct investigation/reasoning iterations (thought/action/observation loops)
+    - SUMMARIZATION: MCP result summarization calls (reduce large tool outputs)
+    - FINAL_ANALYSIS: Stage conclusion with "Final Answer:" (any stage, any strategy)
+    """
+    INVESTIGATION = "investigation"
+    SUMMARIZATION = "summarization"
+    FINAL_ANALYSIS = "final_analysis"
+
+
 # ==============================================================================
 # LLM CONFIGURATION CONSTANTS
 # ==============================================================================

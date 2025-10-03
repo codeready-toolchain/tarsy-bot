@@ -10,10 +10,11 @@ import uuid
 from typing import List, Optional
 from enum import Enum
 from sqlmodel import Column, Field, SQLModel, Index
-from sqlalchemy import JSON, TypeDecorator, BigInteger
+from sqlalchemy import JSON, String, TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB, BIGINT
 from pydantic import field_validator, model_validator
 from tarsy.utils.timestamp import now_us
+from tarsy.models.constants import LLMInteractionType
 
 
 class MessageRole(str, Enum):
@@ -145,6 +146,17 @@ class LLMInteraction(SQLModel, table=True):
     input_tokens: Optional[int] = Field(None, ge=0, description="Input/prompt tokens")
     output_tokens: Optional[int] = Field(None, ge=0, description="Output/completion tokens")  
     total_tokens: Optional[int] = Field(None, ge=0, description="Total tokens used")
+    
+    # Interaction type for categorization and UI rendering
+    interaction_type: str = Field(
+        default=LLMInteractionType.INVESTIGATION.value,
+        sa_column=Column(
+            String(50), 
+            nullable=False, 
+            server_default=LLMInteractionType.INVESTIGATION.value
+        ),
+        description="Type of LLM interaction (investigation, summarization, final_analysis)"
+    )
     
     @model_validator(mode="after")
     def validate_token_consistency(self) -> "LLMInteraction":
