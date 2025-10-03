@@ -151,6 +151,7 @@ class TestInitializeDatabase:
             
             result = initialize_database()
             assert result is False
+            mock_logger.error.assert_called_once()
         
         # Test migration failure
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
@@ -166,6 +167,7 @@ class TestInitializeDatabase:
             
             result = initialize_database()
             assert result is False
+            mock_logger.error.assert_called_once()
 
 
 @pytest.mark.unit  
@@ -218,8 +220,7 @@ class TestDatabaseConnection:
             assert result is False
         
         # Test connection failure
-        with patch('tarsy.database.init_db.create_engine') as mock_create_engine, \
-             patch('tarsy.database.init_db.logger') as mock_logger:
+        with patch('tarsy.database.init_db.create_engine') as mock_create_engine:
             
             mock_create_engine.side_effect = Exception("Connection failed")
             result = test_database_connection("sqlite:///test.db")
@@ -298,6 +299,7 @@ class TestGetDatabaseInfo:
                 "error": "Settings error"
             }
             assert result == expected
+            mock_logger.error.assert_called_once()
 
 
 @pytest.mark.unit

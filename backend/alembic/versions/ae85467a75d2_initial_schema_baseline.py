@@ -1,5 +1,17 @@
 """Initial schema baseline
 
+This is the baseline migration that marks the starting point for Alembic version control.
+It was generated against an existing database with all tables already present, so it contains
+no DDL operations (both upgrade() and downgrade() are empty).
+
+This migration serves to:
+1. Establish version ae85467a75d2 as the baseline in the alembic_version table
+2. Mark the existing schema (AlertSession, StageExecution, LLMInteraction, MCPInteraction) as "migrated"
+3. Provide a starting point for future schema changes
+
+Future migrations will build upon this baseline. When TARSy starts with a fresh database,
+this migration runs first (doing nothing), then any subsequent migrations are applied.
+
 Revision ID: ae85467a75d2
 Revises:
 Create Date: 2025-10-02 20:33:15.353864

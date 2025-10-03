@@ -9,6 +9,7 @@ from typing import Generator
 
 import pytest
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import NoSuchModuleError
 from sqlmodel import Session, create_engine
 
 from tarsy.database.migrations import (
@@ -153,7 +154,7 @@ class TestMigrationErrorCases:
         """Test that invalid database URLs are handled properly."""
         invalid_url = "invalid://not/a/real/database"
 
-        with pytest.raises(Exception):
+        with pytest.raises(NoSuchModuleError):
             run_migrations(invalid_url)
 
     def test_get_version_with_nonexistent_database(self) -> None:

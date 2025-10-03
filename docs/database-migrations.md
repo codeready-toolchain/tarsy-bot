@@ -383,7 +383,7 @@ def downgrade() -> None:
 - [Alembic Documentation](https://alembic.sqlalchemy.org/)
 - [SQLModel Documentation](https://sqlmodel.tiangolo.com/)
 - [SQLAlchemy Documentation](https://docs.sqlalchemy.org/)
-- [EP-0022: Database Migration System](./enhancements/pending/EP-0022-database-migrations-alembic.md)
+- [EP-0022: Database Migration System](./enhancements/implemented/EP-0022-database-migrations-alembic.md)
 
 ## Getting Help
 
