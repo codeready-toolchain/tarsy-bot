@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, text
 
 from tarsy.config.settings import get_settings, Settings
+from tarsy.database.migrations import run_migrations
 
 # Import all SQLModel table classes to ensure they are registered for schema creation
 from tarsy.models.db_models import AlertSession, StageExecution  # noqa: F401
@@ -138,6 +139,9 @@ def initialize_database() -> bool:
     """
     Initialize the history database based on configuration.
     
+    Uses Alembic migrations to create and update database schema automatically.
+    This replaces the old create_all() approach with proper version tracking.
+    
     Returns:
         True if initialization successful or disabled, False if failed
     """
@@ -157,8 +161,9 @@ def initialize_database() -> bool:
         if settings.history_retention_days <= 0:
             logger.warning(f"Invalid retention days ({settings.history_retention_days}), using default 90 days")
         
-        # Create database tables
-        success = create_database_tables(settings.database_url)
+        # Run database migrations (creates tables and applies any pending migrations)
+        logger.info("Initializing database with migration system...")
+        success = run_migrations(settings.database_url)
         
         if success:
             logger.info("History database initialization completed successfully")
@@ -170,7 +175,7 @@ def initialize_database() -> bool:
         return success
         
     except Exception as e:
-        logger.error(f"Database initialization error: {str(e)}")
+        logger.error(f"Database initialization error: {str(e)}", exc_info=True)
         return False
 
 
