@@ -22,6 +22,10 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen
 
 # Copy application code
+# NOTE: This includes:
+#   - tarsy/ (application code)
+#   - alembic.ini (migration config - REQUIRED for production)
+#   - alembic/ (migration scripts and env.py - REQUIRED for production)
 COPY . .
 
 # Create a non-root user for security

@@ -37,6 +37,10 @@ coverage.xml
 *.cover
 .hypothesis/
 
+# Migration development files (not needed in production)
+alembic/README
+alembic/script.py.mako
+
 # Development tools
 .vscode/
 .idea/

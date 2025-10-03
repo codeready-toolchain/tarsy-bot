@@ -29,6 +29,7 @@ dependencies = [
     "tiktoken>=0.7.0",
     "cryptography>=42.0.0",
     "PyJWT>=2.8.0",
+    "alembic>=1.16.5",
 ]
 requires-python = ">= 3.13"
 
