@@ -16,10 +16,12 @@ from tarsy.models.unified_interactions import *  # noqa: F403, F401
 # access to the values within the .ini file in use.
 config = context.config
 
-# Set database URL from TARSy settings
-settings = get_settings()
-if settings.history_enabled and settings.database_url:
-    config.set_main_option("sqlalchemy.url", settings.database_url)
+# Set database URL from TARSy settings (only if not already set programmatically)
+# When run via migrations.py, the URL is already set in config
+if not config.get_main_option("sqlalchemy.url"):
+    settings = get_settings()
+    if settings.history_enabled and settings.database_url:
+        config.set_main_option("sqlalchemy.url", settings.database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
