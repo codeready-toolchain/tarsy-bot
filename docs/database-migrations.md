@@ -25,11 +25,12 @@ Startup Flow:
 
 Migration Files:
   backend/
-    ├── alembic.ini              # Alembic configuration
+    ├── alembic.ini              # Alembic configuration (configured for timestamped filenames)
     ├── alembic/
     │   ├── env.py               # Migration environment
-    │   └── versions/            # Migration scripts
-    │       ├── ae85467a75d2_initial_schema_baseline.py
+    │   └── versions/            # Migration scripts (chronologically ordered)
+    │       ├── 20251002_2213_ae85467a75d2_initial_schema_baseline.py
+    │       ├── 20251003_1215_7c617b3e7c2c_add_interaction_type_to_llm_interactions.py
     │       └── <future migrations>.py
     └── tarsy/database/
         └── migrations.py        # Programmatic migration runner
