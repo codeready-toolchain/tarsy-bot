@@ -755,6 +755,12 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                 else:
                     raise AssertionError(f"Stage '{stage_name}' interaction {i+1} missing both 'conversation_index' and 'conversation' fields")
                 
+                # Verify interaction_type
+                if "interaction_type" in expected_interaction:
+                    assert (
+                        details.get("interaction_type") == expected_interaction["interaction_type"]
+                    ), f"Stage '{stage_name}' interaction {i+1} interaction_type mismatch: expected '{expected_interaction['interaction_type']}', got '{details.get('interaction_type')}'"
+                
                 # Verify token usage
                 if "input_tokens" in expected_interaction:
                     assert (

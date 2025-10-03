@@ -36,7 +36,7 @@ class TestSimpleReActController:
         """Create mock LLM client."""
         client = Mock()
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, **kwargs):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Analysis complete")
@@ -167,7 +167,7 @@ class TestSimpleReActController:
         ]
         
         call_count = 0
-        async def mock_generate_response_with_sequence(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response_with_sequence(conversation, session_id, stage_execution_id=None, **kwargs):
             nonlocal call_count
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             response = react_responses[call_count] if call_count < len(react_responses) else react_responses[-1]
@@ -199,7 +199,7 @@ class TestSimpleReActController:
         mock_agent.max_iterations = 1  # Force max iterations quickly
         
         # Mock LLM to return incomplete responses (no Final Answer) to force max iterations
-        async def mock_generate_response_incomplete(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response_incomplete(conversation, session_id, stage_execution_id=None, **kwargs):
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Thought: Still thinking...")  # No Final Answer
             return updated_conversation
@@ -249,7 +249,7 @@ class TestSimpleReActController:
         ]
         
         call_count = 0
-        async def mock_generate_response_with_error(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response_with_error(conversation, session_id, stage_execution_id=None, **kwargs):
             nonlocal call_count
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             response = react_responses[call_count] if call_count < len(react_responses) else react_responses[-1]
@@ -280,7 +280,7 @@ class TestReactFinalAnalysisController:
         """Create mock LLM client."""
         client = Mock()
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, **kwargs):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Comprehensive final analysis complete")
@@ -463,7 +463,7 @@ class TestReactStageController:
         """Create mock LLM client."""
         client = Mock()
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, **kwargs):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Thought: Need to analyze partially\nFinal Answer: Partial analysis complete")
@@ -600,7 +600,7 @@ class TestReactStageController:
         ]
         
         call_count = 0
-        async def mock_generate_response_with_sequence(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response_with_sequence(conversation, session_id, stage_execution_id=None, **kwargs):
             nonlocal call_count
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             response = react_responses[call_count] if call_count < len(react_responses) else react_responses[-1]
@@ -633,7 +633,7 @@ class TestReactStageController:
         fallback_response_text = "Partial analysis summary based on available data"
         
         call_count = 0
-        async def mock_generate_response_with_fallback(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response_with_fallback(conversation, session_id, stage_execution_id=None, **kwargs):
             nonlocal call_count
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             
@@ -662,7 +662,7 @@ class TestReactStageController:
         mock_agent.max_iterations = 1
         
         # Mock LLM to return incomplete responses (no Final Answer) to force max iterations
-        async def mock_generate_response_incomplete(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response_incomplete(conversation, session_id, stage_execution_id=None, **kwargs):
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Thought: Still working on analysis...")  # No Final Answer
             return updated_conversation

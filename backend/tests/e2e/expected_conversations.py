@@ -202,27 +202,27 @@ EXPECTED_STAGES = {
             {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # MCP 2 - Tool list discovery for test-data-server (returns 1 tool: collect_system_info)
             {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
-            # LLM 1 - Initial ReAct iteration
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330},
+            # LLM 1 - Initial ReAct iteration (investigation type)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
             # MCP 3 - Successful kubectl_get attempt
             {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-            # LLM 2 - Second ReAct iteration
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245},
+            # LLM 2 - Second ReAct iteration (investigation type)
+            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'investigation'},
             # MCP 4 - Failed kubectl_describe attempt (testing error handling)
             {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server', 'error_message': "Failed to call tool kubectl_describe on kubernetes-server after 2 attempts: Type=McpError | Message=tool 'kubectl_describe' not found: tool not found | error=ErrorData(code=-32602, message=\"tool 'kubectl_describe' not found: tool not found\", data=None)"},
-            # LLM 3 - Third ReAct iteration
-            {'type': 'llm', 'position': 3, 'success': True, 'conversation_index': 7, 'input_tokens': 220, 'output_tokens': 75, 'total_tokens': 295},
+            # LLM 3 - Third ReAct iteration (investigation type)
+            {'type': 'llm', 'position': 3, 'success': True, 'conversation_index': 7, 'input_tokens': 220, 'output_tokens': 75, 'total_tokens': 295, 'interaction_type': 'investigation'},
             # MCP 5 - Successful collect_system_info call (stores actual result, then triggers summarization)
             {'type': 'mcp', 'position': 5, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
             # LLM 4 - Summarization of large system info result (separate LLM call after MCP interaction stored)
             # The summarization interaction now happens AFTER the MCP interaction is stored to DB with actual result
-            {'type': 'llm', 'position': 4, 'success': True, 'conversation': EXPECTED_DATA_COLLECTION_SUMMARIZATION_CONVERSATION, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150},
-            # LLM 5 - Fourth ReAct iteration (kubectl events call) - continues after system info
-            {'type': 'llm', 'position': 5, 'success': True, 'conversation_index': 9, 'input_tokens': 200, 'output_tokens': 60, 'total_tokens': 260},
+            {'type': 'llm', 'position': 4, 'success': True, 'conversation': EXPECTED_DATA_COLLECTION_SUMMARIZATION_CONVERSATION, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'summarization'},
+            # LLM 5 - Fourth ReAct iteration (kubectl events call) - continues after system info (investigation type)
+            {'type': 'llm', 'position': 5, 'success': True, 'conversation_index': 9, 'input_tokens': 200, 'output_tokens': 60, 'total_tokens': 260, 'interaction_type': 'investigation'},
             # MCP 6 - Successful kubectl_get events call
             {'type': 'mcp', 'position': 6, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-            # LLM 6 - Final completion with events observation
-            {'type': 'llm', 'position': 6, 'success': True, 'conversation_index': 11, 'input_tokens': 315, 'output_tokens': 125, 'total_tokens': 440}
+            # LLM 6 - Final completion with events observation (final_analysis type)
+            {'type': 'llm', 'position': 6, 'success': True, 'conversation_index': 11, 'input_tokens': 315, 'output_tokens': 125, 'total_tokens': 440, 'interaction_type': 'final_analysis'}
         ]
     },
     'verification': {
@@ -231,20 +231,20 @@ EXPECTED_STAGES = {
         'interactions': [
             # MCP 1 - Tool list discovery (first interaction)
             {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            # LLM 1 - Initial ReAct iteration
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260},
+            # LLM 1 - Initial ReAct iteration (investigation type)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'investigation'},
             # MCP 2 - Successful kubectl_get attempt
             {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-            # LLM 2 - Final answer
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 280, 'output_tokens': 110, 'total_tokens': 390}
+            # LLM 2 - Final answer (final_analysis type)
+            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 280, 'output_tokens': 110, 'total_tokens': 390, 'interaction_type': 'final_analysis'}
         ]
     },
     'analysis': {
         'llm_count': 1,
         'mcp_count': 0,
         'interactions': [
-            # LLM 1 - Final analysis (no tool discovery)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 420, 'output_tokens': 180, 'total_tokens': 600}
+            # LLM 1 - Final analysis (final_analysis type, explicit from ReactFinalAnalysisController)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 420, 'output_tokens': 180, 'total_tokens': 600, 'interaction_type': 'final_analysis'}
         ]
     }
 }

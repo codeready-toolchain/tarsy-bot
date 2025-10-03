@@ -158,7 +158,7 @@ class TestMCPSummarizerComponent:
         from unittest.mock import Mock, AsyncMock
         client = Mock()
         
-        async def mock_response(conversation, session_id, stage_execution_id=None, max_tokens=None):
+        async def mock_response(conversation, session_id, stage_execution_id=None, max_tokens=None, **kwargs):
             # Verify max_tokens enforcement
             max_tokens = max_tokens if max_tokens is not None else 1000
             summary = f"SUMMARY: Test summary content (max_tokens={max_tokens})"

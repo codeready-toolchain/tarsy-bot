@@ -10,6 +10,7 @@ import copy
 import json
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
+from tarsy.models.constants import LLMInteractionType
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
 
@@ -94,7 +95,8 @@ class MCPResultSummarizer:
             # Generate summary using LLM client with max_tokens limit (ensures proper hook integration)
             response_conversation = await self.llm_client.generate_response(
                 summarization_conversation, session_id, stage_execution_id,
-                max_tokens=max_summary_tokens
+                max_tokens=max_summary_tokens,
+                interaction_type=LLMInteractionType.SUMMARIZATION.value
             )
             
             # Extract summary from response

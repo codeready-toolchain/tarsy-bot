@@ -20,7 +20,7 @@ from langchain_anthropic import ChatAnthropic
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.typed_context import llm_interaction_context
-from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
+from tarsy.models.constants import LLMInteractionType
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
@@ -160,7 +160,8 @@ class LLMClient:
         conversation: LLMConversation,
         session_id: str,
         stage_execution_id: Optional[str] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        interaction_type: Optional[str] = None
     ) -> LLMConversation:
         """
         Generate response using type-safe conversation object.
@@ -173,6 +174,8 @@ class LLMClient:
             session_id: Session ID for tracking
             stage_execution_id: Optional stage execution ID
             max_tokens: Optional max tokens configuration for LLM
+            interaction_type: Optional interaction type (investigation, summarization, final_analysis).
+                            If None, auto-detects based on response content.
         
         Returns:
             Updated conversation with assistant response appended
@@ -229,6 +232,17 @@ class LLMClient:
                 ctx.interaction.model_name = self.model
                 ctx.interaction.temperature = self.temperature
                 
+                # Determine interaction type
+                if interaction_type is not None:
+                    # Explicit type provided - use as-is
+                    ctx.interaction.interaction_type = interaction_type
+                else:
+                    # No type provided - auto-detect
+                    if self._contains_final_answer(conversation):
+                        ctx.interaction.interaction_type = LLMInteractionType.FINAL_ANALYSIS.value
+                    else:
+                        ctx.interaction.interaction_type = LLMInteractionType.INVESTIGATION.value
+                
                 # Complete the typed context with success
                 await ctx.complete_success({})
                 
@@ -245,6 +259,40 @@ class LLMClient:
                     enhanced_message += f" | Details: {error_details}"
                 
                 raise Exception(enhanced_message) from e
+    
+    def _contains_final_answer(self, conversation: LLMConversation) -> bool:
+        """
+        Check if the LAST message is from assistant and starts with 'Final Answer:'.
+        
+        This indicates a ReAct stage conclusion. Only checks the very last message
+        in the conversation to avoid false positives.
+        
+        Args:
+            conversation: The conversation to check
+            
+        Returns:
+            True if last message is assistant with "Final Answer:", False otherwise
+        """
+        if not conversation.messages:
+            return False
+        
+        # Check LAST message only
+        last_msg = conversation.messages[-1]
+        
+        # Must be from assistant
+        if last_msg.role != MessageRole.ASSISTANT:
+            return False
+        
+        # Check if Final Answer appears at start of line
+        content = last_msg.content.strip()
+        if content.startswith("Final Answer:"):
+            return True
+        
+        # Also check for Final Answer after newlines (multi-line messages)
+        if "\nFinal Answer:" in last_msg.content:
+            return True
+        
+        return False
     
     def get_max_tool_result_tokens(self) -> int:
         """Return the maximum tool result tokens for the current provider."""
@@ -439,7 +487,8 @@ class LLMManager:
                               session_id: str,
                               stage_execution_id: Optional[str] = None,
                               provider: str = None,
-                              max_tokens: Optional[int] = None) -> LLMConversation:
+                              max_tokens: Optional[int] = None,
+                              interaction_type: Optional[str] = None) -> LLMConversation:
         """Generate a response using the specified or default LLM provider.
         
         Args:
@@ -448,6 +497,8 @@ class LLMManager:
             stage_execution_id: Optional stage execution ID for tracking
             provider: Optional provider override (uses default if not specified)
             max_tokens: Optional max tokens configuration for LLM
+            interaction_type: Optional interaction type (investigation, summarization, final_analysis).
+                            If None, auto-detects based on response content.
             
         Returns:
             Updated LLMConversation with new assistant message appended
@@ -457,7 +508,7 @@ class LLMManager:
             available = list(self.clients.keys())
             raise Exception(f"LLM provider not available. Available: {available}")
 
-        return await client.generate_response(conversation, session_id, stage_execution_id, max_tokens)
+        return await client.generate_response(conversation, session_id, stage_execution_id, max_tokens, interaction_type)
 
     def list_available_providers(self) -> List[str]:
         """List available LLM providers."""

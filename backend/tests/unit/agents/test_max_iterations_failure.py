@@ -148,7 +148,7 @@ class TestReactControllerMaxIterationsFailure:
         """Test that no exception is raised when max iterations reached but last interaction succeeded."""
         # Mock LLM to fail first, then succeed on last attempt
         call_count = 0
-        async def mock_generate_with_final_success(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_with_final_success(conversation, session_id, stage_execution_id=None, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count < 2:  # Fail first attempt
@@ -170,7 +170,7 @@ class TestReactControllerMaxIterationsFailure:
     async def test_successful_completion_before_max_iterations(self, controller, sample_context, mock_llm_client):
         """Test that successful completion works normally before hitting max iterations."""
         # Mock LLM to succeed with Final Answer
-        async def mock_generate_success(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_success(conversation, session_id, stage_execution_id=None, **kwargs):
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Thought: Analysis complete\nFinal Answer: Success")
             return updated_conversation
@@ -259,7 +259,7 @@ class TestReactFinalAnalysisControllerFailureDetection:
     async def test_no_response_raises_max_iterations_failure(self, controller, sample_context, mock_llm_client):
         """Test that no LLM response raises MaxIterationsFailureError."""
         # Mock LLM to return conversation with no assistant message
-        async def mock_generate_no_response(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_no_response(conversation, session_id, stage_execution_id=None, **kwargs):
             return LLMConversation(messages=conversation.messages.copy())  # No assistant message added
         
         mock_llm_client.generate_response = AsyncMock(side_effect=mock_generate_no_response)
@@ -276,7 +276,7 @@ class TestReactFinalAnalysisControllerFailureDetection:
     async def test_successful_response_returns_content(self, controller, sample_context, mock_llm_client):
         """Test that successful LLM response returns content normally."""
         # Mock successful LLM response
-        async def mock_generate_success(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_success(conversation, session_id, stage_execution_id=None, **kwargs):
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final analysis complete")
             return updated_conversation

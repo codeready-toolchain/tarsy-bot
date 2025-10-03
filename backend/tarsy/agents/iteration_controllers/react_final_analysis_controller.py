@@ -8,6 +8,7 @@ accumulated data from previous stages to provide comprehensive conclusions.
 from typing import TYPE_CHECKING
 
 from tarsy.utils.logger import get_module_logger
+from tarsy.models.constants import LLMInteractionType
 from tarsy.models.unified_interactions import LLMMessage, LLMConversation
 from .base_controller import IterationController
 
@@ -74,7 +75,8 @@ class ReactFinalAnalysisController(IterationController):
             updated_conversation = await self.llm_client.generate_response(
                 conversation, 
                 context.session_id, 
-                stage_execution_id
+                stage_execution_id,
+                interaction_type=LLMInteractionType.FINAL_ANALYSIS.value
             )
             latest_message = updated_conversation.get_latest_assistant_message()
             

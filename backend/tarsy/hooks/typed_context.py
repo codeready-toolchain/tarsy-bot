@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from typing import Any, AsyncContextManager, Dict, Generic, Optional, TypeVar, Union
 
-from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE
+from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE, LLMInteractionType
 from tarsy.models.db_models import StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, MessageRole
 from tarsy.utils.timestamp import now_us
@@ -339,8 +339,10 @@ async def llm_interaction_context(session_id: str, request_data: Dict[str, Any],
         stage_execution_id=stage_execution_id,
         model_name=request_data.get('model', 'unknown'),
         provider=request_data.get('provider', 'unknown'),
-        temperature=request_data.get('temperature')
+        temperature=request_data.get('temperature'),
+        interaction_type=LLMInteractionType.INVESTIGATION.value
         # Note: conversation will be set by LLMClient after successful response
+        # Note: interaction_type may be updated by LLMClient based on response content
     )
     
     async with InteractionHookContext(interaction, get_typed_hook_manager()) as ctx:
