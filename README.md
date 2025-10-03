@@ -293,6 +293,38 @@ npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
 
 > **📖 For detailed extensibility examples**: See [Extensibility section](docs/architecture-overview.md#extensibility) in the Architecture Overview
 
+### Database Migrations
+
+TARSy uses **Alembic** for database schema versioning and migrations. The migration system automatically applies pending migrations on startup, ensuring your database schema is always up-to-date.
+
+**Quick Migration Workflow:**
+
+```bash
+# 1. Modify SQLModel in backend/tarsy/models/
+# 2. Generate migration from model changes
+make migration msg="Add new field to AlertSession"
+
+# 3. Review generated file in backend/alembic/versions/
+# 4. Test migration
+make migration-upgrade
+
+# 5. If needed, rollback
+make migration-downgrade
+```
+
+**Available Migration Commands:**
+
+```bash
+make migration msg="Description"     # Generate migration from model changes
+make migration-manual msg="Desc"     # Create empty migration for manual changes
+make migration-upgrade               # Apply all pending migrations
+make migration-downgrade             # Rollback last migration
+make migration-status                # Show current database version
+make migration-history               # Show full migration history
+```
+
+> **📖 For complete migration documentation**: See [docs/database-migrations.md](docs/database-migrations.md)
+
 ### Running Tests
 
 ```bash
