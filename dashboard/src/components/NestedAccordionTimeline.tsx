@@ -424,9 +424,9 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                 </Box>
               </AccordionSummary>
 
-              <AccordionDetails sx={{ pt: 0 }}>
+              <AccordionDetails sx={{ pt: 1, px: 1 }}>
                 {/* Stage Metadata */}
-                <Card variant="outlined" sx={{ mb: 3, bgcolor: 'grey.25' }}>
+                <Card variant="outlined" sx={{ mb: 1, bgcolor: 'grey.25' }}>
                   <CardContent>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                       <Typography variant="subtitle2">
@@ -439,14 +439,40 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                         tooltip="Copy stage timeline to clipboard"
                       />
                     </Box>
-                    <Box display="flex" gap={3} flexWrap="wrap">
+                    <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
                       <Typography variant="body2">
                         <strong>Agent:</strong> {stage.agent}
                       </Typography>
+                      <Typography variant="body2" color="text.disabled">•</Typography>
 
                       <Typography variant="body2">
                         <strong>Interactions:</strong> {stageInteractions.length}
                       </Typography>
+                      <Typography variant="body2" color="text.disabled">•</Typography>
+
+                      {stage.llm_interaction_count > 0 && (
+                        <>
+                          <Typography variant="body2">
+                            <strong>LLM Calls:</strong> {stage.llm_interaction_count}
+                          </Typography>
+                          <Typography variant="body2" color="text.disabled">•</Typography>
+                        </>
+                      )}
+
+                      {stage.mcp_communication_count > 0 && (
+                        <>
+                          <Typography variant="body2">
+                            <strong>MCP Calls:</strong> {stage.mcp_communication_count}
+                          </Typography>
+                          <Typography variant="body2" color="text.disabled">•</Typography>
+                        </>
+                      )}
+
+                      {stage.duration_ms && (
+                        <Typography variant="body2">
+                          <strong>Duration:</strong> {formatDurationMs(stage.duration_ms)}
+                        </Typography>
+                      )}
                     </Box>
                     
                     {stage.error_message && (
@@ -460,13 +486,13 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                 </Card>
 
                 {/* Chronological Interactions Timeline within Stage */}
-                <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                   <TimelineIcon color="primary" fontSize="small" />
                   Interactions Timeline
                 </Typography>
 
                 {stageInteractions.length > 0 ? (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {stageInteractions.map((interaction: TimelineItem, interactionIndex: number) => {
                       const itemKey = interaction.event_id || `interaction-${interactionIndex}`;
                       const isDetailsExpanded = expandedInteractionDetails[itemKey];
@@ -481,9 +507,9 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                             overflow: 'hidden',
                             transition: 'all 0.2s ease-in-out',
                             border: interaction.type === 'llm' 
-                              ? interaction.details?.interaction_type === 'summarization'
+                              ? (interaction.details as LLMInteraction)?.interaction_type === 'summarization'
                                 ? '2px solid rgba(237, 108, 2, 0.5)'  // Orange for summarization
-                                : interaction.details?.interaction_type === 'final_analysis'
+                                : (interaction.details as LLMInteraction)?.interaction_type === 'final_analysis'
                                 ? '2px solid rgba(46, 125, 50, 0.5)'  // Green for final analysis
                                 : '2px solid rgba(25, 118, 210, 0.5)'  // Blue for investigation
                               : interaction.type === 'mcp'
@@ -493,9 +519,9 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                               elevation: 4,
                               transform: 'translateY(-1px)',
                               border: interaction.type === 'llm' 
-                                ? interaction.details?.interaction_type === 'summarization'
+                                ? (interaction.details as LLMInteraction)?.interaction_type === 'summarization'
                                   ? '2px solid rgba(237, 108, 2, 0.8)'  // Darker orange on hover
-                                  : interaction.details?.interaction_type === 'final_analysis'
+                                  : (interaction.details as LLMInteraction)?.interaction_type === 'final_analysis'
                                   ? '2px solid rgba(46, 125, 50, 0.8)'  // Darker green on hover
                                   : '2px solid rgba(25, 118, 210, 0.8)'  // Darker blue on hover
                                 : interaction.type === 'mcp'
@@ -524,19 +550,19 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                                 </Typography>
                                 
                                 {/* Show interaction type for LLM interactions */}
-                                {interaction.type === 'llm' && interaction.details?.interaction_type && (
+                                {interaction.type === 'llm' && (interaction.details as LLMInteraction)?.interaction_type && (
                                   <Chip 
                                     label={
-                                      interaction.details.interaction_type === 'investigation' ? 'Investigation' :
-                                      interaction.details.interaction_type === 'summarization' ? 'Summarization' :
-                                      interaction.details.interaction_type === 'final_analysis' ? 'Final Analysis' :
+                                      (interaction.details as LLMInteraction).interaction_type === 'investigation' ? 'Investigation' :
+                                      (interaction.details as LLMInteraction).interaction_type === 'summarization' ? 'Summarization' :
+                                      (interaction.details as LLMInteraction).interaction_type === 'final_analysis' ? 'Final Analysis' :
                                       'LLM'
                                     }
                                     size="small"
                                     color={
-                                      interaction.details.interaction_type === 'investigation' ? 'primary' :
-                                      interaction.details.interaction_type === 'summarization' ? 'warning' :
-                                      interaction.details.interaction_type === 'final_analysis' ? 'success' :
+                                      (interaction.details as LLMInteraction).interaction_type === 'investigation' ? 'primary' :
+                                      (interaction.details as LLMInteraction).interaction_type === 'summarization' ? 'warning' :
+                                      (interaction.details as LLMInteraction).interaction_type === 'final_analysis' ? 'success' :
                                       'default'
                                     }
                                     sx={{ fontSize: '0.7rem', height: 22, fontWeight: 600 }}
@@ -706,7 +732,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                 })()}
 
                 {/* Stage Summary/Next Steps */}
-                <Box mt={3} display="flex" justifyContent="space-between" alignItems="center">
+                <Box mt={1.5} display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2" color="text.secondary">
                     {stage.status === 'completed' 
                       ? `Stage completed in ${formatDurationMs(stage.duration_ms || 0)}`

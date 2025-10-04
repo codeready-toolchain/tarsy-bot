@@ -47,16 +47,26 @@ def upgrade() -> None:
         # Backfill existing records with correct interaction types (only if column was added)
         # Identify summarization interactions (system message contains summarization marker)
         # Check for the specific system message content that only appears in summarization calls
-        connection.execute(sa.text("""
-            UPDATE llm_interactions 
-            SET interaction_type = 'summarization'
-            WHERE conversation LIKE '%You are an expert at summarizing technical output%'
-        """))
+        dialect_name = connection.dialect.name
+        
+        if dialect_name == 'postgresql':
+            # PostgreSQL: Cast JSONB to text for LIKE operator
+            connection.execute(sa.text("""
+                UPDATE llm_interactions 
+                SET interaction_type = 'summarization'
+                WHERE CAST(conversation AS text) LIKE '%You are an expert at summarizing technical output%'
+            """))
+        else:
+            # SQLite: conversation is already TEXT
+            connection.execute(sa.text("""
+                UPDATE llm_interactions 
+                SET interaction_type = 'summarization'
+                WHERE conversation LIKE '%You are an expert at summarizing technical output%'
+            """))
         
         # Identify final_analysis interactions (last assistant message contains "Final Answer:")
         # For PostgreSQL with JSONB - check if last assistant message starts with "Final Answer:"
-        # For SQLite - use simpler text-based detection (less precise but functional)
-        dialect_name = connection.dialect.name
+        # For SQLite - use JSON1 functions with proper casting
         
         if dialect_name == 'postgresql':
             connection.execute(sa.text("""
@@ -80,7 +90,7 @@ def upgrade() -> None:
                 )
             """))
         else:
-            # SQLite - JSON-based detection of last assistant message
+            # SQLite - JSON-based detection using json_extract (no ->> operator in SQLite)
             connection.execute(sa.text("""
                 UPDATE llm_interactions 
                 SET interaction_type = 'final_analysis'
@@ -89,16 +99,16 @@ def upgrade() -> None:
                     SELECT llm.interaction_id
                     FROM llm_interactions llm,
                          json_each(json_extract(llm.conversation, '$.messages')) msg
-                    WHERE msg.value->>'role' = 'assistant'
-                    AND msg.key = (
-                        SELECT MAX(m2.key) 
+                    WHERE json_extract(msg.value, '$.role') = 'assistant'
+                    AND CAST(msg.key AS INTEGER) = (
+                        SELECT MAX(CAST(m2.key AS INTEGER))
                         FROM json_each(json_extract(llm.conversation, '$.messages')) m2
-                        WHERE m2.value->>'role' = 'assistant'
+                        WHERE json_extract(m2.value, '$.role') = 'assistant'
                         AND m2.value IS NOT NULL
                     )
                     AND (
-                        msg.value->>'content' LIKE 'Final Answer:%'
-                        OR msg.value->>'content' LIKE '%' || CHAR(10) || 'Final Answer:%'
+                        json_extract(msg.value, '$.content') LIKE 'Final Answer:%'
+                        OR json_extract(msg.value, '$.content') LIKE '%' || CHAR(10) || 'Final Answer:%'
                     )
                 )
             """))

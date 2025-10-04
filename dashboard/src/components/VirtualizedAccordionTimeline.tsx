@@ -193,9 +193,9 @@ const InteractionItem = React.memo(({ index, style, data }: {
           overflow: 'hidden',
           transition: 'all 0.2s ease-in-out',
           border: interaction.type === 'llm' 
-            ? interaction.details?.interaction_type === 'summarization'
+            ? (interaction.details as LLMInteraction)?.interaction_type === 'summarization'
               ? '2px solid rgba(237, 108, 2, 0.5)'  // Orange for summarization
-              : interaction.details?.interaction_type === 'final_analysis'
+              : (interaction.details as LLMInteraction)?.interaction_type === 'final_analysis'
               ? '2px solid rgba(46, 125, 50, 0.5)'  // Green for final analysis
               : '2px solid rgba(25, 118, 210, 0.5)'  // Blue for investigation
             : interaction.type === 'mcp'
@@ -207,9 +207,9 @@ const InteractionItem = React.memo(({ index, style, data }: {
             elevation: 4,
             transform: 'translateY(-1px)',
             border: interaction.type === 'llm' 
-              ? interaction.details?.interaction_type === 'summarization'
+              ? (interaction.details as LLMInteraction)?.interaction_type === 'summarization'
                 ? '2px solid rgba(237, 108, 2, 0.8)'  // Darker orange on hover
-                : interaction.details?.interaction_type === 'final_analysis'
+                : (interaction.details as LLMInteraction)?.interaction_type === 'final_analysis'
                 ? '2px solid rgba(46, 125, 50, 0.8)'  // Darker green on hover
                 : '2px solid rgba(25, 118, 210, 0.8)'  // Darker blue on hover
               : interaction.type === 'mcp'
@@ -238,19 +238,19 @@ const InteractionItem = React.memo(({ index, style, data }: {
                 </Typography>
                 
                 {/* Show interaction type for LLM interactions */}
-                {interaction.type === 'llm' && interaction.details?.interaction_type && (
+                {interaction.type === 'llm' && (interaction.details as LLMInteraction)?.interaction_type && (
                   <Chip 
                     label={
-                      interaction.details.interaction_type === 'investigation' ? 'Investigation' :
-                      interaction.details.interaction_type === 'summarization' ? 'Summarization' :
-                      interaction.details.interaction_type === 'final_analysis' ? 'Final Analysis' :
+                      (interaction.details as LLMInteraction).interaction_type === 'investigation' ? 'Investigation' :
+                      (interaction.details as LLMInteraction).interaction_type === 'summarization' ? 'Summarization' :
+                      (interaction.details as LLMInteraction).interaction_type === 'final_analysis' ? 'Final Analysis' :
                       'LLM'
                     }
                     size="small"
                     color={
-                      interaction.details.interaction_type === 'investigation' ? 'primary' :
-                      interaction.details.interaction_type === 'summarization' ? 'warning' :
-                      interaction.details.interaction_type === 'final_analysis' ? 'success' :
+                      (interaction.details as LLMInteraction).interaction_type === 'investigation' ? 'primary' :
+                      (interaction.details as LLMInteraction).interaction_type === 'summarization' ? 'warning' :
+                      (interaction.details as LLMInteraction).interaction_type === 'final_analysis' ? 'success' :
                       'default'
                     }
                     sx={{ fontSize: '0.7rem', height: 20, fontWeight: 600 }}
@@ -708,11 +708,11 @@ function VirtualizedAccordionTimeline({
                 </Box>
               </AccordionSummary>
 
-              <AccordionDetails sx={{ pt: 0 }}>
+              <AccordionDetails sx={{ pt: 1, px: 1 }}>
                 {/* Stage Metadata */}
                 <Card
                   variant="outlined"
-                  sx={theme => ({ mb: 3, bgcolor: theme.palette.grey[50] })}
+                  sx={theme => ({ mb: 1, bgcolor: theme.palette.grey[50] })}
                 >
                   <CardContent>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -728,30 +728,44 @@ function VirtualizedAccordionTimeline({
                         />
                       </Suspense>
                     </Box>
-                    <Box display="flex" gap={3} flexWrap="wrap">
-                      <Typography variant="body2">
-                        <strong>Agent:</strong> {stage.agent}
+                    <Box 
+                      display="flex" 
+                      gap={1} 
+                      flexWrap="wrap" 
+                      alignItems="center"
+                      sx={{ 
+                        '& > *:not(:last-child)::after': {
+                          content: '"•"',
+                          marginLeft: 1.5,
+                          marginRight: 0.5,
+                          color: 'text.disabled',
+                          fontWeight: 'bold'
+                        }
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
+                        <strong>Agent:</strong>&nbsp;{stage.agent}
                       </Typography>
 
-                      <Typography variant="body2">
-                        <strong>Interactions:</strong> {stageInteractions.length}
+                      <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
+                        <strong>Interactions:</strong>&nbsp;{stageInteractions.length}
                       </Typography>
 
                       {stage.llm_interaction_count > 0 && (
-                        <Typography variant="body2">
-                          <strong>LLM Calls:</strong> {stage.llm_interaction_count}
+                        <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
+                          <strong>LLM Calls:</strong>&nbsp;{stage.llm_interaction_count}
                         </Typography>
                       )}
 
                       {stage.mcp_communication_count > 0 && (
-                        <Typography variant="body2">
-                          <strong>MCP Calls:</strong> {stage.mcp_communication_count}
+                        <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
+                          <strong>MCP Calls:</strong>&nbsp;{stage.mcp_communication_count}
                         </Typography>
                       )}
 
                       {stage.duration_ms && (
-                        <Typography variant="body2">
-                          <strong>Duration:</strong> {formatDurationMs(stage.duration_ms)}
+                        <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
+                          <strong>Duration:</strong>&nbsp;{formatDurationMs(stage.duration_ms)}
                         </Typography>
                       )}
                     </Box>
@@ -771,7 +785,7 @@ function VirtualizedAccordionTimeline({
                 </Card>
 
                 {/* Interactions Timeline */}
-                <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                   <TimelineIcon color="primary" fontSize="small" />
                   Interactions Timeline
                   {useVirtualization && (

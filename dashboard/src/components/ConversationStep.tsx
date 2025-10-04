@@ -31,7 +31,8 @@ const getStepStyle = (type: string, success: boolean = true) => {
         color: 'text.primary',
         bgColor: 'rgba(25, 118, 210, 0.04)',  // Subtle blue tint
         borderColor: 'rgba(25, 118, 210, 0.3)',
-        fontStyle: 'italic' as const
+        fontStyle: 'italic' as const,
+        hoverBgColor: 'rgba(25, 118, 210, 0.12)'  // Valid hover color
       };
     case 'action':
       return {
@@ -39,7 +40,8 @@ const getStepStyle = (type: string, success: boolean = true) => {
         color: success ? 'primary.main' : 'error.main',
         bgColor: success ? 'rgba(66, 66, 66, 0.03)' : 'rgba(211, 47, 47, 0.04)',
         borderColor: success ? 'rgba(66, 66, 66, 0.3)' : 'rgba(211, 47, 47, 0.4)',
-        fontStyle: 'normal' as const
+        fontStyle: 'normal' as const,
+        hoverBgColor: success ? 'rgba(66, 66, 66, 0.08)' : 'rgba(211, 47, 47, 0.12)'  // Valid hover color
       };
     case 'analysis':
       return {
@@ -47,7 +49,8 @@ const getStepStyle = (type: string, success: boolean = true) => {
         color: 'success.main',
         bgColor: 'rgba(46, 125, 50, 0.04)',  // Subtle green tint
         borderColor: 'rgba(46, 125, 50, 0.4)',
-        fontStyle: 'normal' as const
+        fontStyle: 'normal' as const,
+        hoverBgColor: 'rgba(46, 125, 50, 0.12)'  // Valid hover color
       };
     case 'summarization':
       return {
@@ -55,7 +58,8 @@ const getStepStyle = (type: string, success: boolean = true) => {
         color: 'text.primary',  // Readable dark text instead of orange
         bgColor: 'rgba(237, 108, 2, 0.04)',  // Subtle amber tint
         borderColor: 'rgba(237, 108, 2, 0.4)',  // Slightly stronger border for distinction
-        fontStyle: 'normal' as const
+        fontStyle: 'normal' as const,
+        hoverBgColor: 'rgba(237, 108, 2, 0.12)'  // Valid hover color
       };
     case 'error':
       return {
@@ -63,7 +67,8 @@ const getStepStyle = (type: string, success: boolean = true) => {
         color: 'error.main',
         bgColor: 'rgba(211, 47, 47, 0.04)',
         borderColor: 'rgba(211, 47, 47, 0.4)',
-        fontStyle: 'normal' as const
+        fontStyle: 'normal' as const,
+        hoverBgColor: 'rgba(211, 47, 47, 0.12)'  // Valid hover color
       };
     default:
       return {
@@ -71,7 +76,8 @@ const getStepStyle = (type: string, success: boolean = true) => {
         color: 'text.secondary',
         bgColor: 'transparent',
         borderColor: 'divider',
-        fontStyle: 'normal' as const
+        fontStyle: 'normal' as const,
+        hoverBgColor: 'action.hover'  // Fallback to MUI default
       };
   }
 };
@@ -200,7 +206,7 @@ function ConversationStep({
                     size="small"
                     sx={{ 
                       color: style.color,
-                      '&:hover': { backgroundColor: `${style.color}15` }
+                      '&:hover': { backgroundColor: style.hoverBgColor }
                     }}
                   >
                     {isAnalysisExpanded ? <ExpandLess /> : <ExpandMore />}
@@ -302,7 +308,7 @@ function ConversationStep({
                     size="small"
                     sx={{ 
                       color: style.color,
-                      '&:hover': { backgroundColor: `${style.color}15` }
+                      '&:hover': { backgroundColor: style.hoverBgColor }
                     }}
                   >
                     {isSummarizationExpanded ? <ExpandLess /> : <ExpandMore />}
