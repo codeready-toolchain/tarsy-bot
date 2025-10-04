@@ -457,7 +457,10 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
 
               <AccordionDetails sx={{ pt: 1, px: 1 }}>
                 {/* Stage Metadata */}
-                <Card variant="outlined" sx={{ mb: 1, bgcolor: 'grey.25' }}>
+                <Card
+                  variant="outlined"
+                  sx={{ mb: 1, bgcolor: (theme) => theme.palette.grey[50] }}
+                >
                   <CardContent>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                       <Typography variant="subtitle2">
@@ -471,39 +474,46 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                       />
                     </Box>
                     <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
-                      <Typography variant="body2">
-                        <strong>Agent:</strong> {stage.agent}
-                      </Typography>
-                      <Typography variant="body2" color="text.disabled">•</Typography>
+                      {(() => {
+                        const metadataItems = [
+                          { label: 'Agent', value: stage.agent },
+                          { label: 'Interactions', value: stageInteractions.length },
+                        ];
 
-                      <Typography variant="body2">
-                        <strong>Interactions:</strong> {stageInteractions.length}
-                      </Typography>
-                      <Typography variant="body2" color="text.disabled">•</Typography>
+                        if (stage.llm_interaction_count > 0) {
+                          metadataItems.push({ 
+                            label: 'LLM Calls', 
+                            value: stage.llm_interaction_count 
+                          });
+                        }
 
-                      {stage.llm_interaction_count > 0 && (
-                        <>
-                          <Typography variant="body2">
-                            <strong>LLM Calls:</strong> {stage.llm_interaction_count}
-                          </Typography>
-                          <Typography variant="body2" color="text.disabled">•</Typography>
-                        </>
-                      )}
+                        if (stage.mcp_communication_count > 0) {
+                          metadataItems.push({ 
+                            label: 'MCP Calls', 
+                            value: stage.mcp_communication_count 
+                          });
+                        }
 
-                      {stage.mcp_communication_count > 0 && (
-                        <>
-                          <Typography variant="body2">
-                            <strong>MCP Calls:</strong> {stage.mcp_communication_count}
-                          </Typography>
-                          <Typography variant="body2" color="text.disabled">•</Typography>
-                        </>
-                      )}
+                        if (stage.duration_ms != null) {
+                          metadataItems.push({ 
+                            label: 'Duration', 
+                            value: formatDurationMs(stage.duration_ms) 
+                          });
+                        }
 
-                      {stage.duration_ms != null && (
-                        <Typography variant="body2">
-                          <strong>Duration:</strong> {formatDurationMs(stage.duration_ms)}
-                        </Typography>
-                      )}
+                        return metadataItems.map((item, index) => (
+                          <React.Fragment key={index}>
+                            <Typography variant="body2">
+                              <strong>{item.label}:</strong> {item.value}
+                            </Typography>
+                            {index < metadataItems.length - 1 && (
+                              <Typography variant="body2" color="text.disabled">
+                                •
+                              </Typography>
+                            )}
+                          </React.Fragment>
+                        ));
+                      })()}
                     </Box>
                     
                     {stage.error_message && (
