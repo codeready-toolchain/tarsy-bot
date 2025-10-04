@@ -2,16 +2,11 @@ import { lazy, Suspense } from 'react';
 import { Box, Skeleton, Alert, Typography } from '@mui/material';
 import type { DetailedSession } from '../types';
 
-// Lazy load existing timeline components
+// Lazy load timeline component
 const NestedAccordionTimeline = lazy(() => import('./NestedAccordionTimeline'));
-const VirtualizedAccordionTimeline = lazy(() => import('./VirtualizedAccordionTimeline'));
-
-// Performance thresholds (match those in SessionDetailPageBase)
-const LARGE_SESSION_THRESHOLD = 50; // interactions
 
 interface TechnicalTimelineProps {
   session: DetailedSession;
-  useVirtualization?: boolean;
   autoScroll?: boolean;
 }
 
@@ -37,7 +32,6 @@ const TechnicalTimelineSkeleton = () => (
  */
 function TechnicalTimeline({ 
   session, 
-  useVirtualization = false,
   autoScroll = true
 }: TechnicalTimelineProps) {
   
@@ -73,18 +67,10 @@ function TechnicalTimeline({
 
   return (
     <Suspense fallback={<TechnicalTimelineSkeleton />}>
-      {useVirtualization ? (
-        <VirtualizedAccordionTimeline
-          chainExecution={chainExecution}
-          maxVisibleInteractions={LARGE_SESSION_THRESHOLD}
-          autoScroll={autoScroll}
-        />
-      ) : (
-        <NestedAccordionTimeline
-          chainExecution={chainExecution}
-          autoScroll={autoScroll}
-        />
-      )}
+      <NestedAccordionTimeline
+        chainExecution={chainExecution}
+        autoScroll={autoScroll}
+      />
     </Suspense>
   );
 }

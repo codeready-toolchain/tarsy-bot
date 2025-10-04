@@ -20,7 +20,6 @@ import CopyButton from './CopyButton';
 
 interface ConversationTimelineProps {
   session: DetailedSession;
-  useVirtualization?: boolean;
   autoScroll?: boolean;
 }
 
@@ -31,7 +30,6 @@ interface ConversationTimelineProps {
  */
 function ConversationTimeline({ 
   session, 
-  useVirtualization: _useVirtualization, // Not used for conversation view currently
   autoScroll: _autoScroll = true // Auto-scroll handled by centralized system
 }: ConversationTimelineProps) {
   const [parsedSession, setParsedSession] = useState<ParsedSession | null>(null);

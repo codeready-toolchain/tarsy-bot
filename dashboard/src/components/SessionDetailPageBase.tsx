@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -11,12 +11,11 @@ import {
   Skeleton,
   Switch,
   FormControlLabel,
-  Chip,
   ToggleButton,
   ToggleButtonGroup,
   IconButton
 } from '@mui/material';
-import { Speed, Psychology, BugReport } from '@mui/icons-material';
+import { Psychology, BugReport } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
 import { webSocketService } from '../services/websocket';
 import { useSession } from '../contexts/SessionContext';
@@ -27,14 +26,6 @@ import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
 const SessionHeader = lazy(() => import('./SessionHeader'));
 const OriginalAlertCard = lazy(() => import('./OriginalAlertCard'));
 const FinalAnalysisCard = lazy(() => import('./FinalAnalysisCard'));
-
-// Performance thresholds
-const LARGE_SESSION_THRESHOLD = 50; // interactions
-const VERY_LARGE_SESSION_THRESHOLD = 200; // interactions
-
-// Helper function to compute total timeline length across all stages
-const totalTimelineLength = (stages?: { llm_interactions?: any[], mcp_communications?: any[] }[]) =>
-  stages?.reduce((total, stage) => total + ((stage.llm_interactions?.length || 0) + (stage.mcp_communications?.length || 0)), 0) || 0;
 
 // Loading skeletons for different sections
 const HeaderSkeleton = () => (
@@ -83,7 +74,7 @@ const TimelineSkeleton = () => (
 
 interface SessionDetailPageBaseProps {
   viewType: 'conversation' | 'technical';
-  timelineComponent: (session: DetailedSession, useVirtualization?: boolean, autoScroll?: boolean) => ReactNode;
+  timelineComponent: (session: DetailedSession, autoScroll?: boolean) => ReactNode;
   timelineSkeleton?: ReactNode;
   onViewChange?: (newView: 'conversation' | 'technical') => void;
 }
@@ -113,10 +104,6 @@ function SessionDetailPageBase({
     updateSessionStatus 
   } = useSession(sessionId);
 
-  // Performance optimization settings
-  const [useVirtualization, setUseVirtualization] = useState<boolean | null>(null); // null = auto-detect
-  const [showPerformanceMode, setShowPerformanceMode] = useState<boolean>(false);
-  
   // Auto-scroll settings
   const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(true);
   
@@ -137,50 +124,6 @@ function SessionDetailPageBase({
     setCurrentView(viewType);
   }, [viewType]);
 
-  // Performance metrics
-  const performanceMetrics = useMemo(() => {
-    if (!session) return null;
-
-    const totalInteractions = totalTimelineLength(session.stages);
-    const stagesCount = session.stages?.length || 0;
-    const largestStage = session.stages?.reduce((max, stage) => {
-      const stageInteractions = (stage.llm_interactions?.length || 0) + (stage.mcp_communications?.length || 0);
-      return stageInteractions > max ? stageInteractions : max;
-    }, 0) || 0;
-
-    // Calculate estimated content size
-    let estimatedSize = 0;
-    session.stages?.forEach(stage => {
-      stage.llm_interactions?.forEach(interaction => {
-        if (interaction.details?.messages) {
-          estimatedSize += JSON.stringify(interaction.details.messages).length;
-        }
-      });
-      stage.mcp_communications?.forEach(interaction => {
-        if (interaction.details) {
-          estimatedSize += JSON.stringify(interaction.details).length;
-        }
-      });
-    });
-
-    return {
-      totalInteractions,
-      stagesCount,
-      largestStage,
-      estimatedSize,
-      isLargeSession: totalInteractions > LARGE_SESSION_THRESHOLD,
-      isVeryLargeSession: totalInteractions > VERY_LARGE_SESSION_THRESHOLD,
-      recommendVirtualization: totalInteractions > LARGE_SESSION_THRESHOLD || estimatedSize > 100000
-    };
-  }, [session]);
-
-  // Auto-detect performance settings
-  useEffect(() => {
-    if (performanceMetrics && useVirtualization === null) {
-      setUseVirtualization(performanceMetrics.recommendVirtualization);
-      setShowPerformanceMode(performanceMetrics.isLargeSession);
-    }
-  }, [performanceMetrics, useVirtualization]);
 
   // Ref to hold latest session to avoid stale closures in WebSocket handlers
   const sessionRef = useRef<DetailedSession | null>(null);
@@ -421,10 +364,6 @@ function SessionDetailPageBase({
     }
   };
 
-  const handleVirtualizationToggle = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setUseVirtualization(event.target.checked);
-  };
-
   const handleAutoScrollToggle = (event: React.ChangeEvent<HTMLInputElement>) => {
     setAutoScrollEnabled(event.target.checked);
   };
@@ -530,44 +469,6 @@ function SessionDetailPageBase({
             </Box>
           )}
 
-          {/* Performance mode toggle */}
-          {showPerformanceMode && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={useVirtualization || false}
-                    onChange={handleVirtualizationToggle}
-                    size="small"
-                    color="default"
-                  />
-                }
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <Speed fontSize="small" />
-                    <Typography variant="caption" sx={{ color: 'inherit' }}>
-                      Optimized
-                    </Typography>
-                  </Box>
-                }
-                sx={{ m: 0, color: 'inherit' }}
-              />
-            </Box>
-          )}
-          
-          {/* Performance indicators */}
-          {performanceMetrics?.isVeryLargeSession && (
-            <Chip 
-              icon={<Speed />}
-              label="Large Session"
-              size="small"
-              color="warning"
-              sx={{ mr: 1 }}
-            />
-          )}
-          
-
-          
           {loading && (
             <CircularProgress size={20} sx={{ color: 'inherit' }} />
           )}
@@ -608,19 +509,6 @@ function SessionDetailPageBase({
           </Alert>
         )}
 
-        {/* Performance warning for large sessions */}
-        {performanceMetrics?.isVeryLargeSession && !loading && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            <Typography variant="body2" gutterBottom>
-              <strong>Large Session Detected:</strong> This session has {performanceMetrics.totalInteractions} interactions.
-            </Typography>
-            <Typography variant="body2">
-              Performance optimizations are {useVirtualization ? 'enabled' : 'disabled'}. 
-              You can toggle optimized rendering using the switch in the header.
-            </Typography>
-          </Alert>
-        )}
-
         {/* Session detail content with lazy loading */}
         {session && !loading && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -640,7 +528,7 @@ function SessionDetailPageBase({
             {/* Timeline Content - Conditional based on view type */}
             {session.stages && session.stages.length > 0 ? (
               <Suspense fallback={timelineSkeleton}>
-                {timelineComponent(session, useVirtualization ?? undefined, autoScrollEnabled)}
+                {timelineComponent(session, autoScrollEnabled)}
               </Suspense>
             ) : (
               <Alert severity="error" sx={{ mb: 2 }}>

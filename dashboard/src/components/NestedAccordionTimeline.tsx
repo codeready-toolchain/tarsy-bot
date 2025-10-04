@@ -83,7 +83,38 @@ const getInteractionIcon = (type: string) => {
   }
 };
 
-
+// Helper function to get interaction type styles for LLM interactions
+const getInteractionTypeStyle = (interaction: TimelineItem) => {
+  if (interaction.type !== 'llm') return null;
+  
+  const llmDetails = interaction.details as LLMInteraction;
+  const interactionType = llmDetails?.interaction_type || 'investigation';
+  
+  switch (interactionType) {
+    case 'summarization':
+      return {
+        label: 'Summarization',
+        color: 'warning' as const,
+        borderColor: '2px solid rgba(237, 108, 2, 0.5)',
+        hoverBorderColor: '2px solid rgba(237, 108, 2, 0.8)'
+      };
+    case 'final_analysis':
+      return {
+        label: 'Final Analysis',
+        color: 'success' as const,
+        borderColor: '2px solid rgba(46, 125, 50, 0.5)',
+        hoverBorderColor: '2px solid rgba(46, 125, 50, 0.8)'
+      };
+    case 'investigation':
+    default:
+      return {
+        label: 'Investigation',
+        color: 'primary' as const,
+        borderColor: '2px solid rgba(25, 118, 210, 0.5)',
+        hoverBorderColor: '2px solid rgba(25, 118, 210, 0.8)'
+      };
+  }
+};
 
 // Removed duplicate helper functions - now imported from shared utils
 
@@ -468,7 +499,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                         </>
                       )}
 
-                      {stage.duration_ms && (
+                      {stage.duration_ms != null && (
                         <Typography variant="body2">
                           <strong>Duration:</strong> {formatDurationMs(stage.duration_ms)}
                         </Typography>
@@ -506,27 +537,21 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                             borderRadius: 2,
                             overflow: 'hidden',
                             transition: 'all 0.2s ease-in-out',
-                            border: interaction.type === 'llm' 
-                              ? (interaction.details as LLMInteraction)?.interaction_type === 'summarization'
-                                ? '2px solid rgba(237, 108, 2, 0.5)'  // Orange for summarization
-                                : (interaction.details as LLMInteraction)?.interaction_type === 'final_analysis'
-                                ? '2px solid rgba(46, 125, 50, 0.5)'  // Green for final analysis
-                                : '2px solid rgba(25, 118, 210, 0.5)'  // Blue for investigation
-                              : interaction.type === 'mcp'
-                              ? '2px solid #ce93d8'
-                              : '2px solid #ffcc02',
+                            border: (() => {
+                              const typeStyle = getInteractionTypeStyle(interaction);
+                              if (typeStyle) return typeStyle.borderColor;
+                              if (interaction.type === 'mcp') return '2px solid #ce93d8';
+                              return '2px solid #ffcc02';
+                            })(),
                             '&:hover': {
                               elevation: 4,
                               transform: 'translateY(-1px)',
-                              border: interaction.type === 'llm' 
-                                ? (interaction.details as LLMInteraction)?.interaction_type === 'summarization'
-                                  ? '2px solid rgba(237, 108, 2, 0.8)'  // Darker orange on hover
-                                  : (interaction.details as LLMInteraction)?.interaction_type === 'final_analysis'
-                                  ? '2px solid rgba(46, 125, 50, 0.8)'  // Darker green on hover
-                                  : '2px solid rgba(25, 118, 210, 0.8)'  // Darker blue on hover
-                                : interaction.type === 'mcp'
-                                ? '2px solid #ba68c8'
-                                : '2px solid #ffa000'
+                              border: (() => {
+                                const typeStyle = getInteractionTypeStyle(interaction);
+                                if (typeStyle) return typeStyle.hoverBorderColor;
+                                if (interaction.type === 'mcp') return '2px solid #ba68c8';
+                                return '2px solid #ffa000';
+                              })()
                             }
                           }}
                         >
@@ -550,24 +575,17 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                                 </Typography>
                                 
                                 {/* Show interaction type for LLM interactions */}
-                                {interaction.type === 'llm' && (interaction.details as LLMInteraction)?.interaction_type && (
-                                  <Chip 
-                                    label={
-                                      (interaction.details as LLMInteraction).interaction_type === 'investigation' ? 'Investigation' :
-                                      (interaction.details as LLMInteraction).interaction_type === 'summarization' ? 'Summarization' :
-                                      (interaction.details as LLMInteraction).interaction_type === 'final_analysis' ? 'Final Analysis' :
-                                      'LLM'
-                                    }
-                                    size="small"
-                                    color={
-                                      (interaction.details as LLMInteraction).interaction_type === 'investigation' ? 'primary' :
-                                      (interaction.details as LLMInteraction).interaction_type === 'summarization' ? 'warning' :
-                                      (interaction.details as LLMInteraction).interaction_type === 'final_analysis' ? 'success' :
-                                      'default'
-                                    }
-                                    sx={{ fontSize: '0.7rem', height: 22, fontWeight: 600 }}
-                                  />
-                                )}
+                                {(() => {
+                                  const typeStyle = getInteractionTypeStyle(interaction);
+                                  return typeStyle && (
+                                    <Chip 
+                                      label={typeStyle.label}
+                                      size="small"
+                                      color={typeStyle.color}
+                                      sx={{ fontSize: '0.7rem', height: 22, fontWeight: 600 }}
+                                    />
+                                  );
+                                })()}
                                 
                                 {interaction.duration_ms && (
                                   <Chip 
