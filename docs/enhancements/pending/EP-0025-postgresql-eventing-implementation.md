@@ -2232,7 +2232,7 @@ await publish_event(db_session, EventChannel.session_details(event.session_id), 
 - Monitor: `curl -N http://localhost:8000/api/v1/events/stream?channel=session:SESSION_ID`
 - Should receive: `llm.interaction`, `mcp.tool_call`, `mcp.tool_list`, `stage.started`, `stage.completed`
 
-#### 5.3 Remove WebSocket Infrastructure (AFTER Events Work)
+#### 5.3 Remove WebSocket Infrastructure
 
 **Critical:** Only remove after SSE is fully working and tested!
 

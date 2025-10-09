@@ -272,9 +272,23 @@ class AlertService:
             # Store API alert_id to session_id mapping if session was created
             if session_created:
                 self.store_alert_session_mapping(alert_id, chain_context.session_id)
+                
+                # Publish session.created event
+                from tarsy.services.events.event_helpers import publish_session_created
+                await publish_session_created(
+                    chain_context.session_id,
+                    chain_context.processing_alert.alert_type
+                )
             
             # Update history session with processing start
             self._update_session_status(chain_context.session_id, AlertSessionStatus.IN_PROGRESS.value)
+            
+            # Publish session.started event
+            from tarsy.services.events.event_helpers import publish_session_started
+            await publish_session_started(
+                chain_context.session_id,
+                chain_context.processing_alert.alert_type
+            )
             
             # Step 3: Extract runbook from alert data and download once per chain
             # If no runbook URL provided, use the built-in default runbook
@@ -312,6 +326,10 @@ class AlertService:
                 # Mark history session as completed successfully
                 self._update_session_completed(chain_context.session_id, AlertSessionStatus.COMPLETED.value, final_analysis=final_result)
                 
+                # Publish session.completed event
+                from tarsy.services.events.event_helpers import publish_session_completed
+                await publish_session_completed(chain_context.session_id)
+                
                 return final_result
             else:
                 # Handle chain processing error
@@ -321,6 +339,10 @@ class AlertService:
                 # Update history session with processing error
                 self._update_session_error(chain_context.session_id, error_msg)
                 
+                # Publish session.failed event
+                from tarsy.services.events.event_helpers import publish_session_failed
+                await publish_session_failed(chain_context.session_id)
+                
                 return self._format_error_response(chain_context, error_msg)
                 
         except Exception as e:
@@ -329,6 +351,10 @@ class AlertService:
             
             # Update history session with processing error
             self._update_session_error(chain_context.session_id, error_msg)
+            
+            # Publish session.failed event
+            from tarsy.services.events.event_helpers import publish_session_failed
+            await publish_session_failed(chain_context.session_id)
             
             return self._format_error_response(chain_context, error_msg)
 

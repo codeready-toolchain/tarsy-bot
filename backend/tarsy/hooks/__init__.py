@@ -6,48 +6,52 @@ communications with structured Pydantic models, ensuring data integrity
 and preventing contamination between hook contexts and actual results.
 """
 
-from .typed_context import (
-    BaseTypedHook, 
-    TypedHookManager, 
+from .hook_context import (
+    BaseHook, 
+    HookManager, 
     InteractionHookContext, 
-    get_typed_hook_manager,
+    get_hook_manager,
     llm_interaction_context,
     mcp_interaction_context,
     mcp_list_context
 )
-from .typed_history_hooks import (
-    TypedLLMHistoryHook, 
-    TypedMCPHistoryHook, 
-    TypedMCPListHistoryHook
+from .history_hooks import (
+    LLMHistoryHook, 
+    MCPHistoryHook, 
+    MCPListHistoryHook,
+    StageExecutionHistoryHook
 )
-from .typed_dashboard_hooks import (
-    TypedLLMDashboardHook, 
-    TypedMCPDashboardHook, 
-    TypedMCPListDashboardHook
+from .event_hooks import (
+    LLMEventHook, 
+    MCPEventHook, 
+    MCPListEventHook,
+    StageExecutionEventHook
 )
-from .hook_registry import TypedHookRegistry, get_typed_hook_registry
+from .hook_registry import HookRegistry, get_hook_registry
 
 __all__ = [
-    # Core typed hook system
-    "BaseTypedHook",
-    "TypedHookManager", 
+    # Core hook system
+    "BaseHook",
+    "HookManager", 
     "InteractionHookContext",
-    "get_typed_hook_manager",
+    "get_hook_manager",
     
     # Context managers
     "llm_interaction_context",
     "mcp_interaction_context", 
     "mcp_list_context",
     
-    # Typed hook implementations
-    "TypedLLMHistoryHook",
-    "TypedMCPHistoryHook", 
-    "TypedMCPListHistoryHook",
-    "TypedLLMDashboardHook",
-    "TypedMCPDashboardHook",
-    "TypedMCPListDashboardHook",
+    # Hook implementations
+    "LLMHistoryHook",
+    "MCPHistoryHook", 
+    "MCPListHistoryHook",
+    "StageExecutionHistoryHook",
+    "LLMEventHook",
+    "MCPEventHook",
+    "MCPListEventHook",
+    "StageExecutionEventHook",
     
     # Registry
-    "TypedHookRegistry",
-    "get_typed_hook_registry"
+    "HookRegistry",
+    "get_hook_registry"
 ]

@@ -1,7 +1,7 @@
 """
 Tests for typed hook registry functionality.
 
-Tests the TypedHookRegistry that manages initialization and registration
+Tests the HookRegistry that manages initialization and registration
 of typed hooks with dependency injection.
 """
 
@@ -9,12 +9,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tarsy.hooks.hook_registry import TypedHookRegistry, get_typed_hook_registry
+from tarsy.hooks.hook_registry import HookRegistry, get_hook_registry
 
 
 @pytest.mark.unit
-class TestTypedHookRegistry:
-    """Test TypedHookRegistry functionality."""
+class TestHookRegistry:
+    """Test HookRegistry functionality."""
     
     @pytest.fixture
     def mock_typed_hook_manager(self):
@@ -30,34 +30,29 @@ class TestTypedHookRegistry:
         """Mock history service."""
         return Mock()
     
-    @pytest.fixture
-    def mock_dashboard_broadcaster(self):
-        """Mock dashboard broadcaster."""
-        return Mock()
-    
-    @patch('tarsy.hooks.hook_registry.get_typed_hook_manager')
+    @patch('tarsy.hooks.hook_registry.get_hook_manager')
     def test_initialization(self, mock_get_manager, mock_typed_hook_manager):
-        """Test TypedHookRegistry initialization."""
+        """Test HookRegistry initialization."""
         mock_get_manager.return_value = mock_typed_hook_manager
         
-        registry = TypedHookRegistry()
+        registry = HookRegistry()
         
         assert registry.typed_hook_manager == mock_typed_hook_manager
         assert registry._initialized is False
         mock_get_manager.assert_called_once()
     
-    @patch('tarsy.hooks.hook_registry.get_typed_hook_manager')
-    @patch('tarsy.hooks.hook_registry.TypedLLMHistoryHook')
-    @patch('tarsy.hooks.hook_registry.TypedMCPHistoryHook')
-    @patch('tarsy.hooks.hook_registry.TypedMCPListHistoryHook')
-    @patch('tarsy.hooks.hook_registry.TypedLLMDashboardHook')
-    @patch('tarsy.hooks.hook_registry.TypedMCPDashboardHook')
-    @patch('tarsy.hooks.hook_registry.TypedMCPListDashboardHook')
+    @patch('tarsy.hooks.hook_registry.get_hook_manager')
+    @patch('tarsy.hooks.hook_registry.LLMHistoryHook')
+    @patch('tarsy.hooks.hook_registry.MCPHistoryHook')
+    @patch('tarsy.hooks.hook_registry.MCPListHistoryHook')
+    @patch('tarsy.hooks.hook_registry.LLMEventHook')
+    @patch('tarsy.hooks.hook_registry.MCPEventHook')
+    @patch('tarsy.hooks.hook_registry.MCPListEventHook')
     @pytest.mark.asyncio
     async def test_initialize_hooks_success(self, mock_mcp_list_dash, mock_mcp_dash, mock_llm_dash,
                                           mock_mcp_list_hist, mock_mcp_hist, mock_llm_hist,
                                           mock_get_manager, mock_typed_hook_manager,
-                                          mock_history_service, mock_dashboard_broadcaster):
+                                          mock_history_service):
         """Test successful hook initialization."""
         mock_get_manager.return_value = mock_typed_hook_manager
         
@@ -76,17 +71,18 @@ class TestTypedHookRegistry:
         mock_mcp_dash.return_value = mock_mcp_dash_instance
         mock_mcp_list_dash.return_value = mock_mcp_list_dash_instance
         
-        registry = TypedHookRegistry()
+        registry = HookRegistry()
         
-        await registry.initialize_hooks(mock_history_service, mock_dashboard_broadcaster)
+        await registry.initialize_hooks(mock_history_service)
         
         # Verify hooks were created with correct services
         mock_llm_hist.assert_called_once_with(mock_history_service)
         mock_mcp_hist.assert_called_once_with(mock_history_service)
         mock_mcp_list_hist.assert_called_once_with(mock_history_service)
-        mock_llm_dash.assert_called_once_with(mock_dashboard_broadcaster)
-        mock_mcp_dash.assert_called_once_with(mock_dashboard_broadcaster)
-        mock_mcp_list_dash.assert_called_once_with(mock_dashboard_broadcaster)
+        # Event hooks no longer require dashboard_broadcaster
+        mock_llm_dash.assert_called_once_with()
+        mock_mcp_dash.assert_called_once_with()
+        mock_mcp_list_dash.assert_called_once_with()
         
         # Verify hooks were registered
         expected_llm_calls = [
@@ -108,45 +104,45 @@ class TestTypedHookRegistry:
         
         assert registry._initialized is True
     
-    @patch('tarsy.hooks.hook_registry.get_typed_hook_manager')
+    @patch('tarsy.hooks.hook_registry.get_hook_manager')
     @pytest.mark.asyncio
     async def test_initialize_hooks_already_initialized(self, mock_get_manager, mock_typed_hook_manager,
-                                                       mock_history_service, mock_dashboard_broadcaster):
+                                                       mock_history_service):
         """Test initialization when already initialized."""
         mock_get_manager.return_value = mock_typed_hook_manager
         
-        registry = TypedHookRegistry()
+        registry = HookRegistry()
         registry._initialized = True
         
-        await registry.initialize_hooks(mock_history_service, mock_dashboard_broadcaster)
+        await registry.initialize_hooks(mock_history_service)
         
         # Should not register any hooks
         mock_typed_hook_manager.register_llm_hook.assert_not_called()
         mock_typed_hook_manager.register_mcp_hook.assert_not_called()
         mock_typed_hook_manager.register_mcp_list_hook.assert_not_called()
     
-    @patch('tarsy.hooks.hook_registry.get_typed_hook_manager')
-    @patch('tarsy.hooks.hook_registry.TypedLLMHistoryHook')
+    @patch('tarsy.hooks.hook_registry.get_hook_manager')
+    @patch('tarsy.hooks.hook_registry.LLMHistoryHook')
     @pytest.mark.asyncio
     async def test_initialize_hooks_with_error(self, mock_llm_hist, mock_get_manager, mock_typed_hook_manager,
-                                             mock_history_service, mock_dashboard_broadcaster):
+                                             mock_history_service):
         """Test initialization with error."""
         mock_get_manager.return_value = mock_typed_hook_manager
         mock_llm_hist.side_effect = Exception("Hook creation failed")
         
-        registry = TypedHookRegistry()
+        registry = HookRegistry()
         
         with pytest.raises(Exception, match="Hook creation failed"):
-            await registry.initialize_hooks(mock_history_service, mock_dashboard_broadcaster)
+            await registry.initialize_hooks(mock_history_service)
         
         assert registry._initialized is False
     
-    @patch('tarsy.hooks.hook_registry.get_typed_hook_manager')
+    @patch('tarsy.hooks.hook_registry.get_hook_manager')
     def test_is_initialized(self, mock_get_manager, mock_typed_hook_manager):
         """Test is_initialized method."""
         mock_get_manager.return_value = mock_typed_hook_manager
         
-        registry = TypedHookRegistry()
+        registry = HookRegistry()
         
         assert registry.is_initialized() is False
         
@@ -155,14 +151,14 @@ class TestTypedHookRegistry:
 
 
 @pytest.mark.unit
-class TestTypedHookRegistryFactory:
+class TestHookRegistryFactory:
     """Test typed hook registry factory function."""
     
-    def test_get_typed_hook_registry(self):
-        """Test get_typed_hook_registry factory function."""
-        registry = get_typed_hook_registry()
-        assert isinstance(registry, TypedHookRegistry)
+    def test_get_hook_registry(self):
+        """Test get_hook_registry factory function."""
+        registry = get_hook_registry()
+        assert isinstance(registry, HookRegistry)
         
         # Should return same instance (singleton behavior)
-        registry2 = get_typed_hook_registry()
+        registry2 = get_hook_registry()
         assert registry is registry2

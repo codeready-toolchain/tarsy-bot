@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional, AsyncGenerator
 import base64
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Response
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from cryptography.hazmat.primitives import serialization
@@ -32,7 +32,6 @@ from tarsy.database.init_db import (
 from tarsy.models.alert_processing import AlertKey
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.alert_service import AlertService
-from tarsy.services.dashboard_connection_manager import DashboardConnectionManager
 from tarsy.utils.logger import get_module_logger, setup_logging
 
 # Setup logger for this module
@@ -43,7 +42,6 @@ logger = get_module_logger(__name__)
 jwks_cache: TTLCache = TTLCache(maxsize=1, ttl=3600)  # Cache for 1 hour
 
 alert_service: Optional[AlertService] = None
-dashboard_manager: Optional[DashboardConnectionManager] = None
 alert_processing_semaphore: Optional[asyncio.Semaphore] = None
 event_system_manager = None
 
@@ -51,7 +49,7 @@ event_system_manager = None
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
-    global alert_service, dashboard_manager, alert_processing_semaphore, event_system_manager
+    global alert_service, alert_processing_semaphore, event_system_manager
     
     # Initialize services
     settings = get_settings()
@@ -88,7 +86,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize AlertService - fail fast on critical configuration errors
     try:
         alert_service = AlertService(settings)
-        dashboard_manager = DashboardConnectionManager()
         
         # Startup
         await alert_service.initialize()
@@ -100,19 +97,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         import sys
         sys.exit(1)  # Exit with error code
     
-    # Initialize dashboard broadcaster
-    await dashboard_manager.initialize_broadcaster()
-    
     # Initialize typed hook system
-    from tarsy.hooks.hook_registry import get_typed_hook_registry
+    from tarsy.hooks.hook_registry import get_hook_registry
     from tarsy.services.history_service import get_history_service
-    typed_hook_registry = get_typed_hook_registry()
+    hook_registry = get_hook_registry()
     if settings.history_enabled and db_init_success:
         history_service = get_history_service()
-        await typed_hook_registry.initialize_hooks(
-            history_service=history_service,
-            dashboard_broadcaster=dashboard_manager.broadcaster
-        )
+        await hook_registry.initialize_hooks(history_service=history_service)
         logger.info("Typed hook system initialized successfully")
     else:
         logger.info("Typed hook system skipped - history service disabled")
@@ -160,10 +151,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("Event system stopped")
         except Exception as e:
             logger.error(f"Error stopping event system: {e}", exc_info=True)
-    
-    # Shutdown dashboard broadcaster
-    if dashboard_manager is not None:
-        await dashboard_manager.shutdown_broadcaster()
     
     if alert_service is not None:
         await alert_service.close()
@@ -381,51 +368,6 @@ async def get_jwks(response: Response) -> JSONResponse:
                 "message": "Unable to generate JSON Web Key Set"
             }
         ) from e
-
-@app.websocket("/ws/dashboard/{user_id}")
-async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str) -> None:
-    """WebSocket endpoint for dashboard real-time updates."""
-    if dashboard_manager is None:
-        await websocket.close(code=1011, reason="Service not initialized")
-        return
-        
-    try:
-        logger.info(f"🔌 New WebSocket connection from user: {user_id}")
-        await dashboard_manager.connect(websocket, user_id)
-        
-        # Send initial connection confirmation
-        from tarsy.models.websocket_models import ConnectionEstablished
-        connection_msg = ConnectionEstablished(user_id=user_id)
-        await dashboard_manager.send_to_user(
-            user_id, 
-            connection_msg.model_dump()
-        )
-        
-        # Keep connection alive and handle messages
-        while True:
-            try:
-                # Wait for messages from client (subscription requests, etc.)
-                message_text = await websocket.receive_text()
-                try:
-                    message = json.loads(message_text)
-                    await dashboard_manager.handle_subscription_message(user_id, message)
-                except json.JSONDecodeError:
-                    # Send error response for invalid JSON
-                    from tarsy.models.websocket_models import ErrorMessage
-                    error_msg = ErrorMessage(message="Invalid JSON message format")
-                    await dashboard_manager.send_to_user(
-                        user_id, 
-                        error_msg.model_dump()
-                    )
-            except WebSocketDisconnect:
-                break
-                
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        logger.exception(f"Dashboard WebSocket error for user {user_id}: {str(e)}")
-    finally:
-        dashboard_manager.disconnect(user_id)
 
 def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) -> None:
     """

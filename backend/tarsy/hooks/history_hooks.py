@@ -10,7 +10,7 @@ import asyncio
 import logging
 from typing import Any, Dict, Optional
 
-from tarsy.hooks.typed_context import BaseTypedHook, _apply_llm_interaction_truncation
+from tarsy.hooks.hook_context import BaseHook, _apply_llm_interaction_truncation
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.models.db_models import StageExecution
 from tarsy.services.history_service import HistoryService
@@ -18,7 +18,7 @@ from tarsy.services.history_service import HistoryService
 logger = logging.getLogger(__name__)
 
 
-class TypedLLMHistoryHook(BaseTypedHook[LLMInteraction]):
+class LLMHistoryHook(BaseHook[LLMInteraction]):
     """
     Typed hook for logging LLM interactions to history database.
     
@@ -26,7 +26,7 @@ class TypedLLMHistoryHook(BaseTypedHook[LLMInteraction]):
     """
     
     def __init__(self, history_service: HistoryService):
-        super().__init__("typed_llm_history")
+        super().__init__("llm_history")
         self.history_service = history_service
 
     async def execute(self, interaction: LLMInteraction) -> None:
@@ -52,7 +52,7 @@ class TypedLLMHistoryHook(BaseTypedHook[LLMInteraction]):
             raise
 
 
-class TypedMCPHistoryHook(BaseTypedHook[MCPInteraction]):
+class MCPHistoryHook(BaseHook[MCPInteraction]):
     """
     Typed hook for logging MCP tool interactions to history database.
     
@@ -60,7 +60,7 @@ class TypedMCPHistoryHook(BaseTypedHook[MCPInteraction]):
     """
     
     def __init__(self, history_service: HistoryService):
-        super().__init__("typed_mcp_history")
+        super().__init__("mcp_history")
         self.history_service = history_service
 
     async def execute(self, interaction: MCPInteraction) -> None:
@@ -88,7 +88,7 @@ class TypedMCPHistoryHook(BaseTypedHook[MCPInteraction]):
             raise
 
 
-class TypedMCPListHistoryHook(BaseTypedHook[MCPInteraction]):
+class MCPListHistoryHook(BaseHook[MCPInteraction]):
     """
     Typed hook for logging MCP tool list operations to history database.
     
@@ -96,7 +96,7 @@ class TypedMCPListHistoryHook(BaseTypedHook[MCPInteraction]):
     """
     
     def __init__(self, history_service: HistoryService):
-        super().__init__("typed_mcp_list_history")
+        super().__init__("mcp_list_history")
         self.history_service = history_service
 
     async def execute(self, interaction: MCPInteraction) -> None:
@@ -124,7 +124,7 @@ class TypedMCPListHistoryHook(BaseTypedHook[MCPInteraction]):
             raise
 
 
-class TypedStageExecutionHistoryHook(BaseTypedHook[StageExecution]):
+class StageExecutionHistoryHook(BaseHook[StageExecution]):
     """
     Typed hook for logging stage execution events to history database.
     
@@ -132,7 +132,7 @@ class TypedStageExecutionHistoryHook(BaseTypedHook[StageExecution]):
     """
     
     def __init__(self, history_service: HistoryService):
-        super().__init__("typed_stage_history")
+        super().__init__("stage_history")
         self.history_service = history_service
 
     async def execute(self, stage_execution: StageExecution) -> None:

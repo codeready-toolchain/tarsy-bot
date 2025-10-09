@@ -8,26 +8,25 @@ proper initialization and dependency injection for the new typed hook system.
 import logging
 from typing import Optional
 
-from tarsy.hooks.typed_context import get_typed_hook_manager
-from tarsy.hooks.typed_history_hooks import (
-    TypedLLMHistoryHook,
-    TypedMCPHistoryHook,
-    TypedMCPListHistoryHook,
-    TypedStageExecutionHistoryHook
+from tarsy.hooks.hook_context import get_hook_manager
+from tarsy.hooks.history_hooks import (
+    LLMHistoryHook,
+    MCPHistoryHook,
+    MCPListHistoryHook,
+    StageExecutionHistoryHook
 )
-from tarsy.hooks.typed_dashboard_hooks import (
-    TypedLLMDashboardHook,
-    TypedMCPDashboardHook,
-    TypedMCPListDashboardHook,
-    TypedStageExecutionDashboardHook
+from tarsy.hooks.event_hooks import (
+    LLMEventHook,
+    MCPEventHook,
+    MCPListEventHook,
+    StageExecutionEventHook
 )
 from tarsy.services.history_service import HistoryService
-from tarsy.services.dashboard_broadcaster import DashboardBroadcaster
 
 logger = logging.getLogger(__name__)
 
 
-class TypedHookRegistry:
+class HookRegistry:
     """
     Registry for typed hooks with dependency injection.
     
@@ -36,18 +35,15 @@ class TypedHookRegistry:
     """
     
     def __init__(self):
-        self.typed_hook_manager = get_typed_hook_manager()
+        self.typed_hook_manager = get_hook_manager()
         self._initialized = False
 
-    async def initialize_hooks(self, 
-                             history_service: HistoryService,
-                             dashboard_broadcaster: DashboardBroadcaster) -> None:
+    async def initialize_hooks(self, history_service: HistoryService) -> None:
         """
         Initialize and register all typed hooks.
         
         Args:
             history_service: History service for database logging
-            dashboard_broadcaster: Dashboard broadcaster for WebSocket updates
         """
         if self._initialized:
             logger.debug("Typed hooks already initialized")
@@ -55,30 +51,30 @@ class TypedHookRegistry:
         
         try:
             # Initialize history hooks
-            llm_history_hook = TypedLLMHistoryHook(history_service)
-            mcp_history_hook = TypedMCPHistoryHook(history_service)
-            mcp_list_history_hook = TypedMCPListHistoryHook(history_service)
-            stage_history_hook = TypedStageExecutionHistoryHook(history_service)
+            llm_history_hook = LLMHistoryHook(history_service)
+            mcp_history_hook = MCPHistoryHook(history_service)
+            mcp_list_history_hook = MCPListHistoryHook(history_service)
+            stage_history_hook = StageExecutionHistoryHook(history_service)
             
-            # Initialize dashboard hooks
-            llm_dashboard_hook = TypedLLMDashboardHook(dashboard_broadcaster)
-            mcp_dashboard_hook = TypedMCPDashboardHook(dashboard_broadcaster)
-            mcp_list_dashboard_hook = TypedMCPListDashboardHook(dashboard_broadcaster)
-            stage_dashboard_hook = TypedStageExecutionDashboardHook(dashboard_broadcaster)
+            # Initialize event hooks (publish to SSE streams)
+            llm_event_hook = LLMEventHook()
+            mcp_event_hook = MCPEventHook()
+            mcp_list_event_hook = MCPListEventHook()
+            stage_event_hook = StageExecutionEventHook()
             
             # Register hooks with typed hook manager
             self.typed_hook_manager.register_llm_hook(llm_history_hook)
-            self.typed_hook_manager.register_llm_hook(llm_dashboard_hook)
+            self.typed_hook_manager.register_llm_hook(llm_event_hook)
             
             self.typed_hook_manager.register_mcp_hook(mcp_history_hook)
-            self.typed_hook_manager.register_mcp_hook(mcp_dashboard_hook)
+            self.typed_hook_manager.register_mcp_hook(mcp_event_hook)
             
             self.typed_hook_manager.register_mcp_list_hook(mcp_list_history_hook)
-            self.typed_hook_manager.register_mcp_list_hook(mcp_list_dashboard_hook)
+            self.typed_hook_manager.register_mcp_list_hook(mcp_list_event_hook)
             
             # Register stage execution hooks
             self.typed_hook_manager.register_stage_hook(stage_history_hook)
-            self.typed_hook_manager.register_stage_hook(stage_dashboard_hook)
+            self.typed_hook_manager.register_stage_hook(stage_event_hook)
             
             self._initialized = True
             logger.info("Successfully initialized all typed hooks")
@@ -93,11 +89,11 @@ class TypedHookRegistry:
 
 
 # Global registry instance
-_global_typed_hook_registry: Optional[TypedHookRegistry] = None
+_global_hook_registry: Optional[HookRegistry] = None
 
-def get_typed_hook_registry() -> TypedHookRegistry:
+def get_hook_registry() -> HookRegistry:
     """Get the global typed hook registry instance."""
-    global _global_typed_hook_registry
-    if _global_typed_hook_registry is None:
-        _global_typed_hook_registry = TypedHookRegistry()
-    return _global_typed_hook_registry
+    global _global_hook_registry
+    if _global_hook_registry is None:
+        _global_hook_registry = HookRegistry()
+    return _global_hook_registry
