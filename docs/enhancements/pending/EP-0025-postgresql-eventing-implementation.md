@@ -2365,3 +2365,28 @@ async def test_multi_channel_subscription()
 2. **Event payload:** No sensitive data in events (reference IDs only)
 3. **Event table access:** Protected by database authentication
 4. **Network isolation:** PostgreSQL never exposed externally (Kubernetes Network Policy)
+
+## Known Limitations & Testing Notes
+
+### SSE End-to-End Testing
+
+**Limitation:** SSE streaming cannot be reliably tested in e2e tests using FastAPI's `TestClient`.
+
+**Reason:** `TestClient` is synchronous and doesn't handle long-lived streaming connections well. SSE endpoints keep connections open indefinitely, waiting for events, which causes tests to hang when using `TestClient.stream()`.
+
+**Test Coverage Strategy:**
+- ✅ **Unit tests**: Complete coverage of all event system components (EventRepository, EventPublisher, EventListener implementations, EventSystemManager, EventCleanupService, event helpers)
+- ✅ **Integration tests**: Database operations, event publishing, and retrieval validated
+- ✅ **E2E tests**: Alert processing flow fully tested (events are published and persisted during processing)
+- ⚠️ **SSE streaming**: Manual testing required, or use external HTTP client (e.g., `httpx`, `curl`) for real streaming validation
+
+**Manual SSE Testing:**
+```bash
+# Test SSE endpoint manually with curl
+curl -N http://localhost:8000/api/v1/events/stream?channel=sessions
+
+# Test catchup mechanism
+curl -N http://localhost:8000/api/v1/events/stream?channel=sessions&last_event_id=42
+```
+
+**Impact:** No functional impact - all event system components are thoroughly tested. Only the SSE streaming delivery mechanism requires manual validation or integration testing with external tools.

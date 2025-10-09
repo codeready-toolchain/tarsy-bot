@@ -37,13 +37,14 @@ def upgrade() -> None:
     existing_tables = inspector.get_table_names()
     
     if "events" not in existing_tables:
-        # PostgreSQL uses BIGINT with autoincrement
-        # SQLite requires INTEGER for autoincrement to work properly
+        # Use Integer for both PostgreSQL and SQLite for consistency with SQLModel
+        # Integer provides plenty of range (up to 2 billion events)
+        id_type = sa.Integer()
+        
+        # Database-specific defaults for timestamp
         if dialect_name == 'postgresql':
-            id_type = sa.BigInteger()
             timestamp_default = sa.text("NOW()")
         else:  # SQLite
-            id_type = sa.Integer()  # SQLite needs INTEGER for autoincrement
             timestamp_default = sa.text("(CURRENT_TIMESTAMP)")
         
         op.create_table(

@@ -33,7 +33,16 @@ class SQLiteEventListener(EventListener):
 
     async def start(self) -> None:
         """Start polling background task."""
-        self.engine = create_async_engine(self.database_url)
+        # Convert sqlite:// URL to sqlite+aiosqlite:// for async support
+        async_url = self.database_url
+        if not async_url.startswith('sqlite+aiosqlite://'):
+            # Handle both sqlite:// and sqlite:/// formats
+            if async_url.startswith('sqlite:///'):
+                async_url = async_url.replace('sqlite:///', 'sqlite+aiosqlite:///')
+            elif async_url.startswith('sqlite://'):
+                async_url = async_url.replace('sqlite://', 'sqlite+aiosqlite://')
+        
+        self.engine = create_async_engine(async_url)
         self.running = True
         self.polling_task = asyncio.create_task(self._poll_loop())
 

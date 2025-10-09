@@ -278,7 +278,11 @@ def create_async_database_engine(database_url: str, settings: Optional[Settings]
     else:  # SQLite
         # SQLite async URL
         if not database_url.startswith('sqlite+aiosqlite://'):
-            database_url = database_url.replace('sqlite://', 'sqlite+aiosqlite://')
+            # Handle both sqlite:// and sqlite:/// formats
+            if database_url.startswith('sqlite:///'):
+                database_url = database_url.replace('sqlite:///', 'sqlite+aiosqlite:///')
+            elif database_url.startswith('sqlite://'):
+                database_url = database_url.replace('sqlite://', 'sqlite+aiosqlite://')
         
         connect_args = {"check_same_thread": False}
         

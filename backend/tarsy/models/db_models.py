@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlmodel import Column, Field, SQLModel, Index
-from sqlalchemy import JSON, BigInteger, DateTime, func
+from sqlalchemy import JSON, Integer, DateTime, func
 from sqlalchemy.dialects.postgresql import BIGINT
 
 from tarsy.models.constants import AlertSessionStatus
@@ -180,7 +180,7 @@ class Event(SQLModel, table=True):
 
     id: int = Field(
         default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
+        sa_column=Column(Integer, primary_key=True, autoincrement=True),
         description="Auto-incrementing event ID for ordering and catchup",
     )
 
