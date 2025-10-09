@@ -118,7 +118,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Create and start event system manager
         event_system_manager = EventSystemManager(
             database_url=settings.database_url,
-            db_session_factory=get_async_session_factory,
+            db_session_factory=get_async_session_factory(),
             event_retention_hours=settings.event_retention_hours,
             event_cleanup_interval_hours=settings.event_cleanup_interval_hours
         )

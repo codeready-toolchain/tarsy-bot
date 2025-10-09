@@ -10,7 +10,7 @@ import UserMenu from './UserMenu';
 import { SystemWarningBanner } from './SystemWarningBanner';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient, handleAPIError } from '../services/api';
-import { webSocketService } from '../services/websocket';
+import { sseService } from '../services/sseService';
 import {
   saveFiltersToStorage,
   loadFiltersFromStorage,
@@ -292,7 +292,7 @@ function DashboardView() {
     fetchHistoricalAlerts(hasActiveFilters);
   }, [pagination.page, pagination.pageSize, sortState]);
 
-  // Set up WebSocket event handlers for real-time updates
+  // Set up SSE event handlers for real-time updates
   useEffect(() => {
     const handleSessionUpdate = (update: SessionUpdate) => {
       console.log('DashboardView received session update:', update);
@@ -324,16 +324,16 @@ function DashboardView() {
       fetchHistoricalAlerts();
     };
 
-    // WebSocket error handler
-    const handleWebSocketError = (error: Event) => {
-      console.warn('WebSocket connection error - real-time updates unavailable:', error);
+    // SSE error handler
+    const handleSSEError = (error: Event) => {
+      console.warn('SSE connection error - real-time updates unavailable:', error);
       console.log('💡 Use manual refresh buttons if needed');
       setWsConnected(false); // Update connection status immediately
     };
 
-    // WebSocket close handler  
-    const handleWebSocketClose = (event: CloseEvent) => {
-      console.warn('WebSocket connection closed - real-time updates unavailable:', {
+    // SSE close handler  
+    const handleSSEClose = (event: CloseEvent) => {
+      console.warn('SSE connection closed - real-time updates unavailable:', {
         code: event.code,
         reason: event.reason,
         wasClean: event.wasClean
@@ -395,44 +395,44 @@ function DashboardView() {
       }
     };
 
-    // Connection change handler - updates UI immediately when WebSocket connection changes
+    // Connection change handler - updates UI immediately when SSE connection changes
     const handleConnectionChange = (connected: boolean) => {
       setWsConnected(connected);
       if (connected) {
-        console.log('✅ WebSocket connected - real-time updates active');
+        console.log('✅ SSE connected - real-time updates active');
         // Sync with backend state after reconnection (handles backend restarts)
-        console.log('🔄 WebSocket reconnected - syncing dashboard with backend state');
+        console.log('🔄 SSE reconnected - syncing dashboard with backend state');
         fetchActiveAlerts();
         fetchHistoricalAlerts(true); // Use filtering to maintain current view
       } else {
-        console.log('❌ WebSocket disconnected - use manual refresh buttons');
+        console.log('❌ SSE disconnected - use manual refresh buttons');
       }
     };
 
-    // Subscribe to WebSocket events
-    const unsubscribeUpdate = webSocketService.onSessionUpdate(handleSessionUpdate);
-    const unsubscribeCompleted = webSocketService.onSessionCompleted(handleSessionCompleted);
-    const unsubscribeFailed = webSocketService.onSessionFailed(handleSessionFailed);
-    const unsubscribeDashboard = webSocketService.onDashboardUpdate(handleDashboardUpdate);
-    const unsubscribeConnection = webSocketService.onConnectionChange(handleConnectionChange);
-    const unsubscribeError = webSocketService.onError(handleWebSocketError);
-    const unsubscribeClose = webSocketService.onClose(handleWebSocketClose);
+    // Subscribe to SSE events
+    const unsubscribeUpdate = sseService.onSessionUpdate(handleSessionUpdate);
+    const unsubscribeCompleted = sseService.onSessionCompleted(handleSessionCompleted);
+    const unsubscribeFailed = sseService.onSessionFailed(handleSessionFailed);
+    const unsubscribeDashboard = sseService.onDashboardUpdate(handleDashboardUpdate);
+    const unsubscribeConnection = sseService.onConnectionChange(handleConnectionChange);
+    const unsubscribeError = sseService.onError(handleSSEError);
+    const unsubscribeClose = sseService.onClose(handleSSEClose);
 
-    // Connect to WebSocket with enhanced logging
-    console.log('🔌 Connecting to WebSocket for real-time updates...');
+    // Connect to SSE with enhanced logging
+    console.log('🔌 Connecting to SSE for real-time updates...');
     (async () => {
       try {
-        await webSocketService.connect();
+        await sseService.connect();
         // Set initial connection status after connection attempt
-        setWsConnected(webSocketService.isConnected);
+        setWsConnected(sseService.isConnected);
       } catch (error) {
-        console.error('Failed to connect to WebSocket:', error);
+        console.error('Failed to connect to SSE:', error);
       }
     })();
 
     // Cleanup
     return () => {
-      console.log('DashboardView cleaning up WebSocket subscriptions');
+      console.log('DashboardView cleaning up SSE subscriptions');
       unsubscribeUpdate();
       unsubscribeCompleted();
       unsubscribeFailed();
@@ -458,13 +458,13 @@ function DashboardView() {
     fetchHistoricalAlerts();
   };
 
-  // Handle WebSocket retry
-  const handleWebSocketRetry = async () => {
-    console.log('🔄 Manual WebSocket retry requested');
+  // Handle SSE retry
+  const handleSSERetry = async () => {
+    console.log('🔄 Manual SSE retry requested');
     try {
-      await webSocketService.retry();
+      await sseService.retry();
     } catch (error) {
-      console.error('Failed to retry WebSocket connection:', error);
+      console.error('Failed to retry SSE connection:', error);
     }
   };
 
@@ -590,12 +590,12 @@ function DashboardView() {
           </Box>
           
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexGrow: 1, justifyContent: 'flex-end' }}>
-            {/* WebSocket Retry Button - only show when disconnected */}
+            {/* SSE Retry Button - only show when disconnected */}
             {!wsConnected && (
-              <Tooltip title="Retry WebSocket connection">
+              <Tooltip title="Retry SSE connection">
                 <IconButton
                   size="small"
-                  onClick={handleWebSocketRetry}
+                  onClick={handleSSERetry}
                   sx={{ 
                     color: 'inherit',
                     '&:hover': {

@@ -12,12 +12,12 @@ import {
 import { Refresh, WifiOff, Wifi } from '@mui/icons-material';
 import ActiveAlertCard from './ActiveAlertCard';
 import ChainProgressCard from './ChainProgressCard';
-import { webSocketService } from '../services/websocket';
+import { sseService } from '../services/sseService';
 import type { ActiveAlertsPanelProps, SessionUpdate, ChainProgressUpdate, StageProgressUpdate } from '../types';
 
 /**
  * ActiveAlertsPanel component displays currently active/processing alerts
- * with real-time updates via WebSocket connection
+ * with real-time updates via Server-Sent Events (SSE)
  */
 const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
   sessions = [],
@@ -31,7 +31,7 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
   const [stageProgressData, setStageProgressData] = useState<Record<string, StageProgressUpdate[]>>({});
   const [wsConnected, setWsConnected] = useState(false);
 
-  // Set up WebSocket event handlers
+  // Set up SSE event handlers
   useEffect(() => {
     // Session update handlers
     const handleSessionUpdate = (update: SessionUpdate) => {
@@ -109,30 +109,30 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
       });
     };
 
-    // Subscribe to WebSocket events
-    const unsubscribeUpdate = webSocketService.onSessionUpdate(handleSessionUpdate);
-    const unsubscribeCompleted = webSocketService.onSessionCompleted(handleSessionCompleted);
-    const unsubscribeFailed = webSocketService.onSessionFailed(handleSessionFailed);
+    // Subscribe to SSE events
+    const unsubscribeUpdate = sseService.onSessionUpdate(handleSessionUpdate);
+    const unsubscribeCompleted = sseService.onSessionCompleted(handleSessionCompleted);
+    const unsubscribeFailed = sseService.onSessionFailed(handleSessionFailed);
     
     // Subscribe to chain progress events (with fallback for services that don't support them yet)
-    const unsubscribeChainProgress = webSocketService.onChainProgress ? 
-      webSocketService.onChainProgress(handleChainProgress) : () => {};
-    const unsubscribeStageProgress = webSocketService.onStageProgress ? 
-      webSocketService.onStageProgress(handleStageProgress) : () => {};
+    const unsubscribeChainProgress = sseService.onChainProgress ? 
+      sseService.onChainProgress(handleChainProgress) : () => {};
+    const unsubscribeStageProgress = sseService.onStageProgress ? 
+      sseService.onStageProgress(handleStageProgress) : () => {};
 
-    // Connect to WebSocket
+    // Connect to SSE
     (async () => {
       try {
-        await webSocketService.connect();
-        setWsConnected(webSocketService.isConnected);
+        await sseService.connect();
+        setWsConnected(sseService.isConnected);
       } catch (error) {
-        console.error('Failed to connect to WebSocket:', error);
+        console.error('Failed to connect to SSE:', error);
       }
     })();
 
     // Check connection status periodically
     const connectionCheck = setInterval(() => {
-      setWsConnected(webSocketService.isConnected);
+      setWsConnected(sseService.isConnected);
     }, 1000);
 
     // Cleanup
@@ -180,7 +180,7 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
             />
           )}
 
-          {/* WebSocket connection indicator */}
+          {/* SSE connection indicator */}
           <Chip
             icon={wsConnected ? <Wifi sx={{ fontSize: 16 }} /> : <WifiOff sx={{ fontSize: 16 }} />}
             label={wsConnected ? 'Live' : 'Offline'}

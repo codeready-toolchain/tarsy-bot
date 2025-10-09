@@ -1,7 +1,7 @@
 /**
  * Alert processing status component - EP-0018
  * Adapted from alert-dev-ui ProcessingStatus.tsx for dashboard integration
- * Shows real-time progress of alert processing via WebSocket
+ * Shows real-time progress of alert processing via Server-Sent Events (SSE)
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -23,7 +23,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 
 import type { ProcessingStatus, ProcessingStatusProps } from '../types';
-import { webSocketService } from '../services/websocket';
+import { sseService } from '../services/sseService';
 import { apiClient } from '../services/api';
 
 const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete }) => {
@@ -48,13 +48,13 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     // New alert -> allow onComplete again
     didCompleteRef.current = false;
     
-    // Initialize WebSocket connection status
-    const initialConnectionStatus = webSocketService.isConnected;
+    // Initialize SSE connection status
+    const initialConnectionStatus = sseService.isConnected;
     setWsConnected(initialConnectionStatus);
     if (!initialConnectionStatus) {
       setWsError('Connecting...');
       setTimeout(() => {
-        if (webSocketService.isConnected) {
+        if (sseService.isConnected) {
           setWsError(null);
         }
       }, 1000);
@@ -117,13 +117,13 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
 
     // Handle connection changes
     const handleConnectionChange = (connected: boolean) => {
-      console.log('🔗 WebSocket connection changed:', connected);
+      console.log('🔗 SSE connection changed:', connected);
       setWsConnected(connected);
       setWsError(connected ? null : 'Connection lost');
     };
 
     // Set up basic connection monitoring
-    const unsubscribeConnection = webSocketService.onConnectionChange(handleConnectionChange);
+    const unsubscribeConnection = sseService.onConnectionChange(handleConnectionChange);
     
     return () => {
       isMountedRef.current = false; // Mark component as unmounted
@@ -131,7 +131,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     };
   }, [alertId]);
 
-  // Set up session-specific WebSocket subscription when sessionId becomes available
+  // Set up session-specific SSE subscription when sessionId becomes available
   useEffect(() => {
     if (!sessionId) {
       return;
@@ -139,15 +139,15 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
 
     console.log('🔌 Subscribing to session updates for:', sessionId);
     
-    // Ensure WebSocket is connected before subscribing
+    // Ensure SSE is connected before subscribing
     const setupSubscription = async () => {
       try {
-        await webSocketService.connect();
+        await sseService.connect();
         
         // Subscribe to the session channel on the server
-        webSocketService.subscribeToSessionChannel(sessionId);
+        sseService.subscribeToSessionChannel(sessionId);
       } catch (error) {
-        console.error('Failed to connect to WebSocket before subscription:', error);
+        console.error('Failed to connect to SSE before subscription:', error);
       }
     };
     
@@ -216,10 +216,10 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     
     // Set up the session-specific event handler
     const sessionChannel = `session_${sessionId}`;
-    const unsubscribeSession = webSocketService.onSessionSpecificUpdate(sessionChannel, handleSessionUpdate);
+    const unsubscribeSession = sseService.onSessionSpecificUpdate(sessionChannel, handleSessionUpdate);
 
     return () => {
-      webSocketService.unsubscribeFromSessionChannel(sessionId);
+      sseService.unsubscribeFromSessionChannel(sessionId);
       unsubscribeSession();
     };
   }, [sessionId, alertId]); // Dependencies: sessionId and alertId

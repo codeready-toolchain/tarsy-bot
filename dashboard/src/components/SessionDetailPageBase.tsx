@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import { Psychology, BugReport } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
-import { webSocketService } from '../services/websocket';
+import { sseService } from '../services/sseService';
 import { useSession } from '../contexts/SessionContext';
 import type { DetailedSession } from '../types';
 import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
@@ -81,7 +81,7 @@ interface SessionDetailPageBaseProps {
 
 /**
  * Shared base component for both conversation and technical session detail pages
- * Handles common functionality: WebSocket updates, loading states, shared UI structure
+ * Handles common functionality: SSE updates, loading states, shared UI structure
  */
 function SessionDetailPageBase({ 
   viewType, 
@@ -125,7 +125,7 @@ function SessionDetailPageBase({
   }, [viewType]);
 
 
-  // Ref to hold latest session to avoid stale closures in WebSocket handlers
+  // Ref to hold latest session to avoid stale closures in SSE handlers
   const sessionRef = useRef<DetailedSession | null>(null);
   const lastUpdateRef = useRef<number>(0);
   const updateThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -166,18 +166,18 @@ function SessionDetailPageBase({
 
 
 
-  // WebSocket setup for real-time updates
+  // SSE setup for real-time updates
   useEffect(() => {
     if (!sessionId) return;
 
-    console.log(`🔌 Setting up WebSocket for ${viewType} view:`, sessionId);
+    console.log(`🔌 Setting up SSE for ${viewType} view:`, sessionId);
     
     (async () => {
       try {
-        await webSocketService.connect();
-        webSocketService.subscribeToSessionChannel(sessionId);
+        await sseService.connect();
+        sseService.subscribeToSessionChannel(sessionId);
       } catch (error) {
-        console.error('Failed to connect to WebSocket:', error);
+        console.error('Failed to connect to SSE:', error);
       }
     })();
 
@@ -316,16 +316,16 @@ function SessionDetailPageBase({
       }
     };
 
-    const unsubscribeUpdate = webSocketService.onSessionSpecificUpdate(
+    const unsubscribeUpdate = sseService.onSessionSpecificUpdate(
       `session_${sessionId}`, 
       handleSessionUpdate
     );
 
     // Cleanup
     return () => {
-      console.log(`🔌 Cleaning up ${viewType} view WebSocket`);
+      console.log(`🔌 Cleaning up ${viewType} view SSE`);
       unsubscribeUpdate();
-      webSocketService.unsubscribeFromSessionChannel(sessionId);
+      sseService.unsubscribeFromSessionChannel(sessionId);
       
       // Clear any pending throttled updates
       if (updateThrottleRef.current) {
