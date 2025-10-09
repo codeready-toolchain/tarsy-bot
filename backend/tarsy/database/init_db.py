@@ -93,11 +93,27 @@ def create_database_engine(database_url: str, settings: Optional[Settings] = Non
                 connect_args=connect_args
             )
         else:
-            return create_engine(
+            engine = create_engine(
                 database_url,
                 echo=False,
                 connect_args=connect_args
             )
+            
+            # Enable WAL mode for better concurrent access (sync + async)
+            # This allows the sync history service and async event system to work together
+            try:
+                from sqlalchemy import event as sa_event
+                @sa_event.listens_for(engine, "connect")
+                def set_sqlite_pragma(dbapi_conn, connection_record):
+                    cursor = dbapi_conn.cursor()
+                    cursor.execute("PRAGMA journal_mode=WAL")
+                    cursor.execute("PRAGMA busy_timeout=5000")  # 5 second timeout for locks
+                    cursor.close()
+            except Exception:
+                # Skip if engine is mocked in tests
+                pass
+            
+            return engine
 
 
 def create_database_tables(database_url: str) -> bool:
@@ -295,11 +311,26 @@ def create_async_database_engine(database_url: str, settings: Optional[Settings]
                 connect_args=connect_args
             )
         else:
-            return create_async_engine(
+            engine = create_async_engine(
                 database_url,
                 echo=False,
                 connect_args=connect_args
             )
+            
+            # Enable WAL mode for better concurrent access
+            try:
+                from sqlalchemy import event as sa_event
+                @sa_event.listens_for(engine.sync_engine, "connect")
+                def set_sqlite_pragma(dbapi_conn, connection_record):
+                    cursor = dbapi_conn.cursor()
+                    cursor.execute("PRAGMA journal_mode=WAL")
+                    cursor.execute("PRAGMA busy_timeout=5000")
+                    cursor.close()
+            except Exception:
+                # Skip if engine is mocked in tests
+                pass
+            
+            return engine
 
 
 def initialize_async_database(database_url: Optional[str] = None) -> None:
