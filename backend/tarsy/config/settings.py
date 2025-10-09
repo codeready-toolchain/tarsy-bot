@@ -108,6 +108,16 @@ class Settings(BaseSettings):
         description="Number of days to retain alert processing history data"
     )
     
+    # Event System Configuration
+    event_retention_hours: int = Field(
+        default=24,
+        description="How long to retain events in events table (hours)"
+    )
+    event_cleanup_interval_hours: int = Field(
+        default=6,
+        description="How often to run event cleanup (hours)"
+    )
+    
     # PostgreSQL Connection Pool Configuration
     postgres_pool_size: int = Field(
         default=5,
