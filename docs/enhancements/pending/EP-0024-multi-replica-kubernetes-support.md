@@ -275,6 +275,42 @@ async def mark_interrupted_sessions():
             logger.info(f"Marked {interrupted_count} sessions as interrupted")
 
 
+# Set pod_id during session start
+async def start_session(session_id: str, alert_id: str):
+    """
+    Start processing a session and assign it to this pod.
+    
+    IMPORTANT: Requires HOSTNAME environment variable to be set in pod spec.
+    Without it, multiple pods will have pod_id='unknown' and interfere during
+    graceful shutdown (one pod could mark another pod's sessions as interrupted).
+    """
+    pod_id = os.environ.get("HOSTNAME", "unknown")
+    
+    if pod_id == "unknown":
+        logger.warning(
+            "HOSTNAME not set - pod_id will be 'unknown'. "
+            "This may cause issues in multi-replica deployments. "
+            "Set HOSTNAME in Kubernetes pod spec: "
+            "env: [{name: HOSTNAME, valueFrom: {fieldRef: {fieldPath: metadata.name}}}]"
+        )
+    
+    async with get_async_session() as session:
+        await session.execute(
+            text("""
+                UPDATE sessions 
+                SET status = 'processing',
+                    pod_id = :pod_id,
+                    last_interaction_at = NOW()
+                WHERE id = :session_id
+            """),
+            {
+                "session_id": session_id,
+                "pod_id": pod_id
+            }
+        )
+        await session.commit()
+
+
 # Update last_interaction_at during processing
 async def record_interaction(session_id: str):
     """Update session interaction timestamp"""
@@ -323,16 +359,26 @@ async def health_check(response: Response):
     
     # Add event system check (NEW)
     event_system_healthy = False
-    if event_listener:
-        if isinstance(event_listener, PostgreSQLEventListener):
-            # Check if LISTEN connection is alive
-            event_system_healthy = (
-                event_listener.listener_conn is not None and
-                not event_listener.listener_conn.is_closed()
-            )
-        else:
-            # SQLite polling
-            event_system_healthy = event_listener.running
+    event_system_type = "unknown"
+    event_system_error = None
+    
+    if event_listener is None:
+        # Event listener not initialized
+        event_system_healthy = False
+        event_system_type = "unknown"
+        event_system_error = "Event listener not initialized"
+    elif isinstance(event_listener, PostgreSQLEventListener):
+        # Check if LISTEN connection is alive
+        listener_conn = event_listener.listener_conn
+        event_system_healthy = (
+            listener_conn is not None and
+            not listener_conn.closed
+        )
+        event_system_type = "postgresql"
+    else:
+        # SQLite polling
+        event_system_healthy = event_listener.running
+        event_system_type = "sqlite"
     
     health_status = {
         "status": "healthy",
@@ -344,11 +390,15 @@ async def health_check(response: Response):
                 "connected": db_info.get("connection_test")
             },
             "event_system": {
-                "type": "postgresql" if isinstance(event_listener, PostgreSQLEventListener) else "sqlite",
+                "type": event_system_type,
                 "connected": event_system_healthy
             }
         }
     }
+    
+    # Add error message if present
+    if event_system_error:
+        health_status["services"]["event_system"]["error"] = event_system_error
     
     # Set degraded status if critical systems fail
     if db_info.get("enabled") and not db_info.get("connection_test"):
@@ -384,6 +434,54 @@ readinessProbe:
   timeoutSeconds: 3
   failureThreshold: 2
 ```
+
+**3.4 Pod Identifier Configuration (Required for Issue #4)**
+
+Session cleanup and graceful shutdown require each pod to have a unique identifier. The `pod_id` is used to:
+- Track which pod is processing which session
+- Safely mark only the current pod's sessions as interrupted during shutdown
+- Prevent pods from interfering with each other's sessions
+
+**Kubernetes Deployment Configuration:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tarsy
+spec:
+  replicas: 3
+  template:
+    spec:
+      terminationGracePeriodSeconds: 60  # Allow time for graceful shutdown
+      containers:
+      - name: tarsy
+        image: tarsy:latest
+        env:
+        # Required: Inject pod name as HOSTNAME for session tracking
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        ports:
+        - containerPort: 8000
+```
+
+**Why HOSTNAME is Required:**
+
+If `HOSTNAME` is not set, all pods will have `pod_id = "unknown"`:
+- ✅ Session creation will still work
+- ✅ Orphaned session recovery will still work (uses `last_interaction_at`, not `pod_id`)
+- ❌ **Graceful shutdown will break** - Pod A shutting down could mark Pod B's sessions as interrupted
+- ❌ **Multi-pod interference** - All pods share the same `pod_id`, defeating the purpose of pod tracking
+
+**Validation:**
+
+The application will log a warning on each session start if `HOSTNAME` is not set:
+```
+WARNING: HOSTNAME not set - pod_id will be 'unknown'. This may cause issues in multi-replica deployments.
+```
+
+For production multi-replica deployments, `HOSTNAME` **must** be set in the pod spec as shown above.
 
 ### Phase 4: Documentation
 

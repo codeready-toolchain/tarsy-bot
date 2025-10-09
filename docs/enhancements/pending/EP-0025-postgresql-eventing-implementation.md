@@ -449,6 +449,7 @@ class EventListener(ABC):
     
     def __init__(self):
         self.callbacks: Dict[str, List[Callable]] = {}
+        self.running: bool = False
     
     @abstractmethod
     async def start(self) -> None:
@@ -603,9 +604,24 @@ from .base import EventListener
 
 logger = logging.getLogger(__name__)
 
-subscribe(
+
+class SQLiteEventListener(EventListener):
+    """SQLite-based event listener using polling (for dev/testing)"""
+    
+    def __init__(self, database_url: str, poll_interval: float = 0.5):
+        """
+        Initialize SQLite event listener.
         
-        # Database engine for polling
+        Args:
+            database_url: SQLite database URL
+            poll_interval: Polling interval in seconds (default: 0.5)
+        """
+        super().__init__()
+        self.database_url = database_url
+        self.poll_interval = poll_interval
+        self.running = False
+        self.polling_task: Optional[asyncio.Task] = None
+        self.last_event_id: Dict[str, int] = {}
         self.engine: Optional[AsyncEngine] = None
     
     async def start(self) -> None:
@@ -1848,14 +1864,14 @@ This plan is designed to be followed by AI assistants for actual implementation.
 
 #### 1.1 Create Event Models
 **File:** `backend/tarsy/models/event_models.py` (NEW)
-- Copy the complete Pydantic event models from this EP (lines 312-420)
+- Copy the complete Pydantic event models from the "Event Models (Pydantic)" section of this EP
 - All 8 event types: `SessionCreatedEvent`, `SessionStartedEvent`, `SessionCompletedEvent`, `SessionFailedEvent`, `LLMInteractionEvent`, `MCPToolCallEvent`, `MCPToolListEvent`, `StageStartedEvent`, `StageCompletedEvent`
 
 **Verification:** Run `python -m backend.tarsy.models.event_models` - should import without errors
 
 #### 1.2 Add Event SQLModel
 **File:** `backend/tarsy/models/db_models.py`
-- Add the `Event` SQLModel class (lines 189-243 of this EP)
+- Add the `Event` SQLModel class from the "Database Schema" section of this EP
 - Place it after existing models (e.g., after `StageExecution`)
 
 **Verification:** Check that model is discovered: `alembic revision --autogenerate -m "test"` (don't commit)
@@ -1863,7 +1879,7 @@ This plan is designed to be followed by AI assistants for actual implementation.
 #### 1.3 Create Alembic Migration
 **Command:** `alembic revision --autogenerate -m "add events table for cross-pod eventing"`
 - **File generated:** `backend/alembic/versions/YYYYMMDD_HHMM_<hash>_add_events_table.py`
-- Verify migration matches the schema from this EP (lines 1852-1887)
+- Verify migration matches the `Event` SQLModel schema
 - Ensure indexes are created: `idx_events_created_at`, `idx_events_channel_id`, `ix_events_channel`
 
 **Verification:** 
@@ -1873,7 +1889,7 @@ This plan is designed to be followed by AI assistants for actual implementation.
 
 #### 1.4 Add Event Channels Constants
 **File:** `backend/tarsy/services/events/channels.py` (NEW)
-- Copy from this EP (lines 253-270 in Event Channels section)
+- Copy from the "Event Channels" section of this EP
 - Defines `EventChannel.SESSIONS` and `EventChannel.session_details()`
 
 **Verification:** `from tarsy.services.events.channels import EventChannel` - should import
@@ -1886,7 +1902,7 @@ This plan is designed to be followed by AI assistants for actual implementation.
 
 #### 2.1 Create EventRepository
 **File:** `backend/tarsy/repositories/event_repository.py` (NEW)
-- Copy complete `EventRepository` class from this EP (lines 630-908)
+- Copy complete `EventRepository` class from the "Event Repository" section of this EP
 - Implements: `create_event()`, `get_events_after()`, `delete_events_before()`
 
 **Verification:** Write simple test:
@@ -1899,22 +1915,23 @@ async with get_async_session() as session:
 
 #### 2.2 Create EventListener Base Class
 **File:** `backend/tarsy/services/events/base.py` (NEW)
-- Copy complete `EventListener` ABC from this EP (lines 451-506)
+- Copy complete `EventListener` ABC from the "EventListener Interface" section of this EP
 - Includes abstract methods: `start()`, `stop()`, `subscribe()`, `unsubscribe()`
+- Includes `self.running` attribute for health checks
 
 #### 2.3 Implement PostgreSQLEventListener
 **File:** `backend/tarsy/services/events/postgresql_listener.py` (NEW)
-- Copy complete implementation from this EP (lines 510-590)
+- Copy complete implementation from the "PostgreSQL Implementation" section of this EP
 - Handles LISTEN/NOTIFY with asyncpg
 
 #### 2.4 Implement SQLiteEventListener
 **File:** `backend/tarsy/services/events/sqlite_listener.py` (NEW)
-- Copy complete implementation from this EP (lines 594-688)
+- Copy complete implementation from the "SQLite Implementation" section of this EP
 - Polling interval: 0.5 seconds (for dev mode)
 
 #### 2.5 Create Factory Function
 **File:** `backend/tarsy/services/events/factory.py` (NEW)
-- Copy `create_event_listener()` function from this EP (lines 692-715)
+- Copy `create_event_listener()` function from the "Event Listener Factory" section of this EP
 - Auto-selects listener based on database URL
 
 **Verification:** Test both paths:
@@ -1925,7 +1942,7 @@ sqlite_listener = create_event_listener("sqlite:///...")  # Returns SQLiteEventL
 
 #### 2.6 Implement Event Publisher
 **File:** `backend/tarsy/services/events/publisher.py` (NEW)
-- Copy `EventPublisher` class and `publish_event()` function from this EP (lines 930-1074)
+- Copy `EventPublisher` class and `publish_event()` function from the "Event Publisher" section of this EP
 - Uses EventRepository for persistence
 - Uses `text()` for NOTIFY command (PostgreSQL only)
 
@@ -1945,13 +1962,13 @@ assert event_id > 0
 
 #### 3.1 Implement EventSystemManager
 **File:** `backend/tarsy/services/events/manager.py` (NEW)
-- Copy complete `EventSystemManager` class from this EP (lines 1090-1205)
+- Copy complete `EventSystemManager` class from the "Event System Manager" section of this EP
 - Manages listener and cleanup service lifecycle
 - Provides global accessors: `get_event_system()`, `set_event_system()`
 
 #### 3.2 Implement EventCleanupService
 **File:** `backend/tarsy/services/events/cleanup.py` (NEW)
-- Copy complete implementation from this EP (lines 1019-1073)
+- Copy complete implementation from the "Event Cleanup Service" section of this EP
 - Deletes events older than retention period
 - Runs every `cleanup_interval_hours`
 
@@ -1981,7 +1998,7 @@ event_cleanup_interval_hours: int = Field(
 
 #### 4.1 Create SSE Controller
 **File:** `backend/tarsy/controllers/events_controller.py` (NEW)
-- Copy complete SSE endpoint from this EP (lines 1251-1398)
+- Copy complete SSE endpoint from the "SSE Endpoint Implementation" section of this EP
 - Implements: `GET /api/v1/events/stream?channel={channel}&last_event_id={id}`
 - Uses `StreamingResponse` for SSE
 - Includes catchup mechanism via `EventRepository.get_events_after()`
@@ -2001,7 +2018,7 @@ event_cleanup_interval_hours: int = Field(
    ```
 
 2. **Update lifespan function** (replace existing event setup):
-   - Copy `lifespan` implementation from this EP (lines 1555-1596)
+   - Copy `lifespan` implementation from the "Integration with TARSy" section of this EP
    - Initialize `EventSystemManager` in startup
    - Call `event_system.start()` and `set_event_system()`
    - Call `event_system.stop()` in shutdown
