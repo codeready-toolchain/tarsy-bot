@@ -1,3 +1,9 @@
+# Color definitions
+GREEN := \033[0;32m
+YELLOW := \033[0;33m
+BLUE := \033[0;34m
+NC := \033[0m # No Color
+
 # Help target
 .PHONY: help
 help: ## Show this help message
@@ -19,6 +25,6 @@ help: ## Show this help message
 	@echo "  make sync-backend-deps        # Sync backend dependencies (update uv.lock)"
 	@echo ""
 	@echo -e "$(YELLOW)📋 Available Commands:$(NC)"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-15s$(NC) %s\n", $$1, $$2}'
+	@grep -h -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo -e "$(YELLOW)💡 Tip:$(NC) Run 'make urls' to see all service URLs" 

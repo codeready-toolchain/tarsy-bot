@@ -7,10 +7,11 @@ performance and consistency.
 """
 
 import uuid
+from datetime import datetime
 from typing import Optional
 
 from sqlmodel import Column, Field, SQLModel, Index
-from sqlalchemy import JSON, BigInteger
+from sqlalchemy import JSON, BigInteger, DateTime, func
 from sqlalchemy.dialects.postgresql import BIGINT
 
 from tarsy.models.constants import AlertSessionStatus
@@ -157,7 +158,49 @@ class StageExecution(SQLModel, table=True):
     
     # Note: Relationship to AlertSession would be: session: AlertSession = Relationship(back_populates="stage_executions")
     # Omitted to avoid circular imports - use session_id for queries instead
-    
+
+
+class Event(SQLModel, table=True):
+    """
+    Event persistence for cross-pod event distribution and catchup.
+
+    Stores events for PostgreSQL LISTEN/NOTIFY system with SQLite polling fallback.
+    Enables reliable event delivery across multiple backend pods and client reconnection
+    with catchup support.
+    """
+
+    __tablename__ = "events"
+
+    __table_args__ = (
+        # Index for cleanup performance (time-based queries)
+        Index("idx_events_created_at", "created_at"),
+        # Composite index for polling queries (SQLite dev mode)
+        Index("idx_events_channel_id", "channel", "id"),
+    )
+
+    id: int = Field(
+        default=None,
+        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
+        description="Auto-incrementing event ID for ordering and catchup",
+    )
+
+    channel: str = Field(
+        max_length=100,
+        index=True,
+        description="Event channel (e.g., 'sessions', 'session:abc-123')",
+    )
+
+    payload: dict = Field(
+        sa_column=Column(JSON),
+        description="Event data as JSON (type, data, timestamp, id)",
+    )
+
+    created_at: datetime = Field(
+        default=None,
+        sa_column=Column(DateTime, nullable=False, server_default=func.now()),
+        description="Event creation timestamp (for cleanup and ordering)",
+    )
+
 
 # Import unified models that replace the old separate DB models
 from typing import TYPE_CHECKING
