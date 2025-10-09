@@ -1675,7 +1675,7 @@ async def on_session_failed(session_id: str):
 **Publishing Interaction Events:**
 
 ```python
-# backend/tarsy/hooks/typed_dashboard_hooks.py (or interaction tracking)
+# backend/tarsy/hooks/event_hooks.py (or interaction tracking)
 
 from tarsy.models.event_models import LLMInteractionEvent, MCPToolCallEvent, MCPToolListEvent
 from tarsy.services.events.publisher import publish_event
@@ -2146,11 +2146,11 @@ await publish_event(session, EventChannel.SESSIONS, event)
 
 #### 5.2 Integrate Interaction Events
 
-**File:** `backend/tarsy/hooks/typed_dashboard_hooks.py`
+**File:** `backend/tarsy/hooks/event_hooks.py`
 
 **Replace WebSocket with Events in Each Hook:**
 
-**In `TypedLLMDashboardHook.execute()` (~line 30):**
+**In `LLMEventHook.execute()` (~line 30):**
 ```python
 # REMOVE: await self.dashboard_broadcaster.broadcast_interaction_update(...)
 
@@ -2168,7 +2168,7 @@ event = LLMInteractionEvent(
 await publish_event(db_session, EventChannel.session_details(event.session_id), event)
 ```
 
-**In `TypedMCPDashboardHook.execute()` (~line 80):**
+**In `MCPEventHook.execute()` (~line 80):**
 ```python
 # REMOVE: await self.dashboard_broadcaster.broadcast_interaction_update(...)
 
@@ -2183,7 +2183,7 @@ event = MCPToolCallEvent(
 await publish_event(db_session, EventChannel.session_details(event.session_id), event)
 ```
 
-**In `TypedMCPListDashboardHook.execute()` (~line 131):**
+**In `MCPListEventHook.execute()` (~line 131):**
 ```python
 # REMOVE: await self.dashboard_broadcaster.broadcast_interaction_update(...)
 
@@ -2198,7 +2198,7 @@ event = MCPToolListEvent(
 await publish_event(db_session, EventChannel.session_details(event.session_id), event)
 ```
 
-**In `TypedStageExecutionDashboardHook.execute()` (~line 184):**
+**In `StageExecutionEventHook.execute()` (~line 184):**
 ```python
 # REMOVE: await self.dashboard_broadcaster.broadcast_session_update(...)
 
@@ -2247,7 +2247,7 @@ await publish_event(db_session, EventChannel.session_details(event.session_id), 
 - Remove WebSocket imports and initialization from `lifespan`
 - Remove: `dashboard_manager` global variable
 
-**File:** `backend/tarsy/hooks/typed_dashboard_hooks.py`
+**File:** `backend/tarsy/hooks/event_hooks.py`
 - Remove `dashboard_broadcaster` from hook constructors
 - Hooks should only publish events (already done in step 5.2)
 

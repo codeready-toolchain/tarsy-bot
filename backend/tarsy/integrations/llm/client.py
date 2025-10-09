@@ -19,7 +19,7 @@ from langchain_xai import ChatXAI
 from langchain_anthropic import ChatAnthropic
 
 from tarsy.config.settings import Settings
-from tarsy.hooks.typed_context import llm_interaction_context
+from tarsy.hooks.hook_context import llm_interaction_context
 from tarsy.models.constants import LLMInteractionType
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMConversation, MessageRole

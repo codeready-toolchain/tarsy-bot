@@ -851,7 +851,7 @@ class AlertService:
         
         # Trigger stage execution hooks (history + dashboard) via context manager
         try:
-            from tarsy.hooks.typed_context import stage_execution_context
+            from tarsy.hooks.hook_context import stage_execution_context
             async with stage_execution_context(session_id, stage_execution) as ctx:
                 # Context automatically triggers hooks when exiting
                 # History hook will create DB record and set execution_id on the model
@@ -926,7 +926,7 @@ class AlertService:
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
-                from tarsy.hooks.typed_context import stage_execution_context
+                from tarsy.hooks.hook_context import stage_execution_context
                 async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
                     # Context automatically triggers hooks when exiting
                     pass
@@ -967,7 +967,7 @@ class AlertService:
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
-                from tarsy.hooks.typed_context import stage_execution_context
+                from tarsy.hooks.hook_context import stage_execution_context
                 async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
                     # Context automatically triggers hooks when exiting
                     pass
@@ -1001,7 +1001,7 @@ class AlertService:
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
-                from tarsy.hooks.typed_context import stage_execution_context
+                from tarsy.hooks.hook_context import stage_execution_context
                 async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
                     # Context automatically triggers hooks when exiting
                     # History hook will update DB record and dashboard hook will broadcast

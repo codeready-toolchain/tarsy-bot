@@ -9,11 +9,11 @@ from service methods to hooks without contamination or type mismatches.
 import pytest
 from unittest.mock import Mock, AsyncMock
 
-from tarsy.hooks.typed_context import (
-    BaseTypedHook,
+from tarsy.hooks.hook_context import (
+    BaseHook,
     InteractionHookContext,
-    TypedHookManager,
-    get_typed_hook_manager,
+    HookManager,
+    get_hook_manager,
     llm_interaction_context,
     mcp_interaction_context,
     _apply_llm_interaction_truncation,
@@ -23,7 +23,7 @@ from tarsy.models.db_models import StageExecution
 from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE
 
 
-class TestLLMHook(BaseTypedHook[LLMInteraction]):
+class TestLLMHook(BaseHook[LLMInteraction]):
     """Test LLM hook implementation."""
     
     def __init__(self, name: str = "test_llm_hook"):
@@ -34,7 +34,7 @@ class TestLLMHook(BaseTypedHook[LLMInteraction]):
         self.interactions_received.append(interaction)
 
 
-class TestMCPHook(BaseTypedHook[MCPInteraction]):
+class TestMCPHook(BaseHook[MCPInteraction]):
     """Test MCP hook implementation."""
     
     def __init__(self, name: str = "test_mcp_hook"):
@@ -46,8 +46,8 @@ class TestMCPHook(BaseTypedHook[MCPInteraction]):
 
 
 @pytest.mark.unit
-class TestBaseTypedHook:
-    """Test BaseTypedHook functionality."""
+class TestBaseHook:
+    """Test BaseHook functionality."""
     
     def test_initialization(self):
         """Test hook initialization with name."""
@@ -55,9 +55,9 @@ class TestBaseTypedHook:
         assert hook.name == "my_hook"
     
     def test_abstract_nature(self):
-        """Test that BaseTypedHook cannot be instantiated directly."""
+        """Test that BaseHook cannot be instantiated directly."""
         with pytest.raises(TypeError):
-            BaseTypedHook("test")
+            BaseHook("test")
     
     @pytest.mark.asyncio
     async def test_execute_method(self):
@@ -79,16 +79,16 @@ class TestBaseTypedHook:
 
 
 @pytest.mark.unit
-class TestTypedHookManager:
-    """Test TypedHookManager functionality."""
+class TestHookManager:
+    """Test HookManager functionality."""
     
     @pytest.fixture
     def manager(self):
-        """Create a TypedHookManager instance."""
-        return TypedHookManager()
+        """Create a HookManager instance."""
+        return HookManager()
     
     def test_initialization(self, manager):
-        """Test TypedHookManager initialization."""
+        """Test HookManager initialization."""
         assert isinstance(manager.llm_hooks, dict)
         assert isinstance(manager.mcp_hooks, dict)
         assert isinstance(manager.mcp_list_hooks, dict)
@@ -181,13 +181,13 @@ class TestTypedHookManager:
 class TestFactoryFunctions:
     """Test factory functions."""
     
-    def test_get_typed_hook_manager(self):
-        """Test get_typed_hook_manager factory function."""
-        manager = get_typed_hook_manager()
-        assert isinstance(manager, TypedHookManager)
+    def test_get_hook_manager(self):
+        """Test get_hook_manager factory function."""
+        manager = get_hook_manager()
+        assert isinstance(manager, HookManager)
         
         # Should return same instance (singleton behavior)
-        manager2 = get_typed_hook_manager()
+        manager2 = get_hook_manager()
         assert manager is manager2
     
     @pytest.mark.asyncio
@@ -213,13 +213,13 @@ class TestFactoryFunctions:
             assert ctx.get_request_id() is not None
 
 
-class TestBaseTypedHookErrorHandling:
-    """Test error handling in BaseTypedHook."""
+class TestBaseHookErrorHandling:
+    """Test error handling in BaseHook."""
     
     @pytest.fixture
     def failing_hook(self):
         """Create a hook that always throws an exception."""
-        class FailingHook(BaseTypedHook[LLMInteraction]):
+        class FailingHook(BaseHook[LLMInteraction]):
             async def execute(self, interaction: LLMInteraction) -> None:
                 raise ValueError("Test error")
         
@@ -228,7 +228,7 @@ class TestBaseTypedHookErrorHandling:
     @pytest.mark.asyncio
     async def test_safe_execute_disabled_hook_returns_false(self):
         """Test that disabled hook returns False without executing."""
-        class DummyHook(BaseTypedHook[LLMInteraction]):
+        class DummyHook(BaseHook[LLMInteraction]):
             async def execute(self, interaction: LLMInteraction) -> None:
                 pass
         
@@ -272,7 +272,7 @@ class TestBaseTypedHookErrorHandling:
     @pytest.mark.asyncio
     async def test_safe_execute_resets_error_count_on_success(self):
         """Test that error count is reset on successful execution."""
-        class SometimesFailingHook(BaseTypedHook[LLMInteraction]):
+        class SometimesFailingHook(BaseHook[LLMInteraction]):
             def __init__(self, name: str):
                 super().__init__(name)
                 self.should_fail = True
@@ -296,17 +296,17 @@ class TestBaseTypedHookErrorHandling:
         assert hook.error_count == 0
 
 
-class TestTypedHookManagerRegistration:
+class TestHookManagerRegistration:
     """Test hook registration methods."""
     
     @pytest.fixture
     def hook_manager(self):
-        """Create a fresh TypedHookManager for testing."""
-        return TypedHookManager()
+        """Create a fresh HookManager for testing."""
+        return HookManager()
     
     def test_register_llm_hook(self, hook_manager):
         """Test registering an LLM hook."""
-        class DummyLLMHook(BaseTypedHook[LLMInteraction]):
+        class DummyLLMHook(BaseHook[LLMInteraction]):
             async def execute(self, interaction: LLMInteraction) -> None:
                 pass
         
@@ -318,7 +318,7 @@ class TestTypedHookManagerRegistration:
     
     def test_register_mcp_hook(self, hook_manager):
         """Test registering an MCP hook."""
-        class DummyMCPHook(BaseTypedHook[MCPInteraction]):
+        class DummyMCPHook(BaseHook[MCPInteraction]):
             async def execute(self, interaction: MCPInteraction) -> None:
                 pass
         
@@ -330,7 +330,7 @@ class TestTypedHookManagerRegistration:
     
     def test_register_mcp_list_hook(self, hook_manager):
         """Test registering an MCP list hook."""
-        class DummyMCPListHook(BaseTypedHook[MCPInteraction]):
+        class DummyMCPListHook(BaseHook[MCPInteraction]):
             async def execute(self, interaction: MCPInteraction) -> None:
                 pass
         
@@ -342,7 +342,7 @@ class TestTypedHookManagerRegistration:
     
     def test_register_stage_hook(self, hook_manager):
         """Test registering a stage execution hook."""
-        class DummyStageHook(BaseTypedHook[StageExecution]):
+        class DummyStageHook(BaseHook[StageExecution]):
             async def execute(self, stage_execution: StageExecution) -> None:
                 pass
         

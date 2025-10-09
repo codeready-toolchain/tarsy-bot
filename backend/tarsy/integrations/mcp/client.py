@@ -10,7 +10,7 @@ from mcp import ClientSession
 from mcp.types import Tool
 
 from tarsy.config.settings import Settings
-from tarsy.hooks.typed_context import mcp_interaction_context, mcp_list_context
+from tarsy.hooks.hook_context import mcp_interaction_context, mcp_list_context
 from tarsy.models.agent_config import MCPServerConfigModel
 from tarsy.integrations.mcp.transport.factory import MCPTransportFactory, MCPTransport
 from tarsy.models.mcp_transport_config import TRANSPORT_STDIO

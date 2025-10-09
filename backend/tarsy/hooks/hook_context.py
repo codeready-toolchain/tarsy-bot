@@ -154,7 +154,7 @@ class HookManager:
         """Trigger all stage execution hooks with typed data."""
         return await self._trigger_hooks(self.stage_hooks, stage_execution, "STAGE_EXECUTION")
 
-    async def _trigger_hooks(self, hooks: Dict[str, BaseTypedHook[TInteraction]], 
+    async def _trigger_hooks(self, hooks: Dict[str, BaseHook[TInteraction]], 
                            interaction: TInteraction, hook_type: str) -> Dict[str, bool]:
         """Generic hook triggering with type safety."""
         if not hooks:
@@ -205,16 +205,16 @@ class InteractionHookContext(Generic[TInteraction]):
     Manages interaction-specific fields like start_time_us, end_time_us, duration_ms, success, etc.
     """
     
-    def __init__(self, interaction_template: TInteraction, typed_hook_manager: TypedHookManager):
+    def __init__(self, interaction_template: TInteraction, hook_manager: HookManager):
         """
         Initialize typed hook context.
         
         Args:
             interaction_template: Template interaction with session_id and basic info
-            typed_hook_manager: Manager for typed hooks
+            hook_manager: Manager for hooks
         """
         self.interaction = interaction_template
-        self.typed_hook_manager = typed_hook_manager
+        self.hook_manager = hook_manager
         self.start_time_us = None
 
     async def __aenter__(self) -> 'InteractionHookContext[TInteraction]':
@@ -290,13 +290,13 @@ class InteractionHookContext(Generic[TInteraction]):
     async def _trigger_appropriate_hooks(self) -> None:
         """Trigger the appropriate typed hooks based on interaction type."""
         if isinstance(self.interaction, LLMInteraction):
-            await self.typed_hook_manager.trigger_llm_hooks(self.interaction)
+            await self.hook_manager.trigger_llm_hooks(self.interaction)
         elif isinstance(self.interaction, MCPInteraction):
             # Determine if it's a tool list or tool call based on communication_type
             if self.interaction.communication_type == "tool_list":
-                await self.typed_hook_manager.trigger_mcp_list_hooks(self.interaction)
+                await self.hook_manager.trigger_mcp_list_hooks(self.interaction)
             else:
-                await self.typed_hook_manager.trigger_mcp_hooks(self.interaction)
+                await self.hook_manager.trigger_mcp_hooks(self.interaction)
         else:
             logger.warning(f"Unknown interaction type: {type(self.interaction)}")
 
@@ -413,9 +413,9 @@ class StageExecutionHookContext:
     which has different field names and semantics.
     """
     
-    def __init__(self, stage_execution: StageExecution, typed_hook_manager: TypedHookManager):
+    def __init__(self, stage_execution: StageExecution, hook_manager: HookManager):
         self.stage_execution = stage_execution
-        self.typed_hook_manager = typed_hook_manager
+        self.hook_manager = hook_manager
 
     async def __aenter__(self) -> 'StageExecutionHookContext':
         """Enter async context."""
@@ -425,7 +425,7 @@ class StageExecutionHookContext:
         """Exit async context - trigger hooks."""
         # Always trigger stage hooks - stage execution state is managed by the service
         try:
-            await self.typed_hook_manager.trigger_stage_hooks(self.stage_execution)
+            await self.hook_manager.trigger_stage_hooks(self.stage_execution)
         except Exception as e:
             logger.error(f"Failed to trigger stage execution hooks: {e}")
         

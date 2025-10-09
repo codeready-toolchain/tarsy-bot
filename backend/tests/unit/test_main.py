@@ -6,7 +6,6 @@ Tests lifespan management, endpoints, WebSocket connections, and background proc
 
 import asyncio
 import contextlib
-import uuid
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, Mock, patch, call
 
@@ -56,21 +55,13 @@ class TestMainLifespan:
              ) as mock_history_service, \
              patch('tarsy.main.AlertService') as mock_alert_service_class, \
              patch(
-                 'tarsy.main.DashboardConnectionManager'
-             ) as mock_dashboard_manager_class, \
-             patch(
-                 'tarsy.hooks.hook_registry.get_typed_hook_registry'
+                 'tarsy.hooks.hook_registry.get_hook_registry'
              ) as mock_hook_registry, \
              patch('tarsy.main.get_database_info') as mock_db_info:
             
             # Setup service mocks
             mock_alert_service = AsyncMock()
             mock_alert_service_class.return_value = mock_alert_service
-            
-            mock_dashboard_manager = Mock()
-            mock_dashboard_manager.initialize_broadcaster = AsyncMock()
-            mock_dashboard_manager.shutdown_broadcaster = AsyncMock()
-            mock_dashboard_manager_class.return_value = mock_dashboard_manager
             
             mock_history = Mock()
             mock_history.cleanup_orphaned_sessions.return_value = 2
@@ -84,11 +75,9 @@ class TestMainLifespan:
                 'init_db': mock_init_db,
                 'history_service': mock_history_service,
                 'alert_service_class': mock_alert_service_class,
-                'dashboard_manager_class': mock_dashboard_manager_class,
                 'hook_registry': mock_hook_registry,
                 'db_info': mock_db_info,
                 'alert_service': mock_alert_service,
-                'dashboard_manager': mock_dashboard_manager,
                 'history': mock_history,
                 'typed_hooks': mock_typed_hooks
             }
@@ -123,12 +112,8 @@ class TestMainLifespan:
         deps['setup_logging'].assert_called_once_with("INFO")
         deps['init_db'].assert_called_once()
         deps['alert_service'].initialize.assert_called_once()
-        deps['dashboard_manager'].initialize_broadcaster.assert_called_once()
         deps['typed_hooks'].initialize_hooks.assert_called_once()
         deps['history'].cleanup_orphaned_sessions.assert_called_once()
-
-        # Verify shutdown calls
-        deps['dashboard_manager'].shutdown_broadcaster.assert_called_once()
 
     @patch('tarsy.main.get_settings')
     async def test_lifespan_startup_with_history_disabled(
@@ -159,7 +144,6 @@ class TestMainLifespan:
         # Verify startup calls - history service should not be initialized
         deps['setup_logging'].assert_called_once()
         deps['alert_service'].initialize.assert_called_once()
-        deps['dashboard_manager'].initialize_broadcaster.assert_called_once()
         
         # History service should not be called
         deps['history_service'].assert_not_called()
@@ -197,7 +181,6 @@ class TestMainLifespan:
 
         # Verify startup continued despite cleanup error
         deps['alert_service'].initialize.assert_called_once()
-        deps['dashboard_manager'].initialize_broadcaster.assert_called_once()
 
     @patch('tarsy.main.get_settings')
     @patch('sys.exit')
@@ -459,85 +442,6 @@ class TestMainEndpoints:
         assert data["warnings"] == []
 
 
-@pytest.mark.unit
-class TestWebSocketEndpoint:
-    """Test WebSocket endpoint."""
-
-    @pytest.fixture
-    def mock_websocket(self):
-        """Mock WebSocket connection."""
-        websocket = AsyncMock(spec=WebSocket)
-        return websocket
-
-    @patch('tarsy.main.dashboard_manager')
-    async def test_websocket_connection_success(
-        self, mock_dashboard_manager, mock_websocket
-    ):
-        """Test successful WebSocket connection."""
-        # Mock the dashboard manager
-        mock_dashboard_manager.connect = AsyncMock()
-        mock_dashboard_manager.send_to_user = AsyncMock()
-        mock_dashboard_manager.handle_subscription_message = AsyncMock()
-        mock_dashboard_manager.disconnect = Mock()
-        
-        # Mock websocket messages
-        mock_websocket.receive_text = AsyncMock()
-        mock_websocket.receive_text.side_effect = [
-            '{"type": "subscribe", "channel": "alerts"}',
-            # Then simulate WebSocketDisconnect
-            Exception("WebSocketDisconnect")
-        ]
-        
-        # Import and test the endpoint
-        from tarsy.main import dashboard_websocket_endpoint
-        
-        with contextlib.suppress(Exception):
-            # Expected due to disconnect simulation
-            await dashboard_websocket_endpoint(mock_websocket, "user-123")
-        
-        # Verify connection flow
-        mock_dashboard_manager.connect.assert_called_once_with(
-            mock_websocket, "user-123"
-        )
-        mock_dashboard_manager.send_to_user.assert_called()
-        mock_dashboard_manager.disconnect.assert_called_once_with("user-123")
-
-    @patch('tarsy.main.dashboard_manager')
-    async def test_websocket_invalid_json_message(
-        self, mock_dashboard_manager, mock_websocket
-    ):
-        """Test WebSocket with invalid JSON message."""
-        mock_dashboard_manager.connect = AsyncMock()
-        mock_dashboard_manager.send_to_user = AsyncMock()
-        mock_dashboard_manager.disconnect = Mock()
-        
-        # Mock websocket to send invalid JSON
-        mock_websocket.receive_text = AsyncMock()
-        mock_websocket.receive_text.side_effect = [
-            'invalid json',
-            Exception("WebSocketDisconnect")
-        ]
-        
-        from tarsy.main import dashboard_websocket_endpoint
-        
-        with contextlib.suppress(Exception):
-            await dashboard_websocket_endpoint(mock_websocket, "user-123")
-        
-        # Verify error message was sent
-        # Connection message + error message
-        assert mock_dashboard_manager.send_to_user.call_count >= 2
-        
-        # Check that an error message was sent
-        calls = mock_dashboard_manager.send_to_user.call_args_list
-        error_call_found = False
-        for call in calls:
-            if (len(call[0]) > 1 and 
-                isinstance(call[0][1], dict) and 
-                'message' in call[0][1] and
-                'Invalid JSON' in call[0][1].get('message', '')):
-                    error_call_found = True
-                    break
-        assert error_call_found
 
 
 @pytest.mark.unit

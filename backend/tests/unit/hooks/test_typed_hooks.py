@@ -75,7 +75,7 @@ class TestLLMHistoryHook:
     def test_hook_initialization(self, mock_history_service):
         """Test hook initializes correctly."""
         hook = LLMHistoryHook(mock_history_service)
-        assert hook.name == "typed_llm_history"
+        assert hook.name == "llm_history"
         assert hook.history_service == mock_history_service
     
     @pytest.mark.asyncio
@@ -97,7 +97,7 @@ class TestLLMHistoryHook:
     @pytest.mark.asyncio
     async def test_execute_applies_truncation(self, llm_hook, mock_history_service, sample_llm_interaction):
         """Test that execute applies content truncation before storing."""
-        with patch('tarsy.hooks.typed_history_hooks._apply_llm_interaction_truncation') as mock_truncate:
+        with patch('tarsy.hooks.history_hooks._apply_llm_interaction_truncation') as mock_truncate:
             # Configure mock to return a modified interaction
             truncated_interaction = sample_llm_interaction.model_copy()
             mock_truncate.return_value = truncated_interaction
@@ -174,7 +174,7 @@ class TestMCPHistoryHook:
     def test_hook_initialization(self, mock_history_service):
         """Test hook initializes correctly."""
         hook = MCPHistoryHook(mock_history_service)
-        assert hook.name == "typed_mcp_history"
+        assert hook.name == "mcp_history"
         assert hook.history_service == mock_history_service
     
     @pytest.mark.asyncio
@@ -231,7 +231,7 @@ class TestStageExecutionHistoryHook:
     def test_hook_initialization(self, mock_history_service):
         """Test hook initializes correctly."""
         hook = StageExecutionHistoryHook(mock_history_service)
-        assert hook.name == "typed_stage_history"
+        assert hook.name == "stage_history"
         assert hook.history_service == mock_history_service
     
     @pytest.mark.asyncio
