@@ -21,7 +21,14 @@ from cachetools import TTLCache
 from tarsy.config.settings import get_settings
 from tarsy.controllers.history_controller import router as history_router
 from tarsy.controllers.alert_controller import router as alert_router
-from tarsy.database.init_db import get_database_info, initialize_database
+from tarsy.controllers.events_controller import events_router
+from tarsy.database.init_db import (
+    get_database_info,
+    initialize_database,
+    initialize_async_database,
+    get_async_session_factory,
+    dispose_async_database
+)
 from tarsy.models.alert_processing import AlertKey
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.alert_service import AlertService
@@ -38,12 +45,13 @@ jwks_cache: TTLCache = TTLCache(maxsize=1, ttl=3600)  # Cache for 1 hour
 alert_service: Optional[AlertService] = None
 dashboard_manager: Optional[DashboardConnectionManager] = None
 alert_processing_semaphore: Optional[asyncio.Semaphore] = None
+event_system_manager = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
-    global alert_service, dashboard_manager, alert_processing_semaphore
+    global alert_service, dashboard_manager, alert_processing_semaphore, event_system_manager
     
     # Initialize services
     settings = get_settings()
@@ -109,6 +117,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.info("Typed hook system skipped - history service disabled")
     
+    # Initialize event system (async database engine and event manager)
+    try:
+        from tarsy.services.events.manager import EventSystemManager, set_event_system
+        
+        # Initialize async database engine for event system
+        initialize_async_database(settings.database_url)
+        
+        # Create and start event system manager
+        event_system_manager = EventSystemManager(
+            database_url=settings.database_url,
+            db_session_factory=get_async_session_factory,
+            event_retention_hours=settings.event_retention_hours,
+            event_cleanup_interval_hours=settings.event_cleanup_interval_hours
+        )
+        await event_system_manager.start()
+        set_event_system(event_system_manager)
+        logger.info("Event system started successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize event system: {e}", exc_info=True)
+        logger.warning("Application will continue without event system")
+    
     logger.info("Tarsy started successfully!")
     
     # Log history service status
@@ -122,6 +151,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Shutdown
     logger.info("Tarsy shutting down...")
+    
+    # Shutdown event system
+    if event_system_manager is not None:
+        try:
+            await event_system_manager.stop()
+            await dispose_async_database()
+            logger.info("Event system stopped")
+        except Exception as e:
+            logger.error(f"Error stopping event system: {e}", exc_info=True)
     
     # Shutdown dashboard broadcaster
     if dashboard_manager is not None:
@@ -153,6 +191,7 @@ app.add_middleware(
 # Register API routers
 app.include_router(history_router, tags=["history"])
 app.include_router(alert_router, tags=["alerts"])
+app.include_router(events_router, tags=["events"])
 
 from tarsy.controllers.system_controller import router as system_router
 app.include_router(system_router, prefix="/api/v1", tags=["system"])
@@ -185,9 +224,32 @@ async def health_check() -> Dict[str, Any]:
                 history_status = "unhealthy"
                 health_status["status"] = "degraded"  # Overall status degraded if history fails
         
+        # Add event system status
+        event_system_status = "unknown"
+        event_listener_type = "unknown"
+        try:
+            from tarsy.services.events.manager import get_event_system
+            event_system = get_event_system()
+            event_listener = event_system.get_listener() if event_system else None
+            if event_listener and event_listener.running:
+                event_system_status = "healthy"
+            else:
+                event_system_status = "degraded"
+                health_status["status"] = "degraded"
+            event_listener_type = event_listener.__class__.__name__ if event_listener else "unknown"
+        except RuntimeError:
+            event_system_status = "not_initialized"
+        except Exception as e:
+            logger.debug(f"Error getting event system status: {e}")
+            event_system_status = "error"
+        
         health_status["services"] = {
             "alert_processing": "healthy",
             "history_service": history_status,
+            "event_system": {
+                "status": event_system_status,
+                "type": event_listener_type
+            },
             "database": {
                 "enabled": db_info.get("enabled", False),
                 "connected": db_info.get("connection_test", False) if db_info.get("enabled") else None,
