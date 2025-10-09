@@ -75,7 +75,9 @@ async def event_stream(
                 for event in missed_events:
                     # Event.payload contains the event dict
                     payload_json = json.dumps(event.payload)
+                    event_type = event.payload.get("type", "message")
 
+                    yield f"event: {event_type}\n"
                     yield f"id: {event.id}\n"
                     yield f"data: {payload_json}\n\n"
 
@@ -108,8 +110,10 @@ async def event_stream(
                     event = await asyncio.wait_for(queue.get(), timeout=30)
 
                     event_id = event.get("id", 0)
+                    event_type = event.get("type", "message")
                     payload = json.dumps(event)
-
+                    
+                    yield f"event: {event_type}\n"
                     yield f"id: {event_id}\n"
                     yield f"data: {payload}\n\n"
 

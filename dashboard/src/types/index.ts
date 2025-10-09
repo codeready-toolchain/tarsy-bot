@@ -255,6 +255,7 @@ export interface StageProgressUpdate {
   error_message?: string | null;
   iteration_strategy?: string | null;
   timestamp_us: number;
+  type?: string; // Event type (e.g., 'stage.started', 'stage.completed')
 }
 
 // API response wrapper format (for other endpoints)

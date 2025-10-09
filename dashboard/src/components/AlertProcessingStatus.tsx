@@ -41,12 +41,17 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
   
   // Track if onComplete has been called for this alert to prevent duplicates
   const didCompleteRef = useRef(false);
+  
+  // Track terminal state immediately (not waiting for React state update)
+  const isTerminalRef = useRef(false);
 
   useEffect(() => {
     // Reset mount flag on (re)mount or alert change
     isMountedRef.current = true;
     // New alert -> allow onComplete again
     didCompleteRef.current = false;
+    // Reset terminal state for new alert
+    isTerminalRef.current = false;
     
     // Initialize SSE connection status
     const initialConnectionStatus = sseService.isConnected;
@@ -83,8 +88,8 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
           if (response.session_id) {
             if (!isMountedRef.current) return; // Component unmounted, skip state updates
             
-            setSessionId(response.session_id);
             console.log('✅ Successfully fetched session ID:', alertId, '→', response.session_id);
+            setSessionId(response.session_id);
             
             // Update status to reflect successful session initialization
             setStatus(prev => prev ? {
@@ -153,33 +158,71 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     
     setupSubscription();
     
-    // Handle session-specific updates
+    // Handle session-specific updates using pattern matching for robustness
     const handleSessionUpdate = (update: any) => {
-      // Handle different types of updates
+      const eventType = update.type || '';
+      console.log(`📨 AlertProcessingStatus received event [${eventType}]:`, update);
+      
+      // Prevent overwriting terminal states with intermediate events (catchup protection)
+      // Once completed or errored, ignore all processing/stage/interaction events
+      // Use ref to check immediately (React state updates are async)
+      if (isTerminalRef.current && !eventType.startsWith('session.')) {
+        console.log('⏭️  Ignoring event - session already in terminal state');
+        return;
+      }
+      
       let updatedStatus: ProcessingStatus | null = null;
 
-      if (update.type === 'session_status_change') {
+      if (eventType.startsWith('session.')) {
+        // Session lifecycle events
+        const isCompleted = eventType === 'session.completed';
+        const isFailed = eventType === 'session.failed';
+        
         updatedStatus = {
           alert_id: alertId,
-          status: update.status === 'completed' ? 'completed' : 
-                 update.status === 'failed' ? 'error' : 'processing',
+          status: isCompleted ? 'completed' : isFailed ? 'error' : 'processing',
           progress: 0,
-          current_step: update.status === 'completed' ? 'Processing completed' : 
-                       update.status === 'failed' ? 'Processing failed' : 'Processing...',
+          current_step: isCompleted ? 'Processing completed' : 
+                       isFailed ? 'Processing failed' : 'Processing...',
           timestamp: new Date().toISOString(),
           error: update.error_message || undefined,
           result: update.final_analysis || undefined
         };
-      } else if (update.type === 'stage_progress') {
+        
+        // Fetch final analysis when session completes (SSE events don't include it)
+        if (isCompleted && sessionId && !update.final_analysis) {
+          console.log('📥 Fetching final analysis for completed session:', sessionId);
+          (async () => {
+            try {
+              const sessionDetails = await apiClient.getSessionDetail(sessionId);
+              if (sessionDetails.final_analysis && isMountedRef.current) {
+                setStatus(prev => prev ? {
+                  ...prev,
+                  result: sessionDetails.final_analysis || undefined
+                } : prev);
+                console.log('✅ Final analysis loaded');
+              }
+            } catch (error) {
+              console.error('Failed to fetch final analysis:', error);
+            }
+          })();
+        }
+      } 
+      else if (eventType.startsWith('stage.')) {
+        // Stage events
+        const isCompleted = eventType === 'stage.completed';
+        const isFailed = eventType === 'stage.failed';
+        
         updatedStatus = {
           alert_id: alertId,
-          status: update.status === 'completed' ? 'completed' : 
-                 update.status === 'failed' ? 'error' : 'processing',
+          status: isCompleted ? 'completed' : isFailed ? 'error' : 'processing',
           progress: 0,
           current_step: `Stage: ${update.stage_name || 'Processing'}`,
           timestamp: new Date().toISOString()
         };
-      } else if (update.type === 'llm_interaction') {
+      } 
+      else if (eventType.startsWith('llm.')) {
+        // LLM interaction events
         updatedStatus = {
           alert_id: alertId,
           status: 'processing',
@@ -187,7 +230,9 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
           current_step: 'Analyzing with AI...',
           timestamp: new Date().toISOString()
         };
-      } else if (update.type === 'mcp_interaction') {
+      } 
+      else if (eventType.startsWith('mcp.')) {
+        // MCP interaction events
         updatedStatus = {
           alert_id: alertId,
           status: 'processing',
@@ -198,6 +243,13 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
       }
 
       if (updatedStatus) {
+        console.log('🔄 Updating status:', updatedStatus.status, '-', updatedStatus.current_step);
+        
+        // Mark terminal state immediately (before React state update) to prevent race conditions
+        if (updatedStatus.status === 'completed' || updatedStatus.status === 'error') {
+          isTerminalRef.current = true;
+        }
+        
         setStatus(updatedStatus);
         
         // Call onComplete callback when processing is done (success or failure)
@@ -211,14 +263,18 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
             }
           }, 1000);
         }
+      } else {
+        console.log('⚠️ Event processed but no status update:', eventType);
       }
     };
     
     // Set up the session-specific event handler
     const sessionChannel = `session_${sessionId}`;
+    console.log('📡 Setting up session-specific handler for channel:', sessionChannel);
     const unsubscribeSession = sseService.onSessionSpecificUpdate(sessionChannel, handleSessionUpdate);
 
     return () => {
+      console.log('🔌 Cleaning up subscription for:', sessionId);
       sseService.unsubscribeFromSessionChannel(sessionId);
       unsubscribeSession();
     };

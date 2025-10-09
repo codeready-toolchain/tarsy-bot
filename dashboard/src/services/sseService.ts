@@ -192,7 +192,7 @@ class SSEService {
       eventSource.addEventListener('stage.failed', (event: MessageEvent) => {
         this.handleEvent('stage.failed', event, connection);
       });
-
+      
       eventSource.onerror = (error) => {
         console.error(`❌ SSE error on channel ${channel} (readyState: ${eventSource.readyState})`);
         this.eventHandlers.error.forEach(handler => handler(error));
@@ -230,6 +230,9 @@ class SSEService {
 
   /**
    * Handle SSE event
+   * 
+   * Strategy: Preserve the original event type and route to appropriate handlers.
+   * Let components use pattern matching on event types for flexibility.
    */
   private handleEvent(eventType: string, event: MessageEvent, connection: SSEConnection): void {
     try {
@@ -240,60 +243,54 @@ class SSEService {
         connection.lastEventId = parseInt(event.lastEventId, 10);
       }
 
-      // Map SSE events to handler types
-      switch (eventType) {
-        case 'session.created':
-        case 'session.started':
-          // Session update
-          this.eventHandlers.sessionUpdate.forEach(handler => handler(data));
-          this.routeToSessionHandlers(data);
-          break;
+      // Add the event type to the data payload for components to use
+      const enrichedData = { ...data, type: eventType };
 
-        case 'session.completed':
-          this.eventHandlers.sessionCompleted.forEach(handler => handler(data));
-          this.eventHandlers.sessionUpdate.forEach(handler => handler(data));
-          this.routeToSessionHandlers(data);
-          break;
-
-        case 'session.failed':
-          this.eventHandlers.sessionFailed.forEach(handler => handler(data));
-          this.eventHandlers.sessionUpdate.forEach(handler => handler(data));
-          this.routeToSessionHandlers(data);
-          break;
-
-        case 'llm.interaction':
-        case 'mcp.tool_call':
-        case 'mcp.list_tools':
-          // Dashboard updates (interactions)
-          this.eventHandlers.dashboardUpdate.forEach(handler => handler(data));
-          this.routeToSessionHandlers(data);
-          break;
-
-        case 'stage.started':
-        case 'stage.completed':
-        case 'stage.failed':
-          // Stage progress updates
-          const stageUpdate: StageProgressUpdate = {
-            session_id: data.session_id,
-            chain_id: data.chain_id || '',
-            stage_execution_id: data.execution_id || '',
-            stage_id: data.stage_id || '',
-            stage_name: data.stage_name || '',
-            stage_index: data.stage_index || 0,
-            agent: data.agent_type || '',
-            status: this.mapStageStatus(eventType),
-            started_at_us: data.started_at_us,
-            completed_at_us: data.completed_at_us,
-            timestamp_us: data.timestamp_us || Date.now() * 1000,
-          };
-          
-          this.eventHandlers.stageProgress.forEach(handler => handler(stageUpdate));
-          this.eventHandlers.dashboardUpdate.forEach(handler => handler(stageUpdate as any));
-          this.routeToSessionHandlers(stageUpdate);
-          break;
-
-        default:
-          console.log('❓ Unknown SSE event type:', eventType);
+      // Route to appropriate handler collections based on event type patterns
+      // Components can then use pattern matching (e.g., type.startsWith('session.'))
+      
+      if (eventType.startsWith('session.')) {
+        // All session lifecycle events
+        this.eventHandlers.sessionUpdate.forEach(handler => handler(enrichedData));
+        this.routeToSessionHandlers(enrichedData);
+        
+        // Also route to specific handlers for backwards compatibility
+        if (eventType === 'session.completed') {
+          this.eventHandlers.sessionCompleted.forEach(handler => handler(enrichedData));
+        } else if (eventType === 'session.failed') {
+          this.eventHandlers.sessionFailed.forEach(handler => handler(enrichedData));
+        }
+      } 
+      else if (eventType.startsWith('stage.')) {
+        // All stage events - normalize to StageProgressUpdate structure
+        const stageUpdate: StageProgressUpdate & { type: string } = {
+          session_id: data.session_id,
+          chain_id: data.chain_id || '',
+          stage_execution_id: data.execution_id || '',
+          stage_id: data.stage_id || '',
+          stage_name: data.stage_name || '',
+          stage_index: data.stage_index || 0,
+          agent: data.agent_type || '',
+          status: this.inferStageStatus(eventType),
+          started_at_us: data.started_at_us,
+          completed_at_us: data.completed_at_us,
+          timestamp_us: data.timestamp_us || Date.now() * 1000,
+          type: eventType, // Preserve original type
+        };
+        
+        this.eventHandlers.stageProgress.forEach(handler => handler(stageUpdate));
+        this.eventHandlers.dashboardUpdate.forEach(handler => handler(stageUpdate as any));
+        this.routeToSessionHandlers(stageUpdate);
+      }
+      else if (eventType.startsWith('llm.') || eventType.startsWith('mcp.')) {
+        // All LLM and MCP interaction events
+        this.eventHandlers.dashboardUpdate.forEach(handler => handler(enrichedData));
+        this.routeToSessionHandlers(enrichedData);
+      }
+      else {
+        // Unknown event type - still route it, let components decide
+        console.log('❓ Unknown SSE event type (routing anyway):', eventType);
+        this.routeToSessionHandlers(enrichedData);
       }
     } catch (error) {
       console.error('❌ Failed to parse SSE message:', error, 'Raw data:', event.data);
@@ -301,9 +298,9 @@ class SSEService {
   }
 
   /**
-   * Map stage event type to status
+   * Infer stage status from event type
    */
-  private mapStageStatus(eventType: string): 'pending' | 'active' | 'completed' | 'failed' {
+  private inferStageStatus(eventType: string): 'pending' | 'active' | 'completed' | 'failed' {
     if (eventType === 'stage.started') return 'active';
     if (eventType === 'stage.completed') return 'completed';
     if (eventType === 'stage.failed') return 'failed';
