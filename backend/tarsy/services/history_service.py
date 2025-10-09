@@ -328,58 +328,6 @@ class HistoryService:
                 success = repo.update_alert_session(session)
                 if success:
                     logger.debug(f"Updated session {session_id} status to {status}")
-                    
-                    # Notify dashboard update service of session status change
-                    # 
-                    # NOTE: We call dashboard_manager directly instead of using the hook mechanism because:
-                    # 1. No session status hook exists - current hooks handle interaction-level events
-                    #    (LLM calls, MCP tools, stage executions), not session lifecycle events
-                    # 2. Circular import prevention - importing dashboard_manager at module level would
-                    #    create dependency cycles (HistoryService -> DashboardManager -> hooks -> HistoryService)
-                    # 3. DashboardUpdateService has a dedicated process_session_status_change() method
-                    #    designed specifically for session lifecycle events (vs. interaction events)
-                    # 4. Async context handling - this sync method needs to trigger async dashboard updates
-                    #
-                    # To use hooks instead, we'd need: a SessionStatusEvent model, a SessionStatusHook,
-                    # dependency injection refactoring, and hook registry updates for session-level events.
-                    try:
-                        # Import here to avoid circular imports
-                        from tarsy.main import dashboard_manager
-                        if dashboard_manager and dashboard_manager.update_service:
-                            # Prepare details for dashboard update
-                            details = {}
-                            if error_message:
-                                details['error_message'] = error_message
-                            if final_analysis:
-                                details['final_analysis'] = final_analysis
-                            
-                            logger.debug(f"Scheduling dashboard status update for session {session_id} with status '{status}'")
-                                
-                            # Process session status change for dashboard updates
-                            import asyncio
-                            try:
-                                loop = asyncio.get_running_loop()
-                                # In async context: schedule task on current loop
-                                task = loop.create_task(
-                                    dashboard_manager.update_service.process_session_status_change(
-                                        session_id, status, details
-                                    )
-                                )
-                                # Add task name for debugging
-                                task.set_name(f"dashboard_update_{session_id}")
-                                logger.debug(f"Created dashboard update task for session {session_id}")
-                            except RuntimeError:
-                                # No running loop: run synchronously
-                                logger.debug(f"No running loop detected, using asyncio.run() for session {session_id}")
-                                asyncio.run(
-                                    dashboard_manager.update_service.process_session_status_change(
-                                        session_id, status, details
-                                    )
-                                )
-                        else:
-                            logger.warning(f"Dashboard manager or update service not available for session {session_id}")
-                    except Exception as e:
-                        logger.warning(f"Failed to notify dashboard update service for session {session_id}: {e}", exc_info=True)
                         
                 return success
         

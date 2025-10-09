@@ -115,7 +115,7 @@ class StageExecutionEventHook(BaseHook[StageExecution]):
             publish_stage_completed
         )
         
-        if stage_execution.status == StageStatus.STARTED:
+        if stage_execution.status == StageStatus.ACTIVE:
             await publish_stage_started(
                 session_id=stage_execution.session_id,
                 stage_id=stage_execution.execution_id,
