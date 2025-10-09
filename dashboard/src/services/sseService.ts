@@ -1,5 +1,5 @@
 /**
- * SSE Service
+ * SSE Service - Singleton to prevent React Strict Mode from creating multiple connections
  */
 
 import type { 
@@ -23,6 +23,7 @@ interface SSEConnection {
 
 class SSEService {
   private connections: Map<string, SSEConnection> = new Map();
+  private pendingConnections: Set<string> = new Set(); // Track in-progress connections
   private baseUrl: string = '';
   private maxReconnectAttempts = 10;
   private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
@@ -97,22 +98,25 @@ class SSEService {
       }
     }
 
-    if (!this.baseUrl) {
+    // Note: baseUrl can be empty string in development (relative URLs with Vite proxy)
+    if (this.baseUrl === undefined || this.baseUrl === null) {
       console.error('❌ Cannot connect: SSE base URL not set');
       return;
     }
 
     // Subscribe to dashboard channel by default
     await this.subscribeToChannel('sessions');
-    
-    console.log('🎉 SSE service initialized successfully!');
-    this.notifyConnectionChange();
   }
 
   /**
    * Subscribe to a specific SSE channel
    */
   private async subscribeToChannel(channel: string, lastEventId: number = 0): Promise<void> {
+    // Prevent concurrent connection attempts to the same channel (React Strict Mode protection)
+    if (this.pendingConnections.has(channel)) {
+      return;
+    }
+    
     // Don't reconnect if already connected
     if (this.connections.has(channel)) {
       const connection = this.connections.get(channel)!;
@@ -123,6 +127,9 @@ class SSEService {
       connection.eventSource.close();
       this.connections.delete(channel);
     }
+    
+    // Mark this channel as pending
+    this.pendingConnections.add(channel);
 
     try {
       const url = `${this.baseUrl}/api/v1/events/stream?channel=${encodeURIComponent(channel)}&last_event_id=${lastEventId}`;
@@ -138,9 +145,10 @@ class SSEService {
       this.connections.set(channel, connection);
 
       eventSource.onopen = () => {
-        console.log(`🎉 SSE connected to channel: ${channel}`);
+        console.log(`✅ SSE connected to channel: ${channel}`);
         connection.reconnectAttempts = 0;
         this.permanentlyDisabled = false;
+        this.pendingConnections.delete(channel); // Connection successful, remove from pending
         this.notifyConnectionChange();
       };
 
@@ -186,28 +194,37 @@ class SSEService {
       });
 
       eventSource.onerror = (error) => {
-        console.error(`❌ SSE error on channel ${channel}:`, error);
+        console.error(`❌ SSE error on channel ${channel} (readyState: ${eventSource.readyState})`);
         this.eventHandlers.error.forEach(handler => handler(error));
         
-        // Handle reconnection
-        if (connection.reconnectAttempts < this.maxReconnectAttempts) {
-          connection.reconnectAttempts++;
-          const delay = Math.min(1000 * Math.pow(2, connection.reconnectAttempts), 30000);
-          console.log(`SSE reconnecting to ${channel} in ${delay}ms (attempt ${connection.reconnectAttempts}/${this.maxReconnectAttempts})`);
-          
-          setTimeout(() => {
-            this.subscribeToChannel(channel, connection.lastEventId);
-          }, delay);
-        } else {
-          console.log(`Max SSE reconnection attempts reached for channel: ${channel}`);
-          this.permanentlyDisabled = true;
-          this.connections.delete(channel);
-          this.notifyConnectionChange();
+        // Remove from pending on error
+        this.pendingConnections.delete(channel);
+        
+        // Only reconnect if connection is actually closed
+        // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
+        if (eventSource.readyState === EventSource.CLOSED) {
+          // Handle reconnection with exponential backoff
+          if (connection.reconnectAttempts < this.maxReconnectAttempts) {
+            connection.reconnectAttempts++;
+            // Start with 200ms, then exponential backoff: 200ms, 400ms, 800ms, 1.6s, 3.2s...
+            const delay = Math.min(200 * Math.pow(2, connection.reconnectAttempts - 1), 30000);
+            console.log(`🔄 SSE reconnecting to ${channel} in ${delay}ms (attempt ${connection.reconnectAttempts}/${this.maxReconnectAttempts})`);
+            
+            setTimeout(() => {
+              this.subscribeToChannel(channel, connection.lastEventId);
+            }, delay);
+          } else {
+            console.warn(`❌ Max SSE reconnection attempts reached for channel: ${channel}`);
+            this.permanentlyDisabled = true;
+            this.connections.delete(channel);
+            this.notifyConnectionChange();
+          }
         }
       };
 
     } catch (error) {
       console.error(`Failed to create SSE connection to ${channel}:`, error);
+      this.pendingConnections.delete(channel); // Clean up on exception
     }
   }
 
@@ -222,8 +239,6 @@ class SSEService {
       if (event.lastEventId) {
         connection.lastEventId = parseInt(event.lastEventId, 10);
       }
-
-      console.log(`📨 SSE Event [${eventType}]:`, data);
 
       // Map SSE events to handler types
       switch (eventType) {
@@ -312,9 +327,11 @@ class SSEService {
    * Notify connection change handlers
    */
   private notifyConnectionChange(): void {
+    // Report connected if any connection is OPEN
     const isConnected = Array.from(this.connections.values()).some(
       conn => conn.eventSource.readyState === EventSource.OPEN
     );
+    
     this.eventHandlers.connectionChange.forEach(handler => handler(isConnected));
   }
 
@@ -513,7 +530,6 @@ class SSEService {
   }
 
   cleanup(): void {
-    console.log('🧹 Cleaning up SSE service');
     this.disconnect();
   }
 }

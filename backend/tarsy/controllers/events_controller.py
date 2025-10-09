@@ -90,6 +90,11 @@ async def event_stream(
         event_listener = event_system.get_listener()
 
         await event_listener.subscribe(channel, callback)
+        
+        # Send immediate connection confirmation to trigger client onopen
+        # Without this, client waits for first event or 30s timeout
+        yield ": connected\n\n"
+        logger.debug(f"SSE connection established for '{channel}'")
 
         try:
             while True:
