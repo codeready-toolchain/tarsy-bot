@@ -1,14 +1,28 @@
 # EP-0025: PostgreSQL LISTEN/NOTIFY Eventing System
 
+**Status:** ✅ IMPLEMENTED
+
+**Implementation Date:** October 2025
+
+**Key Change:** Original design specified Server-Sent Events (SSE) for dashboard communication. During implementation, SSE reliability issues were discovered in multi-tab scenarios. WebSocket was implemented instead, providing:
+- Bidirectional communication (client can send subscription messages)
+- Better connection management across multiple browser tabs
+- Single connection per tab with channel-based subscriptions
+- Robust reconnection and catchup mechanism
+
+The core architecture (PostgreSQL LISTEN/NOTIFY, event persistence, cross-pod distribution) remains as designed. Only the dashboard transport layer differs from the original specification.
+
+---
+
 ## Problem Statement
 
 TARSy needs a cross-pod event distribution mechanism to support multi-replica Kubernetes deployments. Events must be reliably delivered to all backend pods for:
-- Dashboard real-time updates (SSE)
+- Dashboard real-time updates (WebSocket)
 - Session state synchronization
 - Active session tracking
 - System notifications
 
-This EP provides the detailed design for implementing event distribution using PostgreSQL LISTEN/NOTIFY with SQLite polling fallback for development.
+This EP provides the detailed design for implementing event distribution using PostgreSQL LISTEN/NOTIFY with SQLite polling fallback for development. Events are delivered to dashboard clients via WebSocket connections.
 
 **Note:** SQLite polling is for development only. Production multi-replica deployments require PostgreSQL.
 
@@ -36,21 +50,23 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Note over Client,DB: Phase 1: Initial Connection
-    Client->>R1: GET /events/stream?channel=sessions&last_event_id=0
+    Client->>R1: WebSocket Connect: /api/v1/ws
+    R1-->>Client: WebSocket Connection Established
+    Client->>R1: {"action":"subscribe","channel":"sessions"}
     R1->>DB: LISTEN sessions
     R2->>DB: LISTEN sessions
     R3->>DB: LISTEN sessions
-    R1-->>Client: SSE Connection Open
+    R1-->>Client: {"type":"subscription.confirmed","channel":"sessions"}
     
     Note over Client,DB: Phase 2: Normal Event Flow
     Note over R2: Alert processing starts
     R2->>DB: 1. INSERT INTO events (id=42)
-    R2->>DB: 2. NOTIFY sessions, {...}
+    R2->>DB: 2. NOTIFY "sessions", {...}
     DB-->>R1: Notification received
     DB-->>R2: Notification received
     DB-->>R3: Notification received
-    R1->>R1: dispatch_to_callbacks()<br/>queue.put(event)
-    R1-->>Client: id: 42<br/>data: {"type":"session.started",...}
+    R1->>R1: dispatch_to_callbacks()<br/>broadcast_to_channel()
+    R1-->>Client: {"type":"session.started","id":42,...}
     Note over Client: UI updates
 
     Note over Client,DB: Phase 3: Replica Failure
@@ -62,17 +78,20 @@ sequenceDiagram
     R3->>DB: Event 44: INSERT + NOTIFY
     
     Note over Client,DB: Phase 4: Auto-Reconnection & Catchup
-    Client->>R2: GET /events/stream?channel=sessions&last_event_id=42
+    Client->>R2: WebSocket Connect: /api/v1/ws
+    R2-->>Client: WebSocket Connection Established
+    Client->>R2: {"action":"subscribe","channel":"sessions"}
+    Client->>R2: {"action":"catchup","channel":"sessions","last_event_id":42}
     R2->>DB: SELECT * FROM events<br/>WHERE channel='sessions' AND id>42
     DB-->>R2: Returns: [Event 43, Event 44]
-    R2-->>Client: id: 43<br/>data: {...}
-    R2-->>Client: id: 44<br/>data: {...}
-    R2-->>Client: SSE Connection Open
+    R2-->>Client: {"type":"...","id":43,...}
+    R2-->>Client: {"type":"...","id":44,...}
+    R2-->>Client: {"type":"subscription.confirmed","channel":"sessions"}
     
     Note over Client,DB: Phase 5: Resume Live Events
     R2->>DB: Event 45: INSERT + NOTIFY
     DB-->>R2: Notification received
-    R2-->>Client: id: 45<br/>data: {...}
+    R2-->>Client: {"type":"...","id":45,...}
     Note over Client: ✅ All events received<br/>Zero event loss
 ```
 
@@ -80,15 +99,15 @@ sequenceDiagram
 
 | Time | Event | Client State | Database State |
 |------|-------|--------------|----------------|
-| **10:00:00** | Client connects to Replica 1<br/>`GET /stream?last_event_id=0` | ✅ Connected<br/>SSE → Replica 1 | Empty events table |
+| **10:00:00** | Client connects to Replica 1<br/>`WebSocket /api/v1/ws` | ✅ Connected<br/>WS → Replica 1<br/>Subscribed to "sessions" | Empty events table |
 | **10:00:15** | Event 41 published<br/>(session.started) | ✅ Receives event 41<br/>`last_event_id=41` | `id=41` persisted<br/>NOTIFY → All pods |
 | **10:00:30** | Event 42 published<br/>(llm.interaction) | ✅ Receives event 42<br/>`last_event_id=42` | `id=42` persisted<br/>NOTIFY → All pods |
 | **10:00:45** | 💥 **Replica 1 crashes**<br/>(pod killed by k8s) | ⚠️ **Connection lost**<br/>Disconnected | Database intact<br/>Events 41-42 safe |
 | **10:00:46** | Event 43 published<br/>(by Replica 2) | ❌ Not received<br/>Still disconnected | `id=43` persisted<br/>NOTIFY (no listeners) |
 | **10:00:47** | Event 44 published<br/>(by Replica 3) | ❌ Not received<br/>Still disconnected | `id=44` persisted<br/>NOTIFY (no listeners) |
-| **10:00:48** | **Browser auto-reconnects**<br/>`GET /stream?last_event_id=42` | 🔄 Reconnecting...<br/>Routes to Replica 2 | Query: `WHERE id>42` |
+| **10:00:48** | **Browser auto-reconnects**<br/>`WebSocket /api/v1/ws` | 🔄 Reconnecting...<br/>Routes to Replica 2 | Query: `WHERE id>42` |
 | **10:00:49** | **CATCHUP:** Sends events 43-44<br/>(from database) | ✅ Receives event 43<br/>✅ Receives event 44<br/>`last_event_id=44` | Returns: `[43, 44]`<br/>from database |
-| **10:00:50** | SSE connection established<br/>with Replica 2 | ✅ Connected<br/>SSE → Replica 2 | Ready for live events |
+| **10:00:50** | WebSocket connection ready<br/>with Replica 2 | ✅ Connected<br/>WS → Replica 2<br/>Subscribed to "sessions" | Ready for live events |
 | **10:01:00** | Event 45 published<br/>(stage.completed) | ✅ Receives event 45<br/>`last_event_id=45` | `id=45` persisted<br/>NOTIFY → All pods |
 | **10:01:15** | Event 46 published<br/>(session.completed) | ✅ Receives event 46<br/>`last_event_id=46` | `id=46` persisted<br/>NOTIFY → All pods |
 | **Result** | **Zero events lost**<br/>Seamless failover | ✅ All events received<br/>UI stays synchronized | All events stored<br/>Database consistent |
@@ -1388,49 +1407,55 @@ class EventCleanupService:
 - ✅ Idempotent - safe to run on multiple pods simultaneously
 - ✅ Consistent with tarsy patterns
 
-### SSE Endpoint with Catchup
+### WebSocket Endpoint with Catchup
 
-Updated to use EventRepository for type-safe catchup queries:
+The WebSocket endpoint provides bidirectional communication with subscription management and catchup support:
 
 ```python
-# backend/tarsy/controllers/events_controller.py
+# backend/tarsy/controllers/websocket_controller.py
 
 """
-Events Controller
+WebSocket Controller
 
-FastAPI controller for Server-Sent Events endpoints.
-Provides real-time event streaming with catchup support.
+FastAPI controller for WebSocket connections.
+Provides real-time event streaming with channel subscriptions and catchup support.
 """
 
-import asyncio
 import json
-import logging
+import uuid
 
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from tarsy.database.init_db import get_async_session_factory
 from tarsy.repositories.event_repository import EventRepository
 from tarsy.services.events.manager import get_event_system
-from tarsy.utils.logger import get_logger
+from tarsy.services.websocket_connection_manager import WebSocketConnectionManager
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/events", tags=["events"])
+websocket_router = APIRouter(prefix="/api/v1", tags=["websocket"])
+
+# Global connection manager
+connection_manager = WebSocketConnectionManager()
 
 
-@router.get(
-    "/stream",
-    response_class=StreamingResponse,
-    summary="Server-Sent Events Stream",
-    description="""
-    Subscribe to real-time event stream with automatic catchup support.
+@websocket_router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    """
+    WebSocket endpoint for real-time event streaming.
+    
+    **Protocol:**
+    - Client sends: {"action": "subscribe", "channel": "sessions"}
+    - Client sends: {"action": "unsubscribe", "channel": "sessions"}
+    - Client sends: {"action": "catchup", "channel": "sessions", "last_event_id": 42}
+    - Server sends: {"type": "session.started", "session_id": "...", ...}
     
     **Channels:**
     - `sessions` - Global session lifecycle events
     - `session:{session_id}` - Per-session detail events
     
     **Catchup:**
-    - Provide `last_event_id` to receive missed events since last connection
+    - Request missed events via catchup action with last_event_id
     - Server replays events from database before streaming live events
     
     **Event Format:**
@@ -1992,21 +2017,29 @@ event_cleanup_interval_hours: int = Field(
 
 ---
 
-### Phase 4: SSE Endpoint & Main Integration
+### Phase 4: WebSocket Endpoint & Main Integration
 
-**Goal:** Create SSE endpoint and integrate into main app
+**Goal:** Create WebSocket endpoint and integrate into main app
 
-#### 4.1 Create SSE Controller
-**File:** `backend/tarsy/controllers/events_controller.py` (NEW)
-- Copy complete SSE endpoint from the "SSE Endpoint Implementation" section of this EP
-- Implements: `GET /api/v1/events/stream?channel={channel}&last_event_id={id}`
-- Uses `StreamingResponse` for SSE
+**Implementation Note:** Originally designed for SSE, but WebSocket was implemented for better reliability in multi-tab scenarios.
+
+#### 4.1 Create WebSocket Controller
+**File:** `backend/tarsy/controllers/websocket_controller.py` (NEW)
+- Implements: `WebSocket /api/v1/ws`
+- Handles client messages: subscribe, unsubscribe, catchup, ping
+- Manages connection lifecycle and subscriptions
 - Includes catchup mechanism via `EventRepository.get_events_after()`
+
+**Key Components:**
+- `WebSocketConnectionManager` - Tracks connections and channel subscriptions
+- `websocket_endpoint()` - Main WebSocket handler
+- Integrates with `EventListener` to register callbacks for database events
 
 **Verification:** 
 - Start server
-- `curl -N http://localhost:8000/api/v1/events/stream?channel=sessions`
-- Should keep connection open (SSE stream)
+- Connect via WebSocket client to `ws://localhost:8000/api/v1/ws`
+- Send: `{"action":"subscribe","channel":"sessions"}`
+- Should receive: `{"type":"subscription.confirmed","channel":"sessions"}`
 
 #### 4.2 Update main.py
 **File:** `backend/tarsy/main.py`
@@ -2018,22 +2051,20 @@ event_cleanup_interval_hours: int = Field(
    ```
 
 2. **Update lifespan function** (replace existing event setup):
-   - Copy `lifespan` implementation from the "Integration with TARSy" section of this EP
    - Initialize `EventSystemManager` in startup
    - Call `event_system.start()` and `set_event_system()`
    - Call `event_system.stop()` in shutdown
-   - **Remove old WebSocket initialization** (if present)
 
-3. **Register SSE router:**
+3. **Register WebSocket router:**
    ```python
-   from tarsy.controllers.events_controller import events_router
-   app.include_router(events_router)
+   from tarsy.controllers.websocket_controller import websocket_router
+   app.include_router(websocket_router)
    ```
 
 **Verification:**
 - Start server
 - Check logs for: `"Event system started successfully"`
-- Check API docs: `http://localhost:8000/docs` - should show `/api/v1/events/stream`
+- Check API docs: `http://localhost:8000/docs` - should show `/api/v1/ws` endpoint
 
 #### 4.3 Enhance Existing Health Check
 **File:** `backend/tarsy/main.py`
@@ -2074,7 +2105,7 @@ health_response["event_system"] = {
 
 ---
 
-### Phase 5: Integrate Event Publishing (Replace WebSocket)
+### Phase 5: Integrate Event Publishing
 
 **Goal:** Publish events from existing services, remove WebSocket dependencies
 
@@ -2324,12 +2355,14 @@ async def test_multi_channel_subscription()
 
 ### Phase 7: Dashboard Migration
 
-**Goal:** Update React dashboard to use SSE instead of WebSocket
+**Goal:** Update React dashboard to use WebSocket for real-time updates
 
 **Note:** This is a separate effort, but here's the high-level plan:
 
-#### 7.1 Create SSE Service
-**File:** `dashboard/src/services/sseService.ts` (NEW)
+**Implementation Note:** WebSocket was chosen over SSE for better multi-tab reliability and bidirectional communication.
+
+#### 7.1 Create WebSocket Service
+**File:** `dashboard/src/services/websocketService.ts` (NEW)
 - Replace `websocket.ts` with SSE EventSource
 - Use `EventSource` API for SSE connections
 - Implement reconnection with `last_event_id`
@@ -2347,17 +2380,22 @@ async def test_multi_channel_subscription()
 
 ## Post-Implementation Checklist
 
-**Before declaring complete:**
-- [ ] All unit tests pass
-- [ ] All integration tests pass
-- [ ] Manual testing complete (SQLite + PostgreSQL)
+**Implementation Status:** ✅ COMPLETED - WebSocket implementation deployed and tested
+
+**Completed:**
+- ✅ All unit tests pass
+- ✅ All integration tests pass  
+- ✅ Manual testing complete (SQLite + PostgreSQL)
+- ✅ Dashboard updated with WebSocket service
+- ✅ WebSocket endpoint with channel subscriptions implemented
+- ✅ PostgreSQL LISTEN/NOTIFY working in production
+- ✅ Event persistence and catchup mechanism validated
+
+**Pending:**
 - [ ] Multi-replica tested in Kubernetes
-- [ ] Dashboard updated and tested
-- [ ] WebSocket code removed
-- [ ] Documentation updated
+- [ ] Documentation updated (main architecture docs)
 - [ ] Monitoring/alerts configured
-- [ ] Performance acceptable (see Phase 6.4 targets)
-- [ ] Code reviewed and merged
+- [ ] Performance benchmarking
 
 ## Security Considerations
 
@@ -2368,25 +2406,25 @@ async def test_multi_channel_subscription()
 
 ## Known Limitations & Testing Notes
 
-### SSE End-to-End Testing
+### WebSocket End-to-End Testing
 
-**Limitation:** SSE streaming cannot be reliably tested in e2e tests using FastAPI's `TestClient`.
-
-**Reason:** `TestClient` is synchronous and doesn't handle long-lived streaming connections well. SSE endpoints keep connections open indefinitely, waiting for events, which causes tests to hang when using `TestClient.stream()`.
+**Note:** WebSocket connections are tested using FastAPI's WebSocket test client and file-based SQLite for shared database access between test session and EventListener.
 
 **Test Coverage Strategy:**
-- ✅ **Unit tests**: Complete coverage of all event system components (EventRepository, EventPublisher, EventListener implementations, EventSystemManager, EventCleanupService, event helpers)
-- ✅ **Integration tests**: Database operations, event publishing, and retrieval validated
-- ✅ **E2E tests**: Alert processing flow fully tested (events are published and persisted during processing)
-- ⚠️ **SSE streaming**: Manual testing required, or use external HTTP client (e.g., `httpx`, `curl`) for real streaming validation
+- ✅ **Unit tests**: Complete coverage of all event system components (EventRepository, EventPublisher, EventListener implementations, EventSystemManager, EventCleanupService, WebSocketConnectionManager, event helpers)
+- ✅ **Integration tests**: Real EventListener integration with database, event publishing flow, WebSocket broadcasting
+- ✅ **E2E tests**: Alert processing flow fully tested (events published, persisted, and broadcast via WebSocket)
 
-**Manual SSE Testing:**
+**Manual WebSocket Testing:**
 ```bash
-# Test SSE endpoint manually with curl
-curl -N http://localhost:8000/api/v1/events/stream?channel=sessions
+# Test WebSocket endpoint with websocat or similar tool
+websocat ws://localhost:8000/api/v1/ws
+
+# Send subscription message
+{"action":"subscribe","channel":"sessions"}
 
 # Test catchup mechanism
-curl -N http://localhost:8000/api/v1/events/stream?channel=sessions&last_event_id=42
+{"action":"catchup","channel":"sessions","last_event_id":42}
 ```
 
-**Impact:** No functional impact - all event system components are thoroughly tested. Only the SSE streaming delivery mechanism requires manual validation or integration testing with external tools.
+**Implementation Status:** All components tested and deployed. WebSocket provides reliable bi-directional communication with proper multi-tab support.

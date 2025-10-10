@@ -271,8 +271,7 @@ npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
 - `POST /api/v1/alerts` - Submit a new alert for processing
 - `GET /api/v1/alert-types` - Get supported alert types
 - `GET /api/v1/session-id/{alert_id}` - Get session ID for alert tracking
-- `GET /processing-status/{alert_id}` - Get processing status
-- `WebSocket /ws/{alert_id}` - Real-time progress updates
+- `WebSocket /api/v1/ws` - Real-time progress updates via channel subscriptions
 
 ### History API
 - `GET /api/v1/history/sessions` - List alert processing sessions with filtering and pagination

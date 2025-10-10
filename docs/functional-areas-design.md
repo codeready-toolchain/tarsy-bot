@@ -1149,8 +1149,14 @@ graph TB
     
     subgraph "Backend Services"
         API[FastAPI Backend<br/>localhost:8000]
-        WS["WebSocket Endpoint<br/>/ws/dashboard/user_id"]
-        Broadcaster[Dashboard Broadcaster]
+        WS["WebSocket Endpoint<br/>/api/v1/ws"]
+        WSManager[WebSocket Manager]
+        EventListener[Event Listener<br/>PostgreSQL/SQLite]
+    end
+    
+    subgraph "Event System"
+        EventPublisher[Event Publisher]
+        DB[(Events Database<br/>PostgreSQL/SQLite)]
     end
     
     subgraph "Data Sources"
@@ -1161,12 +1167,19 @@ graph TB
     Dashboard --> WS
     Dashboard --> API
     
-    WS --> Broadcaster
-    Broadcaster --> History
-    Hooks --> Broadcaster
+    WS --> WSManager
+    Hooks --> EventPublisher
+    EventPublisher --> DB
+    DB --> EventListener
+    EventListener --> WSManager
+    WSManager --> WS
+    
+    History --> API
     
     style Dashboard fill:#e1f5fe
     style WS fill:#fff3e0
+    style EventListener fill:#e8f5e8
+    style DB fill:#f0f8ff
 ```
 
 **📍 SRE Dashboard**: `dashboard/src/` (React TypeScript)
@@ -1182,35 +1195,154 @@ graph TB
 
 #### WebSocket & Real-time Communication Architecture
 
-**Multiplexed WebSocket System**:
-```python
-# Single WebSocket connection supports multiple channels
-@app.websocket("/ws/dashboard/{user_id}")
-async def dashboard_websocket_endpoint(websocket: WebSocket, user_id: str):
-    # Connection management with subscription routing
+**Event-Driven WebSocket System with Cross-Pod Distribution**:
+
+TARSy uses PostgreSQL LISTEN/NOTIFY (with SQLite polling fallback for development) for cross-pod event distribution, enabling multi-replica Kubernetes deployments. Events are persisted to the database and broadcast to all backend pods, which then forward them to their connected WebSocket clients.
+
+**Architecture Overview**:
+```
+Event Published → Database (INSERT + NOTIFY) → All Backend Pods → WebSocket Clients
+                     ↓
+              Event Persistence (catchup support)
 ```
 
-**📍 Connection Management**: `backend/tarsy/services/dashboard_connection_manager.py`
+##### Multi-Replica Event Flow with Automatic Failover
 
-**Subscription Channels**:
-- **`dashboard_updates`**: Real-time session list changes
-- **`session_{id}`**: Individual session timeline updates
-- **`system_health`**: Service status notifications
+This demonstrates how the eventing system works in production with multi-replica deployments, including automatic failover and zero event loss:
 
-**📍 Dashboard Broadcasting**: `backend/tarsy/services/dashboard_broadcaster.py`
-- **Intelligent batching** - groups related updates
-- **Session tracking** - maintains active session state
-- **Message routing** - targets specific user subscriptions
+```mermaid
+sequenceDiagram
+    participant Client as Dashboard Client
+    participant R1 as Replica 1 (Pod 1)
+    participant R2 as Replica 2 (Pod 2)
+    participant R3 as Replica 3 (Pod 3)
+    participant DB as PostgreSQL
+
+    Note over Client,DB: Phase 1: Initial Connection
+    Client->>R1: WebSocket Connect: /api/v1/ws
+    R1-->>Client: WebSocket Connection Established
+    Client->>R1: {"action":"subscribe","channel":"sessions"}
+    R1->>DB: LISTEN sessions
+    R2->>DB: LISTEN sessions
+    R3->>DB: LISTEN sessions
+    R1-->>Client: {"type":"subscription.confirmed","channel":"sessions"}
+    
+    Note over Client,DB: Phase 2: Normal Event Flow
+    Note over R2: Alert processing starts
+    R2->>DB: 1. INSERT INTO events (id=42)
+    R2->>DB: 2. NOTIFY "sessions", {...}
+    DB-->>R1: Notification received
+    DB-->>R2: Notification received
+    DB-->>R3: Notification received
+    R1->>R1: dispatch_to_callbacks()<br/>broadcast_to_channel()
+    R1-->>Client: {"type":"session.started","id":42,...}
+    Note over Client: UI updates
+
+    Note over Client,DB: Phase 3: Replica Failure
+    Note over R1: 💥 Replica 1 crashes
+    Note over Client: ⚠️ Connection lost detected
+    
+    Note over R2: Events continue (client disconnected)
+    R2->>DB: Event 43: INSERT + NOTIFY
+    R3->>DB: Event 44: INSERT + NOTIFY
+    
+    Note over Client,DB: Phase 4: Auto-Reconnection & Catchup
+    Client->>R2: WebSocket Connect: /api/v1/ws
+    R2-->>Client: WebSocket Connection Established
+    Client->>R2: {"action":"subscribe","channel":"sessions"}
+    Client->>R2: {"action":"catchup","channel":"sessions","last_event_id":42}
+    R2->>DB: SELECT * FROM events<br/>WHERE channel='sessions' AND id>42
+    DB-->>R2: Returns: [Event 43, Event 44]
+    R2-->>Client: {"type":"...","id":43,...}
+    R2-->>Client: {"type":"...","id":44,...}
+    R2-->>Client: {"type":"subscription.confirmed","channel":"sessions"}
+    
+    Note over Client,DB: Phase 5: Resume Live Events
+    R2->>DB: Event 45: INSERT + NOTIFY
+    DB-->>R2: Notification received
+    R2-->>Client: {"type":"...","id":45,...}
+    Note over Client: ✅ All events received<br/>Zero event loss
+```
+
+**Timeline: Replica Failover with Zero Event Loss**
+
+| Time | Event | Client State | Database State |
+|------|-------|--------------|----------------|
+| **10:00:00** | Client connects to Replica 1<br/>`WebSocket /api/v1/ws` | ✅ Connected<br/>WS → Replica 1<br/>Subscribed to "sessions" | Empty events table |
+| **10:00:15** | Event 41 published<br/>(session.started) | ✅ Receives event 41<br/>`last_event_id=41` | `id=41` persisted<br/>NOTIFY → All pods |
+| **10:00:30** | Event 42 published<br/>(llm.interaction) | ✅ Receives event 42<br/>`last_event_id=42` | `id=42` persisted<br/>NOTIFY → All pods |
+| **10:00:45** | 💥 **Replica 1 crashes**<br/>(pod killed by k8s) | ⚠️ **Connection lost**<br/>Disconnected | Database intact<br/>Events 41-42 safe |
+| **10:00:46** | Event 43 published<br/>(by Replica 2) | ❌ Not received<br/>Still disconnected | `id=43` persisted<br/>NOTIFY (no listeners) |
+| **10:00:47** | Event 44 published<br/>(by Replica 3) | ❌ Not received<br/>Still disconnected | `id=44` persisted<br/>NOTIFY (no listeners) |
+| **10:00:48** | **Browser auto-reconnects**<br/>`WebSocket /api/v1/ws` | 🔄 Reconnecting...<br/>Routes to Replica 2 | Query: `WHERE id>42` |
+| **10:00:49** | **CATCHUP:** Sends events 43-44<br/>(from database) | ✅ Receives event 43<br/>✅ Receives event 44<br/>`last_event_id=44` | Returns: `[43, 44]`<br/>from database |
+| **10:00:50** | WebSocket connection ready<br/>with Replica 2 | ✅ Connected<br/>WS → Replica 2<br/>Subscribed to "sessions" | Ready for live events |
+| **10:01:00** | Event 45 published<br/>(stage.completed) | ✅ Receives event 45<br/>`last_event_id=45` | `id=45` persisted<br/>NOTIFY → All pods |
+| **10:01:15** | Event 46 published<br/>(session.completed) | ✅ Receives event 46<br/>`last_event_id=46` | `id=46` persisted<br/>NOTIFY → All pods |
+| **Result** | **Zero events lost**<br/>Seamless failover | ✅ All events received<br/>UI stays synchronized | All events stored<br/>Database consistent |
+
+**Key Observations**:
+
+**Event Loss Prevention:**
+- ✅ Events 43-44 published while client disconnected
+- ✅ Events persisted to database immediately
+- ✅ Catchup query retrieves missed events on reconnection
+- ✅ Client receives ALL events in correct order: 41, 42, 43, 44, 45, 46
+
+**Replica Independence:**
+- ✅ Event 43 published by Replica 2 → Replica 3 receives via NOTIFY
+- ✅ Event 44 published by Replica 3 → Replica 2 receives via NOTIFY
+- ✅ Any replica can publish, all replicas broadcast to their clients
+
+**Automatic Failover:**
+- ✅ Browser detects disconnection (~1-2 seconds)
+- ✅ Auto-reconnects with last known event ID
+- ✅ Kubernetes routes to healthy replica
+- ✅ No manual intervention required
+
+**Database as Source of Truth:**
+- ✅ All events persisted BEFORE broadcast
+- ✅ Catchup always possible (events table = event log)
+- ✅ Works even if ALL replicas crash (events safe in DB)
+
+##### Core Components
+
+**📍 WebSocket Endpoint**: `backend/tarsy/controllers/websocket_controller.py`
+```python
+# Single WebSocket connection per browser tab
+@websocket_router.websocket("/api/v1/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    # Client sends subscription messages over the connection
+    # {"action": "subscribe", "channel": "sessions"}
+    # {"action": "catchup", "channel": "sessions", "last_event_id": 42}
+```
+
+**Event Channels**:
+- **`sessions`**: Global session lifecycle events (session.created, session.started, session.completed, session.failed)
+- **`session:{session_id}`**: Per-session detail events (llm.interaction, mcp.tool_call, stage.started, stage.completed)
+
+**📍 Connection Management**: `backend/tarsy/services/websocket_connection_manager.py`
+- **Connection tracking** - manages active WebSocket connections per connection_id
+- **Channel subscriptions** - tracks which channels each connection subscribes to
+- **Broadcast routing** - forwards events to all subscribers of a channel
+
+**📍 Event System Integration**: `backend/tarsy/services/events/`
+- **Event Listener** - subscribes to database notifications (PostgreSQL LISTEN or SQLite polling)
+- **Event Publisher** - publishes events to database with NOTIFY broadcast
+- **Event Repository** - type-safe database operations for event persistence and catchup
+- **Event Cleanup** - automatic cleanup of old events based on retention policy
 
 **Event Integration Flow**:
 ```
-Hook Event → Dashboard Hook → Broadcaster → WebSocket → UI Update
+Hook Event → Event Publisher → Database (INSERT + NOTIFY) → 
+  Event Listener → WebSocket Manager → WebSocket Clients → UI Update
 ```
 
-**📍 Frontend WebSocket**: `dashboard/src/services/websocket.ts`
-- **Automatic reconnection** with exponential backoff
-- **Subscription management** for multiple channels  
-- **Message routing** to appropriate UI components
+**📍 Frontend WebSocket Service**: `dashboard/src/services/websocketService.ts`
+- **Single connection per tab** - one WebSocket connection handles all subscriptions
+- **Automatic reconnection** with exponential backoff and catchup
+- **Channel-based subscriptions** - subscribe to specific event streams as needed
+- **Message routing** - events routed to appropriate UI components based on type
 
 ### 10. Security & Data Protection
 **Purpose**: Sensitive data protection and secure operations  

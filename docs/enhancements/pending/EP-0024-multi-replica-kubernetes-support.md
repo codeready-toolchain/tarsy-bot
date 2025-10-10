@@ -15,18 +15,41 @@ TARSy is not currently safe to run as a multi-replica Kubernetes deployment due 
 Issues are marked with their resolution approach:
 - **[SOLVED BY EP-0025]** - Addressed by eventing system
 - **[SEPARATE]** - Requires independent solution
+- **[REMOVED]** - Removed by design decision (simpler approach chosen)
 
 ### Critical Issues
 
-#### 1. Alert Deduplication State **[SEPARATE]**
+#### 1. Alert Deduplication State **[REMOVED]**
 **Location:** `backend/tarsy/controllers/alert_controller.py:28-29`
 
-In-memory dictionary `processing_alert_keys` is maintained per-pod. Same alert hitting different replicas will be processed multiple times.
+In-memory dictionary `processing_alert_keys` is maintained per-pod. Same alert hitting different replicas would be processed multiple times.
 
-**Solution:**
-- Database-based locking table using existing PostgreSQL
-- Implement distributed lock acquisition before processing
-- Use PostgreSQL advisory locks or dedicated `alert_locks` table
+**Design Decision - Deduplication Removed:**
+
+After analysis, we've decided to **completely remove deduplication logic** instead of implementing distributed locking. Rationale:
+
+1. **Current deduplication is ineffective** - In-memory per-pod state doesn't work for multi-replica
+2. **Distributed locks add complexity and failure modes** - Lock timeouts, pod crashes leaving locks stuck, additional infrastructure
+3. **Simpler is better** - Less code, fewer failure modes, easier to reason about
+
+**Additional Simplification - Complete Removal of alert_id:**
+
+Along with removing deduplication, we're completely eliminating the `alert_id` concept:
+- **Before:** POST `/alerts` returns `alert_id` → client polls `/session-id/{alert_id}` → gets `session_id`
+- **After:** POST `/alerts` returns `session_id` immediately (generated before response)
+- **Result:** Single identifier (`session_id`) used throughout the entire system - API, database, dashboard, events
+
+**What's being removed:**
+- ❌ `alert_id` field from database schema
+- ❌ `alert_id` parameter from all function signatures
+- ❌ `alert_id` from API responses
+- ❌ `/session-id/{alert_id}` endpoint
+- ❌ In-memory `alert_session_mapping` cache
+- ❌ In-memory `processing_alert_keys` deduplication
+
+**What remains:**
+- ✅ Single `session_id` (UUID) as the universal identifier
+- ✅ Simpler API, simpler database schema, simpler code
 
 #### 2. WebSocket Connection Management **[SOLVED BY EP-0025]**
 **Location:** `backend/tarsy/services/dashboard_connection_manager.py:26-32`
@@ -34,10 +57,11 @@ In-memory dictionary `processing_alert_keys` is maintained per-pod. Same alert h
 WebSocket connections stored in-memory per pod. Dashboard clients connected to Pod A won't receive updates for alerts processed by Pod B.
 
 **Solution:**
-- ✅ Replace WebSockets with Server-Sent Events (SSE)
 - ✅ Implement PostgreSQL LISTEN/NOTIFY for cross-pod event distribution
-- ✅ Events published by any pod are broadcast to all pods
-- ✅ Each pod forwards events to its connected SSE clients
+- ✅ WebSocket connections with channel subscriptions for real-time updates
+- ✅ Events published by any pod are broadcast to all pods via database
+- ✅ Each pod forwards events to its connected WebSocket clients
+- ✅ Single WebSocket connection per tab with multiple channel subscriptions
 - See **EP-0025** for complete implementation details
 
 ### Medium Severity Issues
@@ -77,8 +101,8 @@ Session message buffers stored in-memory per pod. Messages may be lost if alert 
 
 **Solution:**
 - ✅ Events persisted to database (not just in-memory)
-- ✅ SSE clients receive events via PostgreSQL LISTEN/NOTIFY
-- ✅ Event table provides catchup for missed messages
+- ✅ WebSocket clients receive events via PostgreSQL LISTEN/NOTIFY
+- ✅ Event table provides catchup mechanism for missed messages
 - ✅ No separate buffering layer needed
 - See **EP-0025** for event persistence and delivery mechanism
 
@@ -120,11 +144,13 @@ Current `/health` endpoint already checks database connectivity but always retur
 - ✅ **Issue #5**: Dashboard Message Buffering - Events persisted to database with catchup support
 - ✅ **Issue #6**: Active Session Tracking - Session lifecycle events broadcast to all pods
 
-### Issues Requiring Separate Implementation (4 of 7)
-- **Issue #1**: Alert Deduplication - Database-based locking
+### Issues Requiring Separate Implementation (3 of 7)
 - **Issue #3**: Logging - Drop file logging, stdout/stderr only
 - **Issue #4**: Orphaned Session Cleanup & Graceful Shutdown - Hybrid approach (startup recovery + graceful shutdown hook)
 - **Issue #7**: Health Check Enhancement - Add event system status + HTTP 503 for degraded state
+
+### Issues Removed by Design Decision (1 of 7)
+- ❌ **Issue #1**: Alert Deduplication - Removed entirely (simpler approach, session_id as primary identifier)
 
 ## Design
 
@@ -142,29 +168,78 @@ EP-0025 provides the foundation for multi-replica support by solving cross-pod c
 
 **Result:** Dashboard clients receive updates regardless of which pod processes the alert.
 
-### Phase 2: Alert Deduplication (Issue #1)
+### Phase 2: Simplified Alert Submission (Issue #1 - Removed)
 
-Implement distributed locking for alert processing:
+Instead of implementing distributed locking for deduplication, we've simplified the entire alert submission flow:
+
+**Changes:**
+1. Remove `alert_id` field from database schema entirely
+2. Remove in-memory `processing_alert_keys` deduplication dictionary
+3. Remove in-memory `alert_session_mapping` (TTLCache)
+4. Remove in-memory `valid_alert_ids` (TTLCache)
+5. Remove `/session-id/{alert_id}` polling endpoint
+6. Return `session_id` directly in alert submission response
+7. Use `session_id` as the sole identifier throughout the system
+
+**New Alert Submission Flow:**
 
 ```python
-# Pseudo-code
-async def process_alert(alert_key: str):
-    # Acquire distributed lock
-    lock = await acquire_lock(alert_key, timeout=300)
-    if not lock:
-        logger.info(f"Alert {alert_key} already being processed")
-        return
+@router.post("/alerts", response_model=AlertResponse)
+async def submit_alert(request: Request) -> AlertResponse:
+    """Submit a new alert for processing."""
+    # ... validation code ...
     
-    try:
-        # Process alert
-        await _process_alert_logic(alert_key)
-    finally:
-        await release_lock(alert_key)
+    # Generate session_id BEFORE starting background processing
+    session_id = str(uuid.uuid4())
+    
+    # Create ChainContext for processing  
+    alert_context = ChainContext.from_processing_alert(
+        processing_alert=processing_alert,
+        session_id=session_id,
+        current_stage_name="initializing"
+    )
+    
+    # Start background processing
+    asyncio.create_task(process_alert_background(session_id, alert_context))
+    
+    logger.info(f"Alert submitted with session_id: {session_id}")
+    
+    # Return session_id immediately - client can use it right away
+    return AlertResponse(
+        session_id=session_id,
+        status="queued",
+        message="Alert submitted for processing"
+    )
 ```
 
-**Options:**
-- PostgreSQL advisory locks: `pg_try_advisory_lock(hash)`
-- Database table: `INSERT INTO alert_locks (alert_key, locked_at, pod_id)`
+**Updated Response Model:**
+
+```python
+class AlertResponse(BaseModel):
+    """Response model for alert submission."""
+    session_id: str  # Single universal identifier
+    status: str
+    message: str
+```
+
+**Database Schema Changes:**
+
+A database migration will remove the `alert_id` column from the sessions table. The `session_id` (UUID) becomes the sole identifier.
+
+**Client Integration:**
+
+```typescript
+// Dashboard client - single step, no polling needed
+const response = await fetch('/api/v1/alerts', {
+    method: 'POST',
+    body: JSON.stringify(alertData)
+});
+
+const { session_id } = await response.json();
+
+// Immediately subscribe to session updates using SSE
+const eventSource = new EventSource(`/api/v1/events/subscribe?channels=session:${session_id}`);
+```
 
 ### Phase 3: Deployment Infrastructure
 
@@ -201,8 +276,159 @@ def setup_logging():
 
 Hybrid approach combining startup recovery and graceful shutdown:
 
+**Implementation follows proper layering:**
+
+**Layer 1: Repository (backend/tarsy/repositories/history_repository.py)**
 ```python
-# backend/tarsy/main.py
+class HistoryRepository:
+    """Repository for alert processing history data operations."""
+    
+    def find_orphaned_sessions(self, timeout_threshold_us: int) -> List[AlertSession]:
+        """Find sessions that appear orphaned based on last interaction time."""
+        statement = select(AlertSession).where(
+            AlertSession.status.in_(['processing', 'interrupted']),
+            AlertSession.last_interaction_at < timeout_threshold_us
+        )
+        return self.session.exec(statement).all()
+    
+    def find_sessions_by_pod(self, pod_id: str, status: str = 'processing') -> List[AlertSession]:
+        """Find sessions being processed by a specific pod."""
+        statement = select(AlertSession).where(
+            AlertSession.status == status,
+            AlertSession.pod_id == pod_id
+        )
+        return self.session.exec(statement).all()
+    
+    def update_session_pod_tracking(
+        self, 
+        session_id: str, 
+        pod_id: str, 
+        status: str = 'processing'
+    ) -> bool:
+        """Update session with pod tracking information."""
+        session = self.get_alert_session(session_id)
+        if not session:
+            return False
+        
+        session.status = status
+        session.pod_id = pod_id
+        session.last_interaction_at = now_us()
+        return self.update_alert_session(session) is not None
+```
+
+**Layer 2: Service (backend/tarsy/services/history_service.py)**
+```python
+class HistoryService:
+    """Service for alert processing history management."""
+    
+    async def recover_orphaned_sessions(self, timeout_minutes: int = 30) -> int:
+        """
+        Find and mark orphaned sessions on pod startup.
+        
+        Returns:
+            Number of sessions recovered
+        """
+        if not self.is_enabled:
+            return 0
+        
+        def _recovery_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return 0
+                
+                timeout_threshold_us = now_us() - (timeout_minutes * 60 * 1_000_000)
+                orphaned_sessions = repo.find_orphaned_sessions(timeout_threshold_us)
+                
+                for session_record in orphaned_sessions:
+                    session_record.status = 'failed'
+                    session_record.error_message = 'Session orphaned - pod crashed or timeout'
+                    session_record.completed_at_us = now_us()
+                    repo.update_alert_session(session_record)
+                
+                return len(orphaned_sessions)
+        
+        count = self._retry_database_operation("recover_orphaned_sessions", _recovery_operation)
+        
+        # Publish events (outside transaction)
+        if count and count > 0:
+            logger.info(f"Recovered {count} orphaned sessions")
+            # Event publishing happens via existing session lifecycle events
+        
+        return count or 0
+    
+    async def mark_pod_sessions_interrupted(self, pod_id: str) -> int:
+        """
+        Mark sessions being processed by a pod as interrupted.
+        Used during graceful shutdown.
+        
+        Returns:
+            Number of sessions marked as interrupted
+        """
+        if not self.is_enabled:
+            return 0
+        
+        def _interrupt_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return 0
+                
+                in_progress_sessions = repo.find_sessions_by_pod(pod_id, 'processing')
+                
+                for session_record in in_progress_sessions:
+                    session_record.status = 'interrupted'
+                    session_record.interrupted_at = now_us()
+                    repo.update_alert_session(session_record)
+                
+                return len(in_progress_sessions)
+        
+        count = self._retry_database_operation("mark_interrupted_sessions", _interrupt_operation)
+        
+        if count and count > 0:
+            logger.info(f"Marked {count} sessions as interrupted for pod {pod_id}")
+        
+        return count or 0
+    
+    async def start_session_processing(self, session_id: str, pod_id: str) -> bool:
+        """
+        Mark session as being processed by a specific pod.
+        Updates status, pod_id, and last_interaction_at.
+        """
+        if not self.is_enabled:
+            return False
+        
+        def _start_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return False
+                return repo.update_session_pod_tracking(session_id, pod_id, 'processing')
+        
+        return self._retry_database_operation("start_session_processing", _start_operation) or False
+    
+    async def record_session_interaction(self, session_id: str) -> bool:
+        """Update session last_interaction_at timestamp."""
+        if not self.is_enabled:
+            return False
+        
+        def _interaction_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return False
+                
+                session = repo.get_alert_session(session_id)
+                if not session:
+                    return False
+                
+                session.last_interaction_at = now_us()
+                return repo.update_alert_session(session) is not None
+        
+        return self._retry_database_operation("record_interaction", _interaction_operation) or False
+```
+
+**Layer 3: Application Lifecycle (backend/tarsy/main.py)**
+```python
+import os
+from contextlib import asynccontextmanager
+from tarsy.services.history_service import get_history_service
 
 SESSION_TIMEOUT_MINUTES = 30
 
@@ -211,131 +437,53 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown"""
     
     # Startup: Recover orphaned sessions
-    await recover_orphaned_sessions()
+    history_service = get_history_service()
+    if history_service and history_service.is_enabled:
+        await history_service.recover_orphaned_sessions(SESSION_TIMEOUT_MINUTES)
     
     yield  # Application runs
     
-    # Shutdown: Mark in-progress sessions
-    await mark_interrupted_sessions()
+    # Shutdown: Mark in-progress sessions as interrupted
+    if history_service and history_service.is_enabled:
+        pod_id = os.environ.get("HOSTNAME", "unknown")
+        await history_service.mark_pod_sessions_interrupted(pod_id)
+```
 
-
-async def recover_orphaned_sessions():
-    """Find and mark orphaned sessions on pod startup"""
-    async with get_async_session() as session:
-        result = await session.execute(
-            text("""
-                UPDATE sessions 
-                SET status = 'failed',
-                    error = 'Session orphaned - pod crashed or timeout',
-                    failed_at = NOW()
-                WHERE status IN ('processing', 'interrupted')
-                  AND last_interaction_at < NOW() - INTERVAL :timeout
-                RETURNING id, alert_id
-            """),
-            {"timeout": f"{SESSION_TIMEOUT_MINUTES} minutes"}
-        )
+**Usage in Alert Processing (backend/tarsy/services/alert_service.py)**
+```python
+class AlertService:
+    """Service for alert processing."""
+    
+    async def start_processing(self, session_id: str):
+        """Start processing an alert session."""
+        pod_id = os.environ.get("HOSTNAME", "unknown")
         
-        orphaned = result.fetchall()
-        await session.commit()
-        
-        # Publish events for dashboard updates
-        for row in orphaned:
-            await publish_event(
-                session,
-                channel=EventChannel.SESSIONS,
-                event_type='session.failed',
-                session_id=row.id,
-                alert_id=row.alert_id,
-                reason='orphaned'
+        if pod_id == "unknown":
+            logger.warning(
+                "HOSTNAME not set - pod tracking disabled. "
+                "Set HOSTNAME in Kubernetes pod spec for multi-replica support."
             )
         
-        if orphaned:
-            logger.info(f"Recovered {len(orphaned)} orphaned sessions")
-
-
-async def mark_interrupted_sessions():
-    """Mark in-progress sessions as interrupted on graceful shutdown"""
-    async with get_async_session() as session:
-        result = await session.execute(
-            text("""
-                UPDATE sessions 
-                SET status = 'interrupted',
-                    interrupted_at = NOW()
-                WHERE status = 'processing'
-                  AND pod_id = :pod_id
-                RETURNING id
-            """),
-            {"pod_id": os.environ.get("HOSTNAME", "unknown")}
-        )
+        # Mark session as being processed by this pod
+        if self.history_service:
+            await self.history_service.start_session_processing(session_id, pod_id)
         
-        interrupted_count = len(result.fetchall())
-        await session.commit()
-        
-        if interrupted_count > 0:
-            logger.info(f"Marked {interrupted_count} sessions as interrupted")
-
-
-# Set pod_id during session start
-async def start_session(session_id: str, alert_id: str):
-    """
-    Start processing a session and assign it to this pod.
+        # ... rest of processing logic ...
     
-    IMPORTANT: Requires HOSTNAME environment variable to be set in pod spec.
-    Without it, multiple pods will have pod_id='unknown' and interfere during
-    graceful shutdown (one pod could mark another pod's sessions as interrupted).
-    """
-    pod_id = os.environ.get("HOSTNAME", "unknown")
-    
-    if pod_id == "unknown":
-        logger.warning(
-            "HOSTNAME not set - pod_id will be 'unknown'. "
-            "This may cause issues in multi-replica deployments. "
-            "Set HOSTNAME in Kubernetes pod spec: "
-            "env: [{name: HOSTNAME, valueFrom: {fieldRef: {fieldPath: metadata.name}}}]"
-        )
-    
-    async with get_async_session() as session:
-        await session.execute(
-            text("""
-                UPDATE sessions 
-                SET status = 'processing',
-                    pod_id = :pod_id,
-                    last_interaction_at = NOW()
-                WHERE id = :session_id
-            """),
-            {
-                "session_id": session_id,
-                "pod_id": pod_id
-            }
-        )
-        await session.commit()
-
-
-# Update last_interaction_at during processing
-async def record_interaction(session_id: str):
-    """Update session interaction timestamp"""
-    async with get_async_session() as session:
-        await session.execute(
-            text("""
-                UPDATE sessions 
-                SET last_interaction_at = NOW()
-                WHERE id = :session_id
-            """),
-            {"session_id": session_id}
-        )
-        await session.commit()
+    async def _record_interaction(self, session_id: str):
+        """Record interaction timestamp (called on LLM calls, MCP tools, stage transitions)."""
+        if self.history_service:
+            await self.history_service.record_session_interaction(session_id)
 ```
 
-**Database Schema Addition:**
-```sql
-ALTER TABLE sessions 
-ADD COLUMN last_interaction_at TIMESTAMP DEFAULT NOW(),
-ADD COLUMN interrupted_at TIMESTAMP,
-ADD COLUMN pod_id VARCHAR(255);
+**Database Schema Changes:**
 
-CREATE INDEX idx_sessions_orphan_detection 
-ON sessions(status, last_interaction_at);
-```
+A database migration will add the following columns to the `alert_sessions` table:
+- `last_interaction_at` (BIGINT) - Unix timestamp in microseconds, updated on every LLM call, MCP tool call, stage transition
+- `interrupted_at` (BIGINT) - Unix timestamp in microseconds when session was interrupted
+- `pod_id` (VARCHAR) - Kubernetes pod identifier for tracking which pod is processing the session
+
+An index will be created on `(status, last_interaction_at)` for efficient orphaned session detection.
 
 **3.3 Health Check Enhancement (Issue #7)**
 
