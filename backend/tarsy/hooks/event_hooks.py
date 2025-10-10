@@ -2,8 +2,8 @@
 Typed event hooks for clean, type-safe real-time updates.
 
 This module provides typed hooks that handle LLM and MCP interactions
-using structured Pydantic models, publishing events to SSE streams for
-real-time dashboard updates.
+using structured Pydantic models, publishing events to the event stream
+for real-time dashboard updates via WebSocket.
 """
 
 import logging
@@ -18,7 +18,7 @@ class LLMEventHook(BaseHook[LLMInteraction]):
     """
     Typed hook for publishing LLM interaction events.
     
-    Receives unified LLMInteraction and publishes minimal event to SSE stream
+    Receives unified LLMInteraction and publishes minimal event to the event stream
     for real-time dashboard notifications.
     """
     
@@ -26,7 +26,7 @@ class LLMEventHook(BaseHook[LLMInteraction]):
         super().__init__("llm_event")
 
     async def execute(self, interaction: LLMInteraction) -> None:
-        """Publish LLM interaction event to SSE stream."""
+        """Publish LLM interaction event to event stream."""
         from tarsy.services.events.event_helpers import publish_llm_interaction
         
         await publish_llm_interaction(
@@ -39,7 +39,7 @@ class MCPEventHook(BaseHook[MCPInteraction]):
     """
     Typed hook for publishing MCP tool call events.
     
-    Receives unified MCPInteraction and publishes minimal event to SSE stream
+    Receives unified MCPInteraction and publishes minimal event to the event stream
     for real-time dashboard notifications.
     """
     
@@ -48,7 +48,7 @@ class MCPEventHook(BaseHook[MCPInteraction]):
 
     async def execute(self, interaction: MCPInteraction) -> None:
         """
-        Publish MCP tool call event to SSE stream.
+        Publish MCP tool call event to event stream.
         
         Args:
             interaction: Unified MCP interaction data
@@ -67,7 +67,7 @@ class MCPListEventHook(BaseHook[MCPInteraction]):
     """
     Typed hook for publishing MCP tool list events.
     
-    Receives unified MCPInteraction and publishes minimal event to SSE stream
+    Receives unified MCPInteraction and publishes minimal event to the event stream
     for real-time dashboard notifications.
     """
     
@@ -76,7 +76,7 @@ class MCPListEventHook(BaseHook[MCPInteraction]):
 
     async def execute(self, interaction: MCPInteraction) -> None:
         """
-        Publish MCP tool list event to SSE stream.
+        Publish MCP tool list event to event stream.
         
         Args:
             interaction: Unified MCP tool list data
@@ -95,7 +95,7 @@ class StageExecutionEventHook(BaseHook[StageExecution]):
     """
     Typed hook for publishing stage execution events.
     
-    Receives StageExecution and publishes minimal stage progress events to SSE stream
+    Receives StageExecution and publishes minimal stage progress events to the event stream
     for real-time dashboard notifications.
     """
     
@@ -104,7 +104,7 @@ class StageExecutionEventHook(BaseHook[StageExecution]):
 
     async def execute(self, stage_execution: StageExecution) -> None:
         """
-        Publish stage execution events to SSE stream.
+        Publish stage execution events to event stream.
         
         Args:
             stage_execution: Stage execution data

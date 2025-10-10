@@ -292,7 +292,7 @@ function DashboardView() {
     fetchHistoricalAlerts(hasActiveFilters);
   }, [pagination.page, pagination.pageSize, sortState]);
 
-  // Set up SSE event handlers for real-time updates
+  // Set up WebSocket event handlers for real-time updates
   useEffect(() => {
     // Session update handler - refresh on lifecycle events
     const handleSessionUpdate = (update: any) => {
@@ -303,36 +303,17 @@ function DashboardView() {
       }
     };
 
-    // SSE error handler
-    const handleSSEError = (error: Event) => {
-      console.warn('SSE connection error - real-time updates unavailable:', error);
-      console.log('💡 Use manual refresh buttons if needed');
-      setWsConnected(false); // Update connection status immediately
-    };
-
-    // SSE close handler  
-    const handleSSEClose = (event: CloseEvent) => {
-      console.warn('SSE connection closed - real-time updates unavailable:', {
-        code: event.code,
-        reason: event.reason,
-        wasClean: event.wasClean
-      });
-      console.log('💡 Use manual refresh buttons if needed');
-      setWsConnected(false); // Update connection status immediately
-    };
-
-
-    // Connection change handler - updates UI immediately when SSE connection changes
+    // Connection change handler - updates UI immediately when WebSocket connection changes
     const handleConnectionChange = (connected: boolean) => {
       setWsConnected(connected);
       if (connected) {
-        console.log('✅ SSE connected - real-time updates active');
+        console.log('✅ WebSocket connected - real-time updates active');
         // Sync with backend state after reconnection (handles backend restarts)
-        console.log('🔄 SSE reconnected - syncing dashboard with backend state');
+        console.log('🔄 WebSocket reconnected - syncing dashboard with backend state');
         fetchActiveAlerts();
         fetchHistoricalAlerts(true); // Use filtering to maintain current view
       } else {
-        console.log('❌ SSE disconnected - use manual refresh buttons');
+        console.log('❌ WebSocket disconnected - use manual refresh buttons');
       }
     };
 
@@ -376,7 +357,7 @@ function DashboardView() {
   };
 
   // Handle WebSocket retry
-  const handleSSERetry = async () => {
+  const handleWebSocketRetry = async () => {
     console.log('🔄 Manual WebSocket retry requested');
     try {
       await websocketService.connect();
@@ -507,12 +488,12 @@ function DashboardView() {
           </Box>
           
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexGrow: 1, justifyContent: 'flex-end' }}>
-            {/* SSE Retry Button - only show when disconnected */}
+            {/* WebSocket Retry Button - only show when disconnected */}
             {!wsConnected && (
-              <Tooltip title="Retry SSE connection">
+              <Tooltip title="Retry WebSocket connection">
                 <IconButton
                   size="small"
-                  onClick={handleSSERetry}
+                  onClick={handleWebSocketRetry}
                   sx={{ 
                     color: 'inherit',
                     '&:hover': {

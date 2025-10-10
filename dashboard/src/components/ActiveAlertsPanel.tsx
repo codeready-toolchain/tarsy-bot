@@ -17,7 +17,7 @@ import type { ActiveAlertsPanelProps, SessionUpdate, ChainProgressUpdate, StageP
 
 /**
  * ActiveAlertsPanel component displays currently active/processing alerts
- * with real-time updates via Server-Sent Events (SSE)
+ * with real-time updates via WebSocket
  */
 const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
   sessions = [],
@@ -31,7 +31,7 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
   const [stageProgressData, setStageProgressData] = useState<Record<string, StageProgressUpdate[]>>({});
   const [wsConnected, setWsConnected] = useState(false);
 
-  // Set up SSE event handlers
+  // Set up WebSocket event handlers
   useEffect(() => {
     // Session update handlers
     const handleSessionUpdate = (update: SessionUpdate) => {
@@ -185,7 +185,7 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
             />
           )}
 
-          {/* SSE connection indicator */}
+          {/* WebSocket connection indicator */}
           <Chip
             icon={wsConnected ? <Wifi sx={{ fontSize: 16 }} /> : <WifiOff sx={{ fontSize: 16 }} />}
             label={wsConnected ? 'Live' : 'Offline'}

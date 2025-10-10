@@ -38,7 +38,7 @@ class EventPublisher:
             event: Pydantic event model (validates at publish time)
 
         Returns:
-            Event ID for SSE event tracking and catchup
+            Event ID for event tracking and catchup
 
         Raises:
             ValidationError: If event model validation fails
@@ -69,7 +69,7 @@ class EventPublisher:
 
         if db_dialect == "postgresql":
             # PostgreSQL: Use NOTIFY for real-time broadcast
-            # Add event ID to payload for SSE catchup
+            # Add event ID to payload for event catchup
             notify_payload = {**event_dict, "id": db_event.id}
             notify_payload_json = json.dumps(notify_payload)
 

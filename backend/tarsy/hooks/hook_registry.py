@@ -56,7 +56,7 @@ class HookRegistry:
             mcp_list_history_hook = MCPListHistoryHook(history_service)
             stage_history_hook = StageExecutionHistoryHook(history_service)
             
-            # Initialize event hooks (publish to SSE streams)
+            # Initialize event hooks (publish to event stream)
             llm_event_hook = LLMEventHook()
             mcp_event_hook = MCPEventHook()
             mcp_list_event_hook = MCPListEventHook()

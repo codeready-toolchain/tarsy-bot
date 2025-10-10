@@ -95,7 +95,7 @@ class EventSystemManager:
 
     def get_listener(self) -> EventListener:
         """
-        Get event listener for SSE endpoints.
+        Get event listener for WebSocket endpoints.
 
         Returns:
             EventListener instance

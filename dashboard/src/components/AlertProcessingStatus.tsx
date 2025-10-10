@@ -1,7 +1,7 @@
 /**
  * Alert processing status component - EP-0018
  * Adapted from alert-dev-ui ProcessingStatus.tsx for dashboard integration
- * Shows real-time progress of alert processing via Server-Sent Events (SSE)
+ * Shows real-time progress of alert processing via WebSocket
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -174,7 +174,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
           result: update.final_analysis || undefined
         };
         
-        // Fetch final analysis when session completes (SSE events don't include it)
+        // Fetch final analysis when session completes (real-time events don't include it)
         if (isCompleted && sessionId && !update.final_analysis) {
           (async () => {
             try {

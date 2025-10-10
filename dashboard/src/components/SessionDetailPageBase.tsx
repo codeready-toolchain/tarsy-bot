@@ -81,7 +81,7 @@ interface SessionDetailPageBaseProps {
 
 /**
  * Shared base component for both conversation and technical session detail pages
- * Handles common functionality: SSE updates, loading states, shared UI structure
+ * Handles common functionality: WebSocket updates, loading states, shared UI structure
  */
 function SessionDetailPageBase({ 
   viewType, 
@@ -123,7 +123,7 @@ function SessionDetailPageBase({
   }, [viewType]);
 
 
-  // Ref to hold latest session to avoid stale closures in SSE handlers
+  // Ref to hold latest session to avoid stale closures in WebSocket handlers
   const sessionRef = useRef<DetailedSession | null>(null);
   const lastUpdateRef = useRef<number>(0);
   const updateThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -156,7 +156,7 @@ function SessionDetailPageBase({
     }
   };
 
-  // SSE setup for real-time updates (catchup events handle race conditions)
+  // WebSocket setup for real-time updates (catchup events handle race conditions)
   useEffect(() => {
     if (!sessionId) return;
 
