@@ -5,6 +5,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable
+from contextlib import suppress
 from typing import Callable, Dict, List
 
 logger = logging.getLogger(__name__)
@@ -42,10 +43,8 @@ class EventListener(ABC):
         """Stop background cleanup task."""
         if self._cleanup_task:
             self._cleanup_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
             self._cleanup_task = None
             logger.info("Stopped stale channel cleanup task")
     

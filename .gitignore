@@ -37,6 +37,7 @@ venv.bak/
 .idea/
 .cursor/*
 !.cursor/rules/
+!.cursor/rules/**
 *.swp
 *.swo
 *~
