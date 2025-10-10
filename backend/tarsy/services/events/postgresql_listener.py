@@ -27,14 +27,24 @@ class PostgreSQLEventListener(EventListener):
     async def start(self) -> None:
         """Create dedicated connection for LISTEN."""
         try:
-            # Create separate connection (not from pool)
-            self.listener_conn = await asyncpg.connect(self.database_url)
+            # Create separate connection (not from pool) with timeout
+            # Timeout prevents hanging during startup if DB is unreachable
+            self.listener_conn = await asyncio.wait_for(
+                asyncpg.connect(self.database_url),
+                timeout=10.0  # 10 second timeout
+            )
             self.running = True
             
             # Start the universal cleanup task from base class
             await self._start_cleanup_task()
             
             logger.info("PostgreSQL event listener connection established")
+        except asyncio.TimeoutError:
+            logger.error(
+                f"Timeout connecting to PostgreSQL for event listener after 10s. "
+                f"Check database connectivity and credentials."
+            )
+            raise
         except Exception as e:
             logger.error(f"Failed to create listener connection: {e}")
             raise

@@ -90,9 +90,10 @@ class EventCleanupService:
                 event_repo = EventRepository(session)
 
                 # Calculate cutoff time (use UTC for consistency)
-                cutoff_time = datetime.now(timezone.utc) - timedelta(
+                # Remove timezone info to match database column (TIMESTAMP WITHOUT TIME ZONE)
+                cutoff_time = (datetime.now(timezone.utc) - timedelta(
                     hours=self.retention_hours
-                )
+                )).replace(tzinfo=None)
 
                 # Delete old events using repository (type-safe)
                 deleted_count = await event_repo.delete_events_before(cutoff_time)

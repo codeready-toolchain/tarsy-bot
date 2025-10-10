@@ -45,10 +45,18 @@ def upgrade() -> None:
         # ### end Alembic commands ###
         
         # Backfill existing records with correct interaction types (only if column was added)
-        # Identify summarization interactions (system message contains summarization marker)
-        # Check for the specific system message content that only appears in summarization calls
+        # Skip if table is empty (optimization)
+        result = connection.execute(sa.text("SELECT COUNT(*) FROM llm_interactions"))
+        row_count = result.scalar()
+        
+        if row_count == 0:
+            # No records to backfill, skip expensive queries
+            return
+        
         dialect_name = connection.dialect.name
         
+        # Step 1: Identify summarization interactions (simple text search)
+        # Check for the specific system message content that only appears in summarization calls
         if dialect_name == 'postgresql':
             # PostgreSQL: Cast JSONB to text for LIKE operator
             connection.execute(sa.text("""
@@ -64,56 +72,27 @@ def upgrade() -> None:
                 WHERE conversation LIKE '%You are an expert at summarizing technical output%'
             """))
         
-        # Identify final_analysis interactions (last assistant message contains "Final Answer:")
-        # For PostgreSQL with JSONB - check if last assistant message starts with "Final Answer:"
-        # For SQLite - use JSON1 functions with proper casting
-        
+        # Step 2: Identify final_analysis interactions (simplified approach)
+        # Use simpler text search instead of complex JSON parsing
         if dialect_name == 'postgresql':
+            # PostgreSQL: Use simpler JSONB text cast and pattern matching
+            # Look for "Final Answer:" in the conversation text (simpler than parsing JSON structure)
             connection.execute(sa.text("""
                 UPDATE llm_interactions 
                 SET interaction_type = 'final_analysis'
                 WHERE interaction_type != 'summarization'
-                AND EXISTS (
-                    SELECT 1 FROM (
-                        SELECT 
-                            msg->>'content' as content,
-                            ROW_NUMBER() OVER (ORDER BY ordinality DESC) as rn
-                        FROM jsonb_array_elements(conversation->'messages') WITH ORDINALITY AS msg
-                        WHERE msg->>'role' = 'assistant'
-                    ) last_assistant
-                    WHERE last_assistant.rn = 1
-                    AND (
-                        last_assistant.content LIKE 'Final Answer:%'
-                        OR last_assistant.content LIKE '% Final Answer:%'
-                        OR last_assistant.content LIKE '%' || CHR(10) || 'Final Answer:%'
-                    )
-                )
+                AND CAST(conversation AS text) LIKE '%Final Answer:%'
             """))
         else:
-            # SQLite - JSON-based detection using json_extract (no ->> operator in SQLite)
+            # SQLite: Use simpler text search
             connection.execute(sa.text("""
                 UPDATE llm_interactions 
                 SET interaction_type = 'final_analysis'
                 WHERE interaction_type != 'summarization'
-                AND interaction_id IN (
-                    SELECT llm.interaction_id
-                    FROM llm_interactions llm,
-                         json_each(json_extract(llm.conversation, '$.messages')) msg
-                    WHERE json_extract(msg.value, '$.role') = 'assistant'
-                    AND CAST(msg.key AS INTEGER) = (
-                        SELECT MAX(CAST(m2.key AS INTEGER))
-                        FROM json_each(json_extract(llm.conversation, '$.messages')) m2
-                        WHERE json_extract(m2.value, '$.role') = 'assistant'
-                        AND m2.value IS NOT NULL
-                    )
-                    AND (
-                        json_extract(msg.value, '$.content') LIKE 'Final Answer:%'
-                        OR json_extract(msg.value, '$.content') LIKE '%' || CHAR(10) || 'Final Answer:%'
-                    )
-                )
+                AND conversation LIKE '%Final Answer:%'
             """))
         
-        # Explicitly set remaining records to 'investigation' (don't rely on default)
+        # Step 3: Explicitly set remaining records to 'investigation' (don't rely on default)
         connection.execute(sa.text("""
             UPDATE llm_interactions 
             SET interaction_type = 'investigation'
