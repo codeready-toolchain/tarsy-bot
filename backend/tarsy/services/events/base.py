@@ -95,13 +95,13 @@ class EventListener(ABC):
                 await self._cleanup_channel(channel)
                 logger.info(f"Removed empty channel '{channel}' from polling")
     
+    @abstractmethod
     async def _cleanup_channel(self, channel: str) -> None:
         """
         Optional cleanup when a channel is removed.
         
         Override in subclasses to perform additional cleanup (e.g., remove last_event_id tracking).
         """
-        pass
 
     @abstractmethod
     async def _register_channel(self, channel: str) -> None:
@@ -149,7 +149,9 @@ class EventListener(ABC):
         # Cleanup identified channels
         for channel in channels_to_cleanup:
             logger.debug(f"Cleaning up idle channel '{channel}' (no subscribers)")
-            del self.callbacks[channel]
-            del self.last_activity[channel]
+            # Safely remove from both dictionaries (may not exist in callbacks)
+            self.callbacks.pop(channel, None)
+            self.last_activity.pop(channel, None)
+            # Only call cleanup after successful removal
             await self._cleanup_channel(channel)
 

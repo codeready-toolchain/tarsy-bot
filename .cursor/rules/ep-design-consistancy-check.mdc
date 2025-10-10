@@ -1,0 +1,67 @@
+---
+description: Check EP document for consistency with codebase implementation.
+globs:
+  - docs/enhancements/**/*.md
+alwaysApply: false
+---
+
+# Enhancement Proposal (EP) Consistency Check
+
+**Purpose:** Validate that an EP document accurately reflects the current codebase implementation. Identify gaps, misalignments, and areas needing documentation updates.
+
+## Analysis Scope
+
+When invoked, analyze the referenced EP document against the actual codebase to check:
+
+### 1. **Structural Consistency**
+- File paths mentioned in EP exist in codebase
+- Directory structure matches EP specifications
+- Module organization aligns with EP design
+
+### 2. **Implementation Fidelity**
+- Classes/functions described in EP are implemented
+- Method signatures match EP specifications
+- Type hints align with EP examples
+- Database schemas match EP models
+- API endpoints match EP specifications
+
+### 3. **Behavioral Alignment**
+- Event flows work as described in EP
+- Configuration options match EP documentation
+- Integration patterns follow EP design
+- Error handling matches EP specifications
+
+### 4. **Documentation Accuracy**
+- Code comments reflect EP design decisions
+- Docstrings match EP descriptions
+- Examples in EP are still valid
+- EP status tags are accurate (pending/implemented)
+
+### 5. **Evolution Tracking**
+- Implementation improvements not documented in EP
+- Bug fixes that changed behavior
+
+## Analysis Process
+
+1. **Read the EP document thoroughly** - Understand the intended design
+2. **Map EP sections to codebase locations** - Identify which files implement which sections
+3. **Compare implementation vs. specification** - Check for exact matches and deviations
+4. **Categorize findings** - Separate intentional improvements from misalignments
+5. **Provide actionable recommendations** - Suggest specific updates with context
+
+## Guidelines
+
+- **Be thorough**: Check all files mentioned in the EP and related implementations
+- **Be specific**: Always cite line numbers, file paths, and exact quotes
+- **Be balanced**: Note what's correct, not just what's wrong
+- **Be constructive**: Focus on actionable recommendations, not criticism
+- **Context matters**: Implementation improvements are often good - distinguish from errors
+- **No assumptions**: If unclear, note it as "needs clarification" rather than assuming intent
+
+## What NOT to Do
+
+- ❌ Don't update the EP or code without explicit user approval
+- ❌ Don't skip analyzing the implementation files
+- ❌ Don't assume discrepancies are errors without investigation
+- ❌ Don't provide vague recommendations like "update documentation"
+- ❌ Don't jump to conclusions without reading the full context

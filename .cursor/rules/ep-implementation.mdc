@@ -1,0 +1,62 @@
+---
+alwaysApply: false
+---
+# Enhancement Proposal (EP) Implementation Guidelines
+
+## Primary Directive
+
+When implementing an Enhancement Proposal (EP) design document, **follow the design document exactly as specified**. The EP is the source of truth for implementation but can have mistakes.
+
+## Exception Handling
+
+You may deviate from the EP in the following scenarios:
+
+### 1. Obvious Errors or Typos
+- **Examples:** Typos in code snippets, incorrect function names, syntax errors
+- **Action:** Fix the error and explicitly highlight the correction
+
+### 2. Misalignment with Current Codebase
+- **Examples:** EP references a function that has been renamed, uses deprecated patterns, or conflicts with existing architecture
+- **If Clear:** Fix the issue and document the change
+- **If Unclear:** Stop and ask for clarification before proceeding
+
+### 3. Internal EP Inconsistencies
+- **Examples:** Section A specifies one approach, but Section B contradicts it
+- **Action:** Stop and ask which approach to follow
+
+## Decision Framework
+
+When encountering a discrepancy:
+
+1. **Is it a clear typo or syntax error?**
+   - ✅ Fix it and highlight the change
+   
+2. **Is it a clear misalignment with current code that has an obvious fix?**
+   - ✅ Fix it and document the change with rationale
+   
+3. **Is the issue ambiguous, or are there multiple valid interpretations?**
+   - ⛔ Stop and ask for clarification
+   
+4. **Does the EP conflict with project conventions or best practices?**
+   - ⛔ Stop and ask whether to follow EP or conventions
+
+## Communication Requirements
+
+When making corrections:
+- **Always highlight changes** in your response
+- **Provide clear rationale** for why you deviated from the EP
+- **Reference specific sections** of the EP you're addressing
+
+When asking for clarification:
+- **Quote the conflicting sections** from the EP
+- **Explain what you're uncertain about**
+- **Suggest possible interpretations** if applicable
+
+## Implementation Checklist
+
+Before completing EP implementation:
+- [ ] All EP requirements have been addressed
+- [ ] Any deviations are documented and justified
+- [ ] Code follows project coding guidelines (see repo-specific rules)
+- [ ] Tests are included as specified in the EP
+- [ ] Documentation is updated as required by the EP

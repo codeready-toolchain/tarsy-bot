@@ -1,0 +1,88 @@
+---
+alwaysApply: false
+---
+
+# Practical Test Guidelines
+
+## Core Principle
+Write tests that provide **unique value**. Avoid redundant tests that just increase line coverage numbers.
+
+## Before Creating Tests
+
+### 1. Check Existing Coverage
+**ALWAYS** check if the functionality is already tested:
+- Search for existing unit tests covering the same logic
+- Look for integration tests covering the same component interactions
+
+**If existing tests cover it → DON'T add redundant tests**
+
+### 2. Ask: "What unique value does this test provide?"
+- ❌ BAD: "Tests that function X is called" (already tested elsewhere)
+- ✅ GOOD: "Tests edge case Y that no other test covers"
+
+## Test Type Guidelines
+
+### Unit Tests
+- ✅ Test pure logic, algorithms, parsing, validation
+- ✅ Test edge cases and error conditions
+- ✅ Mock external dependencies (DB, network, LLM)
+- ❌ Don't test trivial getters/setters
+- ❌ Don't test framework behavior
+
+### Integration Tests
+**RED FLAG**: If you're mocking MORE than you're testing, it's NOT an integration test!
+
+- ✅ Test real interaction between 2-3 components
+- ✅ Use real databases (in-memory or test DB)
+- ✅ Test configuration loading and validation
+- ❌ Don't mock internal implementation details (e.g., `_execute_with_retry`)
+- ❌ Don't create databases that are never queried
+- ❌ Don't duplicate unit test logic with more mocks
+
+### E2E Tests
+- ✅ Test complete user-facing flows
+- ✅ Use minimal mocking (only external APIs)
+- ✅ Validate end-to-end behavior
+- ✅ Prefer adjusting or enhancing existing tests rather than adding new tests
+
+## Red Flags - Stop and Reconsider
+
+🚩 **Unused fixtures**: Created a database/service but never query it
+🚩 **Heavy mocking**: Mocking more than 2-3 layers deep in integration tests
+🚩 **Comment says "can't test"**: "We can't check X here..." → wrong test type
+
+## When to Skip Tests
+
+**Skip if**:
+- Already covered by existing tests (check first!)
+- Too complex to test without excessive mocking
+- Testing third-party library behavior
+- Trivial code with no logic (e.g., simple pass-through)
+
+## Examples
+
+### ❌ BAD: Fake Integration Test
+```python
+@pytest.mark.integration
+def test_llm_client_with_mocked_everything():
+    mock_client = Mock()
+    mock_client._internal_method = AsyncMock(return_value="response")
+    # This is NOT integration - it's a unit test with extra mocks!
+```
+
+### ✅ GOOD: Real Integration Test
+```python
+@pytest.mark.integration
+def test_mcp_summarizer_with_real_token_counter():
+    # Real MCPResultSummarizer + real TokenCounter
+    summarizer = MCPResultSummarizer(mock_llm_client, real_prompt_builder)
+    # Tests actual integration between components
+```
+
+### ✅ GOOD: Unique Unit Test
+```python
+def test_parse_final_answer_with_unicode():
+    # Tests edge case not covered elsewhere
+    result = parser.extract_final_answer("Final Answer: 你好")
+    assert result == "你好"
+```

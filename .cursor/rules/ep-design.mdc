@@ -1,0 +1,20 @@
+---
+alwaysApply: false
+---
+# Enhancement Design Document (EP) Guidelines
+
+When creating enhancement proposals, generate an EP-xxxx document in `/docs/enhancements/pending`.
+
+## Required Sections:
+1. **Problem Statement**: Brief description of what needs to be solved
+2. **Design**: Detailed technical design. Focus on HOW to implement the solution with clean, practical design
+3. **Implementation Plan**: Step-by-step phases (if complex enough to warrant multiple phases)
+
+## What to EXCLUDE:
+- Alternative options that won't be implemented
+- Detailed explanations of WHY (keep it brief)
+- Project management sections for humans
+- Irrelevant context or noise
+
+## Purpose:
+These documents are AI-consumable implementation guides. Keep them focused, technical, and actionable.

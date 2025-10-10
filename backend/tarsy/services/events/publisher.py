@@ -20,14 +20,14 @@ class EventPublisher:
     for real-time broadcast. SQLite mode relies on polling for delivery.
     """
 
-    def __init__(self, event_repo: EventRepository):
+    def __init__(self, event_repo: EventRepository) -> None:
         """
         Initialize event publisher with repository.
 
         Args:
             event_repo: EventRepository instance for database operations
         """
-        self.event_repo = event_repo
+        self.event_repo: EventRepository = event_repo
 
     async def publish(self, channel: str, event: BaseEvent) -> int:
         """
