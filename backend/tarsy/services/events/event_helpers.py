@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 async def publish_session_created(session_id: str, alert_type: str) -> None:
     """
-    Publish session.created event.
+    Publish session.created event to both global and session-specific channels.
 
     Args:
         session_id: Session identifier
@@ -33,15 +33,18 @@ async def publish_session_created(session_id: str, alert_type: str) -> None:
         async_session_factory = get_async_session_factory()
         async with async_session_factory() as session:
             event = SessionCreatedEvent(session_id=session_id, alert_type=alert_type)
+            # Publish to global 'sessions' channel for dashboard
             await publish_event(session, EventChannel.SESSIONS, event)
-            logger.debug(f"Published session.created event for {session_id}")
+            # Also publish to session-specific channel for detail views
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published session.created to channels: 'sessions' and 'session:{session_id}'")
     except Exception as e:
         logger.warning(f"Failed to publish session.created event: {e}")
 
 
 async def publish_session_started(session_id: str, alert_type: str) -> None:
     """
-    Publish session.started event.
+    Publish session.started event to both global and session-specific channels.
 
     Args:
         session_id: Session identifier
@@ -51,15 +54,18 @@ async def publish_session_started(session_id: str, alert_type: str) -> None:
         async_session_factory = get_async_session_factory()
         async with async_session_factory() as session:
             event = SessionStartedEvent(session_id=session_id, alert_type=alert_type)
+            # Publish to global 'sessions' channel for dashboard
             await publish_event(session, EventChannel.SESSIONS, event)
-            logger.debug(f"Published session.started event for {session_id}")
+            # Also publish to session-specific channel for detail views
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published session.started to channels: 'sessions' and 'session:{session_id}'")
     except Exception as e:
         logger.warning(f"Failed to publish session.started event: {e}")
 
 
 async def publish_session_completed(session_id: str) -> None:
     """
-    Publish session.completed event.
+    Publish session.completed event to both global and session-specific channels.
 
     Args:
         session_id: Session identifier
@@ -68,15 +74,18 @@ async def publish_session_completed(session_id: str) -> None:
         async_session_factory = get_async_session_factory()
         async with async_session_factory() as session:
             event = SessionCompletedEvent(session_id=session_id, status="completed")
+            # Publish to global 'sessions' channel for dashboard
             await publish_event(session, EventChannel.SESSIONS, event)
-            logger.debug(f"Published session.completed event for {session_id}")
+            # Also publish to session-specific channel for detail views
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published session.completed to channels: 'sessions' and 'session:{session_id}'")
     except Exception as e:
         logger.warning(f"Failed to publish session.completed event: {e}")
 
 
 async def publish_session_failed(session_id: str) -> None:
     """
-    Publish session.failed event.
+    Publish session.failed event to both global and session-specific channels.
 
     Args:
         session_id: Session identifier
@@ -85,8 +94,11 @@ async def publish_session_failed(session_id: str) -> None:
         async_session_factory = get_async_session_factory()
         async with async_session_factory() as session:
             event = SessionFailedEvent(session_id=session_id, status="failed")
+            # Publish to global 'sessions' channel for dashboard
             await publish_event(session, EventChannel.SESSIONS, event)
-            logger.debug(f"Published session.failed event for {session_id}")
+            # Also publish to session-specific channel for detail views
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published session.failed to channels: 'sessions' and 'session:{session_id}'")
     except Exception as e:
         logger.warning(f"Failed to publish session.failed event: {e}")
 

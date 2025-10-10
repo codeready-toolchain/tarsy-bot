@@ -91,6 +91,16 @@ export const urls = {
     submitAlert: '/api/v1/alerts',
   },
   
+  // SSE (Server-Sent Events) endpoints
+  // IMPORTANT: SSE connections bypass Vite proxy in development to avoid connection pool exhaustion
+  // Vite's proxy has limited connections and long-lived SSE streams exhaust it
+  sse: {
+    // In development: connect directly to backend (localhost:8000)
+    // In production: use same base as API
+    base: config.isDevelopment ? 'http://localhost:8000' : config.prodApiBaseUrl,
+    stream: '/api/v1/events/stream',
+  },
+  
   // WebSocket endpoints
   websocket: {
     // Simple rule: use Vite proxy in dev (same port as frontend), production URL in prod
@@ -126,12 +136,14 @@ export const validateConfig = (): void => {
       devServerHost: config.devServerHost,
       devServerPort: config.devServerPort,
       apiBase: urls.api.base || '(relative - using Vite proxy)',
+      sseBase: urls.sse.base + ' (direct to backend, bypasses Vite proxy)',
       wsBase: urls.websocket.base,
     }),
     
     // Production settings
     ...(!config.isDevelopment && {
       apiBase: urls.api.base,
+      sseBase: urls.sse.base,
       wsBase: urls.websocket.base,
     }),
   });

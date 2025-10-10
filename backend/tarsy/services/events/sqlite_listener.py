@@ -45,6 +45,9 @@ class SQLiteEventListener(EventListener):
         self.engine = create_async_engine(async_url)
         self.running = True
         self.polling_task = asyncio.create_task(self._poll_loop())
+        
+        # Start the universal cleanup task from base class
+        await self._start_cleanup_task()
 
         logger.warning(
             f"Using SQLite polling for events (interval: {self.poll_interval}s). "
@@ -54,6 +57,9 @@ class SQLiteEventListener(EventListener):
     async def stop(self) -> None:
         """Stop polling task."""
         self.running = False
+        
+        # Stop the universal cleanup task from base class
+        await self._stop_cleanup_task()
 
         if self.polling_task:
             self.polling_task.cancel()
@@ -71,6 +77,12 @@ class SQLiteEventListener(EventListener):
         """Initialize tracking for new channel."""
         self.last_event_id[channel] = 0
         logger.info(f"Subscribed to SQLite channel: {channel} (polling)")
+    
+    async def _cleanup_channel(self, channel: str) -> None:
+        """Clean up tracking when channel is removed."""
+        if channel in self.last_event_id:
+            del self.last_event_id[channel]
+            logger.info(f"Cleaned up tracking for channel: {channel}")
 
     async def _poll_loop(self) -> None:
         """Background task that polls database periodically."""
@@ -89,6 +101,11 @@ class SQLiteEventListener(EventListener):
         if not self.engine:
             return
 
+        # Log active channel count for monitoring connection leaks
+        active_channels = [ch for ch in self.callbacks.keys() if self.callbacks.get(ch)]
+        if active_channels:
+            logger.debug(f"Polling {len(active_channels)} active channel(s): {active_channels}")
+
         async with self.engine.begin() as conn:
             # Create async session from connection
             from tarsy.repositories.event_repository import EventRepository
@@ -96,7 +113,12 @@ class SQLiteEventListener(EventListener):
             async_session = AsyncSession(bind=conn, expire_on_commit=False)
             event_repo = EventRepository(async_session)
 
-            for channel in self.callbacks.keys():
+            for channel in list(self.callbacks.keys()):  # Use list() for safe iteration during deletion
+                # Skip channels with no callbacks (safety check)
+                if not self.callbacks.get(channel):
+                    logger.warning(f"Found channel '{channel}' with no callbacks - skipping")
+                    continue
+                    
                 last_id = self.last_event_id.get(channel, 0)
 
                 try:

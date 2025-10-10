@@ -19,11 +19,12 @@ interface SSEConnection {
   channel: string;
   lastEventId: number;
   reconnectAttempts: number;
+  createdAt: number;
 }
 
 class SSEService {
   private connections: Map<string, SSEConnection> = new Map();
-  private pendingConnections: Set<string> = new Set(); // Track in-progress connections
+  private connectingChannels: Set<string> = new Set(); // Track channels currently being connected
   private baseUrl: string = '';
   private maxReconnectAttempts = 10;
   private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
@@ -54,8 +55,10 @@ class SSEService {
 
   constructor() {
     // Initialize base URL from config
+    // IMPORTANT: Use SSE-specific URL to bypass Vite proxy in development
     this.urlResolutionPromise = import('../config/env').then(({ urls }) => {
-      this.baseUrl = urls.api.base;
+      this.baseUrl = urls.sse.base;
+      console.log('✅ SSE Service configured with base URL:', this.baseUrl);
       this.startHealthCheck();
     }).catch((error) => {
       console.error('Failed to load SSE configuration:', error);
@@ -104,32 +107,56 @@ class SSEService {
       return;
     }
 
-    // Subscribe to dashboard channel by default
-    await this.subscribeToChannel('sessions');
+    // Subscribe to global dashboard channel ONCE across all components
+    // Check the actual connection map instead of a flag to avoid race conditions
+    if (!this.connections.has('sessions')) {
+      console.log('🌐 [SSE] Creating GLOBAL sessions channel connection');
+      await this.subscribeToChannel('sessions');
+    } else {
+      const state = this.connections.get('sessions')!.eventSource.readyState;
+      console.log(`🌐 [SSE] Global sessions channel already exists (state: ${state === EventSource.OPEN ? 'OPEN' : state === EventSource.CONNECTING ? 'CONNECTING' : 'CLOSED'}), skipping`);
+    }
   }
 
   /**
    * Subscribe to a specific SSE channel
    */
   private async subscribeToChannel(channel: string, lastEventId: number = 0): Promise<void> {
-    // Prevent concurrent connection attempts to the same channel (React Strict Mode protection)
-    if (this.pendingConnections.has(channel)) {
-      return;
-    }
-    
-    // Don't reconnect if already connected
-    if (this.connections.has(channel)) {
-      const connection = this.connections.get(channel)!;
-      if (connection.eventSource.readyState === EventSource.OPEN) {
+    // Check if another call is already creating this connection
+    if (this.connectingChannels.has(channel)) {
+      console.log(`⏳ Already connecting to ${channel}, waiting...`);
+      // Wait a bit for the other connection to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+      // Check again if connection was created
+      if (this.connections.has(channel)) {
+        console.log(`✅ Connection to ${channel} was created by another caller`);
         return;
       }
-      // Clean up old connection
-      connection.eventSource.close();
-      this.connections.delete(channel);
+      console.log(`⚠️ Connection to ${channel} still not ready, proceeding anyway`);
     }
     
-    // Mark this channel as pending
-    this.pendingConnections.add(channel);
+    // Don't reconnect if connection already exists
+    if (this.connections.has(channel)) {
+      const connection = this.connections.get(channel)!;
+      const state = connection.eventSource.readyState;
+      
+      // Reuse connection if it's OPEN (1) or CONNECTING (0)
+      if (state === EventSource.OPEN || state === EventSource.CONNECTING) {
+        console.log(`♻️ Reusing existing connection to ${channel} (state: ${state === EventSource.OPEN ? 'OPEN' : 'CONNECTING'})`);
+        return;
+
+      }
+      
+      // Only recreate if CLOSED (2)
+      if (state === EventSource.CLOSED) {
+        console.log(`🔄 Cleaning up closed connection to ${channel}`);
+        connection.eventSource.close();
+        this.connections.delete(channel);
+      }
+    }
+
+    // Mark as connecting to prevent duplicate subscriptions
+    this.connectingChannels.add(channel);
 
     try {
       const url = `${this.baseUrl}/api/v1/events/stream?channel=${encodeURIComponent(channel)}&last_event_id=${lastEventId}`;
@@ -140,15 +167,17 @@ class SSEService {
         channel,
         lastEventId,
         reconnectAttempts: 0,
+        createdAt: Date.now(),
       };
 
       this.connections.set(channel, connection);
+      // Connection is now tracked, safe to remove from "connecting" set
+      this.connectingChannels.delete(channel);
 
       eventSource.onopen = () => {
-        console.log(`✅ SSE connected to channel: ${channel}`);
+        console.log(`✅ [SSE OPEN] Connected to ${channel}. Active connections: ${this.connections.size}`);
         connection.reconnectAttempts = 0;
         this.permanentlyDisabled = false;
-        this.pendingConnections.delete(channel); // Connection successful, remove from pending
         this.notifyConnectionChange();
       };
 
@@ -194,27 +223,25 @@ class SSEService {
       });
       
       eventSource.onerror = (error) => {
-        console.error(`❌ SSE error on channel ${channel} (readyState: ${eventSource.readyState})`);
+        console.error(`❌ [SSE ERROR] Channel ${channel} (readyState: ${eventSource.readyState}, active: ${this.connections.size})`);
         this.eventHandlers.error.forEach(handler => handler(error));
-        
-        // Remove from pending on error
-        this.pendingConnections.delete(channel);
         
         // Only reconnect if connection is actually closed
         // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
         if (eventSource.readyState === EventSource.CLOSED) {
+          console.log(`🔌 [SSE CLOSE] Connection to ${channel} closed by error`);
           // Handle reconnection with exponential backoff
           if (connection.reconnectAttempts < this.maxReconnectAttempts) {
             connection.reconnectAttempts++;
             // Start with 200ms, then exponential backoff: 200ms, 400ms, 800ms, 1.6s, 3.2s...
             const delay = Math.min(200 * Math.pow(2, connection.reconnectAttempts - 1), 30000);
-            console.log(`🔄 SSE reconnecting to ${channel} in ${delay}ms (attempt ${connection.reconnectAttempts}/${this.maxReconnectAttempts})`);
+            console.log(`🔄 [SSE RECONNECT] Retrying ${channel} in ${delay}ms (attempt ${connection.reconnectAttempts}/${this.maxReconnectAttempts})`);
             
             setTimeout(() => {
               this.subscribeToChannel(channel, connection.lastEventId);
             }, delay);
           } else {
-            console.warn(`❌ Max SSE reconnection attempts reached for channel: ${channel}`);
+            console.warn(`❌ [SSE GIVE UP] Max reconnection attempts for ${channel}. Active: ${this.connections.size}`);
             this.permanentlyDisabled = true;
             this.connections.delete(channel);
             this.notifyConnectionChange();
@@ -224,7 +251,8 @@ class SSEService {
 
     } catch (error) {
       console.error(`Failed to create SSE connection to ${channel}:`, error);
-      this.pendingConnections.delete(channel); // Clean up on exception
+      // Cleanup connecting flag on error
+      this.connectingChannels.delete(channel);
     }
   }
 
@@ -312,7 +340,7 @@ class SSEService {
    */
   private routeToSessionHandlers(data: any): void {
     if (data.session_id) {
-      const sessionChannel = `session_${data.session_id}`;
+      const sessionChannel = `session:${data.session_id}`;  // ✓ Use colon to match subscription format
       const handlers = this.eventHandlers.sessionSpecific.get(sessionChannel);
       if (handlers) {
         handlers.forEach(handler => handler(data));
@@ -362,16 +390,10 @@ class SSEService {
    */
   unsubscribeFromSessionChannel(sessionId: string): void {
     const channel = `session:${sessionId}`;
-    const connection = this.connections.get(channel);
-    if (connection) {
-      console.log(`📤 Unsubscribing from session channel: ${channel}`);
-      connection.eventSource.close();
-      this.connections.delete(channel);
-      
-      // Clean up event handlers for this session
-      const sessionChannel = `session_${sessionId}`;
-      this.eventHandlers.sessionSpecific.delete(sessionChannel);
-    }
+    // Don't actually close the connection - just log it
+    // React Strict Mode will remount immediately and reuse it
+    // Real cleanup happens when connection errors or manually closed
+    console.log(`🔌 [SSE CLEANUP] Unsubscribe requested for ${channel} (connection will be reused if remount happens)`);
   }
 
   /**
@@ -533,4 +555,5 @@ class SSEService {
 
 // Export singleton instance
 export const sseService = new SSEService();
+
 

@@ -57,29 +57,31 @@ async def event_stream(
 
     async def event_generator():
         # 1. Catchup: Send missed events from database using repository
-        if last_event_id > 0:
-            async_session_factory = get_async_session_factory()
-            async with async_session_factory() as session:
-                event_repo = EventRepository(session)
+        # Always check for catchup events, even when last_event_id=0 (new connection)
+        # last_event_id=0 means "give me all events from the start"
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event_repo = EventRepository(session)
 
-                # Get missed events (type-safe query)
-                missed_events = await event_repo.get_events_after(
-                    channel=channel, after_id=last_event_id, limit=100
-                )
+            # Get missed events (type-safe query)
+            missed_events = await event_repo.get_events_after(
+                channel=channel, after_id=last_event_id, limit=100
+            )
 
-                logger.info(
+            if missed_events:
+                logger.debug(
                     f"Sending {len(missed_events)} catchup event(s) to client "
                     f"on '{channel}' after ID {last_event_id}"
                 )
 
-                for event in missed_events:
-                    # Event.payload contains the event dict
-                    payload_json = json.dumps(event.payload)
-                    event_type = event.payload.get("type", "message")
+            for event in missed_events:
+                # Event.payload contains the event dict
+                payload_json = json.dumps(event.payload)
+                event_type = event.payload.get("type", "message")
 
-                    yield f"event: {event_type}\n"
-                    yield f"id: {event.id}\n"
-                    yield f"data: {payload_json}\n\n"
+                yield f"event: {event_type}\n"
+                yield f"id: {event.id}\n"
+                yield f"data: {payload_json}\n\n"
 
         # 2. Real-time: Subscribe to live events
         queue = asyncio.Queue()
@@ -118,7 +120,7 @@ async def event_stream(
                     yield f"data: {payload}\n\n"
 
                 except asyncio.TimeoutError:
-                    # Send keepalive comment
+                    # Send keepalive comment and check connection health
                     yield ": keepalive\n\n"
         finally:
             # Cleanup: Unsubscribe callback from channel

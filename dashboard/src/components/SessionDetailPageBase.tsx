@@ -156,15 +156,7 @@ function SessionDetailPageBase({
     }
   };
 
-
-
-  // No need for manual setup - the hook handles everything automatically
-
-  // Helper functions are now provided by the SessionContext
-
-
-
-  // SSE setup for real-time updates
+  // SSE setup for real-time updates (catchup events handle race conditions)
   useEffect(() => {
     if (!sessionId) return;
 
@@ -260,7 +252,7 @@ function SessionDetailPageBase({
     };
 
     const unsubscribeUpdate = sseService.onSessionSpecificUpdate(
-      `session_${sessionId}`, 
+      `session:${sessionId}`,  // ✓ Use colon to match SSE channel format
       handleSessionUpdate
     );
 

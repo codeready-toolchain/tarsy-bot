@@ -82,13 +82,11 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
       
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          console.log(`🔄 Fetching session ID for alert (attempt ${attempt}/${maxAttempts}):`, alertId);
           const response = await apiClient.getSessionIdForAlert(alertId);
           
           if (response.session_id) {
             if (!isMountedRef.current) return; // Component unmounted, skip state updates
             
-            console.log('✅ Successfully fetched session ID:', alertId, '→', response.session_id);
             setSessionId(response.session_id);
             
             // Update status to reflect successful session initialization
@@ -100,29 +98,23 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
             } : null);
             
             return;
-          } else {
-            console.log(`⏳ Session ID not yet available for alert ${alertId} (attempt ${attempt}/${maxAttempts})`);
           }
         } catch (error) {
-          console.log(`⚠️ Failed to fetch session ID (attempt ${attempt}/${maxAttempts}):`, error);
+          // Silently retry
         }
         
         // Wait before next attempt (exponential backoff)
         if (attempt < maxAttempts) {
           const delay = retryDelayMs * Math.pow(1.5, attempt - 1);
-          console.log(`⏱️ Waiting ${delay}ms before next attempt...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
-      
-      console.warn('⚠️ Could not fetch session ID after', maxAttempts, 'attempts. Will process all updates (no filtering).');
     };
 
     fetchSessionIdWithRetry();
 
     // Handle connection changes
     const handleConnectionChange = (connected: boolean) => {
-      console.log('🔗 SSE connection changed:', connected);
       setWsConnected(connected);
       setWsError(connected ? null : 'Connection lost');
     };
@@ -141,8 +133,6 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     if (!sessionId) {
       return;
     }
-
-    console.log('🔌 Subscribing to session updates for:', sessionId);
     
     // Ensure SSE is connected before subscribing
     const setupSubscription = async () => {
@@ -161,13 +151,11 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     // Handle session-specific updates using pattern matching for robustness
     const handleSessionUpdate = (update: any) => {
       const eventType = update.type || '';
-      console.log(`📨 AlertProcessingStatus received event [${eventType}]:`, update);
       
       // Prevent overwriting terminal states with intermediate events (catchup protection)
       // Once completed or errored, ignore all processing/stage/interaction events
       // Use ref to check immediately (React state updates are async)
       if (isTerminalRef.current && !eventType.startsWith('session.')) {
-        console.log('⏭️  Ignoring event - session already in terminal state');
         return;
       }
       
@@ -191,7 +179,6 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
         
         // Fetch final analysis when session completes (SSE events don't include it)
         if (isCompleted && sessionId && !update.final_analysis) {
-          console.log('📥 Fetching final analysis for completed session:', sessionId);
           (async () => {
             try {
               const sessionDetails = await apiClient.getSessionDetail(sessionId);
@@ -200,7 +187,6 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
                   ...prev,
                   result: sessionDetails.final_analysis || undefined
                 } : prev);
-                console.log('✅ Final analysis loaded');
               }
             } catch (error) {
               console.error('Failed to fetch final analysis:', error);
@@ -243,8 +229,6 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
       }
 
       if (updatedStatus) {
-        console.log('🔄 Updating status:', updatedStatus.status, '-', updatedStatus.current_step);
-        
         // Mark terminal state immediately (before React state update) to prevent race conditions
         if (updatedStatus.status === 'completed' || updatedStatus.status === 'error') {
           isTerminalRef.current = true;
@@ -255,7 +239,6 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
         // Call onComplete callback when processing is done (success or failure)
         if ((updatedStatus.status === 'completed' || updatedStatus.status === 'error') && 
             onCompleteRef.current && !didCompleteRef.current) {
-          console.log('✅ Alert processing complete. Status:', updatedStatus.status);
           didCompleteRef.current = true; // Mark as completed to prevent duplicate calls
           setTimeout(() => {
             if (onCompleteRef.current) {
@@ -263,18 +246,14 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
             }
           }, 1000);
         }
-      } else {
-        console.log('⚠️ Event processed but no status update:', eventType);
       }
     };
     
     // Set up the session-specific event handler
-    const sessionChannel = `session_${sessionId}`;
-    console.log('📡 Setting up session-specific handler for channel:', sessionChannel);
+    const sessionChannel = `session:${sessionId}`;  // ✓ Use colon to match SSE channel format
     const unsubscribeSession = sseService.onSessionSpecificUpdate(sessionChannel, handleSessionUpdate);
 
     return () => {
-      console.log('🔌 Cleaning up subscription for:', sessionId);
       sseService.unsubscribeFromSessionChannel(sessionId);
       unsubscribeSession();
     };

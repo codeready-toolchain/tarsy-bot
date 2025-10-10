@@ -30,6 +30,10 @@ class PostgreSQLEventListener(EventListener):
             # Create separate connection (not from pool)
             self.listener_conn = await asyncpg.connect(self.database_url)
             self.running = True
+            
+            # Start the universal cleanup task from base class
+            await self._start_cleanup_task()
+            
             logger.info("PostgreSQL event listener connection established")
         except Exception as e:
             logger.error(f"Failed to create listener connection: {e}")
@@ -38,6 +42,10 @@ class PostgreSQLEventListener(EventListener):
     async def stop(self) -> None:
         """Close listener connection."""
         self.running = False
+        
+        # Stop the universal cleanup task from base class
+        await self._stop_cleanup_task()
+        
         if self.listener_conn:
             await self.listener_conn.close()
             logger.info("PostgreSQL event listener connection closed")
@@ -49,6 +57,15 @@ class PostgreSQLEventListener(EventListener):
 
         await self.listener_conn.add_listener(channel, self._handle_notification)
         logger.info(f"Subscribed to PostgreSQL channel: {channel}")
+    
+    async def _cleanup_channel(self, channel: str) -> None:
+        """Remove PostgreSQL listener for channel."""
+        if self.listener_conn:
+            try:
+                await self.listener_conn.remove_listener(channel, self._handle_notification)
+                logger.info(f"Unsubscribed from PostgreSQL channel: {channel}")
+            except Exception as e:
+                logger.warning(f"Failed to remove PostgreSQL listener for {channel}: {e}")
 
     def _handle_notification(
         self,

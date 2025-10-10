@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, List
 
@@ -14,6 +15,8 @@ class EventListener(ABC):
     def __init__(self):
         self.callbacks: Dict[str, List[Callable]] = {}
         self.running: bool = False
+        self.last_activity: Dict[str, float] = {}  # Track last activity per channel
+        self._cleanup_task: asyncio.Task | None = None  # Background cleanup task
 
     @abstractmethod
     async def start(self) -> None:
@@ -24,6 +27,34 @@ class EventListener(ABC):
     async def stop(self) -> None:
         """Stop the event listener and clean up resources."""
         pass
+    
+    async def _start_cleanup_task(self) -> None:
+        """Start background task for periodic stale channel cleanup."""
+        if not self._cleanup_task:
+            self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+            logger.info("Started stale channel cleanup task")
+    
+    async def _stop_cleanup_task(self) -> None:
+        """Stop background cleanup task."""
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+            self._cleanup_task = None
+            logger.info("Stopped stale channel cleanup task")
+    
+    async def _cleanup_loop(self) -> None:
+        """Background task that periodically cleans up stale channels."""
+        while self.running:
+            try:
+                await asyncio.sleep(60)  # Run cleanup every 60 seconds
+                await self.cleanup_stale_channels(max_idle_seconds=60)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in cleanup loop: {e}", exc_info=True)
 
     async def subscribe(self, channel: str, callback: Callable[[dict], None]) -> None:
         """
@@ -38,6 +69,7 @@ class EventListener(ABC):
             await self._register_channel(channel)
 
         self.callbacks[channel].append(callback)
+        self.last_activity[channel] = time.time()  # Track subscription time
 
     async def unsubscribe(
         self, channel: str, callback: Callable[[dict], None]
@@ -52,6 +84,22 @@ class EventListener(ABC):
         if channel in self.callbacks and callback in self.callbacks[channel]:
             self.callbacks[channel].remove(callback)
             logger.debug(f"Unsubscribed callback from channel '{channel}'")
+            
+            # Clean up channel if no more callbacks (prevent polling empty channels)
+            if not self.callbacks[channel]:
+                del self.callbacks[channel]
+                if channel in self.last_activity:
+                    del self.last_activity[channel]
+                await self._cleanup_channel(channel)
+                logger.info(f"Removed empty channel '{channel}' from polling")
+    
+    async def _cleanup_channel(self, channel: str) -> None:
+        """
+        Optional cleanup when a channel is removed.
+        
+        Override in subclasses to perform additional cleanup (e.g., remove last_event_id tracking).
+        """
+        pass
 
     @abstractmethod
     async def _register_channel(self, channel: str) -> None:
@@ -60,6 +108,9 @@ class EventListener(ABC):
 
     async def _dispatch_to_callbacks(self, channel: str, event: dict) -> None:
         """Dispatch event to all registered callbacks."""
+        # Update activity time on event dispatch
+        self.last_activity[channel] = time.time()
+        
         for callback in self.callbacks.get(channel, []):
             asyncio.create_task(self._safe_callback(callback, event))
 
@@ -69,4 +120,31 @@ class EventListener(ABC):
             await callback(event)
         except Exception as e:
             logger.error(f"Error in event callback: {e}", exc_info=True)
+    
+    async def cleanup_stale_channels(self, max_idle_seconds: int = 60) -> None:
+        """
+        Clean up channels that have been inactive for too long.
+        
+        Args:
+            max_idle_seconds: Maximum idle time before cleanup (default: 60 seconds)
+        """
+        now = time.time()
+        stale_channels = []
+        
+        for channel, last_time in list(self.last_activity.items()):
+            idle_time = now - last_time
+            if idle_time > max_idle_seconds:
+                stale_channels.append(channel)
+        
+        for channel in stale_channels:
+            if channel in self.callbacks:
+                callback_count = len(self.callbacks.get(channel, []))
+                logger.warning(
+                    f"Cleaning up stale channel '{channel}' "
+                    f"(idle for {int(now - self.last_activity[channel])}s, "
+                    f"{callback_count} callback(s) remaining)"
+                )
+                del self.callbacks[channel]
+                del self.last_activity[channel]
+                await self._cleanup_channel(channel)
 
