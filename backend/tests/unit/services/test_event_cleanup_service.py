@@ -299,18 +299,18 @@ class TestEventCleanupServiceLoop:
         # Mock sleep to return immediately
         mock_sleep = AsyncMock()
 
-        with patch.object(service, '_cleanup_old_events', side_effect=failing_cleanup):
-            with patch('asyncio.sleep', mock_sleep):
-                # Manually run one iteration of the loop
-                service.running = True
-                
-                # This should handle the error and exit quickly
-                await service._cleanup_loop()
-                
-                # Should have attempted cleanup
-                assert len(cleanup_calls) >= 1
-                # Should have tried to sleep (error backoff)
-                assert mock_sleep.call_count >= 1
+        with patch.object(service, '_cleanup_old_events', side_effect=failing_cleanup), \
+             patch('asyncio.sleep', mock_sleep):
+            # Manually run one iteration of the loop
+            service.running = True
+            
+            # This should handle the error and exit quickly
+            await service._cleanup_loop()
+            
+            # Should have attempted cleanup
+            assert len(cleanup_calls) >= 1
+            # Should have tried to sleep (error backoff)
+            assert mock_sleep.call_count >= 1
 
 
 @pytest.mark.unit

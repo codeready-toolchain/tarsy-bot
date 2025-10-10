@@ -7,7 +7,7 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, AsyncGenerator
+from typing import TYPE_CHECKING, Any, Dict, Optional, AsyncGenerator
 import base64
 from pathlib import Path
 
@@ -34,6 +34,9 @@ from tarsy.models.processing_context import ChainContext
 from tarsy.services.alert_service import AlertService
 from tarsy.utils.logger import get_module_logger, setup_logging
 
+if TYPE_CHECKING:
+    from tarsy.services.events.manager import EventSystemManager
+
 # Setup logger for this module
 logger = get_module_logger(__name__)
 
@@ -43,7 +46,7 @@ jwks_cache: TTLCache = TTLCache(maxsize=1, ttl=3600)  # Cache for 1 hour
 
 alert_service: Optional[AlertService] = None
 alert_processing_semaphore: Optional[asyncio.Semaphore] = None
-event_system_manager = None
+event_system_manager: Optional["EventSystemManager"] = None
 
 
 @asynccontextmanager

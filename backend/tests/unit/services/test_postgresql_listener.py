@@ -63,7 +63,6 @@ class TestPostgreSQLEventListenerLifecycle:
 
         with patch("asyncpg.connect", new_callable=AsyncMock, return_value=mock_conn):
             await listener.start()
-            first_conn = listener.listener_conn
 
             # Start again - should create new connection
             await listener.start()

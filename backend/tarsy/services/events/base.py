@@ -4,16 +4,20 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable
 from typing import Callable, Dict, List
 
 logger = logging.getLogger(__name__)
+
+# Type alias for async event callbacks
+AsyncCallback = Callable[[dict], Awaitable[None]]
 
 
 class EventListener(ABC):
     """Abstract base class for event listener implementations."""
 
-    def __init__(self):
-        self.callbacks: Dict[str, List[Callable]] = {}
+    def __init__(self) -> None:
+        self.callbacks: Dict[str, List[AsyncCallback]] = {}
         self.running: bool = False
         self.last_activity: Dict[str, float] = {}  # Track last activity per channel
         self._cleanup_task: asyncio.Task | None = None  # Background cleanup task
@@ -56,7 +60,7 @@ class EventListener(ABC):
             except Exception as e:
                 logger.error(f"Error in cleanup loop: {e}", exc_info=True)
 
-    async def subscribe(self, channel: str, callback: Callable[[dict], None]) -> None:
+    async def subscribe(self, channel: str, callback: AsyncCallback) -> None:
         """
         Subscribe to events on a channel.
 
@@ -71,9 +75,7 @@ class EventListener(ABC):
         self.callbacks[channel].append(callback)
         self.last_activity[channel] = time.time()  # Track subscription time
 
-    async def unsubscribe(
-        self, channel: str, callback: Callable[[dict], None]
-    ) -> None:
+    async def unsubscribe(self, channel: str, callback: AsyncCallback) -> None:
         """
         Unsubscribe callback from a channel.
 
@@ -114,7 +116,7 @@ class EventListener(ABC):
         for callback in self.callbacks.get(channel, []):
             asyncio.create_task(self._safe_callback(callback, event))
 
-    async def _safe_callback(self, callback: Callable, event: dict) -> None:
+    async def _safe_callback(self, callback: AsyncCallback, event: dict) -> None:
         """Execute callback with error handling."""
         try:
             await callback(event)

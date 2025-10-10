@@ -65,6 +65,44 @@ class TestWebSocketEndpointConnection:
                 # Should disconnect
                 mock_manager.disconnect.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_connection_cleanup_when_event_system_fails(self):
+        """Test that disconnect is always called even if event system fails."""
+        mock_websocket = AsyncMock()
+        
+        # Subscribe to a channel first
+        subscribe_msg = json.dumps({"action": "subscribe", "channel": "sessions"})
+        mock_websocket.receive_text.side_effect = [subscribe_msg, WebSocketDisconnect()]
+
+        # Mock event system to fail during cleanup
+        mock_event_listener = AsyncMock()
+        mock_event_system = Mock()
+        mock_event_system.get_listener.return_value = mock_event_listener
+
+        with patch("tarsy.controllers.websocket_controller.connection_manager") as mock_manager:
+            mock_manager.connect = AsyncMock()
+            mock_manager.subscribe = Mock()
+            mock_manager.disconnect = Mock()
+
+            # First call succeeds (for subscription), second call fails (for cleanup)
+            call_count = 0
+            def get_event_system_side_effect():
+                nonlocal call_count
+                call_count += 1
+                if call_count <= 2:  # First two calls succeed (subscription)
+                    return mock_event_system
+                else:  # Third call fails (cleanup)
+                    raise RuntimeError("Event system unavailable")
+            
+            with patch("tarsy.controllers.websocket_controller.get_event_system", side_effect=get_event_system_side_effect):
+                try:
+                    await websocket_endpoint(mock_websocket)
+                except WebSocketDisconnect:
+                    pass
+
+                # Should still disconnect even though event system failed
+                mock_manager.disconnect.assert_called_once()
+
 
 @pytest.mark.unit
 class TestWebSocketEndpointSubscribe:
@@ -227,8 +265,10 @@ class TestWebSocketEndpointCatchup:
 
         # Mock event repository
         mock_event1 = Mock()
+        mock_event1.id = 43
         mock_event1.payload = {"type": "session.started", "session_id": "test-1"}
         mock_event2 = Mock()
+        mock_event2.id = 44
         mock_event2.payload = {"type": "session.completed", "session_id": "test-1"}
         
         mock_event_repo = AsyncMock()
@@ -258,12 +298,16 @@ class TestWebSocketEndpointCatchup:
                             limit=100
                         )
 
-                        # Should send both events
+                        # Should send both events with id injected
                         event_sends = [
                             call for call in mock_websocket.send_json.call_args_list
                             if call[0][0].get("type") in ["session.started", "session.completed"]
                         ]
                         assert len(event_sends) == 2
+                        
+                        # Verify id is injected into payloads (for dashboard compatibility)
+                        assert event_sends[0][0][0]["id"] == 43
+                        assert event_sends[1][0][0]["id"] == 44
 
     @pytest.mark.asyncio
     async def test_catchup_with_default_last_event_id(self):

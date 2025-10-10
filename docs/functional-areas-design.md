@@ -1200,7 +1200,7 @@ graph TB
 TARSy uses PostgreSQL LISTEN/NOTIFY (with SQLite polling fallback for development) for cross-pod event distribution, enabling multi-replica Kubernetes deployments. Events are persisted to the database and broadcast to all backend pods, which then forward them to their connected WebSocket clients.
 
 **Architecture Overview**:
-```
+```text
 Event Published → Database (INSERT + NOTIFY) → All Backend Pods → WebSocket Clients
                      ↓
               Event Persistence (catchup support)
@@ -1281,7 +1281,7 @@ sequenceDiagram
 | **10:01:15** | Event 46 published<br/>(session.completed) | ✅ Receives event 46<br/>`last_event_id=46` | `id=46` persisted<br/>NOTIFY → All pods |
 | **Result** | **Zero events lost**<br/>Seamless failover | ✅ All events received<br/>UI stays synchronized | All events stored<br/>Database consistent |
 
-**Key Observations**:
+#### Key Observations
 
 **Event Loss Prevention:**
 - ✅ Events 43-44 published while client disconnected
@@ -1333,7 +1333,7 @@ async def websocket_endpoint(websocket: WebSocket):
 - **Event Cleanup** - automatic cleanup of old events based on retention policy
 
 **Event Integration Flow**:
-```
+```text
 Hook Event → Event Publisher → Database (INSERT + NOTIFY) → 
   Event Listener → WebSocket Manager → WebSocket Clients → UI Update
 ```

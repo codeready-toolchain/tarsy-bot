@@ -6,6 +6,7 @@ that could interfere with e2e tests.
 """
 
 import pytest
+import pytest_asyncio
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -16,7 +17,7 @@ from tarsy.services.events.publisher import EventPublisher
 from tarsy.models.event_models import SessionCreatedEvent
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def async_test_engine():
     """Create an in-memory async database engine for testing."""
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
@@ -28,7 +29,7 @@ async def async_test_engine():
     await engine.dispose()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def async_test_session_factory(async_test_engine):
     """Create an async session factory for testing."""
     return async_sessionmaker(

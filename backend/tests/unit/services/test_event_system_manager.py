@@ -72,14 +72,14 @@ class TestEventSystemManagerLifecycle:
         mock_listener = AsyncMock()
         mock_cleanup = AsyncMock()
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
-                await manager.start()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
+            await manager.start()
 
-                assert manager.event_listener is mock_listener
-                assert manager.cleanup_service is mock_cleanup
-                mock_listener.start.assert_called_once()
-                mock_cleanup.start.assert_called_once()
+            assert manager.event_listener is mock_listener
+            assert manager.cleanup_service is mock_cleanup
+            mock_listener.start.assert_called_once()
+            mock_cleanup.start.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_start_passes_correct_cleanup_parameters(self):
@@ -96,15 +96,15 @@ class TestEventSystemManagerLifecycle:
         mock_listener = AsyncMock()
         mock_cleanup_class = Mock(return_value=AsyncMock())
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", mock_cleanup_class):
-                await manager.start()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", mock_cleanup_class):
+            await manager.start()
 
-                mock_cleanup_class.assert_called_once_with(
-                    db_session_factory=session_factory,
-                    retention_hours=48,
-                    cleanup_interval_hours=12,
-                )
+            mock_cleanup_class.assert_called_once_with(
+                db_session_factory=session_factory,
+                retention_hours=48,
+                cleanup_interval_hours=12,
+            )
 
     @pytest.mark.asyncio
     async def test_stop_stops_listener_and_cleanup(self):
@@ -116,13 +116,13 @@ class TestEventSystemManagerLifecycle:
         mock_listener = AsyncMock()
         mock_cleanup = AsyncMock()
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
-                await manager.start()
-                await manager.stop()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
+            await manager.start()
+            await manager.stop()
 
-                mock_cleanup.stop.assert_called_once()
-                mock_listener.stop.assert_called_once()
+            mock_cleanup.stop.assert_called_once()
+            mock_listener.stop.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_stop_when_not_started(self):
@@ -144,15 +144,15 @@ class TestEventSystemManagerLifecycle:
         mock_listener = AsyncMock()
         mock_cleanup = AsyncMock()
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
-                # Start and stop multiple times
-                for _ in range(3):
-                    await manager.start()
-                    assert manager.event_listener is not None
-                    assert manager.cleanup_service is not None
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
+            # Start and stop multiple times
+            for _ in range(3):
+                await manager.start()
+                assert manager.event_listener is not None
+                assert manager.cleanup_service is not None
 
-                    await manager.stop()
+                await manager.stop()
 
 
 @pytest.mark.unit
@@ -168,15 +168,15 @@ class TestEventSystemManagerChannelHandlers:
 
         mock_listener = AsyncMock()
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", return_value=AsyncMock()):
-                await manager.start()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", return_value=AsyncMock()):
+            await manager.start()
 
-                handler = AsyncMock()
-                await manager.register_channel_handler("test_channel", handler)
+            handler = AsyncMock()
+            await manager.register_channel_handler("test_channel", handler)
 
-                mock_listener.subscribe.assert_called_once_with("test_channel", handler)
-                assert manager._channel_handlers["test_channel"] == handler
+            mock_listener.subscribe.assert_called_once_with("test_channel", handler)
+            assert manager._channel_handlers["test_channel"] == handler
 
     @pytest.mark.asyncio
     async def test_register_multiple_channel_handlers(self):
@@ -187,19 +187,19 @@ class TestEventSystemManagerChannelHandlers:
 
         mock_listener = AsyncMock()
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", return_value=AsyncMock()):
-                await manager.start()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", return_value=AsyncMock()):
+            await manager.start()
 
-                handler1 = AsyncMock()
-                handler2 = AsyncMock()
+            handler1 = AsyncMock()
+            handler2 = AsyncMock()
 
-                await manager.register_channel_handler("channel1", handler1)
-                await manager.register_channel_handler("channel2", handler2)
+            await manager.register_channel_handler("channel1", handler1)
+            await manager.register_channel_handler("channel2", handler2)
 
-                assert len(manager._channel_handlers) == 2
-                assert manager._channel_handlers["channel1"] == handler1
-                assert manager._channel_handlers["channel2"] == handler2
+            assert len(manager._channel_handlers) == 2
+            assert manager._channel_handlers["channel1"] == handler1
+            assert manager._channel_handlers["channel2"] == handler2
 
     @pytest.mark.asyncio
     async def test_register_channel_handler_not_started_raises_error(self):
@@ -227,13 +227,13 @@ class TestEventSystemManagerGetListener:
 
         mock_listener = AsyncMock()
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", return_value=AsyncMock()):
-                await manager.start()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", return_value=AsyncMock()):
+            await manager.start()
 
-                listener = manager.get_listener()
+            listener = manager.get_listener()
 
-                assert listener is mock_listener
+            assert listener is mock_listener
 
     def test_get_listener_not_started_raises_error(self):
         """Test that get_listener when not started raises error."""
@@ -325,10 +325,10 @@ class TestEventSystemManagerErrorHandling:
         mock_cleanup = AsyncMock()
         mock_cleanup.start.side_effect = Exception("Cleanup error")
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
-                with pytest.raises(Exception, match="Cleanup error"):
-                    await manager.start()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
+            with pytest.raises(Exception, match="Cleanup error"):
+                await manager.start()
 
     @pytest.mark.asyncio
     async def test_stop_handles_cleanup_stop_error(self):
@@ -341,13 +341,13 @@ class TestEventSystemManagerErrorHandling:
         mock_cleanup = AsyncMock()
         mock_cleanup.stop.side_effect = Exception("Stop error")
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
-                await manager.start()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
+            await manager.start()
 
-                # Stop should raise the error
-                with pytest.raises(Exception, match="Stop error"):
-                    await manager.stop()
+            # Stop should raise the error
+            with pytest.raises(Exception, match="Stop error"):
+                await manager.stop()
 
     @pytest.mark.asyncio
     async def test_stop_handles_listener_stop_error(self):
@@ -360,13 +360,13 @@ class TestEventSystemManagerErrorHandling:
         mock_listener.stop.side_effect = Exception("Listener stop error")
         mock_cleanup = AsyncMock()
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
-                await manager.start()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", return_value=mock_cleanup):
+            await manager.start()
 
-                # Stop should raise the error after cleanup stops
-                with pytest.raises(Exception, match="Listener stop error"):
-                    await manager.stop()
+            # Stop should raise the error after cleanup stops
+            with pytest.raises(Exception, match="Listener stop error"):
+                await manager.stop()
 
 
 @pytest.mark.unit
@@ -387,19 +387,19 @@ class TestEventSystemManagerEdgeCases:
 
         mock_listener = AsyncMock()
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", return_value=AsyncMock()):
-                await manager.start()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", return_value=AsyncMock()):
+            await manager.start()
 
-                handler1 = AsyncMock()
-                handler2 = AsyncMock()
+            handler1 = AsyncMock()
+            handler2 = AsyncMock()
 
-                await manager.register_channel_handler("test_channel", handler1)
-                await manager.register_channel_handler("test_channel", handler2)
+            await manager.register_channel_handler("test_channel", handler1)
+            await manager.register_channel_handler("test_channel", handler2)
 
-                # Second handler should replace first
-                assert manager._channel_handlers["test_channel"] == handler2
-                assert mock_listener.subscribe.call_count == 2
+            # Second handler should replace first
+            assert manager._channel_handlers["test_channel"] == handler2
+            assert mock_listener.subscribe.call_count == 2
 
     @pytest.mark.asyncio
     async def test_with_very_short_retention_and_cleanup_intervals(self):
@@ -416,15 +416,15 @@ class TestEventSystemManagerEdgeCases:
         mock_listener = AsyncMock()
         mock_cleanup_class = Mock(return_value=AsyncMock())
 
-        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener):
-            with patch("tarsy.services.events.manager.EventCleanupService", mock_cleanup_class):
-                await manager.start()
+        with patch("tarsy.services.events.manager.create_event_listener", return_value=mock_listener), \
+             patch("tarsy.services.events.manager.EventCleanupService", mock_cleanup_class):
+            await manager.start()
 
-                # Verify cleanup service was created with correct params
-                mock_cleanup_class.assert_called_once()
-                call_kwargs = mock_cleanup_class.call_args.kwargs
-                assert call_kwargs["retention_hours"] == 1
-                assert call_kwargs["cleanup_interval_hours"] == 1
+            # Verify cleanup service was created with correct params
+            mock_cleanup_class.assert_called_once()
+            call_kwargs = mock_cleanup_class.call_args.kwargs
+            assert call_kwargs["retention_hours"] == 1
+            assert call_kwargs["cleanup_interval_hours"] == 1
 
     def test_global_manager_is_none_initially(self):
         """Test that global manager is None initially."""

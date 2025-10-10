@@ -115,13 +115,13 @@ class StageExecutionEventHook(BaseHook[StageExecution]):
             publish_stage_completed
         )
         
-        if stage_execution.status == StageStatus.ACTIVE:
+        if stage_execution.status == StageStatus.ACTIVE.value:
             await publish_stage_started(
                 session_id=stage_execution.session_id,
                 stage_id=stage_execution.execution_id,
                 stage_name=stage_execution.stage_name
             )
-        elif stage_execution.status in [StageStatus.COMPLETED, StageStatus.FAILED]:
+        elif stage_execution.status in [StageStatus.COMPLETED.value, StageStatus.FAILED.value, StageStatus.PARTIAL.value]:
             await publish_stage_completed(
                 session_id=stage_execution.session_id,
                 stage_id=stage_execution.execution_id,

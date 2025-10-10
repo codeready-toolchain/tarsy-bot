@@ -140,7 +140,7 @@ sequenceDiagram
 
 ### Architecture Overview
 
-```
+```text
 ┌──────────────────────────────────────────────┐
 │                    Kubernetes Cluster        │
 │                                              │
@@ -178,7 +178,7 @@ sequenceDiagram
 
 ### Event Flow
 
-```
+```text
 1. Alert Processing:
    - Pod 2 processes alert
    - Writes event to events table (persistence)

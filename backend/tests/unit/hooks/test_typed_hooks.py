@@ -267,3 +267,133 @@ class TestStageExecutionHistoryHook:
         
         with pytest.raises(RuntimeError, match="Failed to update stage"):
             await stage_hook.execute(existing_stage_execution)
+
+
+@pytest.mark.unit
+class TestStageExecutionEventHook:
+    """Test typed stage execution event hook for real-time event publishing."""
+    
+    @pytest.fixture
+    def event_hook(self):
+        """Create stage execution event hook."""
+        from tarsy.hooks.event_hooks import StageExecutionEventHook
+        return StageExecutionEventHook()
+    
+    @pytest.fixture
+    def active_stage_execution(self):
+        """Create active stage execution."""
+        return StageExecution(
+            execution_id="test-stage-execution-0",
+            session_id="test-session",
+            stage_id="test-stage-0",
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="KubernetesAgent",
+            status=StageStatus.ACTIVE.value,
+            started_at_us=1640995200000000
+        )
+    
+    @pytest.fixture
+    def completed_stage_execution(self):
+        """Create completed stage execution."""
+        return StageExecution(
+            execution_id="test-stage-execution-0",
+            session_id="test-session",
+            stage_id="test-stage-0",
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="KubernetesAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=1640995200000000
+        )
+    
+    @pytest.fixture
+    def failed_stage_execution(self):
+        """Create failed stage execution."""
+        return StageExecution(
+            execution_id="test-stage-execution-0",
+            session_id="test-session",
+            stage_id="test-stage-0",
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="KubernetesAgent",
+            status=StageStatus.FAILED.value,
+            started_at_us=1640995200000000
+        )
+    
+    @pytest.fixture
+    def partial_stage_execution(self):
+        """Create partial stage execution."""
+        return StageExecution(
+            execution_id="test-stage-execution-0",
+            session_id="test-session",
+            stage_id="test-stage-0",
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="KubernetesAgent",
+            status=StageStatus.PARTIAL.value,
+            started_at_us=1640995200000000
+        )
+    
+    def test_hook_initialization(self, event_hook):
+        """Test hook initializes correctly."""
+        assert event_hook.name == "stage_event"
+    
+    @pytest.mark.asyncio
+    async def test_execute_active_status_publishes_started(self, event_hook, active_stage_execution):
+        """Test that ACTIVE status publishes stage.started event."""
+        with patch("tarsy.services.events.event_helpers.publish_stage_started", new_callable=AsyncMock) as mock_started:
+            with patch("tarsy.services.events.event_helpers.publish_stage_completed", new_callable=AsyncMock) as mock_completed:
+                await event_hook.execute(active_stage_execution)
+                
+                mock_started.assert_called_once_with(
+                    session_id="test-session",
+                    stage_id="test-stage-execution-0",
+                    stage_name="Test Stage"
+                )
+                mock_completed.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_execute_completed_status_publishes_completed_with_string_value(self, event_hook, completed_stage_execution):
+        """Test that COMPLETED status publishes stage.completed event with string value."""
+        with patch("tarsy.services.events.event_helpers.publish_stage_started", new_callable=AsyncMock) as mock_started:
+            with patch("tarsy.services.events.event_helpers.publish_stage_completed", new_callable=AsyncMock) as mock_completed:
+                await event_hook.execute(completed_stage_execution)
+                
+                mock_started.assert_not_called()
+                mock_completed.assert_called_once_with(
+                    session_id="test-session",
+                    stage_id="test-stage-execution-0",
+                    stage_name="Test Stage",
+                    status="completed"  # Verify it's a string, not enum
+                )
+    
+    @pytest.mark.asyncio
+    async def test_execute_failed_status_publishes_completed_with_string_value(self, event_hook, failed_stage_execution):
+        """Test that FAILED status publishes stage.completed event with string value."""
+        with patch("tarsy.services.events.event_helpers.publish_stage_started", new_callable=AsyncMock) as mock_started:
+            with patch("tarsy.services.events.event_helpers.publish_stage_completed", new_callable=AsyncMock) as mock_completed:
+                await event_hook.execute(failed_stage_execution)
+                
+                mock_started.assert_not_called()
+                mock_completed.assert_called_once_with(
+                    session_id="test-session",
+                    stage_id="test-stage-execution-0",
+                    stage_name="Test Stage",
+                    status="failed"  # Verify it's a string, not enum
+                )
+    
+    @pytest.mark.asyncio
+    async def test_execute_partial_status_publishes_completed_with_string_value(self, event_hook, partial_stage_execution):
+        """Test that PARTIAL status publishes stage.completed event with string value."""
+        with patch("tarsy.services.events.event_helpers.publish_stage_started", new_callable=AsyncMock) as mock_started:
+            with patch("tarsy.services.events.event_helpers.publish_stage_completed", new_callable=AsyncMock) as mock_completed:
+                await event_hook.execute(partial_stage_execution)
+                
+                mock_started.assert_not_called()
+                mock_completed.assert_called_once_with(
+                    session_id="test-session",
+                    stage_id="test-stage-execution-0",
+                    stage_name="Test Stage",
+                    status="partial"  # Verify it's a string, not enum
+                )

@@ -192,13 +192,11 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
         }
       } 
       else if (eventType.startsWith('stage.')) {
-        // Stage events
-        const isCompleted = eventType === 'stage.completed';
-        const isFailed = eventType === 'stage.failed';
-        
+        // Stage events - always keep status as 'processing'
+        // Terminal state is only determined by session.completed/session.failed
         updatedStatus = {
           alert_id: alertId,
-          status: isCompleted ? 'completed' : isFailed ? 'error' : 'processing',
+          status: 'processing',
           progress: 0,
           current_step: `Stage: ${update.stage_name || 'Processing'}`,
           timestamp: new Date().toISOString()
@@ -227,15 +225,16 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
 
       if (updatedStatus) {
         // Mark terminal state immediately (before React state update) to prevent race conditions
-        if (updatedStatus.status === 'completed' || updatedStatus.status === 'error') {
+        // Only session.completed or session.failed should trigger terminal state
+        const isSessionTerminal = eventType === 'session.completed' || eventType === 'session.failed';
+        if (isSessionTerminal) {
           isTerminalRef.current = true;
         }
         
         setStatus(updatedStatus);
         
-        // Call onComplete callback when processing is done (success or failure)
-        if ((updatedStatus.status === 'completed' || updatedStatus.status === 'error') && 
-            onCompleteRef.current && !didCompleteRef.current) {
+        // Call onComplete callback only when session completes or fails (not on stage.failed)
+        if (isSessionTerminal && onCompleteRef.current && !didCompleteRef.current) {
           didCompleteRef.current = true; // Mark as completed to prevent duplicate calls
           setTimeout(() => {
             if (onCompleteRef.current) {

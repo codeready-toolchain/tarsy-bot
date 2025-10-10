@@ -5,7 +5,7 @@ Tests connection lifecycle, subscription management, broadcasting, and error han
 """
 
 import json
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 

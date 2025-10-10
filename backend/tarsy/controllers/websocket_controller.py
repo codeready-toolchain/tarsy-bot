@@ -2,12 +2,13 @@
 
 import json
 import uuid
-from typing import Callable, Dict
+from typing import Dict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from tarsy.database.init_db import get_async_session_factory
 from tarsy.repositories.event_repository import EventRepository
+from tarsy.services.events.base import AsyncCallback
 from tarsy.services.events.manager import get_event_system
 from tarsy.services.websocket_connection_manager import WebSocketConnectionManager
 from tarsy.utils.logger import get_logger
@@ -46,7 +47,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     # Track event listener callbacks for this connection
     # Maps channel -> callback function
-    subscribed_callbacks: Dict[str, Callable] = {}
+    subscribed_callbacks: Dict[str, AsyncCallback] = {}
 
     try:
         # Send connection confirmation
@@ -81,7 +82,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
                 # Create callback that broadcasts to channel
                 # Use closure to capture channel value correctly
-                def make_callback(ch: str) -> Callable:
+                def make_callback(ch: str) -> AsyncCallback:
                     async def callback(event: dict) -> None:
                         # This is called by EventListener when DB event occurs
                         await connection_manager.broadcast_to_channel(ch, event)
@@ -133,7 +134,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     )
 
                     for event in missed_events:
-                        await websocket.send_json(event.payload)
+                        # Inject event id into payload so clients can track last_event_id
+                        enriched_payload = {**event.payload, "id": event.id}
+                        await websocket.send_json(enriched_payload)
 
                     logger.debug(
                         f"Sent {len(missed_events)} catchup events to {connection_id}"
@@ -149,12 +152,19 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         logger.error(f"WebSocket error for {connection_id}: {e}", exc_info=True)
     finally:
         # Cleanup: Unsubscribe all callbacks from EventListener
-        event_system = get_event_system()
-        event_listener = event_system.get_listener()
-        for channel, callback in subscribed_callbacks.items():
-            await event_listener.unsubscribe(channel, callback)
-            logger.debug(f"Cleaned up EventListener callback for '{channel}'")
+        # Use try/except to ensure disconnect() always runs even if event system fails
+        try:
+            event_system = get_event_system()
+            event_listener = event_system.get_listener()
+            for channel, callback in subscribed_callbacks.items():
+                await event_listener.unsubscribe(channel, callback)
+                logger.debug(f"Cleaned up EventListener callback for '{channel}'")
+        except Exception as e:
+            logger.warning(
+                f"Failed to unsubscribe EventListener callbacks during cleanup "
+                f"for {connection_id}: {e}"
+            )
 
-        # Remove from connection manager
+        # Remove from connection manager (always runs)
         connection_manager.disconnect(connection_id)
 

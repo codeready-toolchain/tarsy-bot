@@ -41,8 +41,8 @@ class PostgreSQLEventListener(EventListener):
             logger.info("PostgreSQL event listener connection established")
         except asyncio.TimeoutError:
             logger.error(
-                f"Timeout connecting to PostgreSQL for event listener after 10s. "
-                f"Check database connectivity and credentials."
+                "Timeout connecting to PostgreSQL for event listener after 10s. "
+                "Check database connectivity and credentials."
             )
             raise
         except Exception as e:

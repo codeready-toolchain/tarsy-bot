@@ -229,7 +229,7 @@ async def publish_stage_completed(
         session_id: Session identifier
         stage_id: Stage execution identifier
         stage_name: Human-readable stage name
-        status: Stage status (completed/failed)
+        status: Stage status (completed/failed/partial)
     """
     try:
         async_session_factory = get_async_session_factory()

@@ -70,10 +70,15 @@ class TestEventPublisherPublish:
 
         # Verify NOTIFY was called for PostgreSQL
         mock_event_repo.session.execute.assert_awaited_once()
-        notify_sql = str(mock_event_repo.session.execute.call_args[0][0])
+        call_args = mock_event_repo.session.execute.call_args
+        notify_sql = str(call_args[0][0])
         # Channel name is quoted to support special characters (e.g., "session:abc-123")
         assert 'NOTIFY "sessions"' in notify_sql
-        assert "session.created" in notify_sql
+        # Payload should be parameterized (not embedded in SQL)
+        assert ":payload" in notify_sql
+        # Verify payload parameter is passed correctly
+        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1] if call_args[1] else {}
+        assert "payload" in params or "session.created" in str(params)
 
         # Verify commit
         mock_event_repo.session.commit.assert_awaited_once()
@@ -210,12 +215,84 @@ class TestEventPublisherPublish:
         )
         event_id = await publisher.publish("sessions", event)
 
-        # Verify escaping in NOTIFY
-        notify_sql = str(mock_event_repo.session.execute.call_args[0][0])
-        # Single quotes should be escaped as double single quotes
-        assert "''" in notify_sql or "it\\'s" in notify_sql
+        # Verify NOTIFY was called (payload is now bound as parameter)
+        mock_event_repo.session.execute.assert_awaited_once()
+        call_args = mock_event_repo.session.execute.call_args
+        notify_sql = str(call_args[0][0])
+        # Verify channel is quoted
+        assert 'NOTIFY "sessions"' in notify_sql
+        # Verify payload is passed as parameter, not embedded in SQL
+        assert ":payload" in notify_sql
+        # Verify payload parameter is passed correctly (second positional arg or kwargs)
+        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1] if call_args[1] else {}
+        assert "payload" in params or "it's-a-test" in str(params)
 
         assert event_id == 999
+
+    @pytest.mark.asyncio
+    async def test_publish_with_malicious_channel_name(
+        self, publisher, mock_event_repo
+    ):
+        """Test that malicious channel names cannot cause SQL injection."""
+        mock_event_repo.session.bind.dialect.name = "postgresql"
+
+        mock_db_event = Event(
+            id=888,
+            channel='test"; DROP TABLE events; --',
+            payload={"type": "session.created", "session_id": "sess-123"},
+            created_at=datetime.now(timezone.utc),
+        )
+        mock_event_repo.create_event.return_value = mock_db_event
+
+        # Attempt SQL injection via channel name
+        malicious_channel = 'test"; DROP TABLE events; --'
+        event = SessionCreatedEvent(session_id="sess-123", alert_type="test")
+        event_id = await publisher.publish(malicious_channel, event)
+
+        # Verify event was published
+        assert event_id == 888
+        mock_event_repo.session.execute.assert_awaited_once()
+
+        # Verify that the channel is properly escaped in NOTIFY
+        call_args = mock_event_repo.session.execute.call_args
+        notify_sql = str(call_args[0][0])
+        # Channel should be quoted and escaped (double quotes escaped as "")
+        # The malicious payload should be treated as a literal identifier
+        assert 'NOTIFY "test""; DROP TABLE events; --"' in notify_sql
+        # Payload should be parameterized
+        assert ":payload" in notify_sql
+        # Verify payload parameter is passed correctly (second positional arg or kwargs)
+        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1] if call_args[1] else {}
+        assert "payload" in params or "session.created" in str(params)
+
+    @pytest.mark.asyncio
+    async def test_publish_with_double_quotes_in_channel(
+        self, publisher, mock_event_repo
+    ):
+        """Test that double quotes in channel names are properly escaped."""
+        mock_event_repo.session.bind.dialect.name = "postgresql"
+
+        mock_db_event = Event(
+            id=777,
+            channel='channel"with"quotes',
+            payload={"type": "session.created", "session_id": "sess-123"},
+            created_at=datetime.now(timezone.utc),
+        )
+        mock_event_repo.create_event.return_value = mock_db_event
+
+        # Channel with double quotes
+        channel_with_quotes = 'channel"with"quotes'
+        event = SessionCreatedEvent(session_id="sess-123", alert_type="test")
+        event_id = await publisher.publish(channel_with_quotes, event)
+
+        assert event_id == 777
+        mock_event_repo.session.execute.assert_awaited_once()
+
+        # Verify double quotes are escaped as ""
+        call_args = mock_event_repo.session.execute.call_args
+        notify_sql = str(call_args[0][0])
+        # Double quotes should be escaped by doubling them
+        assert 'NOTIFY "channel""with""quotes"' in notify_sql
 
     @pytest.mark.asyncio
     async def test_publish_database_error_during_create(self, publisher, mock_event_repo):

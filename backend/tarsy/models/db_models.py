@@ -178,7 +178,7 @@ class Event(SQLModel, table=True):
         Index("idx_events_channel_id", "channel", "id"),
     )
 
-    id: int = Field(
+    id: Optional[int] = Field(
         default=None,
         sa_column=Column(Integer, primary_key=True, autoincrement=True),
         description="Auto-incrementing event ID for ordering and catchup",
@@ -195,7 +195,7 @@ class Event(SQLModel, table=True):
         description="Event data as JSON (type, data, timestamp, id)",
     )
 
-    created_at: datetime = Field(
+    created_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime, nullable=False, server_default=func.now()),
         description="Event creation timestamp (for cleanup and ordering)",
