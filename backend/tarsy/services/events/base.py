@@ -123,28 +123,31 @@ class EventListener(ABC):
     
     async def cleanup_stale_channels(self, max_idle_seconds: int = 60) -> None:
         """
-        Clean up channels that have been inactive for too long.
+        Clean up channels with no active subscribers.
+        
+        Activity-based cleanup: Only removes channels that are both:
+        1. Idle (no events dispatched) for max_idle_seconds
+        2. Have zero active callbacks (no subscribers)
         
         Args:
             max_idle_seconds: Maximum idle time before cleanup (default: 60 seconds)
         """
         now = time.time()
-        stale_channels = []
+        channels_to_cleanup = []
         
+        # Find idle channels with no subscribers
         for channel, last_time in list(self.last_activity.items()):
             idle_time = now - last_time
-            if idle_time > max_idle_seconds:
-                stale_channels.append(channel)
+            callback_count = len(self.callbacks.get(channel, []))
+            
+            # Only cleanup if idle AND no subscribers
+            if idle_time > max_idle_seconds and callback_count == 0:
+                channels_to_cleanup.append(channel)
         
-        for channel in stale_channels:
-            if channel in self.callbacks:
-                callback_count = len(self.callbacks.get(channel, []))
-                logger.warning(
-                    f"Cleaning up stale channel '{channel}' "
-                    f"(idle for {int(now - self.last_activity[channel])}s, "
-                    f"{callback_count} callback(s) remaining)"
-                )
-                del self.callbacks[channel]
-                del self.last_activity[channel]
-                await self._cleanup_channel(channel)
+        # Cleanup identified channels
+        for channel in channels_to_cleanup:
+            logger.debug(f"Cleaning up idle channel '{channel}' (no subscribers)")
+            del self.callbacks[channel]
+            del self.last_activity[channel]
+            await self._cleanup_channel(channel)
 

@@ -85,7 +85,14 @@ stop: ## Stop all running services
 	@echo -e "$(GREEN)✅ All services stopped$(NC)"
 
 # Container deployment targets
-.PHONY: containers-build-app containers-deploy containers-deploy-fresh containers-start containers-stop containers-clean containers-clean-images containers-deep-clean containers-db-reset check-config containers-logs containers-status sync-backend-deps
+# 
+# Quick guide:
+# - containers-deploy:       Normal deployment (uses cache, fast but may miss code changes)
+# - containers-redeploy:     Force rebuild without cache (slower but guarantees fresh code)
+# - containers-rebuild:      Just rebuild images without redeploying
+# - containers-deploy-fresh: Nuclear option (rebuilds everything including database)
+#
+.PHONY: containers-build-app containers-rebuild containers-deploy containers-redeploy containers-deploy-fresh containers-start containers-stop containers-clean containers-clean-images containers-deep-clean containers-db-reset check-config containers-logs containers-status sync-backend-deps
 
 sync-backend-deps: ## Sync backend dependencies (update uv.lock if pyproject.toml changed)
 	@echo -e "$(GREEN)Syncing backend dependencies...$(NC)"
@@ -96,6 +103,14 @@ containers-build-app: sync-backend-deps ## Build only application containers (ba
 	@echo -e "$(GREEN)Building Tarsy application container images (preserving database)...$(NC)"
 	$(PODMAN_COMPOSE) build backend dashboard
 	@echo -e "$(GREEN)✅ Application container images built$(NC)"
+
+containers-rebuild: sync-backend-deps ## Force rebuild application containers without cache (for code changes)
+	@echo -e "$(YELLOW)⚡ Force rebuilding application containers (no cache)...$(NC)"
+	@echo -e "$(YELLOW)Removing old application images...$(NC)"
+	-podman rmi -f localhost/tarsy_backend localhost/tarsy_dashboard 2>/dev/null || true
+	@echo -e "$(GREEN)Building fresh images...$(NC)"
+	$(PODMAN_COMPOSE) build --no-cache backend dashboard
+	@echo -e "$(GREEN)✅ Application containers rebuilt from scratch$(NC)"
 
 check-config: ## Ensure required configuration files exist (internal target)
 	@echo -e "$(GREEN)Checking configuration files...$(NC)"
@@ -143,6 +158,21 @@ containers-deploy: check-config ## Deploy Tarsy stack (smart default: rebuild ap
 	@echo -e "$(BLUE)🗄️  Database (admin):   localhost:5432$(NC)"
 	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo -e "$(GREEN)✅ Application deployment completed$(NC)"
+
+containers-redeploy: containers-rebuild check-config ## Force rebuild and redeploy (for code changes)
+	@echo -e "$(YELLOW)Stopping application containers...$(NC)"
+	-$(PODMAN_COMPOSE) stop reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
+	@echo -e "$(YELLOW)Removing application containers...$(NC)"
+	-$(PODMAN_COMPOSE) rm -f reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
+	@echo -e "$(GREEN)Starting containers with fresh images...$(NC)"
+	$(PODMAN_COMPOSE) up -d backend dashboard oauth2-proxy reverse-proxy
+	@echo ""
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(BLUE)🌐 Dashboard:          http://localhost:8080$(NC)"
+	@echo -e "$(BLUE)🔧 API (oauth2-proxy): http://localhost:8080/api$(NC)"
+	@echo -e "$(BLUE)🗄️  Database (admin):   localhost:5432$(NC)"
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(GREEN)✅ Force redeploy completed$(NC)"
 
 containers-deploy-fresh: containers-clean check-config ## Deploy complete fresh Tarsy stack (rebuild everything including database)
 	@echo -e "$(GREEN)Starting complete fresh Tarsy container stack...$(NC)"

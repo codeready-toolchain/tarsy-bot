@@ -78,9 +78,9 @@ class EventPublisher:
 
             # NOTIFY is database-specific, no ORM abstraction exists
             # Using text() is the standard SQLAlchemy approach
-            await self.event_repo.session.execute(
-                text(f"NOTIFY {channel}, '{notify_payload_escaped}'")
-            )
+            # Quote channel name to support special characters (e.g., "session:abc-123")
+            notify_sql = 'NOTIFY "' + channel + '", \'' + notify_payload_escaped + '\''
+            await self.event_repo.session.execute(text(notify_sql))
             # Note: No try/except - NOTIFY failures on PostgreSQL are real errors
         else:
             # SQLite: Polling handles delivery (see SQLiteEventListener)
