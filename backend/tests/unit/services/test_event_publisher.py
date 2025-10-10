@@ -74,11 +74,8 @@ class TestEventPublisherPublish:
         notify_sql = str(call_args[0][0])
         # Channel name is quoted to support special characters (e.g., "session:abc-123")
         assert 'NOTIFY "sessions"' in notify_sql
-        # Payload should be parameterized (not embedded in SQL)
-        assert ":payload" in notify_sql
-        # Verify payload parameter is passed correctly
-        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1] if call_args[1] else {}
-        assert "payload" in params or "session.created" in str(params)
+        # Payload is embedded as escaped string literal (NOTIFY doesn't support parameters)
+        assert "session.created" in notify_sql
 
         # Verify commit
         mock_event_repo.session.commit.assert_awaited_once()
@@ -215,17 +212,15 @@ class TestEventPublisherPublish:
         )
         event_id = await publisher.publish("sessions", event)
 
-        # Verify NOTIFY was called (payload is now bound as parameter)
+        # Verify NOTIFY was called with properly escaped payload
         mock_event_repo.session.execute.assert_awaited_once()
         call_args = mock_event_repo.session.execute.call_args
         notify_sql = str(call_args[0][0])
         # Verify channel is quoted
         assert 'NOTIFY "sessions"' in notify_sql
-        # Verify payload is passed as parameter, not embedded in SQL
-        assert ":payload" in notify_sql
-        # Verify payload parameter is passed correctly (second positional arg or kwargs)
-        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1] if call_args[1] else {}
-        assert "payload" in params or "it's-a-test" in str(params)
+        # Verify payload is embedded with single quotes escaped as double single quotes
+        # The single quote in "it's" should be escaped as "it''s"
+        assert "it''s-a-test" in notify_sql or "it\\'s-a-test" in notify_sql
 
         assert event_id == 999
 
@@ -257,13 +252,11 @@ class TestEventPublisherPublish:
         call_args = mock_event_repo.session.execute.call_args
         notify_sql = str(call_args[0][0])
         # Channel should be quoted and escaped (double quotes escaped as "")
-        # The malicious payload should be treated as a literal identifier
+        # The malicious SQL should be treated as a literal identifier (escaped)
         assert 'NOTIFY "test""; DROP TABLE events; --"' in notify_sql
-        # Payload should be parameterized
-        assert ":payload" in notify_sql
-        # Verify payload parameter is passed correctly (second positional arg or kwargs)
-        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1] if call_args[1] else {}
-        assert "payload" in params or "session.created" in str(params)
+        # The malicious SQL should NOT be executable - it's part of the channel identifier
+        # Verify payload is embedded as string literal (not executable SQL)
+        assert "session.created" in notify_sql
 
     @pytest.mark.asyncio
     async def test_publish_with_double_quotes_in_channel(

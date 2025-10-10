@@ -75,13 +75,13 @@ class EventPublisher:
 
             # NOTIFY is database-specific, no ORM abstraction exists
             # Using text() is the standard SQLAlchemy approach
-            # Quote channel identifier and escape internal double quotes (SQL identifier rules)
-            # Use parameter binding for payload to prevent SQL injection
+            # Security: Properly escape both channel identifier and payload
+            # 1. Channel: Quote as identifier and escape internal double quotes (SQL identifier rules)
+            # 2. Payload: Escape single quotes for string literal (NOTIFY doesn't support parameters)
             channel_escaped = channel.replace('"', '""')
-            notify_sql = text(f'NOTIFY "{channel_escaped}", :payload')
-            await self.event_repo.session.execute(
-                notify_sql, {"payload": notify_payload_json}
-            )
+            payload_escaped = notify_payload_json.replace("'", "''")
+            notify_sql = text(f'''NOTIFY "{channel_escaped}", '{payload_escaped}' ''')
+            await self.event_repo.session.execute(notify_sql)
             # Note: No try/except - NOTIFY failures on PostgreSQL are real errors
         else:
             # SQLite: Polling handles delivery (see SQLiteEventListener)
