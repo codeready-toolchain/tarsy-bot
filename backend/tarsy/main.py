@@ -21,7 +21,7 @@ from cachetools import TTLCache
 from tarsy.config.settings import get_settings
 from tarsy.controllers.history_controller import router as history_router
 from tarsy.controllers.alert_controller import router as alert_router
-from tarsy.controllers.events_controller import events_router
+from tarsy.controllers.websocket_controller import websocket_router
 from tarsy.database.init_db import (
     get_database_info,
     initialize_database,
@@ -178,7 +178,7 @@ app.add_middleware(
 # Register API routers
 app.include_router(history_router, tags=["history"])
 app.include_router(alert_router, tags=["alerts"])
-app.include_router(events_router, tags=["events"])
+app.include_router(websocket_router, tags=["websocket"])
 
 from tarsy.controllers.system_controller import router as system_router
 app.include_router(system_router, prefix="/api/v1", tags=["system"])

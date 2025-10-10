@@ -10,7 +10,7 @@ import UserMenu from './UserMenu';
 import { SystemWarningBanner } from './SystemWarningBanner';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient, handleAPIError } from '../services/api';
-import { sseService } from '../services/sseService';
+import { websocketService } from '../services/websocketService';
 import {
   saveFiltersToStorage,
   loadFiltersFromStorage,
@@ -336,31 +336,27 @@ function DashboardView() {
       }
     };
 
-    // Subscribe to SSE events
-    const unsubscribeUpdate = sseService.onSessionUpdate(handleSessionUpdate);
-    const unsubscribeConnection = sseService.onConnectionChange(handleConnectionChange);
-    const unsubscribeError = sseService.onError(handleSSEError);
-    const unsubscribeClose = sseService.onClose(handleSSEClose);
+    // Subscribe to WebSocket events
+    const unsubscribeUpdate = websocketService.subscribeToChannel('sessions', handleSessionUpdate);
+    const unsubscribeConnection = websocketService.onConnectionChange(handleConnectionChange);
 
-    // Connect to SSE with enhanced logging
-    console.log('🔌 Connecting to SSE for real-time updates...');
+    // Connect to WebSocket with enhanced logging
+    console.log('🔌 Connecting to WebSocket for real-time updates...');
     (async () => {
       try {
-        await sseService.connect();
+        await websocketService.connect();
         // Set initial connection status after connection attempt
-        setWsConnected(sseService.isConnected);
+        setWsConnected(websocketService.isConnected);
       } catch (error) {
-        console.error('Failed to connect to SSE:', error);
+        console.error('Failed to connect to WebSocket:', error);
       }
     })();
 
     // Cleanup
     return () => {
-      console.log('DashboardView cleaning up SSE subscriptions');
+      console.log('DashboardView cleaning up WebSocket subscriptions');
       unsubscribeUpdate();
       unsubscribeConnection();
-      unsubscribeError();
-      unsubscribeClose();
     };
   }, []);
 
@@ -379,13 +375,13 @@ function DashboardView() {
     fetchHistoricalAlerts();
   };
 
-  // Handle SSE retry
+  // Handle WebSocket retry
   const handleSSERetry = async () => {
-    console.log('🔄 Manual SSE retry requested');
+    console.log('🔄 Manual WebSocket retry requested');
     try {
-      await sseService.retry();
+      await websocketService.connect();
     } catch (error) {
-      console.error('Failed to retry SSE connection:', error);
+      console.error('Failed to retry WebSocket connection:', error);
     }
   };
 

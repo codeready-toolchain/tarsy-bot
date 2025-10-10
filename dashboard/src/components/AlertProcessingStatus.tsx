@@ -23,7 +23,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 
 import type { ProcessingStatus, ProcessingStatusProps } from '../types';
-import { sseService } from '../services/sseService';
+import { websocketService } from '../services/websocketService';
 import { apiClient } from '../services/api';
 
 const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete }) => {
@@ -53,13 +53,13 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     // Reset terminal state for new alert
     isTerminalRef.current = false;
     
-    // Initialize SSE connection status
-    const initialConnectionStatus = sseService.isConnected;
+    // Initialize WebSocket connection status
+    const initialConnectionStatus = websocketService.isConnected;
     setWsConnected(initialConnectionStatus);
     if (!initialConnectionStatus) {
       setWsError('Connecting...');
       setTimeout(() => {
-        if (sseService.isConnected) {
+        if (websocketService.isConnected) {
           setWsError(null);
         }
       }, 1000);
@@ -120,7 +120,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     };
 
     // Set up basic connection monitoring
-    const unsubscribeConnection = sseService.onConnectionChange(handleConnectionChange);
+    const unsubscribeConnection = websocketService.onConnectionChange(handleConnectionChange);
     
     return () => {
       isMountedRef.current = false; // Mark component as unmounted
@@ -128,21 +128,18 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     };
   }, [alertId]);
 
-  // Set up session-specific SSE subscription when sessionId becomes available
+  // Set up session-specific WebSocket subscription when sessionId becomes available
   useEffect(() => {
     if (!sessionId) {
       return;
     }
     
-    // Ensure SSE is connected before subscribing
+    // Ensure WebSocket is connected before subscribing
     const setupSubscription = async () => {
       try {
-        await sseService.connect();
-        
-        // Subscribe to the session channel on the server
-        sseService.subscribeToSessionChannel(sessionId);
+        await websocketService.connect();
       } catch (error) {
-        console.error('Failed to connect to SSE before subscription:', error);
+        console.error('Failed to connect to WebSocket before subscription:', error);
       }
     };
     
@@ -250,11 +247,10 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     };
     
     // Set up the session-specific event handler
-    const sessionChannel = `session:${sessionId}`;  // ✓ Use colon to match SSE channel format
-    const unsubscribeSession = sseService.onSessionSpecificUpdate(sessionChannel, handleSessionUpdate);
+    const sessionChannel = `session:${sessionId}`;
+    const unsubscribeSession = websocketService.subscribeToChannel(sessionChannel, handleSessionUpdate);
 
     return () => {
-      sseService.unsubscribeFromSessionChannel(sessionId);
       unsubscribeSession();
     };
   }, [sessionId, alertId]); // Dependencies: sessionId and alertId

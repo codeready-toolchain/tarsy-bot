@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import { Psychology, BugReport } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
-import { sseService } from '../services/sseService';
+import { websocketService } from '../services/websocketService';
 import { useSession } from '../contexts/SessionContext';
 import type { DetailedSession } from '../types';
 import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
@@ -160,14 +160,13 @@ function SessionDetailPageBase({
   useEffect(() => {
     if (!sessionId) return;
 
-    console.log(`🔌 Setting up SSE for ${viewType} view:`, sessionId);
+    console.log(`🔌 Setting up WebSocket for ${viewType} view:`, sessionId);
     
     (async () => {
       try {
-        await sseService.connect();
-        sseService.subscribeToSessionChannel(sessionId);
+        await websocketService.connect();
       } catch (error) {
-        console.error('Failed to connect to SSE:', error);
+        console.error('Failed to connect to WebSocket:', error);
       }
     })();
 
@@ -251,16 +250,15 @@ function SessionDetailPageBase({
       }
     };
 
-    const unsubscribeUpdate = sseService.onSessionSpecificUpdate(
-      `session:${sessionId}`,  // ✓ Use colon to match SSE channel format
+    const unsubscribeUpdate = websocketService.subscribeToChannel(
+      `session:${sessionId}`,
       handleSessionUpdate
     );
 
     // Cleanup
     return () => {
-      console.log(`🔌 Cleaning up ${viewType} view SSE`);
+      console.log(`🔌 Cleaning up ${viewType} view WebSocket`);
       unsubscribeUpdate();
-      sseService.unsubscribeFromSessionChannel(sessionId);
       
       // Clear any pending throttled updates
       if (updateThrottleRef.current) {

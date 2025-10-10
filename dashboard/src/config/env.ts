@@ -95,17 +95,21 @@ export const urls = {
   // IMPORTANT: SSE connections bypass Vite proxy in development to avoid connection pool exhaustion
   // Vite's proxy has limited connections and long-lived SSE streams exhaust it
   sse: {
-    // In development: connect directly to backend (localhost:8000)
-    // In production: use same base as API
+    // In development: connect directly to backend (localhost:8000, no auth)
+    // In production: connect to oauth2-proxy (which proxies to backend with auth)
     base: config.isDevelopment ? 'http://localhost:8000' : config.prodApiBaseUrl,
     stream: '/api/v1/events/stream',
   },
   
   // WebSocket endpoints
+  // IMPORTANT: WebSocket connections bypass Vite proxy in development (like SSE)
+  // WebSocket connections cannot be proxied through Vite's HTTP proxy
   websocket: {
-    // Simple rule: use Vite proxy in dev (same port as frontend), production URL in prod
-    base: config.isDevelopment ? `ws://${config.devServerHost}:${config.devServerPort}` : config.prodWsBaseUrl,
-    connect: '/ws',
+    // In development: connect directly to backend (localhost:8000, no auth)
+    // In production: connect to oauth2-proxy (which proxies WebSocket upgrades to backend)
+    // Note: Backend is never exposed directly in production - always behind oauth2-proxy
+    base: config.isDevelopment ? 'ws://localhost:8000' : config.prodWsBaseUrl,
+    connect: '/api/v1/ws',
   },
   
   // OAuth2 endpoints
