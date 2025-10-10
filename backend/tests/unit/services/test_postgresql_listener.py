@@ -192,7 +192,7 @@ class TestPostgreSQLEventListenerSubscriptions:
 
     @pytest.mark.asyncio
     async def test_unsubscribe_from_channel(self):
-        """Test unsubscribing from a channel."""
+        """Test unsubscribing from a channel removes it when empty."""
         database_url = "postgresql://user:pass@localhost/db"
         listener = PostgreSQLEventListener(database_url)
 
@@ -203,7 +203,8 @@ class TestPostgreSQLEventListenerSubscriptions:
         await listener.subscribe("test_channel", callback)
         await listener.unsubscribe("test_channel", callback)
 
-        assert len(listener.callbacks["test_channel"]) == 0
+        # Channel should be removed when no callbacks remain
+        assert "test_channel" not in listener.callbacks
 
     @pytest.mark.asyncio
     async def test_unsubscribe_one_of_multiple_callbacks(self):
@@ -385,7 +386,7 @@ class TestPostgreSQLEventListenerEdgeCases:
 
     @pytest.mark.asyncio
     async def test_unsubscribe_while_running(self):
-        """Test unsubscribing while listener is running."""
+        """Test unsubscribing while listener is running removes channel when empty."""
         database_url = "postgresql://user:pass@localhost/db"
         listener = PostgreSQLEventListener(database_url)
 
@@ -398,7 +399,8 @@ class TestPostgreSQLEventListenerEdgeCases:
             await listener.subscribe("test_channel", callback)
             await listener.unsubscribe("test_channel", callback)
 
-            assert len(listener.callbacks["test_channel"]) == 0
+            # Channel should be removed when no callbacks remain
+            assert "test_channel" not in listener.callbacks
 
             await listener.stop()
 

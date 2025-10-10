@@ -27,7 +27,7 @@ class TestPublishSessionCreated:
 
     @pytest.mark.asyncio
     async def test_publishes_session_created_event(self):
-        """Test that it publishes session.created event."""
+        """Test that it publishes session.created event to both channels."""
         mock_session = AsyncMock()
         mock_session_factory = Mock(return_value=mock_session)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -37,11 +37,22 @@ class TestPublishSessionCreated:
             with patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
                 await publish_session_created("test-session-123", "alert-type-1")
 
-                mock_publish.assert_called_once()
-                call_args = mock_publish.call_args
-                assert call_args[0][0] is mock_session
-                assert call_args[0][1] == EventChannel.SESSIONS
-                event = call_args[0][2]
+                # Should publish to both 'sessions' and 'session:{session_id}' channels
+                assert mock_publish.call_count == 2
+                
+                # First call: global sessions channel
+                first_call = mock_publish.call_args_list[0]
+                assert first_call[0][0] is mock_session
+                assert first_call[0][1] == EventChannel.SESSIONS
+                event = first_call[0][2]
+                assert event.session_id == "test-session-123"
+                assert event.alert_type == "alert-type-1"
+                
+                # Second call: session-specific channel
+                second_call = mock_publish.call_args_list[1]
+                assert second_call[0][0] is mock_session
+                assert second_call[0][1] == "session:test-session-123"
+                event = second_call[0][2]
                 assert event.session_id == "test-session-123"
                 assert event.alert_type == "alert-type-1"
 
@@ -65,7 +76,7 @@ class TestPublishSessionStarted:
 
     @pytest.mark.asyncio
     async def test_publishes_session_started_event(self):
-        """Test that it publishes session.started event."""
+        """Test that it publishes session.started event to both channels."""
         mock_session = AsyncMock()
         mock_session_factory = Mock(return_value=mock_session)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -75,10 +86,20 @@ class TestPublishSessionStarted:
             with patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
                 await publish_session_started("test-session-123", "alert-type-1")
 
-                mock_publish.assert_called_once()
-                call_args = mock_publish.call_args
-                assert call_args[0][1] == EventChannel.SESSIONS
-                event = call_args[0][2]
+                # Should publish to both 'sessions' and 'session:{session_id}' channels
+                assert mock_publish.call_count == 2
+                
+                # First call: global sessions channel
+                first_call = mock_publish.call_args_list[0]
+                assert first_call[0][1] == EventChannel.SESSIONS
+                event = first_call[0][2]
+                assert event.session_id == "test-session-123"
+                assert event.alert_type == "alert-type-1"
+                
+                # Second call: session-specific channel
+                second_call = mock_publish.call_args_list[1]
+                assert second_call[0][1] == "session:test-session-123"
+                event = second_call[0][2]
                 assert event.session_id == "test-session-123"
                 assert event.alert_type == "alert-type-1"
 
@@ -102,7 +123,7 @@ class TestPublishSessionCompleted:
 
     @pytest.mark.asyncio
     async def test_publishes_session_completed_event(self):
-        """Test that it publishes session.completed event."""
+        """Test that it publishes session.completed event to both channels."""
         mock_session = AsyncMock()
         mock_session_factory = Mock(return_value=mock_session)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -112,10 +133,20 @@ class TestPublishSessionCompleted:
             with patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
                 await publish_session_completed("test-session-123")
 
-                mock_publish.assert_called_once()
-                call_args = mock_publish.call_args
-                assert call_args[0][1] == EventChannel.SESSIONS
-                event = call_args[0][2]
+                # Should publish to both 'sessions' and 'session:{session_id}' channels
+                assert mock_publish.call_count == 2
+                
+                # First call: global sessions channel
+                first_call = mock_publish.call_args_list[0]
+                assert first_call[0][1] == EventChannel.SESSIONS
+                event = first_call[0][2]
+                assert event.session_id == "test-session-123"
+                assert event.status == "completed"
+                
+                # Second call: session-specific channel
+                second_call = mock_publish.call_args_list[1]
+                assert second_call[0][1] == "session:test-session-123"
+                event = second_call[0][2]
                 assert event.session_id == "test-session-123"
                 assert event.status == "completed"
 
@@ -139,7 +170,7 @@ class TestPublishSessionFailed:
 
     @pytest.mark.asyncio
     async def test_publishes_session_failed_event(self):
-        """Test that it publishes session.failed event."""
+        """Test that it publishes session.failed event to both channels."""
         mock_session = AsyncMock()
         mock_session_factory = Mock(return_value=mock_session)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -149,10 +180,20 @@ class TestPublishSessionFailed:
             with patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
                 await publish_session_failed("test-session-123")
 
-                mock_publish.assert_called_once()
-                call_args = mock_publish.call_args
-                assert call_args[0][1] == EventChannel.SESSIONS
-                event = call_args[0][2]
+                # Should publish to both 'sessions' and 'session:{session_id}' channels
+                assert mock_publish.call_count == 2
+                
+                # First call: global sessions channel
+                first_call = mock_publish.call_args_list[0]
+                assert first_call[0][1] == EventChannel.SESSIONS
+                event = first_call[0][2]
+                assert event.session_id == "test-session-123"
+                assert event.status == "failed"
+                
+                # Second call: session-specific channel
+                second_call = mock_publish.call_args_list[1]
+                assert second_call[0][1] == "session:test-session-123"
+                event = second_call[0][2]
                 assert event.session_id == "test-session-123"
                 assert event.status == "failed"
 
