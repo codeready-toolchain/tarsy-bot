@@ -157,9 +157,10 @@ class TestEventCleanupServiceCleanup:
             # Verify cutoff time is approximately correct (within last 24 hours)
             call_args = mock_repo.delete_events_before.call_args[0][0]
             assert isinstance(call_args, datetime)
-            assert call_args.tzinfo == timezone.utc
+            # Timezone-naive to match database column (TIMESTAMP WITHOUT TIME ZONE)
+            assert call_args.tzinfo is None
             
-            expected_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+            expected_cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).replace(tzinfo=None)
             time_diff = abs((call_args - expected_cutoff).total_seconds())
             assert time_diff < 5  # Within 5 seconds
 
@@ -197,7 +198,8 @@ class TestEventCleanupServiceCleanup:
 
             # Verify cutoff time uses 48 hours
             call_args = mock_repo.delete_events_before.call_args[0][0]
-            expected_cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+            # Timezone-naive to match database column (TIMESTAMP WITHOUT TIME ZONE)
+            expected_cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).replace(tzinfo=None)
             time_diff = abs((call_args - expected_cutoff).total_seconds())
             assert time_diff < 5  # Within 5 seconds
 

@@ -71,7 +71,8 @@ class TestEventPublisherPublish:
         # Verify NOTIFY was called for PostgreSQL
         mock_event_repo.session.execute.assert_awaited_once()
         notify_sql = str(mock_event_repo.session.execute.call_args[0][0])
-        assert "NOTIFY sessions" in notify_sql
+        # Channel name is quoted to support special characters (e.g., "session:abc-123")
+        assert 'NOTIFY "sessions"' in notify_sql
         assert "session.created" in notify_sql
 
         # Verify commit
