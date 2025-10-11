@@ -57,7 +57,6 @@ class TestHistoryControllerEndpoints:
         now_us_time = now_us()
         session1 = SessionOverview(
             session_id="session-1",
-            alert_id="alert-1",
             alert_type="NamespaceTerminating",
             agent_type="KubernetesAgent", 
             status=AlertSessionStatus.COMPLETED,
@@ -72,7 +71,6 @@ class TestHistoryControllerEndpoints:
         
         session2 = SessionOverview(
             session_id="session-2", 
-            alert_id="alert-2",
             alert_type="HighCPU",
             agent_type="KubernetesAgent",
             status=AlertSessionStatus.IN_PROGRESS,
@@ -243,12 +241,10 @@ class TestHistoryControllerEndpoints:
         mock_sessions = [
             SessionFactory.create_session_overview(
                 session_id="session-1",
-                alert_id="alert-session-1", 
                 status=AlertSessionStatus.COMPLETED
             ),
             SessionFactory.create_session_overview(
                 session_id="session-2",
-                alert_id="alert-session-2",
                 status=AlertSessionStatus.FAILED,
                 llm_interaction_count=0,
                 total_interactions=1
@@ -298,7 +294,6 @@ class TestHistoryControllerEndpoints:
         mock_sessions = [
             SessionFactory.create_session_overview(
                 session_id="session-1",
-                alert_id="alert-session-1",
                 status=AlertSessionStatus.PENDING,
                 completed_at_us=None,  # Still pending
                 llm_interaction_count=0,
@@ -307,7 +302,6 @@ class TestHistoryControllerEndpoints:
             ),
             SessionFactory.create_session_overview(
                 session_id="session-2",
-                alert_id="alert-session-2", 
                 status=AlertSessionStatus.IN_PROGRESS,
                 completed_at_us=None  # Still in progress
             )
@@ -762,7 +756,6 @@ class TestHistoryControllerEndpoints:
         # Create detailed session
         mock_timeline = DetailedSession(
             session_id="test-session-123",
-            alert_id="alert-456",
             alert_type="NamespaceTerminating",
             agent_type="KubernetesAgent",
             status=AlertSessionStatus.COMPLETED,
@@ -1280,7 +1273,6 @@ class TestHistoryControllerResponseFormat:
         
         mock_session = SessionFactory.create_session_overview(
             session_id="test-session",
-            alert_id="test-alert",
             alert_type="TestAlert",
             agent_type="TestAgent",
             llm_interaction_count=0,
@@ -1399,7 +1391,6 @@ class TestHistoryControllerResponseFormat:
         # Create detailed session
         mock_timeline = DetailedSession(
             session_id="test-session",
-            alert_id="test-alert",
             alert_type="TestAlert",
             agent_type="TestAgent",
             status=AlertSessionStatus.COMPLETED,

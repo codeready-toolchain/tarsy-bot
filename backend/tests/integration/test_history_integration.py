@@ -1075,26 +1075,29 @@ class TestDuplicatePreventionIntegration:
         
         assert result is True  # Session creation should succeed
         
-        # Try to bypass application logic and create duplicate directly in database
+        # Try to create duplicate session with the same session_id
         with history_service_with_test_db.get_repository() as repo:
             if repo:
                 from tarsy.models.db_models import AlertSession
                 
-                # Try to create duplicate session directly
+                # Try to create duplicate session with same session_id but different data
                 duplicate_session = AlertSession(
-                    session_id="test-duplicate-session",  # Different session_id
-                    alert_id="constraint_test_alert",  # Same alert_id
+                    session_id="test-session-constraint",  # Same session_id as original
                     alert_data={"different": "data"},
                     agent_type="DifferentAgent",
-                    status="pending"
+                    alert_type="DifferentType",
+                    status="pending",
+                    chain_id="different-chain"
                 )
                 
-                # This should be prevented by our application logic
-                existing_session = repo.create_alert_session(duplicate_session)
+                # Repository should detect duplicate and return existing session
+                result_session = repo.create_alert_session(duplicate_session)
                 
                 # Should return existing session, not create new one
-                assert existing_session is not None
-                assert existing_session.agent_type == "chain:test-integration-chain-constraint"  # Original data preserved
+                assert result_session is not None
+                assert result_session.session_id == "test-session-constraint"
+                assert result_session.agent_type == "chain:test-integration-chain-constraint"  # Original data preserved
+                assert result_session.alert_data != {"different": "data"}  # Original alert_data preserved
     
     def test_alert_id_generation_uniqueness_under_load(self, history_service_with_test_db, sample_alert_data):
         """Test that alert ID generation remains unique under high load."""

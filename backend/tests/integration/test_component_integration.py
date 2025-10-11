@@ -252,6 +252,7 @@ class TestLLMManagerIntegration:
 class TestMCPClientIntegration:
     """Test MCP client component integration."""
 
+    @pytest.mark.asyncio
     async def test_mcp_client_initialization(
         self, 
         mock_settings, 
@@ -266,6 +267,7 @@ class TestMCPClientIntegration:
         assert client._initialized is True
         assert client.mcp_registry == mock_mcp_server_registry
 
+    @pytest.mark.asyncio
     async def test_mcp_client_tool_listing_integration(
         self, 
         mock_settings, 
@@ -292,6 +294,7 @@ class TestMCPClientIntegration:
 class TestServiceInteractionPatterns:
     """Test common interaction patterns between services."""
 
+    @pytest.mark.asyncio
     async def test_chain_registry_factory_integration(
         self, 
         mock_llm_manager, 
@@ -320,6 +323,7 @@ class TestServiceInteractionPatterns:
         assert first_stage.agent == "KubernetesAgent"
         assert isinstance(agent, KubernetesAgent)
 
+    @pytest.mark.asyncio
     async def test_agent_mcp_registry_integration(
         self, 
         mock_llm_manager, 
@@ -343,6 +347,7 @@ class TestServiceInteractionPatterns:
         assert len(server_configs) == 1
         assert server_configs[0].server_id == "kubernetes-server"
 
+    @pytest.mark.asyncio
     async def test_agent_llm_integration(
         self, 
         mock_llm_manager, 
@@ -395,6 +400,7 @@ class TestServiceInteractionPatterns:
 class TestErrorPropagationBetweenComponents:
     """Test error propagation and handling between components."""
 
+    @pytest.mark.asyncio
     async def test_mcp_client_error_to_agent(
         self, 
         mock_llm_manager, 
@@ -437,6 +443,7 @@ class TestErrorPropagationBetweenComponents:
         assert result is not None
         assert result.status in [StageStatus.COMPLETED, StageStatus.FAILED, StageStatus.PARTIAL]
 
+    @pytest.mark.asyncio
     async def test_llm_error_to_agent(
         self, 
         mock_llm_manager, 

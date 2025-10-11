@@ -53,6 +53,7 @@ class TestAlertProcessingE2E:
         assert isinstance(result, str)
         assert "analysis" in result.lower() or "error" in result.lower()
 
+    @pytest.mark.asyncio
     async def test_agent_selection_and_delegation(
         self, 
         alert_service_with_mocks, 
@@ -73,6 +74,7 @@ class TestAlertProcessingE2E:
         else:
             assert isinstance(result, str)
 
+    @pytest.mark.asyncio
     async def test_mcp_tool_integration(
         self, 
         alert_service_with_mocks, 
@@ -92,6 +94,7 @@ class TestAlertProcessingE2E:
         assert result is not None
         assert isinstance(result, str)
 
+    @pytest.mark.asyncio
     async def test_runbook_integration(
         self, 
         alert_service_with_mocks, 
@@ -113,6 +116,7 @@ class TestAlertProcessingE2E:
         assert result is not None
         assert isinstance(result, str)
 
+    @pytest.mark.asyncio
     async def test_llm_interactions(
         self,
         alert_service_with_mocks,
@@ -134,6 +138,7 @@ class TestAlertProcessingE2E:
         assert result is not None
         assert isinstance(result, str)
 
+    @pytest.mark.asyncio
     async def test_progress_tracking(
         self, 
         alert_service_with_mocks, 
@@ -150,6 +155,7 @@ class TestAlertProcessingE2E:
         assert result is not None
         assert isinstance(result, str)
 
+    @pytest.mark.asyncio
     async def test_iterative_analysis_flow(
         self, 
         alert_service_with_mocks, 
@@ -176,6 +182,7 @@ class TestAlertProcessingE2E:
 class TestErrorHandlingScenarios:
     """Test various error handling scenarios in alert processing."""
 
+    @pytest.mark.asyncio
     async def test_unknown_alert_type_error(
         self,
         alert_service
@@ -209,6 +216,7 @@ class TestErrorHandlingScenarios:
         assert "no chain found" in result.lower() or "unknown alert type" in result.lower()
         assert "Unknown Alert Type" in result
 
+    @pytest.mark.asyncio
     async def test_llm_unavailable_error(
         self,
         alert_service,
@@ -228,6 +236,7 @@ class TestErrorHandlingScenarios:
         assert "error" in result.lower() or "Error" in result
         assert "llm" in result.lower()
 
+    @pytest.mark.asyncio
     async def test_agent_creation_error(
         self,
         alert_service,
@@ -247,6 +256,7 @@ class TestErrorHandlingScenarios:
         # Verify error message contains processing failure info (updated for chain architecture)  
         assert "chain processing fail" in result.lower() or "agent creation" in result.lower()
 
+    @pytest.mark.asyncio
     async def test_runbook_download_error(
         self,
         alert_service,
@@ -266,6 +276,7 @@ class TestErrorHandlingScenarios:
         assert result is not None
         assert "error" in result.lower() or "Error" in result
 
+    @pytest.mark.asyncio
     async def test_mcp_tool_execution_error(
         self,
         alert_service,
@@ -286,6 +297,7 @@ class TestErrorHandlingScenarios:
         # May contain error information but should not be completely empty
         assert len(result) > 50
 
+    @pytest.mark.asyncio
     async def test_llm_response_parsing_error(
         self,
         alert_service,
@@ -311,6 +323,7 @@ class TestErrorHandlingScenarios:
 class TestAgentSpecialization:
     """Test agent-specific behavior and specialization."""
 
+    @pytest.mark.asyncio
     async def test_kubernetes_agent_mcp_server_assignment(
         self,
         alert_service,
@@ -330,6 +343,7 @@ class TestAgentSpecialization:
             if server_name:
                 assert server_name == "kubernetes-server"
 
+    @pytest.mark.asyncio
     async def test_kubernetes_agent_tool_selection(
         self,
         alert_service,
@@ -350,6 +364,7 @@ class TestAgentSpecialization:
         kubernetes_tools = ["kubectl_get_namespace", "kubectl_get_pods", "kubectl_describe"]
         assert any(tool in called_tools for tool in kubernetes_tools)
 
+    @pytest.mark.asyncio
     async def test_agent_instruction_composition(
         self,
         alert_service,
@@ -384,6 +399,7 @@ class TestAgentSpecialization:
 class TestConcurrencyAndPerformance:
     """Test concurrent processing and performance characteristics."""
 
+    @pytest.mark.asyncio
     async def test_concurrent_alert_processing(
         self,
         alert_service,
@@ -417,6 +433,7 @@ class TestConcurrencyAndPerformance:
             assert result is not None
             assert len(result) > 100  # Should have substantial content
 
+    @pytest.mark.asyncio
     async def test_processing_timeout_resilience(
         self,
         alert_service,
@@ -453,6 +470,7 @@ class TestConcurrencyAndPerformance:
 class TestDataFlowValidation:
     """Test data flow and validation throughout the processing pipeline."""
 
+    @pytest.mark.asyncio
     async def test_alert_data_preservation(
         self,
         alert_service,
@@ -470,6 +488,7 @@ class TestDataFlowValidation:
         # Severity is included in the header (mock uses default 'warning', not from alert)
         assert "Severity:" in result or "severity" in result.lower()
 
+    @pytest.mark.asyncio
     async def test_mcp_data_integration(
         self,
         alert_service,
@@ -491,6 +510,7 @@ class TestDataFlowValidation:
         # (exact format depends on LLM response, but should be non-trivial)
         assert len(result) > 200  # Should be substantial analysis using MCP data
 
+    @pytest.mark.asyncio
     async def test_result_format_consistency(
         self,
         alert_service,

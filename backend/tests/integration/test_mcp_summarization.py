@@ -18,6 +18,7 @@ from tarsy.utils.token_counter import TokenCounter
 class TestSummarizationConfiguration:
     """Test summarization configuration loading and validation."""
     
+    @pytest.mark.asyncio
     async def test_configuration_loading_from_yaml(self, mock_settings):
         """Test that summarization configuration is properly loaded from YAML."""
         # Arrange - Mock configuration data that would come from YAML
@@ -61,6 +62,7 @@ class TestSummarizationConfiguration:
         assert filesystem_config is not None
         assert filesystem_config.summarization.enabled is False
     
+    @pytest.mark.asyncio
     async def test_default_summarization_configuration(self, mock_settings):
         """Test default summarization configuration when not explicitly specified."""
         # Arrange - Configuration without explicit summarization settings
@@ -187,6 +189,7 @@ class TestMCPSummarizerComponent:
         
         return builder
     
+    @pytest.mark.asyncio
     async def test_summarizer_conversation_context_extraction(self, mock_llm_client, mock_prompt_builder):
         """Test that summarizer extracts domain knowledge from investigation context.""" 
         # Arrange
@@ -215,6 +218,7 @@ DOMAIN KNOWLEDGE:
         assert "Production cluster with critical services" in context
         # Note: ReAct filtering implementation may vary - focus on domain knowledge extraction
     
+    @pytest.mark.asyncio
     async def test_summarizer_max_tokens_enforcement(self, mock_llm_client, mock_prompt_builder):
         """Test that summarizer properly passes max_tokens to LLM client."""
         # Arrange

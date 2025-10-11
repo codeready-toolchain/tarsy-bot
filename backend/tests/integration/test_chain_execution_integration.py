@@ -79,6 +79,7 @@ class TestMultiStageChainExecution:
             'AnalysisAgent': analysis_agent
         }
     
+    @pytest.mark.asyncio
     async def test_multi_stage_data_flow_integration(self, simple_two_stage_chain, mock_agents_with_data_flow):
         """Test that data flows correctly between stages in a multi-stage chain."""
         # This is a focused integration test that simulates the core chain execution logic
@@ -146,6 +147,7 @@ class TestMultiStageChainExecution:
         assert "analysis" in chain_context.stage_outputs
         assert len(chain_context.stage_outputs) == 2
     
+    @pytest.mark.asyncio
     async def test_stage_isolation_and_progression(self, simple_two_stage_chain, mock_agents_with_data_flow):
         """Test that stages are isolated but can access previous stage data."""
         from tarsy.models.alert import ProcessingAlert
@@ -206,6 +208,7 @@ class TestMultiStageChainExecution:
 class TestChainExecutionErrorHandling:
     """Integration tests for chain execution error scenarios."""
     
+    @pytest.mark.asyncio
     async def test_chain_partial_execution_on_stage_failure(self):
         """Test that chain execution handles stage failures gracefully."""
         # Create chain with 2 stages where second stage will fail

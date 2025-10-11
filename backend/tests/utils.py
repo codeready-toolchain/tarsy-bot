@@ -9,19 +9,17 @@ FACTORY SYSTEM OVERVIEW
 This module contains specialized factory classes for creating consistent test data:
 
 1. AlertFactory - Alert objects and processing data
-2. SessionFactory - Session data for history tests
-3. ChainFactory - Chain configurations for registry tests
-4. AgentFactory - Agent mappings for registry tests
+2. SessionFactory - Session data for history tests (includes type-safe models)
+3. StageExecutionFactory - Stage execution data for chain tests
+4. ChainFactory - Chain configurations for registry tests
 5. MockFactory - Common mock objects and dependencies (includes type-safe history service mocks)
-6. MCPServerFactory - MCP server configurations
-7. DashboardFactory - Dashboard interaction data
-8. AgentFactoryFactory - Agent factory test dependencies
-9. RunbookFactory - Runbook service test data
-10. DataMaskingFactory - Data masking service test data
-11. DashboardConnectionFactory - WebSocket and connection test data
+6. ModelValidationTester - Utility for testing model validation
+7. AgentFactory - Agent mappings for registry tests
+8. MCPServerFactory - MCP server configurations
+9. AgentServiceFactory - Agent factory test dependencies
+10. RunbookFactory - Runbook service test data
+11. DataMaskingFactory - Data masking service test data
 12. MCPServerMaskingFactory - MCP server masking and template configurations
-13. SessionFactory: Added create_session_overview(), create_detailed_session(), create_paginated_sessions(), create_session_stats()
-14. MockFactory: Added create_mock_history_service() for comprehensive type-safe history service mocking
 
 WHEN TO USE FACTORIES
 ====================
@@ -69,55 +67,14 @@ Best practices:
 """
 
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 
 import pytest
-from fastapi import WebSocket
 from pydantic import ValidationError
 
 from tarsy.models.alert import Alert
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.utils.timestamp import now_us
-
-
-class TestUtils:
-    """Utility class for common test operations."""
-    
-    @staticmethod
-    def assert_response_structure(response, expected_fields: List[str]):
-        """Assert response has expected structure."""
-        data = response.json()
-        for field in expected_fields:
-            assert field in data, f"Missing field: {field}"
-    
-    @staticmethod
-    def create_mock_websocket():
-        """Create a mock WebSocket for testing."""
-        websocket = AsyncMock(spec=WebSocket)
-        websocket.receive_text = AsyncMock()
-        websocket.send_text = AsyncMock()
-        websocket.accept = AsyncMock()  # Added for dashboard connection compatibility
-        return websocket
-    
-    @staticmethod
-    def assert_validation_error(model_class, invalid_data: Dict[str, Any], expected_errors: List[str]):
-        """Assert that model validation fails with expected errors."""
-        with pytest.raises(ValidationError) as exc_info:
-            model_class(**invalid_data)
-        
-        errors = exc_info.value.errors()
-        error_messages = [error["msg"] for error in errors]
-        
-        for expected_error in expected_errors:
-            assert any(expected_error in msg for msg in error_messages), \
-                f"Expected error '{expected_error}' not found in {error_messages}"
-    
-    @staticmethod
-    def assert_model_serialization(model_instance, expected_fields: List[str]):
-        """Assert model can be serialized and contains expected fields."""
-        model_dict = model_instance.dict()
-        for field in expected_fields:
-            assert field in model_dict, f"Missing field in serialization: {field}"
 
 
 class AlertFactory:
@@ -210,9 +167,6 @@ class AlertFactory:
         return Alert(**base_data)
 
 
-# AlertProcessingDataFactory removed - use AlertFactory instead for better consistency
-
-
 class SessionFactory:
     """
     Factory for creating test session data.
@@ -248,7 +202,6 @@ class SessionFactory:
         
         base_data = {
             "session_id": "test-session-123",
-            "alert_id": "test-alert-456",
             "alert_data": {"alert_type": "kubernetes", "environment": "production"},
             "agent_type": "KubernetesAgent",
             "alert_type": "kubernetes",
@@ -302,7 +255,6 @@ class SessionFactory:
         
         base_data = {
             "session_id": "api-session-1",
-            "alert_id": "api-alert-1", 
             "alert_type": "NamespaceTerminating",
             "agent_type": "KubernetesAgent",
             "status": AlertSessionStatus.COMPLETED,
@@ -425,7 +377,6 @@ class SessionFactory:
         
         base_data = {
             "session_id": "api-session-1",
-            "alert_id": "api-alert-1",
             "alert_type": "NamespaceTerminating", 
             "agent_type": "KubernetesAgent",
             "status": AlertSessionStatus.COMPLETED,
@@ -896,7 +847,6 @@ class MockFactory:
         
         base_data = {
             "session_id": session_id,
-            "alert_id": f"alert-{session_id}",
             "alert_type": "TestAlert",
             "agent_type": "TestAgent",
             "status": AlertSessionStatus.COMPLETED,
@@ -956,7 +906,6 @@ class MockFactory:
         
         base_data = {
             "session_id": session_id,
-            "alert_id": f"alert-{session_id}",
             "alert_type": "TestAlert",
             "agent_type": "TestAgent",
             "status": AlertSessionStatus.COMPLETED,
@@ -1124,10 +1073,6 @@ class ModelValidationTester:
             with pytest.raises(ValidationError):
                 model_class(**{enum_field: invalid_value})
 
-
-# AsyncTestUtils removed - simple async testing doesn't need a specialized factory
-
-
 class AgentFactory:
     """Factory for creating test agent configurations."""
     
@@ -1265,97 +1210,6 @@ class MCPServerFactory:
         }
         base_data.update(overrides)
         return base_data
-
-
-class DashboardFactory:
-    """Factory for creating test dashboard data."""
-    
-    @staticmethod
-    def create_session_summary(**overrides):
-        """Create a SessionSummary with sensible defaults."""
-        from datetime import datetime
-
-        from tarsy.services.dashboard_update_service import SessionSummary
-        
-        base_data = {
-            "session_id": "test-session-123",
-            "status": "active",
-            "start_time": datetime.now(),
-            "llm_interactions": 0,
-            "mcp_communications": 0,
-            "agent_type": "KubernetesAgent",
-            "last_activity": datetime.now(),
-            "errors_count": 0
-        }
-        base_data.update(overrides)
-        return SessionSummary(**base_data)
-    
-    @staticmethod
-    def create_llm_interaction_data(**overrides):
-        """Create LLM interaction data with sensible defaults."""
-        from datetime import datetime
-        
-        base_data = {
-            'interaction_type': 'llm',
-            'session_id': 'test-session-123',
-            'step_description': 'LLM analysis using gpt-4',
-            'model_used': 'gpt-4',
-            'success': True,
-            'duration_ms': 1500,
-            'timestamp': datetime.now().isoformat(),
-            'has_tools': False,  # TODO: Derive from conversation if needed
-            'error_message': None
-        }
-        base_data.update(overrides)
-        return base_data
-    
-    @staticmethod
-    def create_mcp_interaction_data(**overrides):
-        """Create MCP interaction data with sensible defaults."""
-        from datetime import datetime
-        
-        base_data = {
-            'interaction_type': 'mcp',
-            'session_id': 'test-session-123',
-            'server_id': 'kubernetes-server',
-            'step_description': 'MCP communication with Kubernetes server',
-            'success': True,
-            'duration_ms': 800,
-            'timestamp': datetime.now().isoformat(),
-            'error_message': None
-        }
-        base_data.update(overrides)
-        return base_data
-    
-    @staticmethod
-    def create_error_interaction_data(**overrides):
-        """Create error interaction data with sensible defaults."""
-        from datetime import datetime
-        
-        base_data = {
-            'interaction_type': 'llm',
-            'session_id': 'test-session-123',
-            'step_description': 'LLM analysis failed',
-            'model_used': 'gpt-4',
-            'success': False,
-            'duration_ms': 500,
-            'timestamp': datetime.now().isoformat(),
-            'has_tools': False,  # TODO: Derive from conversation if needed
-            'error_message': 'Connection timeout to LLM service'
-        }
-        base_data.update(overrides)
-        return base_data
-    
-    @staticmethod
-    def create_mock_broadcaster():
-        """Create a mock broadcaster with sensible defaults."""
-        from unittest.mock import AsyncMock
-        
-        broadcaster = AsyncMock()
-        broadcaster.broadcast_dashboard_update = AsyncMock(return_value=3)
-        broadcaster.broadcast_session_update = AsyncMock(return_value=2)
-        broadcaster.broadcast_system_health = AsyncMock(return_value=1)
-        return broadcaster
 
 
 class AgentServiceFactory:
@@ -1612,63 +1466,6 @@ metadata:
             "kubernetes": ["kubernetes_data_section", "kubernetes_stringdata_json"],
             "unknown_group": ["unknown_pattern"]
         }
-
-
-class DashboardConnectionFactory:
-    """Factory for creating test dashboard connection manager data and configurations."""
-    
-    # Note: Use TestUtils.create_mock_websocket() instead for WebSocket mocks
-    
-    @staticmethod
-    def create_test_message(**overrides):
-        """Create a test message for WebSocket communication."""
-        from datetime import datetime
-        
-        base_data = {
-            "type": "test",
-            "data": "hello",
-            "timestamp": datetime(2023, 1, 1, 12, 0, 0)
-        }
-        base_data.update(overrides)
-        return base_data
-    
-    @staticmethod
-    def create_subscription_data(**overrides):
-        """Create subscription data for testing."""
-        from tarsy.models.websocket_models import ChannelType
-        
-        base_data = {
-            "user_id": "test_user",
-            "channel": ChannelType.DASHBOARD_UPDATES,
-            "subscriptions": {"dashboard_updates", "session_123"}
-        }
-        base_data.update(overrides)
-        return base_data
-    
-    @staticmethod
-    def create_connection_data(**overrides):
-        """Create connection data for testing."""
-        base_data = {
-            "user_id": "test_user",
-            "is_active": True,
-            "has_subscriptions": True
-        }
-        base_data.update(overrides)
-        return base_data
-    
-    @staticmethod
-    def create_channel_subscribers(**overrides):
-        """Create channel subscribers data for testing."""
-        from tarsy.models.websocket_models import ChannelType
-        
-        base_data = {
-            ChannelType.DASHBOARD_UPDATES: {"user1", "user2", "user3"},
-            ChannelType.SYSTEM_HEALTH: {"user1"},
-            "session_123": {"user2"}
-        }
-        base_data.update(overrides)
-        return base_data
-
 
 class MCPServerMaskingFactory:
     """

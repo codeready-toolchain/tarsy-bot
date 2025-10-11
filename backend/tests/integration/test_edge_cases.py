@@ -55,6 +55,7 @@ class TestEdgeCases:
         assert isinstance(result, str)
         assert len(result) > 0
 
+    @pytest.mark.asyncio
     async def test_special_characters_in_alert_data(
         self,
         alert_service_with_mocks
@@ -92,6 +93,7 @@ class TestEdgeCases:
         assert isinstance(result, str)
         assert len(result) > 0
 
+    @pytest.mark.asyncio
     async def test_empty_optional_fields(self, alert_service_with_mocks):
         """Test processing alerts with minimal data."""
         alert_service, _ = alert_service_with_mocks
@@ -116,6 +118,7 @@ class TestEdgeCases:
         assert isinstance(result, str)
         assert len(result) > 0
 
+    @pytest.mark.asyncio
     async def test_very_old_timestamp(self, alert_service_with_mocks):
         """Test processing alerts with very old timestamps."""
         alert_service, _ = alert_service_with_mocks
@@ -148,6 +151,7 @@ class TestEdgeCases:
         assert isinstance(result, str)
         assert len(result) > 0
 
+    @pytest.mark.asyncio
     async def test_malformed_runbook_url(self, alert_service_with_mocks):
         """Test processing alerts with malformed runbook URLs."""
         alert_service, _ = alert_service_with_mocks
@@ -179,6 +183,7 @@ class TestEdgeCases:
         assert isinstance(result, str)
         assert len(result) > 0
 
+    @pytest.mark.asyncio
     async def test_extremely_rapid_successive_processing(
         self,
         alert_service,
@@ -201,6 +206,7 @@ class TestEdgeCases:
         successful_results = [r for r in results if isinstance(r, str) and len(r) > 50]
         assert len(successful_results) >= num_requests // 2  # At least half should succeed
 
+    @pytest.mark.asyncio
     async def test_processing_with_none_callback(
         self,
         alert_service,
@@ -222,6 +228,7 @@ class TestEdgeCases:
 class TestStressScenarios:
     """Test system behavior under stress."""
 
+    @pytest.mark.asyncio
     async def test_high_concurrency_different_alerts(
         self,
         alert_service
@@ -259,6 +266,7 @@ class TestStressScenarios:
         assert len(successful_results) >= 8  # At least 80% success rate
         assert duration < 30  # Should complete within reasonable time
 
+    @pytest.mark.asyncio
     async def test_rapid_fire_same_alert(
         self,
         alert_service,
@@ -289,6 +297,7 @@ class TestStressScenarios:
         assert len(successful_results) >= num_iterations * 0.7  # At least 70% success rate
         assert duration < 60  # Should complete within 1 minute
 
+    @pytest.mark.asyncio
     async def test_resource_exhaustion_simulation(
         self,
         alert_service,
@@ -310,6 +319,7 @@ class TestStressScenarios:
         assert isinstance(result, str)
         assert "error" in result.lower() or "fail" in result.lower()
 
+    @pytest.mark.asyncio
     async def test_memory_intensive_processing(
         self,
         alert_service,
@@ -351,6 +361,7 @@ class TestStressScenarios:
 class TestBoundaryConditions:
     """Test boundary conditions and limits."""
 
+    @pytest.mark.asyncio
     async def test_maximum_iterations_reached(
         self,
         alert_service,
@@ -393,6 +404,7 @@ class TestBoundaryConditions:
         assert result is not None
         assert "Analysis" in result
 
+    @pytest.mark.asyncio
     async def test_empty_mcp_tool_response(
         self,
         alert_service,
@@ -412,6 +424,7 @@ class TestBoundaryConditions:
         assert result is not None
         assert len(result) > 50
 
+    @pytest.mark.asyncio
     async def test_malformed_json_from_llm(
         self,
         alert_service,
@@ -443,6 +456,7 @@ class TestBoundaryConditions:
         # Should eventually get to fallback analysis
         assert "Analysis" in result or len(result) > 50
 
+    @pytest.mark.asyncio
     async def test_unicode_and_encoding_edge_cases(
         self,
         alert_service,
@@ -475,6 +489,7 @@ class TestBoundaryConditions:
         # Should preserve some Unicode content
         assert "测试" in result or "namespace" in result
 
+    @pytest.mark.asyncio
     async def test_very_slow_external_dependencies(
         self,
         alert_service,
