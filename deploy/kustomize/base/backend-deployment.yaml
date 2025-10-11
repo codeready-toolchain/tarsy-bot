@@ -26,6 +26,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            # Set HOME to writable directory for npm/node (non-root user fix)
+            # This ensures npm cache, logs, and other files go to a writable location
+            - name: HOME
+              value: /app/data
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:

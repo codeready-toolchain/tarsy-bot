@@ -221,7 +221,23 @@ class LLMClient:
                     ctx.interaction.total_tokens = total_tokens if total_tokens > 0 else None
                 
                 # Extract response content
-                response_content = response.content if hasattr(response, 'content') else str(response)
+                # Handle both string and list content (LangChain returns list for some providers)
+                raw_content = response.content if hasattr(response, 'content') else str(response)
+                if isinstance(raw_content, list):
+                    # Content is a list of blocks - extract text from each block
+                    response_content = ""
+                    for block in raw_content:
+                        if isinstance(block, str):
+                            response_content += block
+                        elif isinstance(block, dict) and 'text' in block:
+                            response_content += block['text']
+                        elif hasattr(block, 'text'):
+                            response_content += block.text
+                        else:
+                            # Fallback: convert to string
+                            response_content += str(block)
+                else:
+                    response_content = raw_content
                 
                 # Add assistant response to conversation
                 conversation.append_assistant_message(response_content)

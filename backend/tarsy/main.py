@@ -306,7 +306,7 @@ async def health_check(response: Response) -> Dict[str, Any]:
             }
         }
         
-        # Check system warnings
+        # Check system warnings (non-critical issues like MCP initialization failures)
         from tarsy.services.system_warnings_service import get_warnings_service
         warnings_service = get_warnings_service()
         warnings = warnings_service.get_warnings()
@@ -321,16 +321,15 @@ async def health_check(response: Response) -> Dict[str, Any]:
                 for w in warnings
             ]
             health_status["warning_count"] = len(warnings)
-            
-            # Warnings indicate degraded state
-            if health_status["status"] == "healthy":
-                health_status["status"] = "degraded"
+            # Note: Warnings (like MCP failures) don't mark service as degraded
+            # The service can still function without all MCP servers
         else:
             health_status["warnings"] = []
             health_status["warning_count"] = 0
         
-        # Return HTTP 503 for degraded/unhealthy status
-        # This tells Kubernetes probes the pod is not ready
+        # Return HTTP 503 only for critical system failures (database, event system)
+        # NOT for warnings like MCP initialization failures
+        # This allows the pod to be marked ready even if some MCP servers fail
         if health_status["status"] in ("degraded", "unhealthy"):
             response.status_code = 503
         

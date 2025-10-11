@@ -170,18 +170,16 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 			exit 1; \
 		fi; \
 	fi
-	@if [ ! -f deploy/kustomize/base/config/oauth2-proxy-container.cfg ]; then \
-		if [ -f config/oauth2-proxy-container.cfg ]; then \
-			echo -e "$(YELLOW)📋 Copying oauth2-proxy-container.cfg to deployment location...$(NC)"; \
-			cp config/oauth2-proxy-container.cfg deploy/kustomize/base/config/; \
-		elif [ -f config/oauth2-proxy-container.cfg.example ]; then \
-			echo -e "$(YELLOW)📋 Creating oauth2-proxy-container.cfg from example in deployment location...$(NC)"; \
-			cp config/oauth2-proxy-container.cfg.example deploy/kustomize/base/config/oauth2-proxy-container.cfg; \
-			echo -e "$(YELLOW)📝 Please customize deploy/kustomize/base/config/oauth2-proxy-container.cfg for your needs$(NC)"; \
-		else \
-			echo -e "$(RED)❌ Error: No oauth2-proxy-container.cfg or oauth2-proxy-container.cfg.example found$(NC)"; \
-			exit 1; \
-		fi; \
+	@if [ -f config/oauth2-proxy-container.cfg ]; then \
+		echo -e "$(YELLOW)📋 Copying oauth2-proxy-container.cfg to deployment location...$(NC)"; \
+		cp config/oauth2-proxy-container.cfg deploy/kustomize/base/config/; \
+	elif [ -f config/oauth2-proxy-container.cfg.example ]; then \
+		echo -e "$(YELLOW)📋 Creating oauth2-proxy-container.cfg from example in deployment location...$(NC)"; \
+		cp config/oauth2-proxy-container.cfg.example deploy/kustomize/base/config/oauth2-proxy-container.cfg; \
+		echo -e "$(YELLOW)📝 Please customize deploy/kustomize/base/config/oauth2-proxy-container.cfg for your needs$(NC)"; \
+	else \
+		echo -e "$(RED)❌ Error: No oauth2-proxy-container.cfg or oauth2-proxy-container.cfg.example found$(NC)"; \
+		exit 1; \
 	fi
 	@echo -e "$(BLUE)Syncing config files to overlay directory...$(NC)"
 	@mkdir -p deploy/kustomize/overlays/development/templates
@@ -217,7 +215,10 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 .PHONY: openshift-deploy
 openshift-deploy: openshift-create-secrets openshift-push-all openshift-check-config-files ## Complete deployment: secrets, images, and manifests
 	@echo -e "$(GREEN)Deploying application to OpenShift...$(NC)"
+	@echo -e "$(BLUE)Replacing {{ROUTE_HOST}} with $(ROUTE_HOST)...$(NC)"
+	@sed -i.bak 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/base/routes.yaml
 	@oc apply -k deploy/kustomize/overlays/development/
+	@mv deploy/kustomize/base/routes.yaml.bak deploy/kustomize/base/routes.yaml
 	@echo -e "$(GREEN)✅ Deployed to OpenShift namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
 	@echo -e "$(BLUE)Check status with: make openshift-status$(NC)"
 
