@@ -278,6 +278,140 @@ class TestLLMClientResponseGeneration:
             mock_context.assert_called_once()
     
     @pytest.mark.asyncio
+    async def test_generate_response_with_list_content(self, mock_llm_client):
+        """Test response generation when LLM returns content as list of blocks."""
+        # Mock response with list content (as some LangChain providers do)
+        mock_response = Mock()
+        mock_response.content = ["First part", " Second part", " Third part"]
+        mock_llm_client.ainvoke.return_value = mock_response
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", create_test_config(api_key="test"))
+            client.llm_client = mock_llm_client
+            client.available = True
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test question")
+            ])
+            
+            with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+                mock_ctx = AsyncMock()
+                mock_ctx.get_request_id.return_value = "req-123"
+                mock_context.return_value.__aenter__.return_value = mock_ctx
+                
+                result = await client.generate_response(conversation, "test-session-123")
+                
+                # Should concatenate list items into a single string
+                assert isinstance(result, LLMConversation)
+                assert len(result.messages) == 3
+                assert result.messages[2].content == "First part Second part Third part"
+    
+    @pytest.mark.asyncio
+    async def test_generate_response_with_dict_blocks(self, mock_llm_client):
+        """Test response generation when LLM returns list of dict blocks with 'text' keys."""
+        mock_response = Mock()
+        mock_response.content = [
+            {"type": "text", "text": "Block 1"},
+            {"type": "text", "text": " Block 2"}
+        ]
+        mock_llm_client.ainvoke.return_value = mock_response
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", create_test_config(api_key="test"))
+            client.llm_client = mock_llm_client
+            client.available = True
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test")
+            ])
+            
+            with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+                mock_ctx = AsyncMock()
+                mock_ctx.get_request_id.return_value = "req-124"
+                mock_context.return_value.__aenter__.return_value = mock_ctx
+                
+                result = await client.generate_response(conversation, "test-session")
+                
+                # Should extract text from dict blocks
+                assert result.messages[-1].content == "Block 1 Block 2"
+    
+    @pytest.mark.asyncio
+    async def test_generate_response_with_object_blocks(self, mock_llm_client):
+        """Test response generation when LLM returns list of objects with .text attribute."""
+        mock_response = Mock()
+        
+        # Create mock objects with .text attribute
+        block1 = Mock()
+        block1.text = "Object text 1"
+        block2 = Mock()
+        block2.text = " Object text 2"
+        
+        mock_response.content = [block1, block2]
+        mock_llm_client.ainvoke.return_value = mock_response
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", create_test_config(api_key="test"))
+            client.llm_client = mock_llm_client
+            client.available = True
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test")
+            ])
+            
+            with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+                mock_ctx = AsyncMock()
+                mock_ctx.get_request_id.return_value = "req-125"
+                mock_context.return_value.__aenter__.return_value = mock_ctx
+                
+                result = await client.generate_response(conversation, "test-session")
+                
+                # Should extract text from object attributes
+                assert result.messages[-1].content == "Object text 1 Object text 2"
+    
+    @pytest.mark.asyncio
+    async def test_generate_response_with_mixed_list_content(self, mock_llm_client):
+        """Test response generation with mixed content types in list."""
+        mock_response = Mock()
+        
+        block_with_text = Mock()
+        block_with_text.text = " with text attr"
+        
+        mock_response.content = [
+            "String block",
+            {"text": " dict block"},
+            block_with_text,
+            {"other": "fallback"}  # Should fallback to str()
+        ]
+        mock_llm_client.ainvoke.return_value = mock_response
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", create_test_config(api_key="test"))
+            client.llm_client = mock_llm_client
+            client.available = True
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test")
+            ])
+            
+            with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+                mock_ctx = AsyncMock()
+                mock_ctx.get_request_id.return_value = "req-126"
+                mock_context.return_value.__aenter__.return_value = mock_ctx
+                
+                result = await client.generate_response(conversation, "test-session")
+                
+                # Should handle all block types
+                content = result.messages[-1].content
+                assert "String block" in content
+                assert "dict block" in content
+                assert "with text attr" in content
+                assert "{'other': 'fallback'}" in content  # Fallback str() conversion
+    
+    @pytest.mark.asyncio
     async def test_generate_response_client_unavailable(self, client):
         """Test response generation when client is unavailable."""
         client.available = False

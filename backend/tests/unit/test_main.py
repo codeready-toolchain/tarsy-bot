@@ -406,11 +406,11 @@ class TestMainEndpoints:
             mock_get_event_system.return_value = mock_event_system
             
             response = client.get("/health")
-            assert response.status_code == 503  # Degraded status returns 503
+            assert response.status_code == 200  # Warnings don't cause 503 - service is still healthy
             data = response.json()
 
-        # Status should be degraded due to warnings
-        assert data["status"] == "degraded"
+        # Status should remain healthy despite warnings (warnings are non-critical)
+        assert data["status"] == "healthy"
 
         # Verify warnings are present
         assert "warnings" in data
