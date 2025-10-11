@@ -12,10 +12,20 @@ def setup_logging(log_level: str = "INFO") -> None:
     
     Args:
         log_level: The log level to use (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        
+    Raises:
+        ValueError: If log_level is not a valid logging level name
     """
+    # Validate and convert log level to numeric value
+    log_level_upper = log_level.upper()
+    if log_level_upper not in logging._nameToLevel:
+        raise ValueError(f"Invalid log level: {log_level}")
+    
+    numeric_level = logging._nameToLevel[log_level_upper]
+    
     # Root logger configuration
     logging.basicConfig(
-        level=log_level.upper(),
+        level=numeric_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
         handlers=[
@@ -25,7 +35,7 @@ def setup_logging(log_level: str = "INFO") -> None:
     )
     
     # Set levels for specific loggers to match root level
-    logging.getLogger('tarsy').setLevel(log_level.upper())
+    logging.getLogger('tarsy').setLevel(numeric_level)
     logging.getLogger('uvicorn').setLevel(logging.INFO)
     
     # Remove any file handlers if present (cleanup from previous configuration)
