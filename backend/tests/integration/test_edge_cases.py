@@ -6,9 +6,7 @@ including malformed data, resource constraints, and boundary conditions.
 """
 
 import asyncio
-import uuid
 from datetime import datetime
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -25,7 +23,6 @@ class TestEdgeCases:
     async def test_very_long_alert_message(self, alert_service_with_mocks):
         """Test processing alerts with very long messages."""
         alert_service, _ = alert_service_with_mocks
-        progress_callback_mock = AsyncMock()
         
         # Create alert with very long message (>5000 characters)
         very_long_message = "A" * 5000 + " This is a test alert with an extremely long message that could potentially cause issues."
@@ -46,10 +43,6 @@ class TestEdgeCases:
         # Convert to API format for processing
         chain_context = alert_to_api_format(long_alert)
         
-        # Generate alert_id for new AlertService API
-        import uuid
-        alert_id = str(uuid.uuid4())
-        
         result = await alert_service.process_alert(chain_context)
         
         assert isinstance(result, str)
@@ -62,7 +55,6 @@ class TestEdgeCases:
     ):
         """Test processing alerts with special characters and unicode."""
         alert_service, _ = alert_service_with_mocks
-        progress_callback_mock = AsyncMock()
         
         # Create alert with special characters including unicode, newlines, quotes
         special_message = """Alert with special chars: ñáéíóú 中文 🚨 
@@ -84,10 +76,6 @@ class TestEdgeCases:
         # Convert to ChainContext for new interface  
         chain_context = alert_to_api_format(special_alert)
         
-        # Generate alert_id for new AlertService API
-        import uuid
-        alert_id = str(uuid.uuid4())
-        
         result = await alert_service.process_alert(chain_context)
         
         assert isinstance(result, str)
@@ -97,7 +85,6 @@ class TestEdgeCases:
     async def test_empty_optional_fields(self, alert_service_with_mocks):
         """Test processing alerts with minimal data."""
         alert_service, _ = alert_service_with_mocks
-        progress_callback_mock = AsyncMock()
         
         # Create minimal alert
         minimal_alert = Alert(
@@ -108,10 +95,6 @@ class TestEdgeCases:
         
         # Convert to ChainContext for new interface
         chain_context = alert_to_api_format(minimal_alert)
-        
-        # Generate alert_id for new AlertService API
-        import uuid
-        alert_id = str(uuid.uuid4())
         
         result = await alert_service.process_alert(chain_context)
         
@@ -142,10 +125,6 @@ class TestEdgeCases:
         # Convert to ChainContext for new interface
         chain_context = alert_to_api_format(old_alert)
         
-        # Generate alert_id for new AlertService API
-        import uuid
-        alert_id = str(uuid.uuid4())
-        
         result = await alert_service.process_alert(chain_context)
         
         assert isinstance(result, str)
@@ -173,10 +152,6 @@ class TestEdgeCases:
         # Convert to ChainContext for new interface
         chain_context = alert_to_api_format(malformed_alert)
         
-        # Generate alert_id for new AlertService API
-        import uuid
-        alert_id = str(uuid.uuid4())
-        
         result = await alert_service.process_alert(chain_context)
         
         # Should handle the malformed URL gracefully (likely return an error response)
@@ -197,7 +172,6 @@ class TestEdgeCases:
         tasks = []
         for _ in range(num_requests):
             chain_context = alert_to_api_format(sample_alert)
-            alert_id = f"test-alert-{uuid.uuid4()}"
             tasks.append(alert_service.process_alert(chain_context))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -215,7 +189,6 @@ class TestEdgeCases:
         """Test processing with None progress callback."""
         # Act - Process with no callback
         chain_context = alert_to_api_format(sample_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await alert_service.process_alert(chain_context)
         
         # Assert - Should work without callback
@@ -255,7 +228,6 @@ class TestStressScenarios:
         tasks = []
         for alert in alerts:
             chain_context = alert_to_api_format(alert)
-            alert_id = f"test-alert-{uuid.uuid4()}"
             tasks.append(alert_service.process_alert(chain_context))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         duration = (datetime.now() - start_time).total_seconds()
@@ -285,7 +257,6 @@ class TestStressScenarios:
             if i > 0:
                 await asyncio.sleep(0.01)
             chain_context = alert_to_api_format(sample_alert)
-            alert_id = f"test-alert-{uuid.uuid4()}"
             tasks.append(alert_service.process_alert(chain_context))
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -311,7 +282,6 @@ class TestStressScenarios:
         
         # Act - Try to process an alert
         chain_context = alert_to_api_format(sample_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await alert_service.process_alert(chain_context)
         
         # Assert - Should handle the failure gracefully
@@ -347,7 +317,6 @@ class TestStressScenarios:
         
         # Act - Process the alert with large data
         chain_context = alert_to_api_format(large_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await alert_service.process_alert(chain_context)
         
         # Assert - Should handle large data gracefully
@@ -397,7 +366,6 @@ class TestBoundaryConditions:
         
         # Act
         chain_context = alert_to_api_format(sample_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await alert_service.process_alert(chain_context)
         
         # Assert - Should stop at max iterations
@@ -417,7 +385,6 @@ class TestBoundaryConditions:
         
         # Act
         chain_context = alert_to_api_format(sample_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await alert_service.process_alert(chain_context)
         
         # Assert - Should handle empty responses gracefully
@@ -448,7 +415,6 @@ class TestBoundaryConditions:
         
         # Act
         chain_context = alert_to_api_format(sample_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await alert_service.process_alert(chain_context)
         
         # Assert - Should handle malformed JSON gracefully
@@ -459,8 +425,7 @@ class TestBoundaryConditions:
     @pytest.mark.asyncio
     async def test_unicode_and_encoding_edge_cases(
         self,
-        alert_service,
-        progress_callback_mock
+        alert_service
     ):
         """Test handling of various Unicode and encoding scenarios."""
         # Arrange - Create alert with diverse Unicode content
@@ -474,13 +439,12 @@ class TestBoundaryConditions:
                 "namespace": "测试-namespace-тест",
                 "pod": "pod-🚀-名前-имя",
                 "message": "Unicode test: 你好世界 Здравствуй мир مرحبا بالعالم 🌍🚀💻",
-                "context": "Mixed scripts: English 中文 Русский العربية 日本語 한국어"
+                "context": "Mixed scripts: English 中文 Русский العربية 日本語 한国語"
             }
         )
         
         # Act
         chain_context = alert_to_api_format(unicode_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await alert_service.process_alert(chain_context)
         
         # Assert - Should handle Unicode correctly
@@ -519,7 +483,6 @@ class TestBoundaryConditions:
         # Act - Process with timeout
         start_time = datetime.now()
         chain_context = alert_to_api_format(sample_alert)
-        alert_id = f"test-alert-{uuid.uuid4()}"
         result = await asyncio.wait_for(
             alert_service.process_alert(chain_context),
             timeout=10.0  # 10 second timeout

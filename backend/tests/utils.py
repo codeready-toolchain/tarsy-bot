@@ -1051,27 +1051,57 @@ class ModelValidationTester:
                 model_class(**invalid_data)
     
     @staticmethod
-    def test_field_types(model_class, field_type_tests: Dict[str, List[Any]]):
-        """Test field type validation."""
+    def test_field_types(
+        model_class,
+        field_type_tests: Dict[str, List[Any]],
+        valid_data: Dict[str, Any],
+    ):
+        """Test field type validation.
+        
+        Args:
+            model_class: The model class to test
+            field_type_tests: Dict mapping field names to lists of invalid values
+            valid_data: Baseline valid data dict to use for testing
+        """
         for field, invalid_values in field_type_tests.items():
             for invalid_value in invalid_values:
+                invalid_payload = valid_data.copy()
+                invalid_payload[field] = invalid_value
                 with pytest.raises(ValidationError):
-                    model_class(**{field: invalid_value})
+                    model_class(**invalid_payload)
     
     @staticmethod
-    def test_enum_values(model_class, enum_field: str, valid_values: List[str], invalid_values: List[str]):
-        """Test enum field validation."""
+    def test_enum_values(
+        model_class,
+        enum_field: str,
+        valid_values: List[str],
+        invalid_values: List[str],
+        valid_data: Dict[str, Any],
+    ):
+        """Test enum field validation.
+        
+        Args:
+            model_class: The model class to test
+            enum_field: The enum field to test
+            valid_values: List of valid enum values
+            invalid_values: List of invalid enum values
+            valid_data: Baseline valid data dict to use for testing
+        """
         # Test valid values
         for valid_value in valid_values:
             try:
-                model_class(**{enum_field: valid_value})
+                payload = valid_data.copy()
+                payload[enum_field] = valid_value
+                model_class(**payload)
             except ValidationError:
                 pytest.fail(f"Valid enum value '{valid_value}' was rejected")
         
         # Test invalid values
         for invalid_value in invalid_values:
+            payload = valid_data.copy()
+            payload[enum_field] = invalid_value
             with pytest.raises(ValidationError):
-                model_class(**{enum_field: invalid_value})
+                model_class(**payload)
 
 class AgentFactory:
     """Factory for creating test agent configurations."""

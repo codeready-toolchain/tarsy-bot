@@ -7,10 +7,12 @@ Create Date: 2025-10-10 21:30:21.592898
 Adds pod_id and last_interaction_at fields to support multi-replica
 Kubernetes deployments with session cleanup and orphan detection (EP-0024).
 """
+from datetime import datetime
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import text
 
 
 # revision identifiers, used by Alembic.
@@ -54,21 +56,23 @@ def upgrade() -> None:
     # Only proceed if started_at_us column exists
     if 'started_at_us' in existing_columns:
         # Use COALESCE to handle NULL values; if started_at_us is NULL, use current timestamp
-        # This prevents NULL propagation and ensures all rows get a valid timestamp
-        current_ts = "CAST(strftime('%s', 'now') || substr(strftime('%f', 'now'), 4) AS INTEGER)"
-        op.execute(
-            f"UPDATE alert_sessions "
-            f"SET last_interaction_at = COALESCE(started_at_us, {current_ts}) "
-            f"WHERE last_interaction_at IS NULL"
+        # Database-agnostic: calculate timestamp in Python instead of database-specific SQL
+        current_ts_us = int(datetime.now().timestamp() * 1_000_000)
+        conn.execute(
+            text("UPDATE alert_sessions "
+                 "SET last_interaction_at = COALESCE(started_at_us, :current_ts) "
+                 "WHERE last_interaction_at IS NULL"),
+            {"current_ts": current_ts_us}
         )
     else:
         # If started_at_us doesn't exist, backfill with current timestamp
-        # This handles legacy schemas gracefully
-        current_ts = "CAST(strftime('%s', 'now') || substr(strftime('%f', 'now'), 4) AS INTEGER)"
-        op.execute(
-            f"UPDATE alert_sessions "
-            f"SET last_interaction_at = {current_ts} "
-            f"WHERE last_interaction_at IS NULL"
+        # Database-agnostic: calculate timestamp in Python
+        current_ts_us = int(datetime.now().timestamp() * 1_000_000)
+        conn.execute(
+            text("UPDATE alert_sessions "
+                 "SET last_interaction_at = :current_ts "
+                 "WHERE last_interaction_at IS NULL"),
+            {"current_ts": current_ts_us}
         )
 
 

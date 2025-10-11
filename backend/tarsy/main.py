@@ -498,7 +498,7 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
             
         except MemoryError as e:
             # Memory issues with large payloads
-            error_msg = "Processing failed due to memory constraints (payload too large)"
+            error_msg = f"Processing failed due to memory constraints: {str(e)}"
             logger.error(f"Session {session_id} memory error: {error_msg}")
             mark_session_as_failed(alert, error_msg)
             
