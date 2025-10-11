@@ -52,16 +52,17 @@ Along with removing deduplication, we're completely eliminating the `alert_id` c
 - ✅ Simpler API, simpler database schema, simpler code
 
 #### 2. WebSocket Connection Management **[SOLVED BY EP-0025]**
-**Location:** `backend/tarsy/services/dashboard_connection_manager.py:26-32`
+**Location:** `backend/tarsy/services/websocket_connection_manager.py`
 
 WebSocket connections stored in-memory per pod. Dashboard clients connected to Pod A won't receive updates for alerts processed by Pod B.
 
 **Solution:**
 - ✅ Implement PostgreSQL LISTEN/NOTIFY for cross-pod event distribution
-- ✅ WebSocket connections with channel subscriptions for real-time updates
+- ✅ WebSocket endpoint at `/api/v1/ws` with bidirectional communication
 - ✅ Events published by any pod are broadcast to all pods via database
 - ✅ Each pod forwards events to its connected WebSocket clients
 - ✅ Single WebSocket connection per tab with multiple channel subscriptions
+- ✅ Catchup mechanism for missed events during disconnection
 - See **EP-0025** for complete implementation details
 
 ### Medium Severity Issues
@@ -140,7 +141,7 @@ Current `/health` endpoint already checks database connectivity but always retur
 ## Summary
 
 ### Issues Solved by EP-0025 (3 of 7)
-- ✅ **Issue #2**: WebSocket Connection Management - Replaced with SSE + PostgreSQL LISTEN/NOTIFY
+- ✅ **Issue #2**: WebSocket Connection Management - WebSocket + PostgreSQL LISTEN/NOTIFY for cross-pod event distribution
 - ✅ **Issue #5**: Dashboard Message Buffering - Events persisted to database with catchup support
 - ✅ **Issue #6**: Active Session Tracking - Session lifecycle events broadcast to all pods
 
@@ -237,8 +238,12 @@ const response = await fetch('/api/v1/alerts', {
 
 const { session_id } = await response.json();
 
-// Immediately subscribe to session updates using SSE
-const eventSource = new EventSource(`/api/v1/events/subscribe?channels=session:${session_id}`);
+// Immediately subscribe to session updates using WebSocket
+const ws = new WebSocket(`ws://localhost:8000/api/v1/ws`);
+ws.send(JSON.stringify({
+    action: 'subscribe',
+    channel: `session:${session_id}`
+}));
 ```
 
 ### Phase 3: Deployment Infrastructure
