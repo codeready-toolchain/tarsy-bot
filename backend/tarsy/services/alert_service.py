@@ -8,11 +8,9 @@ Uses Unix timestamps (microseconds since epoch) throughout for optimal
 performance and consistency with the rest of the system.
 """
 
-import uuid
 from typing import Dict, Any, Optional
 
 import httpx
-from cachetools import TTLCache
 
 from tarsy.models.processing_context import ChainContext
 from tarsy.config.settings import Settings
@@ -86,14 +84,6 @@ class AlertService:
         # Initialize services that depend on registries
         self.mcp_client = MCPClient(settings, self.mcp_server_registry)
         self.llm_manager = LLMManager(settings)
-        
-        # Track API alert_id to session_id mapping for dashboard websocket integration
-        # Using TTL cache to prevent memory leaks - entries expire after 4 hours
-        self.alert_session_mapping: TTLCache = TTLCache(maxsize=10000, ttl=4*3600)
-        
-        # Track all valid alert IDs that have been generated
-        # Using TTL cache to prevent memory leaks - entries expire after 4 hours
-        self.valid_alert_ids: TTLCache = TTLCache(maxsize=10000, ttl=4*3600)
         
         # Initialize agent factory with dependencies
         self.agent_factory = None  # Will be initialized in initialize()
@@ -231,15 +221,13 @@ class AlertService:
     
     async def process_alert(
         self, 
-        chain_context: ChainContext, 
-        alert_id: str
+        chain_context: ChainContext
     ) -> str:
         """
         Process an alert by delegating to the appropriate specialized agent.
         
         Args:
             chain_context: Chain context with all processing data
-            alert_id: API alert ID for session mapping
             
         Returns:
             Analysis result as a string
@@ -269,11 +257,8 @@ class AlertService:
             # Create history session with chain info
             session_created = self._create_chain_history_session(chain_context, chain_definition)
             
-            # Store API alert_id to session_id mapping if session was created
+            # Publish session.created event if session was created
             if session_created:
-                self.store_alert_session_mapping(alert_id, chain_context.session_id)
-                
-                # Publish session.created event
                 from tarsy.services.events.event_helpers import publish_session_created
                 await publish_session_created(
                     chain_context.session_id,
@@ -702,46 +687,22 @@ class AlertService:
             if not self.history_service or not self.history_service.is_enabled:
                 return False
             
-            # Generate unique alert ID for this processing session
-            timestamp_us = now_us()
-            unique_id = uuid.uuid4().hex[:12]  # Use 12 chars for uniqueness
-            alert_id = f"{chain_context.processing_alert.alert_type}_{unique_id}_{timestamp_us}"
-            
             # Store chain information in session using ChainContext and ChainDefinition
             created_successfully = self.history_service.create_session(
                 chain_context=chain_context,
-                chain_definition=chain_definition,
-                alert_id=alert_id
+                chain_definition=chain_definition
             )
             
             if created_successfully:
-                logger.info(f"Created chain history session {chain_context.session_id} for alert {alert_id} with chain {chain_definition.chain_id}")
+                logger.info(f"Created chain history session {chain_context.session_id} with chain {chain_definition.chain_id}")
                 return True
             else:
-                logger.warning(f"Failed to create chain history session for alert {alert_id} with chain {chain_definition.chain_id}")
+                logger.warning(f"Failed to create chain history session {chain_context.session_id} with chain {chain_definition.chain_id}")
                 return False
             
         except Exception as e:
             logger.warning(f"Failed to create chain history session: {str(e)}")
             return False
-    
-    def store_alert_session_mapping(self, alert_id: str, session_id: str):
-        """Store mapping between API alert ID and session ID for dashboard websocket integration."""
-        self.alert_session_mapping[alert_id] = session_id
-        logger.debug(f"Stored alert-session mapping: {alert_id} -> {session_id}")
-    
-    def get_session_id_for_alert(self, alert_id: str) -> Optional[str]:
-        """Get session ID for an API alert ID."""
-        return self.alert_session_mapping.get(alert_id)
-    
-    def register_alert_id(self, alert_id: str):
-        """Register a valid alert ID."""
-        self.valid_alert_ids[alert_id] = True  # Use cache as a key-only store
-        logger.debug(f"Registered alert ID: {alert_id}")
-    
-    def alert_exists(self, alert_id: str) -> bool:
-        """Check if an alert ID exists (has been generated)."""
-        return alert_id in self.valid_alert_ids
     
     def _update_session_status(self, session_id: Optional[str], status: str):
         """
@@ -810,12 +771,12 @@ class AlertService:
     
     def clear_caches(self):
         """
-        Clear alert session mapping and valid alert ID caches.
-        Useful for testing or manual cache cleanup.
+        Clear all alert-related caches.
+        
+        Note: This method is now a no-op as in-memory caches have been removed.
+        Kept for backwards compatibility.
         """
-        self.alert_session_mapping.clear()
-        self.valid_alert_ids.clear()
-        logger.info("Cleared alert session mapping and valid alert ID caches")
+        logger.debug("clear_caches called (no-op, caches removed)")
     
     # Stage execution helper methods
     async def _create_stage_execution(self, session_id: str, stage, stage_index: int) -> str:

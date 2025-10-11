@@ -4,7 +4,6 @@ Main entry point for the tarsy backend service.
 """
 
 import asyncio
-import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, Optional, AsyncGenerator
@@ -29,7 +28,6 @@ from tarsy.database.init_db import (
     get_async_session_factory,
     dispose_async_database
 )
-from tarsy.models.alert_processing import AlertKey
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.alert_service import AlertService
 from tarsy.utils.logger import get_module_logger, setup_logging
@@ -131,6 +129,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Failed to initialize event system: {e}", exc_info=True)
         logger.warning("Application will continue without event system")
+    
+    # Set up app state with callback to avoid circular imports
+    # The controller will access this callback instead of importing process_alert_background directly
+    app.state.process_alert_callback = process_alert_background
     
     logger.info("Tarsy started successfully!")
     
@@ -383,26 +385,26 @@ def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) -> Non
     if alert and hasattr(alert, 'session_id') and alert_service:
         alert_service._update_session_error(alert.session_id, error_msg)
 
-async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
+async def process_alert_background(session_id: str, alert: ChainContext) -> None:
     """Background task to process an alert with comprehensive error handling and concurrency control."""
     if alert_processing_semaphore is None or alert_service is None:
-        logger.error(f"Cannot process alert {alert_id}: services not initialized")
+        logger.error(f"Cannot process session {session_id}: services not initialized")
         return
         
     async with alert_processing_semaphore:
         start_time = datetime.now()
         try:
-            logger.info(f"Starting background processing for alert {alert_id}")
+            logger.info(f"Starting background processing for session {session_id}")
             
             # Log alert processing start
-            logger.info(f"Processing alert {alert_id} of type '{alert.processing_alert.alert_type}' with {len(alert.processing_alert.alert_data)} data fields")
+            logger.info(f"Processing session {session_id} of type '{alert.processing_alert.alert_type}' with {len(alert.processing_alert.alert_data)} data fields")
             
             # Process with timeout to prevent hanging
             try:
                 # Use configurable timeout for alert processing
                 timeout_seconds = settings.alert_processing_timeout
                 await asyncio.wait_for(
-                    alert_service.process_alert(alert, alert_id=alert_id),
+                    alert_service.process_alert(alert),
                     timeout=timeout_seconds
                 )
             except asyncio.TimeoutError:
@@ -410,30 +412,30 @@ async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
             
             # Calculate processing duration
             duration = (datetime.now() - start_time).total_seconds()
-            logger.info(f"Alert {alert_id} processed successfully in {duration:.2f} seconds")
+            logger.info(f"Session {session_id} processed successfully in {duration:.2f} seconds")
             
         except ValueError as e:
             # Configuration or data validation errors
             error_msg = f"Invalid alert data: {str(e)}"
-            logger.error(f"Alert {alert_id} validation failed: {error_msg}")
+            logger.error(f"Session {session_id} validation failed: {error_msg}")
             mark_session_as_failed(alert, error_msg)
             
         except TimeoutError as e:
             # Processing timeout
             error_msg = str(e)
-            logger.error(f"Alert {alert_id} processing timeout: {error_msg}")
+            logger.error(f"Session {session_id} processing timeout: {error_msg}")
             mark_session_as_failed(alert, error_msg)
             
         except ConnectionError as e:
             # Network or external service errors
             error_msg = f"Connection error during processing: {str(e)}"
-            logger.error(f"Alert {alert_id} connection error: {error_msg}")
+            logger.error(f"Session {session_id} connection error: {error_msg}")
             mark_session_as_failed(alert, error_msg)
             
         except MemoryError as e:
             # Memory issues with large payloads
             error_msg = "Processing failed due to memory constraints (payload too large)"
-            logger.error(f"Alert {alert_id} memory error: {error_msg}")
+            logger.error(f"Session {session_id} memory error: {error_msg}")
             mark_session_as_failed(alert, error_msg)
             
         except Exception as e:
@@ -441,20 +443,9 @@ async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
             duration = (datetime.now() - start_time).total_seconds()
             error_msg = f"Unexpected processing error: {str(e)}"
             logger.exception(
-                f"Alert {alert_id} unexpected error after {duration:.2f}s: {error_msg}"
+                f"Session {session_id} unexpected error after {duration:.2f}s: {error_msg}"
             )
             mark_session_as_failed(alert, error_msg)
-        
-        finally:
-            # Clean up alert key tracking regardless of success or failure
-            if alert:
-                from tarsy.controllers.alert_controller import processing_alert_keys, alert_keys_lock
-                alert_key = AlertKey.from_chain_context(alert)
-                
-                async with alert_keys_lock:
-                    if alert_key in processing_alert_keys:
-                        del processing_alert_keys[alert_key]
-                        logger.debug(f"Cleaned up alert key tracking for {alert_key}")
 
 if __name__ == "__main__":
     import uvicorn

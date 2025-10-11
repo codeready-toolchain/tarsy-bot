@@ -31,7 +31,7 @@ class TestTokenUsageIntegration:
         )
         
         # Create the session in database
-        result = history_service_with_test_db.create_session(chain_context, chain_definition, "alert-token-integration-1")
+        result = history_service_with_test_db.create_session(chain_context, chain_definition)
         assert result is True
         
         # Create LLM interaction with token data
@@ -86,7 +86,7 @@ class TestTokenUsageIntegration:
             alert_data={"pod": "high-cpu-pod"}
         )
         
-        result = history_service_with_test_db.create_session(chain_context, chain_definition, "alert-aggregation-2")
+        result = history_service_with_test_db.create_session(chain_context, chain_definition)
         assert result is True
         
         # Create stage execution
@@ -158,7 +158,7 @@ class TestTokenUsageIntegration:
             alert_data={"error": "connection timeout"}
         )
         
-        result = history_service_with_test_db.create_session(chain_context, chain_definition, "alert-session-3")
+        result = history_service_with_test_db.create_session(chain_context, chain_definition)
         assert result is True
         
         # Create two stages
@@ -234,7 +234,7 @@ class TestTokenUsageIntegration:
             alert_data={"test": "mixed"}
         )
         
-        result = history_service_with_test_db.create_session(chain_context, chain_definition, "alert-mixed-4")
+        result = history_service_with_test_db.create_session(chain_context, chain_definition)
         assert result is True
         
         stage_id = await StageExecutionFactory.create_and_save_stage_execution(

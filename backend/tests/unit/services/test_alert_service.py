@@ -321,7 +321,7 @@ class TestAlertProcessing:
         chain_context.current_stage_name = "test-stage"
         
         # Process alert with required alert_id parameter
-        result = await service.process_alert(chain_context, "test_alert_123")
+        result = await service.process_alert(chain_context)
         
         # Assertions - check that the analysis result is included in the formatted response
         assert "Test analysis result" in result
@@ -367,7 +367,7 @@ class TestAlertProcessing:
         chain_context = alert_to_api_format(unsupported_alert)
         chain_context.session_id = str(uuid.uuid4())
         chain_context.current_stage_name = "test-stage"
-        result = await service.process_alert(chain_context, "test_alert_123")
+        result = await service.process_alert(chain_context)
         
         assert "No agent for alert type 'UnsupportedAlertType'" in result
 
@@ -393,7 +393,7 @@ class TestAlertProcessing:
         chain_context = alert_to_api_format(sample_alert)
         chain_context.session_id = str(uuid.uuid4())
         chain_context.current_stage_name = "test-stage"
-        result = await service.process_alert(chain_context, "test_alert_123")
+        result = await service.process_alert(chain_context)
         
         # Verify that the system handles agent creation failure gracefully
         # The specific error message may vary due to async mock interactions,
@@ -430,7 +430,7 @@ class TestAlertProcessing:
         chain_context = alert_to_api_format(sample_alert)
         chain_context.session_id = str(uuid.uuid4())
         chain_context.current_stage_name = "test-stage"
-        result = await service.process_alert(chain_context, "test_alert_123")
+        result = await service.process_alert(chain_context)
         
         assert "Chain processing failed" in result  # Chain architecture error format
 
@@ -449,7 +449,7 @@ class TestAlertProcessing:
         chain_context = alert_to_api_format(sample_alert)
         chain_context.session_id = str(uuid.uuid4())
         chain_context.current_stage_name = "test-stage"
-        result = await service.process_alert(chain_context, "test_alert_123")
+        result = await service.process_alert(chain_context)
         
         assert "No LLM providers are available" in result
 
@@ -469,7 +469,7 @@ class TestAlertProcessing:
         chain_context = alert_to_api_format(sample_alert)
         chain_context.session_id = str(uuid.uuid4())
         chain_context.current_stage_name = "test-stage"
-        result = await service.process_alert(chain_context, "test_alert_123")
+        result = await service.process_alert(chain_context)
         
         assert "Agent factory not initialized" in result
 
@@ -495,7 +495,7 @@ class TestAlertProcessing:
         chain_context = alert_to_api_format(sample_alert)
         chain_context.session_id = str(uuid.uuid4())
         chain_context.current_stage_name = "test-stage"
-        result = await service.process_alert(chain_context, "test_alert_123")
+        result = await service.process_alert(chain_context)
         
         assert "Runbook download failed" in result
 
@@ -1429,7 +1429,7 @@ class TestFullErrorPropagation:
         )
         
         # Process alert
-        result = await service.process_alert(chain_context, "test_alert_123")
+        result = await service.process_alert(chain_context)
         
         # Verify the formatted error response contains aggregated errors
         assert "# Alert Processing Error" in result
@@ -1504,7 +1504,7 @@ class TestFullErrorPropagation:
         )
         
         # Process alert
-        result = await service.process_alert(chain_context, "single_alert_123")
+        result = await service.process_alert(chain_context)
         
         # Verify single failure format (not numbered list)
         assert "# Alert Processing Error" in result
@@ -1512,173 +1512,3 @@ class TestFullErrorPropagation:
         # Should NOT contain "with X stage failures:" since it's a single failure
         assert "stage failures:" not in result
 
-
-@pytest.mark.unit
-class TestAlertServiceValidationAndCaching:
-    """Test AlertService alert ID validation and TTL caching functionality."""
-    
-    @pytest.fixture
-    def mock_settings(self):
-        """Mock settings for testing."""
-        settings = Mock(spec=Settings)
-        settings.github_token = "test_token"
-        settings.history_enabled = True
-        settings.agent_config_path = None  # No agent config for unit tests
-        return settings
-    
-    @pytest.fixture
-    def mock_dependencies(self):
-        """Mock all AlertService dependencies."""
-        with patch('tarsy.services.alert_service.RunbookService') as mock_runbook, \
-             patch('tarsy.services.alert_service.get_history_service') as mock_history, \
-             patch('tarsy.services.alert_service.ChainRegistry') as mock_chain_registry, \
-             patch('tarsy.services.alert_service.MCPServerRegistry') as mock_mcp_registry, \
-             patch('tarsy.services.alert_service.MCPClient') as mock_mcp_client, \
-             patch('tarsy.services.alert_service.LLMManager') as mock_llm_manager:
-            
-            yield {
-                'runbook': mock_runbook.return_value,
-                'history': mock_history.return_value,
-                'chain_registry': mock_chain_registry.return_value,
-                'mcp_registry': mock_mcp_registry.return_value,
-                'mcp_client': mock_mcp_client.return_value,
-                'llm_manager': mock_llm_manager.return_value
-            }
-    
-    @pytest.fixture
-    def alert_service(self, mock_settings, mock_dependencies):
-        """Create AlertService instance for testing."""
-        service = AlertService(mock_settings)
-        return service
-    
-    def test_alert_id_registration_and_validation(self, alert_service):
-        """Test alert ID registration and existence checking."""
-        alert_id = "test-alert-123"
-        
-        # Initially, alert should not exist
-        assert not alert_service.alert_exists(alert_id)
-        
-        # Register the alert ID
-        alert_service.register_alert_id(alert_id)
-        
-        # Now alert should exist
-        assert alert_service.alert_exists(alert_id)
-        
-        # Test with different alert ID - should not exist
-        assert not alert_service.alert_exists("different-alert-456")
-    
-    def test_alert_session_mapping(self, alert_service):
-        """Test alert-to-session ID mapping functionality."""
-        alert_id = "test-alert-123"
-        session_id = "session-456"
-        
-        # Initially, no session mapping should exist
-        assert alert_service.get_session_id_for_alert(alert_id) is None
-        
-        # Store the mapping
-        alert_service.store_alert_session_mapping(alert_id, session_id)
-        
-        # Should now return the session ID
-        assert alert_service.get_session_id_for_alert(alert_id) == session_id
-        
-        # Different alert should still return None
-        assert alert_service.get_session_id_for_alert("different-alert") is None
-    
-    def test_combined_alert_registration_and_mapping(self, alert_service):
-        """Test combined workflow of alert registration and session mapping."""
-        alert_id = "test-alert-789"
-        session_id = "session-999"
-        
-        # Register alert and create session mapping
-        alert_service.register_alert_id(alert_id)
-        alert_service.store_alert_session_mapping(alert_id, session_id)
-        
-        # Verify both work together
-        assert alert_service.alert_exists(alert_id)
-        assert alert_service.get_session_id_for_alert(alert_id) == session_id
-    
-    def test_cache_clear_functionality(self, alert_service):
-        """Test cache clearing functionality."""
-        alert_id = "test-alert-clear"
-        session_id = "session-clear"
-        
-        # Register alert and session mapping
-        alert_service.register_alert_id(alert_id)
-        alert_service.store_alert_session_mapping(alert_id, session_id)
-        
-        # Verify they exist
-        assert alert_service.alert_exists(alert_id)
-        assert alert_service.get_session_id_for_alert(alert_id) == session_id
-        
-        # Clear caches
-        alert_service.clear_caches()
-        
-        # Verify everything is cleared
-        assert not alert_service.alert_exists(alert_id)
-        assert alert_service.get_session_id_for_alert(alert_id) is None
-    
-    def test_ttl_cache_properties(self, alert_service):
-        """Test TTL cache specific properties and behavior."""
-        # Test that the caches are TTLCache instances with correct properties
-        from cachetools import TTLCache
-        
-        assert isinstance(alert_service.alert_session_mapping, TTLCache)
-        assert isinstance(alert_service.valid_alert_ids, TTLCache)
-        
-        # Verify cache configurations
-        assert alert_service.alert_session_mapping.maxsize == 10000
-        assert alert_service.valid_alert_ids.maxsize == 10000
-        assert alert_service.alert_session_mapping.ttl == 4 * 3600  # 4 hours
-        assert alert_service.valid_alert_ids.ttl == 4 * 3600  # 4 hours
-    
-    @pytest.mark.asyncio
-    async def test_close_clears_caches(self, alert_service):
-        """Test that closing the service clears caches."""
-        alert_id = "test-alert-close"
-        
-        # Register an alert
-        alert_service.register_alert_id(alert_id)
-        assert alert_service.alert_exists(alert_id)
-        
-        # Close the service
-        await alert_service.close()
-        
-        # Cache should be cleared
-        assert not alert_service.alert_exists(alert_id)
-    
-    def test_multiple_alert_ids(self, alert_service):
-        """Test handling multiple alert IDs."""
-        alert_ids = ["alert-1", "alert-2", "alert-3", "alert-4", "alert-5"]
-        session_ids = ["session-1", "session-2", "session-3", "session-4", "session-5"]
-        
-        # Register multiple alerts with session mappings
-        for alert_id, session_id in zip(alert_ids, session_ids, strict=False):
-            alert_service.register_alert_id(alert_id)
-            alert_service.store_alert_session_mapping(alert_id, session_id)
-        
-        # Verify all alerts exist and have correct mappings
-        for alert_id, expected_session_id in zip(alert_ids, session_ids, strict=False):
-            assert alert_service.alert_exists(alert_id)
-            assert alert_service.get_session_id_for_alert(alert_id) == expected_session_id
-        
-        # Verify non-existent alert doesn't interfere
-        assert not alert_service.alert_exists("non-existent-alert")
-    
-    def test_alert_exists_edge_cases(self, alert_service):
-        """Test alert_exists method with edge cases."""
-        # Test with empty string
-        assert not alert_service.alert_exists("")
-        
-        # Test with None (should handle gracefully)
-        try:
-            result = alert_service.alert_exists(None)
-            assert not result  # Should return False
-        except (TypeError, AttributeError):
-            # It's acceptable if it raises an error for None
-            pass
-        
-        # Test with very long alert ID
-        long_alert_id = "a" * 1000
-        assert not alert_service.alert_exists(long_alert_id)
-        alert_service.register_alert_id(long_alert_id)
-        assert alert_service.alert_exists(long_alert_id)

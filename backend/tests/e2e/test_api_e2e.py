@@ -564,10 +564,8 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         """Verify session metadata matches expectations."""
         print("  📋 Verifying session metadata...")
 
-        # Required session fields
         required_fields = [
             "session_id",
-            "alert_id",
             "alert_type",
             "status",
             "started_at_us",

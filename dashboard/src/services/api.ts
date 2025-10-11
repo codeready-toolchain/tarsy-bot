@@ -204,7 +204,7 @@ class APIClient {
   /**
    * Submit an alert for processing (flexible data structure)
    */
-  async submitAlert(alertData: Record<string, any>): Promise<{ alert_id: string; status: string; message: string }> {
+  async submitAlert(alertData: Record<string, any>): Promise<{ session_id: string; status: string; message: string }> {
     try {
       const response = await this.client.post(urls.api.submitAlert, alertData);
       return response.data;
@@ -228,20 +228,6 @@ class APIClient {
       return response.data;
     } catch (error) {
       console.error('Error getting alert types:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get session ID for an alert ID - needed for WebSocket subscription
-   * The client needs the session ID (generated later) to subscribe to alert updates
-   */
-  async getSessionIdForAlert(alertId: string): Promise<{ alert_id: string; session_id: string | null }> {
-    try {
-      const response = await this.client.get(`/api/v1/session-id/${alertId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error getting session ID for alert:', error);
       throw error;
     }
   }

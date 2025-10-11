@@ -9,24 +9,18 @@ import asyncio
 import json
 import re
 import uuid
-from datetime import datetime
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 
 from tarsy.models.alert import Alert, AlertResponse, ProcessingAlert
-from tarsy.models.alert_processing import AlertKey
 from tarsy.utils.logger import get_logger
 
 # Initialize logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["alerts"])
-
-# Track currently processing alert keys to prevent duplicates
-processing_alert_keys: dict[AlertKey, str] = {}  # alert_key -> alert_id mapping
-alert_keys_lock = asyncio.Lock()  # Protect the processing_alert_keys dict
 
 
 @router.get("/alert-types", response_model=list[str])
@@ -45,30 +39,6 @@ async def get_alert_types() -> list[str]:
         raise HTTPException(status_code=503, detail="Service not initialized")
     
     return alert_service.chain_registry.list_available_alert_types()
-
-
-@router.get("/session-id/{alert_id}")
-async def get_session_id(alert_id: str) -> dict[str, str | None]:
-    """Get session ID for an alert.
-    Needed for dashboard websocket subscription because
-    the client which sent the alert request needs to know the session ID (generated later)
-    to subscribe to the alert updates."""
-    # Import here to avoid circular imports
-    from tarsy.main import alert_service
-    
-    if alert_service is None:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-    
-    # Check if the alert_id exists
-    if not alert_service.alert_exists(alert_id):
-        raise HTTPException(status_code=404, detail=f"Alert ID '{alert_id}' not found")
-    
-    session_id = alert_service.get_session_id_for_alert(alert_id)
-    if session_id:
-        return {"alert_id": alert_id, "session_id": session_id}
-    else:
-        # Session might not be created yet or history is disabled
-        return {"alert_id": alert_id, "session_id": None}
 
 
 @router.post("/alerts", response_model=AlertResponse)
@@ -235,12 +205,11 @@ async def submit_alert(request: Request) -> AlertResponse:
         # Transform API alert to ProcessingAlert (adds metadata, keeps data pristine)
         processing_alert = ProcessingAlert.from_api_alert(alert_data)
         
-        # Generate unique session ID
+        # Generate session_id BEFORE starting background processing
         session_id = str(uuid.uuid4())
         
         # Create ChainContext for processing  
         from tarsy.models.processing_context import ChainContext
-        from tarsy.main import process_alert_background, alert_service
         
         # Create ChainContext from ProcessingAlert
         alert_context = ChainContext.from_processing_alert(
@@ -249,55 +218,18 @@ async def submit_alert(request: Request) -> AlertResponse:
             current_stage_name="initializing"  # Will be updated to actual stage names from config during execution
         )
         
-        # Generate alert key for duplicate detection using normalized data
-        alert_key = AlertKey.from_chain_context(alert_context)
+        # Start background processing using callback from app state
+        # This avoids circular import by accessing the callback through FastAPI app state
+        process_callback = request.app.state.process_alert_callback
+        asyncio.create_task(process_callback(session_id, alert_context))
         
-        # Check for duplicate alerts already in progress
-        async with alert_keys_lock:
-            if alert_key in processing_alert_keys:
-                existing_alert_id = processing_alert_keys[alert_key]
-                logger.info(f"Duplicate alert detected - same as {existing_alert_id} (key: {alert_key})")
-                
-                return AlertResponse(
-                    alert_id=existing_alert_id,  # Return the existing alert ID
-                    status="duplicate",
-                    message=f"Identical alert is already being processed (ID: {existing_alert_id}). Monitor that alert's progress instead."
-                )
-            
-            # Generate unique alert ID (only if not duplicate)
-            alert_id = str(uuid.uuid4())
-            
-            # Register the alert ID as valid
-            if alert_service is None:
-                raise HTTPException(status_code=503, detail="Service not initialized")
-            alert_service.register_alert_id(alert_id)
-            
-            # Register this alert key as being processed
-            processing_alert_keys[alert_key] = alert_id
+        logger.info(f"Alert submitted with session_id: {session_id}")
         
-        # Start background processing with normalized data
-        try:
-            asyncio.create_task(process_alert_background(alert_id, alert_context))
-        except Exception as e:
-            # Clean up deduplication map on task creation failure
-            async with alert_keys_lock:
-                processing_alert_keys.pop(alert_key, None)
-            logger.error(f"Failed to create background task for alert {alert_id}: {str(e)}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "Task creation failed",
-                    "message": "Unable to start background processing for the alert",
-                    "alert_id": alert_id
-                }
-            )
-        
-        logger.info(f"Alert {alert_id} submitted successfully with type: {alert_data.alert_type}")
-        
+        # Return session_id immediately - client can use it right away
         return AlertResponse(
-            alert_id=alert_id,
+            session_id=session_id,
             status="queued",
-            message="Alert submitted for processing and validation completed"
+            message="Alert submitted for processing"
         )
         
     except HTTPException:

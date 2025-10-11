@@ -56,13 +56,13 @@ class HistoryRepository:
             The created AlertSession with database-generated fields, or None if creation failed
         """
         try:
-            # Check for existing session with the same alert_id to prevent duplicates
+            # Check for existing session with the same session_id to prevent duplicates
             existing_session = self.session.exec(
-                select(AlertSession).where(AlertSession.alert_id == alert_session.alert_id)
+                select(AlertSession).where(AlertSession.session_id == alert_session.session_id)
             ).first()
             
             if existing_session:
-                logger.warning(f"Alert session already exists for alert_id {alert_session.alert_id}, skipping duplicate creation")
+                logger.warning(f"Alert session already exists for session_id {alert_session.session_id}, skipping duplicate creation")
                 return existing_session
             
             return self.alert_session_repo.create(alert_session)
@@ -445,7 +445,6 @@ class HistoryRepository:
                 overview = SessionOverview(
                     # Core identification
                     session_id=alert_session.session_id,
-                    alert_id=alert_session.alert_id,
                     alert_type=alert_session.alert_type,
                     agent_type=alert_session.agent_type,
                     status=AlertSessionStatus(alert_session.status),
@@ -641,7 +640,6 @@ class HistoryRepository:
             return DetailedSession(
                 # Core session data
                 session_id=session.session_id,
-                alert_id=session.alert_id,
                 alert_type=session.alert_type,
                 agent_type=session.agent_type,
                 status=AlertSessionStatus(session.status),
@@ -778,7 +776,6 @@ class HistoryRepository:
             return SessionOverview(
                 # Core identification
                 session_id=session.session_id,
-                alert_id=session.alert_id,
                 alert_type=session.alert_type,
                 agent_type=session.agent_type,
                 status=AlertSessionStatus(session.status),

@@ -302,7 +302,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
       const response = await apiClient.submitAlert(alertData);
       
       setSuccess(`Alert submitted successfully! 
-        ID: ${response.alert_id}
+        Session ID: ${response.session_id}
         Status: ${response.status}
         Message: ${response.message || 'Processing started'}
         Data size: ${(bytes / 1024).toFixed(1)}KB`);

@@ -171,8 +171,7 @@ class TestHistoryService:
             
             result = history_service.create_session(
                 chain_context=chain_context,
-                chain_definition=chain_definition,
-                alert_id="test-alert-123"
+                chain_definition=chain_definition
             )
             
             assert result == expected_result
@@ -755,7 +754,7 @@ class TestHistoryServiceErrorHandling:
             )
             
             # create_session returns False when repository unavailable
-            result = history_service_with_errors.create_session(chain_context, chain_definition, "test-alert")
+            result = history_service_with_errors.create_session(chain_context, chain_definition)
             assert result == False
             
             # update_session_status returns False when repository unavailable  
@@ -815,7 +814,7 @@ class TestHistoryServiceErrorHandling:
                 ]
             )
             
-            result = history_service_with_errors.create_session(chain_context, chain_definition, "test-alert")
+            result = history_service_with_errors.create_session(chain_context, chain_definition)
             assert result == False
             
             # Create unified interaction model for error test
@@ -1147,26 +1146,22 @@ async def test_cleanup_orphaned_sessions():
         # These should be cleaned up (orphaned)
         {
             "session_id": "orphaned-pending-1",
-            "alert_id": "alert-pending-1",
             "status": AlertSessionStatus.PENDING, 
             "agent_type": "KubernetesAgent"
         },
         {
             "session_id": "orphaned-progress-1", 
-            "alert_id": "alert-progress-1",
             "status": AlertSessionStatus.IN_PROGRESS,
             "agent_type": "KubernetesAgent"
         },
         # These should NOT be cleaned up (already terminal states)
         {
             "session_id": "completed-1",
-            "alert_id": "alert-completed-1", 
             "status": AlertSessionStatus.COMPLETED,
             "agent_type": "KubernetesAgent"
         },
         {
             "session_id": "failed-1",
-            "alert_id": "alert-failed-1",
             "status": AlertSessionStatus.FAILED, 
             "agent_type": "KubernetesAgent"
         }
@@ -1216,7 +1211,6 @@ async def test_cleanup_orphaned_sessions():
         # Create SessionOverview from AlertSession like the repository does
         session_overview = SessionOverview(
             session_id=alert_session.session_id,
-            alert_id=alert_session.alert_id,
             alert_type=alert_session.alert_type,
             agent_type=alert_session.agent_type,
             status=alert_session.status,

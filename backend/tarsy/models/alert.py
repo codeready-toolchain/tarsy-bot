@@ -148,6 +148,6 @@ class ProcessingAlert(BaseModel):
 class AlertResponse(BaseModel):
     """Response model for alert submission."""
     
-    alert_id: str
+    session_id: str
     status: str
     message: str

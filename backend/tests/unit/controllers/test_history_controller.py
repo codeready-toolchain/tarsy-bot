@@ -118,7 +118,6 @@ class TestHistoryControllerEndpoints:
         # Verify session data structure
         session = data["sessions"][0]
         assert "session_id" in session
-        assert "alert_id" in session
         assert "alert_type" in session
         assert "agent_type" in session
         assert "status" in session
@@ -838,7 +837,6 @@ class TestHistoryControllerEndpoints:
         
         # The response should have these fields based on the DetailedSession model
         assert "session_id" in data
-        assert "alert_id" in data
         assert "chain_id" in data  # Chain fields are now at top level
         assert "chain_definition" in data
         assert "stages" in data
@@ -1321,7 +1319,7 @@ class TestHistoryControllerResponseFormat:
         
         session = data["sessions"][0]
         required_fields = {
-            "session_id", "alert_id", "alert_type", "agent_type", 
+            "session_id", "alert_type", "agent_type", 
             "status", "started_at_us", "completed_at_us", "error_message"
         }
         # Allow additional fields that are actually returned (including chain-based fields)
@@ -1481,7 +1479,7 @@ class TestHistoryControllerResponseFormat:
         
         # Validate top-level structure (DetailedSession fields)
         expected_fields = {
-            "session_id", "alert_id", "alert_type", "agent_type",
+            "session_id", "alert_type", "agent_type",
             "status", "started_at_us", "completed_at_us", "error_message",
             "chain_id", "chain_definition", "stages", "duration_ms", 
             "session_metadata", "alert_data", "final_analysis",
@@ -1705,7 +1703,6 @@ class TestDashboardEndpoints:
         # Create a proper mock session object with datetime handling
         mock_session = Mock()
         mock_session.session_id = "session_1"
-        mock_session.alert_id = "alert_1"
         mock_session.agent_type = "kubernetes"
         mock_session.alert_type = "PodCrashLooping"
         mock_session.status = "in_progress"
@@ -1741,7 +1738,6 @@ class TestDashboardEndpoints:
         from tarsy.models.db_models import AlertSession
         test_session = AlertSession(
             session_id="session_1",
-            alert_id="alert_1",
             agent_type="kubernetes",
             alert_type="PodCrashLooping",
             status="in_progress",
@@ -1765,7 +1761,6 @@ class TestDashboardEndpoints:
         data = response.json()
         assert len(data) == 1
         assert data[0]["session_id"] == "session_1"
-        assert data[0]["alert_id"] == "alert_1"
         assert data[0]["agent_type"] == "kubernetes"
         assert data[0]["alert_type"] == "PodCrashLooping"
         assert data[0]["status"] == "in_progress"
@@ -2136,7 +2131,6 @@ def create_mock_session(session_id: str, status: str) -> Mock:
     
     mock_session = Mock()
     mock_session.session_id = session_id
-    mock_session.alert_id = f"alert-{session_id}"
     mock_session.agent_type = "KubernetesAgent"
     mock_session.alert_type = "NamespaceTerminating"
     mock_session.status = status

@@ -50,12 +50,6 @@ class AlertSession(SQLModel, table=True):
         description="Unique identifier for the alert processing session"
     )
     
-    alert_id: str = Field(
-        unique=True,
-        index=True,
-        description="External alert identifier from the alert system"
-    )
-    
     alert_data: dict = Field(
         default_factory=dict,
         sa_column=Column(JSON),

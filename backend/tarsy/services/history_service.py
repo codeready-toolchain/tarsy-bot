@@ -239,8 +239,7 @@ class HistoryService:
     def create_session(
         self,
         chain_context: ChainContext,
-        chain_definition: ChainConfigModel,
-        alert_id: str
+        chain_definition: ChainConfigModel
     ) -> bool:
         """
         Create a new alert processing session with retry logic.
@@ -248,7 +247,6 @@ class HistoryService:
         Args:
             chain_context: Chain processing context containing session data
             chain_definition: Chain configuration model with chain details
-            alert_id: External alert identifier
             
         Returns:
             True if created successfully, False if failed
@@ -267,7 +265,6 @@ class HistoryService:
                 
                 session = AlertSession(
                     session_id=chain_context.session_id,
-                    alert_id=alert_id,
                     alert_data=chain_context.processing_alert.alert_data,
                     agent_type=agent_type,
                     alert_type=chain_context.processing_alert.alert_type,
@@ -278,7 +275,7 @@ class HistoryService:
                 
                 created_session = repo.create_alert_session(session)
                 if created_session:
-                    logger.info(f"Created history session {created_session.session_id} for alert {alert_id}")
+                    logger.info(f"Created history session {created_session.session_id}")
                     return True
                 return False
         

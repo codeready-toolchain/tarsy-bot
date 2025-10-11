@@ -25,52 +25,6 @@ class TestSessionIdEndpoint:
         """Create test client."""
         return TestClient(app)
 
-    @patch.object(app, 'dependency_overrides', {})
-    def test_get_session_id_success(self, client):
-        """Test successful session ID retrieval."""
-        # Mock the global alert_service
-        from tarsy import main
-        mock_alert_service = Mock()
-        mock_alert_service.alert_exists.return_value = True
-        mock_alert_service.get_session_id_for_alert.return_value = "session-123"
-        main.alert_service = mock_alert_service
-        
-        response = client.get("/api/v1/session-id/alert-123")
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["alert_id"] == "alert-123"
-        assert data["session_id"] == "session-123"
-
-    @patch.object(app, 'dependency_overrides', {})
-    def test_get_session_id_not_found(self, client):
-        """Test session ID retrieval for non-existent alert."""
-        from tarsy import main
-        mock_alert_service = Mock()
-        mock_alert_service.alert_exists.return_value = False
-        main.alert_service = mock_alert_service
-        
-        response = client.get("/api/v1/session-id/nonexistent")
-        assert response.status_code == 404
-        data = response.json()
-        
-        assert "not found" in data["detail"]
-
-    @patch.object(app, 'dependency_overrides', {})
-    def test_get_session_id_no_session(self, client):
-        """Test session ID retrieval when session doesn't exist yet."""
-        from tarsy import main
-        mock_alert_service = Mock()
-        mock_alert_service.alert_exists.return_value = True
-        mock_alert_service.get_session_id_for_alert.return_value = None
-        main.alert_service = mock_alert_service
-        
-        response = client.get("/api/v1/session-id/alert-123")
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["alert_id"] == "alert-123"
-        assert data["session_id"] is None
 
 
 @pytest.mark.unit
@@ -86,24 +40,22 @@ class TestAlertControllerCriticalCoverage:
         """Test memory usage behavior under load for alert submission."""
         from tests.utils import AlertFactory
         
+        # Mock the process_alert_callback in app state
+        app.state.process_alert_callback = AsyncMock()
+        
         # Create many alerts to test memory usage
         alerts = [AlertFactory.create_kubernetes_alert() for _ in range(100)]
         
-        with patch('tarsy.main.alert_service') as mock_alert_service, \
-             patch('asyncio.create_task') as mock_create_task:
-            
-            mock_alert_service.register_alert_id = Mock()
-            
-            # Submit many alerts quickly
-            for alert in alerts:
-                alert_data = {
-                    "alert_type": alert.alert_type,
-                    "runbook": alert.runbook,
-                    "severity": alert.severity,
-                    "data": alert.data
-                }
-                response = client.post("/api/v1/alerts", json=alert_data)
-                assert response.status_code == 200
+        # Submit many alerts quickly
+        for alert in alerts:
+            alert_data = {
+                "alert_type": alert.alert_type,
+                "runbook": alert.runbook,
+                "severity": alert.severity,
+                "data": alert.data
+            }
+            response = client.post("/api/v1/alerts", json=alert_data)
+            assert response.status_code == 200
 
 
 
@@ -157,14 +109,12 @@ class TestSubmitAlertEndpoint:
             "timestamp": 1640995200000000  # 2022-01-01 00:00:00 UTC in microseconds
         }
 
-    @patch('tarsy.main.alert_service')
-    @patch('asyncio.create_task')
     def test_submit_alert_success(
-        self, mock_create_task, mock_alert_service, client, valid_alert_data
+        self, client, valid_alert_data
     ):
         """Test successful alert submission."""
-        # Mock alert_service methods
-        mock_alert_service.register_alert_id = Mock()
+        # Mock the process_alert_callback in app state
+        app.state.process_alert_callback = AsyncMock()
         
         response = client.post("/api/v1/alerts", json=valid_alert_data)
         
@@ -172,14 +122,12 @@ class TestSubmitAlertEndpoint:
         data = response.json()
         
         assert data["status"] == "queued"
-        assert "alert_id" in data
-        assert len(data["alert_id"]) == 36  # UUID format
-        assert data["message"] == "Alert submitted for processing and validation completed"
+        assert "session_id" in data
+        assert len(data["session_id"]) == 36  # UUID format
+        assert data["message"] == "Alert submitted for processing"
         
-        # Verify alert_service.register_alert_id was called
-        mock_alert_service.register_alert_id.assert_called_once()
-        # Verify background task was created
-        mock_create_task.assert_called_once()
+        # Verify background callback was called
+        assert app.state.process_alert_callback.called
 
     @pytest.mark.parametrize("invalid_input,expected_status,expected_error", [
         (None, 400, "Empty request body"),
@@ -205,9 +153,9 @@ class TestSubmitAlertEndpoint:
         
         # Mock alert service (won't be called for input validation errors, but needs to exist)
         mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-            alert_id="test-alert-123",
+            session_id="test-alert-123",
             status="queued",
-            message="Alert submitted for processing and validation completed"
+            message="Alert submitted for processing"
         ))
         if invalid_input == "invalid json":
             response = client.post(
@@ -238,39 +186,6 @@ class TestSubmitAlertEndpoint:
         elif expected_error == "Invalid alert_type":
             assert "field" in data["detail"]
 
-    def test_submit_alert_duplicate_detection(self, client, valid_alert_data):
-        """Test duplicate alert detection."""
-        # Create a mock AlertKey instance
-        mock_alert_key = Mock()
-        mock_alert_key.__str__ = Mock(return_value="test-key") 
-        mock_alert_key.__hash__ = Mock(return_value=12345)
-        
-        # Patch with AlertKey object as key instead of string
-        with patch(
-            'tarsy.controllers.alert_controller.processing_alert_keys', {mock_alert_key: "existing-id"}
-        ), \
-             patch('tarsy.controllers.alert_controller.alert_keys_lock', asyncio.Lock()), \
-             patch('tarsy.models.alert_processing.AlertKey.from_chain_context') as mock_from_chain_context, \
-             patch('tarsy.main.alert_service') as mock_alert_service:
-            
-            # Mock the factory method to return our test key
-            mock_from_chain_context.return_value = mock_alert_key
-            
-            # Mock alert service to return duplicate status
-            from tarsy.models.alert import AlertResponse
-            mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-                alert_id="existing-id",
-                status="duplicate",
-                message="Identical alert is already being processed"
-            ))
-            
-            response = client.post("/api/v1/alerts", json=valid_alert_data)
-            
-            assert response.status_code == 200
-            data = response.json()
-            
-            assert data["status"] == "duplicate"
-            assert data["alert_id"] == "existing-id"
 
     @patch('tarsy.main.alert_service')
     def test_submit_alert_payload_too_large(self, mock_alert_service, client):
@@ -279,9 +194,9 @@ class TestSubmitAlertEndpoint:
         
         # Mock alert service (won't be called due to size limit, but needs to exist)
         mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-            alert_id="test-alert-123",
+            session_id="test-alert-123",
             status="queued",
-            message="Alert submitted for processing and validation completed"
+            message="Alert submitted for processing"
         ))
         
         large_data = {
@@ -330,14 +245,12 @@ class TestSubmitAlertEndpoint:
         assert data["detail"]["error"] == "Invalid runbook URL scheme"
         assert data["detail"]["field"] == "runbook"
 
-    @patch('tarsy.main.alert_service')
-    @patch('asyncio.create_task')
     def test_submit_alert_with_defaults(
-        self, mock_create_task, mock_alert_service, client
+        self, client
     ):
         """Test alert submission applies defaults for missing fields."""
-        # Mock alert_service methods
-        mock_alert_service.register_alert_id = Mock()
+        # Mock the process_alert_callback in app state
+        app.state.process_alert_callback = AsyncMock()
         
         minimal_data = {
             "alert_type": "test",
@@ -347,19 +260,15 @@ class TestSubmitAlertEndpoint:
         response = client.post("/api/v1/alerts", json=minimal_data)
         assert response.status_code == 200
         
-        # Verify alert_service.register_alert_id was called
-        mock_alert_service.register_alert_id.assert_called_once()
-        # Verify background task was created
-        mock_create_task.assert_called_once()
+        # Verify background callback was called
+        assert app.state.process_alert_callback.called
 
-    @patch('tarsy.main.alert_service')
-    @patch('asyncio.create_task')
     def test_submit_alert_without_runbook(
-        self, mock_create_task, mock_alert_service, client
+        self, client
     ):
         """Test alert submission without runbook field (should use built-in default)."""
-        # Mock alert_service methods
-        mock_alert_service.register_alert_id = Mock()
+        # Mock the process_alert_callback in app state
+        app.state.process_alert_callback = AsyncMock()
         
         alert_data_no_runbook = {
             "alert_type": "test_alert",
@@ -374,13 +283,11 @@ class TestSubmitAlertEndpoint:
         data = response.json()
         
         assert data["status"] == "queued"
-        assert "alert_id" in data
-        assert len(data["alert_id"]) == 36  # UUID format
+        assert "session_id" in data
+        assert len(data["session_id"]) == 36  # UUID format
         
-        # Verify alert_service.register_alert_id was called
-        mock_alert_service.register_alert_id.assert_called_once()
-        # Verify background task was created
-        mock_create_task.assert_called_once()
+        # Verify background callback was called
+        assert app.state.process_alert_callback.called
 
     def test_submit_alert_invalid_content_length_header(self, client, valid_alert_data):
         """Test that invalid Content-Length headers are handled gracefully."""
@@ -444,9 +351,9 @@ class TestInputSanitization:
         with patch('tarsy.main.alert_service') as mock_alert_service:
             from tarsy.models.alert import AlertResponse
             mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-                alert_id="test-alert-123",
+                session_id="test-alert-123",
                 status="queued",
-                message="Alert submitted for processing and validation completed"
+                message="Alert submitted for processing"
             ))
             response = client.post("/api/v1/alerts", json=malicious_data)
         
@@ -475,9 +382,9 @@ class TestInputSanitization:
         with patch('tarsy.main.alert_service') as mock_alert_service:
             from tarsy.models.alert import AlertResponse
             mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-                alert_id="test-alert-123",
+                session_id="test-alert-123",
                 status="queued",
-                message="Alert submitted for processing and validation completed"
+                message="Alert submitted for processing"
             ))
             response = client.post("/api/v1/alerts", json=nested_data)
         
@@ -496,9 +403,9 @@ class TestInputSanitization:
         with patch('tarsy.main.alert_service') as mock_alert_service:
             from tarsy.models.alert import AlertResponse
             mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-                alert_id="test-alert-123",
+                session_id="test-alert-123",
                 status="queued",
-                message="Alert submitted for processing and validation completed"
+                message="Alert submitted for processing"
             ))
             response = client.post("/api/v1/alerts", json=large_array_data)
         
@@ -517,9 +424,9 @@ class TestInputSanitization:
         with patch('tarsy.main.alert_service') as mock_alert_service:
             from tarsy.models.alert import AlertResponse
             mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-                alert_id="test-alert-123",
+                session_id="test-alert-123",
                 status="queued",
-                message="Alert submitted for processing and validation completed"
+                message="Alert submitted for processing"
             ))
             response = client.post("/api/v1/alerts", json=long_string_data)
         
@@ -535,36 +442,6 @@ class TestAlertControllerCriticalCoverage:
         """Create test client."""
         return TestClient(app)
 
-    def test_alert_processing_recovery_after_failure(self, client):
-        """Test that system recovers after alert processing failure."""
-        from tests.utils import AlertFactory
-        
-        alert = AlertFactory.create_kubernetes_alert()
-        
-        with patch('tarsy.main.alert_service') as mock_alert_service, \
-             patch('tarsy.controllers.alert_controller.asyncio.create_task'):
-            
-            # First call fails, second call succeeds
-            mock_alert_service.register_alert_id.side_effect = [
-                Exception("Processing failed"),  # First call fails
-                Mock()  # Second call succeeds
-            ]
-            
-            alert_data = {
-                "alert_type": alert.alert_type,
-                "runbook": alert.runbook,
-                "severity": alert.severity,
-                "data": alert.data
-            }
-            
-            # First submission should fail gracefully
-            response1 = client.post("/api/v1/alerts", json=alert_data)
-            # Should handle failure gracefully
-            assert response1.status_code in [200, 500]
-            
-            # Second submission should succeed
-            response2 = client.post("/api/v1/alerts", json=alert_data)
-            assert response2.status_code == 200
 
     def test_malicious_payload_handling(self, client):
         """Test handling of potentially malicious payloads."""
@@ -591,77 +468,17 @@ class TestAlertControllerCriticalCoverage:
             }
         ]
         
+        # Mock the process_alert_callback in app state
+        app.state.process_alert_callback = AsyncMock()
+        
         for payload in malicious_payloads:
-            with patch('tarsy.main.alert_service') as mock_alert_service, \
-                 patch('tarsy.main.asyncio.create_task'):
-                from tarsy.models.alert import AlertResponse
-                
-                mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-                    alert_id="test-alert-123",
-                    status="queued",
-                    message="Alert submitted for processing and validation completed"
-                ))
-                
-                # Should handle malicious payloads gracefully
-                response = client.post("/api/v1/alerts", json=payload)
-                
-                # Should either succeed with sanitization or fail gracefully
-                if response.status_code == 200:
-                    data = response.json()
-                    assert data["status"] in ["queued", "duplicate"]
+            # Should handle malicious payloads gracefully
+            response = client.post("/api/v1/alerts", json=payload)
+            
+            # Second payload (11MB) should be rejected with 413
+            # First payload should either succeed with sanitization or fail gracefully
+            assert response.status_code in [200, 400, 413, 422]
 
-    def test_alert_deduplication_edge_cases(self, client):
-        """Test edge cases in alert deduplication logic."""
-        from tests.utils import AlertFactory
-        
-        alert = AlertFactory.create_kubernetes_alert()
-        alert_data = {
-            "alert_type": alert.alert_type,
-            "runbook": alert.runbook,
-            "severity": alert.severity,
-            "data": alert.data
-        }
-        
-        with patch('tarsy.main.alert_service') as mock_alert_service, \
-             patch('tarsy.main.asyncio.create_task'), \
-             patch('tarsy.controllers.alert_controller.processing_alert_keys', {}), \
-             patch('tarsy.controllers.alert_controller.alert_keys_lock', asyncio.Lock()), \
-             patch(
-                 'tarsy.models.alert_processing.AlertKey.from_chain_context'
-             ) as mock_from_chain_context:
-            
-            # Mock AlertKey to return a unique key matching production format:
-            # <alert_type>_<12-char hex hash>
-            mock_key = Mock()
-            mock_key.__str__ = Mock(return_value=f"test_alert_{uuid.uuid4().hex[:12]}")
-            mock_key.__hash__ = Mock(return_value=12345)
-            mock_from_chain_context.return_value = mock_key
-            
-            from tarsy.models.alert import AlertResponse
-            mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-                alert_id="test-alert-123",
-                status="queued",
-                message="Alert submitted for processing and validation completed"
-            ))
-            
-            # Should not block the endpoint
-            response = client.post("/api/v1/alerts", json=alert_data)
-            assert response.status_code == 200
-            data = response.json()
-            
-            # First call should succeed (not duplicate)  
-            response = client.post("/api/v1/alerts", json=alert_data)
-            assert response.status_code == 200
-            data = response.json()
-            
-            # Test duplicate detection by modifying the processing_alert_keys to have an existing entry
-            # The next call with the same data should detect as duplicate
-            with patch('tarsy.controllers.alert_controller.processing_alert_keys', {mock_key: "existing-id"}):
-                response2 = client.post("/api/v1/alerts", json=alert_data)
-                assert response2.status_code == 200
-                data2 = response2.json()
-                assert data2["status"] == "duplicate"
-                assert data2["alert_id"] == "existing-id"
 
     def test_memory_usage_under_load(self, client):
         """Test memory usage behavior under load."""
@@ -673,9 +490,9 @@ class TestAlertControllerCriticalCoverage:
         with patch('tarsy.main.alert_service') as mock_alert_service:
             from tarsy.models.alert import AlertResponse
             mock_alert_service.process_alert = AsyncMock(return_value=AlertResponse(
-                alert_id="test-alert-123",
+                session_id="test-alert-123",
                 status="queued",
-                message="Alert submitted for processing and validation completed"
+                message="Alert submitted for processing"
             ))
             
             # Submit many alerts quickly
