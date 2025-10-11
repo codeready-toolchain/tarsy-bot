@@ -145,7 +145,6 @@ class TestHistoryRepository:
         # Create session
         session = AlertSession(
             session_id="test-session-1",
-            alert_id="alert-123",
             alert_type="kubernetes",
             agent_type="kubernetes", 
             status=AlertSessionStatus.COMPLETED.value,
@@ -208,7 +207,6 @@ class TestHistoryRepository:
         
         assert overview is not None
         assert overview.session_id == "test-session-1"
-        assert overview.alert_id == "alert-123"
         assert overview.alert_type == "kubernetes"
         assert overview.agent_type == "kubernetes"
         assert overview.status == AlertSessionStatus.COMPLETED
@@ -245,7 +243,6 @@ class TestHistoryRepository:
         from tarsy.utils.timestamp import now_us
         return AlertSession(
             session_id="test-session-123",
-            alert_id="alert-456",
             alert_data={
                 "alert_type": "NamespaceTerminating",
                 "environment": "production",
@@ -349,7 +346,6 @@ class TestHistoryRepository:
             # Verify session was saved to database
             retrieved_session = repository.get_alert_session(session_id)
             assert retrieved_session is not None
-            assert retrieved_session.alert_id == sample_alert_session.alert_id
             assert retrieved_session.agent_type == sample_alert_session.agent_type
             assert retrieved_session.status == sample_alert_session.status
         else:
@@ -419,7 +415,6 @@ class TestHistoryRepository:
         
         session2 = AlertSession(
             session_id="test-session-456",
-            alert_id="alert-789",
             alert_data={"alert_type": "HighCPU"},
             agent_type="KubernetesAgent",
             alert_type="HighCPU",
@@ -455,7 +450,6 @@ class TestHistoryRepository:
         
         old_session = AlertSession(
             session_id="old-session",
-            alert_id="old-alert",
             alert_data={},
             agent_type="TestAgent",
             alert_type="test",
@@ -467,7 +461,6 @@ class TestHistoryRepository:
         
         new_session = AlertSession(
             session_id="new-session",
-            alert_id="new-alert",
             alert_data={},
             agent_type="TestAgent",
             alert_type="test",
@@ -498,7 +491,6 @@ class TestHistoryRepository:
         for i in range(5):
             session = AlertSession(
                 session_id=f"session-{i}",
-                alert_id=f"alert-{i}",
                 alert_data={},
                 agent_type="TestAgent",
                 alert_type="test",
@@ -534,7 +526,6 @@ class TestHistoryRepository:
         # Create sessions with different error messages
         session1 = AlertSession(
             session_id="test-session-search-1",
-            alert_id="alert-search-1",
             alert_data={"alert_type": "NetworkError"},
             agent_type="NetworkAgent",
             alert_type="NetworkError",
@@ -547,7 +538,6 @@ class TestHistoryRepository:
         
         session2 = AlertSession(
             session_id="test-session-search-2", 
-            alert_id="alert-search-2",
             alert_data={"alert_type": "DatabaseError"},
             agent_type="DatabaseAgent",
             alert_type="DatabaseError",
@@ -579,7 +569,6 @@ class TestHistoryRepository:
         # Create sessions with different analyses
         session1 = AlertSession(
             session_id="test-session-analysis-1",
-            alert_id="alert-analysis-1", 
             alert_data={"alert_type": "NamespaceTerminating"},
             agent_type="KubernetesAgent",
             alert_type="NamespaceTerminating",
@@ -592,7 +581,6 @@ class TestHistoryRepository:
         
         session2 = AlertSession(
             session_id="test-session-analysis-2",
-            alert_id="alert-analysis-2",
             alert_data={"alert_type": "PodCrashLoop"},
             agent_type="KubernetesAgent", 
             alert_type="PodCrashLoop",
@@ -624,7 +612,6 @@ class TestHistoryRepository:
         # Create sessions with different alert data
         session1 = AlertSession(
             session_id="test-session-json-1",
-            alert_id="alert-json-1",
             alert_data={
                 "alert_type": "NamespaceTerminating",
                 "message": "Namespace superman-dev is stuck in terminating state",
@@ -644,7 +631,6 @@ class TestHistoryRepository:
         
         session2 = AlertSession(
             session_id="test-session-json-2",
-            alert_id="alert-json-2",
             alert_data={
                 "alert_type": "UnidledPods", 
                 "message": "High CPU usage detected on worker nodes",
@@ -694,7 +680,6 @@ class TestHistoryRepository:
         
         session = AlertSession(
             session_id="test-session-case-1",
-            alert_id="alert-case-1",
             alert_data={
                 "message": "Kubernetes Namespace Problem",
                 "environment": "Production"
@@ -731,7 +716,6 @@ class TestHistoryRepository:
         
         session1 = AlertSession(
             session_id="test-session-combined-1",
-            alert_id="alert-combined-1",
             alert_data={"message": "Kubernetes namespace issue"},
             agent_type="KubernetesAgent",
             alert_type="NamespaceTerminating",
@@ -743,7 +727,6 @@ class TestHistoryRepository:
         
         session2 = AlertSession(
             session_id="test-session-combined-2", 
-            alert_id="alert-combined-2",
             alert_data={"message": "Kubernetes pod issue"},
             agent_type="KubernetesAgent",
             alert_type="UnidledPods",
@@ -755,7 +738,6 @@ class TestHistoryRepository:
         
         session3 = AlertSession(
             session_id="test-session-combined-3",
-            alert_id="alert-combined-3", 
             alert_data={"message": "Database connection issue"},
             agent_type="DatabaseAgent",
             alert_type="ConnectionTimeout",
@@ -789,7 +771,6 @@ class TestHistoryRepository:
         
         session = AlertSession(
             session_id="test-session-nomatch-1",
-            alert_id="alert-nomatch-1",
             alert_data={"message": "Simple alert message"},
             agent_type="SimpleAgent",
             alert_type="SimpleAlert",
@@ -1012,7 +993,6 @@ class TestHistoryRepository:
         # Create active and completed sessions
         active_session = AlertSession(
             session_id="active-session",
-            alert_id="active-alert",
             alert_data={},
             agent_type="TestAgent",
             alert_type="test",
@@ -1023,7 +1003,6 @@ class TestHistoryRepository:
         
         completed_session = AlertSession(
             session_id="completed-session",
-            alert_id="completed-alert",
             alert_data={},
             agent_type="TestAgent",
             alert_type="test",
@@ -1063,16 +1042,15 @@ class TestHistoryRepository:
 
     @pytest.mark.unit
     def test_create_alert_session_duplicate_prevention(self, repository, sample_alert_session):
-        """Test that creating duplicate alert sessions is prevented."""
+        """Test that duplicate sessions are prevented by session_id."""
         # Create the first session
         first_result = repository.create_alert_session(sample_alert_session)
         assert first_result is not None
         assert first_result.session_id == sample_alert_session.session_id
 
-        # Attempt to create the same session again (same alert_id)
+        # Attempt to create session with same session_id (should be prevented)
         duplicate_session = AlertSession(
-            session_id="different-session-id",  # Different session_id
-            alert_id=sample_alert_session.alert_id,  # Same alert_id - should trigger duplicate prevention
+            session_id=sample_alert_session.session_id,  # Same session_id
             alert_data=sample_alert_session.alert_data,
             agent_type=sample_alert_session.agent_type,
             alert_type=sample_alert_session.alert_type,
@@ -1085,7 +1063,6 @@ class TestHistoryRepository:
         second_result = repository.create_alert_session(duplicate_session)
         assert second_result is not None
         assert second_result.session_id == sample_alert_session.session_id  # Should return original
-        assert second_result.alert_id == sample_alert_session.alert_id
 
     @pytest.mark.unit
     def test_get_alert_sessions_edge_cases(self, repository):
@@ -1116,7 +1093,6 @@ class TestHistoryRepository:
         for i, status in enumerate(statuses):
             session = AlertSession(
                 session_id=f"multi-status-{i}",
-                alert_id=f"alert-multi-{i}",
                 alert_data={},
                 agent_type="TestAgent",
                 alert_type="TestAlert",
@@ -1153,7 +1129,6 @@ class TestHistoryRepository:
         for session_id, alert_type, agent_type, status, started_at in sessions_data:
             session = AlertSession(
                 session_id=session_id,
-                alert_id=f"alert-{session_id}",
                 alert_data={"alert_type": alert_type},
                 agent_type=agent_type,
                 alert_type=alert_type,
@@ -1463,7 +1438,6 @@ class TestHistoryRepositoryErrorHandling:
         """Create sample AlertSession for testing."""
         return AlertSession(
             session_id="test-session-123",
-            alert_id="alert-456",
             alert_data={
                 "alert_type": "NamespaceTerminating",
                 "environment": "production",
@@ -1572,7 +1546,6 @@ class TestHistoryRepositoryPerformance:
         for i in range(100):
             session = AlertSession(
                 session_id=f"perf-session-{i}",
-                alert_id=f"perf-alert-{i}",
                 alert_data={"alert_type": f"TestAlert{i % 5}"},
                 agent_type="TestAgent",
                 alert_type=f"TestAlert{i % 5}",
@@ -1639,9 +1612,9 @@ class TestHistoryRepositoryPerformance:
         
         # Create test data with different types
         sessions = [
-            AlertSession(session_id="1", alert_id="a1", agent_type="kubernetes", alert_type="PodCrashLooping", status="in_progress", alert_data={}, chain_id="test-chain-1"),
-            AlertSession(session_id="2", alert_id="a2", agent_type="network", alert_type="ServiceDown", status="completed", alert_data={}, chain_id="test-chain-2"),
-            AlertSession(session_id="3", alert_id="a3", agent_type="database", alert_type="ConnectionTimeout", status="failed", alert_data={}, chain_id="test-chain-3")
+            AlertSession(session_id="1", agent_type="kubernetes", alert_type="PodCrashLooping", status="in_progress", alert_data={}, chain_id="test-chain-1"),
+            AlertSession(session_id="2", agent_type="network", alert_type="ServiceDown", status="completed", alert_data={}, chain_id="test-chain-2"),
+            AlertSession(session_id="3", agent_type="database", alert_type="ConnectionTimeout", status="failed", alert_data={}, chain_id="test-chain-3")
         ]
         
         for session in sessions:
@@ -1700,9 +1673,9 @@ class TestHistoryRepositoryPerformance:
         
         # Create test data in non-alphabetical order
         sessions = [
-            AlertSession(session_id="1", alert_id="a1", agent_type="zebra", alert_type="ZAlert", status="pending", alert_data={}, chain_id="test-chain-sort-1"),
-            AlertSession(session_id="2", alert_id="a2", agent_type="alpha", alert_type="AAlert", status="completed", alert_data={}, chain_id="test-chain-sort-2"),
-            AlertSession(session_id="3", alert_id="a3", agent_type="beta", alert_type="BAlert", status="in_progress", alert_data={}, chain_id="test-chain-sort-3")
+            AlertSession(session_id="1", agent_type="zebra", alert_type="ZAlert", status="pending", alert_data={}, chain_id="test-chain-sort-1"),
+            AlertSession(session_id="2", agent_type="alpha", alert_type="AAlert", status="completed", alert_data={}, chain_id="test-chain-sort-2"),
+            AlertSession(session_id="3", agent_type="beta", alert_type="BAlert", status="in_progress", alert_data={}, chain_id="test-chain-sort-3")
         ]
         
         for session in sessions:
@@ -1723,8 +1696,6 @@ class TestHistoryRepositoryDuplicatePrevention:
     
     def test_duplicate_prevention_documented(self):
         """Test that documents the duplicate prevention implementation."""
-        # This test serves as documentation that duplicate prevention
-        # is implemented in the create_alert_session method
         from tarsy.repositories.history_repository import HistoryRepository
         
         # Verify the method exists and has the expected behavior
@@ -1734,7 +1705,7 @@ class TestHistoryRepositoryDuplicatePrevention:
         import inspect
         source = inspect.getsource(HistoryRepository.create_alert_session)
         assert 'existing_session' in source, "Should check for existing sessions"
-        assert 'alert_id' in source, "Should check by alert_id"
+        assert 'session_id' in source, "Should check by session_id"
 
 
 class TestFlexibleAlertDataPerformance:
@@ -1830,7 +1801,6 @@ class TestFlexibleAlertDataPerformance:
             
             session = AlertSession(
                 session_id=f"perf_test_{i}",
-                alert_id=f"alert_{i}",
                 agent_type="TestAgent",
                 alert_type=["monitoring", "database", "network", "kubernetes"][i % 4],
                 status="completed",

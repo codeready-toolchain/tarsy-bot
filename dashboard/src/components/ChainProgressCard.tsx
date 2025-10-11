@@ -169,7 +169,7 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
               )}
             </Box>
             <Typography variant="body2" color="text.secondary">
-              {session.alert_id}
+              {session.session_id}
             </Typography>
           </Box>
           

@@ -130,9 +130,11 @@ class HistoryService:
         """
         Async version of retry database operations with exponential backoff for transient failures.
         
+        Runs synchronous database operations in a thread pool to avoid blocking the event loop.
+        
         Args:
             operation_name: Name of the operation for logging
-            operation_func: Function to retry
+            operation_func: Function to retry (executed in thread pool)
             treat_none_as_success: Whether None result is acceptable
         
         Returns:
@@ -141,7 +143,7 @@ class HistoryService:
         last_exception = None
         for attempt in range(self.max_retries + 1):
             try:
-                result = operation_func()
+                result = await asyncio.to_thread(operation_func)
                 if result is not None:
                     return result
                 if treat_none_as_success:
@@ -239,8 +241,7 @@ class HistoryService:
     def create_session(
         self,
         chain_context: ChainContext,
-        chain_definition: ChainConfigModel,
-        alert_id: str
+        chain_definition: ChainConfigModel
     ) -> bool:
         """
         Create a new alert processing session with retry logic.
@@ -248,7 +249,6 @@ class HistoryService:
         Args:
             chain_context: Chain processing context containing session data
             chain_definition: Chain configuration model with chain details
-            alert_id: External alert identifier
             
         Returns:
             True if created successfully, False if failed
@@ -267,7 +267,6 @@ class HistoryService:
                 
                 session = AlertSession(
                     session_id=chain_context.session_id,
-                    alert_id=alert_id,
                     alert_data=chain_context.processing_alert.alert_data,
                     agent_type=agent_type,
                     alert_type=chain_context.processing_alert.alert_type,
@@ -278,7 +277,7 @@ class HistoryService:
                 
                 created_session = repo.create_alert_session(session)
                 if created_session:
-                    logger.info(f"Created history session {created_session.session_id} for alert {alert_id}")
+                    logger.info(f"Created history session {created_session.session_id}")
                     return True
                 return False
         
@@ -743,82 +742,152 @@ class HistoryService:
             logger.error(f"Failed to cleanup stages for session {session_id}: {str(e)}")
             return 0
 
-    def cleanup_orphaned_sessions(self) -> int:
+    def cleanup_orphaned_sessions(self, timeout_minutes: int = 30) -> int:
         """
-        Clean up sessions that were left in active states due to unexpected backend shutdown.
+        Find and mark orphaned sessions as failed based on inactivity timeout (EP-0024).
         
-        This method finds all sessions in "pending" or "in_progress" status and marks them
-        as "failed" since they were clearly interrupted and cannot continue processing.
+        Replaces the existing simple cleanup_orphaned_sessions() method with
+        timeout-based detection. An orphaned session is one that:
+        - Is in 'in_progress' status
+        - Has not had any interaction for longer than timeout_minutes
         
-        Should be called during backend startup to handle crash recovery.
+        This handles cases where:
+        - Pod crashed without graceful shutdown
+        - Session is stuck/hung without activity
+        
+        Args:
+            timeout_minutes: Mark sessions inactive for this long as failed (default: 30)
         
         Returns:
-            Number of orphaned sessions cleaned up
+            Number of sessions marked as failed
         """
         if not self.is_enabled:
-            logger.debug("History service disabled - skipping orphaned session cleanup")
             return 0
-            
-        try:
+        
+        def _cleanup_operation():
             with self.get_repository() as repo:
                 if not repo:
-                    raise RuntimeError("History repository unavailable - cannot cleanup orphaned sessions")
-                
-                # Find all sessions in active states (pending or in_progress)
-                active_sessions_result = repo.get_alert_sessions(
-                    status=AlertSessionStatus.active_values(),
-                    page_size=1000  # Get a large batch to handle all orphaned sessions
-                )
-                
-                if not active_sessions_result or not active_sessions_result.sessions:
-                    logger.info("No orphaned sessions found during startup cleanup")
                     return 0
                 
-                session_overviews = active_sessions_result.sessions
-                cleanup_count = 0
+                timeout_threshold_us = now_us() - (timeout_minutes * 60 * 1_000_000)
+                orphaned_sessions = repo.find_orphaned_sessions(timeout_threshold_us)
                 
-                for session_overview in session_overviews:
-                    try:
-                        # Get the existing session from database instead of creating new object
-                        session = repo.get_alert_session(session_overview.session_id)
-                        if not session:
-                            logger.warning(f"Could not find session {session_overview.session_id} for cleanup")
-                            continue
-                        
-                        # Update the existing session object's fields
-                        session.status = AlertSessionStatus.FAILED.value
-                        session.error_message = "Backend was restarted - session terminated unexpectedly"
-                        session.completed_at_us = now_us()
-                        
-                        success = repo.update_alert_session(session)
-                        if success:
-                            # Also mark all stages in this session as failed
-                            try:
-                                self._cleanup_orphaned_stages_for_session(repo, session.session_id)
-                            except Exception as stage_error:
-                                logger.warning(f"Failed to cleanup stages for session {session.session_id}: {str(stage_error)}")
-                                # Continue with session cleanup even if stage cleanup fails
-                            
-                            cleanup_count += 1
-                            logger.debug(f"Marked orphaned session {session.session_id} as failed")
-                        else:
-                            logger.warning(f"Failed to update orphaned session {session.session_id}")
-                            
-                    except Exception as session_error:
-                        session_id = session_overview.session_id if hasattr(session_overview, 'session_id') else 'unknown'
-                        logger.error(f"Error cleaning up session {session_id}: {str(session_error)}")
-                        continue
+                for session_record in orphaned_sessions:
+                    session_record.status = AlertSessionStatus.FAILED.value
+                    session_record.error_message = (
+                        'Processing failed - session became unresponsive. '
+                        'This may be due to pod crash, restart, or timeout during processing.'
+                    )
+                    session_record.completed_at_us = now_us()
+                    repo.update_alert_session(session_record)
                 
-                if cleanup_count > 0:
-                    logger.info(f"Cleaned up {cleanup_count} orphaned sessions during startup")
-                else:
-                    logger.info("No orphaned sessions required cleanup during startup")
-                    
-                return cleanup_count
-                
-        except Exception as e:
-            logger.error(f"Failed to cleanup orphaned sessions: {str(e)}")
+                return len(orphaned_sessions)
+        
+        count = self._retry_database_operation("cleanup_orphaned_sessions", _cleanup_operation)
+        
+        if count and count > 0:
+            logger.info(f"Cleaned up {count} orphaned sessions during startup")
+        
+        return count or 0
+    
+    async def mark_pod_sessions_interrupted(self, pod_id: str) -> int:
+        """
+        Mark sessions being processed by a pod as failed during graceful shutdown
+        Sets descriptive error_message to distinguish from other failure types.
+        
+        Args:
+            pod_id: Kubernetes pod identifier
+        
+        Returns:
+            Number of sessions marked as failed
+        """
+        if not self.is_enabled:
             return 0
+        
+        def _interrupt_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return 0
+                
+                in_progress_sessions = repo.find_sessions_by_pod(
+                    pod_id, 
+                    AlertSessionStatus.IN_PROGRESS.value
+                )
+                
+                for session_record in in_progress_sessions:
+                    session_record.status = AlertSessionStatus.FAILED.value
+                    session_record.error_message = f"Session interrupted during pod '{pod_id}' graceful shutdown"
+                    session_record.completed_at_us = now_us()
+                    repo.update_alert_session(session_record)
+                
+                return len(in_progress_sessions)
+        
+        count = self._retry_database_operation("mark_interrupted_sessions", _interrupt_operation)
+        
+        if count and count > 0:
+            logger.info(f"Marked {count} sessions as failed (interrupted) for pod {pod_id}")
+        
+        return count or 0
+    
+    async def start_session_processing(self, session_id: str, pod_id: str) -> bool:
+        """
+        Mark session as being processed by a specific pod (EP-0024).
+        Updates status, pod_id, and last_interaction_at.
+        
+        Args:
+            session_id: Session identifier
+            pod_id: Kubernetes pod identifier
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_enabled:
+            return False
+        
+        def _start_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return False
+                return repo.update_session_pod_tracking(
+                    session_id, 
+                    pod_id, 
+                    AlertSessionStatus.IN_PROGRESS.value
+                )
+        
+        return self._retry_database_operation("start_session_processing", _start_operation) or False
+    
+    def record_session_interaction(self, session_id: str) -> bool:
+        """
+        Update session last_interaction_at timestamp (EP-0024).
+        
+        Called during LLM interactions, MCP tool calls, and stage transitions
+        to keep the session marked as active for orphan detection.
+        
+        Note: This is a synchronous function. When calling from async code,
+        use asyncio.to_thread() to avoid blocking the event loop.
+        
+        Args:
+            session_id: Session identifier
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_enabled:
+            return False
+        
+        def _interaction_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return False
+                
+                session = repo.get_alert_session(session_id)
+                if not session:
+                    return False
+                
+                session.last_interaction_at = now_us()
+                return repo.update_alert_session(session)
+        
+        return self._retry_database_operation("record_interaction", _interaction_operation) or False
 
 
 # Global history service instance

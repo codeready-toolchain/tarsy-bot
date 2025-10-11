@@ -371,7 +371,6 @@ async def get_active_sessions(
         return [
             {
                 "session_id": session.session_id,
-                "alert_id": session.alert_id,
                 "agent_type": session.agent_type,
                 "alert_type": session.alert_type,
                 "status": session.status,

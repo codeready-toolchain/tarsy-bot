@@ -41,8 +41,14 @@ install-dev: ## Install development dependencies (includes test)
 	$(UV) sync --extra dev --extra test
 
 # Testing
+.PHONY: clean-test-db
+clean-test-db: ## Clean test database to ensure fresh state
+	@echo "$(GREEN)Cleaning test database...$(NC)"
+	@rm -f test.db
+	@echo "$(GREEN)Test database cleaned$(NC)"
+
 .PHONY: test
-test: check-test-deps test-unit test-integration test-e2e ## Run all tests (unit + integration + e2e) with proper isolation
+test: check-test-deps test-unit clean-test-db test-integration clean-test-db test-e2e ## Run all tests (unit + integration + e2e) with proper isolation
 
 .PHONY: test-unit
 test-unit: check-test-deps ## Run unit tests only
@@ -50,12 +56,12 @@ test-unit: check-test-deps ## Run unit tests only
 	TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/unit/ -v --tb=short
 
 .PHONY: test-integration
-test-integration: check-test-deps ## Run integration tests only
+test-integration: check-test-deps clean-test-db ## Run integration tests only (with clean database)
 	@echo "$(GREEN)Running integration tests...$(NC)"
 	TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/integration/ -v --tb=short
 
 .PHONY: test-e2e
-test-e2e: check-test-deps ## Run end-to-end tests only (one by one for isolation)
+test-e2e: check-test-deps clean-test-db ## Run end-to-end tests only (one by one for isolation, with clean database)
 	@echo "$(GREEN)Running end-to-end tests sequentially...$(NC)"
 	@echo "$(YELLOW)Running first E2E test...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_api_e2e.py -v --tb=short -m e2e || exit 1
@@ -64,7 +70,7 @@ test-e2e: check-test-deps ## Run end-to-end tests only (one by one for isolation
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
 
 .PHONY: test-coverage
-test-coverage: check-test-deps ## Run unit and integration tests with coverage report (no e2e-tests for stability)
+test-coverage: check-test-deps clean-test-db ## Run unit and integration tests with coverage report (no e2e-tests for stability, with clean database)
 	@echo "$(GREEN)Running unit and integration tests with coverage...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/unit/ $(TEST_DIR)/integration/ --cov=tarsy --cov-report=html --cov-report=xml --cov-report=term-missing --tb=short
 	@echo "$(GREEN)All tests with coverage completed!$(NC)"

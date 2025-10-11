@@ -151,7 +151,6 @@ class SessionOverview(BaseModel):
     """Session overview for lists, filtering, and pagination - dashboard use"""
     # Core identification
     session_id: str
-    alert_id: str
     alert_type: Optional[str] = None
     agent_type: str
     status: AlertSessionStatus
@@ -285,7 +284,6 @@ class DetailedSession(BaseModel):
     """Complete session with EVERYTHING - for detailed session page"""
     # Core session data (everything from SessionOverview)
     session_id: str
-    alert_id: str
     alert_type: Optional[str] = None
     agent_type: str
     status: AlertSessionStatus

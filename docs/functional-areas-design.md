@@ -57,7 +57,7 @@ TARSy is an AI-powered incident analysis system that processes alerts through se
 **Purpose**: Core workflow management from alert receipt to completion  
 **Key Responsibility**: Coordinating the entire alert processing pipeline
 
-TARSy accepts alerts from any monitoring system through a flexible REST API, validates them, and coordinates the entire processing workflow. The system uses async background processing with sophisticated concurrency control and deduplication.
+TARSy accepts alerts from any monitoring system through a flexible REST API, validates them, and coordinates the entire processing workflow. The system uses async background processing with sophisticated concurrency control. Multi-replica deployments are supported via PostgreSQL LISTEN/NOTIFY eventing and pod-level session tracking.
 
 #### Core Alert Flow
 
@@ -72,8 +72,9 @@ sequenceDiagram
     Client->>API: POST /alerts (JSON payload)
     API->>Val: Validate & sanitize
     Val->>API: Alert model + ChainContext
+    API->>API: Generate session_id (UUID)
     API->>BG: Create background task
-    API-->>Client: 200 OK (alert_id, status: "queued")
+    API-->>Client: 200 OK (session_id, status: "queued")
     
     BG->>AS: async process_alert()
     AS->>AS: Select chain & execute stages
@@ -108,22 +109,29 @@ alert_processing_semaphore = asyncio.Semaphore(settings.max_concurrent_alerts)
 
 # In background processor
 async with alert_processing_semaphore:
-    await alert_service.process_alert(alert, alert_id=alert_id)
+    await alert_service.process_alert(alert, session_id=session_id)
 ```
 
-**Alert Deduplication**:
-The system prevents duplicate processing using content-based keys:
+**Session Identification**:
+- Each alert is assigned a unique `session_id` (UUID) when submitted
+- The `session_id` is returned immediately in the response
+- Clients use `session_id` to track processing via WebSocket
+- Database and events use `session_id` as the universal identifier
+
+**Alert Response Model**:
 ```python
-# AlertKey generates deterministic hash from alert content (excluding timestamp)
-alert_key = AlertKey.from_chain_context(alert_context)
-# Format: "alert_type_contentHash" (e.g., "kubernetes_a1b2c3d4")
+class AlertResponse(BaseModel):
+    """Response model for alert submission."""
+    session_id: str  # Universal identifier for tracking
+    status: str      # "queued"
+    message: str     # "Alert submitted for processing"
 ```
-**📍 Implementation**: `backend/tarsy/models/alert_processing.py`
 
 **Timeout Management**: 
 - **10-minute processing limit** with `asyncio.wait_for()`
 - **Graceful error handling** for timeouts, validation errors, connection errors
 - **Service lifecycle coordination** during startup/shutdown
+- **Pod-level session tracking** for multi-replica deployments
 
 **📍 Background Processing**: `process_alert_background()` in `backend/tarsy/main.py`
 
@@ -1129,9 +1137,17 @@ GET /api/v1/history/sessions?start_date_us=1734476400000000&end_date_us=17345627
 
 **Core Endpoints**:
 - **`GET /health`** - Main health check with service status and system warnings
+  - Returns HTTP 200 for healthy status
+  - Returns HTTP 503 for degraded/unhealthy status (Kubernetes probes use this)
+  - Checks: database connectivity, event system health, system warnings
 - **`GET /api/v1/system/warnings`** - Active system warnings (MCP/LLM init failures, etc.)
 
 The system warnings API surfaces critical but non-fatal initialization errors (MCP server failures, LLM provider issues, missing runbook service configuration) that don't prevent startup but affect functionality. Warnings are displayed in the dashboard UI and included in the main health endpoint response.
+
+**Multi-Replica Health Monitoring:**
+- Health check validates database connectivity required for cross-pod coordination
+- Event system health includes PostgreSQL LISTEN connection status
+- Pod-specific issues (like event listener failures) properly trigger readiness probe failures
 
 ### 9. Dashboard & Real-time Monitoring
 **Purpose**: User interface and live system monitoring  

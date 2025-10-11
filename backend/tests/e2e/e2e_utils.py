@@ -89,7 +89,8 @@ class E2ETestUtils:
                         return session_id, status
 
                     # If session is still processing, continue polling
-                    if status in ["processing", "queued"]:
+                    # Valid active statuses: pending, in_progress
+                    if status in ["pending", "in_progress"]:
                         await asyncio.sleep(poll_interval)
                         continue
 
@@ -291,7 +292,7 @@ class E2ETestUtils:
             alert_data: Alert data to submit
 
         Returns:
-            alert_id: The ID of the submitted alert
+            session_id: The session ID of the submitted alert
 
         Raises:
             AssertionError: If submission fails or response is invalid
@@ -302,10 +303,10 @@ class E2ETestUtils:
 
         response_data = response.json()
         assert response_data["status"] == "queued"
-        alert_id = response_data["alert_id"]
-        print(f"✅ Alert submitted: {alert_id}")
+        session_id = response_data["session_id"]
+        print(f"✅ Alert submitted: {session_id}")
 
-        return alert_id
+        return session_id
 
     @staticmethod
     def get_session_details(e2e_test_client, session_id: str, max_retries: int = 1, retry_delay: float = 0.5) -> Dict[str, Any]:

@@ -77,7 +77,16 @@ class TestHistoryServiceIntegration:
     @pytest.fixture
     def in_memory_engine(self):
         """Create in-memory SQLite engine for testing."""
-        engine = create_engine("sqlite:///:memory:", echo=False)
+        # CRITICAL: Must set check_same_thread=False AND use StaticPool for SQLite in-memory
+        # to allow access from thread pool (matches production configuration)
+        from sqlalchemy.pool import StaticPool
+        
+        engine = create_engine(
+            "sqlite:///:memory:", 
+            echo=False,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False}
+        )
         SQLModel.metadata.create_all(engine)
         return engine
     
@@ -175,7 +184,8 @@ class TestHistoryServiceIntegration:
         return agent
     
     @pytest.mark.integration
-    def test_create_session_and_track_lifecycle(self, history_service_with_db, sample_alert):
+    @pytest.mark.asyncio
+    async def test_create_session_and_track_lifecycle(self, history_service_with_db, sample_alert):
         """Test creating a session and tracking its complete lifecycle."""
         # Create initial session
         chain_context, chain_definition = create_test_context_and_chain(
@@ -198,8 +208,7 @@ class TestHistoryServiceIntegration:
         
         result = history_service_with_db.create_session(
             chain_context=chain_context,
-            chain_definition=chain_definition,
-            alert_id="alert-123"
+            chain_definition=chain_definition
         )
         
         assert result is True
@@ -212,15 +221,13 @@ class TestHistoryServiceIntegration:
         assert result == True
         
         # Create stage execution
-        import asyncio
-
         from tests.utils import StageExecutionFactory
-        stage_execution_id = asyncio.run(StageExecutionFactory.create_and_save_stage_execution(
+        stage_execution_id = await StageExecutionFactory.create_and_save_stage_execution(
             history_service_with_db,
             chain_context.session_id,
             stage_id="initial-analysis",
             stage_name="Initial Analysis"
-        ))
+        )
         
         # Log LLM interaction
         from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
@@ -278,7 +285,8 @@ class TestHistoryServiceIntegration:
         assert timeline.mcp_communication_count == 1
     
     @pytest.mark.integration
-    def test_chronological_timeline_ordering(self, history_service_with_db, sample_alert):
+    @pytest.mark.asyncio
+    async def test_chronological_timeline_ordering(self, history_service_with_db, sample_alert):
         """Test that timeline events are ordered chronologically."""
         # Create session
         chain_context, chain_definition = create_test_context_and_chain(
@@ -289,25 +297,20 @@ class TestHistoryServiceIntegration:
         )
         result = history_service_with_db.create_session(
             chain_context=chain_context,
-            chain_definition=chain_definition,
-            alert_id="timeline-test"
+            chain_definition=chain_definition
         )
         session_id = chain_context.session_id
         
         # Create stage execution
-        import asyncio
-
         from tests.utils import StageExecutionFactory
-        stage_execution_id = asyncio.run(StageExecutionFactory.create_and_save_stage_execution(
+        stage_execution_id = await StageExecutionFactory.create_and_save_stage_execution(
             history_service_with_db,
             session_id,
             stage_id="timeline-analysis",
             stage_name="Timeline Analysis"
-        ))
+        )
         
         # Create events with specific timestamps (simulating real workflow)
-        base_time = datetime.now(timezone.utc)
-        
         # First LLM interaction
         llm_interaction1 = LLMInteraction(
             session_id=session_id,
@@ -405,8 +408,7 @@ class TestHistoryServiceIntegration:
             # Use the service to create session (simulating real workflow)
             result = history_service_with_db.create_session(
                 chain_context=chain_context,
-                chain_definition=chain_definition,
-                alert_id=f"alert-{session_id}"
+                chain_definition=chain_definition
             )
             assert result is True
             sid = chain_context.session_id
@@ -501,11 +503,9 @@ class TestHistoryServiceIntegration:
         
         result = history_service_with_db.create_session(
             chain_context=chain_context,
-            chain_definition=chain_definition,
-            alert_id=""  # Empty alert ID to test error handling
+            chain_definition=chain_definition
         )
         assert result is True  # Should still create session
-        session_id = chain_context.session_id
         
         # Test logging with invalid session ID
         llm_interaction_invalid = LLMInteraction(
@@ -562,8 +562,7 @@ class TestHistoryServiceIntegration:
         
         result = history_service_with_db.create_session(
             chain_context=chain_context,
-            chain_definition=chain_definition,
-            alert_id="retry-test-1"
+            chain_definition=chain_definition
         )
         assert result is True
         session_id = chain_context.session_id
@@ -644,6 +643,8 @@ class TestAlertServiceHistoryIntegration:
         mock_history_service = Mock()
         mock_history_service.create_session.return_value = True
         mock_history_service.update_session_status.return_value = True
+        mock_history_service.start_session_processing = AsyncMock(return_value=True)
+        mock_history_service.record_session_interaction = AsyncMock(return_value=True)
         service.history_service = mock_history_service
         
         return service
@@ -669,10 +670,8 @@ class TestAlertServiceHistoryIntegration:
         """Test complete alert processing with history tracking."""
         # Process alert
         chain_context = alert_to_api_format(sample_alert)
-        import uuid
-        alert_id = str(uuid.uuid4())
         result = await alert_service_with_history.process_alert(
-            chain_context, alert_id
+            chain_context
         )
         
         # Verify alert processing succeeded
@@ -686,10 +685,8 @@ class TestAlertServiceHistoryIntegration:
         # Should have created session
         history_service.create_session.assert_called_once()
         create_call = history_service.create_session.call_args
-        # Check the new signature: create_session(chain_context, chain_definition, alert_id)
         assert "chain_context" in create_call[1]
         assert "chain_definition" in create_call[1]
-        assert "alert_id" in create_call[1]
         # Verify the chain_context contains the expected alert_type
         chain_context = create_call[1]["chain_context"]
         assert chain_context.processing_alert.alert_type == sample_alert.alert_type
@@ -716,10 +713,8 @@ class TestAlertServiceHistoryIntegration:
         
         # Process alert (should handle error gracefully)
         chain_context = alert_to_api_format(sample_alert)
-        import uuid
-        alert_id = str(uuid.uuid4())
         result = await alert_service_with_history.process_alert(
-            chain_context, alert_id
+            chain_context
         )
         
         # Verify error was handled
@@ -973,8 +968,7 @@ class TestDuplicatePreventionIntegration:
         
         result_1 = history_service_with_test_db.create_session(
             chain_context=chain_context,
-            chain_definition=chain_definition,
-            alert_id="test_duplicate_alert_123"
+            chain_definition=chain_definition
         )
         
         assert result_1 is True  # First creation should succeed
@@ -990,8 +984,7 @@ class TestDuplicatePreventionIntegration:
         
         result_2 = history_service_with_test_db.create_session(
             chain_context=chain_context_2,
-            chain_definition=chain_definition_2,
-            alert_id="test_duplicate_alert_123"  # Same alert_id
+            chain_definition=chain_definition_2
         )
         
         # Should still succeed (duplicate prevention handled internally)
@@ -1022,8 +1015,7 @@ class TestDuplicatePreventionIntegration:
                 )
                 session_id = history_service_with_test_db.create_session(
                     chain_context=chain_context,
-                    chain_definition=chain_definition,
-                    alert_id="concurrent_test_alert"
+                    chain_definition=chain_definition
                 )
                 results.append(session_id)
             except Exception as e:
@@ -1078,8 +1070,7 @@ class TestDuplicatePreventionIntegration:
         )
         result = history_service_with_test_db.create_session(
             chain_context=chain_context,
-            chain_definition=chain_definition,
-            alert_id="constraint_test_alert"
+            chain_definition=chain_definition
         )
         
         assert result is True  # Session creation should succeed
@@ -1137,8 +1128,7 @@ class TestDuplicatePreventionIntegration:
             )
             session_id = history_service_with_test_db.create_session(
                 chain_context=chain_context,
-                chain_definition=chain_definition,
-                alert_id=alert_id
+                chain_definition=chain_definition
             )
             if session_id:
                 generated_ids.add(alert_id)
@@ -1168,8 +1158,7 @@ class TestDuplicatePreventionIntegration:
             )
             result_1 = history_service_with_test_db.create_session(
                 chain_context=chain_context,
-                chain_definition=chain_definition,
-                alert_id="retry_test_alert"
+                chain_definition=chain_definition
             )
             
             assert result_1 is True
@@ -1193,8 +1182,7 @@ class TestDuplicatePreventionIntegration:
         )
         initial_session = history_service_with_test_db.create_session(
             chain_context=chain_context,
-            chain_definition=chain_definition,
-            alert_id="performance_test_alert"
+            chain_definition=chain_definition
         )
         
         assert initial_session is True
@@ -1213,8 +1201,7 @@ class TestDuplicatePreventionIntegration:
             )
             duplicate_session = history_service_with_test_db.create_session(
                 chain_context=chain_context_dup,
-                chain_definition=chain_definition_dup,
-                alert_id="performance_test_alert"  # Same alert_id
+                chain_definition=chain_definition_dup
             )
             
             # Should return True (duplicate prevention handled internally)
@@ -1254,8 +1241,7 @@ class TestDuplicatePreventionIntegration:
             )
             result = history_service_with_test_db.create_session(
                 chain_context=chain_context,
-                chain_definition=chain_definition,
-                alert_id=alert_id
+                chain_definition=chain_definition
             )
             
             # All calls should succeed (duplicate prevention handled internally)
@@ -1283,8 +1269,7 @@ class TestDuplicatePreventionIntegration:
         )
         result = history_service_with_test_db.create_session(
             chain_context=chain_context,
-            chain_definition=chain_definition,
-            alert_id="error_test_alert"
+            chain_definition=chain_definition
         )
         
         assert result is True
@@ -1307,8 +1292,7 @@ class TestDuplicatePreventionIntegration:
             )
             error_session = history_service_with_test_db.create_session(
                 chain_context=chain_context_2,
-                chain_definition=chain_definition_2,
-                alert_id="error_test_alert_2"
+                chain_definition=chain_definition_2
             )
             
             # Should return False on error, not crash

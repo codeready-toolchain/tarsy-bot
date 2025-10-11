@@ -26,11 +26,10 @@ import type { ProcessingStatus, ProcessingStatusProps } from '../types';
 import { websocketService } from '../services/websocketService';
 import { apiClient } from '../services/api';
 
-const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onComplete }) => {
+const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onComplete }) => {
   const [status, setStatus] = useState<ProcessingStatus | null>(null);
   const [wsError, setWsError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
 
   // Store onComplete in a ref to avoid effect re-runs when it changes
   const onCompleteRef = useRef(onComplete);
@@ -46,11 +45,11 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
   const isTerminalRef = useRef(false);
 
   useEffect(() => {
-    // Reset mount flag on (re)mount or alert change
+    // Reset mount flag on (re)mount or session change
     isMountedRef.current = true;
-    // New alert -> allow onComplete again
+    // New session -> allow onComplete again
     didCompleteRef.current = false;
-    // Reset terminal state for new alert
+    // Reset terminal state for new session
     isTerminalRef.current = false;
     
     // Initialize WebSocket connection status
@@ -67,51 +66,12 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
 
     // Set initial processing status
     setStatus({
-      alert_id: alertId,
+      session_id: sessionId,
       status: 'processing',
       progress: 10,
-      current_step: 'Alert submitted, initializing session...',
+      current_step: 'Session initialized, processing alert...',
       timestamp: new Date().toISOString()
     });
-
-    // Fetch the session ID for this alert with retry logic
-    // Note: The session ID mapping might take a moment to become available
-    const fetchSessionIdWithRetry = async () => {
-      const maxAttempts = 5;
-      const retryDelayMs = 1000; // Start with 1 second
-      
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          const response = await apiClient.getSessionIdForAlert(alertId);
-          
-          if (response.session_id) {
-            if (!isMountedRef.current) return; // Component unmounted, skip state updates
-            
-            setSessionId(response.session_id);
-            
-            // Update status to reflect successful session initialization
-            setStatus(prev => prev ? {
-              ...prev,
-              current_step: 'Session initialized, processing alert...',
-              progress: 20,
-              timestamp: new Date().toISOString()
-            } : null);
-            
-            return;
-          }
-        } catch (error) {
-          // Silently retry
-        }
-        
-        // Wait before next attempt (exponential backoff)
-        if (attempt < maxAttempts) {
-          const delay = retryDelayMs * Math.pow(1.5, attempt - 1);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-    };
-
-    fetchSessionIdWithRetry();
 
     // Handle connection changes
     const handleConnectionChange = (connected: boolean) => {
@@ -126,14 +86,10 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
       isMountedRef.current = false; // Mark component as unmounted
       unsubscribeConnection();
     };
-  }, [alertId]);
+  }, [sessionId]);
 
-  // Set up session-specific WebSocket subscription when sessionId becomes available
+  // Set up session-specific WebSocket subscription
   useEffect(() => {
-    if (!sessionId) {
-      return;
-    }
-    
     // Ensure WebSocket is connected before subscribing
     const setupSubscription = async () => {
       try {
@@ -164,7 +120,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
         const isFailed = eventType === 'session.failed';
         
         updatedStatus = {
-          alert_id: alertId,
+          session_id: sessionId,
           status: isCompleted ? 'completed' : isFailed ? 'error' : 'processing',
           progress: 0,
           current_step: isCompleted ? 'Processing completed' : 
@@ -195,7 +151,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
         // Stage events - always keep status as 'processing'
         // Terminal state is only determined by session.completed/session.failed
         updatedStatus = {
-          alert_id: alertId,
+          session_id: sessionId,
           status: 'processing',
           progress: 0,
           current_step: `Stage: ${update.stage_name || 'Processing'}`,
@@ -205,7 +161,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
       else if (eventType.startsWith('llm.')) {
         // LLM interaction events
         updatedStatus = {
-          alert_id: alertId,
+          session_id: sessionId,
           status: 'processing',
           progress: 0,
           current_step: 'Analyzing with AI...',
@@ -215,7 +171,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
       else if (eventType.startsWith('mcp.')) {
         // MCP interaction events
         updatedStatus = {
-          alert_id: alertId,
+          session_id: sessionId,
           status: 'processing',
           progress: 0,
           current_step: 'Gathering system information...',
@@ -252,7 +208,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
     return () => {
       unsubscribeSession();
     };
-  }, [sessionId, alertId]); // Dependencies: sessionId and alertId
+  }, [sessionId]); // sessionId dependency
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -319,7 +275,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ alertId, onCom
           </Box>
 
           <Typography variant="body2" color="text.secondary" gutterBottom>
-            Alert ID: {status.alert_id}
+            Session ID: {status.session_id}
           </Typography>
 
           <Box mb={3}>

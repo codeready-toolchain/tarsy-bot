@@ -180,7 +180,6 @@ describe('conversationParser - MCP Error Handling', () => {
   it('should parse complete session with mixed successful and failed MCP calls', () => {
     const mockSession: DetailedSession = {
       session_id: 'test-session-123',
-      alert_id: 'test-alert',
       alert_type: 'MixedTestAlert',
       agent_type: 'test-agent',
       status: 'completed',

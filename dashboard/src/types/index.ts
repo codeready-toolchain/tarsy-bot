@@ -1,6 +1,5 @@
 export interface Session {
   session_id: string;
-  alert_id: string;
   alert_type: string | null;
   agent_type: string;
   status: 'completed' | 'failed' | 'in_progress' | 'pending';
@@ -548,13 +547,13 @@ export interface StageCardProps {
 
 // Manual Alert Submission types
 export interface AlertSubmissionResponse {
-  alert_id: string;
+  session_id: string;
   status: string;
   message: string;
 }
 
 export interface ProcessingStatus {
-  alert_id: string;
+  session_id: string;
   status: 'queued' | 'processing' | 'completed' | 'error';
   progress: number;
   current_step: string;
@@ -580,7 +579,7 @@ export interface ManualAlertFormProps {
 }
 
 export interface ProcessingStatusProps {
-  alertId: string;
+  sessionId: string;
   onComplete?: () => void;
 }
 

@@ -4,7 +4,7 @@ Main entry point for the tarsy backend service.
 """
 
 import asyncio
-import json
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, Optional, AsyncGenerator
@@ -29,7 +29,6 @@ from tarsy.database.init_db import (
     get_async_session_factory,
     dispose_async_database
 )
-from tarsy.models.alert_processing import AlertKey
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.alert_service import AlertService
 from tarsy.utils.logger import get_module_logger, setup_logging
@@ -39,6 +38,20 @@ if TYPE_CHECKING:
 
 # Setup logger for this module
 logger = get_module_logger(__name__)
+
+# Session timeout for orphan detection
+SESSION_TIMEOUT_MINUTES = 30
+
+
+def get_pod_id() -> str:
+    """
+    Get the current pod/instance identifier from environment
+    
+    Returns:
+        Pod identifier from TARSY_POD_ID environment variable, or "unknown" if not set.
+        In multi-replica deployments, this should be set to the pod name.
+    """
+    return os.environ.get("TARSY_POD_ID", "unknown")
 
 
 # JWT/JWKS caching to avoid loading/encoding public key on every request
@@ -74,13 +87,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         import sys
         sys.exit(1)  # Exit with error code
     
-    # Clean up any orphaned sessions from previous backend crashes
+    # Clean up any orphaned sessions from previous pod crashes
+    # Timeout-based detection: sessions with no interaction for 30+ minutes are marked as failed
     # This should happen after database initialization but before processing new alerts
     if settings.history_enabled and db_init_success:
         try:
             from tarsy.services.history_service import get_history_service
             history_service = get_history_service()
-            cleaned_sessions = history_service.cleanup_orphaned_sessions()
+            cleaned_sessions = history_service.cleanup_orphaned_sessions(SESSION_TIMEOUT_MINUTES)
             if cleaned_sessions > 0:
                 logger.info(f"Startup cleanup: marked {cleaned_sessions} orphaned sessions as failed")
         except Exception as e:
@@ -132,6 +146,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.error(f"Failed to initialize event system: {e}", exc_info=True)
         logger.warning("Application will continue without event system")
     
+    # Set up app state with callback to avoid circular imports
+    # The controller will access this callback instead of importing process_alert_background directly
+    app.state.process_alert_callback = process_alert_background
+    
     logger.info("Tarsy started successfully!")
     
     # Log history service status
@@ -143,8 +161,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     yield
     
-    # Shutdown
+    # Shutdown: Mark in-progress sessions as interrupted for graceful shutdown
     logger.info("Tarsy shutting down...")
+    
+    if settings.history_enabled and db_init_success:
+        try:
+            from tarsy.services.history_service import get_history_service
+            history_service = get_history_service()
+            pod_id = get_pod_id()
+            interrupted_count = await history_service.mark_pod_sessions_interrupted(pod_id)
+            if interrupted_count > 0:
+                logger.info(f"Graceful shutdown: marked {interrupted_count} sessions as interrupted for pod {pod_id}")
+        except Exception as e:
+            logger.error(f"Failed to mark sessions as interrupted during shutdown: {str(e)}")
     
     # Shutdown event system
     if event_system_manager is not None:
@@ -194,8 +223,14 @@ async def root() -> Dict[str, str]:
 
 
 @app.get("/health")
-async def health_check() -> Dict[str, Any]:
-    """Comprehensive health check endpoint."""
+async def health_check(response: Response) -> Dict[str, Any]:
+    """
+    Comprehensive health check endpoint for Kubernetes probes
+    
+    Returns:
+        - HTTP 200: All critical systems healthy
+        - HTTP 503: Critical system degraded/unhealthy (Kubernetes will restart pod)
+    """
     try:
         # Get basic service status
         health_status = {
@@ -204,7 +239,7 @@ async def health_check() -> Dict[str, Any]:
             "timestamp": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         }
         
-        # Add history service status
+        # Check history service / database
         db_info = get_database_info()
         history_status = "disabled"
         if db_info.get("enabled"):
@@ -212,27 +247,50 @@ async def health_check() -> Dict[str, Any]:
                 history_status = "healthy"
             else:
                 history_status = "unhealthy"
-                health_status["status"] = "degraded"  # Overall status degraded if history fails
+                health_status["status"] = "degraded"
         
-        # Add event system status
+        # Check event system
         event_system_status = "unknown"
         event_listener_type = "unknown"
         try:
             from tarsy.services.events.manager import get_event_system
+            from tarsy.services.events.postgresql_listener import PostgreSQLEventListener
+            
             event_system = get_event_system()
             event_listener = event_system.get_listener() if event_system else None
-            if event_listener and event_listener.running:
-                event_system_status = "healthy"
+            
+            if event_listener is None:
+                event_system_status = "not_initialized"
+                event_listener_type = "none"
+            elif isinstance(event_listener, PostgreSQLEventListener):
+                # Check both running flag AND PostgreSQL connection
+                listener_conn = event_listener.listener_conn
+                conn_healthy = (
+                    listener_conn is not None and
+                    not listener_conn.is_closed()  # asyncpg connection check
+                )
+                if event_listener.running and conn_healthy:
+                    event_system_status = "healthy"
+                else:
+                    event_system_status = "degraded"
+                    health_status["status"] = "degraded"
+                event_listener_type = "PostgreSQLEventListener"
             else:
-                event_system_status = "degraded"
-                health_status["status"] = "degraded"
-            event_listener_type = event_listener.__class__.__name__ if event_listener else "unknown"
+                # SQLite or other listener - just check running flag
+                if event_listener.running:
+                    event_system_status = "healthy"
+                else:
+                    event_system_status = "degraded"
+                    health_status["status"] = "degraded"
+                event_listener_type = event_listener.__class__.__name__
+                
         except RuntimeError:
             event_system_status = "not_initialized"
         except Exception as e:
             logger.debug(f"Error getting event system status: {e}")
             event_system_status = "error"
         
+        # Build services status
         health_status["services"] = {
             "alert_processing": "healthy",
             "history_service": history_status,
@@ -247,7 +305,7 @@ async def health_check() -> Dict[str, Any]:
             }
         }
         
-        # Add system warnings
+        # Check system warnings
         from tarsy.services.system_warnings_service import get_warnings_service
         warnings_service = get_warnings_service()
         warnings = warnings_service.get_warnings()
@@ -263,17 +321,24 @@ async def health_check() -> Dict[str, Any]:
             ]
             health_status["warning_count"] = len(warnings)
             
-            # If there are warnings, mark status as degraded
+            # Warnings indicate degraded state
             if health_status["status"] == "healthy":
                 health_status["status"] = "degraded"
         else:
             health_status["warnings"] = []
             health_status["warning_count"] = 0
         
+        # Return HTTP 503 for degraded/unhealthy status
+        # This tells Kubernetes probes the pod is not ready
+        if health_status["status"] in ("degraded", "unhealthy"):
+            response.status_code = 503
+        
         return health_status
         
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
+        # Critical failure - return 503
+        response.status_code = 503
         return {
             "status": "unhealthy",
             "service": "tarsy",
@@ -383,26 +448,26 @@ def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) -> Non
     if alert and hasattr(alert, 'session_id') and alert_service:
         alert_service._update_session_error(alert.session_id, error_msg)
 
-async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
+async def process_alert_background(session_id: str, alert: ChainContext) -> None:
     """Background task to process an alert with comprehensive error handling and concurrency control."""
     if alert_processing_semaphore is None or alert_service is None:
-        logger.error(f"Cannot process alert {alert_id}: services not initialized")
+        logger.error(f"Cannot process session {session_id}: services not initialized")
         return
         
     async with alert_processing_semaphore:
         start_time = datetime.now()
         try:
-            logger.info(f"Starting background processing for alert {alert_id}")
+            logger.info(f"Starting background processing for session {session_id}")
             
             # Log alert processing start
-            logger.info(f"Processing alert {alert_id} of type '{alert.processing_alert.alert_type}' with {len(alert.processing_alert.alert_data)} data fields")
+            logger.info(f"Processing session {session_id} of type '{alert.processing_alert.alert_type}' with {len(alert.processing_alert.alert_data)} data fields")
             
             # Process with timeout to prevent hanging
             try:
                 # Use configurable timeout for alert processing
                 timeout_seconds = settings.alert_processing_timeout
                 await asyncio.wait_for(
-                    alert_service.process_alert(alert, alert_id=alert_id),
+                    alert_service.process_alert(alert),
                     timeout=timeout_seconds
                 )
             except asyncio.TimeoutError:
@@ -410,30 +475,30 @@ async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
             
             # Calculate processing duration
             duration = (datetime.now() - start_time).total_seconds()
-            logger.info(f"Alert {alert_id} processed successfully in {duration:.2f} seconds")
+            logger.info(f"Session {session_id} processed successfully in {duration:.2f} seconds")
             
         except ValueError as e:
             # Configuration or data validation errors
             error_msg = f"Invalid alert data: {str(e)}"
-            logger.error(f"Alert {alert_id} validation failed: {error_msg}")
+            logger.error(f"Session {session_id} validation failed: {error_msg}")
             mark_session_as_failed(alert, error_msg)
             
         except TimeoutError as e:
             # Processing timeout
             error_msg = str(e)
-            logger.error(f"Alert {alert_id} processing timeout: {error_msg}")
+            logger.error(f"Session {session_id} processing timeout: {error_msg}")
             mark_session_as_failed(alert, error_msg)
             
         except ConnectionError as e:
             # Network or external service errors
             error_msg = f"Connection error during processing: {str(e)}"
-            logger.error(f"Alert {alert_id} connection error: {error_msg}")
+            logger.error(f"Session {session_id} connection error: {error_msg}")
             mark_session_as_failed(alert, error_msg)
             
         except MemoryError as e:
             # Memory issues with large payloads
             error_msg = "Processing failed due to memory constraints (payload too large)"
-            logger.error(f"Alert {alert_id} memory error: {error_msg}")
+            logger.error(f"Session {session_id} memory error: {error_msg}")
             mark_session_as_failed(alert, error_msg)
             
         except Exception as e:
@@ -441,20 +506,9 @@ async def process_alert_background(alert_id: str, alert: ChainContext) -> None:
             duration = (datetime.now() - start_time).total_seconds()
             error_msg = f"Unexpected processing error: {str(e)}"
             logger.exception(
-                f"Alert {alert_id} unexpected error after {duration:.2f}s: {error_msg}"
+                f"Session {session_id} unexpected error after {duration:.2f}s: {error_msg}"
             )
             mark_session_as_failed(alert, error_msg)
-        
-        finally:
-            # Clean up alert key tracking regardless of success or failure
-            if alert:
-                from tarsy.controllers.alert_controller import processing_alert_keys, alert_keys_lock
-                alert_key = AlertKey.from_chain_context(alert)
-                
-                async with alert_keys_lock:
-                    if alert_key in processing_alert_keys:
-                        del processing_alert_keys[alert_key]
-                        logger.debug(f"Cleaned up alert key tracking for {alert_key}")
 
 if __name__ == "__main__":
     import uvicorn

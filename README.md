@@ -267,11 +267,10 @@ npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
 
 ### Core API
 - `GET /` - Health check endpoint
-- `GET /health` - Comprehensive health check with service status and warnings
-- `POST /api/v1/alerts` - Submit a new alert for processing
+- `GET /health` - Comprehensive health check with service status and warnings (HTTP 503 for degraded/unhealthy)
+- `POST /api/v1/alerts` - Submit a new alert for processing (returns `session_id` immediately)
 - `GET /api/v1/alert-types` - Get supported alert types
-- `GET /api/v1/session-id/{alert_id}` - Get session ID for alert tracking
-- `WebSocket /api/v1/ws` - Real-time progress updates via channel subscriptions
+- `WebSocket /api/v1/ws` - Real-time progress updates via WebSocket with channel subscriptions
 
 ### History API
 - `GET /api/v1/history/sessions` - List alert processing sessions with filtering and pagination
