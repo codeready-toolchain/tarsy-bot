@@ -472,7 +472,7 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                     timeout=timeout_seconds
                 )
             except asyncio.TimeoutError:
-                raise TimeoutError(f"Alert processing exceeded timeout limit of {timeout_seconds}s")
+                raise TimeoutError(f"Alert processing exceeded timeout limit of {timeout_seconds}s") from None
             
             # Calculate processing duration
             duration = (datetime.now() - start_time).total_seconds()

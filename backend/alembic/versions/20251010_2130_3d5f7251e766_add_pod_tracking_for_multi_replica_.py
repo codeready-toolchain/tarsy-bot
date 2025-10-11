@@ -7,7 +7,7 @@ Create Date: 2025-10-10 21:30:21.592898
 Adds pod_id and last_interaction_at fields to support multi-replica
 Kubernetes deployments with session cleanup and orphan detection (EP-0024).
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Sequence, Union
 
 from alembic import op
@@ -57,7 +57,7 @@ def upgrade() -> None:
     if 'started_at_us' in existing_columns:
         # Use COALESCE to handle NULL values; if started_at_us is NULL, use current timestamp
         # Database-agnostic: calculate timestamp in Python instead of database-specific SQL
-        current_ts_us = int(datetime.now().timestamp() * 1_000_000)
+        current_ts_us = int(datetime.now(timezone.utc).timestamp() * 1_000_000)
         conn.execute(
             text("UPDATE alert_sessions "
                  "SET last_interaction_at = COALESCE(started_at_us, :current_ts) "
@@ -67,7 +67,7 @@ def upgrade() -> None:
     else:
         # If started_at_us doesn't exist, backfill with current timestamp
         # Database-agnostic: calculate timestamp in Python
-        current_ts_us = int(datetime.now().timestamp() * 1_000_000)
+        current_ts_us = int(datetime.now(timezone.utc).timestamp() * 1_000_000)
         conn.execute(
             text("UPDATE alert_sessions "
                  "SET last_interaction_at = :current_ts "
