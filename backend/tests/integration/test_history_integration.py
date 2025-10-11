@@ -77,7 +77,16 @@ class TestHistoryServiceIntegration:
     @pytest.fixture
     def in_memory_engine(self):
         """Create in-memory SQLite engine for testing."""
-        engine = create_engine("sqlite:///:memory:", echo=False)
+        # CRITICAL: Must set check_same_thread=False AND use StaticPool for SQLite in-memory
+        # to allow access from thread pool (matches production configuration)
+        from sqlalchemy.pool import StaticPool
+        
+        engine = create_engine(
+            "sqlite:///:memory:", 
+            echo=False,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False}
+        )
         SQLModel.metadata.create_all(engine)
         return engine
     
@@ -175,7 +184,8 @@ class TestHistoryServiceIntegration:
         return agent
     
     @pytest.mark.integration
-    def test_create_session_and_track_lifecycle(self, history_service_with_db, sample_alert):
+    @pytest.mark.asyncio
+    async def test_create_session_and_track_lifecycle(self, history_service_with_db, sample_alert):
         """Test creating a session and tracking its complete lifecycle."""
         # Create initial session
         chain_context, chain_definition = create_test_context_and_chain(
@@ -211,15 +221,13 @@ class TestHistoryServiceIntegration:
         assert result == True
         
         # Create stage execution
-        import asyncio
-
         from tests.utils import StageExecutionFactory
-        stage_execution_id = asyncio.run(StageExecutionFactory.create_and_save_stage_execution(
+        stage_execution_id = await StageExecutionFactory.create_and_save_stage_execution(
             history_service_with_db,
             chain_context.session_id,
             stage_id="initial-analysis",
             stage_name="Initial Analysis"
-        ))
+        )
         
         # Log LLM interaction
         from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
@@ -277,7 +285,8 @@ class TestHistoryServiceIntegration:
         assert timeline.mcp_communication_count == 1
     
     @pytest.mark.integration
-    def test_chronological_timeline_ordering(self, history_service_with_db, sample_alert):
+    @pytest.mark.asyncio
+    async def test_chronological_timeline_ordering(self, history_service_with_db, sample_alert):
         """Test that timeline events are ordered chronologically."""
         # Create session
         chain_context, chain_definition = create_test_context_and_chain(
@@ -293,19 +302,15 @@ class TestHistoryServiceIntegration:
         session_id = chain_context.session_id
         
         # Create stage execution
-        import asyncio
-
         from tests.utils import StageExecutionFactory
-        stage_execution_id = asyncio.run(StageExecutionFactory.create_and_save_stage_execution(
+        stage_execution_id = await StageExecutionFactory.create_and_save_stage_execution(
             history_service_with_db,
             session_id,
             stage_id="timeline-analysis",
             stage_name="Timeline Analysis"
-        ))
+        )
         
         # Create events with specific timestamps (simulating real workflow)
-        base_time = datetime.now(timezone.utc)
-        
         # First LLM interaction
         llm_interaction1 = LLMInteraction(
             session_id=session_id,
@@ -501,7 +506,6 @@ class TestHistoryServiceIntegration:
             chain_definition=chain_definition
         )
         assert result is True  # Should still create session
-        session_id = chain_context.session_id
         
         # Test logging with invalid session ID
         llm_interaction_invalid = LLMInteraction(
@@ -666,8 +670,6 @@ class TestAlertServiceHistoryIntegration:
         """Test complete alert processing with history tracking."""
         # Process alert
         chain_context = alert_to_api_format(sample_alert)
-        import uuid
-        alert_id = str(uuid.uuid4())
         result = await alert_service_with_history.process_alert(
             chain_context
         )
@@ -711,8 +713,6 @@ class TestAlertServiceHistoryIntegration:
         
         # Process alert (should handle error gracefully)
         chain_context = alert_to_api_format(sample_alert)
-        import uuid
-        alert_id = str(uuid.uuid4())
         result = await alert_service_with_history.process_alert(
             chain_context
         )

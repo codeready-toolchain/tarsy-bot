@@ -130,9 +130,11 @@ class HistoryService:
         """
         Async version of retry database operations with exponential backoff for transient failures.
         
+        Runs synchronous database operations in a thread pool to avoid blocking the event loop.
+        
         Args:
             operation_name: Name of the operation for logging
-            operation_func: Function to retry
+            operation_func: Function to retry (executed in thread pool)
             treat_none_as_success: Whether None result is acceptable
         
         Returns:
@@ -141,7 +143,7 @@ class HistoryService:
         last_exception = None
         for attempt in range(self.max_retries + 1):
             try:
-                result = operation_func()
+                result = await asyncio.to_thread(operation_func)
                 if result is not None:
                     return result
                 if treat_none_as_success:

@@ -874,7 +874,16 @@ def alert_service_with_mocks(
 @pytest.fixture
 def history_test_database_engine():
     """Create in-memory SQLite engine for history service testing."""
-    engine = create_engine("sqlite:///:memory:", echo=False)
+    # CRITICAL: Must set check_same_thread=False AND use StaticPool for SQLite in-memory
+    # to allow access from thread pool (matches production configuration)
+    from sqlalchemy.pool import StaticPool
+    
+    engine = create_engine(
+        "sqlite:///:memory:", 
+        echo=False,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False}
+    )
     SQLModel.metadata.create_all(engine)
     return engine
 
