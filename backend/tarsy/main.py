@@ -286,6 +286,7 @@ async def health_check(response: Response) -> Dict[str, Any]:
                 
         except RuntimeError:
             event_system_status = "not_initialized"
+            health_status["status"] = "degraded"
         except Exception as e:
             logger.debug(f"Error getting event system status: {e}")
             event_system_status = "error"

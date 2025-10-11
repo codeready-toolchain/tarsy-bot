@@ -327,38 +327,46 @@ class TestMainEndpoints:
         else:
             mock_db_info.return_value = db_status
         
-        response = client.get("/health")
-        assert response.status_code == expected_http_code
-        data = response.json()
-        
-        # Check basic response structure
-        assert data["status"] == expected_status
-        assert data["service"] == "tarsy"
-        
-        # Timestamp may not be present in unhealthy responses
-        if expected_status != "unhealthy":
-            assert "timestamp" in data
-        
-        # Check services status (only for healthy/degraded responses)
-        if expected_status != "unhealthy":
-            for service, expected_value in expected_services.items():
-                if isinstance(expected_value, dict):
-                    for key, value in expected_value.items():
-                        assert data["services"][service][key] == value, (
-                            f"Service {service}.{key} should be {value}, "
-                            f"got {data['services'][service][key]}"
+        # Mock event system as healthy for these tests
+        with patch('tarsy.services.events.manager.get_event_system') as mock_get_event_system:
+            mock_event_system = Mock()
+            mock_listener = Mock()
+            mock_listener.running = True
+            mock_event_system.get_listener.return_value = mock_listener
+            mock_get_event_system.return_value = mock_event_system
+            
+            response = client.get("/health")
+            assert response.status_code == expected_http_code
+            data = response.json()
+            
+            # Check basic response structure
+            assert data["status"] == expected_status
+            assert data["service"] == "tarsy"
+            
+            # Timestamp may not be present in unhealthy responses
+            if expected_status != "unhealthy":
+                assert "timestamp" in data
+            
+            # Check services status (only for healthy/degraded responses)
+            if expected_status != "unhealthy":
+                for service, expected_value in expected_services.items():
+                    if isinstance(expected_value, dict):
+                        for key, value in expected_value.items():
+                            assert data["services"][service][key] == value, (
+                                f"Service {service}.{key} should be {value}, "
+                                f"got {data['services'][service][key]}"
+                            )
+                    else:
+                        assert data["services"][service] == expected_value, (
+                            f"Service {service} should be {expected_value}, "
+                            f"got {data['services'][service]}"
                         )
-                else:
-                    assert data["services"][service] == expected_value, (
-                        f"Service {service} should be {expected_value}, "
-                        f"got {data['services'][service]}"
-                    )
-        
-        # Check for error message when unhealthy
-        if expected_status == "unhealthy":
-            assert "error" in data
-            if isinstance(db_status, Exception):
-                assert str(db_status) in data["error"]
+            
+            # Check for error message when unhealthy
+            if expected_status == "unhealthy":
+                assert "error" in data
+                if isinstance(db_status, Exception):
+                    assert str(db_status) in data["error"]
 
     @patch('tarsy.main.get_database_info')
     def test_health_endpoint_with_warnings(self, mock_db_info, client):
@@ -389,9 +397,17 @@ class TestMainEndpoints:
             "runbook_service", "Runbook service disabled"
         )
 
-        response = client.get("/health")
-        assert response.status_code == 503  # Degraded status returns 503
-        data = response.json()
+        # Mock event system as healthy for this test
+        with patch('tarsy.services.events.manager.get_event_system') as mock_get_event_system:
+            mock_event_system = Mock()
+            mock_listener = Mock()
+            mock_listener.running = True
+            mock_event_system.get_listener.return_value = mock_listener
+            mock_get_event_system.return_value = mock_event_system
+            
+            response = client.get("/health")
+            assert response.status_code == 503  # Degraded status returns 503
+            data = response.json()
 
         # Status should be degraded due to warnings
         assert data["status"] == "degraded"
@@ -428,9 +444,17 @@ class TestMainEndpoints:
             "retention_days": 30,
         }
 
-        response = client.get("/health")
-        assert response.status_code == 200
-        data = response.json()
+        # Mock event system as healthy for this test
+        with patch('tarsy.services.events.manager.get_event_system') as mock_get_event_system:
+            mock_event_system = Mock()
+            mock_listener = Mock()
+            mock_listener.running = True
+            mock_event_system.get_listener.return_value = mock_listener
+            mock_get_event_system.return_value = mock_event_system
+            
+            response = client.get("/health")
+            assert response.status_code == 200
+            data = response.json()
 
         # Status should be healthy
         assert data["status"] == "healthy"
@@ -974,6 +998,31 @@ class TestCriticalCoverage:
             assert data["status"] == "unhealthy"
             assert "error" in data
 
+    @patch('tarsy.main.get_database_info')
+    def test_health_endpoint_event_system_not_initialized(self, mock_db_info, client):
+        """Test health endpoint marks status as degraded when event system fails to initialize."""
+        # Mock database as healthy
+        mock_db_info.return_value = {
+            "enabled": True,
+            "connection_test": True,
+            "retention_days": 30,
+        }
+        
+        # Mock get_event_system to raise RuntimeError (event system not initialized)
+        with patch('tarsy.services.events.manager.get_event_system') as mock_get_event_system:
+            mock_get_event_system.side_effect = RuntimeError("Event system not initialized")
+            
+            response = client.get("/health")
+            
+            # Should return 503 (degraded status)
+            assert response.status_code == 503
+            data = response.json()
+            
+            # Overall status should be degraded (critical for multi-replica support)
+            assert data["status"] == "degraded"
+            
+            # Event system status should be "not_initialized"
+            assert data["services"]["event_system"]["status"] == "not_initialized"
 
     def test_websocket_connection_stability(self, client):
         """Test WebSocket connection stability under various conditions."""
