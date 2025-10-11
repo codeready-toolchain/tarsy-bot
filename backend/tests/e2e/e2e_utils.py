@@ -89,7 +89,8 @@ class E2ETestUtils:
                         return session_id, status
 
                     # If session is still processing, continue polling
-                    if status in ["processing", "queued"]:
+                    # Valid active statuses: pending, in_progress
+                    if status in ["pending", "in_progress"]:
                         await asyncio.sleep(poll_interval)
                         continue
 

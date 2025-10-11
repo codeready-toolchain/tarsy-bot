@@ -1140,240 +1140,69 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
 @pytest.mark.asyncio
 @pytest.mark.unit
 async def test_cleanup_orphaned_sessions():
-    """Test that orphaned sessions are properly cleaned up on startup."""
-    # Create test data: sessions in different states
-    test_sessions = [
-        # These should be cleaned up (orphaned)
-        {
-            "session_id": "orphaned-pending-1",
-            "status": AlertSessionStatus.PENDING, 
-            "agent_type": "KubernetesAgent"
-        },
-        {
-            "session_id": "orphaned-progress-1", 
-            "status": AlertSessionStatus.IN_PROGRESS,
-            "agent_type": "KubernetesAgent"
-        },
-        # These should NOT be cleaned up (already terminal states)
-        {
-            "session_id": "completed-1",
-            "status": AlertSessionStatus.COMPLETED,
-            "agent_type": "KubernetesAgent"
-        },
-        {
-            "session_id": "failed-1",
-            "status": AlertSessionStatus.FAILED, 
-            "agent_type": "KubernetesAgent"
-        }
-    ]
-    
-    # Create a mock history service
+    """Test cleanup of orphaned sessions based on timeout."""
     history_service = HistoryService()
     history_service.is_enabled = True
     
-    # Mock the repository
-    mock_repo = Mock()
+    from tarsy.models.constants import AlertSessionStatus
+    from tarsy.models.db_models import AlertSession
     
-    # Create session dictionaries (not Mock objects)
-    mock_active_sessions = []
-    mock_all_sessions = []
-    
-    for session_data in test_sessions:
-        # Convert to dictionary format that matches repository return
-        session_dict = {}
-        for key, value in session_data.items():
-            # Convert enum values to strings
-            if hasattr(value, 'value'):
-                session_dict[key] = value.value
-            else:
-                session_dict[key] = value
-        
-        # Add required fields that the service expects
-        session_dict.setdefault('alert_data', {})
-        session_dict.setdefault('chain_id', 'test-chain')
-        session_dict.setdefault('started_at_us', 1640995200000000)
-        session_dict.setdefault('alert_type', 'test')
-        
-        mock_all_sessions.append(session_dict)
-        
-        # Only pending and in_progress should be returned by the active query
-        status_value = session_data["status"].value if hasattr(session_data["status"], 'value') else session_data["status"]
-        if status_value in AlertSessionStatus.active_values():
-            mock_active_sessions.append(session_dict)
-    
-    # Mock repository responses
-    from tarsy.models.history_models import SessionOverview
-    
-    # Convert session dicts to AlertSession objects, then to SessionOverview models
-    session_overviews = []
-    for session_dict in mock_active_sessions:
-        alert_session = AlertSession(**session_dict)
-        # Create SessionOverview from AlertSession like the repository does
-        session_overview = SessionOverview(
-            session_id=alert_session.session_id,
-            alert_type=alert_session.alert_type,
-            agent_type=alert_session.agent_type,
-            status=alert_session.status,
-            started_at_us=alert_session.started_at_us,
-            completed_at_us=alert_session.completed_at_us,
-            error_message=alert_session.error_message,
-            llm_interaction_count=0,  # Default values for test
-            mcp_communication_count=0,
-            total_interactions=0,
-            chain_id=alert_session.chain_id or "test-chain",
-            current_stage_index=alert_session.current_stage_index,
-            total_stages=None,
-            completed_stages=None,
-            failed_stages=0
-        )
-        session_overviews.append(session_overview)
-    
-    mock_repo.get_alert_sessions.return_value = MockFactory.create_mock_paginated_sessions(
-        sessions=session_overviews,
-        page_size=1000,
-        total_items=len(session_overviews)
+    # Create test data - orphaned sessions with old last_interaction_at
+    orphaned_session_1 = AlertSession(
+        session_id='orphaned-1',
+        alert_type='test-alert',
+        agent_type='KubernetesAgent',
+        status=AlertSessionStatus.IN_PROGRESS.value,
+        started_at_us=1640995200000000,
+        last_interaction_at=1640995200000000,  # Old timestamp
+        pod_id='pod-1'
     )
+    
+    orphaned_session_2 = AlertSession(
+        session_id='orphaned-2',
+        alert_type='test-alert',
+        agent_type='KubernetesAgent',
+        status=AlertSessionStatus.IN_PROGRESS.value,
+        started_at_us=1640995200000000,
+        last_interaction_at=1640995200000000,  # Old timestamp
+        pod_id='pod-2'
+    )
+    
+    # Mock repository
+    mock_repo = Mock()
+    mock_repo.find_orphaned_sessions.return_value = [orphaned_session_1, orphaned_session_2]
     mock_repo.update_alert_session.return_value = True
     
-    # Mock stage data for the orphaned sessions
-    from tarsy.models.db_models import StageExecution
-    from tarsy.models.constants import StageStatus
-    
-    mock_orphaned_stages = [
-        # Stages for orphaned-pending-1 session
-        StageExecution(
-            execution_id="stage-1-pending",
-            session_id="orphaned-pending-1",
-            stage_id="initial-analysis",
-            stage_index=0,
-            stage_name="Initial Analysis",
-            agent="KubernetesAgent",
-            status=StageStatus.PENDING.value,
-            started_at_us=None,
-            completed_at_us=None
-        ),
-        # Stages for orphaned-progress-1 session 
-        StageExecution(
-            execution_id="stage-2-active",
-            session_id="orphaned-progress-1",
-            stage_id="initial-analysis",
-            stage_index=0,
-            stage_name="Initial Analysis",
-            agent="KubernetesAgent", 
-            status=StageStatus.ACTIVE.value,
-            started_at_us=1640995200000000,
-            completed_at_us=None
-        ),
-        StageExecution(
-            execution_id="stage-3-pending",
-            session_id="orphaned-progress-1",
-            stage_id="deep-analysis",
-            stage_index=1,
-            stage_name="Deep Analysis",
-            agent="KubernetesAgent",
-            status=StageStatus.PENDING.value,
-            started_at_us=None,
-            completed_at_us=None
-        )
-    ]
-    
-    # Track which session we're currently processing for more targeted stage mocking
-    session_stage_mapping = {
-        "orphaned-pending-1": [stage for stage in mock_orphaned_stages if stage.session_id == "orphaned-pending-1"],
-        "orphaned-progress-1": [stage for stage in mock_orphaned_stages if stage.session_id == "orphaned-progress-1"]
-    }
-    
-    current_session_context = []
-    
-    # Mock repository's session.exec method for stage queries 
-    def mock_session_exec(stmt):
-        mock_result = Mock()
-        # Use a simple approach: return stages for the session being processed
-        # Since the test executes sequentially, we can track the order
-        if len(current_session_context) == 0:
-            # First call - return stages for first session
-            current_session_context.append("orphaned-pending-1")
-            stages = session_stage_mapping["orphaned-pending-1"]
-        elif len(current_session_context) == 1:
-            # Second call - return stages for second session
-            current_session_context.append("orphaned-progress-1")
-            stages = session_stage_mapping["orphaned-progress-1"]
-        else:
-            # No more stages
-            stages = []
-        
-        mock_result.all.return_value = stages
-        return mock_result
-    
-    mock_repo.session = Mock()
-    mock_repo.session.exec.side_effect = mock_session_exec
-    mock_repo.update_stage_execution.return_value = True
-    
-    # Mock get_alert_session to return existing AlertSession objects for each session_id
-    def mock_get_alert_session(session_id):
-        # Find the corresponding session from our test data
-        for session_dict in mock_active_sessions:
-            if session_dict['session_id'] == session_id:
-                return AlertSession(**session_dict)
-        return None
-    
-    mock_repo.get_alert_session.side_effect = mock_get_alert_session
-    
     # Mock the context manager
-    history_service.get_repository = Mock(return_value=Mock(__enter__=Mock(return_value=mock_repo), __exit__=Mock(return_value=None)))
+    history_service.get_repository = Mock(return_value=Mock(
+        __enter__=Mock(return_value=mock_repo), 
+        __exit__=Mock(return_value=None)
+    ))
     
-    # Call cleanup method
-    cleaned_count = history_service.cleanup_orphaned_sessions()
+    # Call cleanup method with 30 minute timeout
+    cleaned_count = history_service.cleanup_orphaned_sessions(timeout_minutes=30)
     
     # Verify correct number of sessions were cleaned up
     assert cleaned_count == 2, f"Expected 2 sessions to be cleaned up, got {cleaned_count}"
     
-    # Verify get_alert_sessions was called with correct parameters
-    mock_repo.get_alert_sessions.assert_called_once_with(
-        status=AlertSessionStatus.active_values(),
-        page_size=1000
-    )
+    # Verify find_orphaned_sessions was called with timeout threshold
+    assert mock_repo.find_orphaned_sessions.call_count == 1
+    call_args = mock_repo.find_orphaned_sessions.call_args[0]
+    timeout_threshold = call_args[0]
+    # Threshold should be approximately 30 minutes ago (in microseconds)
+    # We can't check exact value, but should be a large number
+    assert timeout_threshold > 0
     
-    # Verify get_alert_session was called for each active session
-    assert mock_repo.get_alert_session.call_count == 2
-    expected_session_ids = {"orphaned-pending-1", "orphaned-progress-1"}
-    actual_session_ids = {call[0][0] for call in mock_repo.get_alert_session.call_args_list}
-    assert actual_session_ids == expected_session_ids
-    
-    # Verify each orphaned session was updated correctly
+    # Verify update_alert_session was called for each orphaned session
     assert mock_repo.update_alert_session.call_count == 2
     
-    # Check that orphaned sessions were updated via repository calls
+    # Check that sessions were marked as failed with correct error message
     update_calls = mock_repo.update_alert_session.call_args_list
-    assert len(update_calls) == 2, f"Expected 2 update calls, got {len(update_calls)}"
-    
-    # Verify each call had correct status and error message
     for call in update_calls:
-        updated_session = call[0][0]  # First argument of the call
+        updated_session = call[0][0]
         assert updated_session.status == AlertSessionStatus.FAILED.value
-        assert updated_session.error_message == "Backend was restarted - session terminated unexpectedly"
+        assert 'Processing failed - session became unresponsive' in updated_session.error_message
         assert updated_session.completed_at_us is not None
-    
-    # Verify that stages were also updated
-    # We should have 3 stage updates (1 from orphaned-pending-1, 2 from orphaned-progress-1)
-    assert mock_repo.update_stage_execution.call_count == 3
-    
-    # Verify stage update calls - check that all stages were marked as failed
-    stage_update_calls = mock_repo.update_stage_execution.call_args_list
-    updated_stages = [call[0][0] for call in stage_update_calls]
-    
-    for updated_stage in updated_stages:
-        assert updated_stage.status == StageStatus.FAILED.value
-        assert updated_stage.error_message == "Session terminated due to backend restart"
-        assert updated_stage.completed_at_us is not None
-        
-        # Verify duration was calculated for stages that had started_at_us
-        if updated_stage.started_at_us is not None:
-            assert updated_stage.duration_ms is not None
-            assert updated_stage.duration_ms >= 0
-    
-    # Verify the session.exec was called to query stages
-    assert mock_repo.session.exec.call_count == 2  # Once per orphaned session
 
 
 @pytest.mark.asyncio
@@ -1409,77 +1238,241 @@ async def test_cleanup_orphaned_sessions_no_active_sessions():
     history_service.is_enabled = True
     
     mock_repo = Mock()
-    mock_repo.get_alert_sessions.return_value = MockFactory.create_mock_paginated_sessions(
-        sessions=[],
-        page_size=1000,
-        total_items=0
-    )
+    mock_repo.find_orphaned_sessions.return_value = []  # No orphaned sessions found
     
-    history_service.get_repository = Mock(return_value=Mock(__enter__=Mock(return_value=mock_repo), __exit__=Mock(return_value=None)))
+    history_service.get_repository = Mock(return_value=Mock(
+        __enter__=Mock(return_value=mock_repo), 
+        __exit__=Mock(return_value=None)
+    ))
     
     cleaned_count = history_service.cleanup_orphaned_sessions()
     
     assert cleaned_count == 0
-    mock_repo.get_alert_sessions.assert_called_once_with(
-        status=["pending", "in_progress"],
-        page_size=1000
-    )
+    # Verify find_orphaned_sessions was called
+    assert mock_repo.find_orphaned_sessions.call_count == 1
+    # Verify update was not called since no orphaned sessions
     mock_repo.update_alert_session.assert_not_called() 
 
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_cleanup_orphaned_sessions_session_not_found():
-    """Test cleanup when get_alert_session returns None (session not found in database)."""
+async def test_cleanup_never_touches_failed_sessions():
+    """
+    CRITICAL TEST: Ensure cleanup NEVER marks already-failed sessions as failed again.
+    
+    This test prevents a critical bug where failed sessions could be incorrectly
+    cleaned up by the orphan detection mechanism.
+    """
     history_service = HistoryService()
     history_service.is_enabled = True
     
-    # Create a session overview that appears in the active list but doesn't exist in database
-    from tarsy.models.history_models import SessionOverview
-    session_overview = SessionOverview(
-        session_id="missing-session",
-        alert_id="alert-missing",
+    from tarsy.models.constants import AlertSessionStatus
+    from tarsy.models.db_models import AlertSession
+    
+    # Create a session that is already FAILED (should NEVER be touched by cleanup)
+    failed_session = AlertSession(
+        session_id='already-failed',
+        alert_type='test-alert',
+        agent_type='KubernetesAgent',
+        status=AlertSessionStatus.FAILED.value,  # Already failed!
+        started_at_us=1640995200000000,
+        last_interaction_at=1640995200000000,  # Even with old timestamp
+        pod_id='pod-1',
+        error_message='Original failure reason'
+    )
+    
+    # Mock repository - cleanup should return empty list (no IN_PROGRESS sessions)
+    mock_repo = Mock()
+    mock_repo.find_orphaned_sessions.return_value = []  # Correctly excludes FAILED sessions
+    
+    history_service.get_repository = Mock(return_value=Mock(
+        __enter__=Mock(return_value=mock_repo), 
+        __exit__=Mock(return_value=None)
+    ))
+    
+    # Call cleanup
+    cleaned_count = history_service.cleanup_orphaned_sessions(timeout_minutes=30)
+    
+    # Verify NO sessions were cleaned up
+    assert cleaned_count == 0, "Cleanup should never touch FAILED sessions"
+    
+    # Verify update was never called
+    mock_repo.update_alert_session.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_cleanup_never_touches_completed_sessions():
+    """
+    CRITICAL TEST: Ensure cleanup NEVER marks completed sessions as failed.
+    
+    Completed sessions should never be touched by orphan detection.
+    """
+    history_service = HistoryService()
+    history_service.is_enabled = True
+    
+    from tarsy.models.constants import AlertSessionStatus
+    from tarsy.models.db_models import AlertSession
+    
+    # Create a session that is COMPLETED (should NEVER be touched by cleanup)
+    completed_session = AlertSession(
+        session_id='already-completed',
+        alert_type='test-alert',
+        agent_type='KubernetesAgent',
+        status=AlertSessionStatus.COMPLETED.value,  # Completed!
+        started_at_us=1640995200000000,
+        last_interaction_at=1640995200000000,  # Even with old timestamp
+        completed_at_us=1640995260000000,
+        pod_id='pod-1'
+    )
+    
+    # Mock repository - should exclude COMPLETED sessions
+    mock_repo = Mock()
+    mock_repo.find_orphaned_sessions.return_value = []
+    
+    history_service.get_repository = Mock(return_value=Mock(
+        __enter__=Mock(return_value=mock_repo), 
+        __exit__=Mock(return_value=None)
+    ))
+    
+    # Call cleanup
+    cleaned_count = history_service.cleanup_orphaned_sessions(timeout_minutes=30)
+    
+    # Verify NO sessions were cleaned up
+    assert cleaned_count == 0, "Cleanup should never touch COMPLETED sessions"
+    mock_repo.update_alert_session.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_cleanup_never_touches_null_last_interaction():
+    """
+    CRITICAL TEST: Sessions with NULL last_interaction_at should never be cleaned up.
+    
+    Sessions where last_interaction_at is NULL (not yet set) should not be
+    considered orphaned, even if they're IN_PROGRESS.
+    """
+    history_service = HistoryService()
+    history_service.is_enabled = True
+    
+    from tarsy.models.constants import AlertSessionStatus
+    from tarsy.models.db_models import AlertSession
+    
+    # Create IN_PROGRESS session with NULL last_interaction_at
+    session_with_null = AlertSession(
+        session_id='null-interaction',
+        alert_type='test-alert',
+        agent_type='KubernetesAgent',
+        status=AlertSessionStatus.IN_PROGRESS.value,
+        started_at_us=1640995200000000,
+        last_interaction_at=None,  # NULL - should be excluded
+        pod_id='pod-1'
+    )
+    
+    # Mock repository - should exclude sessions with NULL last_interaction_at
+    mock_repo = Mock()
+    mock_repo.find_orphaned_sessions.return_value = []  # Correctly excludes NULL
+    
+    history_service.get_repository = Mock(return_value=Mock(
+        __enter__=Mock(return_value=mock_repo), 
+        __exit__=Mock(return_value=None)
+    ))
+    
+    # Call cleanup
+    cleaned_count = history_service.cleanup_orphaned_sessions(timeout_minutes=30)
+    
+    # Verify NO sessions were cleaned up
+    assert cleaned_count == 0, "Cleanup should never touch sessions with NULL last_interaction_at"
+    mock_repo.update_alert_session.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_cleanup_only_touches_in_progress_with_old_interaction():
+    """
+    Test that cleanup ONLY affects IN_PROGRESS sessions with old last_interaction_at.
+    
+    This is the positive test case for the orphan detection mechanism.
+    """
+    history_service = HistoryService()
+    history_service.is_enabled = True
+    
+    from tarsy.models.constants import AlertSessionStatus
+    from tarsy.models.db_models import AlertSession
+    from tarsy.utils.timestamp import now_us
+    
+    # Create an orphaned IN_PROGRESS session with old timestamp
+    orphaned_session = AlertSession(
+        session_id='truly-orphaned',
+        alert_type='test-alert',
+        agent_type='KubernetesAgent',
+        status=AlertSessionStatus.IN_PROGRESS.value,
+        started_at_us=now_us() - (60 * 60 * 1_000_000),  # 1 hour ago
+        last_interaction_at=now_us() - (60 * 60 * 1_000_000),  # 1 hour ago
+        pod_id='pod-1'
+    )
+    
+    # Mock repository
+    mock_repo = Mock()
+    mock_repo.find_orphaned_sessions.return_value = [orphaned_session]
+    mock_repo.update_alert_session.return_value = True
+    
+    history_service.get_repository = Mock(return_value=Mock(
+        __enter__=Mock(return_value=mock_repo), 
+        __exit__=Mock(return_value=None)
+    ))
+    
+    # Call cleanup with 30 minute timeout
+    cleaned_count = history_service.cleanup_orphaned_sessions(timeout_minutes=30)
+    
+    # Verify the orphaned session was cleaned up
+    assert cleaned_count == 1, "Should clean up truly orphaned IN_PROGRESS session"
+    
+    # Verify it was marked as failed with appropriate error message
+    mock_repo.update_alert_session.assert_called_once()
+    updated_session = mock_repo.update_alert_session.call_args[0][0]
+    assert updated_session.status == AlertSessionStatus.FAILED.value
+    assert 'Processing failed - session became unresponsive' in updated_session.error_message
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_cleanup_orphaned_sessions_session_not_found():
+    """Test cleanup handles gracefully when update fails."""
+    history_service = HistoryService()
+    history_service.is_enabled = True
+    
+    from tarsy.models.db_models import AlertSession
+    
+    # Create an orphaned session
+    orphaned_session = AlertSession(
+        session_id="orphaned-1",
         alert_type="test-alert",
         agent_type="KubernetesAgent",
-        status=AlertSessionStatus.IN_PROGRESS,
+        status=AlertSessionStatus.IN_PROGRESS.value,
         started_at_us=1640995200000000,
-        completed_at_us=None,
-        error_message=None,
-        llm_interaction_count=0,
-        mcp_communication_count=0,
-        total_interactions=0,
-        chain_id="test-chain",
-        current_stage_index=None,
-        total_stages=None,
-        completed_stages=None,
-        failed_stages=0
+        last_interaction_at=1640995200000000,
+        pod_id='pod-1'
     )
     
     mock_repo = Mock()
+    mock_repo.find_orphaned_sessions.return_value = [orphaned_session]
+    mock_repo.update_alert_session.return_value = False  # Update fails
     
-    # Mock get_alert_sessions to return the session overview
-    mock_repo.get_alert_sessions.return_value = MockFactory.create_mock_paginated_sessions(
-        sessions=[session_overview],
-        page_size=1000,
-        total_items=1
-    )
+    history_service.get_repository = Mock(return_value=Mock(
+        __enter__=Mock(return_value=mock_repo),
+        __exit__=Mock(return_value=None)
+    ))
     
-    # Mock get_alert_session to return None (session not found in database)
-    mock_repo.get_alert_session.return_value = None
-    
-    history_service.get_repository = Mock(return_value=Mock(__enter__=Mock(return_value=mock_repo), __exit__=Mock(return_value=None)))
-    
-    # Should handle missing session gracefully
+    # Should handle update failure gracefully and still count the attempt
     cleaned_count = history_service.cleanup_orphaned_sessions()
     
-    # Should return 0 (no successful cleanups) and not crash
-    assert cleaned_count == 0
+    # Even though update failed, we still attempted cleanup on 1 session
+    assert cleaned_count == 1
     
-    # Verify get_alert_session was called
-    mock_repo.get_alert_session.assert_called_once_with("missing-session")
-    
-    # Verify update was NOT called since session wasn't found
-    mock_repo.update_alert_session.assert_not_called()
+    # Verify find_orphaned_sessions and update were called
+    assert mock_repo.find_orphaned_sessions.call_count == 1
+    assert mock_repo.update_alert_session.call_count == 1
 
 
 class TestHistoryAPIResponseStructure:

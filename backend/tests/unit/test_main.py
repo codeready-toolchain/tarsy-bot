@@ -275,10 +275,11 @@ class TestMainEndpoints:
         assert data["message"] == "Tarsy is running"
         assert data["status"] == "healthy"
 
-    @pytest.mark.parametrize("db_status,expected_status,expected_services", [
+    @pytest.mark.parametrize("db_status,expected_status,expected_http_code,expected_services", [
         (
             {"enabled": True, "connection_test": True, "retention_days": 30},
             "healthy",
+            200,
             {
                 "alert_processing": "healthy",
                 "history_service": "healthy",
@@ -288,6 +289,7 @@ class TestMainEndpoints:
         (
             {"enabled": True, "connection_test": False, "retention_days": 30},
             "degraded",
+            503,
             {
                 "alert_processing": "healthy",
                 "history_service": "unhealthy",
@@ -297,6 +299,7 @@ class TestMainEndpoints:
         (
             {"enabled": False},
             "healthy",
+            200,
             {
                 "alert_processing": "healthy",
                 "history_service": "disabled",
@@ -306,6 +309,7 @@ class TestMainEndpoints:
         (
             Exception("Database error"),
             "unhealthy",
+            503,
             {
                 "alert_processing": "healthy",
                 "history_service": "unhealthy",
@@ -315,7 +319,7 @@ class TestMainEndpoints:
     ])
     @patch('tarsy.main.get_database_info')
     def test_health_endpoint_status(
-        self, mock_db_info, client, db_status, expected_status, expected_services
+        self, mock_db_info, client, db_status, expected_status, expected_http_code, expected_services
     ):
         """Test health endpoint with different database status scenarios."""
         if isinstance(db_status, Exception):
@@ -324,7 +328,7 @@ class TestMainEndpoints:
             mock_db_info.return_value = db_status
         
         response = client.get("/health")
-        assert response.status_code == 200
+        assert response.status_code == expected_http_code
         data = response.json()
         
         # Check basic response structure
@@ -386,7 +390,7 @@ class TestMainEndpoints:
         )
 
         response = client.get("/health")
-        assert response.status_code == 200
+        assert response.status_code == 503  # Degraded status returns 503
         data = response.json()
 
         # Status should be degraded due to warnings
@@ -963,9 +967,9 @@ class TestCriticalCoverage:
         with patch('tarsy.main.get_database_info') as mock_db_info:
             mock_db_info.side_effect = Exception("Database connection failed")
             
-            # Health endpoint should handle database failures gracefully
+            # Health endpoint should handle database failures gracefully and return 503
             response = client.get("/health")
-            assert response.status_code == 200
+            assert response.status_code == 503  # Unhealthy status returns 503
             data = response.json()
             assert data["status"] == "unhealthy"
             assert "error" in data

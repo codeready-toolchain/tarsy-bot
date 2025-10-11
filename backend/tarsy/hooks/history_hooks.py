@@ -8,7 +8,6 @@ contamination between hook context and actual results.
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
 
 from tarsy.hooks.hook_context import BaseHook, _apply_llm_interaction_truncation
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
@@ -42,6 +41,13 @@ class LLMHistoryHook(BaseHook[LLMInteraction]):
                 logger.debug(
                     f"Stored LLM interaction {interaction.interaction_id} to history"
                 )
+                
+                # Update last interaction timestamp for orphan detection (non-blocking)
+                if interaction.session_id:
+                    await asyncio.to_thread(
+                        self.history_service.record_session_interaction, 
+                        interaction.session_id
+                    )
             else:
                 logger.warning(
                     f"History service returned False for LLM interaction {interaction.interaction_id}"
@@ -78,6 +84,13 @@ class MCPHistoryHook(BaseHook[MCPInteraction]):
                 logger.debug(
                     f"Stored MCP interaction {interaction.request_id} to history"
                 )
+                
+                # Update last interaction timestamp for orphan detection (non-blocking)
+                if interaction.session_id:
+                    await asyncio.to_thread(
+                        self.history_service.record_session_interaction, 
+                        interaction.session_id
+                    )
             else:
                 logger.warning(
                     f"History service returned False for MCP interaction {interaction.request_id}"

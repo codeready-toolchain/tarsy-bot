@@ -808,3 +808,88 @@ class HistoryRepository:
         except Exception as e:
             logger.error(f"Failed to build session with stages for session {session_id}: {str(e)}")
             return None
+    
+    # Pod tracking and orphan detection methods
+    def find_orphaned_sessions(self, timeout_threshold_us: int) -> List[AlertSession]:
+        """
+        Find sessions that appear orphaned based on last interaction time.
+        
+        Only returns sessions that are:
+        1. IN_PROGRESS status (not completed, failed, or pending)
+        2. Have a non-NULL last_interaction_at timestamp
+        3. Have last_interaction_at older than the timeout threshold
+        
+        Args:
+            timeout_threshold_us: Timestamp threshold (microseconds) - sessions with
+                                 last_interaction_at older than this are considered orphaned
+        
+        Returns:
+            List of AlertSession records that appear orphaned
+        """
+        try:
+            statement = select(AlertSession).where(
+                AlertSession.status == AlertSessionStatus.IN_PROGRESS.value,
+                AlertSession.last_interaction_at.isnot(None),  # Explicit NULL check
+                AlertSession.last_interaction_at < timeout_threshold_us
+            )
+            return self.session.exec(statement).all()
+        except Exception as e:
+            logger.error(f"Failed to find orphaned sessions: {str(e)}")
+            raise
+    
+    def find_sessions_by_pod(
+        self,
+        pod_id: str,
+        status: str = AlertSessionStatus.IN_PROGRESS.value
+    ) -> List[AlertSession]:
+        """
+        Find sessions being processed by a specific pod.
+        
+        Args:
+            pod_id: Kubernetes pod identifier
+            status: Session status to filter by (default: IN_PROGRESS)
+        
+        Returns:
+            List of AlertSession records for the specified pod
+        """
+        try:
+            statement = select(AlertSession).where(
+                AlertSession.status == status,
+                AlertSession.pod_id == pod_id
+            )
+            return self.session.exec(statement).all()
+        except Exception as e:
+            logger.error(f"Failed to find sessions for pod {pod_id}: {str(e)}")
+            raise
+    
+    def update_session_pod_tracking(
+        self,
+        session_id: str,
+        pod_id: str,
+        status: str = AlertSessionStatus.IN_PROGRESS.value
+    ) -> bool:
+        """
+        Update session with pod tracking information.
+        
+        Args:
+            session_id: Session identifier
+            pod_id: Pod identifier to assign
+            status: Session status to set (default: IN_PROGRESS)
+        
+        Returns:
+            True if update was successful, False otherwise
+        """
+        try:
+            from tarsy.utils.timestamp import now_us
+            
+            session = self.get_alert_session(session_id)
+            if not session:
+                return False
+            
+            session.status = status
+            session.pod_id = pod_id
+            session.last_interaction_at = now_us()
+            return self.update_alert_session(session)
+        except Exception as e:
+            logger.error(f"Failed to update pod tracking for session {session_id}: {str(e)}")
+            return False

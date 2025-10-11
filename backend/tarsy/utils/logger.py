@@ -3,119 +3,35 @@ Logging configuration and utilities for tarsy.
 """
 
 import logging
-import logging.config
 import sys
-from pathlib import Path
-
-# Create logs directory if it doesn't exist
-LOGS_DIR = Path("logs")
-LOGS_DIR.mkdir(exist_ok=True)
-
-# Logging configuration
-LOGGING_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "standard": {
-            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-        "detailed": {
-            "format": "%(asctime)s [%(levelname)s] %(name)s [%(filename)s:%(lineno)d]: %(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "level": "INFO",
-            "formatter": "standard",
-            "stream": sys.stdout,
-        },
-        "file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "level": "DEBUG",
-            "formatter": "detailed",
-            "filename": LOGS_DIR / "tarsy.log",
-            "maxBytes": 10485760,  # 10MB
-            "backupCount": 5,
-        },
-        "error_file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "level": "ERROR",
-            "formatter": "detailed",
-            "filename": LOGS_DIR / "tarsy_errors.log",
-            "maxBytes": 10485760,  # 10MB
-            "backupCount": 5,
-        },
-        "llm_communications": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "level": "DEBUG",
-            "formatter": "detailed",
-            "filename": LOGS_DIR / "llm_communications.log",
-            "maxBytes": 52428800,  # 50MB (larger because of prompt/response content)
-            "backupCount": 10,
-        },
-        "mcp_communications": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "level": "DEBUG",
-            "formatter": "detailed",
-            "filename": LOGS_DIR / "mcp_communications.log",
-            "maxBytes": 52428800,  # 50MB (larger because of tool output content)
-            "backupCount": 10,
-        },
-    },
-    "loggers": {
-        "tarsy": {
-            "level": "DEBUG",
-            "handlers": ["console", "file", "error_file"],
-            "propagate": False,
-        },
-        "tarsy.mcp": {
-            "level": "DEBUG",
-            "handlers": ["console", "file", "error_file"],
-            "propagate": False,
-        },
-        "tarsy.llm": {
-            "level": "DEBUG",
-            "handlers": ["console", "file", "error_file"],
-            "propagate": False,
-        },
-        "tarsy.services": {
-            "level": "DEBUG",
-            "handlers": ["console", "file", "error_file"],
-            "propagate": False,
-        },
-        "tarsy.llm.communications": {
-            "level": "DEBUG",
-            "handlers": ["llm_communications"],
-            "propagate": False,
-        },
-        "tarsy.mcp.communications": {
-            "level": "DEBUG",
-            "handlers": ["mcp_communications"],
-            "propagate": False,
-        },
-    },
-    "root": {
-        "level": "INFO",
-        "handlers": ["console"],
-    },
-}
 
 
 def setup_logging(log_level: str = "INFO") -> None:
     """
-    Setup logging configuration for the application.
+    Configure logging to stdout/stderr only.
     
     Args:
         log_level: The log level to use (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     """
-    # Update log level in config
-    LOGGING_CONFIG["handlers"]["console"]["level"] = log_level.upper()
+    # Root logger configuration
+    logging.basicConfig(
+        level=log_level.upper(),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            logging.StreamHandler(sys.stdout)  # stdout/stderr only
+        ],
+        force=True  # Override any existing configuration
+    )
     
-    # Apply logging configuration
-    logging.config.dictConfig(LOGGING_CONFIG)
+    # Set levels for specific loggers to match root level
+    logging.getLogger('tarsy').setLevel(log_level.upper())
+    logging.getLogger('uvicorn').setLevel(logging.INFO)
+    
+    # Remove any file handlers if present (cleanup from previous configuration)
+    for handler in logging.root.handlers[:]:
+        if isinstance(handler, logging.FileHandler):
+            logging.root.removeHandler(handler)
 
 
 def get_logger(name: str) -> logging.Logger:

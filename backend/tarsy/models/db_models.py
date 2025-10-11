@@ -38,6 +38,9 @@ class AlertSession(SQLModel, table=True):
         # Composite index for most common query pattern: filter by status + order by timestamp
         Index('ix_alert_sessions_status_started_at', 'status', 'started_at_us'),
         
+        # Composite index for efficient orphan detection
+        Index('ix_alert_sessions_status_last_interaction', 'status', 'last_interaction_at'),
+        
         # Note: PostgreSQL-specific JSON indexes removed for database compatibility
         # In production with PostgreSQL, consider adding:
         # - GIN index on alert_data: Index('ix_alert_data_gin', 'alert_data', postgresql_using='gin')
@@ -97,11 +100,23 @@ class AlertSession(SQLModel, table=True):
         description="Additional context and metadata for the session"
     )
     
-    # NEW: Chain execution tracking
+    # Chain execution tracking
     chain_id: str = Field(description="Chain identifier for this execution")
     chain_definition: Optional[dict] = Field(default=None, sa_column=Column(JSON), description="Complete chain definition snapshot")
     current_stage_index: Optional[int] = Field(default=None, description="Current stage position (0-based)")
     current_stage_id: Optional[str] = Field(default=None, description="Current stage identifier")
+    
+    # Pod tracking for multi-replica support
+    pod_id: Optional[str] = Field(
+        default=None,
+        description="Kubernetes pod identifier for multi-replica session tracking"
+    )
+    
+    last_interaction_at: Optional[int] = Field(
+        default=None,
+        sa_column=Column(BIGINT),
+        description="Last interaction timestamp (microseconds) for orphan detection"
+    )
     
     # Note: Relationships removed to avoid circular import issues with unified models
     # Use queries with session_id foreign key for data access instead

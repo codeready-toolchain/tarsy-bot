@@ -639,6 +639,8 @@ class TestAlertServiceHistoryIntegration:
         mock_history_service = Mock()
         mock_history_service.create_session.return_value = True
         mock_history_service.update_session_status.return_value = True
+        mock_history_service.start_session_processing = AsyncMock(return_value=True)
+        mock_history_service.record_session_interaction = AsyncMock(return_value=True)
         service.history_service = mock_history_service
         
         return service

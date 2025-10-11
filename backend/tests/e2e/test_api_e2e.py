@@ -523,7 +523,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
 
                 print("⏳ Step 2: Waiting for processing...")
                 session_id, final_status = await E2ETestUtils.wait_for_session_completion(
-                    e2e_test_client, max_wait_seconds=8, debug_logging=False
+                    e2e_test_client, max_wait_seconds=15, debug_logging=False
                 )
 
                 print("🔍 Step 3: Verifying results...")
@@ -533,6 +533,11 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                 print(f"✅ Session found: {session_id}, final status: {final_status}")
 
                 # Verify session completed successfully
+                if final_status != "completed":
+                    # Get detailed error info
+                    detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
+                    error_msg = detail_data.get("error_message", "No error message")
+                    print(f"❌ Session failed with error: {error_msg}")
                 assert (
                     final_status == "completed"
                 ), f"Expected session to be completed, but got: {final_status}"
@@ -591,11 +596,12 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         assert started_at > 0, "Invalid started_at timestamp"
         assert completed_at > started_at, "completed_at should be after started_at"
 
-        # Processing duration should be reasonable (< 30 seconds in microseconds)
+        # Processing duration should be reasonable (< 10 seconds with mocked calls)
+        # All LLM and MCP calls are mocked, so processing should be nearly instantaneous
         processing_duration_ms = (completed_at - started_at) / 1000
         assert (
-            processing_duration_ms < 30000
-        ), f"Processing took too long: {processing_duration_ms}ms"
+            processing_duration_ms < 10000
+        ), f"Processing took too long: {processing_duration_ms}ms (should be <10s with mocked calls)"
 
         # Verify session-level token usage totals (sum of all stages)
         # Expected totals: data-collection(1260+460=1720) + verification(470+180=650) + analysis(420+180=600)

@@ -9,6 +9,7 @@ performance and consistency with the rest of the system.
 """
 
 from typing import Dict, Any, Optional
+import asyncio
 
 import httpx
 
@@ -257,6 +258,23 @@ class AlertService:
             # Create history session with chain info
             session_created = self._create_chain_history_session(chain_context, chain_definition)
             
+            # Mark session as being processed by this pod
+            if session_created and self.history_service:
+                from tarsy.main import get_pod_id
+                pod_id = get_pod_id()
+                
+                if pod_id == "unknown":
+                    logger.warning(
+                        "TARSY_POD_ID not set - all pods will share pod_id='unknown'. "
+                        "This breaks graceful shutdown in multi-replica deployments. "
+                        "Set TARSY_POD_ID in Kubernetes pod spec."
+                    )
+                
+                await self.history_service.start_session_processing(
+                    chain_context.session_id, 
+                    pod_id
+                )
+            
             # Publish session.created event if session was created
             if session_created:
                 from tarsy.services.events.event_helpers import publish_session_created
@@ -376,6 +394,13 @@ class AlertService:
                 
                 # Update session current stage
                 await self._update_session_current_stage(chain_context.session_id, i, stage_execution_id)
+                
+                # Record stage transition as interaction (non-blocking)
+                if self.history_service:
+                    await asyncio.to_thread(
+                        self.history_service.record_session_interaction,
+                        chain_context.session_id
+                    )
                 
                 try:
                     # Mark stage as started

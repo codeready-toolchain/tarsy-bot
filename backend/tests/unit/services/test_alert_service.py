@@ -272,6 +272,7 @@ class TestAlertProcessing:
         mock_history_service.update_session_status = Mock()
         mock_history_service.store_llm_interaction = Mock()
         mock_history_service.store_mcp_interaction = Mock()
+        mock_history_service.record_session_interaction = AsyncMock()
         service.history_service = mock_history_service
         
         yield service, dependencies
@@ -1105,6 +1106,7 @@ class TestEnhancedChainExecution:
         service.history_service.update_session_status = Mock()
         service.history_service.get_stage_execution = AsyncMock()
         service.history_service.update_session_current_stage = AsyncMock()
+        service.history_service.record_session_interaction = AsyncMock()
         
         # Mock stage execution methods
         service._create_stage_execution = AsyncMock(return_value="stage_exec_123")
@@ -1342,6 +1344,8 @@ class TestFullErrorPropagation:
         service.history_service.is_enabled = True
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
+        service.history_service.record_session_interaction = AsyncMock()
+        service.history_service.start_session_processing = AsyncMock(return_value=True)
         
         # Mock stage execution methods
         service._create_stage_execution = AsyncMock(return_value="stage_exec_123")
