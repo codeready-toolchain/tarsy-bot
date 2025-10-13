@@ -172,7 +172,7 @@ class APIClient {
    */
   async healthCheck(): Promise<{ status: string }> {
     try {
-      const response = await this.client.get('/api/v1/history/health');
+      const response = await this.client.get('/health');
       return response.data;
     } catch (error) {
       console.error('Health check failed:', error);

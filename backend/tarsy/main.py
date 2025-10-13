@@ -216,12 +216,6 @@ from tarsy.controllers.system_controller import router as system_router
 app.include_router(system_router, prefix="/api/v1", tags=["system"])
 
 
-@app.get("/")
-async def root() -> Dict[str, str]:
-    """Health check endpoint."""
-    return {"message": "Tarsy is running", "status": "healthy"}
-
-
 @app.get("/health")
 async def health_check(response: Response) -> Dict[str, Any]:
     """

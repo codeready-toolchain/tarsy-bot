@@ -20,10 +20,7 @@ from tarsy.models.history_models import (
     SessionStats,
     FilterOptions,
 )
-from tarsy.models.api_models import (
-    ErrorResponse,
-    HealthCheckResponse,
-)
+from tarsy.models.api_models import ErrorResponse
 from tarsy.utils.timestamp import now_us
 from tarsy.services.history_service import HistoryService, get_history_service
 
@@ -253,106 +250,6 @@ async def get_session_summary(
             detail=f"Failed to retrieve session summary: {str(e)}"
         )
 
-@router.get(
-    "/health",
-    response_model=HealthCheckResponse,
-    summary="History Service Health Check",
-    description="""
-    Check the health status of the history service.
-    
-    **Status Values:**
-    - `healthy`: Service is operational and database is accessible
-    - `unhealthy`: Service has issues (e.g., database connection failed)
-    - `disabled`: Service is disabled via configuration (HISTORY_ENABLED=false)
-    
-    **Timestamp Format:**
-    - All timestamps are Unix timestamps in microseconds since epoch (UTC)
-    """
-)
-
-async def health_check(
-    history_service: HistoryService = Depends(get_history_service)
-) -> HealthCheckResponse:
-    """
-    Perform history service health check.
-    
-    Args:
-        history_service: Injected history service
-        
-    Returns:
-        HealthCheckResponse containing service health status and details
-    """
-    try:
-        # Check if history service is enabled
-        if not history_service.is_enabled:
-            return HealthCheckResponse(
-                service="alert_processing_history",
-                status="disabled",
-                timestamp_us=now_us(),
-                details={
-                    "message": "History service is disabled via configuration",
-                    "history_enabled": False
-                }
-            )
-        
-        # Test database connectivity
-        test_result = history_service.test_database_connection()
-        
-        # Get migration status (import here to avoid circular imports)
-        from tarsy.database.migrations import get_current_version, get_pending_migrations
-        
-        migration_status = {}
-        try:
-            if history_service.settings.database_url:
-                current_version = get_current_version(history_service.settings.database_url)
-                pending = get_pending_migrations(history_service.settings.database_url)
-                migration_status = {
-                    "schema_version": current_version,
-                    "pending_migrations": pending
-                }
-        except Exception as e:
-            migration_logger.warning(f"Failed to retrieve migration status in health check: {e}")
-            migration_status = {
-                "schema_version": None,
-                "pending_migrations": [],
-                "migration_status_error": str(e)
-            }
-        
-        if test_result:
-            return HealthCheckResponse(
-                service="alert_processing_history",
-                status="healthy",
-                timestamp_us=now_us(),
-                details={
-                    "database_connection": "ok",
-                    "history_enabled": True,
-                    "database_url": history_service.settings.database_url.split('/')[-1],  # Just the DB name for security
-                    **migration_status
-                }
-            )
-        else:
-            return HealthCheckResponse(
-                service="alert_processing_history",
-                status="unhealthy",
-                timestamp_us=now_us(),
-                details={
-                    "database_connection": "failed",
-                    "history_enabled": True,
-                    "error": "Database connection test failed",
-                    **migration_status
-                }
-            )
-            
-    except Exception as e:
-        return HealthCheckResponse(
-            service="alert_processing_history",
-            status="unhealthy",
-            timestamp_us=now_us(),
-            details={
-                "error": str(e),
-                "message": "Health check failed with exception"
-            }
-        )
 
 # Dashboard-specific endpoints for EP-0004 implementation
 

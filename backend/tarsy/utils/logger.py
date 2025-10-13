@@ -6,6 +6,49 @@ import logging
 import sys
 
 
+class HealthEndpointFilter(logging.Filter):
+    """
+    Filter to suppress logging of successful health endpoint requests.
+    
+    This filter prevents health check requests (used by Kubernetes probes)
+    from cluttering the logs. Only logs health endpoint requests that have errors
+    or return non-200 status codes.
+    """
+    
+    def filter(self, record: logging.LogRecord) -> bool:
+        """
+        Filter out successful health endpoint requests.
+        
+        Args:
+            record: Log record to filter
+            
+        Returns:
+            False to suppress the log record, True to allow it through
+        """
+        # Check if this is an access log record from uvicorn
+        if hasattr(record, 'args') and record.args:
+            # uvicorn access log format: (client, method, path, http_version, status_code)
+            # Example: ('127.0.0.1:12345', 'GET', '/health', 'HTTP/1.1', 200)
+            try:
+                # Get the request details
+                if len(record.args) >= 5:
+                    method = record.args[1] if len(record.args) > 1 else ""
+                    path = record.args[2] if len(record.args) > 2 else ""
+                    status_code = record.args[4] if len(record.args) > 4 else 0
+                    
+                    # Filter out successful health endpoint requests (status 200)
+                    # Still log errors (4xx, 5xx) and warnings (3xx)
+                    if path == "/health" and method == "GET":
+                        # Only suppress successful requests (200-299)
+                        if isinstance(status_code, int) and 200 <= status_code < 300:
+                            return False  # Suppress this log
+            except (IndexError, TypeError, AttributeError):
+                # If we can't parse the log record, let it through
+                pass
+        
+        return True  # Allow all other logs
+
+
 def setup_logging(log_level: str = "INFO") -> None:
     """
     Configure logging to stdout/stderr only.
@@ -37,6 +80,11 @@ def setup_logging(log_level: str = "INFO") -> None:
     # Set levels for specific loggers to match root level
     logging.getLogger('tarsy').setLevel(numeric_level)
     logging.getLogger('uvicorn').setLevel(logging.INFO)
+    
+    # Add filter to uvicorn.access logger to suppress health endpoint noise
+    # This prevents Kubernetes/OpenShift health probes from cluttering logs
+    uvicorn_access_logger = logging.getLogger('uvicorn.access')
+    uvicorn_access_logger.addFilter(HealthEndpointFilter())
     
     # Remove any file handlers if present (cleanup from previous configuration)
     for handler in logging.root.handlers[:]:

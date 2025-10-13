@@ -82,7 +82,7 @@ export const urls = {
   api: {
     // Simple rule: relative URLs in dev (proxy handles it), absolute in prod
     base: config.isDevelopment ? '' : config.prodApiBaseUrl,
-    health: '/api/v1/history/health',
+    health: '/health',
     activeAlerts: '/api/v1/history/active-alerts', 
     historicalAlerts: '/api/v1/history/historical-alerts',
     activeSessions: '/api/v1/history/active-sessions',

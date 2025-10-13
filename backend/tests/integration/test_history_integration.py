@@ -6,7 +6,6 @@ service interactions, and cross-component communication.
 """
 
 import logging
-import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -21,7 +20,6 @@ from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LL
 # Import history models to ensure they're registered with SQLModel.metadata
 from tarsy.services.alert_service import AlertService
 from tarsy.services.history_service import HistoryService
-from tarsy.utils.timestamp import now_us
 from tests.conftest import alert_to_api_format
 
 logger = logging.getLogger(__name__)
@@ -887,28 +885,6 @@ class TestHistoryAPIIntegration:
             assert mcp_interaction["type"] == "mcp"
             assert mcp_interaction["step_description"] == "Tool execution"
             assert "details" in mcp_interaction
-            
-        finally:
-            # Clean up the dependency override
-            app.dependency_overrides.clear()
-    
-    @pytest.mark.integration
-    def test_api_health_check_integration(self, client, mock_history_service_for_api):
-        """Test health check API endpoint integration."""
-        # Use FastAPI's dependency override system
-        from tarsy.controllers.history_controller import get_history_service
-        app.dependency_overrides[get_history_service] = lambda: mock_history_service_for_api
-        
-        try:
-            response = client.get("/api/v1/history/health")
-        
-            assert response.status_code == 200
-            data = response.json()
-            
-            assert data["service"] == "alert_processing_history"
-            assert data["status"] == "healthy"
-            assert "timestamp_us" in data
-            assert "details" in data
             
         finally:
             # Clean up the dependency override

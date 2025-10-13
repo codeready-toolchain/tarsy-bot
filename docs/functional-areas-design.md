@@ -1136,10 +1136,11 @@ GET /api/v1/history/sessions?start_date_us=1734476400000000&end_date_us=17345627
 **📍 REST API**: `backend/tarsy/controllers/system_controller.py`
 
 **Core Endpoints**:
-- **`GET /health`** - Main health check with service status and system warnings
+- **`GET /health`** - Comprehensive health check with service status and system warnings
   - Returns HTTP 200 for healthy status
   - Returns HTTP 503 for degraded/unhealthy status (Kubernetes probes use this)
-  - Checks: database connectivity, event system health, system warnings
+  - Checks: database connectivity, event system health, history service, system warnings
+  - Provides detailed service status for all components in a single endpoint
 - **`GET /api/v1/system/warnings`** - Active system warnings (MCP/LLM init failures, etc.)
 
 The system warnings API surfaces critical but non-fatal initialization errors (MCP server failures, LLM provider issues, missing runbook service configuration) that don't prevent startup but affect functionality. Warnings are displayed in the dashboard UI and included in the main health endpoint response.

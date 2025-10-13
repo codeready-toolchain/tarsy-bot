@@ -5,12 +5,10 @@ Tests lifespan management, endpoints, WebSocket connections, and background proc
 """
 
 import asyncio
-import contextlib
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, Mock, patch, call
 
 import pytest
-from fastapi import WebSocket
 from fastapi.testclient import TestClient
 
 # Import the modules we need to test and mock
@@ -266,14 +264,6 @@ class TestMainEndpoints:
     def client(self):
         """Create test client."""
         return TestClient(app)
-
-    def test_root_endpoint(self, client):
-        """Test root health check endpoint."""
-        response = client.get("/")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["message"] == "Tarsy is running"
-        assert data["status"] == "healthy"
 
     @pytest.mark.parametrize("db_status,expected_status,expected_http_code,expected_services", [
         (
@@ -1024,11 +1014,4 @@ class TestCriticalCoverage:
             # Event system status should be "not_initialized"
             assert data["services"]["event_system"]["status"] == "not_initialized"
 
-    def test_websocket_connection_stability(self, client):
-        """Test WebSocket connection stability under various conditions."""
-        # This would require a more complex setup with actual WebSocket testing
-        # For now, we'll test the endpoint exists and responds appropriately
-        response = client.get("/")
-        assert response.status_code == 200
-        assert "tarsy" in response.json()["message"].lower()
-
+    

@@ -35,9 +35,7 @@ upstreams = [
 #   - `GET /api/v1/history/active-sessions` (active sessions)
 #   - `GET /api/v1/history/filter-options` (filter options)
 # - **Unprotected endpoints**
-#   - `GET /` (root health check)
-#   - `GET /health` (main service health check)
-#   - `GET /api/v1/history/health` (history service health check)
+#   - `GET /health` (main service health check for Kubernetes probes)
 
 ## Logging configuration
 #logging_filename = ""
@@ -121,8 +119,6 @@ github_team = "observability"
 #   "^/metrics"
 # ]
 skip_auth_routes = [
-  "GET=^/$",
-  "GET=^/api/v1/history/health",
   "GET=^/health",
   "OPTIONS=.*"
 ]
