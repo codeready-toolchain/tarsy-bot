@@ -318,7 +318,6 @@ class TestHistoryService:
         # Create a proper DetailedSession mock object
         mock_detailed_session = DetailedSession(
             session_id="test-session-id",
-            alert_id="alert-123", 
             alert_type="TestAlert",
             agent_type="TestAgent",
             status=AlertSessionStatus.COMPLETED,
@@ -343,7 +342,6 @@ class TestHistoryService:
         expected_timeline_data = {
             "session": {
                 "session_id": "test-session-id",
-                "alert_id": "alert-123",
                 "alert_data": {},
                 "agent_type": "TestAgent",
                 "alert_type": "TestAlert",
@@ -1492,10 +1490,9 @@ class TestHistoryAPIResponseStructure:
         """Test that session detail response has all required fields."""
         # This tests the fix where we added missing fields to the API response
         
-        # Expected response structure after the session_id fixes
+        # Expected response structure for session details
         expected_fields = {
             'session_id',
-            'alert_id', 
             'alert_data',
             'agent_type',
             'alert_type',
@@ -1513,7 +1510,6 @@ class TestHistoryAPIResponseStructure:
         # Create mock response data
         mock_response_data = {
             'session_id': 'test-session-123',
-            'alert_id': 'alert-456',
             'alert_data': {'test': 'data'},
             'agent_type': 'TestAgent',
             'alert_type': 'TestAlert',

@@ -66,7 +66,6 @@ class TestHistoryControllerMCPErrors:
         
         session_with_mcp_error = DetailedSession(
             session_id="test-session-123",
-            alert_id="test-alert-456",
             alert_type="ArgocdUnhealthy",
             agent_type="chain:argocd",
             status=AlertSessionStatus.FAILED,
@@ -153,7 +152,6 @@ class TestHistoryControllerMCPErrors:
         
         session_success = DetailedSession(
             session_id="test-session-456",
-            alert_id="test-alert-789",
             alert_type="KubernetesAlert",
             agent_type="chain:kubernetes",
             status=AlertSessionStatus.COMPLETED,

@@ -321,7 +321,7 @@ class TestAlertProcessing:
         chain_context.session_id = str(uuid.uuid4())
         chain_context.current_stage_name = "test-stage"
         
-        # Process alert with required alert_id parameter
+        # Process alert
         result = await service.process_alert(chain_context)
         
         # Assertions - check that the analysis result is included in the formatted response

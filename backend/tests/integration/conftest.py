@@ -921,7 +921,6 @@ def sample_alert_session():
     
     return AlertSession(
         session_id="test-session-123",
-        alert_id="test-alert-456",
         alert_data={
             "alert_type": "NamespaceTerminating",
             "environment": "production",
@@ -1025,7 +1024,6 @@ def mock_history_timeline_data():
     return {
         "session_info": {
             "session_id": "test-session-123",
-            "alert_id": "test-alert-456",
             "alert_type": "NamespaceTerminating",
             "agent_type": "KubernetesAgent",
             "status": "completed",

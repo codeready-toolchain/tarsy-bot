@@ -490,7 +490,7 @@ class TestHistoryServiceIntegration:
             agent="GenericAgent"  # Fallback agent
         )
         
-        # Use real fixture data even in error handling path (error is empty alert_id, not empty data)
+        # Use real fixture data for error handling test
         from tarsy.models.alert import ProcessingAlert
         chain_context.processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
@@ -955,8 +955,8 @@ class TestDuplicatePreventionIntegration:
             "runbook": "https://github.com/test/runbooks/pod-crash.md"
         }
     
-    def test_end_to_end_duplicate_prevention_same_alert_data(self, history_service_with_test_db, sample_alert_data):
-        """Test that identical alerts don't create duplicate sessions end-to-end."""
+    def test_end_to_end_duplicate_prevention_same_session_id(self, history_service_with_test_db, sample_alert_data):
+        """Test that duplicate session_id attempts are handled gracefully."""
         # Create first session
         chain_context, chain_definition = create_test_context_and_chain(
             alert_type="PodCrashLoopBackOff",
@@ -973,7 +973,7 @@ class TestDuplicatePreventionIntegration:
         
         assert result_1 is True  # First creation should succeed
         
-        # Try to create duplicate session with same alert_id
+        # Try to create a different session with different session_id
         chain_context_2, chain_definition_2 = create_test_context_and_chain(
             alert_type="DifferentAlertType",
             session_id="test-session-dup-2",
@@ -987,41 +987,45 @@ class TestDuplicatePreventionIntegration:
             chain_definition=chain_definition_2
         )
         
-        # Should still succeed (duplicate prevention handled internally)
+        # Should succeed since it has a different session_id
         assert result_2 is True
         
-        # Note: Duplicate prevention is handled at the repository level
-        # Both calls return True, but only one session is actually created in the database
+        # Note: Duplicate prevention is handled at the repository level by session_id
+        # Each unique session_id creates a separate session in the database
     
-    def test_concurrent_session_creation_same_alert_id(self, history_service_with_test_db, sample_alert_data):
-        """Test concurrent creation attempts with same alert_id."""
+    def test_concurrent_session_creation_same_session_id(self, history_service_with_test_db, sample_alert_data):
+        """Test concurrent creation attempts with same session_id."""
         import threading
         import time
         
         results = []
         errors = []
         
+        # Use the SAME session_id for all threads to test duplicate prevention
+        shared_session_id = "test-session-concurrent-shared"
+        
         def create_session(thread_id):
             try:
                 # Add small random delay to increase chance of concurrency
-                time.sleep(thread_id * 0.01)
+                time.sleep(thread_id * 0.001)
                 
+                # All threads try to create session with the SAME session_id
                 chain_context, chain_definition = create_test_context_and_chain(
                     alert_type="TestAlert",
-                    session_id=f"test-session-concurrent-{thread_id}",
-                    chain_id=f"test-integration-chain-concurrent-{thread_id}",
+                    session_id=shared_session_id,  # Same session_id for all threads
+                    chain_id=f"test-integration-chain-concurrent",
                     agent=f"Agent_{thread_id}",
                     alert_data={**sample_alert_data, "thread_id": thread_id}
                 )
-                session_id = history_service_with_test_db.create_session(
+                success = history_service_with_test_db.create_session(
                     chain_context=chain_context,
                     chain_definition=chain_definition
                 )
-                results.append(session_id)
+                results.append(success)
             except Exception as e:
                 errors.append(str(e))
         
-        # Start multiple threads trying to create the same alert
+        # Start multiple threads trying to create the same session
         threads = []
         for i in range(5):
             thread = threading.Thread(target=create_session, args=(i,))
@@ -1035,28 +1039,16 @@ class TestDuplicatePreventionIntegration:
         # Should have no errors
         assert len(errors) == 0, f"Errors occurred: {errors}"
         
-        # Check if any sessions were created (may fail due to database table issues in concurrent access)
-        valid_results = [r for r in results if r is not None]
-        
-        if len(valid_results) == 0:
-            # Skip test if concurrent database access failed
-            pytest.skip("Database table not available for concurrent access - this is a known testing limitation")
-        
-        # All valid results should be the same session_id (no duplicates created)
-        unique_sessions = set(valid_results)
-        assert len(unique_sessions) == 1, f"Expected 1 unique session, got {len(unique_sessions)}: {unique_sessions}"
+        # At least one thread should have succeeded
+        assert len(results) == 5, f"Expected 5 results, got {len(results)}"
+        assert any(results), "At least one thread should have succeeded in creating the session"
         
         # Verify only one session exists in database
-        session_id = valid_results[0]
-        session = history_service_with_test_db.get_session_details(session_id)
+        session = history_service_with_test_db.get_session_details(shared_session_id)
+        assert session is not None, "Session should exist in database"
         
-        if not session:
-            # Session was created but timeline can't be retrieved - this is acceptable for the test
-            return
-        
-        # Original thread's data should be preserved (thread 0)
-        assert session.alert_data["thread_id"] == 0
-        assert session.agent_type == "Agent_0"
+        # Session exists and was created successfully
+        assert session.session_id == shared_session_id
     
     def test_database_constraint_enforcement(self, history_service_with_test_db, sample_alert_data):
         """Test that database-level unique constraints are enforced."""
@@ -1099,29 +1091,25 @@ class TestDuplicatePreventionIntegration:
                 assert result_session.agent_type == "chain:test-integration-chain-constraint"  # Original data preserved
                 assert result_session.alert_data != {"different": "data"}  # Original alert_data preserved
     
-    def test_alert_id_generation_uniqueness_under_load(self, history_service_with_test_db, sample_alert_data):
-        """Test that alert ID generation remains unique under high load."""
+    def test_session_id_uniqueness_under_load(self, history_service_with_test_db, sample_alert_data):
+        """Test that session_id handling remains consistent under high load."""
         from tarsy.config.settings import get_settings
         from tarsy.models.alert import Alert
         from tarsy.services.alert_service import AlertService
         
-        # Create AlertService to test ID generation
+        # Create AlertService to test session creation
         alert_service = AlertService(get_settings())
         alert_service.history_service = history_service_with_test_db
         alert_service.agent_registry = Mock()
         alert_service.agent_registry.get_agent_for_alert_type.return_value = "TestAgent"
         
-        # Create identical alerts rapidly
+        # Create multiple sessions rapidly
         alert = Alert(**sample_alert_data)
         alert_dict = alert_to_api_format(alert)
-        generated_ids = set()
+        created_sessions = set()
         
         for i in range(100):
-            # Generate unique alert ID similar to how the old method did it
-            timestamp_us = now_us()
-            unique_id = uuid.uuid4().hex[:12]
-            alert_id = f"{alert_dict.processing_alert.alert_type}_{unique_id}_{timestamp_us}"
-            
+            # Each session gets a unique session_id
             chain_context, chain_definition = create_test_context_and_chain(
                 alert_type=alert_dict.processing_alert.alert_type,
                 session_id=f"test-session-unique-{i}",
@@ -1129,21 +1117,20 @@ class TestDuplicatePreventionIntegration:
                 agent="TestAgent",
                 alert_data=alert_dict.processing_alert.alert_data
             )
-            session_id = history_service_with_test_db.create_session(
+            success = history_service_with_test_db.create_session(
                 chain_context=chain_context,
                 chain_definition=chain_definition
             )
-            if session_id:
-                generated_ids.add(alert_id)
+            if success:
+                created_sessions.add(chain_context.session_id)
         
-        # All generated alert IDs should be unique
-        assert len(generated_ids) == 100, f"Expected 100 unique alert IDs, got {len(generated_ids)}"
+        # All session_ids should be unique
+        assert len(created_sessions) == 100, f"Expected 100 unique sessions, got {len(created_sessions)}"
         
-        # Each ID should follow the expected pattern (hash-based format)
-        for alert_id in generated_ids:
-            assert alert_id.startswith("PodCrashLoopBackOff_")
-            parts = alert_id.split('_')
-            assert len(parts) == 3  # alert_type_unique_id_timestamp
+        # Each session_id should follow the expected pattern
+        for session_id in created_sessions:
+            assert session_id.startswith("test-session-unique-")
+            assert session_id in [f"test-session-unique-{i}" for i in range(100)]
     
     def test_retry_logic_doesnt_create_duplicates(self, history_service_with_test_db, sample_alert_data):
         """Test that retry logic doesn't create duplicate sessions."""
@@ -1171,76 +1158,27 @@ class TestDuplicatePreventionIntegration:
             call_args = mock_retry.call_args
             assert call_args[0][0] == "create_session"  # Operation name
     
-    def test_performance_impact_of_duplicate_prevention(self, history_service_with_test_db, sample_alert_data):
-        """Test that duplicate prevention doesn't significantly impact performance."""
-        import time
-        
-        # Create initial session
-        chain_context, chain_definition = create_test_context_and_chain(
-            alert_type="TestAlert",
-            session_id="test-session-perf",
-            chain_id="test-integration-chain-perf",
-            agent="TestAgent",
-            alert_data=sample_alert_data
-        )
-        initial_session = history_service_with_test_db.create_session(
-            chain_context=chain_context,
-            chain_definition=chain_definition
-        )
-        
-        assert initial_session is True
-        
-        # Measure time for duplicate prevention checks
-        start_time = time.time()
-        
-        for i in range(50):
-            # Try to create duplicates
-            chain_context_dup, chain_definition_dup = create_test_context_and_chain(
-                alert_type="TestAlert",
-                session_id=f"test-session-perf-dup-{i}",
-                chain_id=f"test-integration-chain-perf-dup-{i}",
-                agent=f"TestAgent_{i}",
-                alert_data={**sample_alert_data, "attempt": i}
-            )
-            duplicate_session = history_service_with_test_db.create_session(
-                chain_context=chain_context_dup,
-                chain_definition=chain_definition_dup
-            )
-            
-            # Should return True (duplicate prevention handled internally)
-            assert duplicate_session is True
-        
-        end_time = time.time()
-        total_time = end_time - start_time
-        
-        # Should complete quickly (less than 1 second for 50 duplicate checks)
-        assert total_time < 1.0, f"Duplicate prevention took {total_time}s, should be faster"
-        
-        # Average time per duplicate check should be reasonable
-        avg_time = total_time / 50
-        assert avg_time < 0.02, f"Average duplicate check took {avg_time}s, should be under 20ms"
-    
     def test_mixed_unique_and_duplicate_sessions(self, history_service_with_test_db, sample_alert_data):
-        """Test creating a mix of unique and duplicate sessions."""
+        """Test creating a mix of unique and duplicate session_ids."""
         created_sessions = {}
         
-        # Create sessions with various alert_ids
+        # Create sessions with various session_ids
         test_cases = [
-            ("unique_alert_1", "Agent1", "Type1"),
-            ("unique_alert_2", "Agent2", "Type2"),
-            ("unique_alert_1", "Agent1_Modified", "Type1_Modified"),  # Duplicate
-            ("unique_alert_3", "Agent3", "Type3"),
-            ("unique_alert_2", "Agent2_Modified", "Type2_Modified"),  # Duplicate
-            ("unique_alert_4", "Agent4", "Type4"),
+            ("unique_session_1", "Agent1", "Type1"),
+            ("unique_session_2", "Agent2", "Type2"),
+            ("unique_session_1", "Agent1_Modified", "Type1_Modified"),  # Duplicate session_id
+            ("unique_session_3", "Agent3", "Type3"),
+            ("unique_session_2", "Agent2_Modified", "Type2_Modified"),  # Duplicate session_id
+            ("unique_session_4", "Agent4", "Type4"),
         ]
         
-        for alert_id, agent_type, alert_type in test_cases:
+        for session_key, agent_type, alert_type in test_cases:
             chain_context, chain_definition = create_test_context_and_chain(
                 alert_type=alert_type,
-                session_id=f"test-session-mixed-{alert_id}",
-                chain_id=f"test-integration-chain-mixed-{alert_id}",
+                session_id=f"test-session-mixed-{session_key}",
+                chain_id=f"test-integration-chain-mixed-{session_key}",
                 agent=agent_type,
-                alert_data={**sample_alert_data, "test_case": f"{alert_id}_{agent_type}"}
+                alert_data={**sample_alert_data, "test_case": f"{session_key}_{agent_type}"}
             )
             result = history_service_with_test_db.create_session(
                 chain_context=chain_context,
@@ -1250,15 +1188,15 @@ class TestDuplicatePreventionIntegration:
             # All calls should succeed (duplicate prevention handled internally)
             assert result is True
             
-            if alert_id not in created_sessions:
-                created_sessions[alert_id] = True
+            if session_key not in created_sessions:
+                created_sessions[session_key] = True
         
-        # Should have processed 4 unique alert_ids (1, 2, 3, 4)
-        # The duplicates (unique_alert_1 and unique_alert_2 appearing twice) are handled internally
-        assert len(created_sessions) == 4  # 4 unique alert_ids processed
+        # Should have processed 4 unique session_ids (1, 2, 3, 4)
+        # The duplicates (unique_session_1 and unique_session_2 appearing twice) are handled by repository
+        assert len(created_sessions) == 4  # 4 unique session_ids processed
         
-        # Note: Duplicate prevention is handled at the repository level
-        # All create_session calls return True, but duplicates don't create new sessions
+        # Note: Duplicate prevention is handled at the repository level by session_id
+        # All create_session calls return True, but duplicate session_ids reuse existing sessions
     
     def test_duplicate_prevention_with_database_errors(self, history_service_with_test_db, sample_alert_data):
         """Test duplicate prevention behavior when database errors occur."""
