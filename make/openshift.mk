@@ -15,6 +15,10 @@ BACKEND_IMAGE := $(OPENSHIFT_REGISTRY)/$(OPENSHIFT_NAMESPACE)/tarsy-backend
 DASHBOARD_IMAGE := $(OPENSHIFT_REGISTRY)/$(OPENSHIFT_NAMESPACE)/tarsy-dashboard
 IMAGE_TAG := dev
 
+# Push tool selection
+# Set USE_SKOPEO=true to use skopeo instead of podman for pushing images
+USE_SKOPEO ?=
+
 # Container management (reuse existing)
 PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman-compose -f deploy/podman-compose.yml
 
@@ -100,14 +104,34 @@ openshift-build-all: openshift-build-backend openshift-build-dashboard ## Build 
 openshift-push-backend: openshift-build-backend openshift-create-namespace ## Push backend image to OpenShift registry
 	@echo -e "$(GREEN)Pushing backend image to OpenShift registry...$(NC)"
 	@podman tag localhost/tarsy_backend:latest $(BACKEND_IMAGE):$(IMAGE_TAG)
-	@podman push --tls-verify=false $(BACKEND_IMAGE):$(IMAGE_TAG)
+	@if [ -n "$(USE_SKOPEO)" ]; then \
+		echo -e "$(BLUE)Using skopeo to push image...$(NC)"; \
+		echo -e "$(BLUE)Saving image to archive...$(NC)"; \
+		podman save localhost/tarsy_backend:latest -o /tmp/tarsy_backend.tar; \
+		echo -e "$(BLUE)Pushing from archive to registry...$(NC)"; \
+		skopeo copy --dest-tls-verify=false docker-archive:/tmp/tarsy_backend.tar docker://$(BACKEND_IMAGE):$(IMAGE_TAG); \
+		rm -f /tmp/tarsy_backend.tar; \
+		echo -e "$(BLUE)Archive cleaned up$(NC)"; \
+	else \
+		podman push --tls-verify=false $(BACKEND_IMAGE):$(IMAGE_TAG); \
+	fi
 	@echo -e "$(GREEN)✅ Backend image pushed: $(BACKEND_IMAGE):$(IMAGE_TAG)$(NC)"
 
 .PHONY: openshift-push-dashboard
 openshift-push-dashboard: openshift-build-dashboard openshift-create-namespace ## Push dashboard image to OpenShift registry  
 	@echo -e "$(GREEN)Pushing dashboard image to OpenShift registry...$(NC)"
 	@podman tag localhost/tarsy_dashboard:latest $(DASHBOARD_IMAGE):$(IMAGE_TAG)
-	@podman push --tls-verify=false $(DASHBOARD_IMAGE):$(IMAGE_TAG)
+	@if [ -n "$(USE_SKOPEO)" ]; then \
+		echo -e "$(BLUE)Using skopeo to push image...$(NC)"; \
+		echo -e "$(BLUE)Saving image to archive...$(NC)"; \
+		podman save localhost/tarsy_dashboard:latest -o /tmp/tarsy_dashboard.tar; \
+		echo -e "$(BLUE)Pushing from archive to registry...$(NC)"; \
+		skopeo copy --dest-tls-verify=false docker-archive:/tmp/tarsy_dashboard.tar docker://$(DASHBOARD_IMAGE):$(IMAGE_TAG); \
+		rm -f /tmp/tarsy_dashboard.tar; \
+		echo -e "$(BLUE)Archive cleaned up$(NC)"; \
+	else \
+		podman push --tls-verify=false $(DASHBOARD_IMAGE):$(IMAGE_TAG); \
+	fi
 	@echo -e "$(GREEN)✅ Dashboard image pushed: $(DASHBOARD_IMAGE):$(IMAGE_TAG)$(NC)"
 
 .PHONY: openshift-push-all

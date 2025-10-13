@@ -79,7 +79,7 @@ class MCPClient:
 
             except Exception as e:
                 error_details = extract_error_details(e)
-                logger.error(f"Failed to initialize MCP server {server_id}: {error_details}")
+                logger.error(f"Failed to initialize MCP server {server_id}: {error_details}", exc_info=True)
                 # Track failed server for warning generation
                 self.failed_servers[server_id] = error_details
                 # Ensure we don't leave partial state in sessions dict
@@ -132,7 +132,7 @@ class MCPClient:
             
         except Exception as e:
             error_details = extract_error_details(e)
-            logger.error(f"Failed to create session for {server_id}: {error_details}")
+            logger.error(f"Failed to create session for {server_id}: {error_details}", exc_info=True)
             raise
     
     async def list_tools(

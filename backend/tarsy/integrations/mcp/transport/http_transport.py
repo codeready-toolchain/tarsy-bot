@@ -1,7 +1,8 @@
 """HTTP transport implementation using official MCP SDK."""
 
 from contextlib import AsyncExitStack
-from typing import Optional
+from typing import Optional, Dict
+import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
@@ -37,15 +38,42 @@ class HTTPTransport(MCPTransport):
         logger.info(f"Creating HTTP session for server: {self.server_id}")
         
         # Prepare headers with bearer token if configured
-        headers = dict(self.config.headers or {})
+        request_headers = dict(self.config.headers or {})
         if self.config.bearer_token:
-            headers["Authorization"] = f"Bearer {self.config.bearer_token}"
+            request_headers["Authorization"] = f"Bearer {self.config.bearer_token}"
+        
+        if not self.config.verify_ssl:
+            logger.warning(
+                f"SSL verification disabled for server: {self.server_id}. "
+                "This is insecure and should only be used in development."
+            )
+        
+        # Create custom httpx client factory that respects verify_ssl setting
+        # Note: streamablehttp_client uses this factory with async with, expecting a context manager
+        from contextlib import asynccontextmanager
+        from collections.abc import AsyncGenerator
+        
+        @asynccontextmanager
+        async def custom_client_factory(
+            headers: Optional[Dict[str, str]] = None,
+            timeout: Optional[httpx.Timeout] = None,
+            auth: Optional[httpx.Auth] = None
+        ) -> AsyncGenerator[httpx.AsyncClient, None]:
+            """Custom httpx client factory with configurable SSL verification."""
+            async with httpx.AsyncClient(
+                headers=headers,
+                timeout=timeout,
+                auth=auth,
+                verify=self.config.verify_ssl,  # Use configured SSL verification setting
+            ) as client:
+                yield client
         
         # Create HTTP client context using MCP SDK
         http_context = streamablehttp_client(
             url=str(self.config.url),
-            headers=headers if headers else None,
+            headers=request_headers if request_headers else None,
             timeout=self.config.timeout,
+            httpx_client_factory=custom_client_factory,
         )
         
         # Enter the context to get the streams and session ID callback
