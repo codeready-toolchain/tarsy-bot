@@ -120,53 +120,94 @@ def _upgrade_postgresql() -> None:
 
 
 def _upgrade_sqlite() -> None:
-    """SQLite-specific upgrade: batch_alter_table handles table recreation."""
-    # SQLite doesn't support ALTER TABLE for foreign keys, but batch_alter_table
-    # handles this by creating a new table, copying data, and dropping the old one
+    """SQLite-specific upgrade: recreate tables with CASCADE foreign keys."""
+    import sqlite3
     
-    # stage_executions: recreate with CASCADE on session_id
-    with op.batch_alter_table("stage_executions", schema=None, recreate="always") as batch_op:
-        batch_op.create_foreign_key(
-            "fk_stage_executions_session_id",
-            "alert_sessions",
-            ["session_id"],
-            ["session_id"],
-            ondelete="CASCADE"
-        )
+    # SQLite doesn't support ALTER TABLE for foreign keys. For tables created
+    # from SQLModel metadata (which already have CASCADE in model definitions),
+    # this migration is idempotent. For older databases without CASCADE, this
+    # migration updates the schema.
+    #
+    # Check if CASCADE already exists by inspecting the SQL. If FKs already
+    # have CASCADE, skip recreation to avoid duplicates.
     
-    # llm_interactions: recreate with CASCADE on both foreign keys  
-    with op.batch_alter_table("llm_interactions", schema=None, recreate="always") as batch_op:
-        batch_op.create_foreign_key(
-            "fk_llm_interactions_session_id",
-            "alert_sessions",
-            ["session_id"],
-            ["session_id"],
-            ondelete="CASCADE"
-        )
-        batch_op.create_foreign_key(
-            "fk_llm_interactions_stage_execution_id",
+    conn = op.get_bind()
+    
+    # Helper to check if table has CASCADE on foreign keys
+    def _has_cascade_fks(table_name: str) -> bool:
+        """Check if table's foreign keys already have ON DELETE CASCADE."""
+        try:
+            cursor = conn.connection.cursor()
+            cursor.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            )
+            result = cursor.fetchone()
+            if result and result[0]:
+                # Check if ANY foreign key has CASCADE (good enough for idempotency)
+                return 'ON DELETE CASCADE' in result[0].upper()
+        except Exception:
+            pass
+        return False
+    
+    # Only recreate tables if they don't already have CASCADE
+    # This makes the migration idempotent for databases created from models
+    
+    if not _has_cascade_fks("stage_executions"):
+        with op.batch_alter_table(
             "stage_executions",
-            ["stage_execution_id"],
-            ["execution_id"],
-            ondelete="CASCADE"
-        )
+            schema=None,
+            recreate="always"
+        ) as batch_op:
+            batch_op.create_foreign_key(
+                "fk_stage_executions_session_id",
+                "alert_sessions",
+                ["session_id"],
+                ["session_id"],
+                ondelete="CASCADE"
+            )
     
-    # mcp_communications: recreate with CASCADE on both foreign keys
-    with op.batch_alter_table("mcp_communications", schema=None, recreate="always") as batch_op:
-        batch_op.create_foreign_key(
-            "fk_mcp_communications_session_id",
-            "alert_sessions",
-            ["session_id"],
-            ["session_id"],
-            ondelete="CASCADE"
-        )
-        batch_op.create_foreign_key(
-            "fk_mcp_communications_stage_execution_id",
-            "stage_executions",
-            ["stage_execution_id"],
-            ["execution_id"],
-            ondelete="CASCADE"
-        )
+    if not _has_cascade_fks("llm_interactions"):
+        with op.batch_alter_table(
+            "llm_interactions",
+            schema=None,
+            recreate="always"
+        ) as batch_op:
+            batch_op.create_foreign_key(
+                "fk_llm_interactions_session_id",
+                "alert_sessions",
+                ["session_id"],
+                ["session_id"],
+                ondelete="CASCADE"
+            )
+            batch_op.create_foreign_key(
+                "fk_llm_interactions_stage_execution_id",
+                "stage_executions",
+                ["stage_execution_id"],
+                ["execution_id"],
+                ondelete="CASCADE"
+            )
+    
+    if not _has_cascade_fks("mcp_communications"):
+        with op.batch_alter_table(
+            "mcp_communications",
+            schema=None,
+            recreate="always"
+        ) as batch_op:
+            batch_op.create_foreign_key(
+                "fk_mcp_communications_session_id",
+                "alert_sessions",
+                ["session_id"],
+                ["session_id"],
+                ondelete="CASCADE"
+            )
+            batch_op.create_foreign_key(
+                "fk_mcp_communications_stage_execution_id",
+                "stage_executions",
+                ["stage_execution_id"],
+                ["execution_id"],
+                ondelete="CASCADE"
+            )
 
 
 def downgrade() -> None:
@@ -262,10 +303,17 @@ def _downgrade_postgresql() -> None:
 def _downgrade_sqlite() -> None:
     """SQLite-specific downgrade: recreate tables without CASCADE."""
     # SQLite doesn't support ALTER TABLE for foreign keys, but batch_alter_table
-    # handles this by creating a new table, copying data, and dropping the old one
+    # handles this by creating a new table, copying data, and dropping the old one.
+    # To replace CASCADE FKs with non-CASCADE versions, we use copy_from=None to
+    # prevent reflection of existing constraints, then define only what we want.
     
     # stage_executions: recreate without CASCADE on session_id
-    with op.batch_alter_table("stage_executions", schema=None, recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "stage_executions",
+        schema=None,
+        recreate="always",
+        copy_from=None  # Don't reflect existing table - we'll define everything explicitly
+    ) as batch_op:
         batch_op.create_foreign_key(
             "fk_stage_executions_session_id",
             "alert_sessions",
@@ -274,7 +322,12 @@ def _downgrade_sqlite() -> None:
         )
     
     # llm_interactions: recreate without CASCADE on both foreign keys
-    with op.batch_alter_table("llm_interactions", schema=None, recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "llm_interactions",
+        schema=None,
+        recreate="always",
+        copy_from=None  # Don't reflect existing table - we'll define everything explicitly
+    ) as batch_op:
         batch_op.create_foreign_key(
             "fk_llm_interactions_session_id",
             "alert_sessions",
@@ -289,7 +342,12 @@ def _downgrade_sqlite() -> None:
         )
     
     # mcp_communications: recreate without CASCADE on both foreign keys
-    with op.batch_alter_table("mcp_communications", schema=None, recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "mcp_communications",
+        schema=None,
+        recreate="always",
+        copy_from=None  # Don't reflect existing table - we'll define everything explicitly
+    ) as batch_op:
         batch_op.create_foreign_key(
             "fk_mcp_communications_session_id",
             "alert_sessions",
