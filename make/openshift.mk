@@ -163,23 +163,34 @@ openshift-create-secrets: openshift-check openshift-create-namespace ## Create s
 	export DATABASE_NAME=$${DATABASE_NAME:-tarsy}; \
 	export DATABASE_HOST=$${DATABASE_HOST:-dev-tarsy-database}; \
 	export DATABASE_PORT=$${DATABASE_PORT:-5432}; \
-	oc process -f deploy/secrets-template.yaml \
+	PROCESS_CMD="oc process -f deploy/secrets-template.yaml \
 		-p NAMESPACE=$(OPENSHIFT_NAMESPACE) \
-		-p GOOGLE_API_KEY="$$GOOGLE_API_KEY" \
-		-p GITHUB_TOKEN="$$GITHUB_TOKEN" \
-		-p DATABASE_PASSWORD="$$DATABASE_PASSWORD" \
-		-p DATABASE_USER="$$DATABASE_USER" \
-		-p DATABASE_NAME="$$DATABASE_NAME" \
-		-p DATABASE_HOST="$$DATABASE_HOST" \
-		-p DATABASE_PORT="$$DATABASE_PORT" \
-		-p MCP_KUBECONFIG_CONTENT="$$MCP_KUBECONFIG_CONTENT" \
-		-p JWT_PUBLIC_KEY_CONTENT="$$JWT_PUBLIC_KEY_CONTENT" \
-		-p OPENAI_API_KEY="$$OPENAI_API_KEY" \
-		-p ANTHROPIC_API_KEY="$$ANTHROPIC_API_KEY" \
-		-p XAI_API_KEY="$$XAI_API_KEY" \
-		-p OAUTH2_CLIENT_ID="$$OAUTH2_CLIENT_ID" \
-		-p OAUTH2_CLIENT_SECRET="$$OAUTH2_CLIENT_SECRET" | \
-		oc apply -f -
+		-p GOOGLE_API_KEY=\"$$GOOGLE_API_KEY\" \
+		-p GITHUB_TOKEN=\"$$GITHUB_TOKEN\" \
+		-p DATABASE_USER=\"$$DATABASE_USER\" \
+		-p DATABASE_NAME=\"$$DATABASE_NAME\" \
+		-p DATABASE_HOST=\"$$DATABASE_HOST\" \
+		-p DATABASE_PORT=\"$$DATABASE_PORT\" \
+		-p MCP_KUBECONFIG_CONTENT=\"$$MCP_KUBECONFIG_CONTENT\" \
+		-p JWT_PUBLIC_KEY_CONTENT=\"$$JWT_PUBLIC_KEY_CONTENT\" \
+		-p OPENAI_API_KEY=\"$$OPENAI_API_KEY\" \
+		-p ANTHROPIC_API_KEY=\"$$ANTHROPIC_API_KEY\" \
+		-p XAI_API_KEY=\"$$XAI_API_KEY\" \
+		-p OAUTH2_CLIENT_ID=\"$$OAUTH2_CLIENT_ID\" \
+		-p OAUTH2_CLIENT_SECRET=\"$$OAUTH2_CLIENT_SECRET\""; \
+	if [ -n "$$DATABASE_PASSWORD" ]; then \
+		echo -e "$(BLUE)Using provided DATABASE_PASSWORD$(NC)"; \
+		PROCESS_CMD="$$PROCESS_CMD -p DATABASE_PASSWORD=\"$$DATABASE_PASSWORD\""; \
+	else \
+		echo -e "$(BLUE)Auto-generating DATABASE_PASSWORD$(NC)"; \
+	fi; \
+	if [ -n "$$OAUTH2_COOKIE_SECRET" ]; then \
+		echo -e "$(BLUE)Using provided OAUTH2_COOKIE_SECRET$(NC)"; \
+		PROCESS_CMD="$$PROCESS_CMD -p OAUTH2_COOKIE_SECRET=\"$$OAUTH2_COOKIE_SECRET\""; \
+	else \
+		echo -e "$(BLUE)Auto-generating OAUTH2_COOKIE_SECRET$(NC)"; \
+	fi; \
+	eval "$$PROCESS_CMD" | oc apply -f -
 	@echo -e "$(GREEN)✅ Secrets created in namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
 
 .PHONY: openshift-check-config-files
