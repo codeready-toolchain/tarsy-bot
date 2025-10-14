@@ -104,8 +104,9 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
         "instructions": """For Kubernetes operations:
 - Be careful with cluster-scoped resource listings in large clusters
 - Always prefer namespaced queries when possible
-- Use kubectl explain for resource schema information
-- Check resource quotas before creating new resources""",
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter""",
         "data_masking": {
             "enabled": True,
             "pattern_groups": ["kubernetes"],  # Expands to kubernetes_secret, api_key, password

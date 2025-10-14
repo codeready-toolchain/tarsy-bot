@@ -51,8 +51,9 @@ Focus on root cause analysis and sustainable solutions.
 For Kubernetes operations:
 - Be careful with cluster-scoped resource listings in large clusters
 - Always prefer namespaced queries when possible
-- Use kubectl explain for resource schema information
-- Check resource quotas before creating new resources
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
 
 ## Custom Server Instructions
 
@@ -295,8 +296,9 @@ Focus on root cause analysis and sustainable solutions.
 For Kubernetes operations:
 - Be careful with cluster-scoped resource listings in large clusters
 - Always prefer namespaced queries when possible
-- Use kubectl explain for resource schema information
-- Check resource quotas before creating new resources
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
 
 ## Custom Server Instructions
 
@@ -583,8 +585,9 @@ Focus on root cause analysis and sustainable solutions.
 For Kubernetes operations:
 - Be careful with cluster-scoped resource listings in large clusters
 - Always prefer namespaced queries when possible
-- Use kubectl explain for resource schema information
-- Check resource quotas before creating new resources
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
 
 🚨 WARNING: NEVER GENERATE FAKE OBSERVATIONS! 🚨
 After writing "Action Input:", you MUST stop immediately. The system will provide the "Observation:" for you.
