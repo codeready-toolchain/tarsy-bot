@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlmodel import Column, Field, SQLModel, Index
-from sqlalchemy import JSON, Integer, DateTime, func
+from sqlalchemy import JSON, Integer, DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import BIGINT
 
 from tarsy.models.constants import AlertSessionStatus
@@ -139,8 +139,7 @@ class StageExecution(SQLModel, table=True):
     )
     
     session_id: str = Field(
-        foreign_key="alert_sessions.session_id",
-        index=True,
+        sa_column=Column(String, ForeignKey("alert_sessions.session_id", ondelete="CASCADE"), index=True),
         description="Reference to the parent alert session"
     )
     

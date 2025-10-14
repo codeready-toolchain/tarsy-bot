@@ -877,6 +877,7 @@ def history_test_database_engine():
     # CRITICAL: Must set check_same_thread=False AND use StaticPool for SQLite in-memory
     # to allow access from thread pool (matches production configuration)
     from sqlalchemy.pool import StaticPool
+    from sqlalchemy import event
     
     engine = create_engine(
         "sqlite:///:memory:", 
@@ -884,8 +885,25 @@ def history_test_database_engine():
         poolclass=StaticPool,
         connect_args={"check_same_thread": False}
     )
+    
+    # Enable foreign key constraints for SQLite (required for CASCADE deletes)
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+    
     SQLModel.metadata.create_all(engine)
     return engine
+
+
+@pytest.fixture
+def test_session_factory(history_test_database_engine):
+    """Create a session factory for history cleanup integration tests."""
+    def _session_factory():
+        return Session(history_test_database_engine)
+    
+    return _session_factory
 
 
 @pytest.fixture

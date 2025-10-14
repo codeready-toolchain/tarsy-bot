@@ -893,3 +893,43 @@ class HistoryRepository:
         except Exception as e:
             logger.error(f"Failed to update pod tracking for session {session_id}: {str(e)}")
             return False
+    
+    def delete_sessions_older_than(self, cutoff_timestamp_us: int) -> int:
+        """
+        Delete alert sessions older than cutoff timestamp.
+        
+        Deletes sessions where started_at_us < cutoff_timestamp_us, regardless of status.
+        Related records (stage_executions, llm_interactions, mcp_communications) are
+        automatically deleted via CASCADE foreign key constraints.
+        
+        Args:
+            cutoff_timestamp_us: Cutoff timestamp (microseconds since epoch).
+                                Sessions started before this are deleted.
+        
+        Returns:
+            Number of sessions deleted
+        """
+        try:
+            # Find sessions to delete
+            statement = select(AlertSession).where(
+                AlertSession.started_at_us < cutoff_timestamp_us
+            )
+            sessions_to_delete = self.session.exec(statement).all()
+            
+            if not sessions_to_delete:
+                return 0
+            
+            # Delete sessions (CASCADE will handle related records)
+            for session in sessions_to_delete:
+                self.session.delete(session)
+            
+            self.session.commit()
+            
+            deleted_count = len(sessions_to_delete)
+            logger.info(f"Deleted {deleted_count} alert session(s) older than timestamp {cutoff_timestamp_us}")
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"Failed to delete old sessions: {str(e)}")
+            self.session.rollback()
+            raise

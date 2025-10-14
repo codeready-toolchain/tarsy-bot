@@ -10,7 +10,7 @@ import uuid
 from typing import List, Optional
 from enum import Enum
 from sqlmodel import Column, Field, SQLModel, Index
-from sqlalchemy import JSON, String, TypeDecorator
+from sqlalchemy import JSON, String, TypeDecorator, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, BIGINT
 from pydantic import field_validator, model_validator
 from tarsy.utils.timestamp import now_us
@@ -112,14 +112,12 @@ class LLMInteraction(SQLModel, table=True):
         description="Interaction (request) identifier"
     )
     session_id: str = Field(
-        foreign_key="alert_sessions.session_id",
-        index=True,
+        sa_column=Column(String, ForeignKey("alert_sessions.session_id", ondelete="CASCADE"), index=True),
         description="Session identifier and foreign key reference to parent alert session"
     )
     stage_execution_id: Optional[str] = Field(
         None,
-        foreign_key="stage_executions.execution_id",
-        index=True,
+        sa_column=Column(String, ForeignKey("stage_executions.execution_id", ondelete="CASCADE"), index=True, nullable=True),
         description="Link to stage execution for chain context in hooks"
     )
     timestamp_us: int = Field(
@@ -201,14 +199,12 @@ class MCPInteraction(SQLModel, table=True):
         description="Request identifier"
     )
     session_id: str = Field(
-        foreign_key="alert_sessions.session_id",
-        index=True,
+        sa_column=Column(String, ForeignKey("alert_sessions.session_id", ondelete="CASCADE"), index=True),
         description="Session identifier and foreign key reference to parent alert session"
     )
     stage_execution_id: Optional[str] = Field(
         None,
-        foreign_key="stage_executions.execution_id",
-        index=True,
+        sa_column=Column(String, ForeignKey("stage_executions.execution_id", ondelete="CASCADE"), index=True, nullable=True),
         description="Link to stage execution for chain context in hooks"
     )
     timestamp_us: int = Field(

@@ -51,7 +51,13 @@ class TestMainLifespan:
              patch(
                  'tarsy.hooks.hook_registry.get_hook_registry'
              ) as mock_hook_registry, \
-             patch('tarsy.main.get_database_info') as mock_db_info:
+             patch('tarsy.main.get_database_info') as mock_db_info, \
+             patch(
+                 'tarsy.repositories.base_repository.DatabaseManager'
+             ) as mock_db_manager_class, \
+             patch(
+                 'tarsy.services.history_cleanup_service.HistoryCleanupService'
+             ) as mock_cleanup_service_class:
             
             # Setup service mocks
             mock_alert_service = AsyncMock()
@@ -64,6 +70,17 @@ class TestMainLifespan:
             mock_typed_hooks = AsyncMock()
             mock_hook_registry.return_value = mock_typed_hooks
             
+            # Setup DatabaseManager mock
+            mock_db_manager = Mock()
+            mock_db_manager.get_session = Mock()
+            mock_db_manager_class.return_value = mock_db_manager
+            
+            # Setup HistoryCleanupService mock
+            mock_cleanup_service = AsyncMock()
+            mock_cleanup_service.start = AsyncMock()
+            mock_cleanup_service.stop = AsyncMock()
+            mock_cleanup_service_class.return_value = mock_cleanup_service
+            
             yield {
                 'setup_logging': mock_setup_logging,
                 'init_db': mock_init_db,
@@ -73,7 +90,11 @@ class TestMainLifespan:
                 'db_info': mock_db_info,
                 'alert_service': mock_alert_service,
                 'history': mock_history,
-                'typed_hooks': mock_typed_hooks
+                'typed_hooks': mock_typed_hooks,
+                'db_manager_class': mock_db_manager_class,
+                'db_manager': mock_db_manager,
+                'cleanup_service_class': mock_cleanup_service_class,
+                'cleanup_service': mock_cleanup_service
             }
 
     @patch('tarsy.main.get_settings')
@@ -88,7 +109,10 @@ class TestMainLifespan:
             log_level="INFO", 
             max_concurrent_alerts=5, 
             history_enabled=True,
-            cors_origins=["*"]
+            cors_origins=["*"],
+            database_url="sqlite:///test.db",
+            history_retention_days=90,
+            history_cleanup_interval_hours=12
         )
         deps['init_db'].return_value = True
         deps['db_info'].return_value = {"enabled": True}
@@ -121,7 +145,10 @@ class TestMainLifespan:
             log_level="INFO",
             max_concurrent_alerts=5,
             history_enabled=False,
-            cors_origins=["*"]
+            cors_origins=["*"],
+            database_url="sqlite:///test.db",
+            history_retention_days=90,
+            history_cleanup_interval_hours=12
         )
         deps['init_db'].return_value = False
         deps['db_info'].return_value = {"enabled": False}
@@ -154,7 +181,10 @@ class TestMainLifespan:
             log_level="INFO",
             max_concurrent_alerts=5,
             history_enabled=True,
-            cors_origins=["*"]
+            cors_origins=["*"],
+            database_url="sqlite:///test.db",
+            history_retention_days=90,
+            history_cleanup_interval_hours=12
         )
         deps['init_db'].return_value = True
         deps['db_info'].return_value = {"enabled": True}
@@ -187,6 +217,9 @@ class TestMainLifespan:
         # Setup mocks - history enabled but DB init fails
         mock_get_settings.return_value = Mock(
             log_level="INFO",
+            database_url="sqlite:///test.db",
+            history_retention_days=90,
+            history_cleanup_interval_hours=12,
             max_concurrent_alerts=5,
             history_enabled=True,  # History enabled
             cors_origins=["*"]
@@ -226,7 +259,10 @@ class TestMainLifespan:
             log_level="INFO",
             max_concurrent_alerts=5,
             history_enabled=True,
-            cors_origins=["*"]
+            cors_origins=["*"],
+            database_url="sqlite:///test.db",
+            history_retention_days=90,
+            history_cleanup_interval_hours=12
         )
         deps['init_db'].return_value = True
         
@@ -234,6 +270,47 @@ class TestMainLifespan:
         deps['alert_service'].initialize.side_effect = Exception(
             "Configured LLM provider 'invalid-provider' not found in loaded configuration"
         )
+        
+        # Mock sys.exit to prevent actual exit during test
+        mock_sys_exit.side_effect = SystemExit(1)
+        
+        # Test lifespan manager - should exit with error code 1
+        @asynccontextmanager 
+        async def test_lifespan(app):
+            async with lifespan(app):
+                yield
+        
+        # Expect SystemExit to be raised
+        with pytest.raises(SystemExit):
+            async with test_lifespan(app):
+                pass
+        
+        # Verify sys.exit was called with error code 1
+        mock_sys_exit.assert_called_once_with(1)
+    
+    @patch('tarsy.main.get_settings')
+    @patch('sys.exit')
+    async def test_lifespan_exits_when_history_cleanup_service_init_fails(
+        self, mock_sys_exit, mock_get_settings, mock_lifespan_dependencies
+    ):
+        """Test that application exits when HistoryCleanupService initialization fails."""
+        deps = mock_lifespan_dependencies
+        
+        # Setup mocks
+        mock_get_settings.return_value = Mock(
+            log_level="INFO",
+            max_concurrent_alerts=5,
+            history_enabled=True,
+            cors_origins=["*"],
+            database_url="sqlite:///test.db",
+            history_retention_days=90,
+            history_cleanup_interval_hours=12
+        )
+        deps['init_db'].return_value = True
+        deps['db_info'].return_value = {"enabled": True}
+        
+        # Make DatabaseManager initialization fail
+        deps['db_manager'].initialize.side_effect = Exception("Database connection failed")
         
         # Mock sys.exit to prevent actual exit during test
         mock_sys_exit.side_effect = SystemExit(1)

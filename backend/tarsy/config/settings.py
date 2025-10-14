@@ -107,6 +107,10 @@ class Settings(BaseSettings):
         default=90,
         description="Number of days to retain alert processing history data"
     )
+    history_cleanup_interval_hours: int = Field(
+        default=12,
+        description="How often to run history cleanup (hours)"
+    )
     
     # Event System Configuration
     event_retention_hours: int = Field(
