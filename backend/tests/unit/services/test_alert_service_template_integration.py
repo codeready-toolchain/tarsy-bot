@@ -52,40 +52,42 @@ class TestAlertServiceTemplateIntegration:
     
     def test_alert_service_template_resolution_integration(self):
         """Test that template resolution works through AlertService initialization."""
-        # Create a test .env file with the desired MCP_KUBECONFIG (new override variable)
+        # Create a test .env file with KUBECONFIG for built-in kubernetes-server
         import tempfile
         import os
         
-        env_content = "MCP_KUBECONFIG=/integration/test/kubeconfig\n"
+        env_content = "KUBECONFIG=/integration/test/kubeconfig\n"
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
             f.write(env_content)
             f.flush()
             
             try:
-                # Mock the template resolver to use our test .env file
-                with patch('tarsy.services.mcp_server_registry.TemplateResolver') as mock_resolver_class:
-                    # Create a real resolver with our test .env file
-                    real_resolver = TemplateResolver(env_file_path=f.name)
-                    mock_resolver_class.return_value = real_resolver
-                    
-                    settings = Settings()
-                    
-                    # Mock other services to focus on MCP registry
-                    with patch('tarsy.services.alert_service.RunbookService'), \
-                         patch('tarsy.services.alert_service.get_history_service'), \
-                         patch('tarsy.services.alert_service.ChainRegistry'), \
-                         patch('tarsy.services.alert_service.MCPClient'), \
-                         patch('tarsy.services.alert_service.LLMManager'):
+                # Ensure we don't load local config files by setting AGENT_CONFIG_PATH to empty
+                with patch.dict(os.environ, {'AGENT_CONFIG_PATH': '', 'KUBECONFIG': '/integration/test/kubeconfig'}, clear=False):
+                    # Mock the template resolver to use our test .env file
+                    with patch('tarsy.services.mcp_server_registry.TemplateResolver') as mock_resolver_class:
+                        # Create a real resolver with our test .env file
+                        real_resolver = TemplateResolver(env_file_path=f.name)
+                        mock_resolver_class.return_value = real_resolver
                         
-                        alert_service = AlertService(settings)
+                        settings = Settings()
                         
-                        # Get the actual kubernetes server config through the service
-                        k8s_config = alert_service.mcp_server_registry.get_server_config("kubernetes-server")
-                        
-                        # Verify template was resolved with .env file variable
-                        # The kubernetes-server is now overridden in agents.yaml to use ${MCP_KUBECONFIG}
-                        assert "/integration/test/kubeconfig" in k8s_config.transport.args
+                        # Mock other services to focus on MCP registry
+                        with patch('tarsy.services.alert_service.RunbookService'), \
+                             patch('tarsy.services.alert_service.get_history_service'), \
+                             patch('tarsy.services.alert_service.ChainRegistry'), \
+                             patch('tarsy.services.alert_service.MCPClient'), \
+                             patch('tarsy.services.alert_service.LLMManager'):
+                            
+                            alert_service = AlertService(settings)
+                            
+                            # Get the actual kubernetes server config through the service
+                            k8s_config = alert_service.mcp_server_registry.get_server_config("kubernetes-server")
+                            
+                            # Verify template was resolved with .env file variable
+                            # The built-in kubernetes-server uses ${KUBECONFIG}
+                            assert "/integration/test/kubeconfig" in k8s_config.transport.args
                         
             finally:
                 os.unlink(f.name)
@@ -101,8 +103,8 @@ class TestAlertServiceTemplateIntegration:
             f.flush()
             
             try:
-                # Set MCP_KUBECONFIG in environment to test default path expansion
-                with patch.dict(os.environ, {'MCP_KUBECONFIG': '~/.kube/config'}, clear=True):
+                # Ensure we don't load local config files and set KUBECONFIG for built-in kubernetes-server
+                with patch.dict(os.environ, {'AGENT_CONFIG_PATH': '', 'KUBECONFIG': '~/.kube/config'}, clear=False):
                     # Mock the template resolver to use our empty test .env file
                     with patch('tarsy.services.mcp_server_registry.TemplateResolver') as mock_resolver_class:
                         settings = Settings()
@@ -123,7 +125,7 @@ class TestAlertServiceTemplateIntegration:
                             # Get kubernetes server config
                             k8s_config = alert_service.mcp_server_registry.get_server_config("kubernetes-server")
                             
-                            # Verify template variable was resolved (kubernetes-server now uses ${MCP_KUBECONFIG})
+                            # Verify template variable was resolved (built-in kubernetes-server uses ${KUBECONFIG})
                             assert ".kube/config" in str(k8s_config.transport.args)
                             # Note: Template resolver resolves ${VAR} syntax but doesn't expand ~ paths
                             
