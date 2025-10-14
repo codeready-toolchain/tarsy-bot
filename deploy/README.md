@@ -76,6 +76,14 @@ export XAI_API_KEY=your-xai-api-key
 # Optional: OAuth2 settings (for authentication)
 export OAUTH2_CLIENT_ID=your-oauth-client-id
 export OAUTH2_CLIENT_SECRET=your-oauth-client-secret
+
+# Optional: MCP Kubernetes server configuration (for in-cluster k8s access)
+# Provides kubeconfig for the kubernetes-server MCP to access the cluster
+export MCP_KUBECONFIG_CONTENT="$(cat ~/.kube/config | base64 -w 0)"
+
+# Optional: JWT authentication (for API token validation)
+# Public key for validating JWT tokens if you need TARSy backend to accept service account tokens for machine-to-machine communication
+export JWT_PUBLIC_KEY_CONTENT="$(cat config/keys/jwt_public_key.pem | base64 -w 0)"
 ```
 
 ### 2. Create Configuration Files
