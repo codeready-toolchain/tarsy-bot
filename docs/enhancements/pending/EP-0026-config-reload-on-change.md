@@ -44,6 +44,8 @@ Backend pod mounts these files from ConfigMaps:
 - `CORS_ORIGINS` - CORS configuration
 - `AGENT_CONFIG_PATH`, `LLM_CONFIG_PATH` - Config file paths
 
+**Note**: `MCP_KUBECONFIG` is set directly in the deployment spec (not from ConfigMap), pointing to the mounted Secret volume path.
+
 ### Secrets (Environment Variables)
 1. **database-secret**:
    - `DATABASE_URL` - Complete PostgreSQL connection string
@@ -55,7 +57,10 @@ Backend pod mounts these files from ConfigMaps:
    - `ANTHROPIC_API_KEY` (optional)
    - `XAI_API_KEY` (optional)
 
-3. **oauth2-proxy-secret**:
+3. **mcp-kubeconfig-secret** (optional):
+   - `config` - Kubeconfig file content for Kubernetes MCP server
+
+4. **oauth2-proxy-secret**:
    - `OAUTH2_PROXY_CLIENT_ID`
    - `OAUTH2_PROXY_CLIENT_SECRET`
    - `OAUTH2_PROXY_COOKIE_SECRET`
@@ -80,202 +85,11 @@ Backend pod mounts these files from ConfigMaps:
 | `tarsy-config` | ConfigMap (env) | ✅ Yes | |
 | `database-secret` | Secret | ✅ Yes* | *Kustomize Hash requires secretGenerator |
 | `tarsy-secrets` | Secret | ✅ Yes* | *Kustomize Hash requires secretGenerator |
+| `mcp-kubeconfig-secret` | Secret | ✅ Yes* | *Kustomize Hash requires secretGenerator |
 | `oauth2-proxy-secret` | Secret | ✅ Yes* | *Kustomize Hash requires secretGenerator |
 | `builtin_config.py` | Code in image | ❌ No | Requires image rebuild (expected) |
 
 **Important Note for Kustomize Hash**: Current setup uses `oc process` to create secrets from templates. Kustomize Hash approach would require switching to `secretGenerator` in kustomization.yaml.
-
----
-
-## Pre-Implementation Improvements
-
-Before selecting and implementing a config reload solution, the following improvements should be made:
-
-### 1. Enable Built-in Configuration Override in agents.yaml
-
-**Current State:**
-- Built-in MCP servers, agents, and chains cannot be overridden
-- If you define the same server_id/agent/chain in both `builtin_config.py` and `agents.yaml`, behavior is undefined
-- Kubernetes MCP server uses `${KUBECONFIG}` which works locally but not in pods
-- No way to customize built-in MCP server configuration for Kubernetes deployments
-
-**Target State:**
-- `agents.yaml` can override built-in MCP servers, agents, and chains by ID
-- Mount kubeconfig content as Secret volume in pod
-- Override built-in `kubernetes-server` to use mounted kubeconfig path
-- Consistent override pattern for all configuration types
-
-**Implementation Details:**
-
-#### Code Changes:
-
-**Step 1: Implement Configuration Merging**
-
-File: `backend/tarsy/config/agent_config.py`
-
-Update `ConfigurationLoader` to merge configured items over built-in items:
-
-```python
-def _merge_mcp_servers(self, builtin_servers, configured_servers):
-    """
-    Merge configured MCP servers over built-in servers.
-    Configured servers with same server_id override built-in servers.
-    """
-    merged = builtin_servers.copy()
-    for server_id, config in configured_servers.items():
-        if server_id in merged:
-            logger.info(f"Overriding built-in MCP server: {server_id}")
-        merged[server_id] = config
-    return merged
-
-def _merge_agents(self, builtin_agents, configured_agents):
-    """
-    Merge configured agents over built-in agents.
-    Configured agents with same class name override built-in agents.
-    """
-    merged = builtin_agents.copy()
-    for agent_name, config in configured_agents.items():
-        if agent_name in merged:
-            logger.info(f"Overriding built-in agent: {agent_name}")
-        merged[agent_name] = config
-    return merged
-
-def _merge_chains(self, builtin_chains, configured_chains):
-    """
-    Merge configured chains over built-in chains.
-    Configured chains with same chain_id override built-in chains.
-    """
-    merged = builtin_chains.copy()
-    for chain_id, config in configured_chains.items():
-        if chain_id in merged:
-            logger.info(f"Overriding built-in chain: {chain_id}")
-        merged[chain_id] = config
-    return merged
-```
-
-Apply merging in `ConfigurationLoader.load_configuration()`.
-
-#### Deployment Changes:
-
-**Step 2: Create Kubeconfig Secret**
-
-Add to `deploy/secrets-template.yaml`:
-
-```yaml
-- apiVersion: v1
-  kind: Secret
-  metadata:
-    name: mcp-kubeconfig-secret
-    namespace: ${NAMESPACE}
-    labels:
-      app: tarsy
-      component: mcp
-  type: Opaque
-  stringData:
-    config: ${MCP_KUBECONFIG_CONTENT}
-```
-
-**Step 3: Mount Kubeconfig in Backend Deployment**
-
-File: `deploy/kustomize/base/backend-deployment.yaml`
-
-Add volume mount and environment variable:
-
-```yaml
-containers:
-  - name: backend
-    env:
-      # ... existing env vars ...
-      - name: MCP_KUBECONFIG
-        value: /app/.kube/mcp-config
-    volumeMounts:
-      # ... existing volume mounts ...
-      - name: mcp-kubeconfig
-        mountPath: /app/.kube/mcp-config
-        subPath: config
-volumes:
-  # ... existing volumes ...
-  - name: mcp-kubeconfig
-    secret:
-      secretName: mcp-kubeconfig-secret
-```
-
-**Step 4: Override Built-in Kubernetes Server**
-
-File: `config/agents.yaml`
-
-Add override configuration:
-
-```yaml
-mcp_servers:
-  kubernetes-server:  # Same server_id as built-in - will override
-    server_id: kubernetes-server
-    server_type: kubernetes
-    enabled: true
-    transport:
-      type: stdio
-      command: npx
-      args:
-        - "-y"
-        - "kubernetes-mcp-server@latest"
-        - "--read-only"
-        - "--disable-destructive"
-        - "--kubeconfig"
-        - "${MCP_KUBECONFIG}"  # Uses mounted secret path
-    instructions: |
-      For Kubernetes operations:
-      - Be careful with cluster-scoped resource listings in large clusters
-      - Always prefer namespaced queries when possible
-      - Use kubectl explain for resource schema information
-      - Check resource quotas before creating new resources
-    data_masking:
-      enabled: true
-      pattern_groups:
-        - kubernetes
-      patterns:
-        - certificate
-        - token
-        - email
-```
-
-**Step 5: Update Secret Creation**
-
-File: `make/openshift.mk`
-
-Update `openshift-create-secrets` target to include `MCP_KUBECONFIG_CONTENT`:
-
-```makefile
-openshift-create-secrets: openshift-check openshift-create-namespace
-	# ... existing validation ...
-	@if [ -z "$$MCP_KUBECONFIG_CONTENT" ]; then \
-		echo -e "$(YELLOW)⚠️  Warning: MCP_KUBECONFIG_CONTENT not set - kubernetes-server will not work$(NC)"; \
-	fi
-	oc process -f deploy/secrets-template.yaml \
-		# ... existing parameters ...
-		-p MCP_KUBECONFIG_CONTENT="$$MCP_KUBECONFIG_CONTENT" | \
-		oc apply -f -
-```
-
-**Step 6: Update Environment Template**
-
-File: `deploy/openshift.env.template`
-
-Add MCP kubeconfig section:
-
-```bash
-# =============================================================================
-# MCP Server Configuration
-# =============================================================================
-# Kubeconfig content for Kubernetes MCP server (base64 encoded or raw YAML)
-# export MCP_KUBECONFIG_CONTENT := "$(cat ~/.kube/config)"
-```
-
-**Benefits:**
-- Consistent override pattern for all configuration types (MCP servers, agents, chains)
-- Works with existing Secret volume mount pattern
-- No changes to transport layer or MCP initialization
-- Discoverable configuration in `agents.yaml`
-- Template variable resolution already supported
 
 ---
 

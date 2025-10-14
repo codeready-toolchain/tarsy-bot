@@ -155,6 +155,9 @@ openshift-create-secrets: openshift-check openshift-create-namespace ## Create s
 	@if [ -z "$$MCP_KUBECONFIG_CONTENT" ]; then \
 		echo -e "$(YELLOW)⚠️  Warning: MCP_KUBECONFIG_CONTENT not set - kubernetes-server may not work in cluster$(NC)"; \
 	fi
+	@if [ -z "$$JWT_PUBLIC_KEY_CONTENT" ]; then \
+		echo -e "$(YELLOW)⚠️  Warning: JWT_PUBLIC_KEY_CONTENT not set - JWT authentication will not work$(NC)"; \
+	fi
 	# Set defaults for database connection if not provided
 	@export DATABASE_USER=$${DATABASE_USER:-tarsy}; \
 	export DATABASE_NAME=$${DATABASE_NAME:-tarsy}; \
@@ -170,6 +173,7 @@ openshift-create-secrets: openshift-check openshift-create-namespace ## Create s
 		-p DATABASE_HOST="$$DATABASE_HOST" \
 		-p DATABASE_PORT="$$DATABASE_PORT" \
 		-p MCP_KUBECONFIG_CONTENT="$$MCP_KUBECONFIG_CONTENT" \
+		-p JWT_PUBLIC_KEY_CONTENT="$$JWT_PUBLIC_KEY_CONTENT" \
 		-p OPENAI_API_KEY="$$OPENAI_API_KEY" \
 		-p ANTHROPIC_API_KEY="$$ANTHROPIC_API_KEY" \
 		-p XAI_API_KEY="$$XAI_API_KEY" \

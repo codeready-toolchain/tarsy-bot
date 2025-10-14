@@ -48,6 +48,8 @@ spec:
                   key: github-token
             - name: MCP_KUBECONFIG
               value: /app/.kube/mcp-config
+            - name: JWT_PUBLIC_KEY_PATH
+              value: /app/.keys/jwt_public_key.pem
           envFrom:
             - configMapRef:
                 name: tarsy-config
@@ -65,6 +67,9 @@ spec:
             - name: mcp-kubeconfig
               mountPath: /app/.kube/mcp-config
               subPath: config
+            - name: jwt-keys
+              mountPath: /app/.keys/jwt_public_key.pem
+              subPath: jwt_public_key.pem
           livenessProbe:
             httpGet:
               path: /health
@@ -157,4 +162,8 @@ spec:
         - name: mcp-kubeconfig
           secret:
             secretName: mcp-kubeconfig-secret
+            optional: true
+        - name: jwt-keys
+          configMap:
+            name: jwt-keys-config
             optional: true
