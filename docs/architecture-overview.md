@@ -148,7 +148,7 @@ The AI combines all four to make intelligent decisions about investigation appro
   - *Examples: Prometheus metrics server, Grafana dashboards server, cloud provider APIs, log aggregation tools*
   - *Note: Can override built-in MCP servers via `config/agents.yaml` (e.g., customize kubernetes-server with specific kubeconfig)*
 - **LLM Provider Configuration**: Built-in support for multiple AI providers with optional custom configurations
-  - *Built-in providers: OpenAI, Google Gemini, xAI Grok, Anthropic Claude*
+  - *Built-in providers: OpenAI, Google Gemini, xAI Grok, Anthropic Claude, Google Vertex AI*
   - *Custom providers: Proxy configurations, model overrides, content truncation controls via `config/llm_providers.yaml`*
 - **Configurable Chain Definitions**: Deploy new multi-stage workflows via YAML configuration without code changes
   - *Note: Can override built-in chains via `config/agents.yaml` to customize investigation workflows*

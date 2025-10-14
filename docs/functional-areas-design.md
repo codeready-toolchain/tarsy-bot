@@ -228,7 +228,7 @@ chains:
 **📍 LLM Provider Configuration**: `config/llm_providers.yaml` (optional, see `config/llm_providers.yaml.example`)
 - **Built-in default providers** work out-of-the-box with just API keys
 - **Optional YAML overrides** for custom models, proxy configurations, temperature settings
-- **Multi-provider support** with OpenAI, Google Gemini, xAI Grok, Anthropic Claude
+- **Multi-provider support** with OpenAI, Google Gemini, xAI Grok, Anthropic Claude, Google Vertex AI
 - **Content truncation controls** with provider-specific `max_tool_result_tokens` limits to prevent context overflow
 
 **Built-in Default Providers**:
@@ -249,6 +249,10 @@ BUILTIN_LLM_PROVIDERS = {
     },
     "anthropic-default": {
         "type": "anthropic", "model": "claude-4-sonnet",
+        "max_tool_result_tokens": 150000  # Conservative for 200K context
+    },
+    "vertexai-default": {
+        "type": "vertexai", "model": "claude-sonnet-4-5@20250929",
         "max_tool_result_tokens": 150000  # Conservative for 200K context
     }
 }
@@ -782,7 +786,7 @@ graph TB
 #### Key Components
 
 **📍 Built-in Provider Defaults**: `backend/tarsy/config/builtin_config.py`
-- **Out-of-the-box providers**: OpenAI (gpt-5), Google (gemini-2.5-flash), xAI (grok-4-latest), Anthropic (claude-4-sonnet)
+- **Out-of-the-box providers**: OpenAI (gpt-5), Google (gemini-2.5-flash), xAI (grok-4-latest), Anthropic (claude-4-sonnet), Vertex AI (claude-sonnet-4-5)
 - **Default selection**: google-default for immediate use with just GOOGLE_API_KEY
 - **Zero configuration required** for basic operation
 
@@ -796,7 +800,7 @@ BUILTIN_LLM_PROVIDERS = {
         "type": "google", "model": "gemini-2.5-flash",
         "api_key_env": "GOOGLE_API_KEY"  
     },
-    # ... xai-default, anthropic-default
+    # ... xai-default, anthropic-default, vertexai-default
 }
 ```
 
