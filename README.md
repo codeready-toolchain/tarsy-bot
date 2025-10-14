@@ -283,8 +283,9 @@ npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
 ### Adding New Components
 
 - **Alert Types**: Define any alert type in `config/agents.yaml` - no hardcoding required, just create corresponding runbooks
-- **MCP Servers**: Define custom MCP servers in `config/agents.yaml` with support for stdio, HTTP, and SSE transports
-- **Agents**: Create traditional hardcoded agent classes extending BaseAgent, or define configuration-based agents in `config/agents.yaml`
+- **MCP Servers**: Define custom MCP servers in `config/agents.yaml` with support for stdio, HTTP, and SSE transports. Can override built-in MCP servers (e.g., customize kubernetes-server with specific kubeconfig)
+- **Agents**: Create traditional hardcoded agent classes extending BaseAgent, or define configuration-based agents in `config/agents.yaml`. Can override built-in agents to customize behavior
+- **Chains**: Define multi-stage workflows in `config/agents.yaml`. Can override built-in chains to customize investigation workflows
 - **LLM Providers**: Built-in providers work out-of-the-box (OpenAI, Google, xAI, Anthropic). Add custom providers via `config/llm_providers.yaml` for proxy configurations or model overrides
 
 > **📖 For detailed extensibility examples**: See [Extensibility section](docs/architecture-overview.md#extensibility) in the Architecture Overview

@@ -182,13 +182,14 @@ BUILTIN_AGENTS = {
 
 **📍 YAML Configuration**: `config/agents.yaml` (see `config/agents.yaml.example`)
 - **Template variables**: `${VARIABLE_NAME}` resolved from environment
-- **Agent definitions**: Custom agents with MCP servers and instructions
-- **Chain definitions**: Multi-stage workflows with alert type mappings
-- **MCP server configurations**: Custom tool servers
+- **Agent definitions**: Custom agents with MCP servers and instructions (can override built-in agents)
+- **Chain definitions**: Multi-stage workflows with alert type mappings (can override built-in chains)
+- **MCP server configurations**: Custom tool servers (can override built-in MCP servers)
 
 **Example YAML Configuration**:
 ```yaml
 mcp_servers:
+  # Custom MCP server
   security-scanner:
     server_id: "security-scanner"
     enabled: true
@@ -196,6 +197,15 @@ mcp_servers:
       type: "stdio"
       command: "npx"
       args: ["@security/scanner-mcp-server@latest"]
+  
+  # Override built-in kubernetes-server with custom kubeconfig
+  kubernetes-server:
+    server_id: "kubernetes-server"
+    enabled: true
+    transport:
+      type: "stdio"
+      command: "npx"
+      args: ["-y", "kubernetes-mcp-server@latest", "--kubeconfig", "${MCP_KUBECONFIG}"]
     
 agents:
   security-analyst:
@@ -269,7 +279,7 @@ llm_providers:
 **📍 Configuration Loader**: `backend/tarsy/config/agent_config.py`
 1. **File validation** - YAML syntax and structure validation
 2. **Pydantic validation** - Type checking and constraint validation
-3. **Conflict detection** - Prevents naming conflicts with built-in components
+3. **Override detection** - Logs when YAML configurations override built-in agents, MCP servers, or chains
 4. **Reference validation** - Ensures MCP server references exist
 5. **Template resolution** - Resolves `${VAR}` from environment variables
 
@@ -570,7 +580,7 @@ async with mcp_interaction_context(session_id, server_name, tool_name, parameter
 
 **📍 MCP Server Registry**: `backend/tarsy/services/mcp_server_registry.py`
 - **Single source of truth** for all MCP server configurations
-- **Built-in + YAML server merging** with conflict detection  
+- **Built-in + YAML server merging** with override support (YAML takes precedence)
 - **Template variable resolution** for environment-specific values
 
 **MCP Server Transport Examples**:
