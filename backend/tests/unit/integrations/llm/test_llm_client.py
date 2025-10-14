@@ -104,6 +104,50 @@ class TestLLMClientInitialization:
                 temperature=0.7
             )
     
+    def test_initialization_vertexai_success_with_location(self, mock_config):
+        """Test successful Vertex AI client initialization with project and location."""
+        with patch('tarsy.integrations.llm.client.ChatAnthropicVertex') as mock_vertexai:
+            mock_vertexai.return_value = Mock()
+            
+            # Use 'vertexai' as provider name with project:location format
+            vertexai_config = create_test_config(
+                type="vertexai",
+                model="claude-sonnet-4-5@20250929",
+                api_key="my-project:us-east5"
+            )
+            client = LLMClient("vertexai", vertexai_config)
+            
+            assert client.provider_name == "vertexai"
+            assert client.available == True
+            mock_vertexai.assert_called_once_with(
+                model_name="claude-sonnet-4-5@20250929",
+                project="my-project",
+                location="us-east5",
+                temperature=0.7
+            )
+    
+    def test_initialization_vertexai_success_default_location(self, mock_config):
+        """Test successful Vertex AI client initialization with default location."""
+        with patch('tarsy.integrations.llm.client.ChatAnthropicVertex') as mock_vertexai:
+            mock_vertexai.return_value = Mock()
+            
+            # Use 'vertexai' as provider name with project only (defaults to us-east5)
+            vertexai_config = create_test_config(
+                type="vertexai",
+                model="claude-sonnet-4-5@20250929",
+                api_key="my-project"
+            )
+            client = LLMClient("vertexai", vertexai_config)
+            
+            assert client.provider_name == "vertexai"
+            assert client.available == True
+            mock_vertexai.assert_called_once_with(
+                model_name="claude-sonnet-4-5@20250929",
+                project="my-project",
+                location="us-east5",  # Default location
+                temperature=0.7
+            )
+    
     def test_initialization_unknown_provider(self):
         """Test that BaseModel validation prevents unknown provider types."""
         # BaseModel should prevent unknown provider types at creation time
@@ -474,7 +518,7 @@ class TestLLMProviderMappings:
     
     def test_all_providers_available(self):
         """Test that all expected providers are available."""
-        expected_providers = ["openai", "google", "xai", "anthropic"]
+        expected_providers = ["openai", "google", "xai", "anthropic", "vertexai"]
         
         for provider in expected_providers:
             assert provider in LLM_PROVIDERS
@@ -494,19 +538,22 @@ class TestLLMProviderMappings:
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai, \
              patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google, \
              patch('tarsy.integrations.llm.client.ChatXAI') as mock_xai, \
-             patch('tarsy.integrations.llm.client.ChatAnthropic') as mock_anthropic:
+             patch('tarsy.integrations.llm.client.ChatAnthropic') as mock_anthropic, \
+             patch('tarsy.integrations.llm.client.ChatAnthropicVertex') as mock_vertexai:
             
             # Test each provider function
             LLM_PROVIDERS["openai"](temp, api_key, model)
             LLM_PROVIDERS["google"](temp, api_key, model)
             LLM_PROVIDERS["xai"](temp, api_key, model)
             LLM_PROVIDERS["anthropic"](temp, api_key, model)
+            LLM_PROVIDERS["vertexai"](temp, api_key, model)
             
             # Verify all were called
             mock_openai.assert_called_once()
             mock_google.assert_called_once()
             mock_xai.assert_called_once()
             mock_anthropic.assert_called_once()
+            mock_vertexai.assert_called_once()
 
 
 @pytest.mark.unit

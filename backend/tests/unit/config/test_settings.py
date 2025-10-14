@@ -337,7 +337,8 @@ class TestBuiltinLLMProvidersConfiguration:
             "openai-default": 250000,     # Conservative for 272K context
             "google-default": 950000,     # Conservative for 1M context
             "xai-default": 200000,        # Conservative for 256K context
-            "anthropic-default": 150000   # Conservative for 200K context
+            "anthropic-default": 150000,  # Conservative for 200K context
+            "vertexai-default": 150000    # Conservative for 200K context
         }
         
         for provider_name, expected_limit in expected_limits.items():

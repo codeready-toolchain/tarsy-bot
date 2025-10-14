@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 # Supported LLM provider types
-ProviderType = Literal["openai", "google", "xai", "anthropic"]
+ProviderType = Literal["openai", "google", "xai", "anthropic", "vertexai"]
 
 
 class LLMProviderConfig(BaseModel):
@@ -24,7 +24,7 @@ class LLMProviderConfig(BaseModel):
     
     # Required fields
     type: ProviderType = Field(
-        description="Provider type (openai, google, xai, anthropic)"
+        description="Provider type (openai, google, xai, anthropic, vertexai)"
     )
     model: str = Field(
         min_length=1,
@@ -70,8 +70,8 @@ class LLMProviderConfig(BaseModel):
     @classmethod
     def validate_provider_type(cls, v: str) -> str:
         """Validate that provider type is supported."""
-        if v not in ["openai", "google", "xai", "anthropic"]:
-            raise ValueError(f"Unsupported provider type: {v}. Must be one of: openai, google, xai, anthropic")
+        if v not in ["openai", "google", "xai", "anthropic", "vertexai"]:
+            raise ValueError(f"Unsupported provider type: {v}. Must be one of: openai, google, xai, anthropic, vertexai")
         return v
     
     @field_validator("model")
