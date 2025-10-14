@@ -159,6 +159,8 @@ openshift-create-secrets: openshift-check openshift-create-namespace ## Create s
 		echo -e "$(YELLOW)⚠️  Warning: JWT_PUBLIC_KEY_CONTENT not set - JWT authentication will not work$(NC)"; \
 	fi
 	# Set defaults for database connection if not provided
+	# Note: Users can override these by exporting DATABASE_* variables in deploy/openshift.env
+	# Example: export DATABASE_USER := my-custom-user
 	@export DATABASE_USER=$${DATABASE_USER:-tarsy}; \
 	export DATABASE_NAME=$${DATABASE_NAME:-tarsy}; \
 	export DATABASE_HOST=$${DATABASE_HOST:-dev-tarsy-database}; \
