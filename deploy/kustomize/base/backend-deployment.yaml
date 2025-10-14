@@ -41,6 +41,14 @@ spec:
                   name: tarsy-secrets
                   key: google-api-key
                   optional: true
+            - name: VERTEX_AI_PROJECT
+              valueFrom:
+                secretKeyRef:
+                  name: tarsy-secrets
+                  key: vertex-ai-project
+                  optional: true
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /app/.gcp/service-account-key.json
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -70,6 +78,9 @@ spec:
             - name: jwt-keys
               mountPath: /app/.keys/jwt_public_key.pem
               subPath: jwt_public_key.pem
+            - name: gcp-service-account
+              mountPath: /app/.gcp
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /health
@@ -166,4 +177,8 @@ spec:
         - name: jwt-keys
           configMap:
             name: jwt-keys-config
+            optional: true
+        - name: gcp-service-account
+          secret:
+            secretName: gcp-service-account-secret
             optional: true

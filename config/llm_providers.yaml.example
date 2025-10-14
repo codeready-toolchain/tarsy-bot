@@ -50,14 +50,27 @@ llm_providers:
     model: claude-4.1-opus
     api_key_env: ANTHROPIC_API_KEY
     max_tool_result_tokens: 150000  # Conservative for 200K context
+    
+  # Custom Vertex AI provider for Claude on GCP
+  vertexai-claude:
+    type: vertexai
+    model: claude-sonnet-4-5@20250929  # Claude Sonnet 4.5
+    api_key_env: VERTEX_AI_PROJECT  # Format: "project_id:location" or just "project_id"
+    max_tool_result_tokens: 150000  # Conservative for 200K context
+    # Note: Requires GOOGLE_APPLICATION_CREDENTIALS env var pointing to service account JSON
 
 # Configuration Field Definitions:
-# - type: Provider type (openai, google, xai, anthropic) - maps to LLM_PROVIDERS function
+# - type: Provider type (openai, google, xai, anthropic, vertexai) - maps to LLM_PROVIDERS function
 # - model: Model name to use
 # - api_key_env: Environment variable name containing API key
 # - base_url: (Optional) Custom base URL, if not specified LangChain uses provider defaults
 # - temperature: (Optional) Default temperature override
 # - max_tool_result_tokens: (Optional) Maximum tokens for tool result content before LLM processing
+# 
+# For Vertex AI (vertexai type):
+#   - Requires GOOGLE_APPLICATION_CREDENTIALS environment variable pointing to service account JSON key
+#   - api_key_env should contain: "project_id:location" (e.g., "my-project:us-east5") or just "project_id" (defaults to us-east5)
+#   - Available Claude models: claude-sonnet-4-5@20250929, claude-opus-4@20250514
 
 # Configuration Priority:
 # 1. YAML providers (this file) - highest priority
