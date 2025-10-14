@@ -106,6 +106,7 @@ def create_database_engine(database_url: str, settings: Optional[Settings] = Non
                 @sa_event.listens_for(engine, "connect")
                 def set_sqlite_pragma(dbapi_conn, connection_record):
                     cursor = dbapi_conn.cursor()
+                    cursor.execute("PRAGMA foreign_keys=ON")  # Enable CASCADE deletes
                     cursor.execute("PRAGMA journal_mode=WAL")
                     cursor.execute("PRAGMA busy_timeout=5000")  # 5 second timeout for locks
                     cursor.close()
@@ -236,13 +237,25 @@ def get_database_info() -> dict:
     try:
         settings = get_settings()
         
-        return {
+        info = {
             "enabled": settings.history_enabled,
             # Omit DSN to avoid credential leakage
             "database_name": settings.database_url.split('/')[-1] if settings.history_enabled else None,
             "retention_days": settings.history_retention_days if settings.history_enabled else None,
             "connection_test": test_database_connection() if settings.history_enabled else False,
         }
+        
+        # Add migration version if database is enabled
+        if settings.history_enabled:
+            try:
+                from tarsy.database.migrations import get_current_version
+                migration_version = get_current_version(str(settings.database_url))
+                info["migration_version"] = migration_version if migration_version else "not_initialized"
+            except Exception as e:
+                logger.debug(f"Could not get migration version: {e}")
+                info["migration_version"] = "unknown"
+        
+        return info
         
     except Exception as e:
         logger.error(f"Failed to get database info: {str(e)}")

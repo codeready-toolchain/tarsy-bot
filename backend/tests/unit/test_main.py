@@ -532,7 +532,56 @@ class TestMainEndpoints:
         assert data["warning_count"] == 0
         assert data["warnings"] == []
 
+    @patch('tarsy.main.get_database_info')
+    def test_health_endpoint_includes_migration_version(self, mock_db_info, client):
+        """Test health endpoint includes database migration version."""
+        # Mock database with migration version
+        mock_db_info.return_value = {
+            "enabled": True,
+            "connection_test": True,
+            "retention_days": 90,
+            "migration_version": "3717971cb125"
+        }
 
+        # Mock event system as healthy
+        with patch('tarsy.services.events.manager.get_event_system') as mock_get_event_system:
+            mock_event_system = Mock()
+            mock_listener = Mock()
+            mock_listener.running = True
+            mock_event_system.get_listener.return_value = mock_listener
+            mock_get_event_system.return_value = mock_event_system
+            
+            response = client.get("/health")
+            assert response.status_code == 200
+            data = response.json()
+
+        # Verify migration_version is included in database section
+        assert "database" in data["services"]
+        assert "migration_version" in data["services"]["database"]
+        assert data["services"]["database"]["migration_version"] == "3717971cb125"
+
+    @patch('tarsy.main.get_database_info')
+    def test_health_endpoint_migration_version_special_values(self, mock_db_info, client):
+        """Test health endpoint handles special migration version values."""
+        # Test with "not_initialized" value
+        mock_db_info.return_value = {
+            "enabled": True,
+            "connection_test": True,
+            "retention_days": 90,
+            "migration_version": "not_initialized"
+        }
+
+        with patch('tarsy.services.events.manager.get_event_system') as mock_get_event_system:
+            mock_event_system = Mock()
+            mock_listener = Mock()
+            mock_listener.running = True
+            mock_event_system.get_listener.return_value = mock_listener
+            mock_get_event_system.return_value = mock_event_system
+            
+            response = client.get("/health")
+            data = response.json()
+
+        assert data["services"]["database"]["migration_version"] == "not_initialized"
 
 
 @pytest.mark.unit

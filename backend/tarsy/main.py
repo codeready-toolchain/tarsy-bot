@@ -62,12 +62,13 @@ alert_service: Optional[AlertService] = None
 alert_processing_semaphore: Optional[asyncio.Semaphore] = None
 event_system_manager: Optional["EventSystemManager"] = None
 history_cleanup_service: Optional["HistoryCleanupService"] = None
+db_manager: Optional[Any] = None  # DatabaseManager for history cleanup service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
-    global alert_service, alert_processing_semaphore, event_system_manager, history_cleanup_service
+    global alert_service, alert_processing_semaphore, event_system_manager, history_cleanup_service, db_manager
     
     # Initialize services
     settings = get_settings()
@@ -155,6 +156,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             from tarsy.repositories.base_repository import DatabaseManager
             
             # Create and initialize database manager for sync operations
+            # Stored at module level to allow cleanup during shutdown
             db_manager = DatabaseManager(settings.database_url)
             db_manager.initialize()
             
@@ -210,6 +212,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("History cleanup service stopped")
         except Exception as e:
             logger.error(f"Error stopping history cleanup service: {e}", exc_info=True)
+    
+    # Cleanup database manager for history cleanup service
+    if db_manager is not None:
+        try:
+            db_manager.close()
+            logger.info("History cleanup database manager closed")
+        except Exception as e:
+            logger.error(f"Error closing database manager: {e}", exc_info=True)
     
     # Shutdown event system
     if event_system_manager is not None:
@@ -332,7 +342,8 @@ async def health_check(response: Response) -> Dict[str, Any]:
             "database": {
                 "enabled": db_info.get("enabled", False),
                 "connected": db_info.get("connection_test", False) if db_info.get("enabled") else None,
-                "retention_days": db_info.get("retention_days") if db_info.get("enabled") else None
+                "retention_days": db_info.get("retention_days") if db_info.get("enabled") else None,
+                "migration_version": db_info.get("migration_version") if db_info.get("enabled") else None
             }
         }
         

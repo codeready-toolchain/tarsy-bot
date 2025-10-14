@@ -235,7 +235,8 @@ class TestGetDatabaseInfo:
         """Test getting database info with various scenarios."""
         # Test enabled with successful connection
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
-             patch('tarsy.database.init_db.test_database_connection') as mock_test_connection:
+             patch('tarsy.database.init_db.test_database_connection') as mock_test_connection, \
+             patch('tarsy.database.migrations.get_current_version') as mock_get_version:
             
             mock_settings = Mock()
             mock_settings.history_enabled = True
@@ -243,13 +244,15 @@ class TestGetDatabaseInfo:
             mock_settings.history_retention_days = 90
             mock_get_settings.return_value = mock_settings
             mock_test_connection.return_value = True
+            mock_get_version.return_value = "3717971cb125"
             
             result = get_database_info()
             expected = {
                 "enabled": True,
                 "database_name": "history.db",
                 "retention_days": 90,
-                "connection_test": True
+                "connection_test": True,
+                "migration_version": "3717971cb125"
             }
             assert result == expected
         
@@ -270,7 +273,8 @@ class TestGetDatabaseInfo:
         
         # Test connection failure
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
-             patch('tarsy.database.init_db.test_database_connection') as mock_test_connection:
+             patch('tarsy.database.init_db.test_database_connection') as mock_test_connection, \
+             patch('tarsy.database.migrations.get_current_version') as mock_get_version:
             
             mock_settings = Mock()
             mock_settings.history_enabled = True
@@ -278,13 +282,15 @@ class TestGetDatabaseInfo:
             mock_settings.history_retention_days = 90
             mock_get_settings.return_value = mock_settings
             mock_test_connection.return_value = False
+            mock_get_version.return_value = "3717971cb125"
             
             result = get_database_info()
             expected = {
                 "enabled": True,
                 "database_name": "history.db",
                 "retention_days": 90,
-                "connection_test": False
+                "connection_test": False,
+                "migration_version": "3717971cb125"
             }
             assert result == expected
         
