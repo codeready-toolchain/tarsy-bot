@@ -92,8 +92,8 @@ class TestAlertServiceTemplateIntegration:
             finally:
                 os.unlink(f.name)
     
-    def test_alert_service_template_defaults_integration(self):
-        """Test that settings defaults work through AlertService."""
+    def test_alert_service_template_env_var_integration(self):
+        """Test that environment variable resolution works through AlertService."""
         # Create an empty .env file to prevent loading of real .env values
         import tempfile
         import os
