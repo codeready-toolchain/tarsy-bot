@@ -15,7 +15,8 @@ from ..models.agent_config import CombinedConfigModel
 from ..utils.logger import get_module_logger
 from .builtin_config import (
     get_builtin_agent_class_names,
-    get_builtin_mcp_server_ids
+    get_builtin_mcp_server_ids,
+    get_builtin_chain_definitions
 )
 from .exceptions import ConfigurationError
 
@@ -42,10 +43,12 @@ class ConfigurationLoader:
         # Built-in constants imported from central configuration
         self.BUILTIN_AGENT_CLASSES = get_builtin_agent_class_names()
         self.BUILTIN_MCP_SERVERS = get_builtin_mcp_server_ids()
+        self.BUILTIN_CHAINS = set(get_builtin_chain_definitions().keys())
         
         logger.info(f"Initialized ConfigurationLoader with file path: {config_file_path}")
         logger.debug(f"Built-in agent classes: {self.BUILTIN_AGENT_CLASSES}")
         logger.debug(f"Built-in MCP servers: {self.BUILTIN_MCP_SERVERS}")
+        logger.debug(f"Built-in chains: {self.BUILTIN_CHAINS}")
     
     def load_and_validate(self) -> CombinedConfigModel:
         """
@@ -104,8 +107,8 @@ class ConfigurationLoader:
             logger.debug("Detecting circular dependencies")
             self._detect_circular_dependencies(config)
             
-            logger.debug("Detecting naming conflicts")
-            self._check_naming_conflicts(config)
+            logger.debug("Checking for configuration overrides")
+            self._log_configuration_overrides(config)
             
             logger.debug("Validating configuration completeness")
             self._validate_configuration_completeness(config)
@@ -209,37 +212,33 @@ class ConfigurationLoader:
         
         logger.debug("All MCP server references validated successfully")
     
-    def _check_naming_conflicts(self, config: CombinedConfigModel) -> None:
+    def _log_configuration_overrides(self, config: CombinedConfigModel) -> None:
         """
-        Check for naming conflicts between configured and built-in components.
+        Log info about configuration overrides.
+        
+        This method logs when configured items override built-in items,
+        allowing users to customize built-in agents, MCP servers, and chains
+        via agents.yaml configuration.
         
         Args:
             config: The parsed configuration to validate
-            
-        Raises:
-            ConfigurationError: If any naming conflicts are detected
         """
-        # Check agent name conflicts
+        # Log agent overrides
         for agent_name in config.agents.keys():
             if agent_name in self.BUILTIN_AGENT_CLASSES:
-                error_msg = (
-                    f"Configured agent name '{agent_name}' conflicts with built-in agent class. "
-                    f"Built-in agent classes: {sorted(self.BUILTIN_AGENT_CLASSES)}"
-                )
-                logger.error(error_msg)
-                raise ConfigurationError(error_msg)
+                logger.info(f"Configured agent '{agent_name}' will override built-in agent class")
         
-        # Check MCP server ID conflicts
+        # Log MCP server overrides
         for server_id in config.mcp_servers.keys():
             if server_id in self.BUILTIN_MCP_SERVERS:
-                error_msg = (
-                    f"Configured MCP server ID '{server_id}' conflicts with built-in MCP server. "
-                    f"Built-in MCP servers: {sorted(self.BUILTIN_MCP_SERVERS)}"
-                )
-                logger.error(error_msg)
-                raise ConfigurationError(error_msg)
+                logger.info(f"Configured MCP server '{server_id}' will override built-in MCP server")
         
-        logger.debug("No naming conflicts detected")
+        # Log chain overrides
+        for chain_id in config.agent_chains.keys():
+            if chain_id in self.BUILTIN_CHAINS:
+                logger.info(f"Configured chain '{chain_id}' will override built-in chain")
+        
+        logger.debug("Configuration override check completed")
     
     def _validate_config_file_path(self) -> None:
         """

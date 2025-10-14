@@ -152,6 +152,9 @@ openshift-create-secrets: openshift-check openshift-create-namespace ## Create s
 		echo -e "$(YELLOW)Please set: export GITHUB_TOKEN=your-github-token$(NC)"; \
 		exit 1; \
 	fi
+	@if [ -z "$$MCP_KUBECONFIG_CONTENT" ]; then \
+		echo -e "$(YELLOW)⚠️  Warning: MCP_KUBECONFIG_CONTENT not set - kubernetes-server may not work in cluster$(NC)"; \
+	fi
 	# Set defaults for database connection if not provided
 	@export DATABASE_USER=$${DATABASE_USER:-tarsy}; \
 	export DATABASE_NAME=$${DATABASE_NAME:-tarsy}; \
@@ -166,6 +169,7 @@ openshift-create-secrets: openshift-check openshift-create-namespace ## Create s
 		-p DATABASE_NAME="$$DATABASE_NAME" \
 		-p DATABASE_HOST="$$DATABASE_HOST" \
 		-p DATABASE_PORT="$$DATABASE_PORT" \
+		-p MCP_KUBECONFIG_CONTENT="$$MCP_KUBECONFIG_CONTENT" \
 		-p OPENAI_API_KEY="$$OPENAI_API_KEY" \
 		-p ANTHROPIC_API_KEY="$$ANTHROPIC_API_KEY" \
 		-p XAI_API_KEY="$$XAI_API_KEY" \

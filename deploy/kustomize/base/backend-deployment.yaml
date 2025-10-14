@@ -46,6 +46,8 @@ spec:
                 secretKeyRef:
                   name: tarsy-secrets
                   key: github-token
+            - name: MCP_KUBECONFIG
+              value: /app/.kube/mcp-config
           envFrom:
             - configMapRef:
                 name: tarsy-config
@@ -60,6 +62,9 @@ spec:
             - name: llm-providers-config
               mountPath: /app/config/llm_providers.yaml
               subPath: llm_providers.yaml
+            - name: mcp-kubeconfig
+              mountPath: /app/.kube/mcp-config
+              subPath: config
           livenessProbe:
             httpGet:
               path: /health
@@ -149,3 +154,7 @@ spec:
         - name: oauth2-templates
           configMap:
             name: oauth2-templates
+        - name: mcp-kubeconfig
+          secret:
+            secretName: mcp-kubeconfig-secret
+            optional: true

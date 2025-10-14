@@ -16,6 +16,8 @@ from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.config.exceptions import ConfigurationError
 from tarsy.models.agent_config import (
     AgentConfigModel,
+    ChainConfigModel,
+    ChainStageConfigModel,
     CombinedConfigModel,
     MCPServerConfigModel,
 )
@@ -239,12 +241,17 @@ class TestConfigurationLoaderValidation:
         assert "references unknown MCP server" in str(exc_info.value)
         assert "nonexistent-server" in str(exc_info.value)
     
+    @patch('tarsy.config.agent_config.get_builtin_chain_definitions')
     @patch('tarsy.config.agent_config.get_builtin_agent_class_names')
     @patch('tarsy.config.agent_config.get_builtin_mcp_server_ids')
-    def test_check_naming_conflicts_agent_name(self, mock_mcp_ids, mock_agent_names):
-        """Test agent name conflict detection."""
-        mock_agent_names.return_value = ["KubernetesAgent"]
-        mock_mcp_ids.return_value = []
+    def test_check_naming_conflicts_agent_name(self, mock_mcp_ids, mock_agent_names, mock_chain_defs, caplog):
+        """Test agent override logging for built-in agent names."""
+        import logging
+        caplog.set_level(logging.INFO)
+        
+        mock_agent_names.return_value = {"KubernetesAgent"}
+        mock_mcp_ids.return_value = set()
+        mock_chain_defs.return_value = {}
         
         config = CombinedConfigModel(
             agents={
@@ -257,17 +264,24 @@ class TestConfigurationLoaderValidation:
         
         loader = ConfigurationLoader("/test/config.yaml")
         
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader._check_naming_conflicts(config)
+        # Should not raise an error, but log the override
+        loader._log_configuration_overrides(config)
         
-        assert "conflicts with built-in agent class" in str(exc_info.value)
+        # Verify the override was logged
+        assert "will override built-in agent class" in caplog.text
+        assert "KubernetesAgent" in caplog.text
     
+    @patch('tarsy.config.agent_config.get_builtin_chain_definitions')
     @patch('tarsy.config.agent_config.get_builtin_agent_class_names')
     @patch('tarsy.config.agent_config.get_builtin_mcp_server_ids')
-    def test_check_naming_conflicts_mcp_server(self, mock_mcp_ids, mock_agent_names):
-        """Test MCP server name conflict detection."""
-        mock_agent_names.return_value = []
-        mock_mcp_ids.return_value = ["kubernetes-server"]
+    def test_check_naming_conflicts_mcp_server(self, mock_mcp_ids, mock_agent_names, mock_chain_defs, caplog):
+        """Test MCP server override logging for built-in MCP servers."""
+        import logging
+        caplog.set_level(logging.INFO)
+        
+        mock_agent_names.return_value = set()
+        mock_mcp_ids.return_value = {"kubernetes-server"}
+        mock_chain_defs.return_value = {}
         
         config = CombinedConfigModel(
             agents={},
@@ -283,10 +297,51 @@ class TestConfigurationLoaderValidation:
         
         loader = ConfigurationLoader("/test/config.yaml")
         
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader._check_naming_conflicts(config)
+        # Should not raise an error, but log the override
+        loader._log_configuration_overrides(config)
         
-        assert "conflicts with built-in MCP server" in str(exc_info.value)
+        # Verify the override was logged
+        assert "will override built-in MCP server" in caplog.text
+        assert "kubernetes-server" in caplog.text
+    
+    @patch('tarsy.config.agent_config.get_builtin_chain_definitions')
+    @patch('tarsy.config.agent_config.get_builtin_agent_class_names')
+    @patch('tarsy.config.agent_config.get_builtin_mcp_server_ids')
+    def test_check_naming_conflicts_chain(self, mock_mcp_ids, mock_agent_names, mock_chain_defs, caplog):
+        """Test chain override logging for built-in chains."""
+        import logging
+        caplog.set_level(logging.INFO)
+        
+        mock_agent_names.return_value = set()
+        mock_mcp_ids.return_value = set()
+        mock_chain_defs.return_value = {"kubernetes-agent-chain": {}}
+        
+        config = CombinedConfigModel(
+            agents={},
+            mcp_servers={},
+            agent_chains={
+                "kubernetes-agent-chain": ChainConfigModel(
+                    chain_id="kubernetes-agent-chain",
+                    alert_types=["kubernetes"],
+                    stages=[
+                        ChainStageConfigModel(
+                            name="analysis",
+                            agent="KubernetesAgent",
+                            iteration_strategy="react"
+                        )
+                    ]
+                )
+            }
+        )
+        
+        loader = ConfigurationLoader("/test/config.yaml")
+        
+        # Should not raise an error, but log the override
+        loader._log_configuration_overrides(config)
+        
+        # Verify the override was logged
+        assert "will override built-in chain" in caplog.text
+        assert "kubernetes-agent-chain" in caplog.text
     
     def test_validate_configuration_completeness_no_alert_types(self):
         """Test configuration completeness validation - alert types are now optional."""

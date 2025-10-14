@@ -11,10 +11,11 @@
 # 4. Set required environment variables in your .env file for template substitution
 #
 # IMPORTANT NOTES:
-# - Agent names and MCP server IDs must be unique across configured and built-in components
+# - Configured agents, MCP servers, and chains can override built-in components by using the same ID/name
 # - Each agent must handle at least one alert type and use at least one MCP server
 # - Configured agents can use both built-in MCP servers (like "kubernetes-server") and configured ones
 # - Alert types can only be handled by one agent (no conflicts allowed)
+# - To override a built-in component, use the same server_id/agent name/chain_id in your configuration
 #
 # TEMPLATE VARIABLES:
 # - MCP server configurations support ${VARIABLE_NAME} template syntax
@@ -64,6 +65,40 @@
 # - "sse": Server-Sent Events MCP servers - requires url field, optional bearer_token, sse_read_timeout
 
 mcp_servers:
+  # OVERRIDE EXAMPLE: Override built-in kubernetes-server with custom kubeconfig path
+  # This example shows how to override the built-in kubernetes-server to use a mounted kubeconfig
+  # in Kubernetes deployments. The MCP_KUBECONFIG env var should point to a mounted Secret volume.
+  # Uncomment this section to enable the override:
+  #
+  # kubernetes-server:
+  #   server_id: "kubernetes-server"
+  #   server_type: "kubernetes"
+  #   enabled: true
+  #   transport:
+  #     type: "stdio"
+  #     command: "npx"
+  #     args:
+  #       - "-y"
+  #       - "kubernetes-mcp-server@latest"
+  #       - "--read-only"
+  #       - "--disable-destructive"
+  #       - "--kubeconfig"
+  #       - "${MCP_KUBECONFIG}"
+  #   instructions: |
+  #     For Kubernetes operations:
+  #     - Be careful with cluster-scoped resource listings in large clusters
+  #     - Always prefer namespaced queries when possible
+  #     - Use kubectl explain for resource schema information
+  #     - Check resource quotas before creating new resources
+  #   data_masking:
+  #     enabled: true
+  #     pattern_groups:
+  #       - "kubernetes"
+  #     patterns:
+  #       - "certificate"
+  #       - "token"
+  #       - "email"
+  
   # Security-focused MCP server for threat analysis and security operations
   security-server:
     server_id: "security-server"
