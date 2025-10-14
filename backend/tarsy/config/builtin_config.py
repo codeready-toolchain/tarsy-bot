@@ -232,6 +232,13 @@ BUILTIN_LLM_PROVIDERS: Dict[str, LLMProviderConfig] = {
         api_key_env="ANTHROPIC_API_KEY",
         temperature=DEFAULT_LLM_TEMPERATURE,
         max_tool_result_tokens=150000  # Conservative for 200K context
+    ),
+    "vertexai-default": LLMProviderConfig(
+        type="vertexai",
+        model="claude-sonnet-4-5@20250929",  # Claude Sonnet 4.5 on Vertex AI
+        api_key_env="VERTEX_AI_PROJECT",  # Format: "project_id:location" or "project_id"
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        max_tool_result_tokens=150000  # Conservative for 200K context
     )
 }
 

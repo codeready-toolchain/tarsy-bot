@@ -14,6 +14,7 @@ from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatAnthropicVertex
 from langchain_openai import ChatOpenAI
 from langchain_xai import ChatXAI
 from langchain_anthropic import ChatAnthropic
@@ -89,11 +90,35 @@ def _create_anthropic_client(temp, api_key, model, disable_ssl_verification=Fals
     # Note: ChatAnthropic may not support custom HTTP clients - would need to verify  
     return ChatAnthropic(**client_kwargs)
 
+def _create_vertexai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
+    """Create ChatAnthropicVertex client for Claude models on Vertex AI.
+    
+    Authentication via GOOGLE_APPLICATION_CREDENTIALS env var pointing to service account JSON.
+    Project and location extracted from api_key field (format: "project_id:location" or just "project_id").
+    """
+    # Parse project and location from api_key field
+    # Expected format: "project_id:location" or "project_id" (defaults to us-east5)
+    if ":" in api_key:
+        project, location = api_key.split(":", 1)
+    else:
+        project = api_key
+        location = "us-east5"  # Default region for Claude
+    
+    client_kwargs = {
+        "model_name": model,
+        "project": project,
+        "location": location,
+        "temperature": temp
+    }
+    
+    return ChatAnthropicVertex(**client_kwargs)
+
 LLM_PROVIDERS = {
     "openai": _create_openai_client,
     "google": _create_google_client,
     "xai": _create_xai_client,
-    "anthropic": _create_anthropic_client
+    "anthropic": _create_anthropic_client,
+    "vertexai": _create_vertexai_client
 }
 
 
