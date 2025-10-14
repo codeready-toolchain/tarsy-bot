@@ -152,10 +152,20 @@ openshift-create-secrets: openshift-check openshift-create-namespace ## Create s
 		echo -e "$(YELLOW)Please set: export GITHUB_TOKEN=your-github-token$(NC)"; \
 		exit 1; \
 	fi
-	@oc process -f deploy/secrets-template.yaml \
+	# Set defaults for database connection if not provided
+	@export DATABASE_USER=$${DATABASE_USER:-tarsy}; \
+	export DATABASE_NAME=$${DATABASE_NAME:-tarsy}; \
+	export DATABASE_HOST=$${DATABASE_HOST:-dev-tarsy-database}; \
+	export DATABASE_PORT=$${DATABASE_PORT:-5432}; \
+	oc process -f deploy/secrets-template.yaml \
 		-p NAMESPACE=$(OPENSHIFT_NAMESPACE) \
 		-p GOOGLE_API_KEY="$$GOOGLE_API_KEY" \
 		-p GITHUB_TOKEN="$$GITHUB_TOKEN" \
+		-p DATABASE_PASSWORD="$$DATABASE_PASSWORD" \
+		-p DATABASE_USER="$$DATABASE_USER" \
+		-p DATABASE_NAME="$$DATABASE_NAME" \
+		-p DATABASE_HOST="$$DATABASE_HOST" \
+		-p DATABASE_PORT="$$DATABASE_PORT" \
 		-p OPENAI_API_KEY="$$OPENAI_API_KEY" \
 		-p ANTHROPIC_API_KEY="$$ANTHROPIC_API_KEY" \
 		-p XAI_API_KEY="$$XAI_API_KEY" \
