@@ -2,7 +2,10 @@
 
 import os
 from pathlib import Path
-from typing import Optional
+
+from tarsy.utils.logger import get_module_logger
+
+logger = get_module_logger(__name__)
 
 
 def get_version() -> str:
@@ -25,8 +28,10 @@ def get_version() -> str:
     if version_file.exists():
         try:
             return version_file.read_text().strip()
-        except Exception:
-            pass
+        except (OSError, UnicodeDecodeError) as e:
+            logger.warning(
+                f"Failed to read VERSION file at {version_file}: {type(e).__name__}: {e}"
+            )
     
     # Development fallback
     return "dev"

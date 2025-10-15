@@ -33,7 +33,7 @@ function VersionFooter() {
   
   // Determine what to display
   const showSingleVersion = agentVersion && agentVersion === DASHBOARD_VERSION;
-  const showSeparateVersions = agentVersion && agentVersion !== DASHBOARD_VERSION;
+  const showSeparateVersions = agentVersion && agentVersion !== DASHBOARD_VERSION && agentVersion !== 'unavailable';
   
   return (
     <Box
