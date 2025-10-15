@@ -53,6 +53,9 @@ yarn-error.log*
 build/
 dist/
 
+# Version files (generated at build time)
+backend/tarsy/VERSION
+
 # OS generated files
 .DS_Store
 .DS_Store?

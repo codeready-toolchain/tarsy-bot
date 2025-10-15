@@ -63,12 +63,24 @@ class WebSocketService {
       }
 
       // Validate baseUrl is set
-      if (!this.baseUrl) {
+      if (this.baseUrl === undefined || this.baseUrl === null) {
         throw new Error('WebSocket base URL not configured');
       }
 
-      const wsUrl = `${this.baseUrl}/api/v1/ws`;
-      console.log('🔌 Connecting to WebSocket:', wsUrl);
+      // Handle empty baseUrl (relative URL) - construct absolute URL from current location
+      let wsUrl: string;
+      if (this.baseUrl === '') {
+        // Use current page location to build WebSocket URL (production with relative paths)
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        wsUrl = `${protocol}//${host}/api/v1/ws`;
+        console.log('🔌 Using relative WebSocket URL, constructed:', wsUrl);
+      } else {
+        // Use explicit base URL (development or custom configuration)
+        wsUrl = `${this.baseUrl}/api/v1/ws`;
+        console.log('🔌 Using explicit WebSocket URL:', wsUrl);
+      }
+      
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {

@@ -28,6 +28,11 @@ RUN uv sync --frozen
 #   - alembic/ (migration scripts and env.py - REQUIRED for production)
 COPY . .
 
+# Accept VERSION build arg and inject into application
+ARG VERSION=dev
+ENV APP_VERSION=${VERSION}
+RUN echo "${VERSION}" > /app/tarsy/VERSION
+
 # Create a non-root user for security
 RUN groupadd --gid 65532 appuser \
     && useradd --uid 65532 --gid 65532 --no-create-home --shell /bin/false appuser

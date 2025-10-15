@@ -1,0 +1,66 @@
+name: Build & Push Backend Image
+
+on:
+  push:
+    branches:
+      - master
+    tags-ignore:
+      - '*.*'
+
+env:
+  IMAGE_REGISTRY: quay.io
+  IMAGE_NAME: codeready-toolchain/tarsy-api
+  REGISTRY_USER: "codeready-toolchain+push"
+  REGISTRY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
+
+jobs:
+  build-and-push-backend:
+    name: Build and Push Backend Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set short SHA
+        id: short-sha
+        run: echo "COMMIT_SHORT_SHA=$(git rev-parse --short ${GITHUB_SHA})" >> ${GITHUB_ENV}
+
+      - name: Build backend image
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.IMAGE_NAME }}
+          tags: latest ${{ env.COMMIT_SHORT_SHA }}
+          context: ./backend
+          containerfiles: |
+            ./backend/Dockerfile
+          build-args: |
+            VERSION=${{ env.COMMIT_SHORT_SHA }}
+
+      - name: Log into quay.io
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+
+      - name: Push to quay.io
+        id: push-to-quay
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+
+      - name: Print image URL
+        run: |
+          echo "✅ Backend image pushed successfully!"
+          echo "Image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
+          echo "Tags: latest, ${{ env.COMMIT_SHORT_SHA }}"
+          echo "Full URLs:"
+          echo "  - ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo "  - ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.COMMIT_SHORT_SHA }}"
+

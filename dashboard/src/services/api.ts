@@ -170,7 +170,7 @@ class APIClient {
   /**
    * Health check endpoint
    */
-  async healthCheck(): Promise<{ status: string }> {
+  async healthCheck(): Promise<{ status: string; version?: string; [key: string]: any }> {
     try {
       const response = await this.client.get('/health');
       return response.data;

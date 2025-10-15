@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_DEV_SERVER_PORT?: string
   readonly VITE_OAUTH_PROXY_URL?: string
   readonly VITE_NODE_ENV?: string
+  readonly VITE_APP_VERSION?: string
 }
 
 interface ImportMeta {

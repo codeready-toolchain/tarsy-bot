@@ -59,6 +59,21 @@ export default defineConfig(({ mode }) => {
               }
             })
           },
+          '/health': {
+            target: backendHttpTarget,
+            changeOrigin: true,
+            secure: false,
+            ...(isContainerMode && {
+              configure: (proxy: any, _options: any) => {
+                proxy.on('proxyReq', (proxyReq: any, req: any, _res: any) => {
+                  if (req.headers.cookie) {
+                    proxyReq.setHeader('Cookie', req.headers.cookie);
+                  }
+                  proxyReq.setHeader('Host', proxyHostHeader);
+                });
+              }
+            })
+          },
           '/ws': {
             target: backendWsTarget,
             changeOrigin: true,

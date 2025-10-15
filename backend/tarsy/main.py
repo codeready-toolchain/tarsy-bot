@@ -272,10 +272,13 @@ async def health_check(response: Response) -> Dict[str, Any]:
         - HTTP 503: Critical system degraded/unhealthy (Kubernetes will restart pod)
     """
     try:
+        from tarsy.utils.version import VERSION
+        
         # Get basic service status
         health_status = {
             "status": "healthy",
             "service": "tarsy",
+            "version": VERSION,
             "timestamp": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         }
         

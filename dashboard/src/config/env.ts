@@ -38,8 +38,9 @@ const parseEnvConfig = (): AppConfig => {
   const prodApiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4180';
   
   // Derive WebSocket URL from API URL if not explicitly set
+  // Use ?? to allow empty string (for relative URLs)
   let prodWsBaseUrl = import.meta.env.VITE_WS_BASE_URL;
-  if (!prodWsBaseUrl) {
+  if (prodWsBaseUrl === undefined || prodWsBaseUrl === null) {
     try {
       const apiUrl = new URL(prodApiBaseUrl);
       // Don't derive from localhost fallback - use hardcoded default instead
@@ -71,6 +72,11 @@ const parseEnvConfig = (): AppConfig => {
  * Application configuration instance
  */
 export const config = parseEnvConfig();
+
+/**
+ * Dashboard version (from build-time environment variable)
+ */
+export const DASHBOARD_VERSION: string = import.meta.env.VITE_APP_VERSION || 'dev';
 
 /**
  * Clean URL configuration - ONE source of truth

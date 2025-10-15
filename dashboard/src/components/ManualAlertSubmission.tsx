@@ -17,6 +17,7 @@ import {
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
+import VersionFooter from './VersionFooter';
 
 import type { AlertSubmissionResponse } from '../types';
 import ManualAlertForm from './ManualAlertForm';
@@ -170,15 +171,8 @@ function ManualAlertSubmission() {
           {renderContent()}
         </Box>
 
-        {/* Footer */}
-        <Box mt={6} textAlign="center">
-          <Typography variant="body2" color="text.secondary">
-            TARSy v1.0 - Powered by AI and MCP Servers
-          </Typography>
-          <Typography variant="caption" color="text.secondary" display="block" mt={1}>
-            Submit alerts to get automated runbook analysis and system diagnostics
-          </Typography>
-        </Box>
+        {/* Version footer */}
+        <VersionFooter />
       </Container>
     </Box>
   );

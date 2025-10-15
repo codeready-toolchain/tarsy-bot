@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import { Psychology, BugReport } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
+import VersionFooter from './VersionFooter';
 import { websocketService } from '../services/websocketService';
 import { useSession } from '../contexts/SessionContext';
 import type { DetailedSession } from '../types';
@@ -502,6 +503,9 @@ function SessionDetailPageBase({
           </Alert>
         )}
       </Box>
+
+      {/* Version footer */}
+      <VersionFooter />
     </Container>
   );
 }
