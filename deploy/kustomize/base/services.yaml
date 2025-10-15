@@ -20,9 +20,6 @@ spec:
   selector:
     component: backend
   ports:
-    - name: http
-      port: 8000
-      targetPort: 8000
     - name: oauth2-proxy
       port: 4180
       targetPort: 4180
