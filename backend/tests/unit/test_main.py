@@ -583,6 +583,31 @@ class TestMainEndpoints:
 
         assert data["services"]["database"]["migration_version"] == "not_initialized"
 
+    @patch('tarsy.main.get_database_info')
+    def test_health_endpoint_includes_version(self, mock_db_info, client):
+        """Test health endpoint includes application version."""
+        mock_db_info.return_value = {
+            "enabled": True,
+            "connection_test": True,
+            "retention_days": 90,
+        }
+
+        with patch('tarsy.services.events.manager.get_event_system') as mock_get_event_system:
+            mock_event_system = Mock()
+            mock_listener = Mock()
+            mock_listener.running = True
+            mock_event_system.get_listener.return_value = mock_listener
+            mock_get_event_system.return_value = mock_event_system
+            
+            response = client.get("/health")
+            assert response.status_code == 200
+            data = response.json()
+
+        # Verify version field is present in top-level response
+        assert "version" in data
+        assert isinstance(data["version"], str)
+        assert len(data["version"]) > 0  # Should have some value (dev, commit SHA, etc.)
+
 
 @pytest.mark.unit
 class TestBackgroundProcessing:
