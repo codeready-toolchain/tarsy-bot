@@ -13,14 +13,12 @@ reverse_proxy = true
 # tls_key_file = ""
 
 ## the OAuth Redirect URL.
-# defaults to the "https://" + requested host header + "/oauth2/callback"
-# redirect_url = "https://internalapp.yourcompany.com/oauth2/callback"
-redirect_url = "http://localhost:8080/oauth2/callback"
+# redirect_url = "https://{{ROUTE_HOST}}/oauth2/callback"  # OpenShift deployment: make openshift-deploy
+redirect_url = "http://localhost:8080/oauth2/callback"     # Local containers: make containers-deploy
 
 ## the http url(s) of the upstream endpoint. If multiple, routing is based on path
-upstreams = [
-    "http://backend:8000"
-]
+# upstreams = ["http://dev-tarsy-backend:8000"]  # OpenShift deployment
+upstreams = ["http://backend:8000"]              # Local containers
 
 # Protect Existing Endpoints
 # - **Main.py endpoints**
@@ -69,8 +67,9 @@ set_authorization_header = true
 ## For now, ensure OPTIONS requests are allowed
 # Note: CORS headers need to be handled by the backend or a reverse proxy
 
-## Allow redirects to dashboard in development (through reverse proxy)
-whitelist_domains = ["localhost:8080", "localhost"]
+## Allow redirects
+# whitelist_domains = ["{{ROUTE_HOST}}"]           # OpenShift deployment
+whitelist_domains = ["localhost:8080", "localhost"] # Local containers
 
 ## Email Domains to allow authentication for (this authorizes any email on this domain)
 ## for more granular authorization use `authenticated_emails_file`
@@ -92,15 +91,18 @@ extra_jwt_issuers = ["http://tarsy-backend:8000=tarsy-api"]
 
 provider = "github"
 ## The OAuth Client ID, Secret
-client_id = "my-client-id"
-client_secret = "my-client"
+## Create GitHub OAuth App at: https://github.com/settings/developers
+## Local: Homepage=http://localhost:8080, Callback=http://localhost:8080/oauth2/callback
+## OpenShift: Homepage=https://{{ROUTE_HOST}}, Callback=https://{{ROUTE_HOST}}/oauth2/callback
+client_id = "YOUR_GITHUB_OAUTH_CLIENT_ID"
+client_secret = "YOUR_GITHUB_OAUTH_CLIENT_SECRET"
 
-github_org = "codeready-toolchain-teams"
-github_team = "observability"
+## Optional: Restrict to specific GitHub org/team (comment out to allow any GitHub user)
+# github_org = "your-github-org"
+# github_team = "your-team"
 
-## Scopes Added to the request
-## It has the same behavior as the --scope flag
-# scope = "openid email profile"
+## Scopes Added to the request (needed if using github_org/github_team restriction)
+scope = "user:email read:org"
 
 ## Pass OAuth Access token to upstream via "X-Forwarded-Access-Token"
 # pass_access_token = false
@@ -154,9 +156,11 @@ custom_sign_in_logo = "/templates/tarsy-logo.png"
 ## Secure   - secure cookies are only sent by the browser of a HTTPS connection (recommended)
 ## HttpOnly - httponly cookies are not readable by javascript (recommended)
 cookie_name = "_oauth2_proxy"
-cookie_secret = "REPLACE_WITH_BASE64_32_BYTE_SECRET"
-cookie_domains = ["localhost"]
+cookie_secret = "REPLACE_WITH_BASE64_32_BYTE_SECRET"  # Generate with: openssl rand -base64 32
+# cookie_domains = ["{{ROUTE_HOST}}"]  # OpenShift deployment
+cookie_domains = ["localhost"]         # Local containers
 cookie_expire = "168h"
 cookie_refresh = "0"
-cookie_secure = false
+# cookie_secure = true   # OpenShift deployment (HTTPS)
+cookie_secure = false    # Local containers (HTTP)
 cookie_httponly = true

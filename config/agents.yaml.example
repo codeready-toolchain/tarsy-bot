@@ -79,7 +79,7 @@ mcp_servers:
   #     command: "npx"
   #     args:
   #       - "-y"
-  #       - "kubernetes-mcp-server@latest"
+  #       - "kubernetes-mcp-server@0.0.53"
   #       - "--read-only"
   #       - "--disable-destructive"
   #       - "--kubeconfig"

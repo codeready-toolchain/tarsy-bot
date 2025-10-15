@@ -28,6 +28,9 @@ RUN uv sync --frozen
 #   - alembic/ (migration scripts and env.py - REQUIRED for production)
 COPY . .
 
+# Install MCP server dependencies globally (before switching to non-root user)
+RUN npm install -g kubernetes-mcp-server@0.0.53
+
 # Create a non-root user for security
 RUN groupadd --gid 65532 appuser \
     && useradd --uid 65532 --gid 65532 --no-create-home --shell /bin/false appuser

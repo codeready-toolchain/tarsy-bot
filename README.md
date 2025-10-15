@@ -212,7 +212,7 @@ TARSy requires read-only access to a Kubernetes or OpenShift cluster to analyze 
 
 TARSy **does not use `oc` or `kubectl` commands directly**. Instead, it:
 
-1. **Uses [Kubernetes MCP Server](https://github.com/containers/kubernetes-mcp-server)**: Runs `kubernetes-mcp-server@latest` via npm
+1. **Uses [Kubernetes MCP Server](https://github.com/containers/kubernetes-mcp-server)**
 2. **Reads kubeconfig**: Authenticates using your existing kubeconfig file
 3. **Read-Only Operations**: Configured with `--read-only --disable-destructive` flags
 4. **No Modifications**: Cannot create, update, or delete cluster resources
@@ -241,27 +241,6 @@ KUBECONFIG=/path/to/your/kubeconfig
 # Or set environment variable
 export KUBECONFIG=/path/to/your/kubeconfig
 ```
-
-### 🔧 Troubleshooting Cluster Access
-
-**Common Issues:**
-
-```bash
-# Check kubeconfig validity
-oc cluster-info
-
-# Verify TARSy can access cluster
-# Check backend logs for kubernetes-mcp-server errors
-tail -f backend/logs/tarsy.log | grep kubernetes
-
-# Test kubernetes-mcp-server independently
-npx -y kubernetes-mcp-server@latest --kubeconfig ~/.kube/config --help
-```
-
-**Permission Errors:**
-- Ensure your user/service account has at least `view` cluster role
-- Verify kubeconfig points to correct cluster
-- Check network connectivity to cluster API server
 
 ## API Endpoints
 

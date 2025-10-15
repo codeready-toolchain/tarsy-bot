@@ -145,12 +145,10 @@ check-config: ## Ensure required configuration files exist (internal target)
 
 containers-deploy: check-config ## Deploy Tarsy stack (smart default: rebuild apps, preserve database)
 	@echo -e "$(GREEN)Deploying Tarsy application stack (preserving database)...$(NC)"
-	@echo -e "$(YELLOW)Stopping application containers...$(NC)"
-	-$(PODMAN_COMPOSE) stop reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
-	@echo -e "$(YELLOW)Removing application containers...$(NC)"
-	-$(PODMAN_COMPOSE) rm -f reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
-	@echo -e "$(YELLOW)Building and starting application containers...$(NC)"
-	$(PODMAN_COMPOSE) up -d --build backend dashboard oauth2-proxy reverse-proxy
+	@echo -e "$(YELLOW)Stopping all containers...$(NC)"
+	-$(PODMAN_COMPOSE) down 2>/dev/null || true
+	@echo -e "$(YELLOW)Building and starting all containers...$(NC)"
+	$(PODMAN_COMPOSE) up -d --build
 	@echo ""
 	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo -e "$(BLUE)🌐 Dashboard:          http://localhost:8080$(NC)"
@@ -160,12 +158,10 @@ containers-deploy: check-config ## Deploy Tarsy stack (smart default: rebuild ap
 	@echo -e "$(GREEN)✅ Application deployment completed$(NC)"
 
 containers-redeploy: containers-rebuild check-config ## Force rebuild and redeploy (for code changes)
-	@echo -e "$(YELLOW)Stopping application containers...$(NC)"
-	-$(PODMAN_COMPOSE) stop reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
-	@echo -e "$(YELLOW)Removing application containers...$(NC)"
-	-$(PODMAN_COMPOSE) rm -f reverse-proxy oauth2-proxy backend dashboard 2>/dev/null || true
+	@echo -e "$(YELLOW)Stopping all containers...$(NC)"
+	-$(PODMAN_COMPOSE) down 2>/dev/null || true
 	@echo -e "$(GREEN)Starting containers with fresh images...$(NC)"
-	$(PODMAN_COMPOSE) up -d backend dashboard oauth2-proxy reverse-proxy
+	$(PODMAN_COMPOSE) up -d
 	@echo ""
 	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo -e "$(BLUE)🌐 Dashboard:          http://localhost:8080$(NC)"
