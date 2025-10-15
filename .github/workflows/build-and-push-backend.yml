@@ -6,6 +6,9 @@ on:
       - master
     tags-ignore:
       - '*.*'
+    paths:
+      - 'backend/**'
+      - '.github/workflows/build-and-push-backend.yml'
 
 env:
   IMAGE_REGISTRY: quay.io
