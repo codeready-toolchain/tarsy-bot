@@ -1,3 +1,23 @@
+# Health check route (backend through OAuth2 proxy)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: tarsy-health
+  namespace: tarsy
+spec:
+  host: {{ROUTE_HOST}}
+  path: /health
+  to:
+    kind: Service
+    name: dev-tarsy-backend
+    weight: 100
+  port:
+    targetPort: 4180
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+---
 # Main dashboard route
 apiVersion: route.openshift.io/v1
 kind: Route

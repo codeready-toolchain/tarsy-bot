@@ -17,8 +17,8 @@ reverse_proxy = true
 redirect_url = "http://localhost:8080/oauth2/callback"     # Local containers: make containers-deploy
 
 ## the http url(s) of the upstream endpoint. If multiple, routing is based on path
-# upstreams = ["http://dev-tarsy-backend:8000"]  # OpenShift deployment
-upstreams = ["http://backend:8000"]              # Local containers
+# upstreams = ["http://localhost:8000"]  # OpenShift deployment (sidecar container)
+upstreams = ["http://backend:8000"]      # Local containers (podman-compose)
 
 # Protect Existing Endpoints
 # - **Main.py endpoints**
