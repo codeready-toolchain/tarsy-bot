@@ -26,10 +26,10 @@ function ProgressIndicator({
   // State for live duration updates
   const [liveDuration, setLiveDuration] = useState<number | null>(null);
 
-  // Calculate live duration for active sessions
+  // Calculate live duration for active sessions or as fallback for completed sessions
   const getLiveDuration = () => {
     if (duration) return duration; // Use final duration if available
-    if (startedAt && (status === 'in_progress' || status === 'pending')) {
+    if (startedAt) {
       const now = Date.now() * 1000; // Convert to microseconds
       return Math.max(0, (now - startedAt) / 1000); // Convert to milliseconds
     }
@@ -45,14 +45,13 @@ function ProgressIndicator({
       
       // Then update every second
       const timer = setInterval(() => {
-        const newDuration = getLiveDuration();
-        setLiveDuration(newDuration);
+        setLiveDuration(getLiveDuration());
       }, 1000);
 
       return () => clearInterval(timer);
     } else {
-      // For completed sessions or when duration is provided, use that instead
-      setLiveDuration(duration ?? null);
+      // For completed sessions, always calculate and display duration
+      setLiveDuration(getLiveDuration());
     }
   }, [status, startedAt, duration]);
 
