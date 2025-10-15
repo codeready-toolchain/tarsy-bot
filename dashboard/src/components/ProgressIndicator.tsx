@@ -28,8 +28,8 @@ function ProgressIndicator({
 
   // Calculate live duration for active sessions or as fallback for completed sessions
   const getLiveDuration = () => {
-    if (duration) return duration; // Use final duration if available
-    if (startedAt) {
+    if (duration !== undefined && duration !== null) return duration; // Use final duration if available
+    if (startedAt !== undefined && startedAt !== null) {
       const now = Date.now() * 1000; // Convert to microseconds
       return Math.max(0, (now - startedAt) / 1000); // Convert to milliseconds
     }
@@ -39,7 +39,7 @@ function ProgressIndicator({
   // Live ticking timer for active sessions
   useEffect(() => {
     // Only start timer for active sessions without final duration
-    if ((status === 'in_progress' || status === 'pending') && startedAt && !duration) {
+    if ((status === 'in_progress' || status === 'pending') && startedAt !== undefined && startedAt !== null && !duration) {
       // Update immediately
       setLiveDuration(getLiveDuration());
       
