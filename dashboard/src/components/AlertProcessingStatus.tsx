@@ -14,11 +14,15 @@ import {
   Alert,
   Chip,
   Paper,
+  Button,
+  Tooltip,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   HourglassTop as HourglassIcon,
+  OpenInNew as OpenInNewIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown';
 
@@ -256,6 +260,14 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     );
   }
 
+  // Handle opening alert detail view
+  const handleViewDetails = () => {
+    if (status?.session_id) {
+      const url = `${window.location.origin}/sessions/${status.session_id}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <Box>
       <Card sx={{ mb: 3 }}>
@@ -274,9 +286,38 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
             </Box>
           </Box>
 
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Session ID: {status.session_id}
-          </Typography>
+          <Box 
+            display="flex" 
+            alignItems="center" 
+            justifyContent="space-between" 
+            flexWrap="wrap"
+            gap={2}
+            mb={2}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Session ID: {status.session_id}
+            </Typography>
+            
+            <Tooltip title="Open detailed alert view in new tab" arrow>
+              <Button
+                variant="contained"
+                color="success"
+                size="medium"
+                startIcon={<VisibilityIcon />}
+                endIcon={<OpenInNewIcon />}
+                onClick={handleViewDetails}
+                sx={{ 
+                  boxShadow: 2,
+                  px: 2.5,
+                  '&:hover': {
+                    boxShadow: 4,
+                  }
+                }}
+              >
+                View Full Details
+              </Button>
+            </Tooltip>
+          </Box>
 
           <Box mb={3}>
             <Typography variant="body1" gutterBottom>

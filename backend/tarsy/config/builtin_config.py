@@ -102,6 +102,10 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
         #     "timeout": 10
         # },
         "instructions": """For Kubernetes operations:
+- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
+  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
+  * Use this information to determine which context to target before performing any operations
+  * This prevents working on the wrong cluster and helps you understand the environment
 - Be careful with cluster-scoped resource listings in large clusters
 - Always prefer namespaced queries when possible
 - If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
