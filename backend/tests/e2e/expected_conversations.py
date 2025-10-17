@@ -325,120 +325,72 @@ Focus on:
 
 Be thorough but efficient. Collect all relevant data before stopping.
 
-🚨 WARNING: NEVER GENERATE FAKE OBSERVATIONS! 🚨
-After writing "Action Input:", you MUST stop immediately. The system will provide the "Observation:" for you.
-DO NOT write fake tool results or continue the conversation after "Action Input:"
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
 
-🔥 CRITICAL COLON FORMATTING RULE 🔥
-EVERY ReAct section header MUST END WITH A COLON (:)
+REQUIRED FORMAT:
 
-✅ CORRECT: "Thought:" (with colon)
-❌ INCORRECT: "Thought" (missing colon)
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
 
-You MUST write:
-- "Thought:" (NOT "Thought")  
-- "Action:" (NOT "Action")
-- "Action Input:" (NOT "Action Input")
+⚠️ STOP immediately after Action Input. The system provides Observations.
 
-CRITICAL REACT FORMATTING RULES:
-Follow the ReAct pattern exactly. You must use this structure:
+Continue the cycle. Conclude when you have sufficient information:
 
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take (choose from available tools)
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now have sufficient information to provide my analysis
-Final Answer: [Complete SRE analysis in structured format - see below]
+Thought: [final reasoning]
+Final Answer: [complete structured response]
 
-RESPONSE OPTIONS:
-At each step, you have exactly TWO options:
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
 
-1. Continue investigating: 
-   Thought: [your reasoning about what to investigate next]
-   Action: [tool to use]
-   Action Input: [parameters]
+PARAMETER FORMATS:
 
-2. OR conclude with your findings:
-   Thought: I now have sufficient information to provide my analysis
-   Final Answer: [your complete response - format depends on the specific task]
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
 
-WHEN TO CONCLUDE:
-Conclude with "Final Answer:" when you have enough information to fulfill your specific task goals.
-You do NOT need perfect information - focus on actionable insights from the data you've collected.
+Single parameter:
+Action Input: namespace: default
 
-CRITICAL FORMATTING REQUIREMENTS:
-1. ALWAYS include colons after section headers: "Thought:", "Action:", "Action Input:"
-2. Each section must start on a NEW LINE - never continue on the same line
-3. Always add a blank line after "Action Input:" before stopping
-4. For Action Input parameters, use key: value format (first param on same line, rest on new lines):
-   
-   Example - multiple parameters:
-   
-   Action Input: namespace: kube-system
-   name: coredns-abc123
-   labels: app=coredns
-   
-   Example - single parameter:
-   
-   Action Input: namespace: default
+EXAMPLE CYCLE:
 
-⚠️ ABSOLUTELY CRITICAL: STOP AFTER "Action Input:" ⚠️
-5. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
-6. NEVER write fake observations or continue the conversation
-7. The system will provide the real "Observation:" - you must NOT generate it yourself
-8. After the system provides the observation, then continue with "Thought:" or "Final Answer:"
+Question: Why is namespace 'superman-dev' stuck in terminating state?
 
-VIOLATION EXAMPLES (DO NOT DO THIS):
-❌ Action Input: apiVersion=v1, kind=Secret, name=my-secret
-❌ Observation: kubernetes-server.resources_get: {"result": "..."} 
-❌ Thought: I have retrieved the data...
-
-CORRECT BEHAVIOR:
-✅ Action Input: apiVersion=v1, kind=Secret, name=my-secret
-✅ [STOP HERE - SYSTEM WILL PROVIDE OBSERVATION]
-
-NEWLINE FORMATTING IS CRITICAL:
-- WRONG: "Thought: I need to check the namespace status first.Action: kubernetes-server.resources_get"
-- CORRECT: 
-Thought: I need to check the namespace status first.
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
 
 Action: kubernetes-server.resources_get
-Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
 
-EXAMPLE OF CORRECT INVESTIGATION:
-Thought: I need to check the namespace status first. This will give me details about why the namespace is stuck in terminating state.
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
 
-Action: kubernetes-server.resources_get
-Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
 
-EXAMPLE OF CONCLUDING PROPERLY:
-Thought: I have gathered sufficient information to complete my task. Based on my investigation, I can now provide the requested analysis.
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
 
-Final Answer: [Provide your complete response in the format appropriate for your specific task - this could be structured analysis, data summary, or stage-specific findings depending on what was requested]
+[System provides: Observation: No pods found]
 
-CRITICAL VIOLATIONS TO AVOID:
-❌ GENERATING FAKE OBSERVATIONS: Never write "Observation:" yourself - the system provides it
-❌ CONTINUING AFTER ACTION INPUT: Stop immediately after "Action Input:" - don't add more content
-❌ HALLUCINATING TOOL RESULTS: Don't make up API responses or tool outputs
-🚨 ❌ MISSING COLONS: Writing "Thought" instead of "Thought:" - THIS IS THE #1 FORMATTING ERROR
-❌ Action Input with ```yaml or code blocks  
-❌ Running sections together on the same line without proper newlines
-❌ Providing analysis in non-ReAct format (you MUST use "Final Answer:" to conclude)
-❌ Abandoning ReAct format and providing direct structured responses
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
 
-🔥 COLON EXAMPLES - MEMORIZE THESE:
-❌ WRONG: "Thought
-The user wants me to investigate..."
-❌ WRONG: "Action
-kubernetes-server.resources_get"
-✅ CORRECT: "Thought:
-The user wants me to investigate..."
-✅ CORRECT: "Action:
-kubernetes-server.resources_get"
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
 
-THE #1 MISTAKE: Writing fake observations and continuing the conversation after Action Input
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
 
 Focus on collecting additional data and providing stage-specific analysis for human operators to execute."""
         },
@@ -601,120 +553,72 @@ For Kubernetes operations:
   * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
   * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
 
-🚨 WARNING: NEVER GENERATE FAKE OBSERVATIONS! 🚨
-After writing "Action Input:", you MUST stop immediately. The system will provide the "Observation:" for you.
-DO NOT write fake tool results or continue the conversation after "Action Input:"
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
 
-🔥 CRITICAL COLON FORMATTING RULE 🔥
-EVERY ReAct section header MUST END WITH A COLON (:)
+REQUIRED FORMAT:
 
-✅ CORRECT: "Thought:" (with colon)
-❌ INCORRECT: "Thought" (missing colon)
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
 
-You MUST write:
-- "Thought:" (NOT "Thought")  
-- "Action:" (NOT "Action")
-- "Action Input:" (NOT "Action Input")
+⚠️ STOP immediately after Action Input. The system provides Observations.
 
-CRITICAL REACT FORMATTING RULES:
-Follow the ReAct pattern exactly. You must use this structure:
+Continue the cycle. Conclude when you have sufficient information:
 
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take (choose from available tools)
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now have sufficient information to provide my analysis
-Final Answer: [Complete SRE analysis in structured format - see below]
+Thought: [final reasoning]
+Final Answer: [complete structured response]
 
-RESPONSE OPTIONS:
-At each step, you have exactly TWO options:
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
 
-1. Continue investigating: 
-   Thought: [your reasoning about what to investigate next]
-   Action: [tool to use]
-   Action Input: [parameters]
+PARAMETER FORMATS:
 
-2. OR conclude with your findings:
-   Thought: I now have sufficient information to provide my analysis
-   Final Answer: [your complete response - format depends on the specific task]
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
 
-WHEN TO CONCLUDE:
-Conclude with "Final Answer:" when you have enough information to fulfill your specific task goals.
-You do NOT need perfect information - focus on actionable insights from the data you've collected.
+Single parameter:
+Action Input: namespace: default
 
-CRITICAL FORMATTING REQUIREMENTS:
-1. ALWAYS include colons after section headers: "Thought:", "Action:", "Action Input:"
-2. Each section must start on a NEW LINE - never continue on the same line
-3. Always add a blank line after "Action Input:" before stopping
-4. For Action Input parameters, use key: value format (first param on same line, rest on new lines):
-   
-   Example - multiple parameters:
-   
-   Action Input: namespace: kube-system
-   name: coredns-abc123
-   labels: app=coredns
-   
-   Example - single parameter:
-   
-   Action Input: namespace: default
+EXAMPLE CYCLE:
 
-⚠️ ABSOLUTELY CRITICAL: STOP AFTER "Action Input:" ⚠️
-5. STOP immediately after "Action Input:" line - do NOT generate "Observation:"
-6. NEVER write fake observations or continue the conversation
-7. The system will provide the real "Observation:" - you must NOT generate it yourself
-8. After the system provides the observation, then continue with "Thought:" or "Final Answer:"
+Question: Why is namespace 'superman-dev' stuck in terminating state?
 
-VIOLATION EXAMPLES (DO NOT DO THIS):
-❌ Action Input: apiVersion=v1, kind=Secret, name=my-secret
-❌ Observation: kubernetes-server.resources_get: {"result": "..."} 
-❌ Thought: I have retrieved the data...
-
-CORRECT BEHAVIOR:
-✅ Action Input: apiVersion=v1, kind=Secret, name=my-secret
-✅ [STOP HERE - SYSTEM WILL PROVIDE OBSERVATION]
-
-NEWLINE FORMATTING IS CRITICAL:
-- WRONG: "Thought: I need to check the namespace status first.Action: kubernetes-server.resources_get"
-- CORRECT: 
-Thought: I need to check the namespace status first.
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
 
 Action: kubernetes-server.resources_get
-Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
 
-EXAMPLE OF CORRECT INVESTIGATION:
-Thought: I need to check the namespace status first. This will give me details about why the namespace is stuck in terminating state.
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
 
-Action: kubernetes-server.resources_get
-Action Input: apiVersion=v1, kind=Namespace, name=superman-dev
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
 
-EXAMPLE OF CONCLUDING PROPERLY:
-Thought: I have gathered sufficient information to complete my task. Based on my investigation, I can now provide the requested analysis.
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
 
-Final Answer: [Provide your complete response in the format appropriate for your specific task - this could be structured analysis, data summary, or stage-specific findings depending on what was requested]
+[System provides: Observation: No pods found]
 
-CRITICAL VIOLATIONS TO AVOID:
-❌ GENERATING FAKE OBSERVATIONS: Never write "Observation:" yourself - the system provides it
-❌ CONTINUING AFTER ACTION INPUT: Stop immediately after "Action Input:" - don't add more content
-❌ HALLUCINATING TOOL RESULTS: Don't make up API responses or tool outputs
-🚨 ❌ MISSING COLONS: Writing "Thought" instead of "Thought:" - THIS IS THE #1 FORMATTING ERROR
-❌ Action Input with ```yaml or code blocks  
-❌ Running sections together on the same line without proper newlines
-❌ Providing analysis in non-ReAct format (you MUST use "Final Answer:" to conclude)
-❌ Abandoning ReAct format and providing direct structured responses
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
 
-🔥 COLON EXAMPLES - MEMORIZE THESE:
-❌ WRONG: "Thought
-The user wants me to investigate..."
-❌ WRONG: "Action
-kubernetes-server.resources_get"
-✅ CORRECT: "Thought:
-The user wants me to investigate..."
-✅ CORRECT: "Action:
-kubernetes-server.resources_get"
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
 
-THE #1 MISTAKE: Writing fake observations and continuing the conversation after Action Input
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
 
 Focus on investigation and providing recommendations for human operators to execute."""
         },
