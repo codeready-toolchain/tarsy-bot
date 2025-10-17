@@ -8,6 +8,8 @@ all iteration controller implementations.
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from ...models.unified_interactions import MessageRole
+
 if TYPE_CHECKING:
     from ...models.processing_context import StageContext
     from ...integrations.llm.client import LLMClient
@@ -253,17 +255,31 @@ class ReactController(IterationController):
                         
                 # 7. Handle malformed response
                 else:
-                    self.logger.warning("ReAct response missing action, adding continuation prompt")
-                    continuation_prompt = self.parser.get_continuation_prompt()
-                    conversation.append_observation(continuation_prompt)
+                    self.logger.warning("ReAct response is malformed - removing it and sending format correction")
+                    
+                    # Remove the malformed assistant message from conversation
+                    # This prevents the LLM from seeing its own malformed output
+                    if conversation.messages and conversation.messages[-1].role == MessageRole.ASSISTANT:
+                        conversation.messages.pop()
+                        self.logger.debug("Removed malformed assistant message from conversation")
+                    
+                    # Add brief format correction reminder as user message
+                    format_reminder = self.parser.get_format_correction_reminder()
+                    conversation.append_observation(format_reminder)
                     
             except Exception as e:
                 self.logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
                 # Mark this interaction as failed
                 last_interaction_failed = True
-                # Add error continuation and continue with next iteration
-                error_continuation = self.parser.get_error_continuation(str(e))
-                conversation.append_observation(error_continuation)
+                
+                # Remove malformed assistant message if present (LLM call succeeded but processing failed)
+                if conversation.messages and conversation.messages[-1].role == MessageRole.ASSISTANT:
+                    conversation.messages.pop()
+                    self.logger.debug("Removed malformed assistant message after exception")
+                
+                # Add format correction instead of generic error message
+                format_reminder = self.parser.get_format_correction_reminder()
+                conversation.append_observation(format_reminder)
                 continue
                 
         # 8. Timeout handling - check if stage should be marked as failed

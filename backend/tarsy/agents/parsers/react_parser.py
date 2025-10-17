@@ -556,13 +556,25 @@ class ReActParser:
         return prompts.get(context_type, prompts["general"])
     
     @staticmethod
-    def get_error_continuation(error_message: str) -> str:
+    def get_format_correction_reminder() -> str:
         """
-        Get error continuation prompt for iteration error recovery.
+        Get brief format reminder when LLM generates malformed response.
         
-        Moved from builders.get_react_error_continuation() with simplified return type.
+        This reminder is appended to the user message AFTER removing the malformed assistant response.
+        Since the LLM won't see its malformed response, we don't mention any "error" - we just
+        emphasize the critical format rules as if this is the first time seeing the request.
         """
-        return f"Observation: Error in reasoning: {error_message}. Please try a different approach."
+        return """
+IMPORTANT: Please follow the exact ReAct format:
+
+1. Use colons: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE
+3. Stop after Action Input - the system provides Observations
+
+Required structure:
+Thought: [your reasoning]
+Action: [tool name]
+Action Input: [parameters]"""
     
     @staticmethod  
     def format_observation(mcp_data: Dict[str, Any]) -> str:

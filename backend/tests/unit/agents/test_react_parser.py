@@ -702,15 +702,17 @@ class TestContinuationPrompts:
         general_result = ReActParser.get_continuation_prompt("general")
         assert result == general_result
     
-    def test_get_error_continuation(self):
-        """Test error continuation prompt generation."""
-        error_message = "Tool execution failed: Connection timeout"
+    def test_get_format_correction_reminder(self):
+        """Test format correction reminder for malformed LLM responses."""
+        result = ReActParser.get_format_correction_reminder()
         
-        result = ReActParser.get_error_continuation(error_message)
-        
-        assert "Error in reasoning" in result
-        assert error_message in result
-        assert "try a different approach" in result
+        # Should be a gentle reminder, not mention "error" since LLM won't see its malformed output
+        assert "IMPORTANT" in result or "Please follow" in result
+        assert "Thought:" in result
+        assert "Action:" in result
+        assert "Action Input:" in result
+        assert "NEW LINE" in result
+        assert "system provides Observations" in result or "provides Observations" in result
 
 
 @pytest.mark.unit
