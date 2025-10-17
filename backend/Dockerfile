@@ -48,4 +48,5 @@ USER 65532:65532
 EXPOSE 8000
 
 # Run application using make
-CMD ["make", "run"]
+# Use run-prod for production deployment
+CMD ["make", "run-prod"]

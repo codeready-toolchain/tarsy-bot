@@ -166,6 +166,11 @@ def initialize_database() -> bool:
     try:
         settings = get_settings()
         
+        # Reduce Alembic logging verbosity in production
+        # This prevents excessive "Context impl" and "Will assume transactional DDL" messages
+        alembic_logger = logging.getLogger('alembic.runtime.migration')
+        alembic_logger.setLevel(logging.WARNING)
+        
         # Check if history service is enabled
         if not settings.history_enabled:
             logger.info("History service disabled - skipping database initialization")

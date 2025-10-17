@@ -139,6 +139,11 @@ run: check-venv ## Start development server with manual venv activation
 	@echo "$(GREEN)Starting development server (manual venv)...$(NC)"
 	.venv/bin/uvicorn tarsy.main:app --reload --host 0.0.0.0 --port 8000
 
+.PHONY: run-prod
+run-prod: check-venv ## Start production server (no reload, optimized for production)
+	@echo "$(GREEN)Starting production server...$(NC)"
+	.venv/bin/uvicorn tarsy.main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info
+
 .PHONY: stop
 stop: ## Stop backend server running on port 8000
 	@echo "$(GREEN)Stopping backend server...$(NC)"
