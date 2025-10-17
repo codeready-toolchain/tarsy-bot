@@ -7,6 +7,7 @@ providing validation and type safety for ReAct response processing.
 
 import json
 import logging
+import re
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -176,7 +177,30 @@ class ReActParser:
                     current_section = 'thought'
                     found_sections.add('thought')
                     if line.startswith('Thought:'):
-                        content_lines = [ReActParser._extract_section_content(line, 'Thought:')]
+                        thought_content = ReActParser._extract_section_content(line, 'Thought:')
+                        # Check if there's a mid-line Action in the thought content
+                        # This handles cases like "Thought: Some text.Action: tool"
+                        if ReActParser._has_midline_action(thought_content):
+                            # Split at the Action boundary
+                            match = re.search(r'[.!?][`\s*]*Action:', thought_content)
+                            if match:
+                                # Store thought up to the action
+                                parsed['thought'] = thought_content[:match.start() + 1].strip()  # Keep the punctuation
+                                # Process the rest as a new line starting with Action:
+                                remaining = thought_content[match.start() + 1:].strip()  # Remove leading punctuation
+                                # Re-process this as if it's the Action: line
+                                # We'll handle it in the next iteration by treating it as if Action: started the line
+                                # For now, just extract what we can
+                                action_match = re.search(r'Action:\s*(.+)', remaining)
+                                if action_match:
+                                    parsed['action'] = action_match.group(1).strip()
+                                    found_sections.add('action')
+                                current_section = None  # Reset to look for Action Input on next line
+                                content_lines = []
+                            else:
+                                content_lines = [thought_content]
+                        else:
+                            content_lines = [thought_content]
                     else:
                         content_lines = []  # 'Thought' without colon, content on next lines
                     
@@ -217,25 +241,45 @@ class ReActParser:
     
     @staticmethod
     def _extract_section_content(line: str, prefix: str) -> str:
-        """Safely extract content from a line with given prefix, with defensive checks."""
+        """
+        Safely extract content from a line with given prefix.
+        
+        Handles both standard format (prefix at line start) and fallback format
+        (prefix mid-line after sentence boundary).
+        
+        Args:
+            line: The line containing the prefix
+            prefix: The section prefix to find (e.g., "Action:", "Action Input:")
+            
+        Returns:
+            Content after the prefix, stripped of leading/trailing whitespace
+        """
         if not line or not prefix:
             return ""
         
-        # Ensure the line is long enough to contain the prefix plus potential content
-        if len(line) < len(prefix):
+        # Find the prefix in the line (handles both line-start and mid-line cases)
+        idx = line.find(prefix)
+        if idx == -1:
             return ""
         
-        # Safely extract content after prefix
-        if len(line) > len(prefix):
-            return line[len(prefix):].strip()
-        
-        return ""
+        # Extract everything after the prefix
+        content = line[idx + len(prefix):].strip()
+        return content
 
     @staticmethod
     def _is_section_header(
         line: str, section_type: str, found_sections: set[str]
     ) -> bool:
-        """Check if line is a valid section header."""
+        """
+        Check if line is a valid section header with 3-tier detection:
+        
+        Tier 1: Standard format (starts with header) - preferred
+        Tier 2: Detect Final Answer to rule out confusion
+        Tier 3: Fallback for Action only - detect mid-line after sentence boundary
+        
+        This handles cases where LLMs generate text like:
+        "I will get the namespace.Action: kubernetes-server.resources_get"
+        """
         if not line:
             return False
         
@@ -243,17 +287,67 @@ class ReActParser:
         # But prevent duplicate final_answer (first one wins)
         if section_type == 'final_answer' and section_type in found_sections:
             return False
-            
+        
+        # TIER 1: Standard format check (line starts with section header)
         if section_type == 'thought':
-            return line.startswith('Thought:') or line == 'Thought'
+            if line.startswith('Thought:') or line == 'Thought':
+                return True
         elif section_type == 'action':
-            return line.startswith('Action:')
+            if line.startswith('Action:'):
+                return True
         elif section_type == 'action_input':
-            return line.startswith('Action Input:')
+            if line.startswith('Action Input:'):
+                return True
         elif section_type == 'final_answer':
-            return line.startswith('Final Answer:')
+            if line.startswith('Final Answer:'):
+                return True
+        
+        # TIER 2: If we're looking for final_answer and didn't find it, stop here
+        # This ensures we won't confuse mid-line "Action:" with "Final Answer:"
+        if section_type == 'final_answer':
+            return False
+        
+        # TIER 3: Fallback detection for Action only - handle malformed LLM output
+        # Look for "Action:" appearing mid-line after sentence-ending punctuation
+        # This is safe because:
+        # - We already ruled out Final Answer confusion in Tier 2
+        # - Requires sentence boundary (. ! ? followed by Action:)
+        # - Case-sensitive (won't match lowercase "action:")
+        # - Won't match narrative like "The action: check logs" (no sentence boundary before it)
+        if section_type == 'action' and 'Action:' in line:
+            # Match: sentence ending (. ! ?) + optional space/backtick/closing-markup + "Action:"
+            # Examples that match: ".Action:", "!Action:", ". Action:", ".`Action:", ".**Action:"
+            # Examples that DON'T match: "action:", "an Action:", "take action: check"
+            pattern = r'[.!?][`\s*]*Action:'
+            if re.search(pattern, line):
+                logger.info(
+                    f"Parser fallback: detected mid-line 'Action:' after sentence boundary in: "
+                    f"{line[:80]}{'...' if len(line) > 80 else ''}"
+                )
+                return True
+        
+        # TIER 3: Fallback for Action Input only if Action was already found
+        # This handles cases where LLM doesn't put newline before "Action Input:"
+        if section_type == 'action_input' and 'Action Input:' in line:
+            # Only trigger if we've already seen an Action (prevent false positives)
+            if 'action' in found_sections:
+                # Similar pattern but for Action Input
+                pattern = r'[.!?][`\s*]*Action Input:'
+                if re.search(pattern, line):
+                    logger.info(
+                        f"Parser fallback: detected mid-line 'Action Input:' after sentence boundary"
+                    )
+                    return True
         
         return False
+    
+    @staticmethod
+    def _has_midline_action(text: str) -> bool:
+        """Check if text contains a mid-line Action: after sentence boundary."""
+        if not text or 'Action:' not in text:
+            return False
+        pattern = r'[.!?][`\s*]*Action:'
+        return bool(re.search(pattern, text))
 
     @staticmethod
     def _should_stop_parsing(line: str) -> bool:

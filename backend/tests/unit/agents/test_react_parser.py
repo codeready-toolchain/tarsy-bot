@@ -5,7 +5,6 @@ Tests type-safe ReAct response parsing, tool call validation, and all helper met
 EP-0014 Phase 1: Type-safe parser implementation.
 """
 
-import json
 import pytest
 from pydantic import ValidationError
 
@@ -1148,3 +1147,8 @@ class TestParameterTypeConversion:
         assert result["count"] == 5
         assert isinstance(result["previous"], bool)
         assert isinstance(result["count"], int)
+
+
+# NOTE: Mid-line action detection tests have been moved to test_react_parser_matrix.py
+# for better documentation and explicit INPUT → OUTPUT mapping.
+# See PARSER_TEST_MATRIX.md for the complete test matrix.
