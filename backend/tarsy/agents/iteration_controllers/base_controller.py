@@ -322,10 +322,10 @@ class ReactController(IterationController):
         
         # Skip the system message and initial user message, focus on the ReAct interactions
         for message in conversation.messages[2:]:  # Skip system and initial user message
-            if message.role == "assistant":
+            if message.role == MessageRole.ASSISTANT:
                 # Assistant messages contain Thought/Action sequences
                 conversation_parts.append(message.content)
-            elif message.role == "user" and message.content.startswith("Observation:"):
+            elif message.role == MessageRole.USER and message.content.startswith("Observation:"):
                 # User messages with observations.
                 # Skip user messages that are not observations (e.g. error-continuation messages)
                 conversation_parts.append(message.content)
