@@ -14,6 +14,66 @@ import ChatFlowItem from './ChatFlowItem';
 import CopyButton from './CopyButton';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
+interface ProcessingIndicatorProps {
+  message?: string;
+  centered?: boolean;
+}
+
+/**
+ * ProcessingIndicator Component
+ * Animated pulsing dots with optional message
+ */
+function ProcessingIndicator({ message = 'Processing...', centered = false }: ProcessingIndicatorProps) {
+  return (
+    <Box 
+      sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 1.5,
+        ...(centered ? { py: 4, justifyContent: 'center' } : { mt: 2 }),
+        opacity: 0.7
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          gap: 0.5,
+          '& > div': {
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            bgcolor: '#1976d2',
+            animation: 'pulse 1.4s ease-in-out infinite',
+          },
+          '& > div:nth-of-type(2)': {
+            animationDelay: '0.2s',
+          },
+          '& > div:nth-of-type(3)': {
+            animationDelay: '0.4s',
+          },
+          '@keyframes pulse': {
+            '0%, 80%, 100%': {
+              opacity: 0.3,
+              transform: 'scale(0.8)',
+            },
+            '40%': {
+              opacity: 1,
+              transform: 'scale(1.2)',
+            },
+          },
+        }}
+      >
+        <Box />
+        <Box />
+        <Box />
+      </Box>
+      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem', fontStyle: 'italic' }}>
+        {message}
+      </Typography>
+    </Box>
+  );
+}
+
 interface ConversationTimelineProps {
   session: DetailedSession;
   autoScroll?: boolean;
@@ -183,7 +243,13 @@ function ConversationTimeline({
             label={`${chatStats.successfulToolCalls}/${chatStats.toolCallsCount} tool calls`}
             size="small"
             variant="outlined"
-            color={chatStats.successfulToolCalls === chatStats.toolCallsCount ? 'success' : 'warning'}
+            color={
+              chatStats.toolCallsCount === 0 
+                ? 'default' 
+                : chatStats.successfulToolCalls === chatStats.toolCallsCount 
+                  ? 'success' 
+                  : 'warning'
+            }
           />
           <Chip 
             label={`${chatStats.finalAnswersCount} analyses`}
@@ -232,53 +298,7 @@ function ConversationTimeline({
           <Box>
             {session.status === 'in_progress' ? (
               // Session is actively processing - show processing indicator
-              <Box 
-                sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 1.5,
-                  py: 4,
-                  justifyContent: 'center',
-                  opacity: 0.7
-                }}
-              >
-                <Box
-                  sx={{
-                    display: 'flex',
-                    gap: 0.5,
-                    '& > div': {
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      bgcolor: '#1976d2',
-                      animation: 'pulse 1.4s ease-in-out infinite',
-                    },
-                    '& > div:nth-of-type(2)': {
-                      animationDelay: '0.2s',
-                    },
-                    '& > div:nth-of-type(3)': {
-                      animationDelay: '0.4s',
-                    },
-                    '@keyframes pulse': {
-                      '0%, 80%, 100%': {
-                        opacity: 0.3,
-                        transform: 'scale(0.8)',
-                      },
-                      '40%': {
-                        opacity: 1,
-                        transform: 'scale(1.2)',
-                      },
-                    },
-                  }}
-                >
-                  <Box />
-                  <Box />
-                  <Box />
-                </Box>
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem', fontStyle: 'italic' }}>
-                  Processing...
-                </Typography>
-              </Box>
+              <ProcessingIndicator centered />
             ) : (
               // Session completed/failed but has no chat flow data
               <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -296,54 +316,7 @@ function ConversationTimeline({
             ))}
 
             {/* Processing indicator at bottom when session is still in progress */}
-            {session.status === 'in_progress' && (
-              <Box 
-                sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 1.5,
-                  mt: 2,
-                  opacity: 0.7
-                }}
-              >
-                <Box
-                  sx={{
-                    display: 'flex',
-                    gap: 0.5,
-                    '& > div': {
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      bgcolor: '#1976d2',
-                      animation: 'pulse 1.4s ease-in-out infinite',
-                    },
-                    '& > div:nth-of-type(2)': {
-                      animationDelay: '0.2s',
-                    },
-                    '& > div:nth-of-type(3)': {
-                      animationDelay: '0.4s',
-                    },
-                    '@keyframes pulse': {
-                      '0%, 80%, 100%': {
-                        opacity: 0.3,
-                        transform: 'scale(0.8)',
-                      },
-                      '40%': {
-                        opacity: 1,
-                        transform: 'scale(1.2)',
-                      },
-                    },
-                  }}
-                >
-                  <Box />
-                  <Box />
-                  <Box />
-                </Box>
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem', fontStyle: 'italic' }}>
-                  Processing...
-                </Typography>
-              </Box>
-            )}
+            {session.status === 'in_progress' && <ProcessingIndicator />}
           </>
         )}
       </Box>
