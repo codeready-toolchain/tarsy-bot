@@ -111,6 +111,12 @@ function ConversationTimeline({
     }
   }, [session]);
 
+  // Calculate stage stats
+  const stageCount = session.stages?.length || 0;
+  const completedStages = session.stages?.filter(s => s.status === 'completed').length || 0;
+  const failedStages = session.stages?.filter(s => s.status === 'failed').length || 0;
+
+  // Show error state if parsing failed
   if (error) {
     return (
       <Card>
@@ -127,22 +133,6 @@ function ConversationTimeline({
       </Card>
     );
   }
-
-  if (chatFlow.length === 0) {
-    return (
-      <Card>
-        <CardContent sx={{ p: 3 }}>
-          <Typography variant="body2" color="text.secondary">
-            Loading reasoning flow...
-          </Typography>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const stageCount = session.stages?.length || 0;
-  const completedStages = session.stages?.filter(s => s.status === 'completed').length || 0;
-  const failedStages = session.stages?.filter(s => s.status === 'failed').length || 0;
 
   return (
     <Card>
@@ -233,71 +223,128 @@ function ConversationTimeline({
       <Box 
         sx={{ 
           p: 3,
-          bgcolor: 'white', // Keep white background
+          bgcolor: 'white',
           minHeight: 200
         }}
       >
-        {chatFlow.map((item, index) => (
-          <ChatFlowItem key={`${item.type}-${index}-${item.timestamp_us}`} item={item} />
-        ))}
-
-        {/* Processing indicator - shown when session is in progress */}
-        {session.status === 'in_progress' && (
-          <Box 
-            sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 1.5,
-              mt: 2,
-              opacity: 0.7
-            }}
-          >
-            <Box
-              sx={{
-                display: 'flex',
-                gap: 0.5,
-                '& > div': {
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  bgcolor: '#1976d2',
-                  animation: 'pulse 1.4s ease-in-out infinite',
-                },
-                '& > div:nth-of-type(2)': {
-                  animationDelay: '0.2s',
-                },
-                '& > div:nth-of-type(3)': {
-                  animationDelay: '0.4s',
-                },
-                '@keyframes pulse': {
-                  '0%, 80%, 100%': {
-                    opacity: 0.3,
-                    transform: 'scale(0.8)',
-                  },
-                  '40%': {
-                    opacity: 1,
-                    transform: 'scale(1.2)',
-                  },
-                },
-              }}
-            >
-              <Box />
-              <Box />
-              <Box />
-            </Box>
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem', fontStyle: 'italic' }}>
-              Processing...
-            </Typography>
+        {chatFlow.length === 0 ? (
+          // Empty/Loading state - show appropriate message based on session status
+          <Box>
+            {session.status === 'in_progress' ? (
+              // Session is actively processing - show processing indicator
+              <Box 
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 1.5,
+                  py: 4,
+                  justifyContent: 'center',
+                  opacity: 0.7
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 0.5,
+                    '& > div': {
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      bgcolor: '#1976d2',
+                      animation: 'pulse 1.4s ease-in-out infinite',
+                    },
+                    '& > div:nth-of-type(2)': {
+                      animationDelay: '0.2s',
+                    },
+                    '& > div:nth-of-type(3)': {
+                      animationDelay: '0.4s',
+                    },
+                    '@keyframes pulse': {
+                      '0%, 80%, 100%': {
+                        opacity: 0.3,
+                        transform: 'scale(0.8)',
+                      },
+                      '40%': {
+                        opacity: 1,
+                        transform: 'scale(1.2)',
+                      },
+                    },
+                  }}
+                >
+                  <Box />
+                  <Box />
+                  <Box />
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem', fontStyle: 'italic' }}>
+                  Processing...
+                </Typography>
+              </Box>
+            ) : (
+              // Session completed/failed but has no chat flow data
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="body2" color="text.secondary">
+                  No reasoning steps available for this session
+                </Typography>
+              </Box>
+            )}
           </Box>
-        )}
+        ) : (
+          // Chat flow has items - render them
+          <>
+            {chatFlow.map((item, index) => (
+              <ChatFlowItem key={`${item.type}-${index}-${item.timestamp_us}`} item={item} />
+            ))}
 
-        {/* Empty state */}
-        {chatFlow.length === 0 && session.status !== 'in_progress' && (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="body2" color="text.secondary">
-              No reasoning steps available for this session
-            </Typography>
-          </Box>
+            {/* Processing indicator at bottom when session is still in progress */}
+            {session.status === 'in_progress' && (
+              <Box 
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 1.5,
+                  mt: 2,
+                  opacity: 0.7
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 0.5,
+                    '& > div': {
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      bgcolor: '#1976d2',
+                      animation: 'pulse 1.4s ease-in-out infinite',
+                    },
+                    '& > div:nth-of-type(2)': {
+                      animationDelay: '0.2s',
+                    },
+                    '& > div:nth-of-type(3)': {
+                      animationDelay: '0.4s',
+                    },
+                    '@keyframes pulse': {
+                      '0%, 80%, 100%': {
+                        opacity: 0.3,
+                        transform: 'scale(0.8)',
+                      },
+                      '40%': {
+                        opacity: 1,
+                        transform: 'scale(1.2)',
+                      },
+                    },
+                  }}
+                >
+                  <Box />
+                  <Box />
+                  <Box />
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem', fontStyle: 'italic' }}>
+                  Processing...
+                </Typography>
+              </Box>
+            )}
+          </>
         )}
       </Box>
     </Card>

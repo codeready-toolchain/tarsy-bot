@@ -1,7 +1,8 @@
 // Chat Flow Parser for Reasoning Tab
 // Converts session data into a continuous chat-like flow with thoughts, tool calls, and final answers
 
-import type { DetailedSession, StageExecution, LLMMessage, LLMInteractionDetail, MCPInteractionDetail } from '../types';
+import type { DetailedSession } from '../types';
+import { getMessages } from './conversationParser';
 
 export interface ChatFlowItemData {
   type: 'thought' | 'tool_call' | 'final_answer' | 'stage_start';
@@ -67,21 +68,6 @@ function parseReActMessage(content: string): {
   }
 
   return result;
-}
-
-/**
- * Get messages from conversation structure or fallback to legacy format
- */
-function getMessages(interaction: LLMInteractionDetail): LLMMessage[] {
-  // Try new conversation field first (EP-0014)
-  if (interaction.details.conversation?.messages) {
-    return interaction.details.conversation.messages;
-  }
-  // Fall back to legacy messages field
-  if (interaction.details.messages) {
-    return interaction.details.messages;
-  }
-  return [];
 }
 
 /**

@@ -122,7 +122,7 @@ function ToolCallBox({
         >
           {getArgumentsPreview()}
         </Typography>
-        {duration_ms && (
+        {duration_ms != null && (
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
             {formatDurationMs(duration_ms)}
           </Typography>
