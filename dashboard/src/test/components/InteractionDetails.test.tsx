@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material/styles'
 import { createTheme } from '@mui/material/styles'
 import InteractionDetails from '../../components/InteractionDetails'
-import type { MCPInteraction, LLMInteraction } from '../../types'
+import type { MCPInteraction } from '../../types'
 
 // Mock the CopyButton component to avoid clipboard API issues in tests
 vi.mock('../../components/CopyButton', () => ({

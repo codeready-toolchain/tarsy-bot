@@ -119,6 +119,8 @@ jobs:
       working-directory: ./dashboard
       run: npm ci
     
+    - name: Build dashboard (TypeScript check)
+      run: make test-dashboard-build
+    
     - name: Run dashboard tests
-      working-directory: ./dashboard
-      run: npm test
+      run: make test-dashboard

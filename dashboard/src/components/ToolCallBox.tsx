@@ -3,9 +3,7 @@ import {
   Box,
   Typography,
   Collapse,
-  IconButton,
-  alpha,
-  useTheme
+  IconButton
 } from '@mui/material';
 import {
   ExpandMore,
@@ -40,7 +38,6 @@ function ToolCallBox({
   errorMessage,
   duration_ms
 }: ToolCallBoxProps) {
-  const theme = useTheme();
   const [expanded, setExpanded] = useState(false);
 
   // Get preview of arguments (first 2-3 keys)
