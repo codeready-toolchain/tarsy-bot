@@ -164,33 +164,41 @@ class TestRunbooksEndpointWithRealService:
     async def test_endpoint_with_real_service_and_mocked_github(
         self, client: TestClient
     ) -> None:
-        """Test endpoint with real RunbooksService but mocked GitHub API."""
-        # Mock GitHub API responses
-        mock_github_response = [
-            {"name": "runbook1.md", "type": "file", "path": "runbooks/runbook1.md"},
-            {"name": "runbook2.md", "type": "file", "path": "runbooks/runbook2.md"},
-        ]
+        """Test endpoint with real RunbooksService but mocked PyGithub API."""
+        # Mock PyGithub file objects
+        mock_file1 = Mock()
+        mock_file1.type = "file"
+        mock_file1.name = "runbook1.md"
+        mock_file1.path = "runbooks/runbook1.md"
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = None
-            mock_response = Mock()
-            mock_response.json = lambda: mock_github_response
-            mock_client.get = AsyncMock(return_value=mock_response)
-            mock_client_class.return_value = mock_client
+        mock_file2 = Mock()
+        mock_file2.type = "file"
+        mock_file2.name = "runbook2.md"
+        mock_file2.path = "runbooks/runbook2.md"
 
-            with patch(
-                "tarsy.config.settings.get_settings"
-            ) as mock_get_settings:
-                mock_settings = Mock()
-                mock_settings.github_token = "test_token"
-                mock_settings.runbooks_repo_url = (
-                    "https://github.com/test-org/test-repo/tree/master/runbooks"
-                )
-                mock_get_settings.return_value = mock_settings
+        # Mock GitHub repository
+        mock_repo = Mock()
+        mock_repo.get_contents = Mock(return_value=[mock_file1, mock_file2])
 
-                response = client.get("/api/v1/runbooks")
+        # Mock Github client
+        mock_github = Mock()
+        mock_github.get_repo = Mock(return_value=mock_repo)
+
+        with patch("tarsy.services.runbooks_service.Github") as mock_github_class:
+            with patch("tarsy.services.runbooks_service.Auth"):
+                mock_github_class.return_value = mock_github
+
+                with patch(
+                    "tarsy.config.settings.get_settings"
+                ) as mock_get_settings:
+                    mock_settings = Mock()
+                    mock_settings.github_token = "test_token"
+                    mock_settings.runbooks_repo_url = (
+                        "https://github.com/test-org/test-repo/tree/master/runbooks"
+                    )
+                    mock_get_settings.return_value = mock_settings
+
+                    response = client.get("/api/v1/runbooks")
 
         assert response.status_code == 200
         data = response.json()

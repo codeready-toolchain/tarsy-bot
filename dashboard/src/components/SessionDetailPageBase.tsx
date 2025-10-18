@@ -13,13 +13,12 @@ import {
   FormControlLabel,
   ToggleButton,
   ToggleButtonGroup,
-  IconButton,
-  Fab,
-  Tooltip
+  IconButton
 } from '@mui/material';
-import { Psychology, BugReport, Send as SendIcon } from '@mui/icons-material';
+import { Psychology, BugReport } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
 import VersionFooter from './VersionFooter';
+import FloatingSubmitAlertFab from './FloatingSubmitAlertFab';
 import { websocketService } from '../services/websocketService';
 import { useSession } from '../contexts/SessionContext';
 import type { DetailedSession } from '../types';
@@ -510,27 +509,7 @@ function SessionDetailPageBase({
       <VersionFooter />
 
       {/* Floating Action Button for quick alert submission access */}
-      <Tooltip title="Submit Manual Alert" placement="left">
-        <Fab
-          color="primary"
-          aria-label="submit alert"
-          onClick={() => window.open('/submit-alert', '_blank')}
-          sx={{
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            zIndex: 1000,
-            boxShadow: 3,
-            '&:hover': {
-              boxShadow: 6,
-              transform: 'scale(1.05)',
-            },
-            transition: 'all 0.2s ease-in-out',
-          }}
-        >
-          <SendIcon />
-        </Fab>
-      </Tooltip>
+      <FloatingSubmitAlertFab />
     </Container>
   );
 }

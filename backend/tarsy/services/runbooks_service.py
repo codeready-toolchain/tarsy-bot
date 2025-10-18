@@ -5,11 +5,10 @@ Fetches and manages runbook URLs from GitHub repositories.
 Supports both public and private repositories (with authentication).
 """
 
-import re
 from typing import Optional
 from urllib.parse import urlparse
 
-import httpx
+from github import Auth, Github, GithubException
 
 from tarsy.config.settings import Settings
 from tarsy.utils.logger import get_module_logger
@@ -31,6 +30,13 @@ class RunbooksService:
         self.github_token = settings.github_token
         self.runbooks_repo_url = settings.runbooks_repo_url
 
+        # Initialize PyGithub client
+        if self.github_token:
+            auth = Auth.Token(self.github_token)
+            self.github = Github(auth=auth)
+        else:
+            self.github = Github()
+
     def _parse_github_url(self, url: str) -> Optional[dict[str, str]]:
         """
         Parse a GitHub repository URL to extract components.
@@ -51,19 +57,25 @@ class RunbooksService:
                 logger.error(f"Invalid GitHub URL hostname: {parsed.hostname}")
                 return None
 
-            # Pattern: /org/repo/tree|blob/ref/path...
-            # Example: /codeready-toolchain/sandbox-sre/tree/master/runbooks/ai
-            pattern = r"^/([^/]+)/([^/]+)/(tree|blob)/([^/]+)(/(.*))?$"
-            match = re.match(pattern, parsed.path)
-
-            if not match:
-                logger.error(f"GitHub URL doesn't match expected pattern: {url}")
+            # Split path: /org/repo/tree|blob/ref/path...
+            parts = parsed.path.strip("/").split("/")
+            
+            if len(parts) < 4:
+                logger.error(f"GitHub URL doesn't have enough segments: {url}")
                 return None
 
-            org = match.group(1)
-            repo = match.group(2)
-            ref = match.group(4)
-            path = match.group(6) or ""
+            org = parts[0]
+            repo = parts[1]
+            tree_or_blob = parts[2]  # tree or blob
+            
+            if tree_or_blob not in ("tree", "blob"):
+                logger.error(f"Invalid GitHub URL type (expected tree/blob): {url}")
+                return None
+
+            # Everything after tree/blob is ref + optional path
+            # PyGithub will handle the ref resolution, so we just extract it
+            ref = parts[3]
+            path = "/".join(parts[4:]) if len(parts) > 4 else ""
 
             return {
                 "org": org,
@@ -75,57 +87,11 @@ class RunbooksService:
             logger.error(f"Failed to parse GitHub URL {url}: {e}")
             return None
 
-    async def _fetch_github_contents(
-        self, org: str, repo: str, path: str, ref: str
-    ) -> list[dict]:
-        """
-        Fetch contents from GitHub repository using the API.
-
-        Args:
-            org: GitHub organization or user
-            repo: Repository name
-            path: Path within the repository
-            ref: Branch or tag reference
-
-        Returns:
-            List of content items from GitHub API
-        """
-        api_url = f"https://api.github.com/repos/{org}/{repo}/contents/{path}"
-        params = {"ref": ref}
-
-        headers = {
-            "Accept": "application/vnd.github.v3+json",
-        }
-
-        if self.github_token:
-            headers["Authorization"] = f"Bearer {self.github_token}"
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(api_url, params=params, headers=headers)
-                response.raise_for_status()
-                return response.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.warning(
-                    f"GitHub path not found: {org}/{repo}/{path} (ref: {ref})"
-                )
-            elif e.response.status_code == 401:
-                logger.error("GitHub authentication failed - check github_token")
-            else:
-                logger.error(
-                    f"GitHub API error {e.response.status_code}: {e.response.text}"
-                )
-            return []
-        except Exception as e:
-            logger.error(f"Failed to fetch GitHub contents: {e}")
-            return []
-
     async def _collect_markdown_files(
         self, org: str, repo: str, path: str, ref: str
     ) -> list[str]:
         """
-        Recursively collect all .md files from a GitHub directory.
+        Recursively collect all .md files from a GitHub directory using PyGithub.
 
         Args:
             org: GitHub organization or user
@@ -137,27 +103,46 @@ class RunbooksService:
             List of full GitHub URLs to markdown files
         """
         markdown_urls: list[str] = []
-        contents = await self._fetch_github_contents(org, repo, path, ref)
-
-        for item in contents:
-            item_type = item.get("type")
-            item_name = item.get("name", "")
-            item_path = item.get("path", "")
-
-            if item_type == "file" and item_name.endswith(".md"):
-                # Construct full GitHub URL for the file
-                file_url = f"https://github.com/{org}/{repo}/blob/{ref}/{item_path}"
-                markdown_urls.append(file_url)
-                logger.debug(f"Found runbook: {file_url}")
-
-            elif item_type == "dir":
-                # Recursively process subdirectories
-                logger.debug(f"Exploring subdirectory: {item_path}")
-                subdir_urls = await self._collect_markdown_files(
-                    org, repo, item_path, ref
+        
+        try:
+            # Get repository
+            repo_full_name = f"{org}/{repo}"
+            github_repo = self.github.get_repo(repo_full_name)
+            
+            # Get contents at path
+            contents = github_repo.get_contents(path, ref=ref)
+            
+            # Handle both single file and list of contents
+            if not isinstance(contents, list):
+                contents = [contents]
+            
+            for content in contents:
+                if content.type == "file" and content.name.endswith(".md"):
+                    # Construct full GitHub URL for the file
+                    file_url = f"https://github.com/{org}/{repo}/blob/{ref}/{content.path}"
+                    markdown_urls.append(file_url)
+                    logger.debug(f"Found runbook: {file_url}")
+                    
+                elif content.type == "dir":
+                    # Recursively process subdirectories
+                    logger.debug(f"Exploring subdirectory: {content.path}")
+                    subdir_urls = await self._collect_markdown_files(
+                        org, repo, content.path, ref
+                    )
+                    markdown_urls.extend(subdir_urls)
+                    
+        except GithubException as e:
+            if e.status == 404:
+                logger.warning(
+                    f"GitHub path not found: {org}/{repo}/{path} (ref: {ref})"
                 )
-                markdown_urls.extend(subdir_urls)
-
+            elif e.status == 401:
+                logger.error("GitHub authentication failed - check github_token")
+            else:
+                logger.error(f"GitHub API error {e.status}: {e.data}")
+        except Exception as e:
+            logger.error(f"Failed to fetch GitHub contents: {e}")
+            
         return markdown_urls
 
     async def get_runbooks(self) -> list[str]:
@@ -198,4 +183,3 @@ class RunbooksService:
         except Exception as e:
             logger.error(f"Failed to fetch runbooks: {e}", exc_info=True)
             return []
-

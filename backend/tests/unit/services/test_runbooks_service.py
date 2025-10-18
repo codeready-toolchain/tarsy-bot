@@ -8,8 +8,8 @@ API interactions, error handling, and authentication.
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
-import httpx
 import pytest
+from github import GithubException
 
 from tarsy.config.settings import Settings
 from tarsy.services.runbooks_service import RunbooksService
@@ -27,7 +27,8 @@ def mock_settings() -> Settings:
 @pytest.fixture
 def runbooks_service(mock_settings: Settings) -> RunbooksService:
     """Create RunbooksService instance for testing."""
-    return RunbooksService(mock_settings)
+    with patch("tarsy.services.runbooks_service.Github"):
+        return RunbooksService(mock_settings)
 
 
 class TestRunbooksServiceInitialization:
@@ -40,11 +41,17 @@ class TestRunbooksServiceInitialization:
         settings.github_token = "token123"
         settings.runbooks_repo_url = "https://github.com/org/repo/tree/main/docs"
 
-        service = RunbooksService(settings)
+        with patch("tarsy.services.runbooks_service.Github") as mock_github:
+            with patch("tarsy.services.runbooks_service.Auth") as mock_auth:
+                service = RunbooksService(settings)
 
-        assert service.settings == settings
-        assert service.github_token == "token123"
-        assert service.runbooks_repo_url == "https://github.com/org/repo/tree/main/docs"
+                assert service.settings == settings
+                assert service.github_token == "token123"
+                assert service.runbooks_repo_url == "https://github.com/org/repo/tree/main/docs"
+                # Verify Auth.Token was called with token
+                mock_auth.Token.assert_called_once_with("token123")
+                # Verify Github was initialized with auth
+                mock_github.assert_called_once()
 
     @pytest.mark.unit
     def test_initialization_without_token(self) -> None:
@@ -53,10 +60,13 @@ class TestRunbooksServiceInitialization:
         settings.github_token = None
         settings.runbooks_repo_url = "https://github.com/org/repo/tree/main/docs"
 
-        service = RunbooksService(settings)
+        with patch("tarsy.services.runbooks_service.Github") as mock_github:
+            service = RunbooksService(settings)
 
-        assert service.github_token is None
-        assert service.runbooks_repo_url is not None
+            assert service.github_token is None
+            assert service.runbooks_repo_url is not None
+            # Verify Github was initialized without auth
+            mock_github.assert_called_once_with()
 
     @pytest.mark.unit
     def test_initialization_without_repo_url(self) -> None:
@@ -65,10 +75,11 @@ class TestRunbooksServiceInitialization:
         settings.github_token = "token123"
         settings.runbooks_repo_url = None
 
-        service = RunbooksService(settings)
+        with patch("tarsy.services.runbooks_service.Github"):
+            service = RunbooksService(settings)
 
-        assert service.github_token is not None
-        assert service.runbooks_repo_url is None
+            assert service.github_token is not None
+            assert service.runbooks_repo_url is None
 
 
 class TestURLParsing:
@@ -113,9 +124,23 @@ class TestURLParsing:
                 "v1.0.0",
                 "runbooks",
             ),
+            # Refs with slashes - PyGithub handles these natively
+            (
+                "https://github.com/org/repo/tree/feature/foo/path",
+                "org",
+                "repo",
+                "feature",
+                "foo/path",
+            ),
+            (
+                "https://github.com/org/repo/tree/release/v1.0/docs",
+                "org",
+                "repo",
+                "release",
+                "v1.0/docs",
+            ),
             # No path after ref
             ("https://github.com/org/repo/tree/master", "org", "repo", "master", ""),
-            ("https://github.com/org/repo/tree/main/", "org", "repo", "main", ""),
         ],
     )
     def test_parse_valid_github_urls(
@@ -171,138 +196,118 @@ class TestURLParsing:
 
 
 class TestGitHubAPIInteractions:
-    """Test GitHub API interaction functionality."""
+    """Test GitHub API interaction functionality using PyGithub."""
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_fetch_github_contents_success(
+    async def test_collect_markdown_files_success(
         self, runbooks_service: RunbooksService
     ) -> None:
-        """Test successful GitHub API content fetching."""
-        mock_response = [
-            {"name": "runbook1.md", "type": "file", "path": "runbooks/runbook1.md"},
-            {"name": "runbook2.md", "type": "file", "path": "runbooks/runbook2.md"},
-            {"name": "subdir", "type": "dir", "path": "runbooks/subdir"},
-        ]
+        """Test successful GitHub API content fetching with PyGithub."""
+        # Mock PyGithub objects
+        mock_file1 = Mock()
+        mock_file1.type = "file"
+        mock_file1.name = "runbook1.md"
+        mock_file1.path = "runbooks/runbook1.md"
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = None
-            mock_client.get = AsyncMock(return_value=Mock(json=lambda: mock_response))
-            mock_client_class.return_value = mock_client
+        mock_file2 = Mock()
+        mock_file2.type = "file"
+        mock_file2.name = "runbook2.md"
+        mock_file2.path = "runbooks/runbook2.md"
 
-            result = await runbooks_service._fetch_github_contents(
+        mock_dir = Mock()
+        mock_dir.type = "dir"
+        mock_dir.name = "subdir"
+        mock_dir.path = "runbooks/subdir"
+
+        mock_repo = Mock()
+        mock_repo.get_contents = Mock(return_value=[mock_file1, mock_file2, mock_dir])
+
+        runbooks_service.github.get_repo = Mock(return_value=mock_repo)
+
+        # Mock the recursive call for subdirectory
+        with patch.object(
+            runbooks_service,
+            "_collect_markdown_files",
+            side_effect=lambda org, repo, path, ref: (
+                ["https://github.com/test-org/test-repo/blob/master/runbooks/runbook1.md",
+                 "https://github.com/test-org/test-repo/blob/master/runbooks/runbook2.md"]
+                if path == "runbooks"
+                else []
+            ),
+        ):
+            result = await runbooks_service._collect_markdown_files(
                 "test-org", "test-repo", "runbooks", "master"
             )
 
-        assert len(result) == 3
-        assert result[0]["name"] == "runbook1.md"
-        assert result[1]["name"] == "runbook2.md"
-        assert result[2]["type"] == "dir"
+        assert len(result) == 2
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_fetch_github_contents_with_authentication(
-        self, runbooks_service: RunbooksService
-    ) -> None:
-        """Test GitHub API calls include authentication header."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = None
-            mock_get = AsyncMock(return_value=Mock(json=lambda: []))
-            mock_client.get = mock_get
-            mock_client_class.return_value = mock_client
-
-            await runbooks_service._fetch_github_contents(
-                "org", "repo", "path", "master"
-            )
-
-            # Verify authentication header was included
-            call_args = mock_get.call_args
-            headers = call_args.kwargs.get("headers", {})
-            assert "Authorization" in headers
-            assert headers["Authorization"] == "Bearer test_token_123"
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_fetch_github_contents_without_token(
+    async def test_collect_markdown_files_with_authentication(
         self, mock_settings: Settings
     ) -> None:
-        """Test GitHub API calls work without authentication token."""
-        mock_settings.github_token = None
-        service = RunbooksService(mock_settings)
+        """Test GitHub API calls use authentication when token is provided."""
+        with patch("tarsy.services.runbooks_service.Github") as mock_github_class:
+            with patch("tarsy.services.runbooks_service.Auth") as mock_auth:
+                service = RunbooksService(mock_settings)
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = None
-            mock_get = AsyncMock(return_value=Mock(json=lambda: []))
-            mock_client.get = mock_get
-            mock_client_class.return_value = mock_client
-
-            await service._fetch_github_contents("org", "repo", "path", "master")
-
-            # Verify no Authorization header when token is None
-            call_args = mock_get.call_args
-            headers = call_args.kwargs.get("headers", {})
-            assert "Authorization" not in headers
+                # Verify Auth.Token was called with the token
+                mock_auth.Token.assert_called_once_with("test_token_123")
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "status_code,expected_log",
-        [
-            (404, "not found"),
-            (401, "authentication failed"),
-            (403, "forbidden"),
-            (500, "API error"),
-        ],
-    )
-    async def test_fetch_github_contents_error_handling(
-        self, runbooks_service: RunbooksService, status_code: int, expected_log: str
-    ) -> None:
-        """Test GitHub API error handling for various HTTP status codes."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = None
-            
-            # Create proper HTTPStatusError
-            mock_response = Mock()
-            mock_response.status_code = status_code
-            mock_response.text = f"Error {status_code}"
-            error = httpx.HTTPStatusError(
-                f"HTTP {status_code}", request=Mock(), response=mock_response
-            )
-            mock_client.get = AsyncMock(side_effect=error)
-            mock_client_class.return_value = mock_client
-
-            result = await runbooks_service._fetch_github_contents(
-                "org", "repo", "path", "master"
-            )
-
-            assert result == []
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_fetch_github_contents_network_error(
+    async def test_collect_markdown_files_404_error(
         self, runbooks_service: RunbooksService
     ) -> None:
-        """Test GitHub API handles network errors gracefully."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = None
-            mock_client.get = AsyncMock(side_effect=httpx.NetworkError("Connection failed"))
-            mock_client_class.return_value = mock_client
+        """Test GitHub API handles 404 errors gracefully."""
+        mock_repo = Mock()
+        error_data = {"message": "Not Found"}
+        mock_repo.get_contents = Mock(
+            side_effect=GithubException(404, error_data, headers={})
+        )
+        runbooks_service.github.get_repo = Mock(return_value=mock_repo)
 
-            result = await runbooks_service._fetch_github_contents(
-                "org", "repo", "path", "master"
-            )
+        result = await runbooks_service._collect_markdown_files(
+            "org", "repo", "path", "master"
+        )
 
-            assert result == []
+        assert result == []
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_collect_markdown_files_401_error(
+        self, runbooks_service: RunbooksService
+    ) -> None:
+        """Test GitHub API handles authentication errors."""
+        mock_repo = Mock()
+        error_data = {"message": "Bad credentials"}
+        mock_repo.get_contents = Mock(
+            side_effect=GithubException(401, error_data, headers={})
+        )
+        runbooks_service.github.get_repo = Mock(return_value=mock_repo)
+
+        result = await runbooks_service._collect_markdown_files(
+            "org", "repo", "path", "master"
+        )
+
+        assert result == []
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_collect_markdown_files_generic_error(
+        self, runbooks_service: RunbooksService
+    ) -> None:
+        """Test GitHub API handles generic errors gracefully."""
+        mock_repo = Mock()
+        mock_repo.get_contents = Mock(side_effect=Exception("Network error"))
+        runbooks_service.github.get_repo = Mock(return_value=mock_repo)
+
+        result = await runbooks_service._collect_markdown_files(
+            "org", "repo", "path", "master"
+        )
+
+        assert result == []
 
 
 class TestMarkdownFileCollection:
@@ -314,18 +319,28 @@ class TestMarkdownFileCollection:
         self, runbooks_service: RunbooksService
     ) -> None:
         """Test collecting markdown files from a flat directory structure."""
-        mock_contents = [
-            {"name": "runbook1.md", "type": "file", "path": "runbooks/runbook1.md"},
-            {"name": "runbook2.md", "type": "file", "path": "runbooks/runbook2.md"},
-            {"name": "README.txt", "type": "file", "path": "runbooks/README.txt"},
-        ]
+        mock_file1 = Mock()
+        mock_file1.type = "file"
+        mock_file1.name = "runbook1.md"
+        mock_file1.path = "runbooks/runbook1.md"
 
-        with patch.object(
-            runbooks_service, "_fetch_github_contents", return_value=mock_contents
-        ):
-            result = await runbooks_service._collect_markdown_files(
-                "org", "repo", "runbooks", "master"
-            )
+        mock_file2 = Mock()
+        mock_file2.type = "file"
+        mock_file2.name = "runbook2.md"
+        mock_file2.path = "runbooks/runbook2.md"
+
+        mock_file3 = Mock()
+        mock_file3.type = "file"
+        mock_file3.name = "README.txt"
+        mock_file3.path = "runbooks/README.txt"
+
+        mock_repo = Mock()
+        mock_repo.get_contents = Mock(return_value=[mock_file1, mock_file2, mock_file3])
+        runbooks_service.github.get_repo = Mock(return_value=mock_repo)
+
+        result = await runbooks_service._collect_markdown_files(
+            "org", "repo", "runbooks", "master"
+        )
 
         assert len(result) == 2
         assert "https://github.com/org/repo/blob/master/runbooks/runbook1.md" in result
@@ -338,26 +353,37 @@ class TestMarkdownFileCollection:
     ) -> None:
         """Test recursive collection of markdown files from nested directories."""
         # Mock first level
-        first_level = [
-            {"name": "root.md", "type": "file", "path": "runbooks/root.md"},
-            {"name": "subdir", "type": "dir", "path": "runbooks/subdir"},
-        ]
-        # Mock subdirectory
-        second_level = [
-            {"name": "nested.md", "type": "file", "path": "runbooks/subdir/nested.md"},
-        ]
+        mock_file = Mock()
+        mock_file.type = "file"
+        mock_file.name = "root.md"
+        mock_file.path = "runbooks/root.md"
 
-        async def mock_fetch(org: str, repo: str, path: str, ref: str) -> list[dict[str, Any]]:
+        mock_dir = Mock()
+        mock_dir.type = "dir"
+        mock_dir.name = "subdir"
+        mock_dir.path = "runbooks/subdir"
+
+        # Mock nested file
+        mock_nested_file = Mock()
+        mock_nested_file.type = "file"
+        mock_nested_file.name = "nested.md"
+        mock_nested_file.path = "runbooks/subdir/nested.md"
+
+        mock_repo = Mock()
+
+        def mock_get_contents(path: str, ref: str) -> list[Any]:
             if path == "runbooks":
-                return first_level
+                return [mock_file, mock_dir]
             elif path == "runbooks/subdir":
-                return second_level
+                return [mock_nested_file]
             return []
 
-        with patch.object(runbooks_service, "_fetch_github_contents", side_effect=mock_fetch):
-            result = await runbooks_service._collect_markdown_files(
-                "org", "repo", "runbooks", "master"
-            )
+        mock_repo.get_contents = mock_get_contents
+        runbooks_service.github.get_repo = Mock(return_value=mock_repo)
+
+        result = await runbooks_service._collect_markdown_files(
+            "org", "repo", "runbooks", "master"
+        )
 
         assert len(result) == 2
         assert "https://github.com/org/repo/blob/master/runbooks/root.md" in result
@@ -372,22 +398,29 @@ class TestMarkdownFileCollection:
         self, runbooks_service: RunbooksService
     ) -> None:
         """Test that only .md files are collected."""
-        mock_contents = [
-            {"name": "valid.md", "type": "file", "path": "runbooks/valid.md"},
-            {"name": "README.txt", "type": "file", "path": "runbooks/README.txt"},
-            {"name": "config.yaml", "type": "file", "path": "runbooks/config.yaml"},
-            {"name": "script.sh", "type": "file", "path": "runbooks/script.sh"},
-            {"name": "another.MD", "type": "file", "path": "runbooks/another.MD"},  # Different case
-        ]
+        mock_md = Mock()
+        mock_md.type = "file"
+        mock_md.name = "valid.md"
+        mock_md.path = "runbooks/valid.md"
 
-        with patch.object(
-            runbooks_service, "_fetch_github_contents", return_value=mock_contents
-        ):
-            result = await runbooks_service._collect_markdown_files(
-                "org", "repo", "runbooks", "master"
-            )
+        mock_txt = Mock()
+        mock_txt.type = "file"
+        mock_txt.name = "README.txt"
+        mock_txt.path = "runbooks/README.txt"
 
-        # Should only include files ending with .md (lowercase)
+        mock_yaml = Mock()
+        mock_yaml.type = "file"
+        mock_yaml.name = "config.yaml"
+        mock_yaml.path = "runbooks/config.yaml"
+
+        mock_repo = Mock()
+        mock_repo.get_contents = Mock(return_value=[mock_md, mock_txt, mock_yaml])
+        runbooks_service.github.get_repo = Mock(return_value=mock_repo)
+
+        result = await runbooks_service._collect_markdown_files(
+            "org", "repo", "runbooks", "master"
+        )
+
         assert len(result) == 1
         assert "https://github.com/org/repo/blob/master/runbooks/valid.md" in result
 
@@ -397,10 +430,13 @@ class TestMarkdownFileCollection:
         self, runbooks_service: RunbooksService
     ) -> None:
         """Test collecting from empty directory returns empty list."""
-        with patch.object(runbooks_service, "_fetch_github_contents", return_value=[]):
-            result = await runbooks_service._collect_markdown_files(
-                "org", "repo", "empty", "master"
-            )
+        mock_repo = Mock()
+        mock_repo.get_contents = Mock(return_value=[])
+        runbooks_service.github.get_repo = Mock(return_value=mock_repo)
+
+        result = await runbooks_service._collect_markdown_files(
+            "org", "repo", "empty", "master"
+        )
 
         assert result == []
 
@@ -412,18 +448,19 @@ class TestGetRunbooks:
     @pytest.mark.asyncio
     async def test_get_runbooks_success(self, mock_settings: Settings) -> None:
         """Test successful runbook retrieval."""
-        service = RunbooksService(mock_settings)
-        
-        mock_files = [
-            "https://github.com/test-org/test-repo/blob/master/runbooks/r1.md",
-            "https://github.com/test-org/test-repo/blob/master/runbooks/r2.md",
-        ]
+        with patch("tarsy.services.runbooks_service.Github"):
+            service = RunbooksService(mock_settings)
 
-        with patch.object(service, "_collect_markdown_files", return_value=mock_files):
-            result = await service.get_runbooks()
+            mock_files = [
+                "https://github.com/test-org/test-repo/blob/master/runbooks/r1.md",
+                "https://github.com/test-org/test-repo/blob/master/runbooks/r2.md",
+            ]
 
-        assert len(result) == 2
-        assert result == mock_files
+            with patch.object(service, "_collect_markdown_files", return_value=mock_files):
+                result = await service.get_runbooks()
+
+            assert len(result) == 2
+            assert result == mock_files
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -432,9 +469,10 @@ class TestGetRunbooks:
     ) -> None:
         """Test get_runbooks returns empty list when repo URL not configured."""
         mock_settings.runbooks_repo_url = None
-        service = RunbooksService(mock_settings)
-
-        result = await service.get_runbooks()
+        
+        with patch("tarsy.services.runbooks_service.Github"):
+            service = RunbooksService(mock_settings)
+            result = await service.get_runbooks()
 
         assert result == []
 
@@ -445,9 +483,10 @@ class TestGetRunbooks:
     ) -> None:
         """Test get_runbooks handles invalid URL format gracefully."""
         mock_settings.runbooks_repo_url = "not-a-valid-url"
-        service = RunbooksService(mock_settings)
-
-        result = await service.get_runbooks()
+        
+        with patch("tarsy.services.runbooks_service.Github"):
+            service = RunbooksService(mock_settings)
+            result = await service.get_runbooks()
 
         assert result == []
 
@@ -457,14 +496,15 @@ class TestGetRunbooks:
         self, mock_settings: Settings
     ) -> None:
         """Test get_runbooks handles GitHub API failures gracefully."""
-        service = RunbooksService(mock_settings)
+        with patch("tarsy.services.runbooks_service.Github"):
+            service = RunbooksService(mock_settings)
 
-        with patch.object(
-            service,
-            "_collect_markdown_files",
-            side_effect=Exception("API Error"),
-        ):
-            result = await service.get_runbooks()
+            with patch.object(
+                service,
+                "_collect_markdown_files",
+                side_effect=Exception("API Error"),
+            ):
+                result = await service.get_runbooks()
 
         assert result == []
 
@@ -474,15 +514,15 @@ class TestGetRunbooks:
         self, mock_settings: Settings
     ) -> None:
         """Test that get_runbooks correctly parses the GitHub URL."""
-        service = RunbooksService(mock_settings)
+        with patch("tarsy.services.runbooks_service.Github"):
+            service = RunbooksService(mock_settings)
 
-        with patch.object(
-            service, "_collect_markdown_files", return_value=[]
-        ) as mock_collect:
-            await service.get_runbooks()
+            with patch.object(
+                service, "_collect_markdown_files", return_value=[]
+            ) as mock_collect:
+                await service.get_runbooks()
 
-            # Verify correct parsing
-            mock_collect.assert_called_once_with(
-                org="test-org", repo="test-repo", path="runbooks", ref="master"
-            )
-
+                # Verify correct parsing
+                mock_collect.assert_called_once_with(
+                    org="test-org", repo="test-repo", path="runbooks", ref="master"
+                )

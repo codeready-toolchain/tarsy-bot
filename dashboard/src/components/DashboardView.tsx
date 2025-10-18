@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, AppBar, Toolbar, Typography, Box, Tooltip, CircularProgress, IconButton, Menu, MenuItem, ListItemIcon, ListItemText, Fab } from '@mui/material';
+import { Container, AppBar, Toolbar, Typography, Box, Tooltip, CircularProgress, IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import { Refresh, Menu as MenuIcon, Send as SendIcon } from '@mui/icons-material';
 import DashboardLayout from './DashboardLayout';
 import FilterPanel from './FilterPanel';
@@ -9,6 +9,7 @@ import LoginButton from './LoginButton';
 import UserMenu from './UserMenu';
 import { SystemWarningBanner } from './SystemWarningBanner';
 import VersionFooter from './VersionFooter';
+import FloatingSubmitAlertFab from './FloatingSubmitAlertFab';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient, handleAPIError } from '../services/api';
 import { websocketService } from '../services/websocketService';
@@ -647,27 +648,7 @@ function DashboardView() {
       <VersionFooter />
 
       {/* Floating Action Button for quick alert submission access */}
-      <Tooltip title="Submit Manual Alert" placement="left">
-        <Fab
-          color="primary"
-          aria-label="submit alert"
-          onClick={() => window.open('/submit-alert', '_blank')}
-          sx={{
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            zIndex: 1000,
-            boxShadow: 3,
-            '&:hover': {
-              boxShadow: 6,
-              transform: 'scale(1.05)',
-            },
-            transition: 'all 0.2s ease-in-out',
-          }}
-        >
-          <SendIcon />
-        </Fab>
-      </Tooltip>
+      <FloatingSubmitAlertFab />
     </Container>
   );
 }

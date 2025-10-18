@@ -86,6 +86,38 @@ const parseFreeText = (text: string): { success: boolean; data: Record<string, a
   };
 };
 
+/**
+ * Validate runbook URL to prevent SSRF attacks
+ * Only allows:
+ * - Default runbook option
+ * - URLs from the backend's approved list
+ * - GitHub URLs (github.com or raw.githubusercontent.com)
+ */
+const isValidRunbookUrl = (url: string | null, approvedRunbooks: string[]): boolean => {
+  // Allow null or empty
+  if (!url) return true;
+  
+  // Allow default runbook
+  if (url === DEFAULT_RUNBOOK) return true;
+  
+  // Allow if it's in the approved list from backend
+  if (approvedRunbooks.includes(url)) return true;
+  
+  // For custom URLs, only allow GitHub
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    
+    // Only allow GitHub domains
+    return hostname === 'github.com' || 
+           hostname === 'www.github.com' || 
+           hostname === 'raw.githubusercontent.com';
+  } catch {
+    // Invalid URL format
+    return false;
+  }
+};
+
 const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) => {
   // Common fields
   const [alertType, setAlertType] = useState('');
@@ -112,6 +144,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [runbookError, setRunbookError] = useState<string | null>(null);
 
   // Load available alert types and runbooks on component mount
   useEffect(() => {
@@ -194,6 +227,12 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
         return;
       }
 
+      // Validate runbook URL to prevent SSRF
+      if (!isValidRunbookUrl(runbook, availableRunbooks)) {
+        setError('Invalid runbook URL. Only GitHub URLs or approved runbooks are allowed.');
+        return;
+      }
+
       // Process key-value pairs (filter empty ones)
       const processedData: Record<string, any> = {};
       for (const pair of keyValuePairs) {
@@ -272,6 +311,12 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
       // Validate alert type
       if (!alertType || alertType.trim().length === 0) {
         setError('Alert Type is required');
+        return;
+      }
+
+      // Validate runbook URL to prevent SSRF
+      if (!isValidRunbookUrl(runbook, availableRunbooks)) {
+        setError('Invalid runbook URL. Only GitHub URLs or approved runbooks are allowed.');
         return;
       }
 
@@ -446,13 +491,22 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
                 fullWidth
                 freeSolo
                 value={runbook}
-                onChange={(_, newValue) => setRunbook(newValue)}
+                onChange={(_, newValue) => {
+                  setRunbook(newValue);
+                  // Validate runbook URL in real-time
+                  if (newValue && !isValidRunbookUrl(newValue, availableRunbooks)) {
+                    setRunbookError('Invalid runbook URL. Only GitHub URLs or approved runbooks are allowed.');
+                  } else {
+                    setRunbookError(null);
+                  }
+                }}
                 options={availableRunbooks}
                 renderInput={(params) => (
                   <TextField
                     {...params}
                     label="Runbook"
-                    helperText="Select from list or enter custom URL"
+                    helperText={runbookError || "Select from list or enter custom GitHub URL"}
+                    error={!!runbookError}
                     variant="filled"
                     sx={{
                       '& .MuiFilledInput-root': {
@@ -687,7 +741,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
                 variant="contained"
                 size="large"
                   startIcon={loading ? <CircularProgress size={22} color="inherit" /> : <SendIcon />}
-                disabled={loading}
+                disabled={loading || !!runbookError}
                 fullWidth
                   onClick={handleKeyValueSubmit}
                   sx={{
@@ -830,7 +884,7 @@ Message: The 'tarsy' Argo CD application is stuck in 'Progressing' status`}
                   variant="contained"
                   size="large"
                   startIcon={loading ? <CircularProgress size={22} color="inherit" /> : <SendIcon />}
-                  disabled={loading}
+                  disabled={loading || !!runbookError}
                   fullWidth
                   onClick={handleFreeTextSubmit}
                   sx={{
