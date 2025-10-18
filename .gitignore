@@ -38,6 +38,8 @@ venv.bak/
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
+!.cursor/commands/
+!.cursor/commands/**
 *.swp
 *.swo
 *~

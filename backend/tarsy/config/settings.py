@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     
     # GitHub Configuration
     github_token: Optional[str] = Field(default=None)
+    runbooks_repo_url: Optional[str] = Field(
+        default=None,
+        description="GitHub repository URL for runbooks (e.g., https://github.com/org/repo/tree/branch/path). "
+        "Private repos require github_token to be set."
+    )
     
     # Alert Processing Configuration
     max_llm_mcp_iterations: int = Field(

@@ -232,6 +232,24 @@ class APIClient {
     }
   }
 
+  /**
+   * Get list of runbook URLs from configured GitHub repository.
+   * 
+   * Returns a list of markdown file URLs from the configured runbooks repository.
+   * If runbooks_repo_url is not configured or if fetching fails, returns an empty list.
+   * The dashboard should add "Default Runbook" option to this list.
+   */
+  async getRunbooks(): Promise<string[]> {
+    try {
+      const response = await this.client.get('/api/v1/runbooks');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting runbooks:', error);
+      // Return empty array on error - don't fail the UI
+      return [];
+    }
+  }
+
   // Phase 4: Search and filtering methods
 
   /**

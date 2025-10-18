@@ -41,6 +41,36 @@ async def get_alert_types() -> list[str]:
     return alert_service.chain_registry.list_available_alert_types()
 
 
+@router.get("/runbooks", response_model=list[str])
+async def get_runbooks() -> list[str]:
+    """Get list of runbook URLs from configured GitHub repository.
+    
+    Returns a list of markdown file URLs from the configured runbooks repository.
+    If runbooks_repo_url is not configured or if fetching fails, returns an empty list.
+    
+    The dashboard will add "Default Runbook" option to this list, which when selected
+    will not send a runbook field (allowing backend to use built-in defaults).
+    
+    Returns:
+        List of GitHub URLs to runbook markdown files
+    """
+    from tarsy.config.settings import get_settings
+    from tarsy.services.runbooks_service import RunbooksService
+    
+    try:
+        settings = get_settings()
+        runbooks_service = RunbooksService(settings)
+        runbook_urls = await runbooks_service.get_runbooks()
+        
+        logger.info(f"Returning {len(runbook_urls)} runbook URLs")
+        return runbook_urls
+        
+    except Exception as e:
+        logger.error(f"Error fetching runbooks: {e}", exc_info=True)
+        # Return empty list on error - don't fail the endpoint
+        return []
+
+
 @router.post("/alerts", response_model=AlertResponse)
 async def submit_alert(request: Request) -> AlertResponse:
     """Submit a new alert for processing with flexible data structure and comprehensive error handling."""

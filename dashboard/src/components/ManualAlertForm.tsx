@@ -1,7 +1,7 @@
 /**
  * Manual Alert submission form component - EP-0018
- * Adapted from alert-dev-ui AlertForm.tsx for dashboard integration
- * Supports arbitrary key-value pairs for flexible alert data structures
+ * Redesigned with dual-mode input: Key-Value pairs or Free-Text parsing
+ * Supports runbook dropdown with GitHub repository integration
  */
 
 import { useState, useEffect } from 'react';
@@ -18,7 +18,10 @@ import {
   CircularProgress,
   IconButton,
   Divider,
-  Chip,
+  Autocomplete,
+  Tabs,
+  Tab,
+  Paper,
 } from '@mui/material';
 import { 
   Send as SendIcon, 
@@ -35,41 +38,87 @@ import { apiClient } from '../services/api';
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 /**
- * Common field presets for quick setup
+ * Default runbook option constant
  */
-const fieldPresets = [
-  { key: 'severity', value: 'critical', description: 'Alert severity level' },
-  { key: 'environment', value: 'production', description: 'Environment (prod/staging/dev)' },
-  { key: 'cluster', value: 'https://api.cluster.example.com:443', description: 'Kubernetes cluster URL' },
-  { key: 'namespace', value: 'default', description: 'Kubernetes namespace' },
-  { key: 'pod', value: 'web-app-abc123', description: 'Pod name (optional)' },
-  { key: 'message', value: 'Sample alert message', description: 'Alert description' },
-  { key: 'region', value: 'us-west-2', description: 'Cloud region' },
-  { key: 'service', value: 'web-service', description: 'Service name' },
-];
+const DEFAULT_RUNBOOK = 'Default Runbook';
+
+/**
+ * Parse free-text input into key-value pairs
+ * Attempts to parse "Key: Value" or "Key=Value" patterns line by line
+ */
+const parseFreeText = (text: string): { success: boolean; data: Record<string, any> } => {
+  const lines = text.split('\n');
+  const data: Record<string, any> = {};
+  let successCount = 0;
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+
+    // Try parsing "Key: Value" format
+    const colonMatch = trimmedLine.match(/^([^:]+):\s*(.*)$/);
+    if (colonMatch) {
+      const key = colonMatch[1].trim();
+      const value = colonMatch[2].trim();
+      if (key) {
+        data[key] = value;
+        successCount++;
+        continue;
+      }
+    }
+
+    // Try parsing "Key=Value" format
+    const equalsMatch = trimmedLine.match(/^([^=]+)=(.*)$/);
+    if (equalsMatch) {
+      const key = equalsMatch[1].trim();
+      const value = equalsMatch[2].trim();
+      if (key) {
+        data[key] = value;
+        successCount++;
+        continue;
+      }
+    }
+  }
+
+  // Consider parsing successful if we extracted at least one key-value pair
+  return {
+    success: successCount > 0,
+    data: successCount > 0 ? data : { message: text }
+  };
+};
 
 const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) => {
-  // Required fields
+  // Common fields
   const [alertType, setAlertType] = useState('');
-  const [runbook, setRunbook] = useState('https://github.com/alexeykazakov/runbooks/blob/master/namespace-terminating-v2.md');
+  const [runbook, setRunbook] = useState<string | null>(DEFAULT_RUNBOOK);
   
-  // Dynamic key-value pairs
+  // Mode selection (0 = Key-Value, 1 = Free-Text)
+  const [mode, setMode] = useState(0);
+  
+  // Mode A: Key-value pairs
   const [keyValuePairs, setKeyValuePairs] = useState<KeyValuePair[]>([
-    { id: generateId(), key: 'severity', value: 'critical' },
-    { id: generateId(), key: 'cluster', value: 'https://api.crc.testing:6443' },
-    { id: generateId(), key: 'namespace', value: 'superman-dev' },
-    { id: generateId(), key: 'message', value: 'Namespace is stuck in terminating state' }
+    { id: generateId(), key: 'cluster', value: '' },
+    { id: generateId(), key: 'namespace', value: '' },
+    { id: generateId(), key: 'message', value: '' }
   ]);
 
+  // Mode B: Free text
+  const [freeText, setFreeText] = useState('');
+
+  // Available options
   const [availableAlertTypes, setAvailableAlertTypes] = useState<string[]>([]);
+  const [availableRunbooks, setAvailableRunbooks] = useState<string[]>([]);
+  
+  // UI state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Load available alert types on component mount
+  // Load available alert types and runbooks on component mount
   useEffect(() => {
-    const loadAlertTypes = async () => {
+    const loadOptions = async () => {
       try {
+        // Load alert types
         const alertTypes = await apiClient.getAlertTypes();
         if (Array.isArray(alertTypes)) {
           setAvailableAlertTypes(alertTypes);
@@ -79,17 +128,23 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
           } else if (alertTypes.length > 0) {
             setAlertType(alertTypes[0]);
           }
+        }
+
+        // Load runbooks
+        const runbooks = await apiClient.getRunbooks();
+        if (Array.isArray(runbooks)) {
+          // Add "Default Runbook" as first option
+          setAvailableRunbooks([DEFAULT_RUNBOOK, ...runbooks]);
         } else {
-          console.error('Alert types response is not an array:', alertTypes);
-          setError('Invalid response from alert types API');
+          setAvailableRunbooks([DEFAULT_RUNBOOK]);
         }
       } catch (error) {
-        console.error('Failed to load alert types:', error);
-        setError('Failed to load alert types from backend. Please check if the backend is running.');
+        console.error('Failed to load options:', error);
+        setError('Failed to load options from backend. Please check if the backend is running.');
       }
     };
 
-    loadAlertTypes();
+    loadOptions();
   }, []);
 
   /**
@@ -125,245 +180,144 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
   };
 
   /**
-   * Add a preset field
+   * Handle form submission for key-value mode
    */
-  const addPresetField = (preset: typeof fieldPresets[0]) => {
-    // Check if key already exists
-    const keyExists = keyValuePairs.some(pair => pair.key === preset.key);
-    if (!keyExists) {
-      setKeyValuePairs(prev => [
-        ...prev,
-        { id: generateId(), key: preset.key, value: preset.value }
-      ]);
-    }
-  };
-
-  /**
-   * Handle form submission
-   */
-  const handleSubmit = async () => {
+  const handleKeyValueSubmit = async () => {
     // Reset previous states
     setError('');
     setSuccess('');
     setLoading(true);
 
     try {
-      // Comprehensive form validation
-      const validationErrors: string[] = [];
-      
-      // Validate required fields
+      // Validate alert type
       if (!alertType || alertType.trim().length === 0) {
-        validationErrors.push('Alert Type is required');
-      }
-      
-      // Validate runbook URL format only if provided (optional field)
-      if (runbook && runbook.trim().length > 0) {
-        try {
-          new URL(runbook);
-        } catch (urlError) {
-          validationErrors.push('Runbook must be a valid URL (e.g., https://github.com/...)');
-        }
+        setError('Alert Type is required');
+        return;
       }
 
-      // Validate key-value pairs
-      const processedPairs: { key: string; value: any }[] = [];
-      const usedKeys = new Set<string>();
-      
-      for (let index = 0; index < keyValuePairs.length; index++) {
-        const pair = keyValuePairs[index];
-        // Skip empty pairs
-        if (!pair.key && !pair.value) {
-          continue;
-        }
+      // Process key-value pairs (filter empty ones)
+      const processedData: Record<string, any> = {};
+      for (const pair of keyValuePairs) {
+        // Skip completely empty pairs
+        if (!pair.key && !pair.value) continue;
         
         // Validate key
         if (!pair.key || pair.key.trim().length === 0) {
-          validationErrors.push(`Row ${index + 1}: Key cannot be empty`);
-          continue;
+          setError(`Key cannot be empty if value is provided`);
+          return;
         }
         
         const trimmedKey = pair.key.trim();
+        const trimmedValue = pair.value.trim();
         
-        // Check for duplicate keys
-        if (usedKeys.has(trimmedKey)) {
-          validationErrors.push(`Row ${index + 1}: Duplicate key "${trimmedKey}"`);
-          continue;
+        // Add to data only if not empty
+        if (trimmedValue) {
+          processedData[trimmedKey] = trimmedValue;
         }
-        
-        // Validate key format (allow more flexible naming for YAML and complex data)
-        if (!/^[a-zA-Z_][a-zA-Z0-9_.-]*$/.test(trimmedKey)) {
-          validationErrors.push(`Row ${index + 1}: Key "${trimmedKey}" contains invalid characters. Use letters, numbers, underscores, dots, and hyphens.`);
-          continue;
-        }
-        
-        usedKeys.add(trimmedKey);
-        
-        // Validate value (keep as string, support multiline content like YAML)
-        let valueForStorage = pair.value;
-        
-        if (typeof pair.value === 'string') {
-          // For empty values, keep as empty string
-          if (pair.value.trim().length === 0) {
-            valueForStorage = '';
-          } else {
-            // Don't trim multiline values (preserve formatting for YAML, etc.)
-            const value = pair.value;
-            
-            // Only validate JSON if it clearly looks like JSON (strict check)
-            if ((value.trim().startsWith('{') && value.trim().endsWith('}')) ||
-                (value.trim().startsWith('[') && value.trim().endsWith(']'))) {
-              try {
-                JSON.parse(value.trim()); // Just validate, don't store parsed value yet
-                valueForStorage = value;
-              } catch (jsonError) {
-                validationErrors.push(`Row ${index + 1}: Invalid JSON format for key "${trimmedKey}"`);
-                continue;
-              }
-            } else {
-              // Accept all other string values as-is (including YAML, multiline, etc.)
-              valueForStorage = value;
-            }
-          }
-        }
-        
-        processedPairs.push({ key: trimmedKey, value: valueForStorage });
-      }
-
-      // Show validation errors
-      if (validationErrors.length > 0) {
-        setError(`Validation failed:\n${validationErrors.map((err, i) => `${i + 1}. ${err}`).join('\n')}`);
-        return;
       }
 
       // Build alert data
       const alertData: any = {
         alert_type: alertType.trim(),
-        data: {}
+        data: processedData
       };
       
-      // Only include runbook if provided
-      if (runbook && runbook.trim().length > 0) {
-        alertData.runbook = runbook.trim();
+      // Add runbook only if not "Default Runbook"
+      if (runbook && runbook !== DEFAULT_RUNBOOK) {
+        alertData.runbook = runbook;
       }
 
-      // Add processed key-value pairs to data with type conversion
-      processedPairs.forEach(pair => {
-        let processedValue = pair.value;
-        
-        if (typeof pair.value === 'string' && pair.value.trim().length > 0) {
-          const trimmedValue = pair.value.trim();
-          
-          // Try to parse as JSON if it looks like JSON
-          if ((trimmedValue.startsWith('{') && trimmedValue.endsWith('}')) ||
-              (trimmedValue.startsWith('[') && trimmedValue.endsWith(']'))) {
-            try {
-              processedValue = JSON.parse(trimmedValue);
-            } catch {
-              // Keep as string if JSON parsing fails (shouldn't happen due to validation)
-              processedValue = trimmedValue;
-            }
-          }
-          // Try to parse as number
-          else if (/^-?\d+(\.\d+)?$/.test(trimmedValue)) {
-            processedValue = Number(trimmedValue);
-          }
-          // Try to parse as boolean
-          else if (trimmedValue.toLowerCase() === 'true' || trimmedValue.toLowerCase() === 'false') {
-            processedValue = trimmedValue.toLowerCase() === 'true';
-          }
-          // Keep as string
-          else {
-            processedValue = trimmedValue;
-          }
-        }
-        
-        alertData.data[pair.key] = processedValue;
-      });
-
-      // Input sanitization and size checks
-      const alertDataJson = JSON.stringify(alertData);
-      const encoder = new TextEncoder();
-      const bytes = encoder.encode(alertDataJson).length;
-      const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB
+      // Submit alert
+      const response = await apiClient.submitAlert(alertData);
       
-      if (bytes > MAX_PAYLOAD_BYTES) {
-        setError(`Alert data is too large (${(bytes / 1024 / 1024).toFixed(2)}MB). Maximum size is 5MB.`);
+      setSuccess(`Alert submitted successfully! 
+        Session ID: ${response.session_id}
+        Status: ${response.status}
+        Message: ${response.message || 'Processing started'}`);
+      
+      onAlertSubmitted(response);
+
+      // Clear form on successful submission
+      setKeyValuePairs([
+        { id: generateId(), key: 'cluster', value: '' },
+        { id: generateId(), key: 'namespace', value: '' },
+        { id: generateId(), key: 'message', value: '' }
+      ]);
+
+    } catch (error: any) {
+      console.error('Error submitting alert:', error);
+      
+      let errorMessage = 'Failed to submit alert';
+      if (error.response?.data?.detail) {
+        errorMessage = typeof error.response.data.detail === 'string' 
+          ? error.response.data.detail 
+          : error.response.data.detail.message || errorMessage;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Handle form submission for free-text mode
+   */
+  const handleFreeTextSubmit = async () => {
+    // Reset previous states
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      // Validate alert type
+      if (!alertType || alertType.trim().length === 0) {
+        setError('Alert Type is required');
         return;
       }
 
-      // Log submission attempt
-      console.log('Submitting alert:', { 
-        alert_type: alertData.alert_type, 
-        data_keys: Object.keys(alertData.data),
-        size_bytes: bytes 
-      });
+      // Validate free text
+      if (!freeText || freeText.trim().length === 0) {
+        setError('Free text cannot be empty');
+        return;
+      }
 
-      // Submit alert using dashboard API client
+      // Parse free text
+      const parsed = parseFreeText(freeText);
+
+      // Build alert data
+      const alertData: any = {
+        alert_type: alertType.trim(),
+        data: parsed.data
+      };
+      
+      // Add runbook only if not "Default Runbook"
+      if (runbook && runbook !== DEFAULT_RUNBOOK) {
+        alertData.runbook = runbook;
+      }
+
+      // Submit alert
       const response = await apiClient.submitAlert(alertData);
       
       setSuccess(`Alert submitted successfully! 
         Session ID: ${response.session_id}
         Status: ${response.status}
         Message: ${response.message || 'Processing started'}
-        Data size: ${(bytes / 1024).toFixed(1)}KB`);
+        Parsing: ${parsed.success ? 'Structured data extracted' : 'Sent as message field'}`);
       
       onAlertSubmitted(response);
 
       // Clear form on successful submission
-      setKeyValuePairs([{ id: generateId(), key: '', value: '' }]);
+      setFreeText('');
 
     } catch (error: any) {
       console.error('Error submitting alert:', error);
       
-      // Enhanced error handling with specific messages
       let errorMessage = 'Failed to submit alert';
-      
-      if (error.message === 'Request timeout') {
-        errorMessage = 'Request timed out. The server may be overloaded or down.';
-      } else if (error.response) {
-        // API error with response
-        const status = error.response.status;
-        const data = error.response.data;
-        
-        if (status === 400) {
-          if (data.detail && typeof data.detail === 'object') {
-            if (data.detail.validation_errors) {
-              errorMessage = `Validation failed:\n${data.detail.validation_errors.map((err: any) => 
-                `• ${err.field}: ${err.message}`
-              ).join('\n')}`;
-            } else {
-              errorMessage = `Bad Request: ${data.detail.message || data.detail.error || 'Invalid request format'}`;
-            }
-          } else if (typeof data.detail === 'string') {
-            errorMessage = `Bad Request: ${data.detail}`;
-          } else {
-            errorMessage = 'Bad Request: Invalid data format';
-          }
-        } else if (status === 413) {
-          errorMessage = 'Request payload too large. Please reduce the amount of data.';
-        } else if (status === 422) {
-          if (data.detail && data.detail.validation_errors) {
-            errorMessage = `Validation failed:\n${data.detail.validation_errors.map((err: any) => 
-              `• ${err.field}: ${err.message}`
-            ).join('\n')}`;
-          } else {
-            errorMessage = 'Data validation failed. Please check your input.';
-          }
-        } else if (status === 429) {
-          errorMessage = 'Too many requests. Please wait a moment and try again.';
-        } else if (status === 500) {
-          errorMessage = 'Server error occurred. Please try again later.';
-        } else if (status === 503) {
-          errorMessage = 'Service temporarily unavailable. Please try again later.';
-        } else {
-          errorMessage = `Request failed with status ${status}: ${data.detail || data.message || 'Unknown error'}`;
-        }
-      } else if (error.request) {
-        // Network error
-        errorMessage = 'Network error. Please check your connection and ensure the backend is running.';
-      } else {
-        // Other errors
-        errorMessage = `Unexpected error: ${error.message}`;
+      if (error.response?.data?.detail) {
+        errorMessage = typeof error.response.data.detail === 'string' 
+          ? error.response.data.detail 
+          : error.response.data.detail.message || errorMessage;
       }
       
       setError(errorMessage);
@@ -380,8 +334,8 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
         </Typography>
         
         <Typography variant="body2" color="text.secondary" paragraph>
-          Use this form to submit alerts with flexible data structures. 
-          Only Alert Type is required - Runbook URL is optional (uses built-in default if not provided). Add any additional fields as key-value pairs.
+          Choose between structured key-value input or free-text format. 
+          Select a runbook from the dropdown or use the default.
         </Typography>
 
         {error && (
@@ -400,12 +354,12 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
           </MuiAlert>
         )}
 
-        <Box component="form" onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+        <Box>
           <Stack spacing={3}>
-            {/* Required Fields */}
+            {/* Common Section */}
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
-                Required Fields
+                Alert Configuration
               </Typography>
             </Box>
 
@@ -431,114 +385,160 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
                 )}
               </TextField>
 
-              <TextField
+              <Autocomplete
                 fullWidth
-                label="Runbook URL (Optional)"
+                freeSolo
                 value={runbook}
-                onChange={(e) => setRunbook(e.target.value)}
-                placeholder="https://github.com/org/repo/blob/master/runbooks/alert.md"
-                helperText="URL to the processing runbook (uses built-in default if not provided)"
+                onChange={(_, newValue) => setRunbook(newValue)}
+                options={availableRunbooks}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Runbook"
+                    helperText="Select from list or enter custom URL"
+                  />
+                )}
               />
             </Stack>
 
             <Divider sx={{ my: 2 }} />
 
-            {/* Dynamic Fields */}
-            <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 600 }}>
-                  Additional Alert Data
-                </Typography>
-                <Button
-                  startIcon={<AddIcon />}
-                  onClick={addKeyValuePair}
-                  size="small"
-                  variant="outlined"
-                >
-                  Add Field
-                </Button>
-              </Box>
+            {/* Mode Selection Tabs */}
+            <Paper elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs value={mode} onChange={(_, newValue) => setMode(newValue)}>
+                <Tab label="Key-Value Mode" />
+                <Tab label="Free-Text Mode" />
+              </Tabs>
+            </Paper>
 
-              {/* Field Presets */}
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Quick Add Common Fields:
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {fieldPresets.map((preset) => (
-                    <Chip
-                      key={preset.key}
-                      label={preset.key}
-                      onClick={() => addPresetField(preset)}
-                      size="small"
-                      variant="outlined"
-                      sx={{ cursor: 'pointer' }}
-                      title={preset.description}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            </Box>
-
-            {/* Key-Value Pairs */}
-            <Stack spacing={2}>
-              {keyValuePairs.map((pair) => (
-                <Box key={pair.id} sx={{ 
-                  display: 'flex', 
-                  alignItems: 'flex-start', 
-                  gap: 2,
-                  p: 2,
-                  backgroundColor: 'grey.50',
-                  borderRadius: 1,
-                  border: '1px solid',
-                  borderColor: 'grey.200'
-                }}>
-                  <TextField
-                    label="Field Name"
-                    value={pair.key}
-                    onChange={(e) => updateKeyValuePair(pair.id, 'key', e.target.value)}
-                    placeholder="e.g., severity, cluster, etc."
+            {/* Mode A: Key-Value Form */}
+            {mode === 0 && (
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 600 }}>
+                    Alert Data (Key-Value)
+                  </Typography>
+                  <Button
+                    startIcon={<AddIcon />}
+                    onClick={addKeyValuePair}
                     size="small"
-                    sx={{ flex: 1 }}
-                  />
-                  <TextField
-                    label="Value"
-                    value={pair.value}
-                    onChange={(e) => updateKeyValuePair(pair.id, 'value', e.target.value)}
-                    placeholder="Field value (strings, JSON objects, arrays, YAML, etc.)"
-                    multiline
-                    minRows={1}
-                    maxRows={20}
-                    size="small"
-                    sx={{ flex: 2 }}
-                  />
-                  <IconButton
-                    onClick={() => removeKeyValuePair(pair.id)}
-                    size="small"
-                    color="error"
-                    title="Remove field"
+                    variant="outlined"
                   >
-                    <CloseIcon />
-                  </IconButton>
+                    Add Field
+                  </Button>
                 </Box>
-              ))}
-            </Stack>
 
-            <Divider sx={{ my: 2 }} />
+                <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+                  Add key-value pairs for your alert data. Empty fields will be ignored.
+                </Typography>
 
-            {/* Submit Button */}
-            <Box>
-              <Button
-                type="submit"
-                variant="contained"
-                size="large"
-                startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />}
-                disabled={loading}
-                fullWidth
-              >
-                {loading ? 'Submitting Alert...' : 'Submit Alert'}
-              </Button>
-            </Box>
+                <Stack spacing={2}>
+                  {keyValuePairs.map((pair) => (
+                    <Box key={pair.id} sx={{ 
+                      display: 'flex', 
+                      alignItems: 'flex-start', 
+                      gap: 2,
+                      p: 2,
+                      backgroundColor: 'grey.50',
+                      borderRadius: 1,
+                      border: '1px solid',
+                      borderColor: 'grey.200'
+                    }}>
+                      <TextField
+                        label="Key"
+                        value={pair.key}
+                        onChange={(e) => updateKeyValuePair(pair.id, 'key', e.target.value)}
+                        placeholder="e.g., cluster, namespace"
+                        size="small"
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        label="Value"
+                        value={pair.value}
+                        onChange={(e) => updateKeyValuePair(pair.id, 'value', e.target.value)}
+                        placeholder="Field value"
+                        size="small"
+                        sx={{ flex: 2 }}
+                      />
+                      <IconButton
+                        onClick={() => removeKeyValuePair(pair.id)}
+                        size="small"
+                        color="error"
+                        title="Remove field"
+                      >
+                        <CloseIcon />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Stack>
+
+                <Box sx={{ mt: 3 }}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />}
+                    disabled={loading}
+                    fullWidth
+                    onClick={handleKeyValueSubmit}
+                  >
+                    {loading ? 'Submitting Alert...' : 'Send Alert (Key-Value Mode)'}
+                  </Button>
+                </Box>
+              </Box>
+            )}
+
+            {/* Mode B: Free-Text Form */}
+            {mode === 1 && (
+              <Box>
+                <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
+                  Alert Data (Free-Text)
+                </Typography>
+
+                <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+                  Enter alert data in free-text format. We'll try to parse "Key: Value" or "Key=Value" patterns.
+                  If parsing fails, the entire text will be sent as a message field.
+                </Typography>
+
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={12}
+                  value={freeText}
+                  onChange={(e) => {
+                    setFreeText(e.target.value);
+                    if (error) setError(null);
+                    if (success) setSuccess(null);
+                  }}
+                  placeholder={`Alert: ProgressingApplication
+Severity: warning
+Environment: staging
+Cluster: host
+Namespace: openshift-gitops
+Pod: openshift-gitops-application-controller-0
+Message: The 'tarsy' Argo CD application is stuck in 'Progressing' status`}
+                  variant="outlined"
+                  sx={{ 
+                    fontFamily: 'monospace',
+                    '& .MuiInputBase-input': {
+                      fontFamily: 'monospace'
+                    }
+                  }}
+                />
+
+                <Box sx={{ mt: 3 }}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />}
+                    disabled={loading}
+                    fullWidth
+                    onClick={handleFreeTextSubmit}
+                  >
+                    {loading ? 'Submitting Alert...' : 'Send Alert (Free-Text Mode)'}
+                  </Button>
+                </Box>
+              </Box>
+            )}
           </Stack>
         </Box>
       </CardContent>

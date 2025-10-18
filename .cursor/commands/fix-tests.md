@@ -1,0 +1,148 @@
+# Test Fixing After Implementation Changes
+
+## Context
+When implementation changes, test failures are expected and normal. The tests need to be updated to reflect the new behavior, not the other way around.
+
+## Running Tests
+
+### Prefer Makefile Commands
+**Prefer using `make` commands when available** - they handle environment setup correctly:
+
+- **Unit tests**: `make test-unit`
+- **Integration tests**: `make test-integration`
+- **E2E tests**: `make test-e2e` ⚠️ **ALWAYS use make for E2E** - handles test isolation
+- **All tests**: `make test` (runs unit → integration → e2e sequentially)
+- **With coverage**: `make test-coverage` (unit + integration only, excludes e2e)
+
+### When to Use pytest Directly
+Use `pytest` directly only for:
+- **Specific test file**: `pytest tests/unit/path/to/test_file.py -v`
+- **Specific test function**: `pytest tests/unit/path/to/test_file.py::test_function_name -v`
+- **Quick iteration on single tests** during development
+
+⚠️ **Never** use `pytest` directly for E2E tests - they require sequential execution for isolation.
+
+### Why Makefile is Preferred
+The Makefile handles:
+- ✅ Virtual environment activation (uses `.venv/bin/python`)
+- ✅ `TESTING=true` environment variable
+- ✅ Test isolation (especially for E2E tests)
+- ✅ Consistent test flags and configuration
+- ✅ Dependency checking
+
+### Common Issues and Solutions
+
+**Problem**: `pytest` command not found or wrong pytest version
+- **Solution**: Use `make test-unit` instead, or activate venv: `source backend/.venv/bin/activate`
+
+## Critical Rules
+
+### 1. Don't Change Production Code to Fix Tests
+**DO NOT CHANGE PRODUCTION CODE JUST TO MAKE TESTS PASS!**
+
+The implementation was intentionally changed. Tests must be updated to validate the new behavior, not force reversion to old behavior.
+
+**Exception**: If you're 100% certain you've found a genuine production bug (not a design decision), you may fix it. When uncertain, ask first.
+
+### 2. Be Pragmatic About Testing
+**Avoid tests that don't add real value:**
+- If a test requires overly complex mocking (multiple nested mocks, complex mock chains), question if it's testing the right thing at the right level
+- If a test doesn't actually validate meaningful behavior (e.g., just testing that a mock was called), skip it
+- Prefer testing real behavior over implementation details
+- If you find yourself fighting with mocks, consider whether an integration test would be more appropriate
+- **It's better to have no test than a brittle, confusing test that breaks with every minor change**
+
+### 3. Keep Code Clean - No Historical Comments
+**Don't add historical context in code comments:**
+- ❌ Bad: `# New feature added in EP-0025`
+- ❌ Bad: `# Updated for new async implementation`
+- ❌ Bad: `# Fixed after refactoring in Q4 2024`
+- ✅ Good: Clear test names and docstrings that explain WHAT is being tested
+
+Historical context belongs in git commits and enhancement proposals, not in code. Write tests that are self-explanatory about current behavior.
+
+### 4. All Tests Must Pass - No Excuses
+**Tests are fixed ONLY when they ALL pass 100%.**
+
+This means **ALL test types**: unit, integration, AND e2e tests must pass.
+
+Don't say things like:
+- ❌ "The important tests are passing now, the rest are minor"
+- ❌ "Most tests pass, just a few edge cases failing"
+- ❌ "Unit tests work, I'll fix integration tests later"
+- ❌ "The core functionality tests work, others can be fixed later"
+
+**All failing tests must be fixed.** If a test is truly not needed anymore, remove it. If it's too complex or doesn't add value (see rule #2), delete it. But don't leave failing tests.
+
+Run all test types to verify:
+```bash
+make test-unit
+make test-integration
+make test-e2e
+```
+
+## Systematic Approach to Fixing Tests
+
+### 1. Understand What Changed
+- Read the implementation changes carefully
+- Identify the new behavior, API signatures, return types
+- Note any breaking changes: renamed functions, changed parameters, new requirements
+- Review the enhancement proposal (EP) if available in `docs/enhancements/`
+
+### 2. Analyze Test Failures
+For each failing test, determine:
+- **What behavior is being tested?** (Read the test name and docstring)
+- **What specifically fails?** (Assertion, exception, timeout, mock call mismatch)
+- **Why does it fail?** (Old behavior expected, wrong mocks, outdated fixtures)
+- **Is the test still relevant?** (Does it test behavior that still exists?)
+
+### 3. Common Fix Patterns
+
+- **Assertions**: Update expected values/attributes to match new behavior
+- **Mocks**: Update return values, signatures, and call assertions to match new implementation
+- **Async/await**: Add `async def` and `await` if implementation became async
+- **Fixtures**: Update shared test data in `conftest.py` if models/schemas changed
+- **Type changes**: Update test data when return types change (dict → Pydantic model, etc.)
+
+### 4. Test Quality Standards
+
+- **Clear, descriptive test names** that explain what's being tested
+- **Single responsibility**: Each test verifies one specific behavior
+- **Use proper fixtures**: `isolated_test_settings`, `test_database_session`, `sample_*_alert` fixtures
+- **Async consistency**: Use `async def test_*` and `await` for async code
+- **Test markers**: `@pytest.mark.unit`, `.integration`, `.e2e`, `.slow`, `.external`
+- **Type hints**: Include for test functions (following project standards)
+
+### 5. Key Principles
+
+- **Preserve test intent**: Keep the original purpose (error handling, edge cases, integration testing)
+- **Maintain coverage**: Add tests for new code paths, not just fix broken ones
+- **Test behavior, not implementation**: Focus on what the code does, not how it does it
+
+### 6. Mock Strategy
+
+**Mock sparingly and at the right level:**
+- Mock external services (LLM providers, MCP servers, HTTP APIs) - use `respx` for HTTP
+- Mock databases in unit tests only (not in integration tests)
+- Don't mock the code under test or integration points being tested
+- If mocking becomes complex, consider testing at a different level
+- For async functions, use `AsyncMock` from `unittest.mock`
+
+### 7. When to Ask vs. Proceed
+
+**Proceed** for mechanical fixes (renames, parameter changes, clear behavior changes).
+
+**Ask** when: test intent is unclear, potential production bug, major restructuring needed, or breaking public API changes.
+
+## Common Pitfalls to Avoid
+
+- **Don't change prod code to fix tests** (unless genuine bug)
+- **Don't skip understanding WHY** a test fails before fixing
+- **Don't over-mock** - keep mocks simple or test at a different level
+- **Don't forget `await`** when implementation changes to async
+- **Don't leave commented code** or historical annotations in tests
+
+---
+
+**Now analyze the test failures and fix them systematically following the above guidelines.**
+
