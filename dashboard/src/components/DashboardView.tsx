@@ -399,6 +399,7 @@ function DashboardView() {
         <Toolbar>
           {/* Navigation Menu */}
           <IconButton
+            id="navigation-menu-button"
             size="large"
             edge="start"
             color="inherit"

@@ -5,6 +5,7 @@ Fetches and manages runbook URLs from GitHub repositories.
 Supports both public and private repositories (with authentication).
 """
 
+import asyncio
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -105,12 +106,12 @@ class RunbooksService:
         markdown_urls: list[str] = []
         
         try:
-            # Get repository
+            # Get repository (run in thread to avoid blocking event loop)
             repo_full_name = f"{org}/{repo}"
-            github_repo = self.github.get_repo(repo_full_name)
+            github_repo = await asyncio.to_thread(self.github.get_repo, repo_full_name)
             
-            # Get contents at path
-            contents = github_repo.get_contents(path, ref=ref)
+            # Get contents at path (run in thread to avoid blocking event loop)
+            contents = await asyncio.to_thread(github_repo.get_contents, path, ref=ref)
             
             # Handle both single file and list of contents
             if not isinstance(contents, list):

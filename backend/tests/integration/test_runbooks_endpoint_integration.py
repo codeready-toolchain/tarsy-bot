@@ -160,8 +160,7 @@ class TestRunbooksEndpointWithRealService:
     """Test runbooks endpoint with real service but mocked GitHub API."""
 
     @pytest.mark.integration
-    @pytest.mark.asyncio
-    async def test_endpoint_with_real_service_and_mocked_github(
+    def test_endpoint_with_real_service_and_mocked_github(
         self, client: TestClient
     ) -> None:
         """Test endpoint with real RunbooksService but mocked PyGithub API."""
