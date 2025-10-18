@@ -291,8 +291,8 @@ function ConversationTimeline({
         ) : (
           // Chat flow has items - render them
           <>
-            {chatFlow.map((item, index) => (
-              <ChatFlowItem key={`${item.type}-${index}-${item.timestamp_us}`} item={item} />
+            {chatFlow.map((item) => (
+              <ChatFlowItem key={`${item.type}-${item.timestamp_us}`} item={item} />
             ))}
 
             {/* Processing indicator at bottom when session is still in progress */}

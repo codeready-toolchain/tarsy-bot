@@ -164,3 +164,9 @@ cookie_refresh = "0"
 # cookie_secure = true   # OpenShift deployment (HTTPS)
 cookie_secure = false    # Local containers (HTTP)
 cookie_httponly = true
+cookie_samesite = "lax"  # Required for modern browsers; use "lax" for OAuth flows
+
+## Session storage configuration
+## Store full session in cookie to avoid GitHub API validation on every request
+## This may prevent session loss when pods restart
+session_cookie_minimal = false
