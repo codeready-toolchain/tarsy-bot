@@ -5,16 +5,12 @@ import {
   Card,
   CardContent,
   Chip,
-  LinearProgress,
-  Breadcrumbs,
-  Link,
-  IconButton
+  Alert
 } from '@mui/material';
-import { NavigateBefore, NavigateNext } from '@mui/icons-material';
-import { parseSessionConversation, getConversationStats } from '../utils/conversationParser';
-import type { ParsedSession } from '../utils/conversationParser';
+import { parseSessionChatFlow, getChatFlowStats } from '../utils/chatFlowParser';
+import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { DetailedSession } from '../types';
-import StageConversationCard from './StageConversationCard';
+import ChatFlowItem from './ChatFlowItem';
 import CopyButton from './CopyButton';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
@@ -25,350 +21,281 @@ interface ConversationTimelineProps {
 
 /**
  * Conversation Timeline Component
- * Renders session stages in conversation format with clean AI reasoning flow
+ * Renders session as a continuous chat-like flow with thoughts, tool calls, and final answers
  * Plugs into the shared SessionDetailPageBase
  */
 function ConversationTimeline({ 
   session, 
   autoScroll: _autoScroll = true // Auto-scroll handled by centralized system
 }: ConversationTimelineProps) {
-  const [parsedSession, setParsedSession] = useState<ParsedSession | null>(null);
+  const [chatFlow, setChatFlow] = useState<ChatFlowItemData[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [currentStageIndex, setCurrentStageIndex] = useState<number>(0);
-  const [recentlyUpdatedStages, setRecentlyUpdatedStages] = useState<Set<string>>(new Set());
   
-  // Auto-scroll is now handled by the centralized system via MutationObserver
-  // No need for local auto-scroll logic
-
-  // Memoize conversation stats to prevent recalculation on every render - MOVED BEFORE EARLY RETURNS
-  const conversationStats = useMemo(() => {
-    return parsedSession ? getConversationStats(parsedSession) : {
-      totalSteps: 0,
-      thoughtsCount: 0,
-      actionsCount: 0,
-      successfulActions: 0,
-      analysisCount: 0,
-      errorsCount: 0
-    };
-  }, [parsedSession]);
+  // Memoize chat flow stats to prevent recalculation on every render
+  const chatStats = useMemo(() => {
+    return getChatFlowStats(chatFlow);
+  }, [chatFlow]);
   
-  // Memoize formatSessionForCopy to prevent recalculation on every render - MOVED BEFORE EARLY RETURNS
+  // Memoize formatSessionForCopy to prevent recalculation on every render
   const formatSessionForCopy = useMemo((): string => {
-    if (!parsedSession) return '';
+    if (chatFlow.length === 0) return '';
     
-    let content = `=== CONVERSATION SESSION ===\n`;
-    content += `Session ID: ${parsedSession.session_id}\n`;
-    content += `Status: ${parsedSession.status}\n`;
-    content += `Stages: ${parsedSession.stages.length}\n`;
-    content += `Total Steps: ${conversationStats.totalSteps}\n`;
+    let content = `=== CHAT FLOW SESSION ===\n`;
+    content += `Session ID: ${session.session_id}\n`;
+    content += `Status: ${session.status}\n`;
+    content += `Chain: ${session.chain_id || 'Unknown'}\n`;
+    content += `Total Items: ${chatStats.totalItems}\n`;
     content += `${'='.repeat(60)}\n\n`;
     
-    parsedSession.stages.forEach((stage, stageIndex) => {
-      content += `=== Stage ${stageIndex + 1}: ${stage.stage_name} ===\n`;
-      content += `Agent: ${stage.agent}\n`;
-      content += `Status: ${stage.status}\n`;
-      content += `${'='.repeat(60)}\n\n`;
-      
-      stage.steps.forEach((step, stepIndex) => {
-        const emoji = step.type === 'thought' ? '💭' : 
-                     step.type === 'action' ? '🔧' : 
-                     step.type === 'analysis' ? '🎯' : step.type === 'summarization' ? '📋' : '❌';
-        
-        content += `${emoji} ${step.content}\n`;
-        
-        if (step.type === 'action' && step.actionName) {
-          content += `   Action: ${step.actionName}${step.actionInput ? ` ${step.actionInput}` : ''}\n`;
-          
-          if (step.actionResult) {
-            const result = typeof step.actionResult === 'string' ? 
-                          step.actionResult : 
-                          JSON.stringify(step.actionResult, null, 2);
-            content += `   Result: ${result}\n`;
-          }
+    chatFlow.forEach((item) => {
+      if (item.type === 'stage_start') {
+        content += `\n=== Stage: ${item.stageName} (${item.stageAgent}) ===\n\n`;
+      } else if (item.type === 'thought') {
+        content += `💭 Thought:\n${item.content}\n\n`;
+      } else if (item.type === 'tool_call') {
+        content += `🔧 Tool Call: ${item.toolName}\n`;
+        content += `   Server: ${item.serverName}\n`;
+        content += `   Arguments: ${JSON.stringify(item.toolArguments, null, 2)}\n`;
+        if (item.success) {
+          content += `   Result: ${typeof item.toolResult === 'string' ? item.toolResult : JSON.stringify(item.toolResult, null, 2)}\n`;
+        } else {
+          content += `   Error: ${item.errorMessage}\n`;
         }
-        
-        if (stepIndex < stage.steps.length - 1) {
-          content += '\n';
-        }
-      });
-      
-      content += '\n\n';
+        content += '\n';
+      } else if (item.type === 'final_answer') {
+        content += `🎯 Final Answer:\n${item.content}\n\n`;
+      }
     });
     
-    if (parsedSession.finalAnalysis) {
-      content += `=== FINAL ANALYSIS ===\n`;
-      content += `${parsedSession.finalAnalysis}\n`;
-    }
-    
     return content;
-  }, [parsedSession, conversationStats.totalSteps]);
+  }, [chatFlow, chatStats, session.session_id, session.status, session.chain_id]);
 
-
-
-  // Auto-scroll is now handled by the centralized system - no setup needed
-
-  // Memoize stage status calculations - MOVED BEFORE EARLY RETURNS
-  const stageStatusCounts = useMemo(() => {
-    if (!parsedSession) return { completed: 0, failed: 0 };
-    return {
-      completed: parsedSession.stages.filter(s => s.status === 'completed').length,
-      failed: parsedSession.stages.filter(s => s.status === 'failed').length
-    };
-  }, [parsedSession]);
-
-  // Parse session data into conversation format with smart updates
+  // Parse session data into chat flow
   useEffect(() => {
     if (session) {
       try {
-        const parsed = parseSessionConversation(session);
+        const flow = parseSessionChatFlow(session);
         
-        // Check if this is a meaningful update to avoid unnecessary re-renders
-        setParsedSession(prevParsed => {
+        // Check if this is a meaningful update
+        setChatFlow(prevFlow => {
           // If no previous data, always update
-          if (!prevParsed) {
-            console.log('🔄 Initial conversation parsing');
-            return parsed;
+          if (prevFlow.length === 0) {
+            console.log('🔄 Initial chat flow parsing');
+            return flow;
           }
           
           // Check if meaningful data has changed
-          const stagesChanged = prevParsed.stages.length !== parsed.stages.length;
-          const statusChanged = prevParsed.status !== parsed.status;
-          const analysisChanged = prevParsed.finalAnalysis !== parsed.finalAnalysis;
-          
-          // Check if any stage content has changed (more thorough check)
-          const stageContentChanged = parsed.stages.some((newStage, index) => {
-            const prevStage = prevParsed.stages[index];
-            if (!prevStage) return true;
-            
-            return prevStage.steps.length !== newStage.steps.length ||
-                   prevStage.status !== newStage.status ||
-                   prevStage.errorMessage !== newStage.errorMessage;
-          });
-          
-          if (stagesChanged || statusChanged || analysisChanged || stageContentChanged) {
-            console.log('🔄 Meaningful conversation data changed, updating:', {
-              stagesChanged,
-              statusChanged,
-              analysisChanged,
-              stageContentChanged
-            });
-            
-            // Track which stages have been updated
-            const updatedStageIds = new Set<string>();
-            parsed.stages.forEach((newStage, index) => {
-              const prevStage = prevParsed.stages[index];
-              if (!prevStage || 
-                  prevStage.steps.length !== newStage.steps.length ||
-                  prevStage.status !== newStage.status) {
-                updatedStageIds.add(newStage.execution_id);
-              }
-            });
-            
-            if (updatedStageIds.size > 0) {
-              setRecentlyUpdatedStages(updatedStageIds);
-              
-              // Clear the updated indicators after 4 seconds
-              setTimeout(() => {
-                setRecentlyUpdatedStages(new Set());
-              }, 4000);
-              
-                              // Auto-scroll is now handled by the centralized MutationObserver system
-              // The DOM changes will be detected automatically and trigger scrolling
-            }
-            
-            return parsed;
-          } else {
-            console.log('🔄 No meaningful conversation changes, keeping existing data');
-            return prevParsed;
+          if (prevFlow.length !== flow.length) {
+            console.log('🔄 Chat flow length changed, updating');
+            return flow;
           }
+          
+          // Check if last item changed
+          const prevLast = prevFlow[prevFlow.length - 1];
+          const newLast = flow[flow.length - 1];
+          if (JSON.stringify(prevLast) !== JSON.stringify(newLast)) {
+            console.log('🔄 Last chat item changed, updating');
+            return flow;
+          }
+          
+          console.log('🔄 No meaningful chat flow changes, keeping existing data');
+          return prevFlow;
         });
         
         setError(null);
       } catch (err) {
-        console.error('Failed to parse session conversation:', err);
-        setError('Failed to parse conversation data');
-        setParsedSession(null);
+        console.error('Failed to parse chat flow:', err);
+        setError('Failed to parse chat flow data');
+        setChatFlow([]);
       }
     }
   }, [session]);
-
-  const navigateToStage = (direction: 'next' | 'prev') => {
-    if (!parsedSession) return;
-    
-    const newIndex = direction === 'next' 
-      ? Math.min(currentStageIndex + 1, parsedSession.stages.length - 1)
-      : Math.max(currentStageIndex - 1, 0);
-    
-    setCurrentStageIndex(newIndex);
-  };
 
   if (error) {
     return (
       <Card>
         <CardContent sx={{ p: 3 }}>
-          <Typography color="error" variant="h6">
-            Conversation Parsing Error
-          </Typography>
-          <Typography color="error" variant="body2">
-            {error}
-          </Typography>
+          <Alert severity="error">
+            <Typography variant="h6">
+              Chat Flow Parsing Error
+            </Typography>
+            <Typography variant="body2">
+              {error}
+            </Typography>
+          </Alert>
         </CardContent>
       </Card>
     );
   }
 
-  if (!parsedSession) {
+  if (chatFlow.length === 0) {
     return (
       <Card>
         <CardContent sx={{ p: 3 }}>
           <Typography variant="body2" color="text.secondary">
-            Loading conversation data...
+            Loading reasoning flow...
           </Typography>
         </CardContent>
       </Card>
     );
   }
 
+  const stageCount = session.stages?.length || 0;
+  const completedStages = session.stages?.filter(s => s.status === 'completed').length || 0;
+  const failedStages = session.stages?.filter(s => s.status === 'failed').length || 0;
+
   return (
     <Card>
-      {/* Chain Progress Header - Matching Debug View Style */}
+      {/* Chain Progress Header */}
       <CardContent sx={{ bgcolor: 'grey.50', borderBottom: 1, borderColor: 'divider' }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Typography variant="h6" color="primary.main">
             Chain: {session.chain_id || 'Unknown'}
           </Typography>
-          <Box display="flex" alignItems="center" gap={1}>
-            <CopyButton
-              text={formatSessionForCopy}
-              variant="button"
-              buttonVariant="outlined"
-              size="small"
-              label="Copy Entire Flow"
-              tooltip="Copy all stages and conversations to clipboard"
-            />
-            <IconButton 
-              size="small" 
-              onClick={() => navigateToStage('prev')}
-              disabled={currentStageIndex === 0}
-            >
-              <NavigateBefore />
-            </IconButton>
-            <Chip 
-              label={`Stage ${currentStageIndex + 1} of ${parsedSession.stages.length}`}
-              color="primary"
-              variant="outlined"
-            />
-            <IconButton 
-              size="small" 
-              onClick={() => navigateToStage('next')}
-              disabled={currentStageIndex === parsedSession.stages.length - 1}
-            >
-              <NavigateNext />
-            </IconButton>
-          </Box>
-        </Box>
-
-        {/* Stage Navigation Breadcrumbs */}
-        <Breadcrumbs separator="•" sx={{ mb: 2 }}>
-          {parsedSession.stages.map((stage, index) => (
-            <Link
-              key={stage.execution_id}
-              component="button"
-              variant="body2"
-              onClick={() => setCurrentStageIndex(index)}
-              sx={{
-                color: index === currentStageIndex ? 'primary.main' : 'text.secondary',
-                fontWeight: index === currentStageIndex ? 600 : 400,
-                textDecoration: 'none',
-                cursor: 'pointer',
-                '&:hover': { textDecoration: 'underline' }
-              }}
-            >
-              {stage.stage_name}
-            </Link>
-          ))}
-        </Breadcrumbs>
-
-        {/* Overall Progress */}
-        <Box display="flex" gap={2} alignItems="center" mb={2}>
-          <LinearProgress 
-            variant="determinate" 
-            value={parsedSession.stages.length > 0 ? (stageStatusCounts.completed / parsedSession.stages.length) * 100 : 0}
-            sx={{ height: 6, borderRadius: 3, flex: 1 }}
+          <CopyButton
+            text={formatSessionForCopy}
+            variant="button"
+            buttonVariant="outlined"
+            size="small"
+            label="Copy Chat Flow"
+            tooltip="Copy entire reasoning flow to clipboard"
           />
-          <Typography variant="body2" color="text.secondary">
-            {stageStatusCounts.completed} / {parsedSession.stages.length} completed
-          </Typography>
         </Box>
 
-        {/* Chain Status Chips - Matching Debug View */}
+        {/* Chain Status Chips */}
         <Box display="flex" gap={1} flexWrap="wrap">
           <Chip 
-            label={`${parsedSession.stages.length} stages`} 
+            label={`${stageCount} stages`} 
             color="primary" 
             variant="outlined" 
             size="small"
           />
           <Chip 
-            label={`${stageStatusCounts.completed} completed`} 
+            label={`${completedStages} completed`} 
             color="success" 
             variant="outlined" 
             size="small"
           />
-          {stageStatusCounts.failed > 0 && (
+          {failedStages > 0 && (
             <Chip 
-              label={`${stageStatusCounts.failed} failed`} 
+              label={`${failedStages} failed`} 
               color="error" 
               variant="outlined" 
               size="small"
             />
           )}
           <Chip 
-            label={`${conversationStats.thoughtsCount} thoughts`}
+            label={`${chatStats.thoughtsCount} thoughts`}
             size="small"
             variant="outlined"
           />
           <Chip 
-            label={`${conversationStats.successfulActions}/${conversationStats.actionsCount} actions`}
+            label={`${chatStats.successfulToolCalls}/${chatStats.toolCallsCount} tool calls`}
             size="small"
             variant="outlined"
-            color={conversationStats.successfulActions === conversationStats.actionsCount ? 'success' : 'warning'}
+            color={chatStats.successfulToolCalls === chatStats.toolCallsCount ? 'success' : 'warning'}
           />
           <Chip 
-            label={`${conversationStats.analysisCount} analyses`}
+            label={`${chatStats.finalAnswersCount} analyses`}
             size="small"
             variant="outlined"
             color="success"
           />
-          {conversationStats.errorsCount > 0 && (
-            <Chip 
-              label={`${conversationStats.errorsCount} errors`}
-              size="small"
-              variant="outlined"
-              color="error"
-            />
-          )}
         </Box>
       </CardContent>
 
-      {/* Stage Conversation Cards */}
-      <Box sx={{ p: 3 }}>
-        {parsedSession.stages.map((stage, stageIndex) => (
-          <StageConversationCard
-            key={`${stage.execution_id}-${stage.status}-${stage.steps.length}`}
-            stage={stage}
-            stageIndex={stageIndex}
-            isRecentlyUpdated={recentlyUpdatedStages.has(stage.execution_id)}
-          />
+      {/* Blue Header Bar - Visual Separator */}
+      <Box
+        sx={{
+          bgcolor: '#e3f2fd', // Light blue background
+          py: 1.5,
+          px: 3,
+          borderTop: '2px solid #1976d2', // Blue accent line
+          borderBottom: '1px solid #bbdefb'
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontWeight: 600,
+              color: '#1565c0',
+              fontSize: '0.9rem',
+              letterSpacing: 0.3
+            }}
+          >
+            💬 AI Reasoning Flow
+          </Typography>
+        </Box>
+      </Box>
+
+      {/* Continuous Chat Flow */}
+      <Box 
+        sx={{ 
+          p: 3,
+          bgcolor: 'white', // Keep white background
+          minHeight: 200
+        }}
+      >
+        {chatFlow.map((item, index) => (
+          <ChatFlowItem key={`${item.type}-${index}-${item.timestamp_us}`} item={item} />
         ))}
 
+        {/* Processing indicator - shown when session is in progress */}
+        {session.status === 'in_progress' && (
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 1.5,
+              mt: 2,
+              opacity: 0.7
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                gap: 0.5,
+                '& > div': {
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  bgcolor: '#1976d2',
+                  animation: 'pulse 1.4s ease-in-out infinite',
+                },
+                '& > div:nth-of-type(2)': {
+                  animationDelay: '0.2s',
+                },
+                '& > div:nth-of-type(3)': {
+                  animationDelay: '0.4s',
+                },
+                '@keyframes pulse': {
+                  '0%, 80%, 100%': {
+                    opacity: 0.3,
+                    transform: 'scale(0.8)',
+                  },
+                  '40%': {
+                    opacity: 1,
+                    transform: 'scale(1.2)',
+                  },
+                },
+              }}
+            >
+              <Box />
+              <Box />
+              <Box />
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem', fontStyle: 'italic' }}>
+              Processing...
+            </Typography>
+          </Box>
+        )}
 
-
-        {/* Empty state for no stages */}
-        {parsedSession.stages.length === 0 && (
+        {/* Empty state */}
+        {chatFlow.length === 0 && session.status !== 'in_progress' && (
           <Box sx={{ textAlign: 'center', py: 4 }}>
             <Typography variant="body2" color="text.secondary">
-              No conversation steps available for this session
+              No reasoning steps available for this session
             </Typography>
           </Box>
         )}
