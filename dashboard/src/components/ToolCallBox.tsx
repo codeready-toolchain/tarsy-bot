@@ -3,7 +3,8 @@ import {
   Box,
   Typography,
   Collapse,
-  IconButton
+  IconButton,
+  alpha
 } from '@mui/material';
 import {
   ExpandMore,
@@ -63,29 +64,27 @@ function ToolCallBox({
   };
 
   const StatusIcon = success ? CheckCircle : ErrorIcon;
-  
-  // Use blue colors with more presence - professional but visible
-  const statusColor = success ? '#1976d2' : '#d32f2f'; // Blue for success, muted red for errors
-  const borderColor = success ? '#90caf9' : '#ffb3b3'; // More visible borders - light blue/pink
-  const bgColor = success ? '#e3f2fd' : '#ffebee'; // Light blue/pink backgrounds
-  const hoverBgColor = success ? '#bbdefb' : '#ffcdd2'; // Slightly darker on hover
 
   return (
     <Box
-      sx={{
+      sx={(theme) => ({
         ml: 4,
         my: 1,
         mr: 1, // Small right margin to prevent touching the edge
         border: `2px solid`, // Thicker border for more presence
-        borderColor: borderColor,
+        borderColor: success
+          ? alpha(theme.palette.primary.main, 0.5)
+          : alpha(theme.palette.error.main, 0.5),
         borderRadius: 1.5,
-        bgcolor: bgColor,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)' // Slightly stronger shadow
-      }}
+        bgcolor: success
+          ? alpha(theme.palette.primary.main, 0.08)
+          : alpha(theme.palette.error.main, 0.08),
+        boxShadow: `0 1px 3px ${alpha(theme.palette.common.black, 0.08)}` // Slightly stronger shadow
+      })}
     >
       {/* Compact header */}
       <Box
-        sx={{
+        sx={(theme) => ({
           display: 'flex',
           alignItems: 'center',
           gap: 1,
@@ -95,20 +94,27 @@ function ToolCallBox({
           borderRadius: 1.5,
           transition: 'background-color 0.2s ease',
           '&:hover': {
-            bgcolor: hoverBgColor // Slightly darker grey on hover
+            bgcolor: success
+              ? alpha(theme.palette.primary.main, 0.2)
+              : alpha(theme.palette.error.main, 0.2)
           }
-        }}
+        })}
         onClick={() => setExpanded(!expanded)}
       >
-        <StatusIcon sx={{ fontSize: 18, color: statusColor }} />
+        <StatusIcon
+          sx={(theme) => ({
+            fontSize: 18,
+            color: success ? theme.palette.primary.main : theme.palette.error.main
+          })}
+        />
         <Typography
           variant="body2"
-          sx={{
+          sx={(theme) => ({
             fontFamily: 'monospace',
             fontWeight: 600,
             fontSize: '0.9rem',
-            color: statusColor
-          }}
+            color: success ? theme.palette.primary.main : theme.palette.error.main
+          })}
         >
           {toolName}
         </Typography>
@@ -140,15 +146,22 @@ function ToolCallBox({
           {/* Error message */}
           {!success && errorMessage && (
             <Box
-              sx={{
+              sx={(theme) => ({
                 mb: 1,
                 p: 1,
-                bgcolor: '#fff3e0', // Light amber background instead of pink
+                bgcolor: alpha(theme.palette.error.main, 0.1),
                 borderRadius: 1,
-                border: `1px solid #ffccbc` // Soft orange border
-              }}
+                border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`
+              })}
             >
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#e64a19', fontSize: '0.8rem' }}>
+              <Typography
+                variant="caption"
+                sx={(theme) => ({
+                  fontWeight: 600,
+                  color: theme.palette.error.dark,
+                  fontSize: '0.8rem'
+                })}
+              >
                 Error: {errorMessage}
               </Typography>
             </Box>
