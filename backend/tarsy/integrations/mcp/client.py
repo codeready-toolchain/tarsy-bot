@@ -31,6 +31,9 @@ logger = get_module_logger(__name__)
 # Setup separate logger for MCP communications
 mcp_comm_logger = get_module_logger("mcp.communications")
 
+# MCP operation timeout constant (in seconds)
+MCP_OPERATION_TIMEOUT_SECONDS = 60  # Timeout for MCP list_tools and call_tool operations
+
 
 class MCPClient:
     """MCP client using the official MCP SDK."""
@@ -164,7 +167,7 @@ class MCPClient:
                 # List tools from specific server
                 if server_name in self.sessions:
                     max_retries = 2
-                    timeout_seconds = 60  # 60 second timeout for MCP list_tools
+                    timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
                     for attempt in range(max_retries):
                         try:
                             session = self.sessions[server_name]
@@ -185,7 +188,7 @@ class MCPClient:
                             logger.error(f"{error_msg} for {server_name}")
                             
                             if attempt < max_retries - 1:
-                                logger.warning(f"Retrying list_tools after timeout...")
+                                logger.warning("Retrying list_tools after timeout...")
                                 try:
                                     await self._recover_session(server_name)
                                     logger.info(f"Successfully recovered session for server: {server_name}")
@@ -223,7 +226,7 @@ class MCPClient:
                 # List tools from all servers
                 for name in list(self.sessions.keys()):  # Use list() to avoid dict changed during iteration
                     max_retries = 2
-                    timeout_seconds = 60  # 60 second timeout for MCP list_tools
+                    timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
                     for attempt in range(max_retries):
                         try:
                             session = self.sessions.get(name)
@@ -248,7 +251,7 @@ class MCPClient:
                             logger.error(f"{error_msg} for {name}")
                             
                             if attempt < max_retries - 1:
-                                logger.warning(f"Retrying list_tools after timeout...")
+                                logger.warning("Retrying list_tools after timeout...")
                                 try:
                                     await self._recover_session(name)
                                     logger.info(f"Successfully recovered session for server: {name}")
@@ -406,7 +409,7 @@ class MCPClient:
             
             # Try the tool call with automatic session recovery on failure
             max_retries = 2
-            timeout_seconds = 60  # 60 second timeout for individual MCP tool calls
+            timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
             
             for attempt in range(max_retries):
                 session = self.sessions.get(server_name)
@@ -470,7 +473,7 @@ class MCPClient:
                     logger.error(f"{error_msg} for {server_name}.{tool_name}")
                     
                     if attempt < max_retries - 1:
-                        logger.warning(f"Retrying after timeout...")
+                        logger.warning("Retrying after timeout...")
                         try:
                             # Attempt to recover the session after timeout
                             await self._recover_session(server_name)

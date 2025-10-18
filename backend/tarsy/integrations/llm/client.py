@@ -130,7 +130,8 @@ class LLMClient:
         self.config = config
         self.provider_config = config  # Store config for access to provider-specific settings
         self.model = config.model  # Direct field access on BaseModel
-        self.api_key = config.api_key or ""  # Handle Optional field
+        # Strip whitespace from API key to avoid gRPC metadata errors
+        self.api_key = (config.api_key or "").strip()
         self.temperature = config.temperature  # Field with default in BaseModel
         self.llm_client: Optional[BaseChatModel] = None
         self._initialize_client()
@@ -412,10 +413,10 @@ class LLMClient:
                 return response, usage_metadata
                 
             except asyncio.TimeoutError:
-                # Handle timeout specifically - don't retry as it's likely a systemic issue
+                # Handle timeout - will retry up to max_retries with 5s delay between attempts
                 logger.error(f"LLM API call timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries + 1})")
                 if attempt < max_retries:
-                    logger.warning(f"Retrying after timeout in 5s...")
+                    logger.warning("Retrying after timeout in 5s...")
                     await asyncio.sleep(5)
                     continue
                 else:

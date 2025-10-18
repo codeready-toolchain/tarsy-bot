@@ -218,7 +218,7 @@ BUILTIN_LLM_PROVIDERS: Dict[str, LLMProviderConfig] = {
     ),
     "google-default": LLMProviderConfig(
         type="google", 
-        model="gemini-2.5-flash",
+        model="gemini-2.5-pro",
         api_key_env="GOOGLE_API_KEY",
         temperature=DEFAULT_LLM_TEMPERATURE,
         max_tool_result_tokens=950000  # Conservative for 1M context

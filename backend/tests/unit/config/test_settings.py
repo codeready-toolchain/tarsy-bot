@@ -539,6 +539,102 @@ class TestSettingsDatabaseURL:
 
 
 @pytest.mark.unit
+class TestSettingsAPIKeyStripping:
+    """Test API key whitespace stripping functionality."""
+    
+    @pytest.mark.parametrize(
+        "api_key_field,input_value,expected_value",
+        [
+            # Google API key tests
+            ("google_api_key", "   test-google-key", "test-google-key"),
+            ("google_api_key", "test-google-key   ", "test-google-key"),
+            ("google_api_key", "   test-google-key   ", "test-google-key"),
+            ("google_api_key", "\ttest-google-key\t", "test-google-key"),
+            ("google_api_key", "\ntest-google-key\n", "test-google-key"),
+            ("google_api_key", "  \t\n test-google-key \n\t  ", "test-google-key"),
+            ("google_api_key", "test-google-key", "test-google-key"),
+            # OpenAI API key tests
+            ("openai_api_key", "   test-openai-key", "test-openai-key"),
+            ("openai_api_key", "test-openai-key   ", "test-openai-key"),
+            ("openai_api_key", "   test-openai-key   ", "test-openai-key"),
+            ("openai_api_key", "\ttest-openai-key\t", "test-openai-key"),
+            # xAI API key tests
+            ("xai_api_key", "   test-xai-key", "test-xai-key"),
+            ("xai_api_key", "test-xai-key   ", "test-xai-key"),
+            ("xai_api_key", "   test-xai-key   ", "test-xai-key"),
+            # Anthropic API key tests
+            ("anthropic_api_key", "   test-anthropic-key", "test-anthropic-key"),
+            ("anthropic_api_key", "test-anthropic-key   ", "test-anthropic-key"),
+            ("anthropic_api_key", "   test-anthropic-key   ", "test-anthropic-key"),
+        ],
+    )
+    def test_api_key_whitespace_stripping(
+        self, api_key_field: str, input_value: str, expected_value: str
+    ) -> None:
+        """Test that API keys have whitespace stripped during Settings initialization."""
+        settings = Settings(**{api_key_field: input_value})
+        
+        actual_value = getattr(settings, api_key_field)
+        assert actual_value == expected_value
+    
+    @pytest.mark.parametrize(
+        "api_key_field",
+        ["google_api_key", "openai_api_key", "xai_api_key", "anthropic_api_key"],
+    )
+    def test_api_key_empty_string_preserved(self, api_key_field: str) -> None:
+        """Test that empty strings are preserved (not converted to None)."""
+        settings = Settings(**{api_key_field: ""})
+        
+        actual_value = getattr(settings, api_key_field)
+        assert actual_value == ""
+    
+    @pytest.mark.parametrize(
+        "api_key_field",
+        ["google_api_key", "openai_api_key", "xai_api_key", "anthropic_api_key"],
+    )
+    def test_api_key_whitespace_only_becomes_empty(self, api_key_field: str) -> None:
+        """Test that whitespace-only strings become empty after stripping."""
+        settings = Settings(**{api_key_field: "   \t\n   "})
+        
+        actual_value = getattr(settings, api_key_field)
+        assert actual_value == ""
+    
+    def test_all_api_keys_stripped_together(self) -> None:
+        """Test that all API keys are stripped when provided together."""
+        settings = Settings(
+            google_api_key="   google-key   ",
+            openai_api_key="  openai-key  ",
+            xai_api_key="\txai-key\t",
+            anthropic_api_key="\nanthropic-key\n"
+        )
+        
+        assert settings.google_api_key == "google-key"
+        assert settings.openai_api_key == "openai-key"
+        assert settings.xai_api_key == "xai-key"
+        assert settings.anthropic_api_key == "anthropic-key"
+    
+    def test_api_key_stripping_with_internal_spaces_preserved(self) -> None:
+        """Test that internal spaces within API keys are preserved."""
+        settings = Settings(
+            google_api_key="   key with spaces   "
+        )
+        
+        # Internal spaces should be preserved, only leading/trailing stripped
+        assert settings.google_api_key == "key with spaces"
+    
+    def test_api_key_real_world_grpc_scenario(self) -> None:
+        """Test real-world scenario where gRPC metadata error would occur."""
+        # Simulate a scenario where API key has trailing newline (common from env files)
+        settings = Settings(
+            google_api_key="AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI\n"
+        )
+        
+        # Should strip the newline to prevent gRPC metadata errors
+        assert settings.google_api_key == "AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI"
+        assert "\n" not in settings.google_api_key
+
+
+@pytest.mark.unit
 class TestGetSettings:
     """Test settings singleton function."""
     

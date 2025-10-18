@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 from urllib.parse import quote_plus
 
 import yaml
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tarsy.config.builtin_config import get_builtin_llm_providers
@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="")
     llm_provider: str = Field(default="google-default")
     disable_ssl_verification: bool = Field(default=False, description="Disable SSL certificate verification for LLM API calls (use with caution)")
+    
+    @field_validator('google_api_key', 'openai_api_key', 'xai_api_key', 'anthropic_api_key', mode='after')
+    @classmethod
+    def strip_api_keys(cls, v: str) -> str:
+        """Strip whitespace from API keys to avoid gRPC metadata errors."""
+        return v.strip() if v else v
     
     # LLM Configuration File Path
     llm_config_path: str = Field(default="../config/llm_providers.yaml", description="Path to external LLM providers configuration file")

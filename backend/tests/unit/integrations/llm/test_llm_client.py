@@ -30,6 +30,133 @@ def create_test_config(provider_type: str = "openai", **overrides) -> LLMProvide
 
 
 @pytest.mark.unit
+class TestLLMClientAPIKeyStripping:
+    """Test API key whitespace stripping in LLMClient."""
+    
+    @pytest.mark.parametrize(
+        "input_key,expected_key",
+        [
+            ("test-api-key", "test-api-key"),
+            ("   test-api-key", "test-api-key"),
+            ("test-api-key   ", "test-api-key"),
+            ("   test-api-key   ", "test-api-key"),
+            ("\ttest-api-key\t", "test-api-key"),
+            ("\ntest-api-key\n", "test-api-key"),
+            ("  \t\n test-api-key \n\t  ", "test-api-key"),
+        ],
+    )
+    def test_api_key_stripped_in_constructor(
+        self, input_key: str, expected_key: str
+    ) -> None:
+        """Test that API keys are stripped in LLMClient constructor."""
+        config = create_test_config(api_key=input_key)
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
+            mock_openai.return_value = Mock()
+            
+            client = LLMClient("openai", config)
+            
+            # Verify the client stored the stripped key
+            assert client.api_key == expected_key
+            
+            # Verify the stripped key was passed to ChatOpenAI
+            mock_openai.assert_called_once()
+            call_args = mock_openai.call_args[1]
+            assert call_args['api_key'] == expected_key
+    
+    def test_api_key_empty_string_handling(self) -> None:
+        """Test that empty string API keys are handled correctly."""
+        config = create_test_config(api_key="")
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            # Empty string should remain empty after strip
+            assert client.api_key == ""
+            # Client should be unavailable with empty API key
+            assert client.available is False
+    
+    def test_api_key_whitespace_only_becomes_empty(self) -> None:
+        """Test that whitespace-only API keys become empty strings."""
+        config = create_test_config(api_key="   \t\n   ")
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            # Whitespace-only should become empty after strip
+            assert client.api_key == ""
+            # Client should be unavailable with effectively empty API key
+            assert client.available is False
+    
+    def test_api_key_none_handling(self) -> None:
+        """Test that None API keys are handled correctly."""
+        # Create config with None api_key (by not providing it)
+        config = LLMProviderConfig(
+            type="openai",
+            model="gpt-4",
+            api_key_env="OPENAI_API_KEY",
+            # No api_key provided, defaults to empty string per BaseModel
+        )
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            # Empty string or None should become empty after (config.api_key or "").strip()
+            assert client.api_key == ""
+            assert client.available is False
+    
+    def test_api_key_stripping_with_internal_spaces_preserved(self) -> None:
+        """Test that internal spaces in API keys are preserved."""
+        config = create_test_config(api_key="   key with spaces   ")
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
+            mock_openai.return_value = Mock()
+            
+            client = LLMClient("openai", config)
+            
+            # Internal spaces should be preserved
+            assert client.api_key == "key with spaces"
+    
+    def test_api_key_stripping_prevents_grpc_errors(self) -> None:
+        """Test that API key stripping prevents gRPC metadata errors."""
+        # Simulate real-world scenario: API key from env file with trailing newline
+        config = create_test_config(
+            api_key="AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI\n",
+            type="google"
+        )
+        
+        with patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google:
+            mock_google.return_value = Mock()
+            
+            client = LLMClient("google", config)
+            
+            # Newline should be stripped
+            assert "\n" not in client.api_key
+            assert client.api_key == "AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI"
+            
+            # Verify stripped key was passed to Google client
+            call_args = mock_google.call_args[1]
+            assert call_args['google_api_key'] == "AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI"
+            assert "\n" not in call_args['google_api_key']
+    
+    def test_api_key_double_stripping_safety(self) -> None:
+        """Test that double stripping (Settings + LLMClient) works correctly."""
+        # This tests the defense-in-depth approach where both Settings and LLMClient strip
+        # Even if Settings stripping failed, LLMClient would catch it
+        config = create_test_config(api_key="   test-key   ")
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
+            mock_openai.return_value = Mock()
+            
+            # First strip happens in Settings (simulated by test config creation)
+            # Second strip happens in LLMClient constructor
+            client = LLMClient("openai", config)
+            
+            # Should be stripped regardless of which layer did it
+            assert client.api_key == "test-key"
+
+
+@pytest.mark.unit
 class TestLLMClientInitialization:
     """Test LLM client initialization with different providers."""
     
