@@ -626,11 +626,11 @@ class TestSettingsAPIKeyStripping:
         """Test real-world scenario where gRPC metadata error would occur."""
         # Simulate a scenario where API key has trailing newline (common from env files)
         settings = Settings(
-            google_api_key="AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI\n"
+            google_api_key="dummy-key\n"
         )
         
         # Should strip the newline to prevent gRPC metadata errors
-        assert settings.google_api_key == "AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI"
+        assert settings.google_api_key == "dummy-key"
         assert "\n" not in settings.google_api_key
 
 

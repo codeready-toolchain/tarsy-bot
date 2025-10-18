@@ -121,7 +121,7 @@ class TestLLMClientAPIKeyStripping:
         """Test that API key stripping prevents gRPC metadata errors."""
         # Simulate real-world scenario: API key from env file with trailing newline
         config = create_test_config(
-            api_key="AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI\n",
+            api_key="dummy-key\n",
             type="google"
         )
         
@@ -132,11 +132,11 @@ class TestLLMClientAPIKeyStripping:
             
             # Newline should be stripped
             assert "\n" not in client.api_key
-            assert client.api_key == "AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI"
+            assert client.api_key == "dummy-key"
             
             # Verify stripped key was passed to Google client
             call_args = mock_google.call_args[1]
-            assert call_args['google_api_key'] == "AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI"
+            assert call_args['google_api_key'] == "dummy-key"
             assert "\n" not in call_args['google_api_key']
     
     def test_api_key_double_stripping_safety(self) -> None:
