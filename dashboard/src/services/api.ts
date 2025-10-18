@@ -42,10 +42,16 @@ class APIClient {
           return Promise.reject(error);
         }
         
-        // Handle CORS/network errors (no response object)
+        // Handle network errors (pod restart, backend down, etc.)
+        // Do NOT treat these as auth errors - the session may still be valid
+        // Only 401 responses indicate actual authentication failures
         if (error.request && !error.response) {
-          console.warn('Network error, checking authentication');
-          authService.handleAuthError();
+          console.warn('Network error - backend may be restarting:', {
+            url: error.config?.url,
+            message: error.message,
+          });
+          // Let the error propagate without triggering re-authentication
+          // The UI should show a temporary error, not redirect to login
         }
         
         return Promise.reject(error);

@@ -168,5 +168,5 @@ cookie_samesite = "lax"  # Required for modern browsers; use "lax" for OAuth flo
 
 ## Session storage configuration
 ## Store full session in cookie to avoid GitHub API validation on every request
-## This may prevent session loss when pods restart
+## This reduces GitHub API calls and improves performance
 session_cookie_minimal = false
