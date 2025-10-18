@@ -2,6 +2,7 @@
 MCP client using the official MCP SDK for integration with MCP servers.
 """
 
+import asyncio
 import json
 from contextlib import AsyncExitStack
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
@@ -163,16 +164,40 @@ class MCPClient:
                 # List tools from specific server
                 if server_name in self.sessions:
                     max_retries = 2
+                    timeout_seconds = 60  # 60 second timeout for MCP list_tools
                     for attempt in range(max_retries):
                         try:
                             session = self.sessions[server_name]
-                            tools_result = await session.list_tools()
+                            # Wrap list_tools call with timeout
+                            tools_result = await asyncio.wait_for(
+                                session.list_tools(),
+                                timeout=timeout_seconds
+                            )
                             # Keep the official Tool objects with full schema information
                             all_tools[server_name] = tools_result.tools
                             
                             # Log the successful response
                             self._log_mcp_list_tools_response(server_name, tools_result.tools, request_id)
                             break  # Success, exit retry loop
+                        
+                        except asyncio.TimeoutError:
+                            error_msg = f"List tools timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries})"
+                            logger.error(f"{error_msg} for {server_name}")
+                            
+                            if attempt < max_retries - 1:
+                                logger.warning(f"Retrying list_tools after timeout...")
+                                try:
+                                    await self._recover_session(server_name)
+                                    logger.info(f"Successfully recovered session for server: {server_name}")
+                                    continue
+                                except Exception as recovery_error:
+                                    logger.error(f"Failed to recover session for {server_name}: {extract_error_details(recovery_error)}")
+                            
+                            # Final attempt or recovery failed
+                            logger.error(f"List tools timed out for {server_name} after {max_retries} attempts")
+                            self._log_mcp_list_tools_error(server_name, error_msg, request_id)
+                            all_tools[server_name] = []
+                            break
                             
                         except Exception as e:
                             error_details = extract_error_details(e)
@@ -198,20 +223,44 @@ class MCPClient:
                 # List tools from all servers
                 for name in list(self.sessions.keys()):  # Use list() to avoid dict changed during iteration
                     max_retries = 2
+                    timeout_seconds = 60  # 60 second timeout for MCP list_tools
                     for attempt in range(max_retries):
                         try:
                             session = self.sessions.get(name)
                             if not session:
                                 all_tools[name] = []
                                 break
-                                
-                            tools_result = await session.list_tools()
+                            
+                            # Wrap list_tools call with timeout
+                            tools_result = await asyncio.wait_for(
+                                session.list_tools(),
+                                timeout=timeout_seconds
+                            )
                             # Keep the official Tool objects with full schema information
                             all_tools[name] = tools_result.tools
                             
                             # Log the successful response for this server
                             self._log_mcp_list_tools_response(name, tools_result.tools, request_id)
                             break  # Success, exit retry loop
+                        
+                        except asyncio.TimeoutError:
+                            error_msg = f"List tools timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries})"
+                            logger.error(f"{error_msg} for {name}")
+                            
+                            if attempt < max_retries - 1:
+                                logger.warning(f"Retrying list_tools after timeout...")
+                                try:
+                                    await self._recover_session(name)
+                                    logger.info(f"Successfully recovered session for server: {name}")
+                                    continue
+                                except Exception as recovery_error:
+                                    logger.error(f"Failed to recover session for {name}: {extract_error_details(recovery_error)}")
+                            
+                            # Final attempt or recovery failed
+                            logger.error(f"List tools timed out for {name} after {max_retries} attempts")
+                            self._log_mcp_list_tools_error(name, error_msg, request_id)
+                            all_tools[name] = []
+                            break
                             
                         except Exception as e:
                             error_details = extract_error_details(e)
@@ -357,13 +406,19 @@ class MCPClient:
             
             # Try the tool call with automatic session recovery on failure
             max_retries = 2
+            timeout_seconds = 60  # 60 second timeout for individual MCP tool calls
+            
             for attempt in range(max_retries):
                 session = self.sessions.get(server_name)
                 if not session:
                     raise Exception(f"MCP server not found: {server_name}")
                 
                 try:
-                    result = await session.call_tool(tool_name, parameters)
+                    # Wrap MCP call with timeout to prevent indefinite hanging
+                    result = await asyncio.wait_for(
+                        session.call_tool(tool_name, parameters),
+                        timeout=timeout_seconds
+                    )
                     
                     # Convert result to dictionary
                     if hasattr(result, 'content'):
@@ -408,6 +463,27 @@ class MCPClient:
                     # Store actual result for potential summarization outside the context
                     actual_result = response_dict
                     break  # Success, exit retry loop
+                
+                except asyncio.TimeoutError:
+                    # Handle timeout specifically
+                    error_msg = f"MCP tool call timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries})"
+                    logger.error(f"{error_msg} for {server_name}.{tool_name}")
+                    
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Retrying after timeout...")
+                        try:
+                            # Attempt to recover the session after timeout
+                            await self._recover_session(server_name)
+                            logger.info(f"Successfully recovered session for server: {server_name}")
+                            continue  # Retry with the new session
+                        except Exception as recovery_error:
+                            logger.error(f"Failed to recover session for {server_name}: {extract_error_details(recovery_error)}")
+                            # Continue to final attempt logic below
+                    
+                    # Final attempt or recovery failed - raise timeout error
+                    final_error_msg = f"MCP tool call {tool_name} on {server_name} timed out after {max_retries} attempts ({timeout_seconds}s each)"
+                    self._log_mcp_error(server_name, tool_name, final_error_msg, request_id)
+                    raise TimeoutError(final_error_msg) from None
                         
                 except Exception as e:
                     error_details = extract_error_details(e)

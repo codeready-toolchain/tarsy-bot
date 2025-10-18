@@ -343,9 +343,17 @@ class LLMClient:
         self,
         langchain_messages: List,
         max_retries: int = 3,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        timeout_seconds: int = 60
     ) -> Tuple[Any, Optional[Dict[str, Any]]]:
-        """Execute LLM call with usage tracking and retry logic."""
+        """Execute LLM call with usage tracking and retry logic.
+        
+        Args:
+            langchain_messages: Messages to send to LLM
+            max_retries: Maximum number of retry attempts
+            max_tokens: Optional maximum tokens for response
+            timeout_seconds: Timeout for individual LLM API call (default: 60s)
+        """
         for attempt in range(max_retries + 1):
             try:
                 # Add callback handler to capture token usage
@@ -357,9 +365,13 @@ class LLMClient:
                 if max_tokens is not None:
                     config["max_tokens"] = max_tokens
 
-                response = await self.llm_client.ainvoke(
-                    langchain_messages,
-                    config=config
+                # Wrap LLM call with timeout to prevent indefinite hanging
+                response = await asyncio.wait_for(
+                    self.llm_client.ainvoke(
+                        langchain_messages,
+                        config=config
+                    ),
+                    timeout=timeout_seconds
                 )
                 
                 # Check for empty response content
@@ -398,6 +410,17 @@ class LLMClient:
                             usage_metadata = model_usage
                 
                 return response, usage_metadata
+                
+            except asyncio.TimeoutError:
+                # Handle timeout specifically - don't retry as it's likely a systemic issue
+                logger.error(f"LLM API call timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries + 1})")
+                if attempt < max_retries:
+                    logger.warning(f"Retrying after timeout in 5s...")
+                    await asyncio.sleep(5)
+                    continue
+                else:
+                    logger.error(f"LLM API call timed out after {max_retries + 1} attempts")
+                    raise TimeoutError(f"LLM API call timed out after {timeout_seconds}s") from None
                 
             except Exception as e:
                 error_str = str(e).lower()
