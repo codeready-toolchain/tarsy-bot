@@ -104,8 +104,54 @@ function SessionDetailPageBase({
     refreshSessionStages
   } = useSession(sessionId);
 
-  // Auto-scroll settings
-  const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(true);
+  // Auto-scroll settings - only enable by default for active sessions
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(() => {
+    // Initialize based on session status if available
+    return session ? (session.status === 'in_progress' || session.status === 'pending') : false;
+  });
+  
+  // Track previous session status to detect transitions
+  const prevStatusRef = useRef<string | undefined>(undefined);
+  const disableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Update auto-scroll enabled state when session transitions between active/inactive
+  useEffect(() => {
+    if (session) {
+      const previousActive = prevStatusRef.current === 'in_progress' || prevStatusRef.current === 'pending';
+      const currentActive = session.status === 'in_progress' || session.status === 'pending';
+      
+      // Only update auto-scroll on first load or when crossing active↔inactive boundary
+      if (prevStatusRef.current === undefined || previousActive !== currentActive) {
+        if (currentActive) {
+          // Transitioning to active - enable auto-scroll immediately and clear any pending disable
+          if (disableTimeoutRef.current) {
+            clearTimeout(disableTimeoutRef.current);
+            disableTimeoutRef.current = null;
+          }
+          setAutoScrollEnabled(true);
+        } else {
+          // Transitioning to inactive - delay disable to allow final content to scroll
+          if (disableTimeoutRef.current) {
+            clearTimeout(disableTimeoutRef.current);
+          }
+          disableTimeoutRef.current = setTimeout(() => {
+            setAutoScrollEnabled(false);
+            disableTimeoutRef.current = null;
+          }, 2000); // Wait 2 seconds for final content to render and scroll
+        }
+        prevStatusRef.current = session.status;
+      }
+    }
+  }, [session?.status]);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (disableTimeoutRef.current) {
+        clearTimeout(disableTimeoutRef.current);
+      }
+    };
+  }, []);
   
   // Advanced centralized auto-scroll
   useAdvancedAutoScroll({
