@@ -113,6 +113,7 @@ function SessionDetailPageBase({
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
   const disableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasPerformedInitialScrollRef = useRef<boolean>(false);
   
   // Update auto-scroll enabled state when session transitions between active/inactive
   useEffect(() => {
@@ -143,6 +144,25 @@ function SessionDetailPageBase({
       }
     }
   }, [session?.status]);
+  
+  // Perform initial scroll to bottom for active sessions
+  useEffect(() => {
+    if (
+      session && 
+      !loading && 
+      !hasPerformedInitialScrollRef.current && 
+      autoScrollEnabled &&
+      (session.status === 'in_progress' || session.status === 'pending')
+    ) {
+      // Wait for content to render, then scroll to bottom
+      const scrollTimer = setTimeout(() => {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+        hasPerformedInitialScrollRef.current = true;
+      }, 300); // Small delay to ensure content is rendered
+      
+      return () => clearTimeout(scrollTimer);
+    }
+  }, [session, loading, autoScrollEnabled]);
   
   // Cleanup timeout on unmount
   useEffect(() => {

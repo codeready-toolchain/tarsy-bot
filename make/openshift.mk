@@ -20,7 +20,7 @@ IMAGE_TAG := dev
 USE_SKOPEO ?=
 
 # Container management (reuse existing)
-PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman-compose -f deploy/podman-compose.yml
+PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman compose -f deploy/podman-compose.yml
 
 # Auto-load deploy/openshift.env ONLY when running OpenShift targets
 # Check if any OpenShift target is in the command line goals

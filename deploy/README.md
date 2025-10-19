@@ -100,15 +100,17 @@ mkdir -p deploy/kustomize/base/config
 # Copy and customize from examples:
 cp config/agents.yaml.example deploy/kustomize/base/config/agents.yaml
 cp config/llm_providers.yaml.example deploy/kustomize/base/config/llm_providers.yaml
-cp config/oauth2-proxy-container.cfg.example deploy/kustomize/base/config/oauth2-proxy-container.cfg
+cp config/oauth2-proxy-container.cfg.template deploy/kustomize/base/config/oauth2-proxy-container.cfg
 
 # Edit the deployment config files:
 vi deploy/kustomize/base/config/agents.yaml          # Define your agents and runbooks
 vi deploy/kustomize/base/config/llm_providers.yaml   # Configure LLM provider settings
-vi deploy/kustomize/base/config/oauth2-proxy-container.cfg  # OAuth2 proxy settings (optional)
+vi deploy/kustomize/base/config/oauth2-proxy-container.cfg  # OAuth2 proxy settings (see config/README.md)
 ```
 
 **Note**: These files are automatically created from examples during deployment if missing.
+
+For detailed OAuth2 configuration (client IDs, secrets, GitHub org/team), see **[config/README.md](../config/README.md)**.
 
 ## Usage
 

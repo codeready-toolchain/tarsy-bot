@@ -1,0 +1,209 @@
+## OAuth2 Proxy Config File - Container Version (TEMPLATE)
+## https://github.com/oauth2-proxy/oauth2-proxy
+##
+## NOTE: This is a TEMPLATE file with placeholders for sensitive values.
+## The actual config (oauth2-proxy-container.cfg) is generated from this template by the Makefile.
+##
+## ⚠️  SECURITY: This template is tracked in git - DO NOT add real secrets here!
+##
+## Template variables (replaced from environment variables during deployment):
+##   - {{ROUTE_HOST}}           = Set via make (default: localhost:8080)
+##   - {{COOKIE_SECURE}}        = Set via make (default: false)
+##   - {{OAUTH_CLIENT_ID}}      = REQUIRED: export OAUTH_CLIENT_ID="your-id"
+##   - {{OAUTH_CLIENT_SECRET}}  = REQUIRED: export OAUTH_CLIENT_SECRET="your-secret"
+##   - {{GITHUB_ORG}}           = OPTIONAL: export GITHUB_ORG="your-org"
+##   - {{GITHUB_TEAM}}          = OPTIONAL: export GITHUB_TEAM="your-team"
+##
+## Setup instructions:
+## 1. Create a GitHub OAuth App at https://github.com/settings/developers
+## 2. Export the credentials: export OAUTH_CLIENT_ID="..." OAUTH_CLIENT_SECRET="..."
+## 3. Run: make containers-deploy
+##
+## See config/README.md for detailed setup instructions.
+
+## <addr>:<port> to listen on for HTTP/HTTPS clients  
+http_address = "0.0.0.0:4180"
+# https_address = ":443"
+
+## Are we running behind a reverse proxy? Will not accept headers like X-Real-Ip unless this is set.
+# reverse_proxy = true
+
+## TLS Settings
+# tls_cert_file = ""
+# tls_key_file = ""
+
+## the OAuth Redirect URL.
+# defaults to the "https://" + requested host header + "/oauth2/callback"
+# redirect_url = "https://internalapp.yourcompany.com/oauth2/callback"
+# NOTE: {{ROUTE_HOST}} is automatically replaced during deployment:
+#   - Local containers: localhost:8080 (HTTP)
+#   - OpenShift: <route-hostname> (HTTPS)
+redirect_url = "http://{{ROUTE_HOST}}/oauth2/callback"
+
+## the http url(s) of the upstream endpoint. If multiple, routing is based on path
+upstreams = [
+    "http://backend:8000" # podman-compose
+    # "http://localhost:8000" # openshift - sidecar container communication
+]
+
+# Protect Existing Endpoints
+# - **Main.py endpoints**
+#   - `POST /alerts` (alert submission)
+#   - `GET /alert-types` (dev UI support)
+#   - `GET /session-id/{alert_id}` (session lookup)
+#   - `WebSocket /ws/dashboard/{user_id}` (dashboard WebSocket)
+# - **History controller endpoints**
+#   - `GET /api/v1/history/sessions` (list sessions)
+#   - `GET /api/v1/history/sessions/{session_id}` (session details)
+#   - `GET /api/v1/history/sessions/{session_id}/summary` (session summary)
+#   - `GET /api/v1/history/active-sessions` (active sessions)
+#   - `GET /api/v1/history/filter-options` (filter options)
+# - **Unprotected endpoints**
+#   - `GET /` (root health check)
+#   - `GET /health` (main service health check)
+#   - `GET /api/v1/history/health` (history service health check)
+
+## Logging configuration
+#logging_filename = ""
+#logging_max_size = 100
+#logging_max_age = 7
+#logging_local_time = true
+#logging_compress = false
+#standard_logging = true
+#standard_logging_format = "[{{.Timestamp}}] [{{.File}}] {{.Message}}"
+#request_logging = true
+#request_logging_format = "{{.Client}} - {{.Username}} [{{.Timestamp}}] {{.Host}} {{.RequestMethod}} {{.Upstream}} {{.RequestURI}} {{.Protocol}} {{.UserAgent}} {{.StatusCode}} {{.ResponseSize}} {{.RequestDuration}}"
+#auth_logging = true
+#auth_logging_format = "{{.Client}} - {{.Username}} [{{.Timestamp}}] [{{.Status}}] {{.Message}}"
+
+## pass HTTP Basic Auth, X-Forwarded-User and X-Forwarded-Email information to upstream
+# pass_basic_auth = true
+pass_user_headers = true
+
+## Prefer username over email in headers (GitHub username instead of email)
+prefer_email_to_user = false
+## pass the request Host Header to upstream
+## when disabled the upstream Host is used as the Host Header
+pass_host_header = true
+
+## Custom headers for CORS support in development
+set_xauthrequest = true
+set_authorization_header = true
+
+## CORS configuration for containerized development
+## OAuth2-proxy doesn't have built-in CORS support, but we'll handle it in the backend
+## For now, ensure OPTIONS requests are allowed
+# Note: CORS headers need to be handled by the backend or a reverse proxy
+
+## Allow redirects to route host
+# NOTE: {{ROUTE_HOST}} is replaced by Makefile (localhost:8080 for local, route hostname for OpenShift)
+whitelist_domains = ["{{ROUTE_HOST}}"]
+
+## Email Domains to allow authentication for (this authorizes any email on this domain)
+## for more granular authorization use `authenticated_emails_file`
+## To authorize any email addresses use "*"
+# email_domains = [
+#     "yourcompany.com"
+# ]
+email_domains=["*"]
+
+## JWT Bearer Token Authentication
+## Allow API clients to authenticate directly with JWT tokens
+## while maintaining GitHub OAuth for web dashboard users
+skip_jwt_bearer_tokens = true
+oidc_jwks_url = "http://tarsy-backend:8000/.well-known/jwks.json"
+skip_oidc_discovery = true
+
+## Optional: Specify expected JWT issuer and audience for additional validation
+extra_jwt_issuers = ["http://tarsy-backend:8000=tarsy-api"]
+
+provider = "github"
+
+## The OAuth Client ID, Secret
+## These values are replaced from environment variables during deployment:
+##   {{OAUTH_CLIENT_ID}}     - Set via: export OAUTH_CLIENT_ID="your-client-id"
+##   {{OAUTH_CLIENT_SECRET}} - Set via: export OAUTH_CLIENT_SECRET="your-secret"
+##
+## To create a GitHub OAuth App:
+## 1. Go to https://github.com/settings/developers
+## 2. Click "New OAuth App"
+## 3. Set Authorization callback URL to: http://localhost:8080/oauth2/callback (or your ROUTE_HOST)
+## 4. Export the credentials as environment variables (DO NOT commit them!)
+client_id = "{{OAUTH_CLIENT_ID}}"
+client_secret = "{{OAUTH_CLIENT_SECRET}}"
+
+## GitHub organization and team restrictions
+## Only users in this GitHub org/team will be allowed access
+## These can be customized in the template or via environment variables:
+##   {{GITHUB_ORG}}  - Set via: export GITHUB_ORG="your-org"
+##   {{GITHUB_TEAM}} - Set via: export GITHUB_TEAM="your-team"
+github_org = "{{GITHUB_ORG}}"
+github_team = "{{GITHUB_TEAM}}"
+
+## Scopes Added to the request
+## It has the same behavior as the --scope flag
+## Added read:org to allow reading GitHub organization membership
+scope = "user:email read:org"
+
+## Pass OAuth Access token to upstream via "X-Forwarded-Access-Token"
+# pass_access_token = false
+
+## Authenticated Email Addresses File (one email per line)
+# authenticated_emails_file = ""
+
+## Htpasswd File (optional)
+## Additionally authenticate against a htpasswd file. Entries must be created with "htpasswd -B" for bcrypt encryption
+## enabling exposes a username/login signin form
+# htpasswd_file = ""
+
+## bypass authentication for requests that match the method & path. Format: method=path_regex OR path_regex alone for all methods
+# skip_auth_routes = [
+#   "GET=^/probe",
+#   "^/metrics"
+# ]
+skip_auth_routes = [
+  "GET=^/health",
+  "OPTIONS=.*"
+]
+
+## mark paths as API routes to get HTTP Status code 401 instead of redirect to login page
+api_routes = [
+  "^/api",
+  "^/ws"
+]
+
+## Templates
+## optional directory with custom sign_in.html and error.html
+custom_templates_dir = "/templates"
+
+## Custom sign-in logo
+custom_sign_in_logo = "/templates/tarsy-logo.png"
+
+## skip SSL checking for HTTPS requests
+# ssl_insecure_skip_verify = false
+
+
+## Cookie Settings
+## Name     - the cookie name
+## Secret   - the seed string for secure cookies; should be 16, 24, or 32 bytes
+##            for use with an AES cipher when cookie_refresh or pass_access_token
+##            is set
+## Domain   - (optional) cookie domain to force cookies to (ie: .yourcompany.com)
+## Expire   - (duration) expire timeframe for cookie
+## Refresh  - (duration) refresh the cookie when duration has elapsed after cookie was initially set.
+##            Should be less than cookie_expire; set to 0 to disable.
+##            On refresh, OAuth token is re-validated.
+##            (ie: 1h means tokens are refreshed on request 1hr+ after it was set)
+## Secure   - secure cookies are only sent by the browser of a HTTPS connection (recommended)
+## HttpOnly - httponly cookies are not readable by javascript (recommended)
+cookie_name = "_oauth2_proxy"
+## CUSTOMIZE for production: Generate a new secret with: python -c 'import os,base64; print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
+cookie_secret = "test-secret-123456789012345678901234567890-" # IMPORTANT: This is the default test/dev secret! Do not use it in production!!!
+# NOTE: Template variables replaced by Makefile during deployment:
+#   {{ROUTE_HOST}}     -> localhost:8080 (local) or route hostname (OpenShift)
+#   {{COOKIE_SECURE}}  -> false (local HTTP) or true (OpenShift HTTPS)
+cookie_domains = ["{{ROUTE_HOST}}"]
+cookie_expire = "168h"
+cookie_refresh = "0"
+cookie_secure = {{COOKIE_SECURE}}
+cookie_httponly = true

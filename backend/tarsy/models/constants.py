@@ -104,6 +104,17 @@ class LLMInteractionType(str, Enum):
     FINAL_ANALYSIS = "final_analysis"
 
 
+class StreamingEventType(str, Enum):
+    """
+    Types of LLM streaming events for real-time WebSocket delivery.
+    
+    - THOUGHT: Complete "Thought:" section from ReAct pattern
+    - FINAL_ANSWER: Complete "Final Answer:" section from ReAct pattern
+    """
+    THOUGHT = "thought"
+    FINAL_ANSWER = "final_answer"
+
+
 # ==============================================================================
 # LLM CONFIGURATION CONSTANTS
 # ==============================================================================

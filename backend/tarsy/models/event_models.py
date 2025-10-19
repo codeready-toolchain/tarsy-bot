@@ -114,3 +114,18 @@ class StageCompletedEvent(BaseEvent):
     stage_name: str = Field(description="Human-readable stage name")
     status: str = Field(description="Stage status (completed/failed)")
 
+
+# ===== Transient Streaming Events (not persisted to DB) =====
+
+
+class LLMStreamChunkEvent(BaseEvent):
+    """LLM content streamed in real-time as chunks (transient, not persisted)."""
+    
+    type: Literal["llm.stream.chunk"] = "llm.stream.chunk"
+    session_id: str = Field(description="Session identifier")
+    stage_execution_id: Optional[str] = Field(
+        default=None, description="Stage execution identifier"
+    )
+    chunk: str = Field(description="Content chunk (accumulated tokens)")
+    stream_type: str = Field(description="Type of content being streamed: 'thought' or 'final_answer'")
+    is_complete: bool = Field(default=False, description="True if this is the final chunk")

@@ -6,6 +6,7 @@ Handles all LLM providers through LangChain's abstraction.
 import asyncio
 import httpx
 import pprint
+import re
 import traceback
 import urllib3
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,7 +22,7 @@ from langchain_anthropic import ChatAnthropic
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.hook_context import llm_interaction_context
-from tarsy.models.constants import LLMInteractionType
+from tarsy.models.constants import LLMInteractionType, StreamingEventType
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
@@ -190,10 +191,10 @@ class LLMClient:
         interaction_type: Optional[str] = None
     ) -> LLMConversation:
         """
-        Generate response using type-safe conversation object.
+        Generate response with streaming to WebSocket.
         
-        It takes original LLMConversation and returns updated conversation
-        with response assistant message appended.
+        Uses streaming API (.astream) in all environments for consistency.
+        Event publishing automatically disabled in SQLite/dev mode via publish_transient.
         
         Args:
             conversation: The conversation to generate a response for
@@ -205,8 +206,6 @@ class LLMClient:
         
         Returns:
             Updated conversation with assistant response appended
-        
-        To get the assistant response: conversation.get_latest_assistant_message().content
         """
         if not self.available or not self.llm_client:
             raise Exception(f"{self.provider_name} client not available")
@@ -221,7 +220,6 @@ class LLMClient:
         
         # Use typed hook context for clean data flow
         async with llm_interaction_context(session_id, request_data, stage_execution_id) as ctx:
-            
             # Get request ID for logging  
             request_id = ctx.get_request_id()
 
@@ -231,59 +229,110 @@ class LLMClient:
             try:
                 # Convert typed conversation to LangChain format  
                 langchain_messages = self._convert_conversation_to_langchain(conversation)
+                accumulated_content = ""
                 
-                # Get both response and usage metadata
-                response, usage_metadata = await self._execute_with_retry(langchain_messages, max_tokens=max_tokens)
+                # Streaming state (only for thoughts - we don't stream final answers)
+                is_streaming_thought = False
+                token_count_since_last_send = 0
+                CHUNK_SIZE = 5  # Send entire thought content every 5 tokens for responsiveness
                 
-                # Store token usage in dedicated type-safe fields on interaction
-                if usage_metadata:
-                    input_tokens = usage_metadata.get('input_tokens', 0)
-                    output_tokens = usage_metadata.get('output_tokens', 0)
-                    total_tokens = usage_metadata.get('total_tokens', 0)
+                # Stream tokens (always, in all environments)
+                callback = UsageMetadataCallbackHandler()
+                config = {"callbacks": [callback]}
+                if max_tokens is not None:
+                    config["max_tokens"] = max_tokens
+                
+                async for chunk in self.llm_client.astream(langchain_messages, config=config):
+                    token = self._extract_token_content(chunk)
+                    accumulated_content += token
                     
-                    # Store token data (use None instead of 0 for cleaner database storage)
-                    ctx.interaction.input_tokens = input_tokens if input_tokens > 0 else None
-                    ctx.interaction.output_tokens = output_tokens if output_tokens > 0 else None
-                    ctx.interaction.total_tokens = total_tokens if total_tokens > 0 else None
-                
-                # Extract response content
-                # Handle both string and list content (LangChain returns list for some providers)
-                raw_content = response.content if hasattr(response, 'content') else str(response)
-                if isinstance(raw_content, list):
-                    # Content is a list of blocks - extract text from each block
-                    response_content = ""
-                    for block in raw_content:
-                        if isinstance(block, str):
-                            response_content += block
-                        elif isinstance(block, dict) and 'text' in block:
-                            response_content += block['text']
-                        elif hasattr(block, 'text'):
-                            response_content += block.text
+                    # Detect start of "Thought:" streaming (but NOT Final Answer - we don't stream that)
+                    if not is_streaming_thought:
+                        if "Thought:" in accumulated_content and "Final Answer:" not in accumulated_content:
+                            is_streaming_thought = True
+                            token_count_since_last_send = 0
+                            logger.debug(f"Started streaming thought for {session_id}")
+                    
+                    # Check if we should STOP streaming thought (Action: or Final Answer: detected)
+                    if is_streaming_thought and ("Action:" in accumulated_content or "Final Answer:" in accumulated_content):
+                        # Extract clean thought content (everything between "Thought:" and stop marker)
+                        thought_start_idx = accumulated_content.find("Thought:")
+                        stop_idx = accumulated_content.find("Action:") if "Action:" in accumulated_content else accumulated_content.find("Final Answer:")
+                        clean_thought = accumulated_content[thought_start_idx + len("Thought:"):stop_idx].strip()
+                        
+                        # Send final complete thought
+                        if clean_thought:
+                            await self._publish_stream_chunk(
+                                session_id, stage_execution_id,
+                                StreamingEventType.THOUGHT, clean_thought,
+                                is_complete=True
+                            )
                         else:
-                            # Fallback: convert to string
-                            response_content += str(block)
-                else:
-                    response_content = raw_content
+                            # Send completion marker
+                            await self._publish_stream_chunk(
+                                session_id, stage_execution_id,
+                                StreamingEventType.THOUGHT, "",
+                                is_complete=True
+                            )
+                        is_streaming_thought = False
+                        token_count_since_last_send = 0
+                        logger.debug(f"Stopped streaming thought (Action/Final Answer detected) for {session_id}")
+                        continue  # Skip token accumulation for this iteration
+                    
+                    # Send periodic updates with ENTIRE thought content (not just new tokens)
+                    if is_streaming_thought:
+                        token_count_since_last_send += 1
+                        
+                        # Send entire thought content every CHUNK_SIZE tokens
+                        if token_count_since_last_send >= CHUNK_SIZE:
+                            thought_start_idx = accumulated_content.find("Thought:")
+                            current_thought = accumulated_content[thought_start_idx + len("Thought:"):].lstrip()
+                            
+                            # Check if Action: or Final Answer: appeared (strip them from streaming)
+                            # This handles cases where LLM doesn't put them on new lines
+                            if "Action:" in current_thought:
+                                current_thought = current_thought[:current_thought.find("Action:")].strip()
+                            elif "Final Answer:" in current_thought:
+                                current_thought = current_thought[:current_thought.find("Final Answer:")].strip()
+                            
+                            if current_thought:
+                                await self._publish_stream_chunk(
+                                    session_id, stage_execution_id,
+                                    StreamingEventType.THOUGHT, current_thought,
+                                    is_complete=False
+                                )
+                            token_count_since_last_send = 0
                 
-                # Add assistant response to conversation
-                conversation.append_assistant_message(response_content)
-                
-                # Update the interaction with conversation data
-                ctx.interaction.conversation = conversation  # Store complete conversation
-                ctx.interaction.provider = self.provider_name
-                ctx.interaction.model_name = self.model
-                ctx.interaction.temperature = self.temperature
-                
-                # Determine interaction type
-                if interaction_type is not None:
-                    # Explicit type provided - use as-is
-                    ctx.interaction.interaction_type = interaction_type
-                else:
-                    # No type provided - auto-detect
-                    if self._contains_final_answer(conversation):
-                        ctx.interaction.interaction_type = LLMInteractionType.FINAL_ANALYSIS.value
+                # Send final complete thought if streaming is still active (indicates stream end without Action/Final Answer)
+                if is_streaming_thought:
+                    thought_start_idx = accumulated_content.find("Thought:")
+                    final_thought = accumulated_content[thought_start_idx + len("Thought:"):].strip()
+                    
+                    # Strip any trailing Action: or Final Answer: (in case LLM didn't put them on new lines)
+                    if "Action:" in final_thought:
+                        final_thought = final_thought[:final_thought.find("Action:")].strip()
+                    elif "Final Answer:" in final_thought:
+                        final_thought = final_thought[:final_thought.find("Final Answer:")].strip()
+                    
+                    if final_thought:
+                        await self._publish_stream_chunk(
+                            session_id, stage_execution_id,
+                            StreamingEventType.THOUGHT, final_thought,
+                            is_complete=True
+                        )
                     else:
-                        ctx.interaction.interaction_type = LLMInteractionType.INVESTIGATION.value
+                        # Send completion marker
+                        await self._publish_stream_chunk(
+                            session_id, stage_execution_id,
+                            StreamingEventType.THOUGHT, "",
+                            is_complete=True
+                        )
+                
+                # Store usage metadata from callback
+                self._store_usage_metadata(ctx, callback)
+                
+                # Finalize conversation and interaction
+                self._finalize_conversation(ctx, conversation, accumulated_content, interaction_type)
                 
                 # Complete the typed context with success
                 await ctx.complete_success({})
@@ -339,6 +388,126 @@ class LLMClient:
     def get_max_tool_result_tokens(self) -> int:
         """Return the maximum tool result tokens for the current provider."""
         return self.provider_config.max_tool_result_tokens  # Already an int with BaseModel validation
+    
+    def _extract_token_content(self, chunk: Any) -> str:
+        """
+        Extract string content from LLM chunk, handling various provider formats.
+        
+        Some providers return lists of content blocks that need to be flattened.
+        
+        Args:
+            chunk: Raw chunk from LLM stream
+            
+        Returns:
+            String content extracted from chunk
+        """
+        token = chunk.content if hasattr(chunk, 'content') else str(chunk)
+        
+        # Handle list content (some providers return lists)
+        if isinstance(token, list):
+            token_str = ""
+            for block in token:
+                if isinstance(block, str):
+                    token_str += block
+                elif isinstance(block, dict) and 'text' in block:
+                    token_str += block['text']
+                elif hasattr(block, 'text'):
+                    token_str += block.text
+                else:
+                    token_str += str(block)
+            return token_str
+        
+        return token
+    
+    def _store_usage_metadata(self, ctx: Any, callback: UsageMetadataCallbackHandler) -> None:
+        """
+        Extract and store token usage metadata in interaction.
+        
+        Args:
+            ctx: LLM interaction context
+            callback: UsageMetadataCallbackHandler with captured metadata
+        """
+        usage_metadata = None
+        if hasattr(callback, 'on_chain_end_values') and callback.on_chain_end_values:
+            usage_metadata = callback.on_chain_end_values.get('usage_metadata')
+        
+        if usage_metadata:
+            input_tokens = usage_metadata.get('input_tokens', 0)
+            output_tokens = usage_metadata.get('output_tokens', 0)
+            total_tokens = usage_metadata.get('total_tokens', 0)
+            
+            # Store token data (use None instead of 0 for cleaner database storage)
+            ctx.interaction.input_tokens = input_tokens if input_tokens > 0 else None
+            ctx.interaction.output_tokens = output_tokens if output_tokens > 0 else None
+            ctx.interaction.total_tokens = total_tokens if total_tokens > 0 else None
+    
+    def _finalize_conversation(
+        self,
+        ctx: Any,
+        conversation: LLMConversation,
+        accumulated_content: str,
+        interaction_type: Optional[str]
+    ) -> None:
+        """
+        Finalize conversation by adding assistant message and updating interaction.
+        
+        Args:
+            ctx: LLM interaction context
+            conversation: Conversation object to update
+            accumulated_content: Complete LLM response content
+            interaction_type: Optional explicit interaction type
+        """
+        # Add assistant response to conversation
+        conversation.append_assistant_message(accumulated_content)
+        
+        # Update the interaction with conversation data
+        ctx.interaction.conversation = conversation
+        ctx.interaction.provider = self.provider_name
+        ctx.interaction.model_name = self.model
+        ctx.interaction.temperature = self.temperature
+        
+        # Determine interaction type
+        if interaction_type is not None:
+            # Explicit type provided - use as-is
+            ctx.interaction.interaction_type = interaction_type
+        else:
+            # No type provided - auto-detect
+            if self._contains_final_answer(conversation):
+                ctx.interaction.interaction_type = LLMInteractionType.FINAL_ANALYSIS.value
+            else:
+                ctx.interaction.interaction_type = LLMInteractionType.INVESTIGATION.value
+    
+    async def _publish_stream_chunk(
+        self,
+        session_id: str,
+        stage_execution_id: Optional[str],
+        stream_type: StreamingEventType,
+        chunk: str,
+        is_complete: bool
+    ) -> None:
+        """Publish streaming chunk via transient channel."""
+        try:
+            from tarsy.database.init_db import get_async_session_factory
+            from tarsy.models.event_models import LLMStreamChunkEvent
+            from tarsy.services.events.publisher import publish_transient_event
+            from tarsy.utils.timestamp import now_us
+            
+            async_session_factory = get_async_session_factory()
+            async with async_session_factory() as session:
+                event = LLMStreamChunkEvent(
+                    session_id=session_id,
+                    stage_execution_id=stage_execution_id,
+                    chunk=chunk,
+                    stream_type=stream_type.value,
+                    is_complete=is_complete,
+                    timestamp_us=now_us()
+                )
+                
+                await publish_transient_event(session, f"session:{session_id}", event)
+                logger.debug(f"Published streaming chunk ({stream_type.value}, complete={is_complete}) for {session_id}")
+        except Exception as e:
+            # Don't fail LLM call if streaming fails
+            logger.warning(f"Failed to publish streaming chunk: {e}")
     
     async def _execute_with_retry(
         self,

@@ -124,11 +124,13 @@ backend/coverage.*
 *.db-shm
 *.db-wal
 
-# Configuration files (keep .example files)
+# Configuration files (keep .example and .template files)
 config/agents.yaml
 config/llm_providers.yaml
 config/*.cfg
 !config/*.cfg.example
+!config/*.cfg.template
+config/oauth.env
 
 # JWT Authentication Keys (CRITICAL: Never commit private keys!)
 config/keys/jwt_private_key.pem

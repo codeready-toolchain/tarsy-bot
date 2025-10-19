@@ -39,7 +39,17 @@ function parseReActMessage(content: string): {
   // Extract Thought
   const thoughtMatch = content.match(/(?:^|\n)\s*(?:Thought|THOUGHT):\s*(.*?)(?=\n\s*(?:Action|ACTION|Final Answer|FINAL ANSWER):|$)/s);
   if (thoughtMatch) {
-    result.thought = thoughtMatch[1].trim();
+    let thought = thoughtMatch[1].trim();
+    
+    // Handle cases where LLM doesn't put "Final Answer:" or "Action:" on new lines
+    // Strip them from the end of thought content
+    if (thought.includes('Final Answer:')) {
+      thought = thought.substring(0, thought.indexOf('Final Answer:')).trim();
+    } else if (thought.includes('Action:')) {
+      thought = thought.substring(0, thought.indexOf('Action:')).trim();
+    }
+    
+    result.thought = thought;
   }
 
   // Extract Action
@@ -109,12 +119,22 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           timestamp_us: interaction.timestamp_us,
           content: parsed.thought
         });
-      } else if (interactionType === 'final_analysis' && parsed.finalAnswer) {
-        chatItems.push({
-          type: 'final_answer',
-          timestamp_us: interaction.timestamp_us,
-          content: parsed.finalAnswer
-        });
+      } else if (interactionType === 'final_analysis') {
+        // Final analysis may have both thought AND final answer - show both
+        if (parsed.thought) {
+          chatItems.push({
+            type: 'thought',
+            timestamp_us: interaction.timestamp_us,
+            content: parsed.thought
+          });
+        }
+        if (parsed.finalAnswer) {
+          chatItems.push({
+            type: 'final_answer',
+            timestamp_us: interaction.timestamp_us + 1, // +1 to ensure it comes after thought
+            content: parsed.finalAnswer
+          });
+        }
       }
     }
 

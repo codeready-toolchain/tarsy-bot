@@ -39,9 +39,10 @@ services:
       - DATABASE_URL=postgresql://tarsy:tarsy-dev-password@database:5432/tarsy
     volumes:
       - ../config:/config:ro                        # Mount configuration files to expected path
+      - ${HOME}/.kube:/kubeconfig:ro                 # Mount kubeconfig directory from host
     depends_on:
-      database:
-        condition: service_healthy
+      - database
+    restart: on-failure:5
     
   dashboard:
     build:

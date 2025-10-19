@@ -85,6 +85,12 @@ class Settings(BaseSettings):
         description="Maximum data points before stopping processing (when combined with min iterations)"
     )
     
+    # LLM Streaming Configuration
+    enable_llm_streaming: bool = Field(
+        default=True,
+        description="Enable real-time streaming of LLM thoughts via WebSocket (PostgreSQL only)"
+    )
+    
     # Database Configuration
     database_url: str = Field(
         default="",

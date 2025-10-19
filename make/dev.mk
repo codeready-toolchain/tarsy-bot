@@ -13,7 +13,29 @@ BACKEND_PORT := 8000
 DASHBOARD_PORT := 5173
 
 # Container management
-PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman-compose -f deploy/podman-compose.yml
+PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman compose -f deploy/podman-compose.yml
+
+# Container environment
+ROUTE_HOST ?= localhost:8080
+COOKIE_SECURE ?= false
+
+# OAuth2 configuration (must be set via environment variables)
+# These should NEVER be committed to git!
+# Auto-load from config/oauth.env if it exists
+-include config/oauth.env.mk
+
+# If config/oauth.env exists (shell format), convert it to make format
+ifneq (,$(wildcard config/oauth.env))
+    $(info 📝 Loading OAuth2 config from config/oauth.env)
+    # Parse export statements and strip quotes
+    OAUTH_ENV_VARS := $(shell sed -n 's/^export \([^=]*\)="\?\([^"]*\)"\?/\1=\2/p' config/oauth.env)
+    $(foreach var,$(OAUTH_ENV_VARS),$(eval $(var)))
+endif
+
+OAUTH_CLIENT_ID ?= 
+OAUTH_CLIENT_SECRET ?= 
+GITHUB_ORG ?= 
+GITHUB_TEAM ?=
 
 # Prerequisites check
 .PHONY: check-prereqs
@@ -124,24 +146,39 @@ check-config: ## Ensure required configuration files exist (internal target)
 		echo -e "$(YELLOW)Please ensure config/ directory exists with required files$(NC)"; \
 		exit 1; \
 	fi
-	@if [ ! -f config/oauth2-proxy-container.cfg ]; then \
-		if [ -f config/oauth2-proxy.cfg ]; then \
-			echo -e "$(YELLOW)📋 oauth2-proxy-container.cfg not found. Creating from oauth2-proxy.cfg...$(NC)"; \
-			echo -e "$(YELLOW)⚠️  You may need to adjust container networking addresses$(NC)"; \
-			cp config/oauth2-proxy.cfg config/oauth2-proxy-container.cfg; \
-			echo -e "$(GREEN)✅ Created config/oauth2-proxy-container.cfg$(NC)"; \
-		elif [ -f config/oauth2-proxy-container.cfg.example ]; then \
-			echo -e "$(YELLOW)📋 oauth2-proxy-container.cfg not found. Creating from example...$(NC)"; \
-			cp config/oauth2-proxy-container.cfg.example config/oauth2-proxy-container.cfg; \
-			echo -e "$(GREEN)✅ Created config/oauth2-proxy-container.cfg from example$(NC)"; \
-			echo -e "$(YELLOW)⚠️  Please review and adjust container networking addresses$(NC)"; \
-		else \
-			echo -e "$(RED)❌ Error: config/oauth2-proxy-container.cfg not found$(NC)"; \
-			echo -e "$(YELLOW)Please create config/oauth2-proxy-container.cfg$(NC)"; \
-			exit 1; \
-		fi; \
+	@if [ ! -f config/oauth2-proxy-container.cfg.template ]; then \
+		echo -e "$(RED)❌ Error: config/oauth2-proxy-container.cfg.template not found$(NC)"; \
+		echo -e "$(YELLOW)Please ensure the template file exists$(NC)"; \
+		exit 1; \
 	fi
-	@echo -e "$(GREEN)✅ Configuration files found$(NC)"
+	@echo -e "$(BLUE)Checking OAuth2 environment variables...$(NC)"
+	@if [ -z "$(OAUTH_CLIENT_ID)" ]; then \
+		echo -e "$(RED)❌ Error: OAUTH_CLIENT_ID not set$(NC)"; \
+		echo -e "$(YELLOW)Please export OAUTH_CLIENT_ID=your-client-id$(NC)"; \
+		echo -e "$(YELLOW)See config/README.md for setup instructions$(NC)"; \
+		exit 1; \
+	fi
+	@if [ -z "$(OAUTH_CLIENT_SECRET)" ]; then \
+		echo -e "$(RED)❌ Error: OAUTH_CLIENT_SECRET not set$(NC)"; \
+		echo -e "$(YELLOW)Please export OAUTH_CLIENT_SECRET=your-secret$(NC)"; \
+		exit 1; \
+	fi
+	@if [ -z "$(GITHUB_ORG)" ]; then \
+		echo -e "$(YELLOW)⚠️  Warning: GITHUB_ORG not set, using placeholder$(NC)"; \
+	fi
+	@if [ -z "$(GITHUB_TEAM)" ]; then \
+		echo -e "$(YELLOW)⚠️  Warning: GITHUB_TEAM not set, using placeholder$(NC)"; \
+	fi
+	@echo -e "$(BLUE)Generating OAuth2-proxy config from template...$(NC)"
+	@sed -e 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' \
+	     -e 's|{{COOKIE_SECURE}}|$(COOKIE_SECURE)|g' \
+	     -e 's|{{OAUTH_CLIENT_ID}}|$(OAUTH_CLIENT_ID)|g' \
+	     -e 's|{{OAUTH_CLIENT_SECRET}}|$(OAUTH_CLIENT_SECRET)|g' \
+	     -e 's|{{GITHUB_ORG}}|$(or $(GITHUB_ORG),your-org)|g' \
+	     -e 's|{{GITHUB_TEAM}}|$(or $(GITHUB_TEAM),your-team)|g' \
+	     config/oauth2-proxy-container.cfg.template > config/oauth2-proxy-container.cfg
+	@echo -e "$(GREEN)✅ OAuth2-proxy config generated for $(ROUTE_HOST)$(NC)"
+	@echo -e "$(GREEN)✅ Configuration files ready$(NC)"
 
 containers-deploy: check-config ## Deploy Tarsy stack (smart default: rebuild apps, preserve database)
 	@echo -e "$(GREEN)Deploying Tarsy application stack (preserving database)...$(NC)"
@@ -160,6 +197,10 @@ containers-deploy: check-config ## Deploy Tarsy stack (smart default: rebuild ap
 containers-redeploy: containers-rebuild check-config ## Force rebuild and redeploy (for code changes)
 	@echo -e "$(YELLOW)Stopping all containers...$(NC)"
 	-$(PODMAN_COMPOSE) down 2>/dev/null || true
+	@echo -e "$(YELLOW)Ensuring no orphaned containers...$(NC)"
+	-@if podman ps -aq --filter "name=tarsy" --filter "name=deploy" | grep -q .; then \
+		podman rm -f $$(podman ps -aq --filter "name=tarsy" --filter "name=deploy") 2>/dev/null || true; \
+	fi
 	@echo -e "$(GREEN)Starting containers with fresh images...$(NC)"
 	$(PODMAN_COMPOSE) up -d
 	@echo ""
@@ -169,6 +210,17 @@ containers-redeploy: containers-rebuild check-config ## Force rebuild and redepl
 	@echo -e "$(BLUE)🗄️  Database (admin):   localhost:5432$(NC)"
 	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo -e "$(GREEN)✅ Force redeploy completed$(NC)"
+
+containers-hard-redeploy: containers-kill-all containers-rebuild check-config ## Nuclear option: kill all Tarsy containers and redeploy
+	@echo -e "$(GREEN)Starting fresh deployment...$(NC)"
+	$(PODMAN_COMPOSE) up -d
+	@echo ""
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(BLUE)🌐 Dashboard:          http://localhost:8080$(NC)"
+	@echo -e "$(BLUE)🔧 API (oauth2-proxy): http://localhost:8080/api$(NC)"
+	@echo -e "$(BLUE)🗄️  Database (admin):   localhost:5432$(NC)"
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(GREEN)✅ Hard redeploy completed (all Tarsy containers killed and recreated)$(NC)"
 
 containers-deploy-fresh: containers-clean check-config ## Deploy complete fresh Tarsy stack (rebuild everything including database)
 	@echo -e "$(GREEN)Starting complete fresh Tarsy container stack...$(NC)"
@@ -196,6 +248,18 @@ containers-stop: ## Stop all running containers
 	@echo -e "$(YELLOW)Stopping containers...$(NC)"
 	-$(PODMAN_COMPOSE) down 2>/dev/null || true
 	@echo -e "$(GREEN)✅ Containers stopped$(NC)"
+
+containers-kill-all: ## Force stop and remove ALL Tarsy-related containers (both tarsy-* and deploy_*)
+	@echo -e "$(YELLOW)Stopping and removing all Tarsy-related containers...$(NC)"
+	@if podman ps -aq --filter "name=tarsy" | grep -q .; then \
+		echo -e "$(YELLOW)Removing tarsy-* containers...$(NC)"; \
+		podman rm -f $$(podman ps -aq --filter "name=tarsy") 2>/dev/null || true; \
+	fi
+	@if podman ps -aq --filter "name=deploy" | grep -q .; then \
+		echo -e "$(YELLOW)Removing deploy_* containers...$(NC)"; \
+		podman rm -f $$(podman ps -aq --filter "name=deploy") 2>/dev/null || true; \
+	fi
+	@echo -e "$(GREEN)✅ All Tarsy containers removed$(NC)"
 
 containers-clean: containers-stop ## Stop and remove all containers, networks, and volumes
 	@echo -e "$(YELLOW)Cleaning up containers, networks, and volumes...$(NC)"

@@ -95,6 +95,33 @@ class EventPublisher:
         logger.debug(f"Published event to '{channel}': {event.type} (id={db_event.id})")
 
         return db_event.id
+    
+    async def publish_transient(self, channel: str, event: BaseEvent) -> None:
+        """
+        Publish transient event via NOTIFY without DB persistence.
+        
+        Use for high-frequency, ephemeral events like LLM streaming that don't 
+        need persistence or catchup support. PostgreSQL only (no-op in SQLite).
+        
+        Args:
+            channel: Channel name
+            event: Event to broadcast (not persisted)
+        """
+        event_dict = event.model_dump()
+        db_dialect = self.event_repo.session.bind.dialect.name
+        
+        if db_dialect == "postgresql":
+            # Direct NOTIFY without INSERT
+            notify_payload_json = json.dumps(event_dict)
+            channel_escaped = channel.replace('"', '""')
+            payload_escaped = notify_payload_json.replace("'", "''")
+            notify_sql = text(f'''NOTIFY "{channel_escaped}", '{payload_escaped}' ''')
+            await self.event_repo.session.execute(notify_sql)
+            await self.event_repo.session.commit()
+            logger.debug(f"Published transient event to '{channel}': {event.type}")
+        else:
+            # SQLite: Skip streaming (no NOTIFY support)
+            logger.debug(f"Skipping transient event in SQLite mode: {event.type}")
 
 
 async def publish_event(
@@ -134,4 +161,13 @@ async def publish_event(
     publisher = EventPublisher(event_repo)
 
     return await publisher.publish(channel, event)
+
+
+async def publish_transient_event(
+    session: AsyncSession, channel: str, event: BaseEvent
+) -> None:
+    """Publish transient event without DB persistence (PostgreSQL NOTIFY only)."""
+    event_repo = EventRepository(session)
+    publisher = EventPublisher(event_repo)
+    await publisher.publish_transient(channel, event)
 
