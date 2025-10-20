@@ -317,6 +317,172 @@ contexts:
             for email in found_emails:
                 assert email not in result, f"Email {email} still present in result: {result}"
 
+    def test_ssh_key_no_false_positives(self):
+        """Test that ssh_key pattern doesn't create false positives on clearly invalid cases."""
+        # Test cases that should NOT be masked - clearly not SSH keys
+        test_cases = [
+            # Incomplete or malformed
+            "ssh-rsa",  # Just the algorithm, no key data
+            "ssh-",  # Incomplete algorithm
+            "ssh-rsa ",  # No key data after space (just whitespace)
+            "ssh-dss\n",  # No key data (just newline)
+            "ssh-rsa\t",  # No key data (just tab)
+            
+            # Invalid algorithms (not recognized SSH key types)
+            "ssh-invalid AAAAB3NzaC1yc2EAAAADAQABAAABgQC7",
+            "sshkey AAAAB3NzaC1yc2EAAAADAQABAAABgQC7",
+            "rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7",
+            "dss AAAAB3NzaC1kc3MAAACBAP1",
+            "ssh-rsa2 AAAAB3NzaC1yc2EAAAADAQABAAABgQC7",
+            
+            # Not base64 characters after algorithm (special chars)
+            "ssh-rsa !!invalid!!",
+            "ssh-ed25519 @@@@@@",
+            "ssh-ecdsa $$$$",
+            "ssh-dss ####",
+            
+            # Just random text mentioning SSH
+            "Configure your ssh settings",
+            "ssh connection failed",
+            "The ssh-agent is running",
+            "Run ssh-keygen to generate keys",
+            "Check your ~/.ssh directory",
+            
+            # URLs or paths with ssh  
+            "git@github.com:user/repo.git",
+            "ssh://user@host.com/path",
+            "/home/user/.ssh/config",
+            "/etc/ssh/sshd_config",
+        ]
+        
+        for test_case in test_cases:
+            result = self.service._apply_patterns(test_case, ["ssh_key"])
+            
+            # Should NOT mask these cases
+            assert "***MASKED_SSH_KEY***" not in result, f"Should NOT have masked: {test_case}"
+            assert result == test_case, f"Content changed unexpectedly: {test_case}"
+
+    def test_ssh_key_contextual_cases(self):
+        """Test ssh_key pattern in various contextual cases that should be masked."""
+        # Valid SSH keys in different contexts - all SHOULD be masked
+        contextual_cases = [
+            # In authorized_keys format
+            'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDXj user@host',
+            'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFq deploy-key',
+            
+            # In YAML configuration
+            'public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC8"',
+            "ssh_key: ssh-dss AAAAB3NzaC1kc3MAAACBAP1/U4EddRIpUt9",
+            
+            # In JSON
+            '{"key": "ssh-ecdsa AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY"}',
+            
+            # In logs or output
+            "Generated key: ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAklOUpkDHrfHY user@machine",
+            "Public key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl",
+            
+            # Multiple keys
+            "Key1: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC8 and Key2: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP",
+        ]
+        
+        for test_case in contextual_cases:
+            result = self.service._apply_patterns(test_case, ["ssh_key"])
+            
+            # Should mask the SSH key
+            assert "***MASKED_SSH_KEY***" in result, f"Should have masked SSH key in: {test_case}"
+            
+            # Original key data should not be present
+            assert "AAAAB3NzaC1" not in result and "AAAAC3NzaC1" not in result and "AAAAE2VjZHNh" not in result, \
+                f"SSH key data still present in: {result}"
+
+    def test_ssh_key_valid_cases_are_masked(self):
+        """Test that valid SSH keys ARE properly masked."""
+        # Test cases that SHOULD be masked - all valid SSH key formats
+        valid_test_cases = [
+            # RSA keys (most common)
+            "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7",
+            "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC8r3cpwFQ user@hostname",
+            "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAklOUpkDHrfHY17SbrmTIpNLTGK9Tjom/BWDSU",
+            
+            # DSS keys
+            "ssh-dss AAAAB3NzaC1kc3MAAACBAP1/U4EddRIpUt9KnC7s5Of2EbdSPO9EAMMeP4C2USZpRnGjPOmF",
+            "ssh-dss AAAAB3NzaC1kc3MAAACBAOv0JKNLmGEFdVPi2vKLv8yJMqhwgYw dss-key-comment",
+            
+            # Ed25519 keys (modern, recommended)
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFq4XmZ7P4jN deploy@server",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP+H7ZGVI1RrYS5Cx4N",
+            
+            # ECDSA keys
+            "ssh-ecdsa AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTY",
+            "ssh-ecdsa AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjE ecdsa-key",
+            
+            # Keys with comments and special characters
+            "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC3 user@host.example.com",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH deploy-prod-2024",
+            "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDZw user.name@company.org",
+            
+            # Keys with various base64 characters
+            "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC+/xyz123ABC==",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMkN+vPl/pQrS==",
+            
+            # In configuration contexts
+            "authorized_keys: ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAIEAvUrW",
+            "public_key = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJbL",
+        ]
+        
+        for test_case in valid_test_cases:
+            result = self.service._apply_patterns(test_case, ["ssh_key"])
+            
+            # Should be masked
+            assert "***MASKED_SSH_KEY***" in result, f"Should have been masked: {test_case}"
+            
+            # Check that SSH key data is not present
+            import re
+            # Match the base64 part of SSH keys
+            ssh_key_pattern = r'ssh-(?:rsa|dss|ed25519|ecdsa)\s+[A-Za-z0-9+/=]+'
+            found_keys = re.findall(ssh_key_pattern, test_case)
+            
+            for key in found_keys:
+                assert key not in result, f"SSH key {key} still present in result: {result}"
+
+    def test_ssh_key_in_security_group(self):
+        """Test that ssh_key is included in the security pattern group."""
+        # The security group should include ssh_key pattern
+        expanded_patterns = self.service._expand_pattern_groups(["security"])
+        
+        assert "ssh_key" in expanded_patterns, "ssh_key should be in security pattern group"
+        
+        # Test that using "security" group masks SSH keys
+        test_data = "Key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7 user@host"
+        result = self.service._apply_patterns(test_data, expanded_patterns)
+        
+        assert "***MASKED_SSH_KEY***" in result
+        assert "AAAAB3NzaC1" not in result
+
+    def test_ssh_key_with_other_patterns(self):
+        """Test that ssh_key works correctly alongside other security patterns."""
+        test_data = '''
+        api_key: sk-1234567890abcdefghijklmnopqrstuvwxyz
+        ssh_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7 admin@server
+        password: secretPassword123
+        email: admin@example.com
+        '''
+        
+        result = self.service._apply_patterns(test_data, ["api_key", "ssh_key", "password", "email"])
+        
+        # All patterns should be masked
+        assert "***MASKED_API_KEY***" in result
+        assert "***MASKED_SSH_KEY***" in result
+        assert "***MASKED_PASSWORD***" in result
+        assert "***MASKED_EMAIL***" in result
+        
+        # Original sensitive data should not be present
+        assert "sk-1234567890abcdefghijklmnopqrstuvwxyz" not in result
+        assert "AAAAB3NzaC1" not in result
+        assert "secretPassword123" not in result
+        assert "admin@example.com" not in result
+
     @pytest.mark.parametrize("test_data,patterns,expected_masked,expected_preserved", [
         (f'token: {BASE64_TEST_DATA["token"]} another_field: {BASE64_TEST_DATA["another_field"]}', ["base64_secret"], 
          ["***MASKED_BASE64_VALUE***"], 
@@ -393,7 +559,7 @@ class TestPatternGroupExpansion:
     
     @pytest.mark.parametrize("groups,expected_patterns,expected_count", [
         (["basic"], PATTERN_GROUPS["basic"], 2),
-        (["basic", "security"], PATTERN_GROUPS["basic"] + PATTERN_GROUPS["security"], 6),
+        (["basic", "security"], PATTERN_GROUPS["basic"] + PATTERN_GROUPS["security"], 7),
         (["unknown_group", "basic"], PATTERN_GROUPS["basic"], 2),  # Skip unknown group
         ([], [], 0),  # Empty groups
         (["kubernetes"], PATTERN_GROUPS["kubernetes"] + PATTERN_GROUPS["basic"], 5),

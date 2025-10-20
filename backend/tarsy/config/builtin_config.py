@@ -188,6 +188,11 @@ BUILTIN_MASKING_PATTERNS: Dict[str, Dict[str, str]] = {
         "pattern": r'(?i)(?:token|bearer|jwt)["\']?\s*[:=]\s*["\']?([A-Za-z0-9_\-\.]{20,})["\']?',
         "replacement": r'"token": "***MASKED_TOKEN***"',
         "description": "Access tokens, bearer tokens, and JWTs"
+    },
+    "ssh_key": {
+        "pattern": r'ssh-(?:rsa|dss|ed25519|ecdsa)\s+[A-Za-z0-9+/=]+',
+        "replacement": "***MASKED_SSH_KEY***",
+        "description": "SSH public keys (all common algorithms)"
     }
 }
 
@@ -196,9 +201,9 @@ BUILTIN_MASKING_PATTERNS: Dict[str, Dict[str, str]] = {
 BUILTIN_PATTERN_GROUPS: Dict[str, list[str]] = {
     "basic": ["api_key", "password"],                          # Most common secrets
     "secrets": ["api_key", "password", "token"],               # Basic + tokens  
-    "security": ["api_key", "password", "token", "certificate", "certificate_authority_data", "email"], # Full security focus
+    "security": ["api_key", "password", "token", "certificate", "certificate_authority_data", "email", "ssh_key"], # Full security focus
     "kubernetes": ["kubernetes_data_section", "kubernetes_stringdata_json", "api_key", "password", "certificate_authority_data"], # Kubernetes-specific - masks data sections and stringData
-    "all": ["base64_secret", "base64_short", "api_key", "password", "certificate", "certificate_authority_data", "email", "token"]  # All patterns
+    "all": ["base64_secret", "base64_short", "api_key", "password", "certificate", "certificate_authority_data", "email", "token", "ssh_key"]  # All patterns
 }
 
 
