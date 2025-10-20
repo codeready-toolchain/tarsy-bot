@@ -111,7 +111,7 @@ This deployment is designed for development and testing environments, serving as
 - **🔧 Flexible Alert Processing**: Accept arbitrary JSON payloads from any monitoring system  
 - **🧠 Chain-Based Agent Architecture**: Specialized agents with domain-specific tools and AI reasoning working in coordinated stages
 - **📊 Comprehensive Audit Trail**: Complete visibility into chain processing workflows with stage-level timeline reconstruction
-- **🖥️ SRE Dashboard**: Real-time monitoring and historical analysis with interactive chain timeline visualization
+- **🖥️ SRE Dashboard**: Real-time monitoring with live LLM streaming and interactive chain timeline visualization
 - **🔒 Data Masking**: Automatic protection of sensitive data in logs and responses
 
 ## Architecture

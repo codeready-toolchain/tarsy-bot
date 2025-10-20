@@ -887,6 +887,20 @@ response_conversation = await self.llm_client.generate_response(
 - **Universal support** - works with OpenAI, Anthropic, xAI, Google providers via LangChain
 - **Cost control** - prevents excessive token generation and associated costs
 
+**📍 Real-time Response Streaming**: LLM responses are streamed in real-time via WebSocket for enhanced user experience
+```python
+# Streaming publishes chunks via transient events (not persisted to DB)
+# - Detects "Thought:" and "Final Answer:" markers in ReAct responses
+# - Thoughts streamed at 2-token intervals, Final Answers at 5-token intervals
+# - Events published to session:{session_id} channel as llm.stream.chunk
+```
+
+**Streaming Features**:
+- **Progressive content delivery** - users see LLM thinking process in real-time
+- **Non-blocking** - streaming failures don't affect LLM call success
+- **Marker detection** - automatically identifies and categorizes content (thought vs final_answer)
+- **Transient events** - chunks not persisted to database, only sent via WebSocket
+
 #### Provider Support
 
 **All providers use LangChain abstraction** with support for:
@@ -1350,7 +1364,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 **Event Channels**:
 - **`sessions`**: Global session lifecycle events (session.created, session.started, session.completed, session.failed)
-- **`session:{session_id}`**: Per-session detail events (llm.interaction, mcp.tool_call, stage.started, stage.completed)
+- **`session:{session_id}`**: Per-session detail events (llm.interaction, llm.stream.chunk, mcp.tool_call, stage.started, stage.completed)
 
 **📍 Connection Management**: `backend/tarsy/services/websocket_connection_manager.py`
 - **Connection tracking** - manages active WebSocket connections per connection_id

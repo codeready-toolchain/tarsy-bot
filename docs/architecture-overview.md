@@ -50,6 +50,7 @@ graph LR
 
 ### 5. Real-time Monitoring (Enhanced)
 - Dashboard shows live chain processing status with stage-by-stage progress
+- **Real-time LLM streaming** - see agent thinking process as it happens (Thought and Final Answer sections)
 - Complete audit trail of what each stage and agent did and why
 - Stage execution tracking with detailed performance metrics
 - System health warnings for initialization issues (MCP/LLM failures, configuration)
