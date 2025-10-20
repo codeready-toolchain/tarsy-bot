@@ -5,7 +5,7 @@ Tests the unified LLM client that handles communication with different
 LLM providers using LangChain and the new typed hook system.
 """
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, PropertyMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -1158,13 +1158,14 @@ class TestLLMClientTokenUsageTracking:
         # Arrange - Mock the UsageMetadataCallbackHandler to return token usage
         with patch('tarsy.integrations.llm.client.UsageMetadataCallbackHandler') as mock_callback_class:
             mock_callback = Mock()
-            mock_callback.on_chain_end_values = {
-                'usage_metadata': {
+            # Use PropertyMock to properly set the usage_metadata attribute
+            type(mock_callback).usage_metadata = PropertyMock(return_value={
+                'gpt-4o-mini': {
                     'input_tokens': 120,
                     'output_tokens': 45,
                     'total_tokens': 165
                 }
-            }
+            })
             mock_callback_class.return_value = mock_callback
             
             conversation = LLMConversation(messages=[
@@ -1197,7 +1198,8 @@ class TestLLMClientTokenUsageTracking:
         # Arrange - Mock callback without usage_metadata
         with patch('tarsy.integrations.llm.client.UsageMetadataCallbackHandler') as mock_callback_class:
             mock_callback = Mock()
-            mock_callback.on_chain_end_values = None  # No usage metadata
+            # Use PropertyMock to properly set None
+            type(mock_callback).usage_metadata = PropertyMock(return_value=None)
             mock_callback_class.return_value = mock_callback
             
             conversation = LLMConversation(messages=[
@@ -1232,13 +1234,14 @@ class TestLLMClientTokenUsageTracking:
         # Arrange - Mock callback with zero token usage
         with patch('tarsy.integrations.llm.client.UsageMetadataCallbackHandler') as mock_callback_class:
             mock_callback = Mock()
-            mock_callback.on_chain_end_values = {
-                'usage_metadata': {
+            # Use PropertyMock to properly set the usage_metadata attribute
+            type(mock_callback).usage_metadata = PropertyMock(return_value={
+                'gpt-4o-mini': {
                     'input_tokens': 0,
                     'output_tokens': 0,
                     'total_tokens': 0
                 }
-            }
+            })
             mock_callback_class.return_value = mock_callback
             
             conversation = LLMConversation(messages=[
@@ -1261,6 +1264,59 @@ class TestLLMClientTokenUsageTracking:
                 assert mock_ctx.interaction.input_tokens is None
                 assert mock_ctx.interaction.output_tokens is None  
                 assert mock_ctx.interaction.total_tokens is None
+    
+    @pytest.mark.asyncio
+    async def test_generate_response_captures_token_usage_from_streaming_chunk(self, client, mock_llm_client):
+        """Test that token usage is captured from streaming chunk (OpenAI stream_usage=True)."""
+        # Arrange - Mock streaming chunks with usage_metadata in final chunk
+        with patch('tarsy.integrations.llm.client.UsageMetadataCallbackHandler') as mock_callback_class:
+            mock_callback = Mock()
+            type(mock_callback).usage_metadata = PropertyMock(return_value={})  # Empty callback
+            mock_callback_class.return_value = mock_callback
+            
+            # Create chunks - final chunk has usage_metadata
+            chunk1 = Mock(content="Hello", usage_metadata=None)
+            chunk2 = Mock(content=" there", usage_metadata=None)
+            final_chunk = Mock(
+                content="!", 
+                usage_metadata={
+                    'input_tokens': 150,
+                    'output_tokens': 60,
+                    'total_tokens': 210
+                }
+            )
+            
+            # Mock astream to yield chunks with final chunk having usage_metadata
+            async def mock_astream(*args, **kwargs):
+                yield chunk1
+                yield chunk2
+                yield final_chunk
+            
+            mock_llm_client.astream = mock_astream
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test question")
+            ])
+            
+            with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
+                mock_ctx = Mock()
+                mock_ctx.get_request_id.return_value = "req-126"
+                mock_ctx.interaction = Mock()
+                mock_ctx.complete_success = AsyncMock()
+                mock_context.return_value.__aenter__.return_value = mock_ctx
+                mock_context.return_value.__aexit__.return_value = None
+                
+                # Act
+                result = await client.generate_response(conversation, "test-session-123")
+                
+                # Assert
+                assert isinstance(result, LLMConversation)
+                
+                # Verify token usage from streaming chunk was stored (priority over callback)
+                assert mock_ctx.interaction.input_tokens == 150
+                assert mock_ctx.interaction.output_tokens == 60  
+                assert mock_ctx.interaction.total_tokens == 210
     
     @pytest.mark.asyncio
     async def test_generate_response_with_llm_config(self, client, mock_llm_client):

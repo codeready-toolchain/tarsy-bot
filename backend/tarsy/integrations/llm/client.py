@@ -40,11 +40,16 @@ llm_comm_logger = get_module_logger("llm.communications")
 
 # LLM Providers mapping using LangChain
 def _create_openai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
-    """Create ChatOpenAI client with optional SSL verification disable and custom base URL."""
+    """Create ChatOpenAI client with optional SSL verification disable and custom base URL.
+    
+    Note: stream_usage=True enables token usage tracking during streaming by adding
+    usage metadata to the final chunk. Requires langchain-openai >= 0.1.9.
+    """
     client_kwargs = {
         "model_name": model, 
         "temperature": temp, 
-        "api_key": api_key
+        "api_key": api_key,
+        "stream_usage": True  # Enable token usage in streaming responses
     }
     
     # Only set base_url if explicitly provided, otherwise let LangChain use defaults
@@ -251,14 +256,24 @@ class LLMClient:
                     FINAL_ANSWER_CHUNK_SIZE = 5  # Less frequent for Markdown-heavy final answers
                     
                     # Stream tokens with timeout protection
+                    # Token usage tracking uses dual approach:
+                    # 1. Chunk aggregation (OpenAI with stream_usage=True) - primary
+                    # 2. UsageMetadataCallbackHandler - fallback for other providers
                     callback = UsageMetadataCallbackHandler()
                     config = {"callbacks": [callback]}
                     if max_tokens is not None:
                         config["max_tokens"] = max_tokens
                     
+                    # Aggregate chunks for usage metadata (OpenAI stream_usage=True approach)
+                    aggregate_chunk = None
+                    
                     # Wrap streaming with timeout protection (Python 3.11+)
                     async with asyncio.timeout(timeout_seconds):
                         async for chunk in self.llm_client.astream(langchain_messages, config=config):
+                            # Aggregate chunks by adding them together
+                            # This properly accumulates usage_metadata across all chunks
+                            aggregate_chunk = chunk if aggregate_chunk is None else aggregate_chunk + chunk
+                            
                             token = self._extract_token_content(chunk)
                             accumulated_content += token
                             
@@ -397,8 +412,14 @@ class LLMClient:
                             logger.warning(f"Empty LLM response on final attempt, injecting error message")
                             accumulated_content = f"⚠️ **LLM Response Error**\n\nThe {self.provider_name} LLM returned empty responses after {max_retries + 1} attempts. This may be due to:\n- Temporary provider issues\n- API rate limiting\n- Model overload\n\nPlease try processing this alert again in a few moments."
                     
-                    # Store usage metadata from callback
-                    self._store_usage_metadata(ctx, callback)
+                    # Extract usage metadata from aggregated chunk (OpenAI stream_usage=True)
+                    chunk_usage = None
+                    if aggregate_chunk and hasattr(aggregate_chunk, 'usage_metadata'):
+                        chunk_usage = aggregate_chunk.usage_metadata
+                        logger.debug(f"Extracted usage metadata from aggregated chunk: {chunk_usage}")
+                    
+                    # Store usage metadata (from aggregated chunks or callback)
+                    self._store_usage_metadata(ctx, callback, chunk_usage)
                     
                     # Finalize conversation and interaction
                     self._finalize_conversation(ctx, conversation, accumulated_content, interaction_type)
@@ -521,27 +542,78 @@ class LLMClient:
         
         return token
     
-    def _store_usage_metadata(self, ctx: Any, callback: UsageMetadataCallbackHandler) -> None:
+    def _store_usage_metadata(
+        self, 
+        ctx: Any, 
+        callback: UsageMetadataCallbackHandler, 
+        chunk_usage: Optional[Dict[str, Any]] = None
+    ) -> None:
         """
         Extract and store token usage metadata in interaction.
         
+        Token usage is extracted from aggregated streaming chunks or callback handler:
+        
+        **Priority 1** - Aggregated chunk metadata (OpenAI stream_usage=True):
+          When stream_usage=True is enabled, chunks are aggregated using the + operator.
+          The final aggregate contains complete usage_metadata with input/output/total tokens.
+          This is the preferred approach as it's provider-native.
+        
+        **Priority 2** - UsageMetadataCallbackHandler (fallback):
+          For providers without stream_usage support, the callback handler captures
+          metadata. It stores usage keyed by model name, so we extract the first entry.
+        
+        Stores token counts as None instead of 0 for cleaner database representation.
+        
         Args:
-            ctx: LLM interaction context
-            callback: UsageMetadataCallbackHandler with captured metadata
+            ctx: LLM interaction context with interaction attribute to store tokens
+            callback: UsageMetadataCallbackHandler that may have captured metadata
+            chunk_usage: Optional usage metadata from aggregated streaming chunk
         """
         usage_metadata = None
-        if hasattr(callback, 'on_chain_end_values') and callback.on_chain_end_values:
-            usage_metadata = callback.on_chain_end_values.get('usage_metadata')
         
-        if usage_metadata:
+        # Priority 1: Check final chunk usage (OpenAI stream_usage=True)
+        if chunk_usage:
+            usage_metadata = chunk_usage
+            logger.debug(f"Using token usage from streaming chunk: {usage_metadata}")
+        # Priority 2: Check callback's usage_metadata attribute (standard approach)
+        elif hasattr(callback, 'usage_metadata') and callback.usage_metadata:
+            # callback.usage_metadata is a dict keyed by model name
+            # Extract the first (and usually only) model's usage
+            callback_data = callback.usage_metadata
+            if isinstance(callback_data, dict) and callback_data:
+                # Get the first model's usage data
+                model_usage = next(iter(callback_data.values()), None)
+                if model_usage:
+                    usage_metadata = model_usage
+                    logger.debug(f"Using token usage from callback handler: {usage_metadata}")
+        
+        if usage_metadata and isinstance(usage_metadata, dict):
+            # Safely extract token counts (ensure they're integers)
             input_tokens = usage_metadata.get('input_tokens', 0)
             output_tokens = usage_metadata.get('output_tokens', 0)
             total_tokens = usage_metadata.get('total_tokens', 0)
+            
+            # Ensure we have integers (handle potential None or other types)
+            try:
+                input_tokens = int(input_tokens) if input_tokens is not None else 0
+                output_tokens = int(output_tokens) if output_tokens is not None else 0
+                total_tokens = int(total_tokens) if total_tokens is not None else 0
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid token usage data types: {e}")
+                return
             
             # Store token data (use None instead of 0 for cleaner database storage)
             ctx.interaction.input_tokens = input_tokens if input_tokens > 0 else None
             ctx.interaction.output_tokens = output_tokens if output_tokens > 0 else None
             ctx.interaction.total_tokens = total_tokens if total_tokens > 0 else None
+            
+            logger.debug(
+                f"Stored token usage: input={input_tokens}, "
+                f"output={output_tokens}, total={total_tokens}"
+            )
+        else:
+            # Some providers may not support token usage metadata
+            logger.debug(f"No token usage metadata available for {self.provider_name}")
     
     def _finalize_conversation(
         self,
