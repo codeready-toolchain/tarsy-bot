@@ -235,7 +235,8 @@ class LLMClient:
                 is_streaming_thought = False
                 is_streaming_final_answer = False
                 token_count_since_last_send = 0
-                CHUNK_SIZE = 5  # Send entire content every 5 tokens for responsiveness
+                THOUGHT_CHUNK_SIZE = 2  # More responsive for short plain text thoughts
+                FINAL_ANSWER_CHUNK_SIZE = 5  # Less frequent for Markdown-heavy final answers
                 
                 # Stream tokens (always, in all environments)
                 callback = UsageMetadataCallbackHandler()
@@ -291,8 +292,11 @@ class LLMClient:
                     if is_streaming_thought or is_streaming_final_answer:
                         token_count_since_last_send += 1
                         
-                        # Send entire content every CHUNK_SIZE tokens
-                        if token_count_since_last_send >= CHUNK_SIZE:
+                        # Determine chunk size based on what we're streaming
+                        current_chunk_size = THOUGHT_CHUNK_SIZE if is_streaming_thought else FINAL_ANSWER_CHUNK_SIZE
+                        
+                        # Send entire content every N tokens (2 for thoughts, 5 for final answers)
+                        if token_count_since_last_send >= current_chunk_size:
                             if is_streaming_thought:
                                 thought_start_idx = accumulated_content.find("Thought:")
                                 current_thought = accumulated_content[thought_start_idx + len("Thought:"):].lstrip()
