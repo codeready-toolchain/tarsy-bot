@@ -231,10 +231,11 @@ class LLMClient:
                 langchain_messages = self._convert_conversation_to_langchain(conversation)
                 accumulated_content = ""
                 
-                # Streaming state (only for thoughts - we don't stream final answers)
+                # Streaming state (for both thoughts and final answers)
                 is_streaming_thought = False
+                is_streaming_final_answer = False
                 token_count_since_last_send = 0
-                CHUNK_SIZE = 5  # Send entire thought content every 5 tokens for responsiveness
+                CHUNK_SIZE = 5  # Send entire content every 5 tokens for responsiveness
                 
                 # Stream tokens (always, in all environments)
                 callback = UsageMetadataCallbackHandler()
@@ -246,14 +247,14 @@ class LLMClient:
                     token = self._extract_token_content(chunk)
                     accumulated_content += token
                     
-                    # Detect start of "Thought:" streaming (but NOT Final Answer - we don't stream that)
-                    if not is_streaming_thought:
+                    # Detect start of "Thought:" streaming
+                    if not is_streaming_thought and not is_streaming_final_answer:
                         if "Thought:" in accumulated_content and "Final Answer:" not in accumulated_content:
                             is_streaming_thought = True
                             token_count_since_last_send = 0
                             logger.debug(f"Started streaming thought for {session_id}")
                     
-                    # Check if we should STOP streaming thought (Action: or Final Answer: detected)
+                    # Check if we should STOP streaming thought
                     if is_streaming_thought and ("Action:" in accumulated_content or "Final Answer:" in accumulated_content):
                         # Extract clean thought content (everything between "Thought:" and stop marker)
                         thought_start_idx = accumulated_content.find("Thought:")
@@ -276,34 +277,54 @@ class LLMClient:
                             )
                         is_streaming_thought = False
                         token_count_since_last_send = 0
-                        logger.debug(f"Stopped streaming thought (Action/Final Answer detected) for {session_id}")
+                        logger.debug(f"Stopped streaming thought for {session_id}")
+                        
+                        # If "Final Answer:" detected, start streaming it
+                        if "Final Answer:" in accumulated_content:
+                            is_streaming_final_answer = True
+                            token_count_since_last_send = 0
+                            logger.debug(f"Started streaming final answer for {session_id}")
+                        
                         continue  # Skip token accumulation for this iteration
                     
-                    # Send periodic updates with ENTIRE thought content (not just new tokens)
-                    if is_streaming_thought:
+                    # Send periodic updates with ENTIRE content (not just new tokens)
+                    if is_streaming_thought or is_streaming_final_answer:
                         token_count_since_last_send += 1
                         
-                        # Send entire thought content every CHUNK_SIZE tokens
+                        # Send entire content every CHUNK_SIZE tokens
                         if token_count_since_last_send >= CHUNK_SIZE:
-                            thought_start_idx = accumulated_content.find("Thought:")
-                            current_thought = accumulated_content[thought_start_idx + len("Thought:"):].lstrip()
+                            if is_streaming_thought:
+                                thought_start_idx = accumulated_content.find("Thought:")
+                                current_thought = accumulated_content[thought_start_idx + len("Thought:"):].lstrip()
+                                
+                                # Check if Action: or Final Answer: appeared (strip them from streaming)
+                                # This handles cases where LLM doesn't put them on new lines
+                                if "Action:" in current_thought:
+                                    current_thought = current_thought[:current_thought.find("Action:")].strip()
+                                elif "Final Answer:" in current_thought:
+                                    current_thought = current_thought[:current_thought.find("Final Answer:")].strip()
+                                
+                                if current_thought:
+                                    await self._publish_stream_chunk(
+                                        session_id, stage_execution_id,
+                                        StreamingEventType.THOUGHT, current_thought,
+                                        is_complete=False
+                                    )
                             
-                            # Check if Action: or Final Answer: appeared (strip them from streaming)
-                            # This handles cases where LLM doesn't put them on new lines
-                            if "Action:" in current_thought:
-                                current_thought = current_thought[:current_thought.find("Action:")].strip()
-                            elif "Final Answer:" in current_thought:
-                                current_thought = current_thought[:current_thought.find("Final Answer:")].strip()
+                            elif is_streaming_final_answer:
+                                final_answer_start_idx = accumulated_content.find("Final Answer:")
+                                current_final_answer = accumulated_content[final_answer_start_idx + len("Final Answer:"):].lstrip()
+                                
+                                if current_final_answer:
+                                    await self._publish_stream_chunk(
+                                        session_id, stage_execution_id,
+                                        StreamingEventType.FINAL_ANSWER, current_final_answer,
+                                        is_complete=False
+                                    )
                             
-                            if current_thought:
-                                await self._publish_stream_chunk(
-                                    session_id, stage_execution_id,
-                                    StreamingEventType.THOUGHT, current_thought,
-                                    is_complete=False
-                                )
                             token_count_since_last_send = 0
                 
-                # Send final complete thought if streaming is still active (indicates stream end without Action/Final Answer)
+                # Send final complete content if streaming is still active
                 if is_streaming_thought:
                     thought_start_idx = accumulated_content.find("Thought:")
                     final_thought = accumulated_content[thought_start_idx + len("Thought:"):].strip()
@@ -325,6 +346,25 @@ class LLMClient:
                         await self._publish_stream_chunk(
                             session_id, stage_execution_id,
                             StreamingEventType.THOUGHT, "",
+                            is_complete=True
+                        )
+                
+                # Send final complete final answer if streaming is still active
+                if is_streaming_final_answer:
+                    final_answer_start_idx = accumulated_content.find("Final Answer:")
+                    final_answer = accumulated_content[final_answer_start_idx + len("Final Answer:"):].strip()
+                    
+                    if final_answer:
+                        await self._publish_stream_chunk(
+                            session_id, stage_execution_id,
+                            StreamingEventType.FINAL_ANSWER, final_answer,
+                            is_complete=True
+                        )
+                    else:
+                        # Send completion marker
+                        await self._publish_stream_chunk(
+                            session_id, stage_execution_id,
+                            StreamingEventType.FINAL_ANSWER, "",
                             is_complete=True
                         )
                 

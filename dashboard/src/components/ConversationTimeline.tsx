@@ -7,6 +7,7 @@ import {
   Chip,
   Alert
 } from '@mui/material';
+import ReactMarkdown from 'react-markdown';
 import { parseSessionChatFlow, getChatFlowStats } from '../utils/chatFlowParser';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { DetailedSession } from '../types';
@@ -85,6 +86,137 @@ interface StreamingItem {
   content: string;
   stage_execution_id?: string;
   waitingForDb?: boolean; // True when stream completed, waiting for DB confirmation
+}
+
+/**
+ * StreamingItemRenderer Component
+ * Renders streaming items with proper formatting (Markdown for final answers, plain text for thoughts)
+ */
+function StreamingItemRenderer({ item }: { item: StreamingItem }) {
+  if (item.type === 'thought') {
+    // Render thought as plain text (matching DB rendering)
+    return (
+      <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            fontSize: '1.1rem', 
+            lineHeight: 1,
+            flexShrink: 0,
+            mt: 0.25
+          }}
+        >
+          💭
+        </Typography>
+        <Typography 
+          variant="body1" 
+          sx={{ 
+            whiteSpace: 'pre-wrap', 
+            wordBreak: 'break-word',
+            lineHeight: 1.7,
+            fontSize: '1rem',
+            color: 'text.primary'
+          }}
+        >
+          {item.content}
+        </Typography>
+      </Box>
+    );
+  }
+  
+  // Render final answer with Markdown (matching DB rendering)
+  return (
+    <Box sx={{ mb: 2, mt: 3 }}>
+      <Box sx={{ display: 'flex', gap: 1.5, mb: 1 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            fontSize: '1.1rem',
+            lineHeight: 1,
+            flexShrink: 0
+          }}
+        >
+          🎯
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+            fontSize: '0.75rem',
+            color: '#2e7d32',
+            mt: 0.25
+          }}
+        >
+          Final Answer
+        </Typography>
+      </Box>
+      <Box sx={{ pl: 3.5 }}>
+        <ReactMarkdown
+          components={{
+            h1: ({ children }) => (
+              <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1.5, fontSize: '1.1rem' }}>
+                {children}
+              </Typography>
+            ),
+            h2: ({ children }) => (
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.75, mt: 1.25, fontSize: '1rem' }}>
+                {children}
+              </Typography>
+            ),
+            h3: ({ children }) => (
+              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1, fontSize: '0.95rem' }}>
+                {children}
+              </Typography>
+            ),
+            p: ({ children }) => (
+              <Typography variant="body2" sx={{ mb: 1, lineHeight: 1.7, fontSize: '0.95rem' }}>
+                {children}
+              </Typography>
+            ),
+            ul: ({ children }) => (
+              <Box component="ul" sx={{ pl: 2, mb: 1 }}>
+                {children}
+              </Box>
+            ),
+            ol: ({ children }) => (
+              <Box component="ol" sx={{ pl: 2, mb: 1 }}>
+                {children}
+              </Box>
+            ),
+            li: ({ children }) => (
+              <Typography component="li" variant="body2" sx={{ fontSize: '0.95rem', lineHeight: 1.7, mb: 0.5 }}>
+                {children}
+              </Typography>
+            ),
+            code: ({ children }) => (
+              <Box
+                component="code"
+                sx={{
+                  bgcolor: '#f5f5f5',
+                  px: 0.5,
+                  py: 0.25,
+                  borderRadius: 0.5,
+                  fontSize: '0.9em',
+                  fontFamily: 'monospace'
+                }}
+              >
+                {children}
+              </Box>
+            ),
+            strong: ({ children }) => (
+              <Box component="strong" sx={{ fontWeight: 600 }}>
+                {children}
+              </Box>
+            )
+          }}
+        >
+          {item.content}
+        </ReactMarkdown>
+      </Box>
+    </Box>
+  );
 }
 
 /**
@@ -192,7 +324,8 @@ function ConversationTimeline({
         
         setStreamingItems(prev => {
           const updated = new Map(prev);
-          const key = event.stage_execution_id || 'default';
+          // Use composite key to keep thought and final_answer separate in the same interaction
+          const key = `${event.stage_execution_id || 'default'}-${event.stream_type}`;
           
           if (event.is_complete) {
             // Stream completed - mark as waiting for DB update
@@ -416,38 +549,7 @@ function ConversationTimeline({
           // Show streaming items even before DB has data
           <Box>
             {Array.from(streamingItems.values()).map((item, idx) => (
-              <Box 
-                key={`streaming-${idx}`} 
-                sx={{ 
-                  mb: 1.5, 
-                  display: 'flex', 
-                  gap: 1.5
-                }}
-              >
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    fontSize: '1.1rem', 
-                    lineHeight: 1,
-                    flexShrink: 0,
-                    mt: 0.25
-                  }}
-                >
-                  {item.type === 'thought' ? '💭' : '🎯'}
-                </Typography>
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    whiteSpace: 'pre-wrap', 
-                    wordBreak: 'break-word',
-                    lineHeight: 1.7,
-                    fontSize: '1rem',
-                    color: 'text.primary'
-                  }}
-                >
-                  {item.content}
-                </Typography>
-              </Box>
+              <StreamingItemRenderer key={`streaming-${idx}`} item={item} />
             ))}
             <ProcessingIndicator />
           </Box>
@@ -476,38 +578,7 @@ function ConversationTimeline({
             {/* Show streaming items at the end (will be cleared by deduplication when DB data arrives) */}
             {streamingItems.size > 0 && (
               Array.from(streamingItems.values()).map((item, idx) => (
-                <Box 
-                  key={`streaming-${idx}`} 
-                  sx={{ 
-                    mb: 1.5, 
-                    display: 'flex', 
-                    gap: 1.5
-                  }}
-                >
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
-                      fontSize: '1.1rem',
-                      lineHeight: 1,
-                      flexShrink: 0,
-                      mt: 0.25
-                    }}
-                  >
-                    {item.type === 'thought' ? '💭' : '🎯'}
-                  </Typography>
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      whiteSpace: 'pre-wrap', 
-                      wordBreak: 'break-word',
-                      lineHeight: 1.7,
-                      fontSize: '1rem',
-                      color: 'text.primary'
-                    }}
-                  >
-                    {item.content}
-                  </Typography>
-                </Box>
+                <StreamingItemRenderer key={`streaming-${idx}`} item={item} />
               ))
             )}
 
