@@ -15,35 +15,8 @@ from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
 
-
-class MockChunk:
-    """Mock chunk that supports LangChain-style aggregation with + operator."""
-    def __init__(self, content: str, usage_metadata=None):
-        self.content = content
-        self.usage_metadata = usage_metadata
-    
-    def __add__(self, other):
-        """Support chunk aggregation like LangChain does."""
-        if not isinstance(other, MockChunk):
-            return NotImplemented
-        # Aggregate content and usage_metadata
-        new_content = self.content + other.content
-        # For usage metadata, the last one wins (simulating LangChain behavior)
-        new_usage = other.usage_metadata or self.usage_metadata
-        return MockChunk(new_content, new_usage)
-    
-    def __radd__(self, other):
-        """Support reverse addition."""
-        if other is None:
-            return self
-        return self.__add__(other)
-
-
-async def create_mock_stream(content: str):
-    """Create an async generator that yields mock chunks."""
-    # Simulate streaming by yielding content in chunks
-    for char in content:
-        yield MockChunk(char)
+# Import shared test helpers from conftest
+from .conftest import MockChunk, create_mock_stream, create_stream_side_effect
 
 
 def create_test_config(provider_type: str = "openai", **overrides) -> LLMProviderConfig:
@@ -443,7 +416,7 @@ class TestLLMClientResponseGeneration:
         """Mock LangChain LLM client."""
         mock_client = AsyncMock()
         # Mock astream() as a simple callable that returns async generator
-        mock_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response from LLM"))
+        mock_client.astream = Mock(side_effect=create_stream_side_effect("Test response from LLM"))
         return mock_client
     
     @pytest.fixture
@@ -488,7 +461,11 @@ class TestLLMClientResponseGeneration:
             mock_chunk.content = ["First part", " Second part", " Third part"]
             yield mock_chunk
         
-        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: mock_stream_with_list())
+        # Side effect function that accepts astream signature but ignores params
+        def side_effect(*_args, **_kwargs):
+            return mock_stream_with_list()
+        
+        mock_llm_client.astream = Mock(side_effect=side_effect)
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", create_test_config(api_key="test"))
@@ -523,7 +500,11 @@ class TestLLMClientResponseGeneration:
             ]
             yield mock_chunk
         
-        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: mock_stream_with_dicts())
+        # Side effect function that accepts astream signature but ignores params
+        def side_effect(*_args, **_kwargs):
+            return mock_stream_with_dicts()
+        
+        mock_llm_client.astream = Mock(side_effect=side_effect)
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", create_test_config(api_key="test"))
@@ -559,7 +540,11 @@ class TestLLMClientResponseGeneration:
             mock_chunk.content = [block1, block2]
             yield mock_chunk
         
-        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: mock_stream_with_objects())
+        # Side effect function that accepts astream signature but ignores params
+        def side_effect(*_args, **_kwargs):
+            return mock_stream_with_objects()
+        
+        mock_llm_client.astream = Mock(side_effect=side_effect)
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", create_test_config(api_key="test"))
@@ -597,7 +582,11 @@ class TestLLMClientResponseGeneration:
             ]
             yield mock_chunk
         
-        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: mock_stream_with_mixed())
+        # Side effect function that accepts astream signature but ignores params
+        def side_effect(*_args, **_kwargs):
+            return mock_stream_with_mixed()
+        
+        mock_llm_client.astream = Mock(side_effect=side_effect)
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", create_test_config(api_key="test"))
@@ -793,7 +782,7 @@ class TestLLMClientRetryLogic:
         """Mock LangChain client."""
         mock_client = AsyncMock()
         # Default stream behavior (will be overridden in specific tests)
-        mock_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response"))
+        mock_client.astream = Mock(side_effect=create_stream_side_effect("Test response"))
         return mock_client
     
     @pytest.fixture
@@ -914,7 +903,11 @@ class TestLLMClientRetryLogic:
             mock_chunk.content = ""
             yield mock_chunk
         
-        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: empty_stream())
+        # Side effect function that accepts astream signature but ignores params
+        def side_effect(*_args, **_kwargs):
+            return empty_stream()
+        
+        mock_llm_client.astream = Mock(side_effect=side_effect)
         
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
@@ -1063,7 +1056,7 @@ class TestLLMClientIntegration:
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
             # Setup mock LangChain client
             mock_langchain_client = AsyncMock()
-            mock_langchain_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Integration test response"))
+            mock_langchain_client.astream = Mock(side_effect=create_stream_side_effect("Integration test response"))
             mock_openai.return_value = mock_langchain_client
             
             # Create client
@@ -1163,7 +1156,7 @@ class TestLLMClientTokenUsageTracking:
         """Mock LangChain LLM client."""
         mock_client = AsyncMock()
         # Default stream behavior (will be overridden in specific tests)
-        mock_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response with tokens"))
+        mock_client.astream = Mock(side_effect=create_stream_side_effect("Test response with tokens"))
         return mock_client
     
     @pytest.fixture
@@ -1350,7 +1343,7 @@ class TestLLMClientTokenUsageTracking:
         ])
 
         # Mock successful LLM stream
-        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response"))
+        mock_llm_client.astream = Mock(side_effect=create_stream_side_effect("Test response"))
 
         # Test with max_tokens parameter
         max_tokens = 500
@@ -1392,7 +1385,7 @@ class TestLLMClientTokenUsageTracking:
         ])
         
         # Mock successful LLM stream
-        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response"))
+        mock_llm_client.astream = Mock(side_effect=create_stream_side_effect("Test response"))
         
         with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
             mock_ctx = Mock()

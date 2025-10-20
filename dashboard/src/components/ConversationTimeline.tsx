@@ -338,6 +338,15 @@ function ConversationTimeline({
                 waitingForDb: true // Mark as waiting for DB confirmation
               });
               console.log('✅ Stream completed, waiting for DB update to deduplicate');
+            } else {
+              // Seed a new entry for completion event with no prior partial entry
+              updated.set(key, {
+                type: event.stream_type as 'thought' | 'final_answer',
+                content: event.chunk,
+                stage_execution_id: event.stage_execution_id,
+                waitingForDb: true
+              });
+              console.log('✅ Stream completed (no prior chunks), waiting for DB update to deduplicate');
             }
           } else {
             // Still streaming - update content
@@ -548,8 +557,8 @@ function ConversationTimeline({
         {chatFlow.length === 0 && streamingItems.size > 0 ? (
           // Show streaming items even before DB has data
           <Box>
-            {Array.from(streamingItems.values()).map((item, idx) => (
-              <StreamingItemRenderer key={`streaming-${idx}`} item={item} />
+            {Array.from(streamingItems.entries()).map(([entryKey, entryValue]) => (
+              <StreamingItemRenderer key={entryKey} item={entryValue} />
             ))}
             <ProcessingIndicator />
           </Box>
@@ -577,8 +586,8 @@ function ConversationTimeline({
             
             {/* Show streaming items at the end (will be cleared by deduplication when DB data arrives) */}
             {streamingItems.size > 0 && (
-              Array.from(streamingItems.values()).map((item, idx) => (
-                <StreamingItemRenderer key={`streaming-${idx}`} item={item} />
+              Array.from(streamingItems.entries()).map(([entryKey, entryValue]) => (
+                <StreamingItemRenderer key={entryKey} item={entryValue} />
               ))
             )}
 

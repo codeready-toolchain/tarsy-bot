@@ -9,14 +9,14 @@
 ## Template variables (replaced from environment variables during deployment):
 ##   - {{ROUTE_HOST}}           = Set via make (default: localhost:8080)
 ##   - {{COOKIE_SECURE}}        = Set via make (default: false)
-##   - {{OAUTH_CLIENT_ID}}      = REQUIRED: export OAUTH_CLIENT_ID="your-id"
-##   - {{OAUTH_CLIENT_SECRET}}  = REQUIRED: export OAUTH_CLIENT_SECRET="your-secret"
+##   - {{OAUTH2_CLIENT_ID}}     = REQUIRED: export OAUTH2_CLIENT_ID="your-id"
+##   - {{OAUTH2_CLIENT_SECRET}} = REQUIRED: export OAUTH2_CLIENT_SECRET="your-secret"
 ##   - {{GITHUB_ORG}}           = OPTIONAL: export GITHUB_ORG="your-org"
 ##   - {{GITHUB_TEAM}}          = OPTIONAL: export GITHUB_TEAM="your-team"
 ##
 ## Setup instructions:
 ## 1. Create a GitHub OAuth App at https://github.com/settings/developers
-## 2. Export the credentials: export OAUTH_CLIENT_ID="..." OAUTH_CLIENT_SECRET="..."
+## 2. Export the credentials: export OAUTH2_CLIENT_ID="..." OAUTH2_CLIENT_SECRET="..."
 ## 3. Run: make containers-deploy
 ##
 ## See config/README.md for detailed setup instructions.
@@ -110,7 +110,7 @@ email_domains=["*"]
 ## JWT Bearer Token Authentication
 ## Allow API clients to authenticate directly with JWT tokens
 ## while maintaining GitHub OAuth for web dashboard users
-skip_jwt_bearer_tokens = true
+skip_jwt_bearer_tokens = false
 oidc_jwks_url = "http://tarsy-backend:8000/.well-known/jwks.json"
 skip_oidc_discovery = true
 
@@ -121,16 +121,16 @@ provider = "github"
 
 ## The OAuth Client ID, Secret
 ## These values are replaced from environment variables during deployment:
-##   {{OAUTH_CLIENT_ID}}     - Set via: export OAUTH_CLIENT_ID="your-client-id"
-##   {{OAUTH_CLIENT_SECRET}} - Set via: export OAUTH_CLIENT_SECRET="your-secret"
+##   {{OAUTH2_CLIENT_ID}}     - Set via: export OAUTH2_CLIENT_ID="your-client-id"
+##   {{OAUTH2_CLIENT_SECRET}} - Set via: export OAUTH2_CLIENT_SECRET="your-secret"
 ##
 ## To create a GitHub OAuth App:
 ## 1. Go to https://github.com/settings/developers
 ## 2. Click "New OAuth App"
 ## 3. Set Authorization callback URL to: http://localhost:8080/oauth2/callback (or your ROUTE_HOST)
 ## 4. Export the credentials as environment variables (DO NOT commit them!)
-client_id = "{{OAUTH_CLIENT_ID}}"
-client_secret = "{{OAUTH_CLIENT_SECRET}}"
+client_id = "{{OAUTH2_CLIENT_ID}}"
+client_secret = "{{OAUTH2_CLIENT_SECRET}}"
 
 ## GitHub organization and team restrictions
 ## Only users in this GitHub org/team will be allowed access

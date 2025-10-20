@@ -131,7 +131,7 @@ LLM_PROVIDERS = {
 class LLMClient:
     """Simple LLM client focused purely on communication with LLM providers via LangChain."""
     
-    def __init__(self, provider_name: str, config: LLMProviderConfig):
+    def __init__(self, provider_name: str, config: LLMProviderConfig, settings: Optional[Settings] = None):
         self.provider_name = provider_name
         self.config = config
         self.provider_config = config  # Store config for access to provider-specific settings
@@ -140,6 +140,7 @@ class LLMClient:
         self.api_key = (config.api_key or "").strip()
         self.temperature = config.temperature  # Field with default in BaseModel
         self.llm_client: Optional[BaseChatModel] = None
+        self.settings = settings  # Store settings for feature flag access
         self._initialize_client()
     
     def _initialize_client(self):
@@ -409,7 +410,7 @@ class LLMClient:
                             continue  # Retry
                         else:
                             # Inject descriptive error message on final attempt
-                            logger.warning(f"Empty LLM response on final attempt, injecting error message")
+                            logger.warning("Empty LLM response on final attempt, injecting error message")
                             accumulated_content = f"⚠️ **LLM Response Error**\n\nThe {self.provider_name} LLM returned empty responses after {max_retries + 1} attempts. This may be due to:\n- Temporary provider issues\n- API rate limiting\n- Model overload\n\nPlease try processing this alert again in a few moments."
                     
                     # Extract usage metadata from aggregated chunk (OpenAI stream_usage=True)
@@ -660,6 +661,11 @@ class LLMClient:
         is_complete: bool
     ) -> None:
         """Publish streaming chunk via transient channel."""
+        # Check if streaming is enabled via config flag
+        if self.settings and not self.settings.enable_llm_streaming:
+            # Streaming disabled by config - return early without warning (expected behavior)
+            return
+        
         try:
             from tarsy.database.init_db import get_async_session_factory
             from tarsy.models.event_models import LLMStreamChunkEvent
@@ -668,6 +674,19 @@ class LLMClient:
             
             async_session_factory = get_async_session_factory()
             async with async_session_factory() as session:
+                # Check database dialect to warn about SQLite limitations
+                db_dialect = session.bind.dialect.name
+                
+                if db_dialect != "postgresql":
+                    # Only log warning once per session (on first chunk)
+                    if not hasattr(self, '_sqlite_warning_logged'):
+                        logger.warning(
+                            f"LLM streaming requested but database is {db_dialect}. "
+                            "Real-time streaming requires PostgreSQL with NOTIFY support. "
+                            "Streaming events will be skipped."
+                        )
+                        self._sqlite_warning_logged = True
+                
                 event = LLMStreamChunkEvent(
                     session_id=session_id,
                     stage_execution_id=stage_execution_id,
@@ -677,7 +696,11 @@ class LLMClient:
                     timestamp_us=now_us()
                 )
                 
-                await publish_transient_event(session, f"session:{session_id}", event)
+                await publish_transient_event(
+                    session, 
+                    f"session:{session_id}", 
+                    event
+                )
                 logger.debug(f"Published streaming chunk ({stream_type.value}, complete={is_complete}) for {session_id}")
         except Exception as e:
             # Don't fail LLM call if streaming fails
@@ -756,7 +779,7 @@ class LLMManager:
                 has_api_key = True  # Mark that we have an API key
                 
                 # Use unified client for all providers
-                client = LLMClient(provider_name, config)
+                client = LLMClient(provider_name, config, self.settings)
                 self.clients[provider_name] = client
                 logger.info(f"Initialized LLM client: {provider_name}")
                 

@@ -115,6 +115,11 @@ function SessionDetailPageBase({
   const disableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasPerformedInitialScrollRef = useRef<boolean>(false);
   
+  // Reset initial scroll flag when sessionId changes
+  useEffect(() => {
+    hasPerformedInitialScrollRef.current = false;
+  }, [sessionId]);
+  
   // Update auto-scroll enabled state when session transitions between active/inactive
   useEffect(() => {
     if (session) {

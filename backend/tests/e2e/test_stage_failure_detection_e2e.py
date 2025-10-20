@@ -14,48 +14,8 @@ from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
 from .e2e_utils import E2ETestUtils
 
-
-class MockChunk:
-    """Mock chunk for streaming responses."""
-    
-    def __init__(self, content: str = "", usage_metadata: dict | None = None):
-        self.content = content
-        self.usage_metadata = usage_metadata
-    
-    def __add__(self, other):
-        """Support chunk aggregation (chunk1 + chunk2)."""
-        if other is None:
-            return self
-        
-        # Aggregate content
-        new_content = self.content + (other.content if hasattr(other, 'content') else "")
-        
-        # Aggregate usage_metadata (prefer non-None, or merge if both exist)
-        new_usage = self.usage_metadata or (other.usage_metadata if hasattr(other, 'usage_metadata') else None)
-        if self.usage_metadata and hasattr(other, 'usage_metadata') and other.usage_metadata:
-            # Both have usage metadata - merge them
-            new_usage = {
-                'input_tokens': self.usage_metadata.get('input_tokens', 0) + other.usage_metadata.get('input_tokens', 0),
-                'output_tokens': self.usage_metadata.get('output_tokens', 0) + other.usage_metadata.get('output_tokens', 0),
-                'total_tokens': self.usage_metadata.get('total_tokens', 0) + other.usage_metadata.get('total_tokens', 0),
-            }
-        
-        return MockChunk(content=new_content, usage_metadata=new_usage)
-    
-    def __radd__(self, other):
-        """Support reverse addition (None + chunk)."""
-        if other is None:
-            return self
-        return self.__add__(other)
-
-
-async def create_mock_stream(content: str, usage_metadata: dict | None = None):
-    """Create an async generator that yields mock chunks with usage metadata in final chunk."""
-    # Yield content character by character
-    for i, char in enumerate(content):
-        # Add usage_metadata only to the final chunk
-        is_final = (i == len(content) - 1)
-        yield MockChunk(char, usage_metadata=usage_metadata if is_final else None)
+# MockChunk and create_mock_stream are provided by conftest.py
+from .conftest import MockChunk, create_mock_stream
 
 
 class TestStageFailureDetectionE2E:
@@ -190,7 +150,7 @@ class TestStageFailureDetectionE2E:
                         assert any(keyword in stage_error for keyword in ["reached maximum iterations", "failed", "error"]), f"Expected stage error to indicate failure, got: {stage_error}"
                         print(f"✅ Stage '{stage['stage_name']}' correctly marked as FAILED: {stage_error[:100]}...")
 
-                    print(f"✅ NEW FAILURE DETECTION TEST PASSED!")
+                    print("✅ NEW FAILURE DETECTION TEST PASSED!")
                     print(f"   📊 Summary: {len(stages)} stage(s) created and properly failed, Session=FAILED")
 
                     return

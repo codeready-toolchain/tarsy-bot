@@ -8,7 +8,6 @@ Tests the real-time streaming of LLM responses via WebSocket, including:
 - Completion markers
 """
 
-from typing import Optional
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,27 +16,8 @@ from tarsy.integrations.llm.client import LLMClient
 from tarsy.models.constants import StreamingEventType
 from tarsy.models.llm_models import LLMProviderConfig
 
-
-class MockChunk:
-    """Mock chunk for streaming responses with aggregation support."""
-
-    def __init__(self, content: str, usage_metadata: Optional[dict] = None):
-        self.content = content
-        self.usage_metadata = usage_metadata
-
-    def __add__(self, other):
-        """Support chunk aggregation."""
-        if not isinstance(other, MockChunk):
-            return NotImplemented
-        new_content = self.content + other.content
-        new_usage = other.usage_metadata or self.usage_metadata
-        return MockChunk(new_content, new_usage)
-
-    def __radd__(self, other):
-        """Support reverse addition."""
-        if other is None:
-            return self
-        return self.__add__(other)
+# Import shared test helpers from conftest
+from .conftest import MockChunk, create_mock_stream
 
 
 def create_test_config(provider_type: str = "openai", **overrides) -> LLMProviderConfig:

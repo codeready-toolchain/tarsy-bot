@@ -32,8 +32,8 @@ ifneq (,$(wildcard config/oauth.env))
     $(foreach var,$(OAUTH_ENV_VARS),$(eval $(var)))
 endif
 
-OAUTH_CLIENT_ID ?= 
-OAUTH_CLIENT_SECRET ?= 
+OAUTH2_CLIENT_ID ?= 
+OAUTH2_CLIENT_SECRET ?= 
 GITHUB_ORG ?= 
 GITHUB_TEAM ?=
 
@@ -152,15 +152,15 @@ check-config: ## Ensure required configuration files exist (internal target)
 		exit 1; \
 	fi
 	@echo -e "$(BLUE)Checking OAuth2 environment variables...$(NC)"
-	@if [ -z "$(OAUTH_CLIENT_ID)" ]; then \
-		echo -e "$(RED)❌ Error: OAUTH_CLIENT_ID not set$(NC)"; \
-		echo -e "$(YELLOW)Please export OAUTH_CLIENT_ID=your-client-id$(NC)"; \
+	@if [ -z "$(OAUTH2_CLIENT_ID)" ]; then \
+		echo -e "$(RED)❌ Error: OAUTH2_CLIENT_ID not set$(NC)"; \
+		echo -e "$(YELLOW)Please export OAUTH2_CLIENT_ID=your-client-id$(NC)"; \
 		echo -e "$(YELLOW)See config/README.md for setup instructions$(NC)"; \
 		exit 1; \
 	fi
-	@if [ -z "$(OAUTH_CLIENT_SECRET)" ]; then \
-		echo -e "$(RED)❌ Error: OAUTH_CLIENT_SECRET not set$(NC)"; \
-		echo -e "$(YELLOW)Please export OAUTH_CLIENT_SECRET=your-secret$(NC)"; \
+	@if [ -z "$(OAUTH2_CLIENT_SECRET)" ]; then \
+		echo -e "$(RED)❌ Error: OAUTH2_CLIENT_SECRET not set$(NC)"; \
+		echo -e "$(YELLOW)Please export OAUTH2_CLIENT_SECRET=your-secret$(NC)"; \
 		exit 1; \
 	fi
 	@if [ -z "$(GITHUB_ORG)" ]; then \
@@ -170,14 +170,16 @@ check-config: ## Ensure required configuration files exist (internal target)
 		echo -e "$(YELLOW)⚠️  Warning: GITHUB_TEAM not set, using placeholder$(NC)"; \
 	fi
 	@echo -e "$(BLUE)Generating OAuth2-proxy config from template...$(NC)"
+	@mkdir -p config
 	@sed -e 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' \
 	     -e 's|{{COOKIE_SECURE}}|$(COOKIE_SECURE)|g' \
-	     -e 's|{{OAUTH_CLIENT_ID}}|$(OAUTH_CLIENT_ID)|g' \
-	     -e 's|{{OAUTH_CLIENT_SECRET}}|$(OAUTH_CLIENT_SECRET)|g' \
+	     -e 's|{{OAUTH2_CLIENT_ID}}|$(OAUTH2_CLIENT_ID)|g' \
+	     -e 's|{{OAUTH2_CLIENT_SECRET}}|$(OAUTH2_CLIENT_SECRET)|g' \
 	     -e 's|{{GITHUB_ORG}}|$(or $(GITHUB_ORG),your-org)|g' \
 	     -e 's|{{GITHUB_TEAM}}|$(or $(GITHUB_TEAM),your-team)|g' \
-	     config/oauth2-proxy-container.cfg.template > config/oauth2-proxy-container.cfg
-	@echo -e "$(GREEN)✅ OAuth2-proxy config generated for $(ROUTE_HOST)$(NC)"
+	     config/oauth2-proxy-container.cfg.template > config/oauth2-proxy-container.cfg && \
+	chmod 600 config/oauth2-proxy-container.cfg
+	@echo -e "$(GREEN)✅ OAuth2-proxy config generated and secured (permissions: 600)$(NC)"
 	@echo -e "$(GREEN)✅ Configuration files ready$(NC)"
 
 containers-deploy: check-config ## Deploy Tarsy stack (smart default: rebuild apps, preserve database)

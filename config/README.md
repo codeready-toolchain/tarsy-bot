@@ -34,8 +34,8 @@ vim config/oauth.env  # Edit with your values
 make containers-deploy  # Automatically loads config/oauth.env!
 
 # OR export manually if you prefer:
-export OAUTH_CLIENT_ID="your-github-oauth-client-id"
-export OAUTH_CLIENT_SECRET="your-github-oauth-client-secret"
+export OAUTH2_CLIENT_ID="your-github-oauth-client-id"
+export OAUTH2_CLIENT_SECRET="your-github-oauth-client-secret"
 export GITHUB_ORG="your-organization"  # Optional
 export GITHUB_TEAM="your-team"         # Optional
 ```
@@ -62,8 +62,8 @@ These are handled automatically by the Makefile:
 4. Copy the Client ID and Client Secret
 5. Export as environment variables:
    ```bash
-   export OAUTH_CLIENT_ID="your-client-id-here"
-   export OAUTH_CLIENT_SECRET="your-client-secret-here"
+   export OAUTH2_CLIENT_ID="your-client-id-here"
+   export OAUTH2_CLIENT_SECRET="your-client-secret-here"
    export GITHUB_ORG="your-org"
    export GITHUB_TEAM="your-team"
    ```
@@ -87,13 +87,13 @@ For different environments:
 When you run `make containers-deploy` or similar commands:
 
 1. `check-config` target is called
-2. **Environment variables are validated** (OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET required)
+2. **Environment variables are validated** (OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET required)
 3. Template is read from `oauth2-proxy-container.cfg.template`
 4. **Placeholders are replaced** with environment variable values:
    - `{{ROUTE_HOST}}` → `localhost:8080`
    - `{{COOKIE_SECURE}}` → `false`
-   - `{{OAUTH_CLIENT_ID}}` → Your client ID from env
-   - `{{OAUTH_CLIENT_SECRET}}` → Your secret from env
+   - `{{OAUTH2_CLIENT_ID}}` → Your client ID from env
+   - `{{OAUTH2_CLIENT_SECRET}}` → Your secret from env
    - `{{GITHUB_ORG}}` → Your org from env (or "your-org" placeholder)
    - `{{GITHUB_TEAM}}` → Your team from env (or "your-team" placeholder)
 5. Generated config is written to `oauth2-proxy-container.cfg`

@@ -14,35 +14,8 @@ from tarsy.integrations.llm.client import LLMClient
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 
-
-class MockChunk:
-    """Mock chunk that supports LangChain-style aggregation with + operator."""
-    def __init__(self, content: str, usage_metadata=None):
-        self.content = content
-        self.usage_metadata = usage_metadata
-    
-    def __add__(self, other):
-        """Support chunk aggregation like LangChain does."""
-        if not isinstance(other, MockChunk):
-            return NotImplemented
-        # Aggregate content and usage_metadata
-        new_content = self.content + other.content
-        # For usage metadata, the last one wins (simulating LangChain behavior)
-        new_usage = other.usage_metadata or self.usage_metadata
-        return MockChunk(new_content, new_usage)
-    
-    def __radd__(self, other):
-        """Support reverse addition."""
-        if other is None:
-            return self
-        return self.__add__(other)
-
-
-async def create_mock_stream(content: str):
-    """Create an async generator that yields mock chunks."""
-    # Simulate streaming by yielding content in chunks
-    for char in content:
-        yield MockChunk(char)
+# Import shared test helpers from conftest
+from .conftest import MockChunk, create_mock_stream, create_stream_side_effect
 
 
 def create_test_config(provider_type: str = "openai", **overrides) -> LLMProviderConfig:
@@ -67,7 +40,7 @@ class TestLLMClientTimeout:
         """Mock LangChain LLM client."""
         mock_client = AsyncMock()
         # Default stream behavior (will be overridden in specific tests)
-        mock_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response"))
+        mock_client.astream = Mock(side_effect=create_stream_side_effect("Test response"))
         return mock_client
     
     @pytest.fixture
@@ -163,7 +136,7 @@ class TestLLMClientTimeout:
     async def test_llm_call_completes_within_timeout(self, client, mock_llm_client, sample_conversation):
         """Test that normal calls complete successfully within timeout."""
         # Fast response
-        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Quick response"))
+        mock_llm_client.astream = Mock(side_effect=create_stream_side_effect("Quick response"))
         
         with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
@@ -283,11 +256,11 @@ class TestLLMClientTimeoutMatrix:
                 
                 with patch('asyncio.sleep'):  # Speed up retries
                     if should_succeed:
-                        result = await client.generate_response(conversation, "test-session")
+                        result = await client.generate_response(conversation, "test-session", timeout_seconds=timeout_duration)
                         assert result.get_latest_assistant_message().content == "Success"
                     else:
                         with pytest.raises(TimeoutError, match="LLM streaming timed out"):
-                            await client.generate_response(conversation, "test-session")
+                            await client.generate_response(conversation, "test-session", timeout_seconds=timeout_duration)
 
 
 @pytest.mark.unit
