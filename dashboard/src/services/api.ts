@@ -11,6 +11,9 @@ const API_BASE_URL = urls.api.base;
 
 class APIClient {
   private client: AxiosInstance;
+  private readonly MAX_RETRIES = 5;
+  private readonly INITIAL_RETRY_DELAY = 500; // ms
+  private readonly MAX_RETRY_DELAY = 5000; // ms - cap at 5 seconds
 
   constructor() {
     this.client = axios.create({
@@ -60,6 +63,45 @@ class APIClient {
   }
 
   /**
+   * Retry wrapper for network errors with exponential backoff
+   * Used during backend restarts to automatically retry failed requests
+   */
+  private async retryOnNetworkError<T>(
+    operation: () => Promise<T>,
+    operationName: string = 'API call',
+    maxRetries: number = this.MAX_RETRIES
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        
+        // Only retry on network errors (no response from server)
+        const isNetworkError = error && typeof error === 'object' && 'isAxiosError' in error &&
+          (error as AxiosError).request && !(error as AxiosError).response;
+        
+        // Don't retry on HTTP errors (4xx, 5xx) or on last attempt
+        if (!isNetworkError || attempt === maxRetries) {
+          throw error;
+        }
+        
+        // Calculate exponential backoff delay with cap at MAX_RETRY_DELAY
+        const exponentialDelay = this.INITIAL_RETRY_DELAY * Math.pow(2, attempt);
+        const delay = Math.min(exponentialDelay, this.MAX_RETRY_DELAY);
+        console.log(`🔄 ${operationName} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
+  }
+
+  /**
    * Fetch all sessions (newest first) - Phase 1 method
    * For Phase 1, we fetch all sessions without pagination
    */
@@ -102,6 +144,28 @@ class APIClient {
       console.error('Failed to fetch active sessions:', error);
       throw error;
     }
+  }
+
+  /**
+   * Fetch active sessions with automatic retry on network errors
+   * Used during reconnection to handle backend startup delays
+   */
+  async getActiveSessionsWithRetry(): Promise<{ active_sessions: Session[], total_count: number }> {
+    return this.retryOnNetworkError(
+      () => this.getActiveSessions(),
+      'Get active sessions'
+    );
+  }
+
+  /**
+   * Fetch historical sessions with automatic retry on network errors
+   * Used during reconnection to handle backend startup delays
+   */
+  async getHistoricalSessionsWithRetry(page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
+    return this.retryOnNetworkError(
+      () => this.getHistoricalSessions(page, pageSize),
+      'Get historical sessions'
+    );
   }
 
   /**
@@ -434,7 +498,7 @@ export const handleAPIError = (error: unknown): string => {
     
     // Network error
     if (axiosError.request && !axiosError.response) {
-      return 'Network error. Please check your connection and ensure the backend is running';
+      return 'Unable to connect to backend. The service may be restarting. Please wait or try refreshing.';
     }
     
     // Other axios errors

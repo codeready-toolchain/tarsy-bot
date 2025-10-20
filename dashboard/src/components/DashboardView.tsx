@@ -103,6 +103,23 @@ function DashboardView() {
     }
   };
 
+  // Fetch active sessions with retry (used during reconnection)
+  const fetchActiveAlertsWithRetry = async () => {
+    try {
+      setActiveLoading(true);
+      setActiveError(null);
+      const response = await apiClient.getActiveSessionsWithRetry();
+      setActiveAlerts(response.active_sessions);
+      console.log('✅ Active sessions synced after reconnection');
+    } catch (err) {
+      const errorMessage = handleAPIError(err);
+      setActiveError(errorMessage);
+      console.error('Failed to fetch active sessions after retries:', err);
+    } finally {
+      setActiveLoading(false);
+    }
+  };
+
   // Fetch historical sessions with optional filtering (Phase 4)
   const fetchHistoricalAlerts = async (applyFilters: boolean = false) => {
     try {
@@ -148,6 +165,58 @@ function DashboardView() {
       const errorMessage = handleAPIError(err);
       setHistoricalError(errorMessage);
       console.error('Failed to fetch historical sessions:', err);
+    } finally {
+      setHistoricalLoading(false);
+    }
+  };
+
+  // Fetch historical sessions with retry (used during reconnection)
+  const fetchHistoricalAlertsWithRetry = async (applyFilters: boolean = false) => {
+    try {
+      setHistoricalLoading(true);
+      setHistoricalError(null);
+      
+      let response;
+      if (applyFilters && (
+        (filters.search && filters.search.trim()) ||
+        (filters.status && filters.status.length > 0) ||
+        (filters.agent_type && filters.agent_type.length > 0) ||
+        (filters.alert_type && filters.alert_type.length > 0) ||
+        filters.start_date ||
+        filters.end_date ||
+        filters.time_range_preset
+      )) {
+        // Use filtered API if filters are active
+        const historicalFilters: SessionFilter = {
+          ...filters,
+          // For historical view, include completed and failed by default unless specific status filter is applied
+          status: filters.status && filters.status.length > 0 
+            ? filters.status 
+            : ['completed', 'failed'] as ('completed' | 'failed' | 'in_progress' | 'pending')[]
+        };
+        response = await apiClient.getFilteredSessions(historicalFilters, pagination.page, pagination.pageSize);
+      } else {
+        // Use the original historical API (completed + failed sessions only) with retry
+        response = await apiClient.getHistoricalSessionsWithRetry(pagination.page, pagination.pageSize);
+      }
+      
+      setHistoricalAlerts(response.sessions);
+      setFilteredCount(response.pagination.total_items);
+      
+      // Update pagination with backend pagination info
+      setPagination(prev => ({
+        ...prev,
+        totalItems: response.pagination.total_items,
+        totalPages: response.pagination.total_pages,
+        page: response.pagination.page
+      }));
+      
+      console.log('✅ Historical sessions synced after reconnection');
+      
+    } catch (err) {
+      const errorMessage = handleAPIError(err);
+      setHistoricalError(errorMessage);
+      console.error('Failed to fetch historical sessions after retries:', err);
     } finally {
       setHistoricalLoading(false);
     }
@@ -312,8 +381,8 @@ function DashboardView() {
         console.log('✅ WebSocket connected - real-time updates active');
         // Sync with backend state after reconnection (handles backend restarts)
         console.log('🔄 WebSocket reconnected - syncing dashboard with backend state');
-        fetchActiveAlerts();
-        fetchHistoricalAlerts(true); // Use filtering to maintain current view
+        fetchActiveAlertsWithRetry();
+        fetchHistoricalAlertsWithRetry(true); // Use filtering to maintain current view
       } else {
         console.log('❌ WebSocket disconnected - use manual refresh buttons');
       }
