@@ -178,8 +178,8 @@ check-config: ## Ensure required configuration files exist (internal target)
 	     -e 's|{{GITHUB_ORG}}|$(or $(GITHUB_ORG),your-org)|g' \
 	     -e 's|{{GITHUB_TEAM}}|$(or $(GITHUB_TEAM),your-team)|g' \
 	     config/oauth2-proxy-container.cfg.template > config/oauth2-proxy-container.cfg && \
-	chmod 600 config/oauth2-proxy-container.cfg
-	@echo -e "$(GREEN)✅ OAuth2-proxy config generated and secured (permissions: 600)$(NC)"
+	chmod 644 config/oauth2-proxy-container.cfg
+	@echo -e "$(GREEN)✅ OAuth2-proxy config generated and secured (permissions: 644)$(NC)"
 	@echo -e "$(GREEN)✅ Configuration files ready$(NC)"
 
 containers-deploy: check-config ## Deploy Tarsy stack (smart default: rebuild apps, preserve database)

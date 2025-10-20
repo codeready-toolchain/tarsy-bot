@@ -46,7 +46,7 @@ def _create_openai_client(temp, api_key, model, disable_ssl_verification=False, 
     usage metadata to the final chunk. Requires langchain-openai >= 0.1.9.
     """
     client_kwargs = {
-        "model_name": model, 
+        "model": model, 
         "temperature": temp, 
         "api_key": api_key,
         "stream_usage": True  # Enable token usage in streaming responses

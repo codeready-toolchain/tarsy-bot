@@ -164,7 +164,7 @@ class TestLLMClientInitialization:
             assert client.provider_name == "openai"
             assert client.available == True
             mock_openai.assert_called_once_with(
-                model_name="gpt-4",
+                model="gpt-4",
                 temperature=0.7,
                 api_key="test-api-key",
                 stream_usage=True
@@ -293,7 +293,7 @@ class TestLLMClientInitialization:
             client = LLMClient("openai", config)
             
             mock_openai.assert_called_once_with(
-                model_name="gpt-4",  # model from config
+                model="gpt-4",  # model from config
                 temperature=0.1,     # BaseModel default temperature
                 api_key="test-key",
                 stream_usage=True    # Enabled for token tracking

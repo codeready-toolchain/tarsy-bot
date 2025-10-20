@@ -156,62 +156,89 @@ function StreamingItemRenderer({ item }: { item: StreamingItem }) {
         <ReactMarkdown
           urlTransform={defaultUrlTransform}
           components={{
-            h1: ({ children, ...props }) => (
-              <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1.5, fontSize: '1.1rem' }} {...props}>
-                {children}
-              </Typography>
-            ),
-            h2: ({ children, ...props }) => (
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.75, mt: 1.25, fontSize: '1rem' }} {...props}>
-                {children}
-              </Typography>
-            ),
-            h3: ({ children, ...props }) => (
-              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1, fontSize: '0.95rem' }} {...props}>
-                {children}
-              </Typography>
-            ),
-            p: ({ children, ...props }) => (
-              <Typography variant="body2" sx={{ mb: 1, lineHeight: 1.7, fontSize: '0.95rem' }} {...props}>
-                {children}
-              </Typography>
-            ),
-            ul: ({ children, ...props }) => (
-              <Box component="ul" sx={{ pl: 2, mb: 1 }} {...props}>
-                {children}
-              </Box>
-            ),
-            ol: ({ children, ...props }) => (
-              <Box component="ol" sx={{ pl: 2, mb: 1 }} {...props}>
-                {children}
-              </Box>
-            ),
-            li: ({ children, ...props }) => (
-              <Typography component="li" variant="body2" sx={{ fontSize: '0.95rem', lineHeight: 1.7, mb: 0.5 }} {...props}>
-                {children}
-              </Typography>
-            ),
-            code: ({ children, ...props }) => (
-              <Box
-                component="code"
-                sx={{
-                  bgcolor: '#f5f5f5',
-                  px: 0.5,
-                  py: 0.25,
-                  borderRadius: 0.5,
-                  fontSize: '0.9em',
-                  fontFamily: 'monospace'
-                }}
-                {...props}
-              >
-                {children}
-              </Box>
-            ),
-            strong: ({ children, ...props }) => (
-              <Box component="strong" sx={{ fontWeight: 600 }} {...props}>
-                {children}
-              </Box>
-            )
+            h1: (props) => {
+              const { node, children, ...safeProps } = props;
+              return (
+                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1.5, fontSize: '1.1rem' }} {...safeProps}>
+                  {children}
+                </Typography>
+              );
+            },
+            h2: (props) => {
+              const { node, children, ...safeProps } = props;
+              return (
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.75, mt: 1.25, fontSize: '1rem' }} {...safeProps}>
+                  {children}
+                </Typography>
+              );
+            },
+            h3: (props) => {
+              const { node, children, ...safeProps } = props;
+              return (
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1, fontSize: '0.95rem' }} {...safeProps}>
+                  {children}
+                </Typography>
+              );
+            },
+            p: (props) => {
+              const { node, children, ...safeProps } = props;
+              return (
+                <Typography variant="body2" sx={{ mb: 1, lineHeight: 1.7, fontSize: '0.95rem' }} {...safeProps}>
+                  {children}
+                </Typography>
+              );
+            },
+            ul: (props) => {
+              const { node, children, ...safeProps } = props;
+              return (
+                <Box component="ul" sx={{ pl: 2, mb: 1 }} {...safeProps}>
+                  {children}
+                </Box>
+              );
+            },
+            ol: (props) => {
+              const { node, children, ...safeProps } = props;
+              return (
+                <Box component="ol" sx={{ pl: 2, mb: 1 }} {...safeProps}>
+                  {children}
+                </Box>
+              );
+            },
+            li: (props) => {
+              const { node, children, ...safeProps } = props;
+              return (
+                <Typography component="li" variant="body2" sx={{ fontSize: '0.95rem', lineHeight: 1.7, mb: 0.5 }} {...safeProps}>
+                  {children}
+                </Typography>
+              );
+            },
+            code: (props: any) => {
+              const { node, inline, children, ...safeProps } = props;
+              return (
+                <Box
+                  component="code"
+                  sx={{
+                    bgcolor: '#f5f5f5',
+                    px: 0.5,
+                    py: 0.25,
+                    borderRadius: 0.5,
+                    fontSize: '0.9em',
+                    fontFamily: 'monospace'
+                  }}
+                  {...safeProps}
+                >
+                  {children}
+                </Box>
+              );
+            },
+            strong: (props) => {
+              const { node, children, ...safeProps } = props;
+              return (
+                <Box component="strong" sx={{ fontWeight: 600 }} {...safeProps}>
+                  {children}
+                </Box>
+              );
+            }
           }}
         >
           {item.content}
