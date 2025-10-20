@@ -9,10 +9,12 @@ import { urls } from '../config/env';
 
 const API_BASE_URL = urls.api.base;
 
+// Retry configuration constants - exported for testing
+export const INITIAL_RETRY_DELAY = 500; // ms
+export const MAX_RETRY_DELAY = 5000; // ms - cap at 5 seconds
+
 class APIClient {
   private client: AxiosInstance;
-  private readonly INITIAL_RETRY_DELAY = 500; // ms
-  private readonly MAX_RETRY_DELAY = 5000; // ms - cap at 5 seconds
 
   constructor() {
     this.client = axios.create({
@@ -109,8 +111,8 @@ class APIClient {
         }
         
         // Calculate exponential backoff delay with cap at MAX_RETRY_DELAY
-        const exponentialDelay = this.INITIAL_RETRY_DELAY * Math.pow(2, attempt);
-        const delay = Math.min(exponentialDelay, this.MAX_RETRY_DELAY);
+        const exponentialDelay = INITIAL_RETRY_DELAY * Math.pow(2, attempt);
+        const delay = Math.min(exponentialDelay, MAX_RETRY_DELAY);
         console.log(`🔄 ${operationName} failed, retrying in ${delay}ms... (attempt ${attempt + 1})`);
         
         // Wait before retrying
@@ -180,12 +182,24 @@ class APIClient {
   /**
    * Fetch historical sessions with automatic retry on temporary errors
    * Used during reconnection to handle backend startup delays
-   * Retries indefinitely on network/502/503 errors until backend is ready
+   * Retries indefinitely on network/502/503/504 errors until backend is ready
    */
   async getHistoricalSessionsWithRetry(page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
     return this.retryOnTemporaryError(
       () => this.getHistoricalSessions(page, pageSize),
       'Get historical sessions'
+    );
+  }
+
+  /**
+   * Fetch filtered sessions with automatic retry on temporary errors
+   * Used during reconnection with active filters to handle backend startup delays
+   * Retries indefinitely on network/502/503/504 errors until backend is ready
+   */
+  async getFilteredSessionsWithRetry(filters: SessionFilter, page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
+    return this.retryOnTemporaryError(
+      () => this.getFilteredSessions(filters, page, pageSize),
+      'Get filtered sessions'
     );
   }
 

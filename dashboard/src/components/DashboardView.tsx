@@ -218,9 +218,9 @@ function DashboardView() {
       let response;
       
       if (hasActiveFilters) {
-        // When filters are active, use filtered API (without retry to avoid complexity)
+        // When filters are active, use filtered API with retry for backend unavailability
         // This ensures we don't overwrite filtered results with unfiltered data
-        console.log('🔍 Reconnection sync with active filters - using filtered API');
+        console.log('🔍 Reconnection sync with active filters - using filtered retry API');
         const historicalFilters: SessionFilter = {
           ...requestFilters,
           // For historical view, include completed and failed by default unless specific status filter is applied
@@ -228,7 +228,7 @@ function DashboardView() {
             ? requestFilters.status 
             : ['completed', 'failed'] as ('completed' | 'failed' | 'in_progress' | 'pending')[]
         };
-        response = await apiClient.getFilteredSessions(historicalFilters, requestPage, requestPageSize);
+        response = await apiClient.getFilteredSessionsWithRetry(historicalFilters, requestPage, requestPageSize);
       } else {
         // When no filters are active, use retry API for unfiltered historical sessions
         console.log('📋 Reconnection sync without filters - using retry API');

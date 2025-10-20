@@ -53,8 +53,8 @@ vi.mock('../../services/auth', () => ({
   },
 }));
 
-// Import apiClient after mocks are set up
-import { apiClient } from '../../services/api';
+// Import apiClient and retry config after mocks are set up
+import { apiClient, INITIAL_RETRY_DELAY, MAX_RETRY_DELAY } from '../../services/api';
 
 describe('API Client Retry Logic', () => {
   let consoleLogSpy: any;
@@ -123,11 +123,11 @@ describe('API Client Retry Logic', () => {
     // First attempt fails immediately
     await vi.advanceTimersByTimeAsync(0);
 
-    // First retry after 500ms (INITIAL_RETRY_DELAY * 2^0 = 500ms)
-    await vi.advanceTimersByTimeAsync(500);
+    // First retry after INITIAL_RETRY_DELAY * 2^0
+    await vi.advanceTimersByTimeAsync(INITIAL_RETRY_DELAY);
 
-    // Second retry after 1000ms (INITIAL_RETRY_DELAY * 2^1 = 1000ms)
-    await vi.advanceTimersByTimeAsync(1000);
+    // Second retry after INITIAL_RETRY_DELAY * 2^1
+    await vi.advanceTimersByTimeAsync(INITIAL_RETRY_DELAY * 2);
 
     // Third attempt succeeds
     const result = await resultPromise;
@@ -145,12 +145,112 @@ describe('API Client Retry Logic', () => {
     expect(mockClient.get).toHaveBeenCalledTimes(3);
     expect(mockClient.get).toHaveBeenCalledWith('/api/v1/history/active-sessions');
 
-    // Verify retry messages were logged
+    // Verify retry messages were logged with correct delays
     expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Get active sessions failed, retrying in 500ms')
+      expect.stringContaining(`Get active sessions failed, retrying in ${INITIAL_RETRY_DELAY}ms`)
     );
     expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Get active sessions failed, retrying in 1000ms')
+      expect.stringContaining(`Get active sessions failed, retrying in ${INITIAL_RETRY_DELAY * 2}ms`)
+    );
+
+    // Restore real timers
+    vi.useRealTimers();
+  });
+
+  it('should retry filtered sessions on network errors with exponential backoff', async () => {
+    // Use fake timers to control time progression
+    vi.useFakeTimers();
+    
+    // Get reference to the mock axios client created by axios.create()
+    const mockClient = mockedAxios.create();
+    
+    // Create a network error (no response from server)
+    const networkError: AxiosError = {
+      isAxiosError: true,
+      request: {},
+      response: undefined,
+      message: 'Network Error',
+      name: 'AxiosError',
+      config: {} as any,
+      toJSON: () => ({}),
+    };
+
+    // Mock successful response for the third attempt
+    const successResponse = {
+      data: {
+        sessions: [
+          { session_id: 'test-1', status: 'completed', alert_type: 'PodCrashLooping' },
+          { session_id: 'test-2', status: 'failed', alert_type: 'PodCrashLooping' },
+        ],
+        total_count: 2,
+        page: 1,
+        page_size: 25,
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    };
+
+    let callCount = 0;
+    mockClient.get.mockImplementation(() => {
+      callCount++;
+      if (callCount <= 2) {
+        return Promise.reject(networkError);
+      }
+      return Promise.resolve(successResponse);
+    });
+
+    // Test filters with status and alert_type
+    const testFilters = {
+      status: ['completed', 'failed'] as ('completed' | 'failed')[],
+      alert_type: ['PodCrashLooping'],
+    };
+
+    // Start the retry operation (don't await yet)
+    const resultPromise = (apiClient as any).getFilteredSessionsWithRetry(testFilters, 1, 25);
+
+    // First attempt fails immediately
+    await vi.advanceTimersByTimeAsync(0);
+
+    // First retry after INITIAL_RETRY_DELAY * 2^0
+    await vi.advanceTimersByTimeAsync(INITIAL_RETRY_DELAY);
+
+    // Second retry after INITIAL_RETRY_DELAY * 2^1
+    await vi.advanceTimersByTimeAsync(INITIAL_RETRY_DELAY * 2);
+
+    // Third attempt succeeds
+    const result = await resultPromise;
+
+    // Verify the result matches the SessionsResponse format
+    expect(result).toEqual({
+      sessions: [
+        { session_id: 'test-1', status: 'completed', alert_type: 'PodCrashLooping' },
+        { session_id: 'test-2', status: 'failed', alert_type: 'PodCrashLooping' },
+      ],
+      total_count: 2,
+      page: 1,
+      page_size: 25,
+    });
+
+    // Verify axios client was called 3 times (2 failures + 1 success)
+    expect(mockClient.get).toHaveBeenCalledTimes(3);
+    
+    // Verify the URL includes the filter parameters
+    const firstCallUrl = mockClient.get.mock.calls[0][0];
+    expect(firstCallUrl).toContain('/api/v1/history/sessions');
+    expect(firstCallUrl).toContain('status=completed');
+    expect(firstCallUrl).toContain('status=failed');
+    expect(firstCallUrl).toContain('alert_type=PodCrashLooping');
+    expect(firstCallUrl).toContain('page=1');
+    expect(firstCallUrl).toContain('page_size=25');
+
+    // Verify retry messages were logged with correct delays
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`Get filtered sessions failed, retrying in ${INITIAL_RETRY_DELAY}ms`)
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`Get filtered sessions failed, retrying in ${INITIAL_RETRY_DELAY * 2}ms`)
     );
 
     // Restore real timers
@@ -210,20 +310,27 @@ describe('API Client Retry Logic', () => {
     expect(mockOperation).toHaveBeenCalledTimes(1);
   });
 
-  it('should verify complete delay pattern: 500ms, 1000ms, 2000ms, 4000ms, 5000ms, 5000ms...', () => {
-    // Test uses the actual INITIAL_RETRY_DELAY from the implementation (500ms)
-    const initialDelay = 500;  // INITIAL_RETRY_DELAY from APIClient
-    const maxDelay = 5000;     // MAX_RETRY_DELAY from APIClient
-    const expectedDelays = [500, 1000, 2000, 4000, 5000, 5000];
-
-    const actualDelays = [];
+  it('should verify complete delay pattern matches implementation config', () => {
+    // Test uses the exported INITIAL_RETRY_DELAY and MAX_RETRY_DELAY from api.ts
+    // This ensures tests stay in sync with implementation changes
+    const expectedDelays = [];
+    
     for (let attempt = 0; attempt < 6; attempt++) {
-      const exponentialDelay = initialDelay * Math.pow(2, attempt);
-      const delay = Math.min(exponentialDelay, maxDelay);
-      actualDelays.push(delay);
+      const exponentialDelay = INITIAL_RETRY_DELAY * Math.pow(2, attempt);
+      const delay = Math.min(exponentialDelay, MAX_RETRY_DELAY);
+      expectedDelays.push(delay);
     }
 
-    expect(actualDelays).toEqual(expectedDelays);
+    // With current config (INITIAL=500ms, MAX=5000ms), pattern should be:
+    // [500, 1000, 2000, 4000, 5000, 5000]
+    expect(expectedDelays).toEqual([
+      INITIAL_RETRY_DELAY,           // 500ms (attempt 0)
+      INITIAL_RETRY_DELAY * 2,       // 1000ms (attempt 1)
+      INITIAL_RETRY_DELAY * 4,       // 2000ms (attempt 2)
+      INITIAL_RETRY_DELAY * 8,       // 4000ms (attempt 3)
+      MAX_RETRY_DELAY,               // 5000ms (capped at attempt 4)
+      MAX_RETRY_DELAY,               // 5000ms (capped at attempt 5)
+    ]);
   });
 
   it('should retry on 502, 503, and 504 status codes', async () => {
