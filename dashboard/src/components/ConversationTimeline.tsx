@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, memo } from 'react';
 import { 
   Box,
   Typography,
@@ -89,10 +89,101 @@ interface StreamingItem {
 }
 
 /**
+ * Memoized markdown components for final answer rendering
+ * Defined outside component to prevent recreation on every render (which causes visual glitches)
+ */
+const finalAnswerMarkdownComponents = {
+  h1: (props: any) => {
+    const { node, children, ...safeProps } = props;
+    return (
+      <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1.5, fontSize: '1.1rem' }} {...safeProps}>
+        {children}
+      </Typography>
+    );
+  },
+  h2: (props: any) => {
+    const { node, children, ...safeProps } = props;
+    return (
+      <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.75, mt: 1.25, fontSize: '1rem' }} {...safeProps}>
+        {children}
+      </Typography>
+    );
+  },
+  h3: (props: any) => {
+    const { node, children, ...safeProps } = props;
+    return (
+      <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1, fontSize: '0.95rem' }} {...safeProps}>
+        {children}
+      </Typography>
+    );
+  },
+  p: (props: any) => {
+    const { node, children, ...safeProps } = props;
+    return (
+      <Typography variant="body2" sx={{ mb: 1, lineHeight: 1.7, fontSize: '0.95rem' }} {...safeProps}>
+        {children}
+      </Typography>
+    );
+  },
+  ul: (props: any) => {
+    const { node, children, ...safeProps } = props;
+    return (
+      <Box component="ul" sx={{ pl: 2, mb: 1 }} {...safeProps}>
+        {children}
+      </Box>
+    );
+  },
+  ol: (props: any) => {
+    const { node, children, ...safeProps } = props;
+    return (
+      <Box component="ol" sx={{ pl: 2, mb: 1 }} {...safeProps}>
+        {children}
+      </Box>
+    );
+  },
+  li: (props: any) => {
+    const { node, children, ...safeProps } = props;
+    return (
+      <Typography component="li" variant="body2" sx={{ fontSize: '0.95rem', lineHeight: 1.7, mb: 0.5 }} {...safeProps}>
+        {children}
+      </Typography>
+    );
+  },
+  code: (props: any) => {
+    const { node, inline, children, ...safeProps } = props;
+    return (
+      <Box
+        component="code"
+        sx={{
+          bgcolor: '#f5f5f5',
+          px: 0.5,
+          py: 0.25,
+          borderRadius: 0.5,
+          fontSize: '0.9em',
+          fontFamily: 'monospace'
+        }}
+        {...safeProps}
+      >
+        {children}
+      </Box>
+    );
+  },
+  strong: (props: any) => {
+    const { node, children, ...safeProps } = props;
+    return (
+      <Box component="strong" sx={{ fontWeight: 600 }} {...safeProps}>
+        {children}
+      </Box>
+    );
+  }
+};
+
+/**
  * StreamingItemRenderer Component
  * Renders streaming items with proper formatting (Markdown for final answers, plain text for thoughts)
+ * Memoized to prevent unnecessary re-renders during rapid streaming updates
  */
-function StreamingItemRenderer({ item }: { item: StreamingItem }) {
+const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
   if (item.type === 'thought') {
     // Render thought as plain text (matching DB rendering)
     return (
@@ -155,98 +246,14 @@ function StreamingItemRenderer({ item }: { item: StreamingItem }) {
       <Box sx={{ pl: 3.5 }}>
         <ReactMarkdown
           urlTransform={defaultUrlTransform}
-          components={{
-            h1: (props) => {
-              const { node, children, ...safeProps } = props;
-              return (
-                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1.5, fontSize: '1.1rem' }} {...safeProps}>
-                  {children}
-                </Typography>
-              );
-            },
-            h2: (props) => {
-              const { node, children, ...safeProps } = props;
-              return (
-                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.75, mt: 1.25, fontSize: '1rem' }} {...safeProps}>
-                  {children}
-                </Typography>
-              );
-            },
-            h3: (props) => {
-              const { node, children, ...safeProps } = props;
-              return (
-                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1, fontSize: '0.95rem' }} {...safeProps}>
-                  {children}
-                </Typography>
-              );
-            },
-            p: (props) => {
-              const { node, children, ...safeProps } = props;
-              return (
-                <Typography variant="body2" sx={{ mb: 1, lineHeight: 1.7, fontSize: '0.95rem' }} {...safeProps}>
-                  {children}
-                </Typography>
-              );
-            },
-            ul: (props) => {
-              const { node, children, ...safeProps } = props;
-              return (
-                <Box component="ul" sx={{ pl: 2, mb: 1 }} {...safeProps}>
-                  {children}
-                </Box>
-              );
-            },
-            ol: (props) => {
-              const { node, children, ...safeProps } = props;
-              return (
-                <Box component="ol" sx={{ pl: 2, mb: 1 }} {...safeProps}>
-                  {children}
-                </Box>
-              );
-            },
-            li: (props) => {
-              const { node, children, ...safeProps } = props;
-              return (
-                <Typography component="li" variant="body2" sx={{ fontSize: '0.95rem', lineHeight: 1.7, mb: 0.5 }} {...safeProps}>
-                  {children}
-                </Typography>
-              );
-            },
-            code: (props: any) => {
-              const { node, inline, children, ...safeProps } = props;
-              return (
-                <Box
-                  component="code"
-                  sx={{
-                    bgcolor: '#f5f5f5',
-                    px: 0.5,
-                    py: 0.25,
-                    borderRadius: 0.5,
-                    fontSize: '0.9em',
-                    fontFamily: 'monospace'
-                  }}
-                  {...safeProps}
-                >
-                  {children}
-                </Box>
-              );
-            },
-            strong: (props) => {
-              const { node, children, ...safeProps } = props;
-              return (
-                <Box component="strong" sx={{ fontWeight: 600 }} {...safeProps}>
-                  {children}
-                </Box>
-              );
-            }
-          }}
+          components={finalAnswerMarkdownComponents}
         >
           {item.content}
         </ReactMarkdown>
       </Box>
     </Box>
   );
-}
+});
 
 /**
  * Conversation Timeline Component
@@ -586,9 +593,16 @@ function ConversationTimeline({
         {chatFlow.length === 0 && streamingItems.size > 0 ? (
           // Show streaming items even before DB has data
           <Box>
-            {Array.from(streamingItems.entries()).map(([entryKey, entryValue]) => (
-              <StreamingItemRenderer key={entryKey} item={entryValue} />
-            ))}
+            {Array.from(streamingItems.entries())
+              // Sort by type to ensure thoughts appear before final answers
+              .sort(([_keyA, itemA], [_keyB, itemB]) => {
+                const priorityA = itemA.type === 'thought' ? 0 : 1;
+                const priorityB = itemB.type === 'thought' ? 0 : 1;
+                return priorityA - priorityB;
+              })
+              .map(([entryKey, entryValue]) => (
+                <StreamingItemRenderer key={entryKey} item={entryValue} />
+              ))}
             <ProcessingIndicator />
           </Box>
         ) : chatFlow.length === 0 ? (
@@ -615,9 +629,17 @@ function ConversationTimeline({
             
             {/* Show streaming items at the end (will be cleared by deduplication when DB data arrives) */}
             {streamingItems.size > 0 && (
-              Array.from(streamingItems.entries()).map(([entryKey, entryValue]) => (
-                <StreamingItemRenderer key={entryKey} item={entryValue} />
-              ))
+              Array.from(streamingItems.entries())
+                // Sort by type to ensure thoughts appear before final answers (prevents visual glitches)
+                .sort(([_keyA, itemA], [_keyB, itemB]) => {
+                  // Type priority: thought = 0, final_answer = 1
+                  const priorityA = itemA.type === 'thought' ? 0 : 1;
+                  const priorityB = itemB.type === 'thought' ? 0 : 1;
+                  return priorityA - priorityB;
+                })
+                .map(([entryKey, entryValue]) => (
+                  <StreamingItemRenderer key={entryKey} item={entryValue} />
+                ))
             )}
 
             {/* Processing indicator at bottom when session is still in progress */}
