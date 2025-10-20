@@ -104,17 +104,19 @@ function DashboardView() {
   };
 
   // Fetch active sessions with retry (used during reconnection)
+  // Uses infinite retry with exponential backoff for temporary errors (network/502/503)
   const fetchActiveAlertsWithRetry = async () => {
     try {
       setActiveLoading(true);
-      setActiveError(null);
+      setActiveError(null);  // Clear any previous errors
       const response = await apiClient.getActiveSessionsWithRetry();
       setActiveAlerts(response.active_sessions);
       console.log('✅ Active sessions synced after reconnection');
     } catch (err) {
+      // Only set error for non-retryable errors (e.g., 400, 404, etc.)
       const errorMessage = handleAPIError(err);
       setActiveError(errorMessage);
-      console.error('Failed to fetch active sessions after retries:', err);
+      console.error('Failed to fetch active sessions:', err);
     } finally {
       setActiveLoading(false);
     }
@@ -171,34 +173,15 @@ function DashboardView() {
   };
 
   // Fetch historical sessions with retry (used during reconnection)
-  const fetchHistoricalAlertsWithRetry = async (applyFilters: boolean = false) => {
+  // Uses infinite retry with exponential backoff for temporary errors (network/502/503)
+  const fetchHistoricalAlertsWithRetry = async () => {
     try {
       setHistoricalLoading(true);
-      setHistoricalError(null);
+      setHistoricalError(null);  // Clear any previous errors
       
-      let response;
-      if (applyFilters && (
-        (filters.search && filters.search.trim()) ||
-        (filters.status && filters.status.length > 0) ||
-        (filters.agent_type && filters.agent_type.length > 0) ||
-        (filters.alert_type && filters.alert_type.length > 0) ||
-        filters.start_date ||
-        filters.end_date ||
-        filters.time_range_preset
-      )) {
-        // Use filtered API if filters are active
-        const historicalFilters: SessionFilter = {
-          ...filters,
-          // For historical view, include completed and failed by default unless specific status filter is applied
-          status: filters.status && filters.status.length > 0 
-            ? filters.status 
-            : ['completed', 'failed'] as ('completed' | 'failed' | 'in_progress' | 'pending')[]
-        };
-        response = await apiClient.getFilteredSessions(historicalFilters, pagination.page, pagination.pageSize);
-      } else {
-        // Use the original historical API (completed + failed sessions only) with retry
-        response = await apiClient.getHistoricalSessionsWithRetry(pagination.page, pagination.pageSize);
-      }
+      // Use retry only for non-filtered historical queries
+      // Filtered queries use standard API (without retry) to avoid complexity
+      const response = await apiClient.getHistoricalSessionsWithRetry(pagination.page, pagination.pageSize);
       
       setHistoricalAlerts(response.sessions);
       setFilteredCount(response.pagination.total_items);
@@ -214,9 +197,10 @@ function DashboardView() {
       console.log('✅ Historical sessions synced after reconnection');
       
     } catch (err) {
+      // Only set error for non-retryable errors (e.g., 400, 404, etc.)
       const errorMessage = handleAPIError(err);
       setHistoricalError(errorMessage);
-      console.error('Failed to fetch historical sessions after retries:', err);
+      console.error('Failed to fetch historical sessions:', err);
     } finally {
       setHistoricalLoading(false);
     }
@@ -382,7 +366,7 @@ function DashboardView() {
         // Sync with backend state after reconnection (handles backend restarts)
         console.log('🔄 WebSocket reconnected - syncing dashboard with backend state');
         fetchActiveAlertsWithRetry();
-        fetchHistoricalAlertsWithRetry(true); // Use filtering to maintain current view
+        fetchHistoricalAlertsWithRetry();
       } else {
         console.log('❌ WebSocket disconnected - use manual refresh buttons');
       }

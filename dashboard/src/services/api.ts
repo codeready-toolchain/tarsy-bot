@@ -11,7 +11,6 @@ const API_BASE_URL = urls.api.base;
 
 class APIClient {
   private client: AxiosInstance;
-  private readonly MAX_RETRIES = 5;
   private readonly INITIAL_RETRY_DELAY = 500; // ms
   private readonly MAX_RETRY_DELAY = 5000; // ms - cap at 5 seconds
 
@@ -63,42 +62,53 @@ class APIClient {
   }
 
   /**
-   * Retry wrapper for network errors with exponential backoff
+   * Retry wrapper for temporary errors with exponential backoff (capped)
    * Used during backend restarts to automatically retry failed requests
+   * Retries indefinitely until success or non-retryable error
    */
-  private async retryOnNetworkError<T>(
+  private async retryOnTemporaryError<T>(
     operation: () => Promise<T>,
-    operationName: string = 'API call',
-    maxRetries: number = this.MAX_RETRIES
+    operationName: string = 'API call'
   ): Promise<T> {
-    let lastError: any;
+    let attempt = 0;
     
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    while (true) {
       try {
         return await operation();
       } catch (error) {
-        lastError = error;
+        // Determine if this is a retryable error
+        let isRetryable = false;
         
-        // Only retry on network errors (no response from server)
-        const isNetworkError = error && typeof error === 'object' && 'isAxiosError' in error &&
-          (error as AxiosError).request && !(error as AxiosError).response;
+        if (error && typeof error === 'object' && 'isAxiosError' in error) {
+          const axiosError = error as AxiosError;
+          
+          // Retry on network errors (no response from server - backend down/restarting)
+          if (axiosError.request && !axiosError.response) {
+            isRetryable = true;
+          }
+          
+          // Retry on 502 Bad Gateway (proxy/routing issues during restart)
+          // Retry on 503 Service Unavailable (backend starting up)
+          if (axiosError.response?.status === 502 || axiosError.response?.status === 503) {
+            isRetryable = true;
+          }
+        }
         
-        // Don't retry on HTTP errors (4xx, 5xx) or on last attempt
-        if (!isNetworkError || attempt === maxRetries) {
+        // If not retryable, fail immediately
+        if (!isRetryable) {
           throw error;
         }
         
         // Calculate exponential backoff delay with cap at MAX_RETRY_DELAY
         const exponentialDelay = this.INITIAL_RETRY_DELAY * Math.pow(2, attempt);
         const delay = Math.min(exponentialDelay, this.MAX_RETRY_DELAY);
-        console.log(`🔄 ${operationName} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
+        console.log(`🔄 ${operationName} failed, retrying in ${delay}ms... (attempt ${attempt + 1})`);
         
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, delay));
+        attempt++;
       }
     }
-    
-    throw lastError;
   }
 
   /**
@@ -147,22 +157,24 @@ class APIClient {
   }
 
   /**
-   * Fetch active sessions with automatic retry on network errors
+   * Fetch active sessions with automatic retry on temporary errors
    * Used during reconnection to handle backend startup delays
+   * Retries indefinitely on network/502/503 errors until backend is ready
    */
   async getActiveSessionsWithRetry(): Promise<{ active_sessions: Session[], total_count: number }> {
-    return this.retryOnNetworkError(
+    return this.retryOnTemporaryError(
       () => this.getActiveSessions(),
       'Get active sessions'
     );
   }
 
   /**
-   * Fetch historical sessions with automatic retry on network errors
+   * Fetch historical sessions with automatic retry on temporary errors
    * Used during reconnection to handle backend startup delays
+   * Retries indefinitely on network/502/503 errors until backend is ready
    */
   async getHistoricalSessionsWithRetry(page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
-    return this.retryOnNetworkError(
+    return this.retryOnTemporaryError(
       () => this.getHistoricalSessions(page, pageSize),
       'Get historical sessions'
     );
