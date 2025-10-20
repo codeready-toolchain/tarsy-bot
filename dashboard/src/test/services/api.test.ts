@@ -53,7 +53,7 @@ describe('API Client Retry Logic', () => {
           use: vi.fn(),
         },
         response: {
-          use: vi.fn((success: any, error: any) => {
+          use: vi.fn((_success: any, error: any) => {
             // Store the error handler for later use
             (mockedAxios.create as any).errorHandler = error;
           }),
