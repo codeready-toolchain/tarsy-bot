@@ -15,6 +15,15 @@ from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 
 
+async def create_mock_stream(content: str):
+    """Create an async generator that yields mock chunks."""
+    # Simulate streaming by yielding content in chunks
+    for char in content:
+        mock_chunk = Mock()
+        mock_chunk.content = char
+        yield mock_chunk
+
+
 def create_test_config(provider_type: str = "openai", **overrides) -> LLMProviderConfig:
     """Helper to create test LLMProviderConfig instances."""
     defaults = {
@@ -35,7 +44,10 @@ class TestLLMClientTimeout:
     @pytest.fixture
     def mock_llm_client(self):
         """Mock LangChain LLM client."""
-        return AsyncMock()
+        mock_client = AsyncMock()
+        # Default stream behavior (will be overridden in specific tests)
+        mock_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response"))
+        return mock_client
     
     @pytest.fixture
     def client(self, mock_llm_client):
@@ -57,8 +69,8 @@ class TestLLMClientTimeout:
     @pytest.mark.asyncio
     async def test_llm_call_timeout_after_60_seconds(self, client, mock_llm_client, sample_conversation):
         """Test that LLM call times out after 60 seconds."""
-        # Mock ainvoke to raise TimeoutError (simulating asyncio.wait_for timeout)
-        mock_llm_client.ainvoke.side_effect = asyncio.TimeoutError("LLM API call timed out after 60s")
+        # Mock astream to raise TimeoutError (simulating asyncio.wait_for timeout)
+        mock_llm_client.astream.side_effect = asyncio.TimeoutError("LLM API call timed out after 60s")
         
         with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
@@ -66,12 +78,9 @@ class TestLLMClientTimeout:
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             with patch('asyncio.sleep'):  # Speed up retry sleep
-                # Should raise Exception (wrapping TimeoutError) after exhausting retries
-                with pytest.raises(Exception, match="openai API error.*timed out"):
+                # Should raise TimeoutError after all retries exhausted
+                with pytest.raises(TimeoutError, match="LLM streaming timed out"):
                     await client.generate_response(sample_conversation, "test-session")
-                
-                # Should have attempted max_retries + 1 times (4 total)
-                assert mock_llm_client.ainvoke.call_count == 4
     
     @pytest.mark.asyncio
     async def test_llm_timeout_retry_logic(self, client, mock_llm_client, sample_conversation):
@@ -80,10 +89,22 @@ class TestLLMClientTimeout:
         success_response = Mock()
         success_response.content = "Success after timeout retry"
         
-        mock_llm_client.ainvoke.side_effect = [
-            asyncio.TimeoutError(),  # First call times out
-            success_response  # Second call succeeds
-        ]
+        call_count = [0]
+        
+        def side_effect_func(*args, **kwargs):  # Regular function, not async!
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise asyncio.TimeoutError()
+            else:
+                # Return fresh generator on second call
+                async def success_stream():
+                    for char in success_response.content:
+                        mock_chunk = Mock()
+                        mock_chunk.content = char
+                        yield mock_chunk
+                return success_stream()
+        
+        mock_llm_client.astream = Mock(side_effect=side_effect_func)
         
         sleep_times = []
         async def mock_sleep(duration):
@@ -100,32 +121,30 @@ class TestLLMClientTimeout:
                 assert result.get_latest_assistant_message().content == "Success after timeout retry"
                 # Should have retried after 5-second delay
                 assert 5 in sleep_times
-                assert mock_llm_client.ainvoke.call_count == 2
+                assert mock_llm_client.astream.call_count == 2
     
     @pytest.mark.asyncio
     async def test_llm_timeout_final_failure(self, client, mock_llm_client, sample_conversation):
         """Test final failure after max retries exhausted."""
         # All calls time out
-        mock_llm_client.ainvoke.side_effect = asyncio.TimeoutError()
+        mock_llm_client.astream.side_effect = asyncio.TimeoutError()
         
         with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             with patch('asyncio.sleep'):  # Speed up retry delays
-                with pytest.raises(Exception, match="openai API error.*timed out"):
+                with pytest.raises(TimeoutError, match="LLM streaming timed out"):
                     await client.generate_response(sample_conversation, "test-session")
                 
                 # Should have tried max_retries + 1 times
-                assert mock_llm_client.ainvoke.call_count == 4
+                assert mock_llm_client.astream.call_count == 4
     
     @pytest.mark.asyncio
     async def test_llm_call_completes_within_timeout(self, client, mock_llm_client, sample_conversation):
         """Test that normal calls complete successfully within timeout."""
         # Fast response
-        mock_response = Mock()
-        mock_response.content = "Quick response"
-        mock_llm_client.ainvoke.return_value = mock_response
+        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Quick response"))
         
         with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
@@ -135,17 +154,29 @@ class TestLLMClientTimeout:
             result = await client.generate_response(sample_conversation, "test-session")
             
             assert result.get_latest_assistant_message().content == "Quick response"
-            assert mock_llm_client.ainvoke.call_count == 1
+            assert mock_llm_client.astream.call_count == 1
     
     @pytest.mark.asyncio
     async def test_timeout_doesnt_interfere_with_rate_limit_retry(self, client, mock_llm_client, sample_conversation):
         """Test that timeout handling doesn't interfere with rate limit retry logic."""
         # First call rate limited, second succeeds
         rate_limit_error = Exception("429 Too Many Requests - rate limit exceeded")
-        success_response = Mock()
-        success_response.content = "Success after rate limit"
         
-        mock_llm_client.ainvoke.side_effect = [rate_limit_error, success_response]
+        call_count = [0]
+        
+        def side_effect_func(*args, **kwargs):  # Regular function, not async!
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise rate_limit_error
+            else:
+                # Return fresh generator on second call
+                async def success_stream():
+                    mock_chunk = Mock()
+                    mock_chunk.content = "Success after rate limit"
+                    yield mock_chunk
+                return success_stream()
+        
+        mock_llm_client.astream = Mock(side_effect=side_effect_func)
         
         with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
@@ -156,20 +187,20 @@ class TestLLMClientTimeout:
                 result = await client.generate_response(sample_conversation, "test-session")
                 
                 assert result.get_latest_assistant_message().content == "Success after rate limit"
-                assert mock_llm_client.ainvoke.call_count == 2
+                assert mock_llm_client.astream.call_count == 2
     
     @pytest.mark.asyncio
     async def test_timeout_with_custom_max_tokens(self, client, mock_llm_client, sample_conversation):
         """Test that timeout works correctly with max_tokens parameter."""
         # Simulate timeout
-        mock_llm_client.ainvoke.side_effect = asyncio.TimeoutError()
+        mock_llm_client.astream.side_effect = asyncio.TimeoutError()
         
         with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             with patch('asyncio.sleep'):
-                with pytest.raises(Exception, match="openai API error.*timed out"):
+                with pytest.raises(TimeoutError, match="LLM streaming timed out"):
                     await client.generate_response(
                         sample_conversation, 
                         "test-session",
@@ -177,7 +208,7 @@ class TestLLMClientTimeout:
                     )
                 
                 # Verify max_tokens was passed in config
-                call_args = mock_llm_client.ainvoke.call_args
+                call_args = mock_llm_client.astream.call_args
                 assert 'config' in call_args.kwargs
                 assert 'max_tokens' in call_args.kwargs['config']
                 assert call_args.kwargs['config']['max_tokens'] == 500
@@ -205,23 +236,25 @@ class TestLLMClientTimeoutMatrix:
             client.llm_client = mock_llm_client
             client.available = True
             
-            # Build side_effect list based on expected scenario
-            side_effects = []
-            for i in range(expected_retries):
-                if i == expected_retries - 1 and should_succeed:
+            # Build side_effect function based on expected scenario
+            call_count = [0]
+            
+            def side_effect_func(*args, **kwargs):  # Regular function, not async!
+                call_count[0] += 1
+                attempt = call_count[0]
+                
+                if should_succeed and attempt == expected_retries:
                     # Last attempt succeeds
-                    response = Mock()
-                    response.content = "Success"
-                    side_effects.append(response)
+                    async def success_stream():
+                        mock_chunk = Mock()
+                        mock_chunk.content = "Success"
+                        yield mock_chunk
+                    return success_stream()
                 else:
                     # Timeout
-                    side_effects.append(asyncio.TimeoutError())
+                    raise asyncio.TimeoutError()
             
-            # If not supposed to succeed, all attempts time out
-            if not should_succeed:
-                side_effects = [asyncio.TimeoutError()] * 4  # max_retries + 1
-            
-            mock_llm_client.ainvoke.side_effect = side_effects
+            mock_llm_client.astream = Mock(side_effect=side_effect_func)
             
             conversation = LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="System"),
@@ -238,7 +271,7 @@ class TestLLMClientTimeoutMatrix:
                         result = await client.generate_response(conversation, "test-session")
                         assert result.get_latest_assistant_message().content == "Success"
                     else:
-                        with pytest.raises(Exception, match="openai API error.*timed out"):
+                        with pytest.raises(TimeoutError, match="LLM streaming timed out"):
                             await client.generate_response(conversation, "test-session")
 
 
@@ -251,11 +284,12 @@ class TestLLMClientTimeoutLogging:
         """Test that timeout errors are logged with appropriate messages."""
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", create_test_config(api_key="test"))
-            mock_llm_client = AsyncMock()
+            mock_llm_client = Mock()
             client.llm_client = mock_llm_client
             client.available = True
             
-            mock_llm_client.ainvoke.side_effect = asyncio.TimeoutError()
+            # Mock astream to raise TimeoutError
+            mock_llm_client.astream = Mock(side_effect=asyncio.TimeoutError())
             
             conversation = LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="System"),
@@ -267,7 +301,7 @@ class TestLLMClientTimeoutLogging:
                 mock_context.return_value.__aenter__.return_value = mock_ctx
                 
                 with patch('asyncio.sleep'):
-                    with pytest.raises(Exception, match="openai API error.*timed out"):
+                    with pytest.raises(TimeoutError, match="LLM streaming timed out"):
                         await client.generate_response(conversation, "test-session")
             
             # Verify timeout was logged

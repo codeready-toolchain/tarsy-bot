@@ -16,6 +16,15 @@ from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
 
 
+async def create_mock_stream(content: str):
+    """Create an async generator that yields mock chunks."""
+    # Simulate streaming by yielding content in chunks
+    for char in content:
+        mock_chunk = Mock()
+        mock_chunk.content = char
+        yield mock_chunk
+
+
 def create_test_config(provider_type: str = "openai", **overrides) -> LLMProviderConfig:
     """Helper to create test LLMProviderConfig instances."""
     defaults = {
@@ -410,9 +419,8 @@ class TestLLMClientResponseGeneration:
     def mock_llm_client(self):
         """Mock LangChain LLM client."""
         mock_client = AsyncMock()
-        mock_response = Mock()
-        mock_response.content = "Test response from LLM"
-        mock_client.ainvoke.return_value = mock_response
+        # Mock astream() as a simple callable that returns async generator
+        mock_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response from LLM"))
         return mock_client
     
     @pytest.fixture
@@ -443,7 +451,7 @@ class TestLLMClientResponseGeneration:
             assert isinstance(result, LLMConversation)
             assert len(result.messages) == 3  # System + User + Assistant response
             assert result.messages[2].content == "Test response from LLM"  # Assistant message is at index 2
-            mock_llm_client.ainvoke.assert_called_once()
+            mock_llm_client.astream.assert_called_once()
             
             # Verify context was used
             mock_context.assert_called_once()
@@ -451,10 +459,13 @@ class TestLLMClientResponseGeneration:
     @pytest.mark.asyncio
     async def test_generate_response_with_list_content(self, mock_llm_client):
         """Test response generation when LLM returns content as list of blocks."""
-        # Mock response with list content (as some LangChain providers do)
-        mock_response = Mock()
-        mock_response.content = ["First part", " Second part", " Third part"]
-        mock_llm_client.ainvoke.return_value = mock_response
+        # Create async generator with list content
+        async def mock_stream_with_list():
+            mock_chunk = Mock()
+            mock_chunk.content = ["First part", " Second part", " Third part"]
+            yield mock_chunk
+        
+        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: mock_stream_with_list())
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", create_test_config(api_key="test"))
@@ -481,12 +492,15 @@ class TestLLMClientResponseGeneration:
     @pytest.mark.asyncio
     async def test_generate_response_with_dict_blocks(self, mock_llm_client):
         """Test response generation when LLM returns list of dict blocks with 'text' keys."""
-        mock_response = Mock()
-        mock_response.content = [
-            {"type": "text", "text": "Block 1"},
-            {"type": "text", "text": " Block 2"}
-        ]
-        mock_llm_client.ainvoke.return_value = mock_response
+        async def mock_stream_with_dicts():
+            mock_chunk = Mock()
+            mock_chunk.content = [
+                {"type": "text", "text": "Block 1"},
+                {"type": "text", "text": " Block 2"}
+            ]
+            yield mock_chunk
+        
+        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: mock_stream_with_dicts())
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", create_test_config(api_key="test"))
@@ -511,16 +525,18 @@ class TestLLMClientResponseGeneration:
     @pytest.mark.asyncio
     async def test_generate_response_with_object_blocks(self, mock_llm_client):
         """Test response generation when LLM returns list of objects with .text attribute."""
-        mock_response = Mock()
+        async def mock_stream_with_objects():
+            # Create mock objects with .text attribute
+            block1 = Mock()
+            block1.text = "Object text 1"
+            block2 = Mock()
+            block2.text = " Object text 2"
+            
+            mock_chunk = Mock()
+            mock_chunk.content = [block1, block2]
+            yield mock_chunk
         
-        # Create mock objects with .text attribute
-        block1 = Mock()
-        block1.text = "Object text 1"
-        block2 = Mock()
-        block2.text = " Object text 2"
-        
-        mock_response.content = [block1, block2]
-        mock_llm_client.ainvoke.return_value = mock_response
+        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: mock_stream_with_objects())
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", create_test_config(api_key="test"))
@@ -545,18 +561,20 @@ class TestLLMClientResponseGeneration:
     @pytest.mark.asyncio
     async def test_generate_response_with_mixed_list_content(self, mock_llm_client):
         """Test response generation with mixed content types in list."""
-        mock_response = Mock()
+        async def mock_stream_with_mixed():
+            block_with_text = Mock()
+            block_with_text.text = " with text attr"
+            
+            mock_chunk = Mock()
+            mock_chunk.content = [
+                "String block",
+                {"text": " dict block"},
+                block_with_text,
+                {"other": "fallback"}  # Should fallback to str()
+            ]
+            yield mock_chunk
         
-        block_with_text = Mock()
-        block_with_text.text = " with text attr"
-        
-        mock_response.content = [
-            "String block",
-            {"text": " dict block"},
-            block_with_text,
-            {"other": "fallback"}  # Should fallback to str()
-        ]
-        mock_llm_client.ainvoke.return_value = mock_response
+        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: mock_stream_with_mixed())
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI'):
             client = LLMClient("openai", create_test_config(api_key="test"))
@@ -597,7 +615,7 @@ class TestLLMClientResponseGeneration:
     @pytest.mark.asyncio
     async def test_generate_response_llm_error(self, client, mock_llm_client):
         """Test response generation handles LLM errors."""
-        mock_llm_client.ainvoke.side_effect = Exception("LLM API error")
+        mock_llm_client.astream.side_effect = Exception("LLM API error")
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
             LLMMessage(role=MessageRole.USER, content="Test question")
@@ -750,7 +768,10 @@ class TestLLMClientRetryLogic:
     @pytest.fixture
     def mock_llm_client(self):
         """Mock LangChain client."""
-        return AsyncMock()
+        mock_client = AsyncMock()
+        # Default stream behavior (will be overridden in specific tests)
+        mock_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response"))
+        return mock_client
     
     @pytest.fixture
     def client_with_retry(self, mock_llm_client):
@@ -766,10 +787,21 @@ class TestLLMClientRetryLogic:
         """Test retry logic for rate limiting errors."""
         # First call fails with rate limit, second succeeds
         rate_limit_error = Exception("429 Too Many Requests - rate limit exceeded")
-        success_response = Mock()
-        success_response.content = "Success after retry"
         
-        mock_llm_client.ainvoke.side_effect = [rate_limit_error, success_response]
+        call_count = [0]
+        
+        def side_effect_func(*args, **kwargs):  # Regular function, not async!
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise rate_limit_error
+            else:
+                async def success_stream():
+                    mock_chunk = Mock()
+                    mock_chunk.content = "Success after retry"
+                    yield mock_chunk
+                return success_stream()
+        
+        mock_llm_client.astream = Mock(side_effect=side_effect_func)
         
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
@@ -786,14 +818,14 @@ class TestLLMClientRetryLogic:
                 
                 assert isinstance(result, LLMConversation)
                 assert result.get_latest_assistant_message().content == "Success after retry"
-                assert mock_llm_client.ainvoke.call_count == 2
+                assert mock_llm_client.astream.call_count == 2
                 mock_sleep.assert_called_once()  # Should have slept before retry
     
     @pytest.mark.asyncio
     async def test_retry_exhausted_on_rate_limit(self, client_with_retry, mock_llm_client):
         """Test behavior when rate limit retries are exhausted."""
         rate_limit_error = Exception("rate_limit_exceeded")
-        mock_llm_client.ainvoke.side_effect = rate_limit_error
+        mock_llm_client.astream.side_effect = rate_limit_error
         
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
@@ -809,18 +841,30 @@ class TestLLMClientRetryLogic:
                     await client_with_retry.generate_response(conversation, "test-session")
                 
                 # Should have tried max_retries + 1 times
-                assert mock_llm_client.ainvoke.call_count == 4  # 3 retries + 1 initial
+                assert mock_llm_client.astream.call_count == 4  # 3 retries + 1 initial
     
     @pytest.mark.asyncio
     async def test_empty_response_retry(self, client_with_retry, mock_llm_client):
         """Test retry logic for empty responses."""
         # First response empty, second has content
-        empty_response = Mock()
-        empty_response.content = ""
-        success_response = Mock()
-        success_response.content = "Success after empty retry"
+        call_count = [0]
         
-        mock_llm_client.ainvoke.side_effect = [empty_response, success_response]
+        def side_effect_func(*args, **kwargs):  # Regular function, not async!
+            call_count[0] += 1
+            if call_count[0] == 1:
+                async def empty_stream():
+                    mock_chunk = Mock()
+                    mock_chunk.content = ""
+                    yield mock_chunk
+                return empty_stream()
+            else:
+                async def success_stream():
+                    mock_chunk = Mock()
+                    mock_chunk.content = "Success after empty retry"
+                    yield mock_chunk
+                return success_stream()
+        
+        mock_llm_client.astream = Mock(side_effect=side_effect_func)
         
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
@@ -837,14 +881,17 @@ class TestLLMClientRetryLogic:
                 
                 assert isinstance(result, LLMConversation)
                 assert result.get_latest_assistant_message().content == "Success after empty retry"
-                assert mock_llm_client.ainvoke.call_count == 2
+                assert mock_llm_client.astream.call_count == 2
     
     @pytest.mark.asyncio
     async def test_empty_response_fallback_message(self, client_with_retry, mock_llm_client):
         """Test fallback message injection for persistent empty responses."""
-        empty_response = Mock()
-        empty_response.content = ""
-        mock_llm_client.ainvoke.return_value = empty_response
+        async def empty_stream():
+            mock_chunk = Mock()
+            mock_chunk.content = ""
+            yield mock_chunk
+        
+        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: empty_stream())
         
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
@@ -880,7 +927,7 @@ class TestLLMClientRetryLogic:
     async def test_non_rate_limit_error_no_retry(self, client_with_retry, mock_llm_client):
         """Test that non-rate-limit errors don't trigger retries."""
         generic_error = Exception("Generic API error")
-        mock_llm_client.ainvoke.side_effect = generic_error
+        mock_llm_client.astream.side_effect = generic_error
         
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
@@ -895,7 +942,7 @@ class TestLLMClientRetryLogic:
                 await client_with_retry.generate_response(conversation, "test-session")
             
             # Should only try once (no retries)
-            assert mock_llm_client.ainvoke.call_count == 1
+            assert mock_llm_client.astream.call_count == 1
 
 
 @pytest.mark.unit
@@ -993,9 +1040,7 @@ class TestLLMClientIntegration:
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
             # Setup mock LangChain client
             mock_langchain_client = AsyncMock()
-            mock_response = Mock()
-            mock_response.content = "Integration test response"
-            mock_langchain_client.ainvoke.return_value = mock_response
+            mock_langchain_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Integration test response"))
             mock_openai.return_value = mock_langchain_client
             
             # Create client
@@ -1020,14 +1065,14 @@ class TestLLMClientIntegration:
                 
                 # Verify the complete flow
                 mock_openai.assert_called_once()
-                mock_langchain_client.ainvoke.assert_called_once()
+                mock_langchain_client.astream.assert_called_once()
                 mock_context.assert_called_once()
                 
                 # Verify message conversion worked
-                invoke_args = mock_langchain_client.ainvoke.call_args[0][0]
-                assert len(invoke_args) == 2
-                assert isinstance(invoke_args[0], SystemMessage)
-                assert isinstance(invoke_args[1], HumanMessage)
+                stream_args = mock_langchain_client.astream.call_args[0][0]
+                assert len(stream_args) == 2
+                assert isinstance(stream_args[0], SystemMessage)
+                assert isinstance(stream_args[1], HumanMessage)
 
 
 @pytest.mark.unit
@@ -1093,7 +1138,10 @@ class TestLLMClientTokenUsageTracking:
     @pytest.fixture
     def mock_llm_client(self):
         """Mock LangChain LLM client."""
-        return AsyncMock()
+        mock_client = AsyncMock()
+        # Default stream behavior (will be overridden in specific tests)
+        mock_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response with tokens"))
+        return mock_client
     
     @pytest.fixture
     def client(self, mock_llm_client):
@@ -1107,27 +1155,30 @@ class TestLLMClientTokenUsageTracking:
     @pytest.mark.asyncio
     async def test_generate_response_captures_token_usage(self, client, mock_llm_client):
         """Test that token usage is captured and stored in interaction context."""
-        # Arrange
-        mock_response = Mock()
-        mock_response.content = "Test response from LLM"
-        
-        # Mock the _execute_with_retry to return usage metadata
-        usage_metadata = {
-            'input_tokens': 120,
-            'output_tokens': 45,
-            'total_tokens': 165
-        }
-        
-        with patch.object(client, '_execute_with_retry', return_value=(mock_response, usage_metadata)) as mock_execute:
+        # Arrange - Mock the UsageMetadataCallbackHandler to return token usage
+        with patch('tarsy.integrations.llm.client.UsageMetadataCallbackHandler') as mock_callback_class:
+            mock_callback = Mock()
+            mock_callback.on_chain_end_values = {
+                'usage_metadata': {
+                    'input_tokens': 120,
+                    'output_tokens': 45,
+                    'total_tokens': 165
+                }
+            }
+            mock_callback_class.return_value = mock_callback
+            
             conversation = LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
                 LLMMessage(role=MessageRole.USER, content="Test question")
             ])
             
             with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
-                mock_ctx = AsyncMock()
+                mock_ctx = Mock()
                 mock_ctx.get_request_id.return_value = "req-123"
+                mock_ctx.interaction = Mock()
+                mock_ctx.complete_success = AsyncMock()
                 mock_context.return_value.__aenter__.return_value = mock_ctx
+                mock_context.return_value.__aexit__.return_value = None
                 
                 # Act
                 result = await client.generate_response(conversation, "test-session-123")
@@ -1139,26 +1190,28 @@ class TestLLMClientTokenUsageTracking:
                 assert mock_ctx.interaction.input_tokens == 120
                 assert mock_ctx.interaction.output_tokens == 45  
                 assert mock_ctx.interaction.total_tokens == 165
-                
-                mock_execute.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_generate_response_handles_missing_token_usage(self, client, mock_llm_client):
         """Test graceful handling when provider doesn't return usage metadata."""
-        # Arrange
-        mock_response = Mock()
-        mock_response.content = "Test response from LLM"
-        
-        # Mock _execute_with_retry to return None usage metadata
-        with patch.object(client, '_execute_with_retry', return_value=(mock_response, None)):
+        # Arrange - Mock callback without usage_metadata
+        with patch('tarsy.integrations.llm.client.UsageMetadataCallbackHandler') as mock_callback_class:
+            mock_callback = Mock()
+            mock_callback.on_chain_end_values = None  # No usage metadata
+            mock_callback_class.return_value = mock_callback
+            
             conversation = LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
                 LLMMessage(role=MessageRole.USER, content="Test question")
             ])
             
             with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
-                mock_ctx = AsyncMock()
+                mock_ctx = Mock()
+                mock_ctx.get_request_id.return_value = "req-124"
+                mock_ctx.interaction = Mock()
+                mock_ctx.complete_success = AsyncMock()
                 mock_context.return_value.__aenter__.return_value = mock_ctx
+                mock_context.return_value.__aexit__.return_value = None
                 
                 # Act
                 result = await client.generate_response(conversation, "test-session")
@@ -1166,9 +1219,8 @@ class TestLLMClientTokenUsageTracking:
                 # Assert
                 assert isinstance(result, LLMConversation)
                 
-                # Token fields should not have been set when usage_metadata is None
-                # Since we mocked _execute_with_retry to return None usage_metadata,
-                # the token setting code should not execute
+                # Token fields should remain None when usage_metadata is None
+                # The token setting code should not execute when callback has no metadata
                 # We can verify this by checking that the token assignment code path wasn't taken
                 
                 # The key assertion is that the method completed without error,
@@ -1177,26 +1229,30 @@ class TestLLMClientTokenUsageTracking:
     @pytest.mark.asyncio
     async def test_generate_response_handles_zero_token_usage(self, client, mock_llm_client):
         """Test handling of zero token usage values."""
-        # Arrange
-        mock_response = Mock()
-        mock_response.content = "Test response"
-        
-        # Mock usage metadata with zero values
-        usage_metadata = {
-            'input_tokens': 0,
-            'output_tokens': 0,
-            'total_tokens': 0
-        }
-        
-        with patch.object(client, '_execute_with_retry', return_value=(mock_response, usage_metadata)):
+        # Arrange - Mock callback with zero token usage
+        with patch('tarsy.integrations.llm.client.UsageMetadataCallbackHandler') as mock_callback_class:
+            mock_callback = Mock()
+            mock_callback.on_chain_end_values = {
+                'usage_metadata': {
+                    'input_tokens': 0,
+                    'output_tokens': 0,
+                    'total_tokens': 0
+                }
+            }
+            mock_callback_class.return_value = mock_callback
+            
             conversation = LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
                 LLMMessage(role=MessageRole.USER, content="Test")
             ])
             
             with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
-                mock_ctx = AsyncMock()
+                mock_ctx = Mock()
+                mock_ctx.get_request_id.return_value = "req-125"
+                mock_ctx.interaction = Mock()
+                mock_ctx.complete_success = AsyncMock()
                 mock_context.return_value.__aenter__.return_value = mock_ctx
+                mock_context.return_value.__aexit__.return_value = None
                 
                 # Act
                 await client.generate_response(conversation, "test-session")
@@ -1207,58 +1263,15 @@ class TestLLMClientTokenUsageTracking:
                 assert mock_ctx.interaction.total_tokens is None
     
     @pytest.mark.asyncio
-    async def test_execute_with_retry_uses_usage_metadata_callback(self, client):
-        """Test that _execute_with_retry properly uses UsageMetadataCallbackHandler."""
-        # Arrange
-        mock_response = Mock()
-        mock_response.content = "Test response"
-        client.llm_client.ainvoke.return_value = mock_response
-        
-        # Mock the callback to return usage data
-        with patch('tarsy.integrations.llm.client.UsageMetadataCallbackHandler') as mock_callback_class:
-            mock_callback_instance = Mock()
-            mock_callback_instance.usage_metadata = {
-                'gpt-4': {
-                    'input_tokens': 100,
-                    'output_tokens': 50,
-                    'total_tokens': 150
-                }
-            }
-            mock_callback_class.return_value = mock_callback_instance
-            
-            # Act
-            response, usage_metadata = await client._execute_with_retry([])
-            
-            # Assert
-            assert response == mock_response
-            assert usage_metadata == {
-                'input_tokens': 100,
-                'output_tokens': 50,
-                'total_tokens': 150
-            }
-            
-            # Verify callback was used
-            mock_callback_class.assert_called_once()
-            client.llm_client.ainvoke.assert_called_once()
-            
-            # Verify callback was passed to ainvoke
-            call_args = client.llm_client.ainvoke.call_args
-            assert 'config' in call_args.kwargs
-            assert 'callbacks' in call_args.kwargs['config']
-            assert call_args.kwargs['config']['callbacks'] == [mock_callback_instance]
-    
-    @pytest.mark.asyncio
     async def test_generate_response_with_llm_config(self, client, mock_llm_client):
-        """Test that max_tokens parameter is properly passed to ainvoke."""
+        """Test that max_tokens parameter is properly passed to astream."""
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="System prompt"),
             LLMMessage(role=MessageRole.USER, content="User question")
         ])
 
-        # Mock successful LLM response
-        mock_response = Mock()
-        mock_response.content = "Test response"
-        mock_llm_client.ainvoke.return_value = mock_response
+        # Mock successful LLM stream
+        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response"))
 
         # Test with max_tokens parameter
         max_tokens = 500
@@ -1275,10 +1288,13 @@ class TestLLMClientTokenUsageTracking:
                 conversation, "test-session", "test-stage", max_tokens=max_tokens
             )
 
-        # Verify ainvoke was called with correct config
-        call_args = mock_llm_client.ainvoke.call_args
-        assert 'config' in call_args.kwargs
-        config = call_args.kwargs['config']
+        # Verify astream was called with correct config
+        call_args = mock_llm_client.astream.call_args
+        assert len(call_args.args) >= 1  # At least messages argument
+        assert 'config' in call_args.kwargs or (len(call_args.args) >= 2)
+        
+        # Get config whether it's in kwargs or args
+        config = call_args.kwargs.get('config', call_args.args[1] if len(call_args.args) >= 2 else {})
 
         # Config should contain callbacks and max_tokens
         assert 'callbacks' in config
@@ -1296,10 +1312,8 @@ class TestLLMClientTokenUsageTracking:
             LLMMessage(role=MessageRole.USER, content="User question")
         ])
         
-        # Mock successful LLM response
-        mock_response = Mock()
-        mock_response.content = "Test response"
-        mock_llm_client.ainvoke.return_value = mock_response
+        # Mock successful LLM stream
+        mock_llm_client.astream = Mock(side_effect=lambda *args, **kwargs: create_mock_stream("Test response"))
         
         with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
             mock_ctx = Mock()
@@ -1311,10 +1325,12 @@ class TestLLMClientTokenUsageTracking:
             
             await client.generate_response(conversation, "test-session", "test-stage")
         
-        # Verify ainvoke was called with only callbacks (no extra config)
-        call_args = mock_llm_client.ainvoke.call_args
-        assert 'config' in call_args.kwargs
-        config = call_args.kwargs['config']
+        # Verify astream was called with only callbacks (no extra config)
+        call_args = mock_llm_client.astream.call_args
+        assert len(call_args.args) >= 1  # At least messages argument
+        
+        # Get config whether it's in kwargs or args
+        config = call_args.kwargs.get('config', call_args.args[1] if len(call_args.args) >= 2 else {})
         
         # Should only have callbacks in config, no extra LLM parameters as kwargs
         assert 'callbacks' in config
@@ -1322,35 +1338,6 @@ class TestLLMClientTokenUsageTracking:
         assert 'temperature' not in config
         # Verify max_tokens is not passed as direct kwarg
         assert 'max_tokens' not in call_args.kwargs
-    
-    @pytest.mark.asyncio
-    async def test_execute_with_retry_with_llm_config(self, client):
-        """Test that _execute_with_retry properly handles max_tokens parameter."""
-        # Mock successful LLM response
-        mock_response = Mock()
-        mock_response.content = "Test response"
-        client.llm_client.ainvoke.return_value = mock_response
-
-        max_tokens = 1000
-
-        with patch('tarsy.integrations.llm.client.UsageMetadataCallbackHandler') as mock_callback_class:
-            mock_callback_instance = Mock()
-            mock_callback_instance.usage_metadata = None
-            mock_callback_class.return_value = mock_callback_instance
-
-            await client._execute_with_retry(
-                [], max_retries=3, max_tokens=max_tokens
-            )
-
-            # Verify config was properly created
-            call_args = client.llm_client.ainvoke.call_args
-            config = call_args.kwargs['config']
-            assert 'callbacks' in config
-            assert config['callbacks'] == [mock_callback_instance]
-            assert 'max_tokens' in config
-            assert config['max_tokens'] == 1000
-            # max_tokens should NOT be passed as direct kwarg
-            assert 'max_tokens' not in call_args.kwargs
 
 
 @pytest.mark.unit

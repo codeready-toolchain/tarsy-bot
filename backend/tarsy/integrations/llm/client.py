@@ -188,13 +188,21 @@ class LLMClient:
         session_id: str,
         stage_execution_id: Optional[str] = None,
         max_tokens: Optional[int] = None,
-        interaction_type: Optional[str] = None
+        interaction_type: Optional[str] = None,
+        max_retries: int = 3,
+        timeout_seconds: int = 60
     ) -> LLMConversation:
         """
         Generate response with streaming to WebSocket.
         
         Uses streaming API (.astream) in all environments for consistency.
         Event publishing automatically disabled in SQLite/dev mode via publish_transient.
+        
+        Includes retry logic:
+        - Timeout protection (default: 60s)
+        - Rate limit retry with exponential backoff
+        - Timeout retry with increasing delays
+        - Empty response handling
         
         Args:
             conversation: The conversation to generate a response for
@@ -203,6 +211,8 @@ class LLMClient:
             max_tokens: Optional max tokens configuration for LLM
             interaction_type: Optional interaction type (investigation, summarization, final_analysis).
                             If None, auto-detects based on response content.
+            max_retries: Maximum number of retry attempts (default: 3)
+            timeout_seconds: Timeout for LLM streaming call (default: 60s)
         
         Returns:
             Updated conversation with assistant response appended
@@ -226,47 +236,127 @@ class LLMClient:
             # Log the outgoing conversation
             llm_comm_logger.debug(f"=== LLM REQUEST [{self.provider_name}] [ID: {request_id}] ===")
 
-            try:
-                # Convert typed conversation to LangChain format  
-                langchain_messages = self._convert_conversation_to_langchain(conversation)
-                accumulated_content = ""
-                
-                # Streaming state (for both thoughts and final answers)
-                is_streaming_thought = False
-                is_streaming_final_answer = False
-                token_count_since_last_send = 0
-                THOUGHT_CHUNK_SIZE = 2  # More responsive for short plain text thoughts
-                FINAL_ANSWER_CHUNK_SIZE = 5  # Less frequent for Markdown-heavy final answers
-                
-                # Stream tokens (always, in all environments)
-                callback = UsageMetadataCallbackHandler()
-                config = {"callbacks": [callback]}
-                if max_tokens is not None:
-                    config["max_tokens"] = max_tokens
-                
-                async for chunk in self.llm_client.astream(langchain_messages, config=config):
-                    token = self._extract_token_content(chunk)
-                    accumulated_content += token
+            # Retry loop for resilience
+            for attempt in range(max_retries + 1):
+                try:
+                    # Convert typed conversation to LangChain format  
+                    langchain_messages = self._convert_conversation_to_langchain(conversation)
+                    accumulated_content = ""
                     
-                    # Detect start of "Thought:" streaming
-                    if not is_streaming_thought and not is_streaming_final_answer:
-                        if "Thought:" in accumulated_content and "Final Answer:" not in accumulated_content:
-                            is_streaming_thought = True
-                            token_count_since_last_send = 0
-                            logger.debug(f"Started streaming thought for {session_id}")
+                    # Streaming state (for both thoughts and final answers)
+                    is_streaming_thought = False
+                    is_streaming_final_answer = False
+                    token_count_since_last_send = 0
+                    THOUGHT_CHUNK_SIZE = 2  # More responsive for short plain text thoughts
+                    FINAL_ANSWER_CHUNK_SIZE = 5  # Less frequent for Markdown-heavy final answers
                     
-                    # Check if we should STOP streaming thought
-                    if is_streaming_thought and ("Action:" in accumulated_content or "Final Answer:" in accumulated_content):
-                        # Extract clean thought content (everything between "Thought:" and stop marker)
+                    # Stream tokens with timeout protection
+                    callback = UsageMetadataCallbackHandler()
+                    config = {"callbacks": [callback]}
+                    if max_tokens is not None:
+                        config["max_tokens"] = max_tokens
+                    
+                    # Wrap streaming with timeout protection (Python 3.11+)
+                    async with asyncio.timeout(timeout_seconds):
+                        async for chunk in self.llm_client.astream(langchain_messages, config=config):
+                            token = self._extract_token_content(chunk)
+                            accumulated_content += token
+                            
+                            # Detect start of "Thought:" streaming
+                            if not is_streaming_thought and not is_streaming_final_answer:
+                                if "Thought:" in accumulated_content and "Final Answer:" not in accumulated_content:
+                                    is_streaming_thought = True
+                                    token_count_since_last_send = 0
+                                    logger.debug(f"Started streaming thought for {session_id}")
+                            
+                            # Check if we should STOP streaming thought
+                            if is_streaming_thought and ("Action:" in accumulated_content or "Final Answer:" in accumulated_content):
+                                # Extract clean thought content (everything between "Thought:" and stop marker)
+                                thought_start_idx = accumulated_content.find("Thought:")
+                                stop_idx = accumulated_content.find("Action:") if "Action:" in accumulated_content else accumulated_content.find("Final Answer:")
+                                clean_thought = accumulated_content[thought_start_idx + len("Thought:"):stop_idx].strip()
+                                
+                                # Send final complete thought
+                                if clean_thought:
+                                    await self._publish_stream_chunk(
+                                        session_id, stage_execution_id,
+                                        StreamingEventType.THOUGHT, clean_thought,
+                                        is_complete=True
+                                    )
+                                else:
+                                    # Send completion marker
+                                    await self._publish_stream_chunk(
+                                        session_id, stage_execution_id,
+                                        StreamingEventType.THOUGHT, "",
+                                        is_complete=True
+                                    )
+                                is_streaming_thought = False
+                                token_count_since_last_send = 0
+                                logger.debug(f"Stopped streaming thought for {session_id}")
+                                
+                                # If "Final Answer:" detected, start streaming it
+                                if "Final Answer:" in accumulated_content:
+                                    is_streaming_final_answer = True
+                                    token_count_since_last_send = 0
+                                    logger.debug(f"Started streaming final answer for {session_id}")
+                                
+                                continue  # Skip token accumulation for this iteration
+                            
+                            # Send periodic updates with ENTIRE content (not just new tokens)
+                            if is_streaming_thought or is_streaming_final_answer:
+                                token_count_since_last_send += 1
+                                
+                                # Determine chunk size based on what we're streaming
+                                current_chunk_size = THOUGHT_CHUNK_SIZE if is_streaming_thought else FINAL_ANSWER_CHUNK_SIZE
+                                
+                                # Send entire content every N tokens (2 for thoughts, 5 for final answers)
+                                if token_count_since_last_send >= current_chunk_size:
+                                    if is_streaming_thought:
+                                        thought_start_idx = accumulated_content.find("Thought:")
+                                        current_thought = accumulated_content[thought_start_idx + len("Thought:"):].lstrip()
+                                        
+                                        # Check if Action: or Final Answer: appeared (strip them from streaming)
+                                        # This handles cases where LLM doesn't put them on new lines
+                                        if "Action:" in current_thought:
+                                            current_thought = current_thought[:current_thought.find("Action:")].strip()
+                                        elif "Final Answer:" in current_thought:
+                                            current_thought = current_thought[:current_thought.find("Final Answer:")].strip()
+                                        
+                                        if current_thought:
+                                            await self._publish_stream_chunk(
+                                                session_id, stage_execution_id,
+                                                StreamingEventType.THOUGHT, current_thought,
+                                                is_complete=False
+                                            )
+                                    
+                                    elif is_streaming_final_answer:
+                                        final_answer_start_idx = accumulated_content.find("Final Answer:")
+                                        current_final_answer = accumulated_content[final_answer_start_idx + len("Final Answer:"):].lstrip()
+                                        
+                                        if current_final_answer:
+                                            await self._publish_stream_chunk(
+                                                session_id, stage_execution_id,
+                                                StreamingEventType.FINAL_ANSWER, current_final_answer,
+                                                is_complete=False
+                                            )
+                                    
+                                    token_count_since_last_send = 0
+                    
+                    # Send final complete content if streaming is still active (after stream completes)
+                    if is_streaming_thought:
                         thought_start_idx = accumulated_content.find("Thought:")
-                        stop_idx = accumulated_content.find("Action:") if "Action:" in accumulated_content else accumulated_content.find("Final Answer:")
-                        clean_thought = accumulated_content[thought_start_idx + len("Thought:"):stop_idx].strip()
+                        final_thought = accumulated_content[thought_start_idx + len("Thought:"):].strip()
                         
-                        # Send final complete thought
-                        if clean_thought:
+                        # Strip any trailing Action: or Final Answer: (in case LLM didn't put them on new lines)
+                        if "Action:" in final_thought:
+                            final_thought = final_thought[:final_thought.find("Action:")].strip()
+                        elif "Final Answer:" in final_thought:
+                            final_thought = final_thought[:final_thought.find("Final Answer:")].strip()
+                        
+                        if final_thought:
                             await self._publish_stream_chunk(
                                 session_id, stage_execution_id,
-                                StreamingEventType.THOUGHT, clean_thought,
+                                StreamingEventType.THOUGHT, final_thought,
                                 is_complete=True
                             )
                         else:
@@ -276,124 +366,92 @@ class LLMClient:
                                 StreamingEventType.THOUGHT, "",
                                 is_complete=True
                             )
-                        is_streaming_thought = False
-                        token_count_since_last_send = 0
-                        logger.debug(f"Stopped streaming thought for {session_id}")
-                        
-                        # If "Final Answer:" detected, start streaming it
-                        if "Final Answer:" in accumulated_content:
-                            is_streaming_final_answer = True
-                            token_count_since_last_send = 0
-                            logger.debug(f"Started streaming final answer for {session_id}")
-                        
-                        continue  # Skip token accumulation for this iteration
                     
-                    # Send periodic updates with ENTIRE content (not just new tokens)
-                    if is_streaming_thought or is_streaming_final_answer:
-                        token_count_since_last_send += 1
+                    # Send final complete final answer if streaming is still active
+                    if is_streaming_final_answer:
+                        final_answer_start_idx = accumulated_content.find("Final Answer:")
+                        final_answer = accumulated_content[final_answer_start_idx + len("Final Answer:"):].strip()
                         
-                        # Determine chunk size based on what we're streaming
-                        current_chunk_size = THOUGHT_CHUNK_SIZE if is_streaming_thought else FINAL_ANSWER_CHUNK_SIZE
-                        
-                        # Send entire content every N tokens (2 for thoughts, 5 for final answers)
-                        if token_count_since_last_send >= current_chunk_size:
-                            if is_streaming_thought:
-                                thought_start_idx = accumulated_content.find("Thought:")
-                                current_thought = accumulated_content[thought_start_idx + len("Thought:"):].lstrip()
-                                
-                                # Check if Action: or Final Answer: appeared (strip them from streaming)
-                                # This handles cases where LLM doesn't put them on new lines
-                                if "Action:" in current_thought:
-                                    current_thought = current_thought[:current_thought.find("Action:")].strip()
-                                elif "Final Answer:" in current_thought:
-                                    current_thought = current_thought[:current_thought.find("Final Answer:")].strip()
-                                
-                                if current_thought:
-                                    await self._publish_stream_chunk(
-                                        session_id, stage_execution_id,
-                                        StreamingEventType.THOUGHT, current_thought,
-                                        is_complete=False
-                                    )
-                            
-                            elif is_streaming_final_answer:
-                                final_answer_start_idx = accumulated_content.find("Final Answer:")
-                                current_final_answer = accumulated_content[final_answer_start_idx + len("Final Answer:"):].lstrip()
-                                
-                                if current_final_answer:
-                                    await self._publish_stream_chunk(
-                                        session_id, stage_execution_id,
-                                        StreamingEventType.FINAL_ANSWER, current_final_answer,
-                                        is_complete=False
-                                    )
-                            
-                            token_count_since_last_send = 0
+                        if final_answer:
+                            await self._publish_stream_chunk(
+                                session_id, stage_execution_id,
+                                StreamingEventType.FINAL_ANSWER, final_answer,
+                                is_complete=True
+                            )
+                        else:
+                            # Send completion marker
+                            await self._publish_stream_chunk(
+                                session_id, stage_execution_id,
+                                StreamingEventType.FINAL_ANSWER, "",
+                                is_complete=True
+                            )
+                    
+                    # Check for empty response and retry if needed
+                    if not accumulated_content or accumulated_content.strip() == "":
+                        if attempt < max_retries:
+                            logger.warning(f"Empty LLM response (attempt {attempt + 1}/{max_retries + 1}), retrying in 3s")
+                            await asyncio.sleep(3)
+                            continue  # Retry
+                        else:
+                            # Inject descriptive error message on final attempt
+                            logger.warning(f"Empty LLM response on final attempt, injecting error message")
+                            accumulated_content = f"⚠️ **LLM Response Error**\n\nThe {self.provider_name} LLM returned empty responses after {max_retries + 1} attempts. This may be due to:\n- Temporary provider issues\n- API rate limiting\n- Model overload\n\nPlease try processing this alert again in a few moments."
+                    
+                    # Store usage metadata from callback
+                    self._store_usage_metadata(ctx, callback)
+                    
+                    # Finalize conversation and interaction
+                    self._finalize_conversation(ctx, conversation, accumulated_content, interaction_type)
+                    
+                    # Complete the typed context with success
+                    await ctx.complete_success({})
+                    
+                    # Success - break out of retry loop
+                    return conversation
                 
-                # Send final complete content if streaming is still active
-                if is_streaming_thought:
-                    thought_start_idx = accumulated_content.find("Thought:")
-                    final_thought = accumulated_content[thought_start_idx + len("Thought:"):].strip()
-                    
-                    # Strip any trailing Action: or Final Answer: (in case LLM didn't put them on new lines)
-                    if "Action:" in final_thought:
-                        final_thought = final_thought[:final_thought.find("Action:")].strip()
-                    elif "Final Answer:" in final_thought:
-                        final_thought = final_thought[:final_thought.find("Final Answer:")].strip()
-                    
-                    if final_thought:
-                        await self._publish_stream_chunk(
-                            session_id, stage_execution_id,
-                            StreamingEventType.THOUGHT, final_thought,
-                            is_complete=True
-                        )
+                except asyncio.TimeoutError:
+                    # Handle timeout - will retry up to max_retries with 5s delay between attempts
+                    logger.error(f"LLM streaming timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries + 1})")
+                    if attempt < max_retries:
+                        logger.warning("Retrying after timeout in 5s...")
+                        await asyncio.sleep(5)
+                        continue  # Retry
                     else:
-                        # Send completion marker
-                        await self._publish_stream_chunk(
-                            session_id, stage_execution_id,
-                            StreamingEventType.THOUGHT, "",
-                            is_complete=True
-                        )
+                        logger.error(f"LLM streaming timed out after {max_retries + 1} attempts")
+                        self._log_llm_detailed_error(TimeoutError(f"LLM streaming timed out after {timeout_seconds}s"), request_id)
+                        raise TimeoutError(f"LLM streaming timed out after {timeout_seconds}s on all {max_retries + 1} attempts") from None
                 
-                # Send final complete final answer if streaming is still active
-                if is_streaming_final_answer:
-                    final_answer_start_idx = accumulated_content.find("Final Answer:")
-                    final_answer = accumulated_content[final_answer_start_idx + len("Final Answer:"):].strip()
+                except Exception as e:
+                    # Check if this is a rate limit error
+                    error_str = str(e).lower()
+                    is_rate_limit = any(indicator in error_str for indicator in [
+                        "429", "rate limit", "quota", "too many requests", "rate_limit_exceeded"
+                    ])
                     
-                    if final_answer:
-                        await self._publish_stream_chunk(
-                            session_id, stage_execution_id,
-                            StreamingEventType.FINAL_ANSWER, final_answer,
-                            is_complete=True
-                        )
+                    if is_rate_limit and attempt < max_retries:
+                        # Extract retry delay from error if available
+                        retry_delay = self._extract_retry_delay(str(e))
+                        if retry_delay is None:
+                            # Exponential backoff: 2^attempt seconds (1s, 2s, 4s)
+                            retry_delay = (2 ** attempt)
+                        
+                        logger.warning(f"Rate limit hit (attempt {attempt + 1}/{max_retries + 1}), retrying in {retry_delay}s")
+                        await asyncio.sleep(retry_delay)
+                        continue  # Retry
                     else:
-                        # Send completion marker
-                        await self._publish_stream_chunk(
-                            session_id, stage_execution_id,
-                            StreamingEventType.FINAL_ANSWER, "",
-                            is_complete=True
-                        )
-                
-                # Store usage metadata from callback
-                self._store_usage_metadata(ctx, callback)
-                
-                # Finalize conversation and interaction
-                self._finalize_conversation(ctx, conversation, accumulated_content, interaction_type)
-                
-                # Complete the typed context with success
-                await ctx.complete_success({})
-                
-                return conversation  # Return updated conversation
-                
-            except Exception as e:
-                # Log the detailed error (hooks will be triggered automatically by context manager)
-                self._log_llm_detailed_error(e, request_id)
-                
-                # Create enhanced error message with key attributes
-                error_details = extract_error_details(e)
-                enhanced_message = f"{self.provider_name} API error: {str(e)}"
-                if error_details:
-                    enhanced_message += f" | Details: {error_details}"
-                
-                raise Exception(enhanced_message) from e
+                        # Log detailed error for non-rate-limit errors or max retries reached
+                        self._log_llm_detailed_error(e, request_id)
+                        
+                        # Create enhanced error message
+                        error_details = extract_error_details(e)
+                        enhanced_message = f"{self.provider_name} API error: {str(e)}"
+                        if error_details:
+                            enhanced_message += f" | Details: {error_details}"
+                        
+                        if is_rate_limit:
+                            enhanced_message += f" (max retries {max_retries + 1} exhausted)"
+                        
+                        raise Exception(enhanced_message) from e
     
     def _contains_final_answer(self, conversation: LLMConversation) -> bool:
         """
@@ -552,113 +610,6 @@ class LLMClient:
         except Exception as e:
             # Don't fail LLM call if streaming fails
             logger.warning(f"Failed to publish streaming chunk: {e}")
-    
-    async def _execute_with_retry(
-        self,
-        langchain_messages: List,
-        max_retries: int = 3,
-        max_tokens: Optional[int] = None,
-        timeout_seconds: int = 60
-    ) -> Tuple[Any, Optional[Dict[str, Any]]]:
-        """Execute LLM call with usage tracking and retry logic.
-        
-        Args:
-            langchain_messages: Messages to send to LLM
-            max_retries: Maximum number of retry attempts
-            max_tokens: Optional maximum tokens for response
-            timeout_seconds: Timeout for individual LLM API call (default: 60s)
-        """
-        for attempt in range(max_retries + 1):
-            try:
-                # Add callback handler to capture token usage
-                callback = UsageMetadataCallbackHandler()
-                
-                # Build config with callbacks only
-                config = {"callbacks": [callback]}
-                
-                if max_tokens is not None:
-                    config["max_tokens"] = max_tokens
-
-                # Wrap LLM call with timeout to prevent indefinite hanging
-                response = await asyncio.wait_for(
-                    self.llm_client.ainvoke(
-                        langchain_messages,
-                        config=config
-                    ),
-                    timeout=timeout_seconds
-                )
-                
-                # Check for empty response content
-                if response and hasattr(response, 'content'):
-                    content = response.content
-                    if content is None or (isinstance(content, str) and content.strip() == ""):
-                        if attempt < max_retries:
-                            # Only retry empty responses once (first attempt) to avoid too many retries
-                            if attempt == 0:
-                                logger.warning(f"Empty LLM response received (attempt {attempt + 1}/{max_retries + 1}), retrying in 3s")
-                                await asyncio.sleep(3)
-                                continue
-                            else:
-                                logger.warning(f"Empty LLM response received again (attempt {attempt + 1}/{max_retries + 1}), injecting error message")
-                                # Inject descriptive error message instead of proceeding with empty response
-                                error_message = f"⚠️ **LLM Response Error**\n\nThe {self.provider_name} LLM returned empty responses after {attempt + 1} attempts. This may be due to:\n- Temporary provider issues\n- API rate limiting\n- Model overload\n\nPlease try processing this alert again in a few moments."
-                                response.content = error_message
-                        else:
-                            logger.warning(f"Empty LLM response received on final attempt, injecting error message")
-                            # Inject descriptive error message for final attempt
-                            error_message = f"⚠️ **LLM Response Error**\n\nThe {self.provider_name} LLM returned an empty response on the final attempt (attempt {attempt + 1}/{max_retries + 1}). This may be due to:\n- Temporary provider issues\n- API rate limiting\n- Model overload\n\nPlease try processing this alert again in a few moments."
-                            response.content = error_message
-                
-                # Return both response and usage metadata from first model
-                usage_metadata = None
-                if callback.usage_metadata:
-                    # Log the entire usage_metadata object for debugging
-                    logger.info(f"Complete usage_metadata object: {pprint.pformat(callback.usage_metadata, width=100, depth=5)}")
-                    
-                    # Extract the first (and likely only) model's usage metadata
-                    first_model_name = next(iter(callback.usage_metadata.keys()), None)
-                    if first_model_name:
-                        model_usage = callback.usage_metadata[first_model_name]
-                        if isinstance(model_usage, dict):
-                            # Create a simple UsageMetadata-like object
-                            usage_metadata = model_usage
-                
-                return response, usage_metadata
-                
-            except asyncio.TimeoutError:
-                # Handle timeout - will retry up to max_retries with 5s delay between attempts
-                logger.error(f"LLM API call timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries + 1})")
-                if attempt < max_retries:
-                    logger.warning("Retrying after timeout in 5s...")
-                    await asyncio.sleep(5)
-                    continue
-                else:
-                    logger.error(f"LLM API call timed out after {max_retries + 1} attempts")
-                    raise TimeoutError(f"LLM API call timed out after {timeout_seconds}s") from None
-                
-            except Exception as e:
-                error_str = str(e).lower()
-                is_rate_limit = any(indicator in error_str for indicator in [
-                    "429", "rate limit", "quota", "too many requests", "rate_limit_exceeded"
-                ])
-                
-                if is_rate_limit and attempt < max_retries:
-                    # Extract retry delay from error if available
-                    retry_delay = self._extract_retry_delay(str(e))
-                    if retry_delay is None:
-                        # Exponential backoff: 2^attempt seconds
-                        retry_delay = (2 ** attempt)
-                    
-                    logger.warning(f"Rate limit hit (attempt {attempt + 1}/{max_retries + 1}), retrying in {retry_delay}s")
-                    await asyncio.sleep(retry_delay)
-                    continue
-                else:
-                    # Log detailed error information for debugging
-                    error_details = extract_error_details(e)
-                    logger.error(f"LLM execution failed after {attempt + 1} attempts - {error_details}")
-                    
-                    # Re-raise the exception for non-rate-limit errors or max retries reached
-                    raise e
     
     def _extract_retry_delay(self, error_message: str) -> Optional[int]:
         """Extract retry delay from error message if available."""
