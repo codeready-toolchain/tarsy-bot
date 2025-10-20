@@ -11,7 +11,7 @@ import {
   ExpandLess,
   Error as ErrorIcon
 } from '@mui/icons-material';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import type { ConversationStepData } from '../utils/conversationParser';
 import CopyButton from './CopyButton';
 import JsonDisplay from './JsonDisplay';
@@ -217,24 +217,25 @@ function ConversationStep({
                 <Collapse in={isAnalysisExpanded}>
                   <Box sx={{ mt: 1 }}>
                     <ReactMarkdown
+                      urlTransform={defaultUrlTransform}
                       components={{
                         // Custom styling for markdown elements
-                        h1: ({ children }) => (
-                          <Typography variant="h5" gutterBottom sx={{ color: style.color, fontWeight: 'bold' }}>
+                        h1: ({ children, ...props }) => (
+                          <Typography variant="h5" gutterBottom sx={{ color: style.color, fontWeight: 'bold' }} {...props}>
                             {children}
                           </Typography>
                         ),
-                        h2: ({ children }) => (
-                          <Typography variant="h6" gutterBottom sx={{ color: style.color, fontWeight: 'bold', mt: 2 }}>
+                        h2: ({ children, ...props }) => (
+                          <Typography variant="h6" gutterBottom sx={{ color: style.color, fontWeight: 'bold', mt: 2 }} {...props}>
                             {children}
                           </Typography>
                         ),
-                        h3: ({ children }) => (
-                          <Typography variant="subtitle1" gutterBottom sx={{ color: style.color, fontWeight: 'bold', mt: 1.5 }}>
+                        h3: ({ children, ...props }) => (
+                          <Typography variant="subtitle1" gutterBottom sx={{ color: style.color, fontWeight: 'bold', mt: 1.5 }} {...props}>
                             {children}
                           </Typography>
                         ),
-                        p: ({ children }) => (
+                        p: ({ children, ...props }) => (
                           <Typography 
                             variant="body1" 
                             sx={{ 
@@ -243,21 +244,22 @@ function ConversationStep({
                               color: style.color,
                               mb: 1
                             }}
+                            {...props}
                           >
                             {children}
                           </Typography>
                         ),
-                        ul: ({ children }) => (
-                          <Box component="ul" sx={{ pl: 2, mb: 1, color: style.color }}>
+                        ul: ({ children, ...props }) => (
+                          <Box component="ul" sx={{ pl: 2, mb: 1, color: style.color }} {...props}>
                             {children}
                           </Box>
                         ),
-                        li: ({ children }) => (
-                          <Typography component="li" variant="body1" sx={{ fontSize: '0.95rem', lineHeight: 1.6, mb: 0.5 }}>
+                        li: ({ children, ...props }) => (
+                          <Typography component="li" variant="body1" sx={{ fontSize: '0.95rem', lineHeight: 1.6, mb: 0.5 }} {...props}>
                             {children}
                           </Typography>
                         ),
-                        code: ({ children, className }) => (
+                        code: ({ children, className, ...props }) => (
                           <Typography
                             component={className?.includes('language-') ? 'pre' : 'code'}
                             sx={{
@@ -270,12 +272,13 @@ function ConversationStep({
                               whiteSpace: className?.includes('language-') ? 'pre' : 'pre-wrap',
                               overflow: 'auto'
                             }}
+                            {...props}
                           >
                             {children}
                           </Typography>
                         ),
-                        strong: ({ children }) => (
-                          <Typography component="strong" sx={{ fontWeight: 'bold', color: style.color }}>
+                        strong: ({ children, ...props }) => (
+                          <Typography component="strong" sx={{ fontWeight: 'bold', color: style.color }} {...props}>
                             {children}
                           </Typography>
                         )
@@ -320,23 +323,24 @@ function ConversationStep({
                   <Box sx={{ mt: 1 }}>
                 <Box>
                   <ReactMarkdown
+                    urlTransform={defaultUrlTransform}
                     components={{
-                      h1: ({ children }) => (
-                        <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, color: style.color }}>
+                      h1: ({ children, ...props }) => (
+                        <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, color: style.color }} {...props}>
                           {children}
                         </Typography>
                       ),
-                      h2: ({ children }) => (
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, color: style.color }}>
+                      h2: ({ children, ...props }) => (
+                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, color: style.color }} {...props}>
                           {children}
                         </Typography>
                       ),
-                      h3: ({ children }) => (
-                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, color: style.color }}>
+                      h3: ({ children, ...props }) => (
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, color: style.color }} {...props}>
                           {children}
                         </Typography>
                       ),
-                      p: ({ children }) => (
+                      p: ({ children, ...props }) => (
                         <Typography 
                           variant="body1" 
                           sx={{ 
@@ -345,21 +349,22 @@ function ConversationStep({
                             color: style.color,
                             mb: 1
                           }}
+                          {...props}
                         >
                           {children}
                         </Typography>
                       ),
-                      ul: ({ children }) => (
-                        <Box component="ul" sx={{ pl: 2, mb: 1, color: style.color }}>
+                      ul: ({ children, ...props }) => (
+                        <Box component="ul" sx={{ pl: 2, mb: 1, color: style.color }} {...props}>
                           {children}
                         </Box>
                       ),
-                      li: ({ children }) => (
-                        <Typography component="li" variant="body1" sx={{ fontSize: '0.9rem', lineHeight: 1.6, mb: 0.5 }}>
+                      li: ({ children, ...props }) => (
+                        <Typography component="li" variant="body1" sx={{ fontSize: '0.9rem', lineHeight: 1.6, mb: 0.5 }} {...props}>
                           {children}
                         </Typography>
                       ),
-                      code: ({ children, className }) => (
+                      code: ({ children, className, ...props }) => (
                         <Typography
                           component={className?.includes('language-') ? 'pre' : 'code'}
                           sx={{
@@ -372,12 +377,13 @@ function ConversationStep({
                             whiteSpace: className?.includes('language-') ? 'pre' : 'pre-wrap',
                             overflow: 'auto'
                           }}
+                          {...props}
                         >
                           {children}
                         </Typography>
                       ),
-                      strong: ({ children }) => (
-                        <Typography component="strong" sx={{ fontWeight: 'bold', color: style.color }}>
+                      strong: ({ children, ...props }) => (
+                        <Typography component="strong" sx={{ fontWeight: 'bold', color: style.color }} {...props}>
                           {children}
                         </Typography>
                       )

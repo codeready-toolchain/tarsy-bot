@@ -1,6 +1,6 @@
 import { Box, Typography, Divider, Chip } from '@mui/material';
 import { Flag } from '@mui/icons-material';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import ToolCallBox from './ToolCallBox';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 
@@ -108,43 +108,44 @@ function ChatFlowItem({ item }: ChatFlowItemProps) {
         </Box>
         <Box sx={{ pl: 3.5 }}>
           <ReactMarkdown
+            urlTransform={defaultUrlTransform}
             components={{
-              h1: ({ children }) => (
-                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1.5, fontSize: '1.1rem' }}>
+              h1: ({ children, ...props }) => (
+                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1.5, fontSize: '1.1rem' }} {...props}>
                   {children}
                 </Typography>
               ),
-              h2: ({ children }) => (
-                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.75, mt: 1.25, fontSize: '1rem' }}>
+              h2: ({ children, ...props }) => (
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.75, mt: 1.25, fontSize: '1rem' }} {...props}>
                   {children}
                 </Typography>
               ),
-              h3: ({ children }) => (
-                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1, fontSize: '0.95rem' }}>
+              h3: ({ children, ...props }) => (
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1, fontSize: '0.95rem' }} {...props}>
                   {children}
                 </Typography>
               ),
-              p: ({ children }) => (
-                <Typography variant="body2" sx={{ mb: 1, lineHeight: 1.7, fontSize: '0.95rem' }}>
+              p: ({ children, ...props }) => (
+                <Typography variant="body2" sx={{ mb: 1, lineHeight: 1.7, fontSize: '0.95rem' }} {...props}>
                   {children}
                 </Typography>
               ),
-              ul: ({ children }) => (
-                <Box component="ul" sx={{ mb: 1, pl: 2.5 }}>
+              ul: ({ children, ...props }) => (
+                <Box component="ul" sx={{ mb: 1, pl: 2.5 }} {...props}>
                   {children}
                 </Box>
               ),
-              ol: ({ children }) => (
-                <Box component="ol" sx={{ mb: 1, pl: 2.5 }}>
+              ol: ({ children, ...props }) => (
+                <Box component="ol" sx={{ mb: 1, pl: 2.5 }} {...props}>
                   {children}
                 </Box>
               ),
-              li: ({ children }) => (
-                <Typography component="li" variant="body2" sx={{ mb: 0.5, lineHeight: 1.6, fontSize: '0.95rem' }}>
+              li: ({ children, ...props }) => (
+                <Typography component="li" variant="body2" sx={{ mb: 0.5, lineHeight: 1.6, fontSize: '0.95rem' }} {...props}>
                   {children}
                 </Typography>
               ),
-              code: ({ children }) => (
+              code: ({ children, ...props }) => (
                 <Box
                   component="code"
                   sx={{
@@ -155,12 +156,13 @@ function ChatFlowItem({ item }: ChatFlowItemProps) {
                     fontFamily: 'monospace',
                     fontSize: '0.85rem'
                   }}
+                  {...props}
                 >
                   {children}
                 </Box>
               ),
-              strong: ({ children }) => (
-                <Box component="strong" sx={{ fontWeight: 700 }}>
+              strong: ({ children, ...props }) => (
+                <Box component="strong" sx={{ fontWeight: 700 }} {...props}>
                   {children}
                 </Box>
               )

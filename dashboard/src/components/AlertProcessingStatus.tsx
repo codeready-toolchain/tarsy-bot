@@ -24,7 +24,7 @@ import {
   OpenInNew as OpenInNewIcon,
   Visibility as VisibilityIcon,
 } from '@mui/icons-material';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 
 import type { ProcessingStatus, ProcessingStatusProps } from '../types';
 import { websocketService } from '../services/websocketService';
@@ -375,24 +375,25 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
                 }}
               >
                 <ReactMarkdown
+                  urlTransform={defaultUrlTransform}
                   components={{
                     // Custom styling for markdown elements
-                    h1: ({ children }) => (
-                      <Typography variant="h5" gutterBottom sx={{ color: 'primary.main', fontWeight: 'bold' }}>
+                    h1: ({ children, ...props }) => (
+                      <Typography variant="h5" gutterBottom sx={{ color: 'primary.main', fontWeight: 'bold' }} {...props}>
                         {children}
                       </Typography>
                     ),
-                    h2: ({ children }) => (
-                      <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 'bold', mt: 2 }}>
+                    h2: ({ children, ...props }) => (
+                      <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 'bold', mt: 2 }} {...props}>
                         {children}
                       </Typography>
                     ),
-                    h3: ({ children }) => (
-                      <Typography variant="subtitle1" gutterBottom sx={{ color: 'primary.main', fontWeight: 'bold', mt: 1.5 }}>
+                    h3: ({ children, ...props }) => (
+                      <Typography variant="subtitle1" gutterBottom sx={{ color: 'primary.main', fontWeight: 'bold', mt: 1.5 }} {...props}>
                         {children}
                       </Typography>
                     ),
-                    p: ({ children }) => (
+                    p: ({ children, ...props }) => (
                       <Typography 
                         variant="body1" 
                         sx={{ 
@@ -400,21 +401,22 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
                           fontSize: '0.95rem',
                           mb: 1
                         }}
+                        {...props}
                       >
                         {children}
                       </Typography>
                     ),
-                    ul: ({ children }) => (
-                      <Box component="ul" sx={{ pl: 2, mb: 1 }}>
+                    ul: ({ children, ...props }) => (
+                      <Box component="ul" sx={{ pl: 2, mb: 1 }} {...props}>
                         {children}
                       </Box>
                     ),
-                    li: ({ children }) => (
-                      <Typography component="li" variant="body1" sx={{ fontSize: '0.95rem', lineHeight: 1.6, mb: 0.5 }}>
+                    li: ({ children, ...props }) => (
+                      <Typography component="li" variant="body1" sx={{ fontSize: '0.95rem', lineHeight: 1.6, mb: 0.5 }} {...props}>
                         {children}
                       </Typography>
                     ),
-                    code: ({ children, className }) => (
+                    code: ({ children, className, ...props }) => (
                       <Typography
                         component={className ? "pre" : "code"}
                         variant="body2"
@@ -430,11 +432,12 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
                           border: `1px solid`,
                           borderColor: 'divider'
                         }}
+                        {...props}
                       >
                         {children}
                       </Typography>
                     ),
-                    blockquote: ({ children }) => (
+                    blockquote: ({ children, ...props }) => (
                       <Box
                         component="blockquote"
                         sx={{
@@ -446,6 +449,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
                           fontStyle: 'italic',
                           mb: 1
                         }}
+                        {...props}
                       >
                         {children}
                       </Box>

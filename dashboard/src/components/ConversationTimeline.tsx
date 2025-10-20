@@ -7,7 +7,7 @@ import {
   Chip,
   Alert
 } from '@mui/material';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { parseSessionChatFlow, getChatFlowStats } from '../utils/chatFlowParser';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { DetailedSession } from '../types';
@@ -154,43 +154,44 @@ function StreamingItemRenderer({ item }: { item: StreamingItem }) {
       </Box>
       <Box sx={{ pl: 3.5 }}>
         <ReactMarkdown
+          urlTransform={defaultUrlTransform}
           components={{
-            h1: ({ children }) => (
-              <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1.5, fontSize: '1.1rem' }}>
+            h1: ({ children, ...props }) => (
+              <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1.5, fontSize: '1.1rem' }} {...props}>
                 {children}
               </Typography>
             ),
-            h2: ({ children }) => (
-              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.75, mt: 1.25, fontSize: '1rem' }}>
+            h2: ({ children, ...props }) => (
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.75, mt: 1.25, fontSize: '1rem' }} {...props}>
                 {children}
               </Typography>
             ),
-            h3: ({ children }) => (
-              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1, fontSize: '0.95rem' }}>
+            h3: ({ children, ...props }) => (
+              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1, fontSize: '0.95rem' }} {...props}>
                 {children}
               </Typography>
             ),
-            p: ({ children }) => (
-              <Typography variant="body2" sx={{ mb: 1, lineHeight: 1.7, fontSize: '0.95rem' }}>
+            p: ({ children, ...props }) => (
+              <Typography variant="body2" sx={{ mb: 1, lineHeight: 1.7, fontSize: '0.95rem' }} {...props}>
                 {children}
               </Typography>
             ),
-            ul: ({ children }) => (
-              <Box component="ul" sx={{ pl: 2, mb: 1 }}>
+            ul: ({ children, ...props }) => (
+              <Box component="ul" sx={{ pl: 2, mb: 1 }} {...props}>
                 {children}
               </Box>
             ),
-            ol: ({ children }) => (
-              <Box component="ol" sx={{ pl: 2, mb: 1 }}>
+            ol: ({ children, ...props }) => (
+              <Box component="ol" sx={{ pl: 2, mb: 1 }} {...props}>
                 {children}
               </Box>
             ),
-            li: ({ children }) => (
-              <Typography component="li" variant="body2" sx={{ fontSize: '0.95rem', lineHeight: 1.7, mb: 0.5 }}>
+            li: ({ children, ...props }) => (
+              <Typography component="li" variant="body2" sx={{ fontSize: '0.95rem', lineHeight: 1.7, mb: 0.5 }} {...props}>
                 {children}
               </Typography>
             ),
-            code: ({ children }) => (
+            code: ({ children, ...props }) => (
               <Box
                 component="code"
                 sx={{
@@ -201,12 +202,13 @@ function StreamingItemRenderer({ item }: { item: StreamingItem }) {
                   fontSize: '0.9em',
                   fontFamily: 'monospace'
                 }}
+                {...props}
               >
                 {children}
               </Box>
             ),
-            strong: ({ children }) => (
-              <Box component="strong" sx={{ fontWeight: 600 }}>
+            strong: ({ children, ...props }) => (
+              <Box component="strong" sx={{ fontWeight: 600 }} {...props}>
                 {children}
               </Box>
             )

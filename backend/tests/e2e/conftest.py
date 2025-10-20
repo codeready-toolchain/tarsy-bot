@@ -412,27 +412,17 @@ class MockChunk:
         self.usage_metadata = usage_metadata
 
     def __add__(self, other):
-        """Support chunk aggregation (chunk1 + chunk2)."""
-        if other is None:
-            return self
-
-        # Aggregate content
-        new_content = self.content + (other.content if hasattr(other, 'content') else "")
-
-        # Aggregate usage_metadata (prefer non-None, or merge if both exist)
-        new_usage = self.usage_metadata or (other.usage_metadata if hasattr(other, 'usage_metadata') else None)
-        if self.usage_metadata and hasattr(other, 'usage_metadata') and other.usage_metadata:
-            # Both have usage metadata - merge them
-            new_usage = {
-                'input_tokens': self.usage_metadata.get('input_tokens', 0) + other.usage_metadata.get('input_tokens', 0),
-                'output_tokens': self.usage_metadata.get('output_tokens', 0) + other.usage_metadata.get('output_tokens', 0),
-                'total_tokens': self.usage_metadata.get('total_tokens', 0) + other.usage_metadata.get('total_tokens', 0),
-            }
-
-        return MockChunk(content=new_content, usage_metadata=new_usage)
+        """Support chunk aggregation like LangChain does."""
+        if not isinstance(other, MockChunk):
+            return NotImplemented
+        # Aggregate content and usage_metadata
+        new_content = self.content + other.content
+        # For usage metadata, the last one wins (simulating LangChain behavior)
+        new_usage = other.usage_metadata or self.usage_metadata
+        return MockChunk(new_content, new_usage)
 
     def __radd__(self, other):
-        """Support reverse addition (None + chunk)."""
+        """Support reverse addition."""
         if other is None:
             return self
         return self.__add__(other)
