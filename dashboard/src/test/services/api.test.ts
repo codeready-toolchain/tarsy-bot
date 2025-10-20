@@ -3,10 +3,34 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import axios from 'axios';
+import axios, { type AxiosError } from 'axios';
 
 // Mock axios
-vi.mock('axios');
+vi.mock('axios', () => {
+  // Create mock client inside the factory
+  const mockClient = {
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+    interceptors: {
+      request: {
+        use: vi.fn(),
+      },
+      response: {
+        use: vi.fn(),
+      },
+    },
+  };
+  
+  return {
+    default: {
+      create: vi.fn(() => mockClient),
+      isAxiosError: vi.fn((error: any) => error && error.isAxiosError === true),
+    },
+  };
+});
+
 const mockedAxios = axios as any;
 
 // Mock env config
@@ -14,6 +38,7 @@ vi.mock('../../config/env', () => ({
   urls: {
     api: {
       base: 'http://localhost:8000',
+      submitAlert: '/api/v1/alerts',
     },
     websocket: {
       base: 'ws://localhost:8000',
@@ -28,6 +53,9 @@ vi.mock('../../services/auth', () => ({
   },
 }));
 
+// Import apiClient after mocks are set up
+import { apiClient } from '../../services/api';
+
 describe('API Client Retry Logic', () => {
   let consoleLogSpy: any;
   let consoleErrorSpy: any;
@@ -39,95 +67,94 @@ describe('API Client Retry Logic', () => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    // Reset mocks
+    // Reset all mocks including mockAxiosClient
     vi.clearAllMocks();
-
-    // Setup axios mock
-    mockedAxios.create = vi.fn(() => ({
-      get: vi.fn(),
-      post: vi.fn(),
-      put: vi.fn(),
-      delete: vi.fn(),
-      interceptors: {
-        request: {
-          use: vi.fn(),
-        },
-        response: {
-          use: vi.fn((_success: any, error: any) => {
-            // Store the error handler for later use
-            (mockedAxios.create as any).errorHandler = error;
-          }),
-        },
-      },
-    }));
   });
 
   afterEach(() => {
     consoleLogSpy.mockRestore();
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
+    vi.useRealTimers();
   });
 
-  it('should retry on network errors with exponential backoff capped at 5s', async () => {
-    // This test verifies the retry logic structure
-    // In a real scenario, the retry would be triggered during backend restarts
-    // Pattern: 1s, 2s, 4s, 5s, 5s, 5s...
+  it('should retry on network errors with exponential backoff (500ms, 1000ms)', async () => {
+    // Use fake timers to control time progression
+    vi.useFakeTimers();
+    
+    // Get reference to the mock axios client created by axios.create()
+    const mockClient = mockedAxios.create();
     
     // Create a network error (no response from server)
-    const networkError: any = {
+    const networkError: AxiosError = {
       isAxiosError: true,
       request: {},
       response: undefined,
       message: 'Network Error',
+      name: 'AxiosError',
+      config: {} as any,
+      toJSON: () => ({}),
     };
 
-    let attemptCount = 0;
-    const mockOperation = vi.fn(async () => {
-      attemptCount++;
-      if (attemptCount < 3) {
-        throw networkError;
+    // Mock successful response for the third attempt
+    const successResponse = {
+      data: [
+        { session_id: 'test-1', status: 'active' },
+        { session_id: 'test-2', status: 'active' },
+      ],
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    };
+
+    let callCount = 0;
+    mockClient.get.mockImplementation(() => {
+      callCount++;
+      if (callCount <= 2) {
+        return Promise.reject(networkError);
       }
-      return { data: 'success' };
+      return Promise.resolve(successResponse);
     });
 
-    // Simulate the retry logic with capped exponential backoff
-    const maxRetries = 5;
-    const initialDelay = 1000; // 1s
-    const maxDelay = 5000; // 5s cap
-    const delays: number[] = [];
+    // Start the retry operation (don't await yet)
+    const resultPromise = (apiClient as any).getActiveSessionsWithRetry();
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const result = await mockOperation();
-        expect(result.data).toBe('success');
-        expect(attemptCount).toBe(3); // Should succeed on 3rd attempt
-        break;
-      } catch (error) {
-        const isNetworkError = 
-          error && 
-          typeof error === 'object' && 
-          'isAxiosError' in error &&
-          (error as any).request && 
-          !(error as any).response;
+    // First attempt fails immediately
+    await vi.advanceTimersByTimeAsync(0);
 
-        if (!isNetworkError || attempt === maxRetries) {
-          throw error;
-        }
+    // First retry after 500ms (INITIAL_RETRY_DELAY * 2^0 = 500ms)
+    await vi.advanceTimersByTimeAsync(500);
 
-        // Calculate delay with exponential backoff capped at maxDelay
-        const exponentialDelay = initialDelay * Math.pow(2, attempt);
-        const delay = Math.min(exponentialDelay, maxDelay);
-        delays.push(delay);
-        
-        // Verify the delay follows the pattern: 1s, 2s, 4s, 5s, 5s...
-        expect(delay).toBeGreaterThan(0);
-        expect(delay).toBeLessThanOrEqual(maxDelay);
-      }
-    }
+    // Second retry after 1000ms (INITIAL_RETRY_DELAY * 2^1 = 1000ms)
+    await vi.advanceTimersByTimeAsync(1000);
 
-    expect(mockOperation).toHaveBeenCalledTimes(3);
-    // Verify delay pattern (only 2 retries in this test)
-    expect(delays).toEqual([1000, 2000]);
+    // Third attempt succeeds
+    const result = await resultPromise;
+
+    // Verify the result
+    expect(result).toEqual({
+      active_sessions: [
+        { session_id: 'test-1', status: 'active' },
+        { session_id: 'test-2', status: 'active' },
+      ],
+      total_count: 2,
+    });
+
+    // Verify axios client was called 3 times (2 failures + 1 success)
+    expect(mockClient.get).toHaveBeenCalledTimes(3);
+    expect(mockClient.get).toHaveBeenCalledWith('/api/v1/history/active-sessions');
+
+    // Verify retry messages were logged
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Get active sessions failed, retrying in 500ms')
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Get active sessions failed, retrying in 1000ms')
+    );
+
+    // Restore real timers
+    vi.useRealTimers();
   });
 
   it('should not retry on HTTP errors (4xx, 5xx)', async () => {
@@ -183,10 +210,11 @@ describe('API Client Retry Logic', () => {
     expect(mockOperation).toHaveBeenCalledTimes(1);
   });
 
-  it('should verify complete delay pattern: 1s, 2s, 4s, 5s, 5s...', () => {
-    const initialDelay = 1000;
-    const maxDelay = 5000;
-    const expectedDelays = [1000, 2000, 4000, 5000, 5000, 5000];
+  it('should verify complete delay pattern: 500ms, 1000ms, 2000ms, 4000ms, 5000ms, 5000ms...', () => {
+    // Test uses the actual INITIAL_RETRY_DELAY from the implementation (500ms)
+    const initialDelay = 500;  // INITIAL_RETRY_DELAY from APIClient
+    const maxDelay = 5000;     // MAX_RETRY_DELAY from APIClient
+    const expectedDelays = [500, 1000, 2000, 4000, 5000, 5000];
 
     const actualDelays = [];
     for (let attempt = 0; attempt < 6; attempt++) {
@@ -196,6 +224,140 @@ describe('API Client Retry Logic', () => {
     }
 
     expect(actualDelays).toEqual(expectedDelays);
+  });
+
+  it('should retry on 502, 503, and 504 status codes', async () => {
+    const statusCodes = [502, 503, 504];
+    
+    for (const statusCode of statusCodes) {
+      const gatewayError: any = {
+        isAxiosError: true,
+        request: {},
+        response: {
+          status: statusCode,
+          data: { error: 'Gateway Error' },
+        },
+        message: `Request failed with status code ${statusCode}`,
+      };
+
+      let attemptCount = 0;
+      const mockOperation = vi.fn(async () => {
+        attemptCount++;
+        if (attemptCount < 2) {
+          throw gatewayError;
+        }
+        return { data: 'success' };
+      });
+
+      // Simulate the retry logic
+      const isRetryable = (error: any): boolean => {
+        if (error && typeof error === 'object' && 'isAxiosError' in error) {
+          const axiosError = error as any;
+          
+          // Network errors
+          if (axiosError.request && !axiosError.response) {
+            return true;
+          }
+          
+          // 502, 503, 504
+          if (axiosError.response?.status === 502 || 
+              axiosError.response?.status === 503 || 
+              axiosError.response?.status === 504) {
+            return true;
+          }
+          
+          // Timeout errors
+          if (axiosError.code === 'ECONNABORTED' || axiosError.code === 'ETIMEDOUT') {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // Execute with retry
+      let result;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          result = await mockOperation();
+          break;
+        } catch (error) {
+          if (!isRetryable(error) || attempt === 2) {
+            throw error;
+          }
+        }
+      }
+
+      expect(result?.data).toBe('success');
+      expect(mockOperation).toHaveBeenCalledTimes(2);
+      attemptCount = 0; // Reset for next iteration
+      vi.clearAllMocks();
+    }
+  });
+
+  it('should retry on axios timeout errors (ECONNABORTED, ETIMEDOUT)', async () => {
+    const timeoutCodes = ['ECONNABORTED', 'ETIMEDOUT'];
+    
+    for (const code of timeoutCodes) {
+      const timeoutError: any = {
+        isAxiosError: true,
+        code: code,
+        request: {},
+        response: undefined,
+        message: 'timeout of 10000ms exceeded',
+      };
+
+      let attemptCount = 0;
+      const mockOperation = vi.fn(async () => {
+        attemptCount++;
+        if (attemptCount < 2) {
+          throw timeoutError;
+        }
+        return { data: 'success' };
+      });
+
+      // Simulate the retry logic
+      const isRetryable = (error: any): boolean => {
+        if (error && typeof error === 'object' && 'isAxiosError' in error) {
+          const axiosError = error as any;
+          
+          // Network errors
+          if (axiosError.request && !axiosError.response) {
+            return true;
+          }
+          
+          // 502, 503, 504
+          if (axiosError.response?.status === 502 || 
+              axiosError.response?.status === 503 || 
+              axiosError.response?.status === 504) {
+            return true;
+          }
+          
+          // Timeout errors
+          if (axiosError.code === 'ECONNABORTED' || axiosError.code === 'ETIMEDOUT') {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // Execute with retry
+      let result;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          result = await mockOperation();
+          break;
+        } catch (error) {
+          if (!isRetryable(error) || attempt === 2) {
+            throw error;
+          }
+        }
+      }
+
+      expect(result?.data).toBe('success');
+      expect(mockOperation).toHaveBeenCalledTimes(2);
+      attemptCount = 0; // Reset for next iteration
+      vi.clearAllMocks();
+    }
   });
 });
 

@@ -89,7 +89,16 @@ class APIClient {
           
           // Retry on 502 Bad Gateway (proxy/routing issues during restart)
           // Retry on 503 Service Unavailable (backend starting up)
-          if (axiosError.response?.status === 502 || axiosError.response?.status === 503) {
+          // Retry on 504 Gateway Timeout (proxy timeout during heavy load or slow startup)
+          if (axiosError.response?.status === 502 || 
+              axiosError.response?.status === 503 || 
+              axiosError.response?.status === 504) {
+            isRetryable = true;
+          }
+          
+          // Retry on axios timeout errors (ECONNABORTED or similar timeout codes)
+          // These occur when the request exceeds the configured timeout (10s)
+          if (axiosError.code === 'ECONNABORTED' || axiosError.code === 'ETIMEDOUT') {
             isRetryable = true;
           }
         }

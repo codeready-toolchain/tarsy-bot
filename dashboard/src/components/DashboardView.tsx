@@ -78,6 +78,10 @@ function DashboardView() {
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const REFRESH_THROTTLE_MS = 1000; // Wait 1 second between refreshes
 
+  // In-flight request tracking to prevent overlapping reconnection syncs
+  const activeReconnectionRef = useRef(false);
+  const historicalReconnectionRef = useRef(false);
+
   // Clean up throttling timeout on unmount
   useEffect(() => {
     return () => {
@@ -105,8 +109,15 @@ function DashboardView() {
 
   // Fetch active sessions with retry (used during reconnection)
   // Uses infinite retry with exponential backoff for temporary errors (network/502/503)
-  const fetchActiveAlertsWithRetry = async () => {
+  const fetchActiveAlertsWithRetry = useCallback(async () => {
+    // Prevent overlapping reconnection syncs
+    if (activeReconnectionRef.current) {
+      console.log('⏭️  Skipping active sessions reconnection sync - already in flight');
+      return;
+    }
+
     try {
+      activeReconnectionRef.current = true;
       setActiveLoading(true);
       setActiveError(null);  // Clear any previous errors
       const response = await apiClient.getActiveSessionsWithRetry();
@@ -119,8 +130,9 @@ function DashboardView() {
       console.error('Failed to fetch active sessions:', err);
     } finally {
       setActiveLoading(false);
+      activeReconnectionRef.current = false;
     }
-  };
+  }, [setActiveLoading, setActiveError, setActiveAlerts]); // Include all external dependencies for clarity
 
   // Fetch historical sessions with optional filtering (Phase 4)
   const fetchHistoricalAlerts = async (applyFilters: boolean = false) => {
@@ -174,27 +186,76 @@ function DashboardView() {
 
   // Fetch historical sessions with retry (used during reconnection)
   // Uses infinite retry with exponential backoff for temporary errors (network/502/503)
-  const fetchHistoricalAlertsWithRetry = async () => {
+  // Respects current filters and pagination to avoid flashing incorrect data
+  const fetchHistoricalAlertsWithRetry = useCallback(async () => {
+    // Prevent overlapping reconnection syncs
+    if (historicalReconnectionRef.current) {
+      console.log('⏭️  Skipping historical sessions reconnection sync - already in flight');
+      return;
+    }
+
+    // Capture current filters and pagination at request time to detect stale updates
+    const requestFilters = { ...filters };
+    const requestPage = pagination.page;
+    const requestPageSize = pagination.pageSize;
+
+    // Check if filters are currently active
+    const hasActiveFilters = Boolean(
+      (requestFilters.search && requestFilters.search.trim()) ||
+      (requestFilters.status && requestFilters.status.length > 0) ||
+      (requestFilters.agent_type && requestFilters.agent_type.length > 0) ||
+      (requestFilters.alert_type && requestFilters.alert_type.length > 0) ||
+      requestFilters.start_date ||
+      requestFilters.end_date ||
+      requestFilters.time_range_preset
+    );
+
     try {
+      historicalReconnectionRef.current = true;
       setHistoricalLoading(true);
       setHistoricalError(null);  // Clear any previous errors
       
-      // Use retry only for non-filtered historical queries
-      // Filtered queries use standard API (without retry) to avoid complexity
-      const response = await apiClient.getHistoricalSessionsWithRetry(pagination.page, pagination.pageSize);
+      let response;
       
-      setHistoricalAlerts(response.sessions);
-      setFilteredCount(response.pagination.total_items);
+      if (hasActiveFilters) {
+        // When filters are active, use filtered API (without retry to avoid complexity)
+        // This ensures we don't overwrite filtered results with unfiltered data
+        console.log('🔍 Reconnection sync with active filters - using filtered API');
+        const historicalFilters: SessionFilter = {
+          ...requestFilters,
+          // For historical view, include completed and failed by default unless specific status filter is applied
+          status: requestFilters.status && requestFilters.status.length > 0 
+            ? requestFilters.status 
+            : ['completed', 'failed'] as ('completed' | 'failed' | 'in_progress' | 'pending')[]
+        };
+        response = await apiClient.getFilteredSessions(historicalFilters, requestPage, requestPageSize);
+      } else {
+        // When no filters are active, use retry API for unfiltered historical sessions
+        console.log('📋 Reconnection sync without filters - using retry API');
+        response = await apiClient.getHistoricalSessionsWithRetry(requestPage, requestPageSize);
+      }
       
-      // Update pagination with backend pagination info
-      setPagination(prev => ({
-        ...prev,
-        totalItems: response.pagination.total_items,
-        totalPages: response.pagination.total_pages,
-        page: response.pagination.page
-      }));
+      // Only update state if filters and pagination haven't changed since request started
+      // This prevents race conditions where a newer request might be overwritten by an older one
+      const filtersUnchanged = JSON.stringify(filters) === JSON.stringify(requestFilters);
+      const paginationUnchanged = pagination.page === requestPage && pagination.pageSize === requestPageSize;
       
-      console.log('✅ Historical sessions synced after reconnection');
+      if (filtersUnchanged && paginationUnchanged) {
+        setHistoricalAlerts(response.sessions);
+        setFilteredCount(response.pagination.total_items);
+        
+        // Update pagination with backend pagination info
+        setPagination(prev => ({
+          ...prev,
+          totalItems: response.pagination.total_items,
+          totalPages: response.pagination.total_pages,
+          page: response.pagination.page
+        }));
+        
+        console.log('✅ Historical sessions synced after reconnection');
+      } else {
+        console.log('⚠️  Skipping state update - filters or pagination changed during request');
+      }
       
     } catch (err) {
       // Only set error for non-retryable errors (e.g., 400, 404, etc.)
@@ -203,8 +264,18 @@ function DashboardView() {
       console.error('Failed to fetch historical sessions:', err);
     } finally {
       setHistoricalLoading(false);
+      historicalReconnectionRef.current = false;
     }
-  };
+  }, [
+    filters,
+    pagination.page,
+    pagination.pageSize,
+    setHistoricalLoading,
+    setHistoricalError,
+    setHistoricalAlerts,
+    setFilteredCount,
+    setPagination
+  ]); // Include all external dependencies: filters, pagination values, and setState functions
 
   // Throttled refresh function to prevent excessive API calls
   const throttledRefresh = useCallback(() => {
@@ -394,7 +465,7 @@ function DashboardView() {
       unsubscribeUpdate();
       unsubscribeConnection();
     };
-  }, []);
+  }, [fetchActiveAlertsWithRetry, fetchHistoricalAlertsWithRetry]);
 
   // Handle session click with same-tab navigation
   const handleSessionClick = (sessionId: string) => {
