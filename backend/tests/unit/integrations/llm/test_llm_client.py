@@ -11,25 +11,11 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from tarsy.integrations.llm.client import LLM_PROVIDERS, LLMClient, LLMManager
-from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
 
 # Import shared test helpers from conftest
-from .conftest import MockChunk, create_mock_stream, create_stream_side_effect
-
-
-def create_test_config(provider_type: str = "openai", **overrides) -> LLMProviderConfig:
-    """Helper to create test LLMProviderConfig instances."""
-    defaults = {
-        "type": provider_type,
-        "model": "gpt-4",
-        "api_key_env": "OPENAI_API_KEY",
-        "temperature": 0.7,
-        "api_key": "test-api-key"
-    }
-    defaults.update(overrides)
-    return LLMProviderConfig(**defaults)
+from .conftest import MockChunk, create_stream_side_effect, create_test_config
 
 
 @pytest.mark.unit

@@ -15,7 +15,7 @@ from tarsy.integrations.mcp.client import MCPClient
 from .e2e_utils import E2ETestUtils
 
 # MockChunk and create_mock_stream are provided by conftest.py
-from .conftest import MockChunk, create_mock_stream
+from .conftest import create_mock_stream
 
 
 class TestStageFailureDetectionE2E:

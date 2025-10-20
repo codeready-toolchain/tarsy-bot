@@ -525,7 +525,7 @@ class LLMClient:
         Returns:
             String content extracted from chunk
         """
-        token = chunk.content if hasattr(chunk, 'content') else str(chunk)
+        token = chunk.content or "" if hasattr(chunk, 'content') else str(chunk)
         
         # Handle list content (some providers return lists)
         if isinstance(token, list):
@@ -534,9 +534,9 @@ class LLMClient:
                 if isinstance(block, str):
                     token_str += block
                 elif isinstance(block, dict) and 'text' in block:
-                    token_str += block['text']
+                    token_str += block['text'] or ""
                 elif hasattr(block, 'text'):
-                    token_str += block.text
+                    token_str += block.text or ""
                 else:
                     token_str += str(block)
             return token_str

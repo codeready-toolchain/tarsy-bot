@@ -28,8 +28,7 @@ from .expected_conversations import (
     EXPECTED_VERIFICATION_CONVERSATION,
 )
 
-# MockChunk and create_mock_stream are provided by conftest.py
-from .conftest import MockChunk, create_mock_stream
+from .conftest import create_mock_stream
 
 
 def normalize_content(content: str) -> str:

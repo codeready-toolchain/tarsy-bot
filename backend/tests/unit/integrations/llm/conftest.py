@@ -69,3 +69,18 @@ def create_stream_side_effect(content: str, usage_metadata: Optional[dict] = Non
 
     return side_effect
 
+
+def create_test_config(provider_type: str = "openai", **overrides):
+    """Helper to create test LLMProviderConfig instances."""
+    from tarsy.models.llm_models import LLMProviderConfig
+    
+    defaults = {
+        "type": provider_type,
+        "model": "gpt-4",
+        "api_key_env": "OPENAI_API_KEY",
+        "temperature": 0.7,
+        "api_key": "test-api-key",
+    }
+    defaults.update(overrides)
+    return LLMProviderConfig(**defaults)
+
