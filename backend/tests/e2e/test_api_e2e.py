@@ -10,15 +10,12 @@ Architecture:
 """
 
 import asyncio
-import json
 import os
 import re
 from unittest.mock import AsyncMock, Mock, patch
 from mcp.types import Tool
 
-import httpx
 import pytest
-import respx
 
 from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
@@ -30,6 +27,49 @@ from .expected_conversations import (
     EXPECTED_STAGES,
     EXPECTED_VERIFICATION_CONVERSATION,
 )
+
+
+class MockChunk:
+    """Mock chunk for streaming responses."""
+    
+    def __init__(self, content: str = "", usage_metadata: dict | None = None):
+        self.content = content
+        self.usage_metadata = usage_metadata
+    
+    def __add__(self, other):
+        """Support chunk aggregation (chunk1 + chunk2)."""
+        if other is None:
+            return self
+        
+        # Aggregate content
+        new_content = self.content + (other.content if hasattr(other, 'content') else "")
+        
+        # Aggregate usage_metadata (prefer non-None, or merge if both exist)
+        new_usage = self.usage_metadata or (other.usage_metadata if hasattr(other, 'usage_metadata') else None)
+        if self.usage_metadata and hasattr(other, 'usage_metadata') and other.usage_metadata:
+            # Both have usage metadata - merge them
+            new_usage = {
+                'input_tokens': self.usage_metadata.get('input_tokens', 0) + other.usage_metadata.get('input_tokens', 0),
+                'output_tokens': self.usage_metadata.get('output_tokens', 0) + other.usage_metadata.get('output_tokens', 0),
+                'total_tokens': self.usage_metadata.get('total_tokens', 0) + other.usage_metadata.get('total_tokens', 0),
+            }
+        
+        return MockChunk(content=new_content, usage_metadata=new_usage)
+    
+    def __radd__(self, other):
+        """Support reverse addition (None + chunk)."""
+        if other is None:
+            return self
+        return self.__add__(other)
+
+
+async def create_mock_stream(content: str, usage_metadata: dict | None = None):
+    """Create an async generator that yields mock chunks with usage metadata in final chunk."""
+    # Yield content character by character
+    for i, char in enumerate(content):
+        # Add usage_metadata only to the final chunk
+        is_final = (i == len(content) - 1)
+        yield MockChunk(char, usage_metadata=usage_metadata if is_final else None)
 
 
 def normalize_content(content: str) -> str:
@@ -165,156 +205,104 @@ class TestRealE2E:
         print("🔧 _execute_test started")
 
         # ONLY mock external network calls - use real internal services
-        # Using respx for HTTP mocking and MCP SDK mocking for stdio communication
+        # Using streaming mocks for LLM and MCP SDK mocking for stdio communication
 
         # Simplified interaction tracking - focus on LLM calls only
         # (MCP interactions will be validated from API response)
         all_llm_interactions = []
-        captured_llm_requests = {}  # Store full LLM request content by interaction number
-
-        # Create HTTP response handlers for respx
-        def create_llm_response_handler():
-            """Create a handler that tracks LLM interactions and returns appropriate responses."""
-
-            def llm_response_handler(request):
-                try:
-                    # Track the interaction for counting
-                    request_data = (
-                        request.content.decode()
-                        if hasattr(request, "content") and request.content
-                        else "{}"
-                    )
-                    all_llm_interactions.append(request_data)
-
-                    # Parse and store the request content for exact verification
-                    try:
-                        parsed_request = json.loads(request_data)
-                        messages = parsed_request.get("messages", [])
-
-                        # Store the full messages for later exact verification
-                        captured_llm_requests[len(all_llm_interactions)] = {
-                            "messages": messages,
-                            "interaction_number": len(all_llm_interactions),
-                        }
-
-                        print(f"\n🔍 LLM REQUEST #{len(all_llm_interactions)}:")
-                        for i, msg in enumerate(messages):
-                            print(f"  Message {i+1} ({msg.get('role', 'unknown')}):")
-                            content = msg.get("content", "")
-                            # Print abbreviated content for debugging
-                            print(
-                                f"    Content: {content[:200]}...{content[-100:] if len(content) > 300 else ''}"
-                            )
-                        print("=" * 80)
-                    except json.JSONDecodeError:
-                        print(
-                            f"\n🔍 LLM REQUEST #{len(all_llm_interactions)}: Could not parse JSON"
-                        )
-                        print(f"Raw content: {request_data}")
-                        print("=" * 80)
-                    except Exception as e:
-                        print(
-                            f"\n🔍 LLM REQUEST #{len(all_llm_interactions)}: Parse error: {e}"
-                        )
-                        print("=" * 80)
-
-                    # Determine response based on interaction count (simple pattern)
-                    total_interactions = len(all_llm_interactions)
-
-                    # Define mock response content and token usage for each interaction
-                    # These values are used to test llm interaction, token tracking at interaction, stage, and session levels
-                    # Expected stage token usage totals: data-collection=1570(regular)+150(summarization)=1720, verification=650, analysis=600
-                    # Expected session token usage total: 2970 tokens (2150 input + 820 output)
-                    mock_response_map = {
-                        1: { # Data collection - Initial analysis
-                            "response_content": """Thought: I need to get namespace information first.
+        
+        # Define mock response content and token usage for each interaction
+        # These values are used to test llm interaction, token tracking at interaction, stage, and session levels
+        # Expected stage token usage totals: data-collection=1570(regular)+150(summarization)=1720, verification=650, analysis=600
+        # Expected session token usage total: 2970 tokens (2150 input + 820 output)
+        mock_response_map = {
+            1: { # Data collection - Initial analysis
+                "response_content": """Thought: I need to get namespace information first.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
-                           "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
-                           },
-                        2: { # Data collection - kubectl describe
-                            "response_content": """Action: kubernetes-server.kubectl_describe
+               "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
+               },
+            2: { # Data collection - kubectl describe
+                "response_content": """Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}""",
-                            "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
-                           },
-                        3: { # Data collection - System info
-                            "response_content": """Thought: Let me also collect system information to understand resource constraints.
+                "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
+               },
+            3: { # Data collection - System info
+                "response_content": """Thought: Let me also collect system information to understand resource constraints.
 Action: test-data-server.collect_system_info
 Action Input: {"detailed": false}""",
-                            "input_tokens": 220, "output_tokens": 75, "total_tokens": 295
-                           },
-                        4: { # Data collection - Tool result summarization (happens right after collect_system_info)
-                            "response_content": """Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK.""",
-                            "input_tokens": 100, "output_tokens": 50, "total_tokens": 150
-                           },
-                        5: { # Data collection - Additional investigation (continues after summarization)
-                            "response_content": """Thought: Let me gather more information about the current state.
+                "input_tokens": 220, "output_tokens": 75, "total_tokens": 295
+               },
+            4: { # Data collection - Tool result summarization (happens right after collect_system_info)
+                "response_content": """Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK.""",
+                "input_tokens": 100, "output_tokens": 50, "total_tokens": 150
+               },
+            5: { # Data collection - Additional investigation (continues after summarization)
+                "response_content": """Thought: Let me gather more information about the current state.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "events", "namespace": "test-namespace"}""",
-                            "input_tokens": 200, "output_tokens": 60, "total_tokens": 260
-                        },
-                        6: { # Data collection - Final analysis
-                            "response_content": """Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.""",
-                            "input_tokens": 315, "output_tokens": 125, "total_tokens": 440
-                           },
-                        7: { # Verification - Check
-                            "response_content": """Thought: I need to verify the namespace status.
+                "input_tokens": 200, "output_tokens": 60, "total_tokens": 260
+            },
+            6: { # Data collection - Final analysis
+                "response_content": """Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.""",
+                "input_tokens": 315, "output_tokens": 125, "total_tokens": 440
+               },
+            7: { # Verification - Check
+                "response_content": """Thought: I need to verify the namespace status.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
-                            "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
-                           },
-                        8: { # Verification - Summary
-                            "response_content": """Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion.""",
-                            "input_tokens": 280, "output_tokens": 110, "total_tokens": 390
-                           },
-                        9: { # Analysis - Final
-                            "response_content": """Based on previous stages, the namespace is stuck due to finalizers.""",
-                            "input_tokens": 420, "output_tokens": 180, "total_tokens": 600
-                           },
-                    }
-
-                    # Get mock response for this interaction
-                    mock_response = mock_response_map.get(total_interactions, {"response_content": "", "input_tokens": 0, "output_tokens": 0, "total_tokens": 0})
-
-                    # Return HTTP response in the format expected by LangChain
-                    return httpx.Response(
-                        200,
-                        json={
-                            "choices": [
-                                {
-                                    "message": {
-                                        "content": mock_response["response_content"],
-                                        "role": "assistant",
-                                    },
-                                    "finish_reason": "stop",
-                                }
-                            ],
-                            "model": "gpt-4",
-                            "usage": { # Use correct OpenAI API field names: prompt_tokens, completion_tokens, total_tokens
-                                "prompt_tokens": mock_response["input_tokens"],
-                                "completion_tokens": mock_response["output_tokens"], 
-                                "total_tokens": mock_response["total_tokens"]
-                            },
-                        },
-                    )
-                except Exception as e:
-                    print(f"Error in LLM response handler: {e}")
-                    # Fallback response
-                    return httpx.Response(
-                        200,
-                        json={
-                            "choices": [
-                                {
-                                    "message": {
-                                        "content": "Fallback response",
-                                        "role": "assistant",
-                                    }
-                                }
-                            ]
-                        },
-                    )
-
-            return llm_response_handler
+                "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
+               },
+            8: { # Verification - Summary
+                "response_content": """Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion.""",
+                "input_tokens": 280, "output_tokens": 110, "total_tokens": 390
+               },
+            9: { # Analysis - Final
+                "response_content": """Based on previous stages, the namespace is stuck due to finalizers.""",
+                "input_tokens": 420, "output_tokens": 180, "total_tokens": 600
+               },
+        }
+        
+        # Create streaming mock for LLM client
+        def create_streaming_mock():
+            """Create a mock astream function that returns streaming responses."""
+            async def mock_astream(*args, **kwargs):
+                # Track this interaction
+                interaction_num = len(all_llm_interactions) + 1
+                all_llm_interactions.append(interaction_num)
+                
+                print(f"\n🔍 LLM REQUEST #{interaction_num}:")
+                # Extract messages from args
+                if args and len(args) > 0:
+                    messages = args[0]
+                    for i, msg in enumerate(messages):
+                        role = getattr(msg, 'type', 'unknown') if hasattr(msg, 'type') else 'unknown'
+                        content = getattr(msg, 'content', '') if hasattr(msg, 'content') else ''
+                        print(f"  Message {i+1} ({role}):")
+                        print(f"    Content: {content[:200]}...{content[-100:] if len(content) > 300 else ''}")
+                print("=" * 80)
+                
+                # Get mock response for this interaction
+                mock_response = mock_response_map.get(interaction_num, {
+                    "response_content": "", 
+                    "input_tokens": 0, 
+                    "output_tokens": 0, 
+                    "total_tokens": 0
+                })
+                
+                # Create async generator that yields chunks
+                content = mock_response["response_content"]
+                usage_metadata = {
+                    'input_tokens': mock_response["input_tokens"],
+                    'output_tokens': mock_response["output_tokens"],
+                    'total_tokens': mock_response["total_tokens"]
+                }
+                
+                # Use our mock stream generator
+                async for chunk in create_mock_stream(content, usage_metadata):
+                    yield chunk
+            
+            return mock_astream
 
         # Create MCP SDK mock functions
         def create_mcp_session_mock():
@@ -480,90 +468,98 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
 
         # Apply comprehensive mocking with test MCP server config
         # Patch both the original constant and the registry's stored reference
-        with respx.mock() as respx_mock, \
-             patch("tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers), \
+        with patch("tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers), \
              patch("tarsy.services.mcp_server_registry.MCPServerRegistry._DEFAULT_SERVERS", test_mcp_servers), \
              patch.dict(os.environ, {}, clear=True), \
              E2ETestUtils.setup_runbook_service_patching():  # Patch runbook service for consistent behavior
-            # 1. Mock LLM API calls (preserves LLM hooks!)
-            llm_handler = create_llm_response_handler()
-
-            # Mock all major LLM provider endpoints (covers openai, anthropic, etc.)
-            respx_mock.post(
-                url__regex=r".*(openai\.com|anthropic\.com|api\.x\.ai|generativelanguage\.googleapis\.com|googleapis\.com).*"
-            ).mock(side_effect=llm_handler)
-
-            # 3. Mock MCP client using shared utility with custom sessions
-            mock_sessions = {
-                "kubernetes-server": mock_kubernetes_session,
-                "test-data-server": mock_custom_session,
-            }
-            mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
-
-            # Create a mock initialize method that sets up mock sessions without real server processes
-            async def mock_initialize(self):
-                """Mock initialization that bypasses real server startup."""
-                self.sessions = mock_sessions.copy()
-                self._initialized = True
+            
+            # 1. Mock LLM streaming (preserves LLM hooks!)
+            streaming_mock = create_streaming_mock()
+            
+            # Import LangChain clients to patch
+            from langchain_openai import ChatOpenAI
+            from langchain_anthropic import ChatAnthropic
+            from langchain_xai import ChatXAI
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            
+            # Patch the astream method on all LangChain client classes
+            # This works because the method will be called on instances
+            with patch.object(ChatOpenAI, 'astream', streaming_mock), \
+                 patch.object(ChatAnthropic, 'astream', streaming_mock), \
+                 patch.object(ChatXAI, 'astream', streaming_mock), \
+                 patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock):
                 
-            with patch.object(MCPClient, "initialize", mock_initialize), \
-                 patch.object(MCPClient, "list_tools", mock_list_tools), \
-                 patch.object(MCPClient, "call_tool", mock_call_tool):
-                print(
-                    "🔧 Using the real AlertService with test MCP server config and mocking..."
-                )
-                # All internal services are real, hooks work perfectly!
-                # LLM HTTP calls are mocked via respx
-                # Runbook service is patched directly for consistent behavior
-                # MCP server config replaced with test config to avoid external NPM packages
-                # MCP calls handled by mock session that provides kubectl tools
+                # 2. Mock MCP client using shared utility with custom sessions
+                mock_sessions = {
+                    "kubernetes-server": mock_kubernetes_session,
+                    "test-data-server": mock_custom_session,
+                }
+                mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
 
-                print("⏳ Step 1: Submitting alert...")
-                E2ETestUtils.submit_alert(e2e_test_client, e2e_realistic_kubernetes_alert)
+                # Create a mock initialize method that sets up mock sessions without real server processes
+                async def mock_initialize(self):
+                    """Mock initialization that bypasses real server startup."""
+                    self.sessions = mock_sessions.copy()
+                    self._initialized = True
+                    
+                with patch.object(MCPClient, "initialize", mock_initialize), \
+                     patch.object(MCPClient, "list_tools", mock_list_tools), \
+                     patch.object(MCPClient, "call_tool", mock_call_tool):
+                    print(
+                        "🔧 Using the real AlertService with test MCP server config and streaming mocks..."
+                    )
+                    # All internal services are real, hooks work perfectly!
+                    # LLM streaming is mocked by patching LangChain client astream methods
+                    # Runbook service is patched directly for consistent behavior
+                    # MCP server config replaced with test config to avoid external NPM packages
+                    # MCP calls handled by mock session that provides kubectl tools
 
-                print("⏳ Step 2: Waiting for processing...")
-                session_id, final_status = await E2ETestUtils.wait_for_session_completion(
-                    e2e_test_client, max_wait_seconds=15, debug_logging=False
-                )
+                    print("⏳ Step 1: Submitting alert...")
+                    E2ETestUtils.submit_alert(e2e_test_client, e2e_realistic_kubernetes_alert)
 
-                print("🔍 Step 3: Verifying results...")
+                    print("⏳ Step 2: Waiting for processing...")
+                    session_id, final_status = await E2ETestUtils.wait_for_session_completion(
+                        e2e_test_client, max_wait_seconds=15, debug_logging=False
+                    )
 
-                # Basic verification
-                assert session_id is not None, "Session ID missing"
-                print(f"✅ Session found: {session_id}, final status: {final_status}")
+                    print("🔍 Step 3: Verifying results...")
 
-                # Verify session completed successfully
-                if final_status != "completed":
-                    # Get detailed error info
+                    # Basic verification
+                    assert session_id is not None, "Session ID missing"
+                    print(f"✅ Session found: {session_id}, final status: {final_status}")
+
+                    # Verify session completed successfully
+                    if final_status != "completed":
+                        # Get detailed error info
+                        detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
+                        error_msg = detail_data.get("error_message", "No error message")
+                        print(f"❌ Session failed with error: {error_msg}")
+                    assert (
+                        final_status == "completed"
+                    ), f"Expected session to be completed, but got: {final_status}"
+                    print("✅ Session completed successfully!")
+
+                    # Get session details to verify stages structure
                     detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
-                    error_msg = detail_data.get("error_message", "No error message")
-                    print(f"❌ Session failed with error: {error_msg}")
-                assert (
-                    final_status == "completed"
-                ), f"Expected session to be completed, but got: {final_status}"
-                print("✅ Session completed successfully!")
+                    stages = detail_data.get("stages", [])
+                    print(f"Found {len(stages)} stages in completed session")
 
-                # Get session details to verify stages structure
-                detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
-                stages = detail_data.get("stages", [])
-                print(f"Found {len(stages)} stages in completed session")
+                    # Assert that stages exist and verify basic structure
+                    assert (
+                        len(stages) > 0
+                    ), "Session completed but no stages found - invalid session structure"
+                    print("✅ Session has stages - basic structure verified")
 
-                # Assert that stages exist and verify basic structure
-                assert (
-                    len(stages) > 0
-                ), "Session completed but no stages found - invalid session structure"
-                print("✅ Session has stages - basic structure verified")
+                    print("🔍 Step 4: Comprehensive result verification...")
+                    await self._verify_session_metadata(
+                        detail_data, e2e_realistic_kubernetes_alert
+                    )
+                    await self._verify_stage_structure(stages)
+                    await self._verify_complete_interaction_flow(stages)
 
-                print("🔍 Step 4: Comprehensive result verification...")
-                await self._verify_session_metadata(
-                    detail_data, e2e_realistic_kubernetes_alert
-                )
-                await self._verify_stage_structure(stages)
-                await self._verify_complete_interaction_flow(stages)
+                    print("✅ COMPREHENSIVE VERIFICATION PASSED!")
 
-                print("✅ COMPREHENSIVE VERIFICATION PASSED!")
-
-                return
+                    return
 
     async def _verify_session_metadata(self, session_data, original_alert):
         """Verify session metadata matches expectations."""
