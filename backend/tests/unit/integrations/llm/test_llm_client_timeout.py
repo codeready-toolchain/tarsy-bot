@@ -15,13 +15,34 @@ from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 
 
+class MockChunk:
+    """Mock chunk that supports LangChain-style aggregation with + operator."""
+    def __init__(self, content: str, usage_metadata=None):
+        self.content = content
+        self.usage_metadata = usage_metadata
+    
+    def __add__(self, other):
+        """Support chunk aggregation like LangChain does."""
+        if not isinstance(other, MockChunk):
+            return NotImplemented
+        # Aggregate content and usage_metadata
+        new_content = self.content + other.content
+        # For usage metadata, the last one wins (simulating LangChain behavior)
+        new_usage = other.usage_metadata or self.usage_metadata
+        return MockChunk(new_content, new_usage)
+    
+    def __radd__(self, other):
+        """Support reverse addition."""
+        if other is None:
+            return self
+        return self.__add__(other)
+
+
 async def create_mock_stream(content: str):
     """Create an async generator that yields mock chunks."""
     # Simulate streaming by yielding content in chunks
     for char in content:
-        mock_chunk = Mock()
-        mock_chunk.content = char
-        yield mock_chunk
+        yield MockChunk(char)
 
 
 def create_test_config(provider_type: str = "openai", **overrides) -> LLMProviderConfig:
@@ -99,9 +120,7 @@ class TestLLMClientTimeout:
                 # Return fresh generator on second call
                 async def success_stream():
                     for char in success_response.content:
-                        mock_chunk = Mock()
-                        mock_chunk.content = char
-                        yield mock_chunk
+                        yield MockChunk(char)
                 return success_stream()
         
         mock_llm_client.astream = Mock(side_effect=side_effect_func)
@@ -171,9 +190,7 @@ class TestLLMClientTimeout:
             else:
                 # Return fresh generator on second call
                 async def success_stream():
-                    mock_chunk = Mock()
-                    mock_chunk.content = "Success after rate limit"
-                    yield mock_chunk
+                    yield MockChunk("Success after rate limit")
                 return success_stream()
         
         mock_llm_client.astream = Mock(side_effect=side_effect_func)
@@ -246,9 +263,7 @@ class TestLLMClientTimeoutMatrix:
                 if should_succeed and attempt == expected_retries:
                     # Last attempt succeeds
                     async def success_stream():
-                        mock_chunk = Mock()
-                        mock_chunk.content = "Success"
-                        yield mock_chunk
+                        yield MockChunk("Success")
                     return success_stream()
                 else:
                     # Timeout

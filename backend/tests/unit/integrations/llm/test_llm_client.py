@@ -16,13 +16,34 @@ from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
 
 
+class MockChunk:
+    """Mock chunk that supports LangChain-style aggregation with + operator."""
+    def __init__(self, content: str, usage_metadata=None):
+        self.content = content
+        self.usage_metadata = usage_metadata
+    
+    def __add__(self, other):
+        """Support chunk aggregation like LangChain does."""
+        if not isinstance(other, MockChunk):
+            return NotImplemented
+        # Aggregate content and usage_metadata
+        new_content = self.content + other.content
+        # For usage metadata, the last one wins (simulating LangChain behavior)
+        new_usage = other.usage_metadata or self.usage_metadata
+        return MockChunk(new_content, new_usage)
+    
+    def __radd__(self, other):
+        """Support reverse addition."""
+        if other is None:
+            return self
+        return self.__add__(other)
+
+
 async def create_mock_stream(content: str):
     """Create an async generator that yields mock chunks."""
     # Simulate streaming by yielding content in chunks
     for char in content:
-        mock_chunk = Mock()
-        mock_chunk.content = char
-        yield mock_chunk
+        yield MockChunk(char)
 
 
 def create_test_config(provider_type: str = "openai", **overrides) -> LLMProviderConfig:
@@ -186,7 +207,8 @@ class TestLLMClientInitialization:
             mock_openai.assert_called_once_with(
                 model_name="gpt-4",
                 temperature=0.7,
-                api_key="test-api-key"
+                api_key="test-api-key",
+                stream_usage=True
             )
     
     def test_initialization_google_success(self, mock_config):
@@ -314,7 +336,8 @@ class TestLLMClientInitialization:
             mock_openai.assert_called_once_with(
                 model_name="gpt-4",  # model from config
                 temperature=0.1,     # BaseModel default temperature
-                api_key="test-key"
+                api_key="test-key",
+                stream_usage=True    # Enabled for token tracking
             )
     
     def test_initialization_handles_langchain_error(self, mock_config):
@@ -1274,10 +1297,10 @@ class TestLLMClientTokenUsageTracking:
             type(mock_callback).usage_metadata = PropertyMock(return_value={})  # Empty callback
             mock_callback_class.return_value = mock_callback
             
-            # Create chunks - final chunk has usage_metadata
-            chunk1 = Mock(content="Hello", usage_metadata=None)
-            chunk2 = Mock(content=" there", usage_metadata=None)
-            final_chunk = Mock(
+            # Create chunks using MockChunk - final chunk has usage_metadata
+            chunk1 = MockChunk(content="Hello", usage_metadata=None)
+            chunk2 = MockChunk(content=" there", usage_metadata=None)
+            final_chunk = MockChunk(
                 content="!", 
                 usage_metadata={
                     'input_tokens': 150,
