@@ -311,7 +311,7 @@ labels: app=coredns"""
         assert result.action_input == expected_input
     
     def test_parse_thought_header_without_colon(self):
-        """Test parsing 'Thought' header without colon."""
+        """Test parsing 'Thought' header without colon (exact match, content on next lines)."""
         response = """Thought
 I need to analyze this situation carefully.
 This is multi-line thinking.
@@ -325,6 +325,72 @@ Action Input: param: value"""
 This is multi-line thinking."""
         assert result.thought == expected_thought
         assert result.action == "test.action"
+    
+    def test_parse_thought_false_positive_narrative_text(self):
+        """Test that narrative text starting with 'Thought' is not treated as a section header.
+        
+        This prevents false positives like 'Thought about it...' from being detected
+        as a new Thought section header.
+        """
+        response = """Thought
+The user wants me to investigate a security alert.
+Thought about it carefully and decided to proceed.
+I will check the logs first.
+
+Action: test-server.get_logs
+Action Input: pod: suspicious-pod"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.THOUGHT_ACTION
+        assert result.has_action is True
+        # The thought should include ALL content, including "Thought about it..."
+        expected_thought = """The user wants me to investigate a security alert.
+Thought about it carefully and decided to proceed.
+I will check the logs first."""
+        assert result.thought == expected_thought
+        assert result.action == "test-server.get_logs"
+    
+    def test_parse_real_world_malformed_thought_from_user_report(self):
+        """Test parsing the real-world example from user's report.
+        
+        This tests the actual malformed response that the user reported:
+        - Message starts with 'Thought' (no colon)
+        - Content follows on next line
+        - Contains Action section later
+        """
+        response = """Thought
+The user wants me to investigate a security alert for the user `danielzhe`.
+The alert indicates a `suspicious` activity related to `-mining-`.
+The affected pod is `dev-deployment-402waa2277-6ddff4f979-5xn4z` in the `danielzhe-dev` namespace on the `rm3` cluster.
+
+My investigation plan is as follows:
+1. List all pods for the user `danielzhe` to get an overview of their workloads.
+2. Examine the logs of the suspicious pod to understand its behavior.
+
+Action: devsandbox-mcp-server.user-pods
+Action Input: userSignup: danielzhe"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.THOUGHT_ACTION
+        assert result.has_action is True
+        
+        # Verify thought is captured correctly - exact string match
+        expected_thought = """The user wants me to investigate a security alert for the user `danielzhe`.
+The alert indicates a `suspicious` activity related to `-mining-`.
+The affected pod is `dev-deployment-402waa2277-6ddff4f979-5xn4z` in the `danielzhe-dev` namespace on the `rm3` cluster.
+
+My investigation plan is as follows:
+1. List all pods for the user `danielzhe` to get an overview of their workloads.
+2. Examine the logs of the suspicious pod to understand its behavior."""
+        assert result.thought == expected_thought
+        
+        # Verify action is parsed correctly
+        assert result.action == "devsandbox-mcp-server.user-pods"
+        assert result.tool_call.server == "devsandbox-mcp-server"
+        assert result.tool_call.tool == "user-pods"
+        assert result.tool_call.parameters["userSignup"] == "danielzhe"
     
     def test_parse_duplicate_actions_uses_latest(self):
         """Test that duplicate actions use the latest occurrence."""

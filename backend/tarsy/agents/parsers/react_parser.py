@@ -202,7 +202,8 @@ class ReActParser:
                         else:
                             content_lines = [thought_content]
                     else:
-                        content_lines = []  # 'Thought' without colon, content on next lines
+                        # 'Thought' without colon (exact match) - content on next lines
+                        content_lines = []
                     
                 # Handle Action section
                 elif ReActParser._is_section_header(line, 'action', found_sections):
@@ -279,6 +280,11 @@ class ReActParser:
         
         This handles cases where LLMs generate text like:
         "I will get the namespace.Action: kubernetes-server.resources_get"
+        
+        Also handles malformed Thought sections without colons, e.g.:
+        - "Thought" (exact match)
+        - "Thought\nThe user wants..." (Thought on its own line)
+        - "ThoughtThe user wants..." (Thought followed immediately by content)
         """
         if not line:
             return False
@@ -290,8 +296,11 @@ class ReActParser:
         
         # TIER 1: Standard format check (line starts with section header)
         if section_type == 'thought':
+            # Match "Thought:" (standard) or "Thought" (exact match only)
             if line.startswith('Thought:') or line == 'Thought':
                 return True
+            # Don't match "Thought " with content on same line - too many false positives
+            # (e.g. "Thought about it..." is narrative text, not a section header)
         elif section_type == 'action':
             if line.startswith('Action:'):
                 return True

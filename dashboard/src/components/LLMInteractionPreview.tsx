@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { Box, Typography, Chip } from '@mui/material';
 import type { LLMInteraction, LLMMessage } from '../types';
+import { parseThoughtAndAction } from '../utils/reactParser';
 
 interface LLMInteractionPreviewProps {
   interaction: LLMInteraction;
@@ -82,57 +83,6 @@ function LLMInteractionPreview({
 
   // EP-0010: Check if this is a failed interaction
   const isFailed = interaction.success === false;
-
-  const parseThoughtAndAction = (responseText: string) => {
-    let thought = '';
-    let action = '';
-    
-    // Find Thought section at line start only
-    const thoughtMatch = responseText.match(/^\s*(?:Thought|THOUGHT):/m);
-    if (thoughtMatch) {
-      const thoughtIndex = thoughtMatch.index!;
-      // Find the start of content after "Thought:"
-      const thoughtStart = responseText.indexOf(':', thoughtIndex) + 1;
-      
-      // Find where Action starts (or end of text) using anchored regex
-      const actionMatch = responseText.substring(thoughtStart).match(/^\s*(?:Action|ACTION):/m);
-      const thoughtEnd = actionMatch 
-        ? thoughtStart + actionMatch.index! 
-        : responseText.length;
-      
-      // Extract and clean thought content
-      thought = responseText.substring(thoughtStart, thoughtEnd).trim();
-    }
-    
-    // Find Action section at line start only
-    const actionMatch = responseText.match(/^\s*(?:Action|ACTION):/m);
-    if (actionMatch) {
-      const actionIndex = actionMatch.index!;
-      // Find the start of content after "Action:"
-      const actionStart = responseText.indexOf(':', actionIndex) + 1;
-      
-      // Find where next section starts (or end of text) using anchored regex
-      const nextSectionMatch = responseText.substring(actionStart).match(/^\s*(?:Thought|THOUGHT|Observation|OBSERVATION|Final Answer|FINAL ANSWER):/m);
-      const actionEnd = nextSectionMatch 
-        ? actionStart + nextSectionMatch.index! 
-        : responseText.length;
-      
-      // Extract and clean action content
-      action = responseText.substring(actionStart, actionEnd).trim();
-    }
-    
-    // If no explicit Thought/Action format, try to extract structured content
-    if (!thought && !action) {
-      // Look for tool calls or structured responses
-      if (responseText.includes('```json') || responseText.includes('"tool_name"')) {
-        action = responseText;
-      } else {
-        thought = responseText;
-      }
-    }
-
-    return { thought, action };
-  };
 
   const parseActionDetails = (action: string) => {
     // Use case-insensitive regex to capture both action command and input

@@ -3,6 +3,7 @@
 
 import type { DetailedSession } from '../types';
 import { getMessages } from './conversationParser';
+import { parseReActMessage } from './reactParser';
 
 export interface ChatFlowItemData {
   type: 'thought' | 'tool_call' | 'final_answer' | 'stage_start' | 'summarization';
@@ -20,66 +21,6 @@ export interface ChatFlowItemData {
   mcp_event_id?: string; // For summarization - links to the tool call being summarized
 }
 
-/**
- * Parse ReAct message content to extract structured components
- * Reused from conversationParser.ts
- */
-function parseReActMessage(content: string): {
-  thought?: string;
-  action?: string;
-  actionInput?: string;
-  finalAnswer?: string;
-} {
-  const result: {
-    thought?: string;
-    action?: string;
-    actionInput?: string;
-    finalAnswer?: string;
-  } = {};
-
-  // Extract Thought
-  const thoughtMatch = content.match(/(?:^|\n)\s*(?:Thought|THOUGHT):\s*(.*?)(?=\n\s*(?:Action|ACTION|Final Answer|FINAL ANSWER):|$)/s);
-  if (thoughtMatch) {
-    let thought = thoughtMatch[1].trim();
-    
-    // Handle cases where LLM doesn't put "Final Answer:" or "Action:" on new lines
-    // Strip them from the end of thought content
-    if (thought.includes('Final Answer:')) {
-      thought = thought.substring(0, thought.indexOf('Final Answer:')).trim();
-    } else if (thought.includes('Action:')) {
-      thought = thought.substring(0, thought.indexOf('Action:')).trim();
-    }
-    
-    result.thought = thought;
-  }
-
-  // Extract Action
-  const actionMatch = content.match(/(?:^|\n)\s*(?:Action|ACTION):\s*(.*?)(?=\n\s*(?:Action Input|ACTION INPUT|Thought|THOUGHT|Final Answer|FINAL ANSWER|Observation|OBSERVATION):|$)/s);
-  if (actionMatch) {
-    result.action = actionMatch[1].trim();
-  }
-
-  // Extract Action Input
-  const actionInputMatch = content.match(/(?:^|\n)\s*(?:Action Input|ACTION INPUT):\s*(.*?)(?=\n\s*(?:Thought|THOUGHT|Action|ACTION|Final Answer|FINAL ANSWER|Observation|OBSERVATION):|$)/s);
-  if (actionInputMatch) {
-    result.actionInput = actionInputMatch[1].trim();
-  }
-
-  // Extract Final Answer
-  const finalAnswerMatch = content.match(/(?:^|\n)\s*(?:Final Answer|FINAL ANSWER):\s*(.*?)$/s);
-  if (finalAnswerMatch) {
-    result.finalAnswer = finalAnswerMatch[1].trim();
-  } else {
-    // If no explicit "Final Answer:" is found, check if the entire content is an analysis
-    const hasThoughtOrAction = content.match(/(?:^|\n)\s*(?:Thought|ACTION|Action):/i);
-    if (!hasThoughtOrAction && content.trim().length > 50) {
-      // Treat the entire content as final analysis if it doesn't contain ReAct elements
-      result.finalAnswer = content.trim();
-    }
-  }
-
-  return result;
-}
 
 /**
  * Parse a session into a continuous chat flow

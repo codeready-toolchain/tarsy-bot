@@ -2,6 +2,7 @@
 // Converts session data with EP-0014 conversation structures into clean conversation flow
 
 import type { DetailedSession, StageExecution, LLMMessage, LLMInteractionDetail, LLMEventDetails } from '../types';
+import { parseReActMessage } from './reactParser';
 
 export interface ConversationStepData {
   type: 'thought' | 'action' | 'analysis' | 'summarization' | 'error';
@@ -60,56 +61,6 @@ function getInteractionStepType(interaction: LLMEventDetails | LLMInteractionDet
   return interactionType;
 }
 
-/**
- * Parse ReAct message content to extract structured components
- */
-function parseReActMessage(content: string): {
-  thought?: string;
-  action?: string;
-  actionInput?: string;
-  finalAnswer?: string;
-} {
-  const result: {
-    thought?: string;
-    action?: string;
-    actionInput?: string;
-    finalAnswer?: string;
-  } = {};
-
-  // Extract Thought
-  const thoughtMatch = content.match(/(?:^|\n)\s*(?:Thought|THOUGHT):\s*(.*?)(?=\n\s*(?:Action|ACTION|Final Answer|FINAL ANSWER):|$)/s);
-  if (thoughtMatch) {
-    result.thought = thoughtMatch[1].trim();
-  }
-
-  // Extract Action
-  const actionMatch = content.match(/(?:^|\n)\s*(?:Action|ACTION):\s*(.*?)(?=\n\s*(?:Action Input|ACTION INPUT|Thought|THOUGHT|Final Answer|FINAL ANSWER|Observation|OBSERVATION):|$)/s);
-  if (actionMatch) {
-    result.action = actionMatch[1].trim();
-  }
-
-  // Extract Action Input
-  const actionInputMatch = content.match(/(?:^|\n)\s*(?:Action Input|ACTION INPUT):\s*(.*?)(?=\n\s*(?:Thought|THOUGHT|Action|ACTION|Final Answer|FINAL ANSWER|Observation|OBSERVATION):|$)/s);
-  if (actionInputMatch) {
-    result.actionInput = actionInputMatch[1].trim();
-  }
-
-  // Extract Final Answer
-  const finalAnswerMatch = content.match(/(?:^|\n)\s*(?:Final Answer|FINAL ANSWER):\s*(.*?)$/s);
-  if (finalAnswerMatch) {
-    result.finalAnswer = finalAnswerMatch[1].trim();
-  } else {
-    // If no explicit "Final Answer:" is found, check if the entire content is an analysis
-    // This handles cases where the assistant provides direct analysis without ReAct format
-    const hasThoughtOrAction = content.match(/(?:^|\n)\s*(?:Thought|ACTION|Action):/i);
-    if (!hasThoughtOrAction && content.trim().length > 50) {
-      // Treat the entire content as final analysis if it doesn't contain ReAct elements
-      result.finalAnswer = content.trim();
-    }
-  }
-
-  return result;
-}
 
 /**
  * Union type for objects that may contain conversation/messages data

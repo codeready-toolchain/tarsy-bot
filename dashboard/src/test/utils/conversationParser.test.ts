@@ -16,6 +16,7 @@ describe('conversationParser - MCP Error Handling', () => {
       completed_at_us: 2000000,
       duration_ms: 1000,
       llm_interactions: [{
+        id: 'llm-1',
         event_id: 'llm-1',
         type: 'llm',
         timestamp_us: 1100000,
@@ -103,6 +104,7 @@ describe('conversationParser - MCP Error Handling', () => {
       completed_at_us: 2000000,
       duration_ms: 1000,
       llm_interactions: [{
+        id: 'llm-1',
         event_id: 'llm-1',
         type: 'llm',
         timestamp_us: 1100000,
@@ -198,6 +200,7 @@ describe('conversationParser - MCP Error Handling', () => {
         completed_at_us: 2000000,
         duration_ms: 1000,
         llm_interactions: [{
+          id: 'llm-1',
           event_id: 'llm-1',
           type: 'llm',
           timestamp_us: 1100000,
@@ -312,5 +315,76 @@ describe('conversationParser - MCP Error Handling', () => {
     // Verify we have some parsed content
     expect(stage.steps.length).toBeGreaterThan(0)
     expect(thoughtSteps.length + actionSteps.length).toBeGreaterThan(0)
+  })
+
+  it('should parse malformed Thought section without colon', () => {
+    const mockStage: StageExecution = {
+      execution_id: 'test-stage-malformed',
+      session_id: 'test-session',
+      stage_id: 'investigation',
+      stage_index: 0,
+      stage_name: 'Investigation Stage',
+      agent: 'TestAgent',
+      status: 'completed',
+      started_at_us: 1000000,
+      completed_at_us: 2000000,
+      duration_ms: 1000,
+      llm_interactions: [{
+        id: 'llm-1',
+        event_id: 'llm-1',
+        type: 'llm',
+        timestamp_us: 1100000,
+        duration_ms: 500,
+        step_description: 'AI Analysis',
+        details: {
+          model_name: 'test-model',
+          interaction_type: 'investigation',
+          conversation: {
+            messages: [{
+              role: 'user',
+              content: 'Investigate the alert'
+            }, {
+              role: 'assistant',
+              content: 'Thought\nThe user wants me to investigate a security alert.\nI need to check the logs first.\n\nAction: get_logs\nAction Input: pod: suspicious-pod'
+            }]
+          },
+          success: true,
+          total_tokens: 100,
+          input_tokens: 30,
+          output_tokens: 70,
+          temperature: null,
+          error_message: null,
+          tool_calls: null,
+          tool_results: null
+        }
+      }],
+      mcp_communications: [],
+      total_interactions: 1,
+      stage_output: null,
+      error_message: null,
+      llm_interaction_count: 1,
+      mcp_communication_count: 0,
+      stage_input_tokens: null,
+      stage_output_tokens: null,
+      stage_total_tokens: null,
+      stage_interactions_duration_ms: 500,
+      chronological_interactions: []
+    }
+
+    const result = parseStageConversation(mockStage)
+    
+    expect(result.steps.length).toBeGreaterThan(0)
+    
+    const thoughtSteps = result.steps.filter(step => step.type === 'thought')
+    const actionSteps = result.steps.filter(step => step.type === 'action')
+    
+    // Should parse thought even without colon
+    expect(thoughtSteps.length).toBe(1)
+    expect(thoughtSteps[0].content).toContain('The user wants me to investigate')
+    expect(thoughtSteps[0].content).toContain('I need to check the logs first')
+    
+    // Should also parse the action
+    expect(actionSteps.length).toBe(1)
+    expect(actionSteps[0].actionName).toBe('get_logs')
   })
 })
