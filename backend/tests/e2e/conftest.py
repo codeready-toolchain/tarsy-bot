@@ -310,6 +310,7 @@ def ensure_e2e_isolation(request):
 def e2e_test_client(isolated_e2e_settings):
     """Create an isolated FastAPI test client for e2e tests."""
     from fastapi.testclient import TestClient
+    from unittest.mock import patch
 
     # Ensure settings cache is cleared before importing app
     # This ensures the app is created with the test configuration
@@ -318,11 +319,21 @@ def e2e_test_client(isolated_e2e_settings):
         import tarsy.config.settings
         tarsy.config.settings.get_settings.cache_clear()
 
-    from tarsy.main import app
+    # CRITICAL FIX: Mock MCPClient.initialize() to prevent it from trying to start
+    # real MCP server subprocesses during app lifespan startup
+    # Individual tests can override with more specific mocks as needed
+    async def mock_mcp_initialize(self):
+        """Mock MCP initialization - tests will provide their own mocks."""
+        self._initialized = True
+        self.sessions = {}
+        logger.info("E2E: Skipping real MCP server initialization (will be mocked in test)")
     
-    # The isolated settings are already patched globally
-    with TestClient(app) as client:
-        yield client
+    with patch('tarsy.integrations.mcp.client.MCPClient.initialize', mock_mcp_initialize):
+        from tarsy.main import app
+        
+        # The isolated settings are already patched globally
+        with TestClient(app) as client:
+            yield client
 
 
 @pytest.fixture
