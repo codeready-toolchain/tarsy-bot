@@ -4,7 +4,12 @@
 
 You'll typically use this after implementing new dashboard functionality. Create tests for the complex logic you just added.
 
-**Important:** Tests for new functionality often reveal real bugs in the implementation. If a test fails, carefully analyze whether it's a production bug that needs fixing or a test issue.
+**CRITICAL:** Tests for new functionality often reveal real bugs in the implementation. If a test fails:
+1. **FIRST, analyze if it's a bug in the production code**
+2. **FIX THE BUG in the implementation** - do NOT write tests that codify incorrect behavior
+3. Only adjust tests if the implementation is correct and test expectations were wrong
+
+**NEVER write tests that document/accept buggy behavior.** Tests must verify correct functionality, not enshrine bugs.
 
 **If unsure - ASK!**
 

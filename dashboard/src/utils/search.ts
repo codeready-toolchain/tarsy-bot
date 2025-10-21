@@ -4,28 +4,6 @@
 import React from 'react';
 
 /**
- * Highlights search terms in text with HTML markup
- * @param text - The text to highlight search terms in
- * @param searchTerm - The search term to highlight
- * @returns HTML string with highlighted search terms
- * @deprecated Use highlightSearchTermNodes for security - this function is vulnerable to XSS
- */
-export const highlightSearchTerm = (text: string, searchTerm: string): string => {
-  if (!searchTerm || !searchTerm.trim()) {
-    return text;
-  }
-
-  // Escape special regex characters in search term
-  const escapedSearchTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  
-  // Create regex for case-insensitive search
-  const regex = new RegExp(`(${escapedSearchTerm})`, 'gi');
-  
-  // Replace matches with highlighted version
-  return text.replace(regex, '<mark style="background-color: #ffeb3b; padding: 1px 2px; border-radius: 2px;">$1</mark>');
-};
-
-/**
  * Safe highlighter that returns React nodes instead of HTML (prevents XSS)
  * @param text - The text to highlight search terms in
  * @param searchTerm - The search term to highlight
