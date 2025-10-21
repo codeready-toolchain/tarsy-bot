@@ -316,7 +316,8 @@ class MCPClient:
         result: Dict[str, Any], 
         investigation_conversation: 'LLMConversation',
         session_id: str,
-        stage_execution_id: Optional[str] = None
+        stage_execution_id: Optional[str] = None,
+        mcp_event_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Apply summarization if result exceeds size threshold.
         
@@ -359,7 +360,7 @@ class MCPClient:
             logger.info(f"Summarizing large MCP result: {server_name}.{tool_name} ({estimated_tokens} tokens)")
             summarized = await self.summarizer.summarize_result(
                 server_name, tool_name, result, investigation_conversation, 
-                session_id, stage_execution_id, max_summary_tokens
+                session_id, stage_execution_id, max_summary_tokens, mcp_event_id
             )
             
             logger.info(f"Successfully summarized {server_name}.{tool_name} from {estimated_tokens} to ~{max_summary_tokens} tokens")
@@ -397,6 +398,7 @@ class MCPClient:
         
         # Variable to store the actual result for later summarization (if needed)
         actual_result: Optional[Dict[str, Any]] = None
+        mcp_event_id: Optional[str] = None  # Captured after MCP interaction is stored
         
         # Use typed hook context for clean data flow
         async with mcp_interaction_context(session_id, server_name, tool_name, parameters, stage_execution_id) as ctx:
@@ -459,11 +461,14 @@ class MCPClient:
                     # Store ACTUAL result in interaction (this is what goes to DB)
                     ctx.interaction.tool_result = response_dict
                     
+                    # Capture MCP event ID before completion (for linking summarization)
+                    mcp_event_id = ctx.interaction.communication_id
+                    
                     # Complete the typed context with success
                     # This triggers MCP hooks and stores the interaction to DB with actual result
                     await ctx.complete_success({})
                     
-                    # Store actual result for potential summarization outside the context
+                    # Store actual result and event ID for potential summarization outside the context
                     actual_result = response_dict
                     break  # Success, exit retry loop
                 
@@ -515,7 +520,7 @@ class MCPClient:
         if actual_result and investigation_conversation:
             summarized_result = await self._maybe_summarize_result(
                 server_name, tool_name, actual_result, investigation_conversation, 
-                session_id, stage_execution_id
+                session_id, stage_execution_id, mcp_event_id
             )
             # Return summary for agent conversation
             return summarized_result

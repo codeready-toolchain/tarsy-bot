@@ -223,6 +223,61 @@ function ChatFlowItem({ item }: ChatFlowItemProps) {
     );
   }
 
+  // Render summarization - subtle amber-tinted card
+  if (item.type === 'summarization') {
+    return (
+      <Box sx={{ mb: 2, mt: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1.5, mb: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              fontSize: '1.1rem',
+              lineHeight: 1,
+              flexShrink: 0
+            }}
+          >
+            📋
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+              fontSize: '0.75rem',
+              color: 'rgba(237, 108, 2, 0.9)', // Subtle amber/orange
+              mt: 0.25
+            }}
+          >
+            Tool Result Summary
+          </Typography>
+        </Box>
+        <Box 
+          sx={{ 
+            pl: 3.5,
+            p: 2,
+            bgcolor: 'rgba(237, 108, 2, 0.04)', // Very subtle amber background
+            borderRadius: 1,
+            borderLeft: '3px solid rgba(237, 108, 2, 0.3)' // Subtle amber border
+          }}
+        >
+          <Typography
+            variant="body2"
+            sx={{
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              lineHeight: 1.7,
+              fontSize: '0.95rem',
+              color: 'text.primary'
+            }}
+          >
+            {item.content || ''}
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
+
   return null;
 }
 

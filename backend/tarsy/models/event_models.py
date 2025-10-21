@@ -127,5 +127,8 @@ class LLMStreamChunkEvent(BaseEvent):
         default=None, description="Stage execution identifier"
     )
     chunk: str = Field(description="Content chunk (accumulated tokens)")
-    stream_type: str = Field(description="Type of content being streamed: 'thought' or 'final_answer'")
+    stream_type: str = Field(description="Type of content being streamed: 'thought', 'final_answer', or 'summarization'")
     is_complete: bool = Field(default=False, description="True if this is the final chunk")
+    mcp_event_id: Optional[str] = Field(
+        default=None, description="MCP event ID if summarizing a tool result"
+    )

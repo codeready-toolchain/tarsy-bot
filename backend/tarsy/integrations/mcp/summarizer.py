@@ -42,7 +42,8 @@ class MCPResultSummarizer:
         investigation_conversation: LLMConversation,
         session_id: str,
         stage_execution_id: Optional[str] = None,
-        max_summary_tokens: int = 1000
+        max_summary_tokens: int = 1000,
+        mcp_event_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Summarize a large MCP tool result using LLM with investigation conversation context.
@@ -58,6 +59,7 @@ class MCPResultSummarizer:
             session_id: Session ID for tracking
             stage_execution_id: Optional stage execution ID
             max_summary_tokens: Maximum tokens enforced at LLM provider level via max_tokens
+            mcp_event_id: Optional MCP event ID for linking streaming summarization to tool call
             
         Returns:
             Summarized result dictionary with same structure as original
@@ -96,7 +98,8 @@ class MCPResultSummarizer:
             response_conversation = await self.llm_client.generate_response(
                 summarization_conversation, session_id, stage_execution_id,
                 max_tokens=max_summary_tokens,
-                interaction_type=LLMInteractionType.SUMMARIZATION.value
+                interaction_type=LLMInteractionType.SUMMARIZATION.value,
+                mcp_event_id=mcp_event_id
             )
             
             # Extract summary from response

@@ -132,6 +132,7 @@ export interface LLMEventDetails {
   total_tokens: number | null;
   tool_calls: any | null;
   tool_results: any | null;
+  mcp_event_id?: string | null;  // For summarization - links to the tool call being summarized
 }
 
 // MCP event details

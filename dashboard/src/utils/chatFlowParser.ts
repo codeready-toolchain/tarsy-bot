@@ -5,9 +5,9 @@ import type { DetailedSession } from '../types';
 import { getMessages } from './conversationParser';
 
 export interface ChatFlowItemData {
-  type: 'thought' | 'tool_call' | 'final_answer' | 'stage_start';
+  type: 'thought' | 'tool_call' | 'final_answer' | 'stage_start' | 'summarization';
   timestamp_us: number;
-  content?: string; // For thought/final_answer
+  content?: string; // For thought/final_answer/summarization
   stageName?: string; // For stage_start
   stageAgent?: string; // For stage_start
   toolName?: string; // For tool_call
@@ -17,6 +17,7 @@ export interface ChatFlowItemData {
   success?: boolean; // For tool_call
   errorMessage?: string; // For tool_call
   duration_ms?: number | null; // For tool_call
+  mcp_event_id?: string; // For summarization - links to the tool call being summarized
 }
 
 /**
@@ -133,6 +134,17 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             type: 'final_answer',
             timestamp_us: interaction.timestamp_us + 1, // +1 to ensure it comes after thought
             content: parsed.finalAnswer
+          });
+        }
+      } else if (interactionType === 'summarization') {
+        // Summarization interactions have plain text in the last assistant message
+        const lastAssistantMessage = messages[messages.length - 1];
+        if (lastAssistantMessage && lastAssistantMessage.content) {
+          chatItems.push({
+            type: 'summarization',
+            timestamp_us: interaction.timestamp_us,
+            content: lastAssistantMessage.content,
+            mcp_event_id: (interaction.details as any).mcp_event_id // Link to the tool call being summarized
           });
         }
       }

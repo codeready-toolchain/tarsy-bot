@@ -196,7 +196,8 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         interaction_type: Optional[str] = None,
         max_retries: int = 3,
-        timeout_seconds: int = 60
+        timeout_seconds: int = 60,
+        mcp_event_id: Optional[str] = None
     ) -> LLMConversation:
         """
         Generate response with streaming to WebSocket.
@@ -219,6 +220,7 @@ class LLMClient:
                             If None, auto-detects based on response content.
             max_retries: Maximum number of retry attempts (default: 3)
             timeout_seconds: Timeout for LLM streaming call (default: 60s)
+            mcp_event_id: Optional MCP event ID if summarizing a tool result
         
         Returns:
             Updated conversation with assistant response appended
@@ -249,12 +251,19 @@ class LLMClient:
                     langchain_messages = self._convert_conversation_to_langchain(conversation)
                     accumulated_content = ""
                     
-                    # Streaming state (for both thoughts and final answers)
+                    # Streaming state (for thoughts, final answers, and summarizations)
                     is_streaming_thought = False
                     is_streaming_final_answer = False
+                    is_streaming_summarization = False
                     token_count_since_last_send = 0
                     THOUGHT_CHUNK_SIZE = 2  # More responsive for short plain text thoughts
                     FINAL_ANSWER_CHUNK_SIZE = 5  # Less frequent for Markdown-heavy final answers
+                    SUMMARIZATION_CHUNK_SIZE = 2  # Same as thoughts (plain text summaries
+                    
+                    # Check if we should stream as plain text summarization
+                    if interaction_type == LLMInteractionType.SUMMARIZATION.value:
+                        is_streaming_summarization = True
+                        logger.debug(f"Streaming plain text summarization for {session_id}")
                     
                     # Stream tokens with timeout protection
                     # Token usage tracking uses dual approach:
@@ -319,13 +328,18 @@ class LLMClient:
                                 continue  # Skip token accumulation for this iteration
                             
                             # Send periodic updates with ENTIRE content (not just new tokens)
-                            if is_streaming_thought or is_streaming_final_answer:
+                            if is_streaming_thought or is_streaming_final_answer or is_streaming_summarization:
                                 token_count_since_last_send += 1
                                 
                                 # Determine chunk size based on what we're streaming
-                                current_chunk_size = THOUGHT_CHUNK_SIZE if is_streaming_thought else FINAL_ANSWER_CHUNK_SIZE
+                                if is_streaming_thought:
+                                    current_chunk_size = THOUGHT_CHUNK_SIZE
+                                elif is_streaming_final_answer:
+                                    current_chunk_size = FINAL_ANSWER_CHUNK_SIZE
+                                else:  # is_streaming_summarization
+                                    current_chunk_size = SUMMARIZATION_CHUNK_SIZE
                                 
-                                # Send entire content every N tokens (2 for thoughts, 5 for final answers)
+                                # Send entire content every N tokens
                                 if token_count_since_last_send >= current_chunk_size:
                                     if is_streaming_thought:
                                         thought_start_idx = accumulated_content.find("Thought:")
@@ -354,6 +368,16 @@ class LLMClient:
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.FINAL_ANSWER, current_final_answer,
                                                 is_complete=False
+                                            )
+                                    
+                                    elif is_streaming_summarization:
+                                        # Stream entire accumulated content as plain text
+                                        if accumulated_content.strip():
+                                            await self._publish_stream_chunk(
+                                                session_id, stage_execution_id,
+                                                StreamingEventType.SUMMARIZATION, accumulated_content.strip(),
+                                                is_complete=False,
+                                                mcp_event_id=mcp_event_id
                                             )
                                     
                                     token_count_since_last_send = 0
@@ -400,6 +424,26 @@ class LLMClient:
                                 session_id, stage_execution_id,
                                 StreamingEventType.FINAL_ANSWER, "",
                                 is_complete=True
+                            )
+                    
+                    # Send final complete summarization if streaming is still active
+                    if is_streaming_summarization:
+                        final_summarization = accumulated_content.strip()
+                        
+                        if final_summarization:
+                            await self._publish_stream_chunk(
+                                session_id, stage_execution_id,
+                                StreamingEventType.SUMMARIZATION, final_summarization,
+                                is_complete=True,
+                                mcp_event_id=mcp_event_id
+                            )
+                        else:
+                            # Send completion marker
+                            await self._publish_stream_chunk(
+                                session_id, stage_execution_id,
+                                StreamingEventType.SUMMARIZATION, "",
+                                is_complete=True,
+                                mcp_event_id=mcp_event_id
                             )
                     
                     # Check for empty response and retry if needed
@@ -658,7 +702,8 @@ class LLMClient:
         stage_execution_id: Optional[str],
         stream_type: StreamingEventType,
         chunk: str,
-        is_complete: bool
+        is_complete: bool,
+        mcp_event_id: Optional[str] = None
     ) -> None:
         """Publish streaming chunk via transient channel."""
         # Check if streaming is enabled via config flag
@@ -693,6 +738,7 @@ class LLMClient:
                     chunk=chunk,
                     stream_type=stream_type.value,
                     is_complete=is_complete,
+                    mcp_event_id=mcp_event_id,
                     timestamp_us=now_us()
                 )
                 
@@ -701,7 +747,7 @@ class LLMClient:
                     f"session:{session_id}", 
                     event
                 )
-                logger.debug(f"Published streaming chunk ({stream_type.value}, complete={is_complete}) for {session_id}")
+                logger.debug(f"Published streaming chunk ({stream_type.value}, complete={is_complete}, mcp_event={mcp_event_id}) for {session_id}")
         except Exception as e:
             # Don't fail LLM call if streaming fails
             logger.warning(f"Failed to publish streaming chunk: {e}")
@@ -812,7 +858,8 @@ class LLMManager:
                               stage_execution_id: Optional[str] = None,
                               provider: str = None,
                               max_tokens: Optional[int] = None,
-                              interaction_type: Optional[str] = None) -> LLMConversation:
+                              interaction_type: Optional[str] = None,
+                              mcp_event_id: Optional[str] = None) -> LLMConversation:
         """Generate a response using the specified or default LLM provider.
         
         Args:
@@ -823,6 +870,7 @@ class LLMManager:
             max_tokens: Optional max tokens configuration for LLM
             interaction_type: Optional interaction type (investigation, summarization, final_analysis).
                             If None, auto-detects based on response content.
+            mcp_event_id: Optional MCP event ID if summarizing a tool result
             
         Returns:
             Updated LLMConversation with new assistant message appended
@@ -832,7 +880,7 @@ class LLMManager:
             available = list(self.clients.keys())
             raise Exception(f"LLM provider not available. Available: {available}")
 
-        return await client.generate_response(conversation, session_id, stage_execution_id, max_tokens, interaction_type)
+        return await client.generate_response(conversation, session_id, stage_execution_id, max_tokens, interaction_type, mcp_event_id=mcp_event_id)
 
     def list_available_providers(self) -> List[str]:
         """List available LLM providers."""
