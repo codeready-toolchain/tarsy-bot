@@ -228,11 +228,8 @@ function ChatFlowItem({ item }: ChatFlowItemProps) {
   return null;
 }
 
-// Export memoized component with custom comparison to prevent unnecessary re-renders
-export default memo(ChatFlowItem, (prevProps, nextProps) => {
-  // Only re-render if content, timestamp, or type changes
-  return prevProps.item.content === nextProps.item.content &&
-         prevProps.item.timestamp_us === nextProps.item.timestamp_us &&
-         prevProps.item.type === nextProps.item.type;
-});
+// Export memoized component using default shallow comparison
+// This automatically compares all props (content, timestamp, type, toolName, toolArguments,
+// toolResult, serverName, success, errorMessage, duration_ms, etc.)
+export default memo(ChatFlowItem);
 
