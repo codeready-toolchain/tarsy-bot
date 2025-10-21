@@ -223,11 +223,12 @@ function ChatFlowItem({ item }: ChatFlowItemProps) {
     );
   }
 
-  // Render summarization - subtle amber-tinted card
+  // Render summarization - amber header with subtle left border and dimmed text
   if (item.type === 'summarization') {
     return (
-      <Box sx={{ mb: 2, mt: 1 }}>
-        <Box sx={{ display: 'flex', gap: 1.5, mb: 1 }}>
+      <Box sx={{ mb: 1.5 }}>
+        {/* Header with amber styling */}
+        <Box sx={{ display: 'flex', gap: 1.5, mb: 0.5 }}>
           <Typography
             variant="body2"
             sx={{
@@ -252,23 +253,25 @@ function ChatFlowItem({ item }: ChatFlowItemProps) {
             Tool Result Summary
           </Typography>
         </Box>
+        {/* Content with subtle left border and dimmed text */}
         <Box 
           sx={{ 
+            display: 'flex', 
+            gap: 1.5, 
             pl: 3.5,
-            p: 2,
-            bgcolor: 'rgba(237, 108, 2, 0.04)', // Very subtle amber background
-            borderRadius: 1,
-            borderLeft: '3px solid rgba(237, 108, 2, 0.3)' // Subtle amber border
+            ml: 3.5,
+            py: 0.5,
+            borderLeft: '2px solid rgba(237, 108, 2, 0.2)' // Subtle amber left border
           }}
         >
           <Typography
-            variant="body2"
+            variant="body1"
             sx={{
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
               lineHeight: 1.7,
-              fontSize: '0.95rem',
-              color: 'text.primary'
+              fontSize: '1rem',
+              color: 'text.secondary' // Slightly dimmed to differentiate from thoughts
             }}
           >
             {item.content || ''}
