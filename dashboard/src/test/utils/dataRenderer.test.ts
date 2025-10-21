@@ -249,7 +249,7 @@ describe('dataRenderer', () => {
       });
 
       it('should handle BigInt', () => {
-        const bigInt = BigInt(12345678901234567890);
+        const bigInt = BigInt("12345678901234567890");
         const result = renderValue(bigInt);
         expect(result.type).toBe('simple');
         expect(result.displayValue).toContain('n');

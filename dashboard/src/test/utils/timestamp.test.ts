@@ -236,13 +236,10 @@ describe('timestamp utilities', () => {
       expect(isWithinLastMinutes(now - 1000, 0)).toBe(false);
     });
 
-    it('should handle future timestamps', () => {
+    it('should return false for future timestamps', () => {
       const now = getCurrentTimestampUs();
       const future = now + 60000000; // 1 minute in future
-      // The implementation uses (now - timestamp) which will be negative for future
-      // The <= check will pass (negative <= positive), so it returns true
-      // This is actually a bug in the implementation, but we test actual behavior
-      expect(isWithinLastMinutes(future, 5)).toBe(true);
+      expect(isWithinLastMinutes(future, 5)).toBe(false);
     });
   });
 
