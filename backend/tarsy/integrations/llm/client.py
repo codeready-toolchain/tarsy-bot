@@ -260,7 +260,7 @@ class LLMClient:
                     token_count_since_last_send = 0
                     THOUGHT_CHUNK_SIZE = 2  # More responsive for short plain text thoughts
                     FINAL_ANSWER_CHUNK_SIZE = 5  # Less frequent for Markdown-heavy final answers
-                    SUMMARIZATION_CHUNK_SIZE = 2  # Same as thoughts (plain text summaries
+                    SUMMARIZATION_CHUNK_SIZE = 2  # Same as thoughts (plain text summaries)
                     
                     # Check if we should stream as plain text summarization
                     if interaction_type == LLMInteractionType.SUMMARIZATION.value:
