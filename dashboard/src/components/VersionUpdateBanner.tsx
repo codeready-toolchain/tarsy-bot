@@ -64,7 +64,7 @@ function VersionUpdateBanner({ show }: VersionUpdateBannerProps): ReactElement |
       sx={{
         position: 'sticky',
         top: 0,
-        zIndex: 9999,
+        zIndex: (theme) => theme.zIndex.appBar + 1,
         width: '100%',
         // Apply pulse animation only if user hasn't requested reduced motion
         animation: prefersReducedMotion ? 'none' : `${pulseAnimation} 2s ease-in-out infinite`,
