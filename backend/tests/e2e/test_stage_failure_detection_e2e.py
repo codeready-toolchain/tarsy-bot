@@ -48,15 +48,15 @@ class TestStageFailureDetectionE2E:
                 total_interactions = len(all_llm_interactions)
                 print(f"🔍 LLM REQUEST #{total_interactions}")
 
-                # First 50 interactions: ALL FAIL (ensures first stage fails)
-                # This accounts for LLM retries (up to 4-5 retries per iteration * 10 max iterations = 50 interactions)
-                # We need to be absolutely sure we exhaust all 10 iterations with failed last interaction
-                if total_interactions <= 50:
+                # First 150 interactions: ALL FAIL (ensures first stage fails)
+                # This accounts for LLM retries (up to 4-5 retries per iteration * 30 max iterations = 150 interactions)
+                # We need to be absolutely sure we exhaust all 30 iterations with failed last interaction
+                if total_interactions <= 150:
                     print(f"  ❌ FAILING LLM interaction #{total_interactions} (first stage)")
                     # Raise an exception to simulate LLM failure
                     raise Exception("Invalid request - simulated failure")
 
-                # Later interactions (51+, stages 2, 3, etc.): SUCCEED
+                # Later interactions (151+, stages 2, 3, etc.): SUCCEED
                 else:
                     print(f"  ✅ SUCCESS LLM interaction #{total_interactions} (later stages)")
                     content = "Final Answer: Analysis completed successfully"
@@ -125,7 +125,7 @@ class TestStageFailureDetectionE2E:
                     E2ETestUtils.submit_alert(e2e_test_client, e2e_realistic_kubernetes_alert)
 
                     print("⏳ Step 2: Waiting for processing...")
-                    # Extended timeout for failure detection with retries (10 iterations * up to 4 seconds each = 40+ seconds)
+                    # Extended timeout for failure detection with retries (30 iterations * up to 4 seconds each = 120+ seconds)
                     session_id, final_status = await E2ETestUtils.wait_for_session_completion(
                         e2e_test_client, max_wait_seconds=500, debug_logging=True
                     )
