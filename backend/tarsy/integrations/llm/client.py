@@ -467,7 +467,7 @@ class LLMClient:
                     self._store_usage_metadata(ctx, callback, chunk_usage)
                     
                     # Finalize conversation and interaction
-                    self._finalize_conversation(ctx, conversation, accumulated_content, interaction_type)
+                    self._finalize_conversation(ctx, conversation, accumulated_content, interaction_type, mcp_event_id)
                     
                     # Complete the typed context with success
                     await ctx.complete_success({})
@@ -665,7 +665,8 @@ class LLMClient:
         ctx: Any,
         conversation: LLMConversation,
         accumulated_content: str,
-        interaction_type: Optional[str]
+        interaction_type: Optional[str],
+        mcp_event_id: Optional[str] = None
     ) -> None:
         """
         Finalize conversation by adding assistant message and updating interaction.
@@ -675,6 +676,7 @@ class LLMClient:
             conversation: Conversation object to update
             accumulated_content: Complete LLM response content
             interaction_type: Optional explicit interaction type
+            mcp_event_id: Optional MCP event ID if summarizing a tool result
         """
         # Add assistant response to conversation
         conversation.append_assistant_message(accumulated_content)
@@ -684,6 +686,10 @@ class LLMClient:
         ctx.interaction.provider = self.provider_name
         ctx.interaction.model_name = self.model
         ctx.interaction.temperature = self.temperature
+        
+        # Store MCP event ID if provided (for summarizations)
+        if mcp_event_id is not None:
+            ctx.interaction.mcp_event_id = mcp_event_id
         
         # Determine interaction type
         if interaction_type is not None:

@@ -156,6 +156,12 @@ class LLMInteraction(SQLModel, table=True):
         description="Type of LLM interaction (investigation, summarization, final_analysis)"
     )
     
+    # Link to MCP event for summarization interactions
+    mcp_event_id: Optional[str] = Field(
+        None,
+        description="MCP event ID if this LLM interaction is summarizing a tool result"
+    )
+    
     @model_validator(mode="after")
     def validate_token_consistency(self) -> "LLMInteraction":
         """Validate and ensure consistency of token fields."""
