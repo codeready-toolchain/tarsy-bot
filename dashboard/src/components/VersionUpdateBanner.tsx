@@ -1,6 +1,22 @@
 import type { ReactElement } from 'react';
-import { Alert, Button, Box, keyframes } from '@mui/material';
+import { Alert, Button, Box, keyframes, useMediaQuery } from '@mui/material';
 import { Refresh as RefreshIcon, Warning as WarningIcon } from '@mui/icons-material';
+
+/**
+ * Pulse animation for banner (defined at module scope to avoid recreation)
+ * Subtle breathing effect to draw attention without being distracting
+ */
+const pulseAnimation = keyframes`
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 1;
+  }
+`;
 
 /**
  * Props for VersionUpdateBanner component
@@ -28,6 +44,9 @@ interface VersionUpdateBannerProps {
  * @returns Banner component or null if not shown
  */
 function VersionUpdateBanner({ show }: VersionUpdateBannerProps): ReactElement | null {
+  // Respect user's motion preferences for accessibility
+  const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  
   if (!show) {
     return null;
   }
@@ -40,19 +59,6 @@ function VersionUpdateBanner({ show }: VersionUpdateBannerProps): ReactElement |
     window.location.reload();
   };
   
-  // Pulse animation for extra attention
-  const pulse = keyframes`
-    0% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.85;
-    }
-    100% {
-      opacity: 1;
-    }
-  `;
-  
   return (
     <Box
       sx={{
@@ -60,7 +66,8 @@ function VersionUpdateBanner({ show }: VersionUpdateBannerProps): ReactElement |
         top: 0,
         zIndex: 9999,
         width: '100%',
-        animation: `${pulse} 2s ease-in-out infinite`,
+        // Apply pulse animation only if user hasn't requested reduced motion
+        animation: prefersReducedMotion ? 'none' : `${pulseAnimation} 2s ease-in-out infinite`,
       }}
     >
       <Alert
