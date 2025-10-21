@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
-import { Alert, Button, Box } from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import { Alert, Button, Box, keyframes } from '@mui/material';
+import { Refresh as RefreshIcon, Warning as WarningIcon } from '@mui/icons-material';
 
 /**
  * Props for VersionUpdateBanner component
@@ -40,6 +40,19 @@ function VersionUpdateBanner({ show }: VersionUpdateBannerProps): ReactElement |
     window.location.reload();
   };
   
+  // Pulse animation for extra attention
+  const pulse = keyframes`
+    0% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.85;
+    }
+    100% {
+      opacity: 1;
+    }
+  `;
+  
   return (
     <Box
       sx={{
@@ -47,14 +60,17 @@ function VersionUpdateBanner({ show }: VersionUpdateBannerProps): ReactElement |
         top: 0,
         zIndex: 9999,
         width: '100%',
+        animation: `${pulse} 2s ease-in-out infinite`,
       }}
     >
       <Alert
         severity="warning"
+        icon={<WarningIcon sx={{ fontSize: 28 }} />}
         action={
           <Button
-            color="inherit"
-            size="small"
+            variant="contained"
+            color="warning"
+            size="medium"
             startIcon={<RefreshIcon />}
             onClick={handleRefresh}
             sx={{
@@ -66,14 +82,29 @@ function VersionUpdateBanner({ show }: VersionUpdateBannerProps): ReactElement |
         }
         sx={{
           borderRadius: 0,
+          fontSize: '1.15rem',
+          py: 2.5,
+          px: 3,
           '& .MuiAlert-message': {
             display: 'flex',
             alignItems: 'center',
             width: '100%',
+            fontSize: '1.15rem',
+          },
+          '& .MuiAlert-action': {
+            alignItems: 'center',
+            pt: 0,
           },
         }}
       >
-        <strong>New dashboard version available.</strong> Refresh to update and get the latest features and fixes.
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+          <Box sx={{ fontWeight: 'bold', fontSize: '1.3rem' }}>
+            New Dashboard Version Available!
+          </Box>
+          <Box sx={{ fontSize: '1.05rem' }}>
+            Refresh now to get the latest updates.
+          </Box>
+        </Box>
       </Alert>
     </Box>
   );
