@@ -44,7 +44,9 @@ install-dev: ## Install development dependencies (includes test)
 .PHONY: clean-test-db
 clean-test-db: ## Clean test database to ensure fresh state
 	@echo "$(GREEN)Cleaning test database...$(NC)"
-	@rm -f test.db
+	@rm -f test.db test.db-shm test.db-wal
+	@rm -rf /tmp/tarsy_e2e_test_* 2>/dev/null || true
+	@find /tmp -name "e2e_test_*.db*" -delete 2>/dev/null || true
 	@echo "$(GREEN)Test database cleaned$(NC)"
 
 .PHONY: test
@@ -65,8 +67,10 @@ test-e2e: check-test-deps clean-test-db ## Run end-to-end tests only (one by one
 	@echo "$(GREEN)Running end-to-end tests sequentially...$(NC)"
 	@echo "$(YELLOW)Running first E2E test...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_api_e2e.py -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
 	@echo "$(YELLOW)Running second E2E test...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_stage_failure_detection_e2e.py -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
 	@echo "$(YELLOW)Running third E2E test...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_runbooks_e2e.py -v --tb=short -m e2e || exit 1
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
