@@ -141,6 +141,8 @@ class LLMClient:
         self.temperature = config.temperature  # Field with default in BaseModel
         self.llm_client: Optional[BaseChatModel] = None
         self.settings = settings  # Store settings for feature flag access
+        self.available: bool = False
+        self._sqlite_warning_logged: bool = False
         self._initialize_client()
     
     def _initialize_client(self):
@@ -730,7 +732,7 @@ class LLMClient:
                 
                 if db_dialect != "postgresql":
                     # Only log warning once per session (on first chunk)
-                    if not hasattr(self, '_sqlite_warning_logged'):
+                    if not self._sqlite_warning_logged:
                         logger.warning(
                             f"LLM streaming requested but database is {db_dialect}. "
                             "Real-time streaming requires PostgreSQL with NOTIFY support. "
