@@ -94,8 +94,8 @@ describe('chatFlowParser - Summarization Support', () => {
             tool_name: 'get_pods',
             server_name: 'kubernetes-server',
             communication_type: 'tool_call',
-            parameters: { namespace: 'default' },
-            result: { pods: ['pod-1', 'pod-2', 'pod-3', 'pod-4', 'pod-5'] },
+            tool_arguments: { namespace: 'default' },
+            tool_result: { pods: ['pod-1', 'pod-2', 'pod-3', 'pod-4', 'pod-5'] },
             available_tools: {},
             success: true,
             error_message: null
@@ -145,6 +145,8 @@ describe('chatFlowParser - Summarization Support', () => {
     expect(toolCallItem).toBeDefined()
     expect(toolCallItem!.toolName).toBe('get_pods')
     expect(toolCallItem!.success).toBe(true)
+    expect(toolCallItem!.toolArguments).toEqual({ namespace: 'default' })
+    expect(toolCallItem!.toolResult).toEqual({ pods: ['pod-1', 'pod-2', 'pod-3', 'pod-4', 'pod-5'] })
 
     // Verify summarization
     const summarizationItem = chatFlow.find(item => item.type === 'summarization')
@@ -458,8 +460,8 @@ describe('chatFlowParser - Summarization Support', () => {
               tool_name: 'tool_1',
               server_name: 'server-1',
               communication_type: 'tool_call',
-              parameters: {},
-              result: { data: 'result1' },
+              tool_arguments: {},
+              tool_result: { data: 'result1' },
               available_tools: {},
               success: true,
               error_message: null
@@ -475,8 +477,8 @@ describe('chatFlowParser - Summarization Support', () => {
               tool_name: 'tool_2',
               server_name: 'server-1',
               communication_type: 'tool_call',
-              parameters: {},
-              result: { data: 'result2' },
+              tool_arguments: {},
+              tool_result: { data: 'result2' },
               available_tools: {},
               success: true,
               error_message: null
@@ -492,8 +494,8 @@ describe('chatFlowParser - Summarization Support', () => {
               tool_name: 'tool_3',
               server_name: 'server-1',
               communication_type: 'tool_call',
-              parameters: {},
-              result: { data: 'result3' },
+              tool_arguments: {},
+              tool_result: { data: 'result3' },
               available_tools: {},
               success: true,
               error_message: null
@@ -538,6 +540,16 @@ describe('chatFlowParser - Summarization Support', () => {
     expect(summarizations[0].mcp_event_id).toBe('mcp-1')
     expect(summarizations[1].mcp_event_id).toBe('mcp-2')
     expect(summarizations[2].mcp_event_id).toBe('mcp-3')
+
+    // Verify tool calls have correct arguments and results
+    const toolCalls = chatFlow.filter(item => item.type === 'tool_call')
+    expect(toolCalls.length).toBe(3)
+    expect(toolCalls[0].toolArguments).toEqual({})
+    expect(toolCalls[0].toolResult).toEqual({ data: 'result1' })
+    expect(toolCalls[1].toolArguments).toEqual({})
+    expect(toolCalls[1].toolResult).toEqual({ data: 'result2' })
+    expect(toolCalls[2].toolArguments).toEqual({})
+    expect(toolCalls[2].toolResult).toEqual({ data: 'result3' })
 
     // Verify chronological order
     for (let i = 1; i < chatFlow.length; i++) {
@@ -672,8 +684,8 @@ describe('chatFlowParser - Summarization Support', () => {
             tool_name: 'tool_1',
             server_name: 'server-1',
             communication_type: 'tool_call',
-            parameters: {},
-            result: { status: 'success' },
+            tool_arguments: {},
+            tool_result: { status: 'success' },
             available_tools: {},
             success: true,
             error_message: null
@@ -719,6 +731,11 @@ describe('chatFlowParser - Summarization Support', () => {
     // Verify summarization links to correct tool call
     const summarization = chatFlow.find(item => item.type === 'summarization')
     expect(summarization!.mcp_event_id).toBe('mcp-1')
+
+    // Verify tool call has correct arguments and result
+    const toolCall = chatFlow.find(item => item.type === 'tool_call')
+    expect(toolCall!.toolArguments).toEqual({})
+    expect(toolCall!.toolResult).toEqual({ status: 'success' })
   })
 })
 
@@ -831,8 +848,8 @@ describe('chatFlowParser - Integration with Existing Features', () => {
             tool_name: 'test_tool',
             server_name: 'test-server',
             communication_type: 'tool_call',
-            parameters: {},
-            result: { success: true },
+            tool_arguments: {},
+            tool_result: { success: true },
             available_tools: {},
             success: true,
             error_message: null
@@ -883,6 +900,11 @@ describe('chatFlowParser - Integration with Existing Features', () => {
     for (let i = 1; i < chatFlow.length; i++) {
       expect(chatFlow[i].timestamp_us).toBeGreaterThanOrEqual(chatFlow[i - 1].timestamp_us)
     }
+
+    // Verify tool call has correct arguments and result
+    const toolCall = chatFlow.find(item => item.type === 'tool_call')
+    expect(toolCall!.toolArguments).toEqual({})
+    expect(toolCall!.toolResult).toEqual({ success: true })
   })
 
   it('should correctly use last assistant message for summarization even when user message is last', () => {
@@ -953,8 +975,8 @@ describe('chatFlowParser - Integration with Existing Features', () => {
             tool_name: 'test_tool',
             server_name: 'test-server',
             communication_type: 'tool_call',
-            parameters: {},
-            result: { success: true },
+            tool_arguments: {},
+            tool_result: { success: true },
             available_tools: {},
             success: true,
             error_message: null
@@ -997,6 +1019,11 @@ describe('chatFlowParser - Integration with Existing Features', () => {
     expect(summarization!.content).toBe('The tool successfully completed and returned the expected results.')
     expect(summarization!.content).not.toContain('trailing user message')
     expect(summarization!.mcp_event_id).toBe('mcp-1')
+
+    // Verify tool call has correct arguments and result
+    const toolCall = chatFlow.find(item => item.type === 'tool_call')
+    expect(toolCall!.toolArguments).toEqual({})
+    expect(toolCall!.toolResult).toEqual({ success: true })
   })
 
   it('should work correctly with getChatFlowStats (no summarization count)', () => {
@@ -1107,8 +1134,8 @@ describe('chatFlowParser - Integration with Existing Features', () => {
             tool_name: 'tool_1',
             server_name: 'test-server',
             communication_type: 'tool_call',
-            parameters: {},
-            result: { success: true },
+            tool_arguments: {},
+            tool_result: { success: true },
             available_tools: {},
             success: true,
             error_message: null
@@ -1149,6 +1176,11 @@ describe('chatFlowParser - Integration with Existing Features', () => {
     expect(stats.toolCallsCount).toBe(1)
     expect(stats.finalAnswersCount).toBe(1)
     expect(stats.successfulToolCalls).toBe(1)
+
+    // Verify tool call has correct arguments and result
+    const toolCall = chatFlow.find(item => item.type === 'tool_call')
+    expect(toolCall!.toolArguments).toEqual({})
+    expect(toolCall!.toolResult).toEqual({ success: true })
   })
 })
 

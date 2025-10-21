@@ -569,7 +569,7 @@ class LLMClient:
         Returns:
             String content extracted from chunk
         """
-        token = chunk.content or "" if hasattr(chunk, 'content') else str(chunk)
+        token = (chunk.content if hasattr(chunk, "content") else str(chunk)) or ""
         
         # Handle list content (some providers return lists)
         if isinstance(token, list):
