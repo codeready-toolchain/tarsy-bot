@@ -14,6 +14,11 @@ import type { DetailedSession } from '../types';
 import ChatFlowItem from './ChatFlowItem';
 import CopyButton from './CopyButton';
 import { websocketService } from '../services/websocketService';
+import { 
+  hasMarkdownSyntax, 
+  finalAnswerMarkdownComponents, 
+  thoughtMarkdownComponents 
+} from '../utils/markdownComponents.tsx';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface ProcessingIndicatorProps {
@@ -90,103 +95,15 @@ interface StreamingItem {
 }
 
 /**
- * Memoized markdown components for final answer rendering
- * Defined outside component to prevent recreation on every render (which causes visual glitches)
- */
-const finalAnswerMarkdownComponents = {
-  h1: (props: any) => {
-    const { node, children, ...safeProps } = props;
-    return (
-      <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1.5, fontSize: '1.1rem' }} {...safeProps}>
-        {children}
-      </Typography>
-    );
-  },
-  h2: (props: any) => {
-    const { node, children, ...safeProps } = props;
-    return (
-      <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.75, mt: 1.25, fontSize: '1rem' }} {...safeProps}>
-        {children}
-      </Typography>
-    );
-  },
-  h3: (props: any) => {
-    const { node, children, ...safeProps } = props;
-    return (
-      <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1, fontSize: '0.95rem' }} {...safeProps}>
-        {children}
-      </Typography>
-    );
-  },
-  p: (props: any) => {
-    const { node, children, ...safeProps } = props;
-    return (
-      <Typography variant="body2" sx={{ mb: 1, lineHeight: 1.7, fontSize: '0.95rem' }} {...safeProps}>
-        {children}
-      </Typography>
-    );
-  },
-  ul: (props: any) => {
-    const { node, children, ...safeProps } = props;
-    return (
-      <Box component="ul" sx={{ pl: 2, mb: 1 }} {...safeProps}>
-        {children}
-      </Box>
-    );
-  },
-  ol: (props: any) => {
-    const { node, children, ...safeProps } = props;
-    return (
-      <Box component="ol" sx={{ pl: 2, mb: 1 }} {...safeProps}>
-        {children}
-      </Box>
-    );
-  },
-  li: (props: any) => {
-    const { node, children, ...safeProps } = props;
-    return (
-      <Typography component="li" variant="body2" sx={{ fontSize: '0.95rem', lineHeight: 1.7, mb: 0.5 }} {...safeProps}>
-        {children}
-      </Typography>
-    );
-  },
-  code: (props: any) => {
-    const { node, inline, children, ...safeProps } = props;
-    return (
-      <Box
-        component="code"
-        sx={{
-          bgcolor: '#f5f5f5',
-          px: 0.5,
-          py: 0.25,
-          borderRadius: 0.5,
-          fontSize: '0.9em',
-          fontFamily: 'monospace'
-        }}
-        {...safeProps}
-      >
-        {children}
-      </Box>
-    );
-  },
-  strong: (props: any) => {
-    const { node, children, ...safeProps } = props;
-    return (
-      <Box component="strong" sx={{ fontWeight: 600 }} {...safeProps}>
-        {children}
-      </Box>
-    );
-  }
-};
-
-/**
  * StreamingItemRenderer Component
- * Renders streaming items with proper formatting (Markdown for final answers, plain text for thoughts/summarizations)
+ * Renders streaming items with proper formatting (Markdown for final answers, hybrid for thoughts/summarizations)
  * Memoized to prevent unnecessary re-renders during rapid streaming updates
  */
 const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
   if (item.type === 'thought') {
-    // Render thought as plain text (matching DB rendering)
+    // Render thought with hybrid markdown support (matching DB rendering)
+    const hasMarkdown = hasMarkdownSyntax(item.content);
+    
     return (
       <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
         <Typography 
@@ -200,24 +117,37 @@ const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
         >
           💭
         </Typography>
-        <Typography 
-          variant="body1" 
-          sx={{ 
-            whiteSpace: 'pre-wrap', 
-            wordBreak: 'break-word',
-            lineHeight: 1.7,
-            fontSize: '1rem',
-            color: 'text.primary'
-          }}
-        >
-          {item.content}
-        </Typography>
+        {hasMarkdown ? (
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <ReactMarkdown
+              components={thoughtMarkdownComponents}
+              skipHtml
+            >
+              {item.content}
+            </ReactMarkdown>
+          </Box>
+        ) : (
+          <Typography 
+            variant="body1" 
+            sx={{ 
+              whiteSpace: 'pre-wrap', 
+              wordBreak: 'break-word',
+              lineHeight: 1.7,
+              fontSize: '1rem',
+              color: 'text.primary'
+            }}
+          >
+            {item.content}
+          </Typography>
+        )}
       </Box>
     );
   }
   
   if (item.type === 'summarization') {
-    // Render summarization with amber header, subtle left border, and dimmed text (matching DB rendering)
+    // Render summarization with hybrid markdown support (maintains amber styling)
+    const hasMarkdown = hasMarkdownSyntax(item.content);
+    
     return (
       <Box sx={{ mb: 1.5 }}>
         {/* Header with amber styling */}
@@ -249,26 +179,38 @@ const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
         {/* Content with subtle left border and dimmed text */}
         <Box 
           sx={{ 
-            display: 'flex', 
-            gap: 1.5, 
             pl: 3.5,
             ml: 3.5,
             py: 0.5,
             borderLeft: '2px solid rgba(237, 108, 2, 0.2)' // Subtle amber left border
           }}
         >
-          <Typography
-            variant="body1"
-            sx={{
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              lineHeight: 1.7,
-              fontSize: '1rem',
-              color: 'text.secondary' // Slightly dimmed to differentiate from thoughts
-            }}
-          >
-            {item.content}
-          </Typography>
+          {hasMarkdown ? (
+            <Box sx={{ 
+              '& p': { color: 'text.secondary' }, // Apply dimmed color to markdown paragraphs
+              '& li': { color: 'text.secondary' }  // Apply dimmed color to list items
+            }}>
+              <ReactMarkdown
+                components={thoughtMarkdownComponents}
+                skipHtml
+              >
+                {item.content}
+              </ReactMarkdown>
+            </Box>
+          ) : (
+            <Typography
+              variant="body1"
+              sx={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                lineHeight: 1.7,
+                fontSize: '1rem',
+                color: 'text.secondary' // Slightly dimmed to differentiate from thoughts
+              }}
+            >
+              {item.content}
+            </Typography>
+          )}
         </Box>
       </Box>
     );
