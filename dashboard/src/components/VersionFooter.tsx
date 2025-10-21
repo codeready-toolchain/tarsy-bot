@@ -1,35 +1,17 @@
-import { useState, useEffect } from 'react';
 import { Box, Typography, Tooltip } from '@mui/material';
 import { DASHBOARD_VERSION } from '../config/env';
-import { apiClient } from '../services/api';
+import { useVersion } from '../contexts/VersionContext';
 
 /**
  * VersionFooter component
- * Displays version information in the footer
+ * Displays version information in the footer with live updates
+ * - Backend version updates every 30 seconds via VersionContext
  * - Shows single "Version: xxx" if dashboard and agent versions match
  * - Shows separate "Dashboard version: xxx" and "Agent version: yyy" if they differ
  */
 function VersionFooter() {
-  const [agentVersion, setAgentVersion] = useState<string | null>(null);
-  const [backendStatus, setBackendStatus] = useState<string>('checking');
-  
-  useEffect(() => {
-    // Fetch backend version from health endpoint
-    const fetchBackendVersion = async () => {
-      try {
-        const health: { status: string; version?: string; [key: string]: any } = await apiClient.healthCheck();
-        const version = health.version || 'unknown';
-        setAgentVersion(version);
-        setBackendStatus(health.status || 'unknown');
-      } catch (error) {
-        console.error('Failed to fetch backend version:', error);
-        setAgentVersion('unavailable');
-        setBackendStatus('error');
-      }
-    };
-    
-    fetchBackendVersion();
-  }, []);
+  // Get backend version from context (shared polling, no duplicates)
+  const { backendVersion: agentVersion, backendStatus } = useVersion();
   
   // Determine what to display
   const showSingleVersion = agentVersion && agentVersion === DASHBOARD_VERSION;

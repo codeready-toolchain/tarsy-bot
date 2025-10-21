@@ -161,10 +161,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
   // Sort all items chronologically
   chatItems.sort((a, b) => a.timestamp_us - b.timestamp_us);
 
-  console.log(`📋 Parsed chat flow: ${chatItems.length} items from ${session.stages?.length || 0} stages`);
-  console.log(`  - Thoughts: ${chatItems.filter(i => i.type === 'thought').length}`);
-  console.log(`  - Tool calls: ${chatItems.filter(i => i.type === 'tool_call').length}`);
-  console.log(`  - Final answers: ${chatItems.filter(i => i.type === 'final_answer').length}`);
+  // Parsed chat flow: ${chatItems.length} items from ${session.stages?.length || 0} stages
 
   return chatItems;
 }

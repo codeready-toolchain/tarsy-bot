@@ -124,28 +124,14 @@ export const urls = {
 } as const;
 
 /**
- * Simple validation and logging
+ * Log configuration on module load (development only)
  */
-export const validateConfig = (): void => {
-  console.log('✅ Clean configuration loaded:', {
-    environment: config.nodeEnv,
-    isDevelopment: config.isDevelopment,
-    
-    // Development settings
-    ...(config.isDevelopment && {
-      devServerHost: config.devServerHost,
-      devServerPort: config.devServerPort,
-      apiBase: urls.api.base || '(relative - using Vite proxy)',
-      wsBase: urls.websocket.base + ' (direct to backend, bypasses Vite proxy)',
-    }),
-    
-    // Production settings
-    ...(!config.isDevelopment && {
-      apiBase: urls.api.base,
-      wsBase: urls.websocket.base,
-    }),
+if (config.isDevelopment) {
+  console.log('🔧 Vite Configuration:', {
+    mode: config.nodeEnv,
+    backendHttpTarget: urls.api.base || 'http://localhost:8000',
+    backendWsTarget: urls.websocket.base,
+    devServerHost: config.devServerHost,
+    devServerPort: config.devServerPort
   });
-};
-
-// Always validate configuration on module load
-validateConfig();
+}

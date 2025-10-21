@@ -26,6 +26,9 @@ ENV VITE_APP_VERSION=$VERSION
 # Build production bundle
 RUN npm run build
 
+# Inject version into index.html (replace placeholder with actual version)
+RUN sed -i "s/__APP_VERSION__/${VERSION}/g" /app/dist/index.html
+
 # Stage 2: Serve with Nginx (unprivileged)
 FROM mirror.gcr.io/nginxinc/nginx-unprivileged:alpine
 

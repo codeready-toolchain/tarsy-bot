@@ -331,7 +331,7 @@ export function parseStageConversation(stage: StageExecution): StageConversation
           timestamp_us: timestamp,
           success: true
         });
-        console.log(`📝 Found summarization content in stage "${stage.stage_name}" (last message): ${lastAssistantMessage.content.length} characters`);
+        // Found summarization content in last assistant message
         
         // Only add steps that are truly new (not seen before in any previous interaction within this stage)
         for (const candidateStep of candidateSteps) {
@@ -360,7 +360,7 @@ export function parseStageConversation(stage: StageExecution): StageConversation
             timestamp_us: timestamp,
             success: true
           });
-          console.log(`🔍 Found final_analysis content in stage "${stage.stage_name}": ${parsed.finalAnswer.length} characters`);
+          // Found final_analysis content
         }
         
         // Only add steps that are truly new
@@ -386,7 +386,7 @@ export function parseStageConversation(stage: StageExecution): StageConversation
         
         // Debug logging for parsing (only for analysis steps)
         if (parsed.finalAnswer) {
-          console.log(`🔍 Found analysis content in stage "${stage.stage_name}": ${parsed.finalAnswer.length} characters`);
+          // Found analysis content
         }
         
         // Build candidate steps from this message
@@ -447,7 +447,7 @@ export function parseStageConversation(stage: StageExecution): StageConversation
     });
   }
 
-  console.log(`📋 Stage "${stage.stage_name}": Processed ${sortedInteractions.length} LLM interactions, extracted ${steps.length} unique steps (intra-stage deduplication)`);
+  // Intra-stage deduplication: processed ${sortedInteractions.length} interactions → ${steps.length} unique steps
 
   return {
     stage_name: stage.stage_name,

@@ -69,8 +69,7 @@ class APIClient {
    * Retries indefinitely until success or non-retryable error
    */
   private async retryOnTemporaryError<T>(
-    operation: () => Promise<T>,
-    operationName: string = 'API call'
+    operation: () => Promise<T>
   ): Promise<T> {
     let attempt = 0;
     
@@ -113,7 +112,7 @@ class APIClient {
         // Calculate exponential backoff delay with cap at MAX_RETRY_DELAY
         const exponentialDelay = INITIAL_RETRY_DELAY * Math.pow(2, attempt);
         const delay = Math.min(exponentialDelay, MAX_RETRY_DELAY);
-        console.log(`🔄 ${operationName} failed, retrying in ${delay}ms... (attempt ${attempt + 1})`);
+        console.log(`🔄 API retry in ${delay}ms (attempt ${attempt + 1})`);
         
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -174,8 +173,7 @@ class APIClient {
    */
   async getActiveSessionsWithRetry(): Promise<{ active_sessions: Session[], total_count: number }> {
     return this.retryOnTemporaryError(
-      () => this.getActiveSessions(),
-      'Get active sessions'
+      () => this.getActiveSessions()
     );
   }
 
@@ -186,8 +184,7 @@ class APIClient {
    */
   async getHistoricalSessionsWithRetry(page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
     return this.retryOnTemporaryError(
-      () => this.getHistoricalSessions(page, pageSize),
-      'Get historical sessions'
+      () => this.getHistoricalSessions(page, pageSize)
     );
   }
 
@@ -198,8 +195,7 @@ class APIClient {
    */
   async getFilteredSessionsWithRetry(filters: SessionFilter, page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
     return this.retryOnTemporaryError(
-      () => this.getFilteredSessions(filters, page, pageSize),
-      'Get filtered sessions'
+      () => this.getFilteredSessions(filters, page, pageSize)
     );
   }
 
@@ -455,13 +451,7 @@ class APIClient {
       
       const url = `/api/v1/history/sessions?${queryParams.toString()}`;
       
-      console.log('Filtered sessions API request:', {
-        filters,
-        url,
-        queryParams: queryParams.toString(),
-        searchSkipped: filters.search && filters.search.trim() && filters.search.trim().length < 3 ? 
-          `Search term "${filters.search.trim()}" too short (< 3 chars)` : false
-      });
+      // Filtered sessions API request
       
       const response = await this.client.get<SessionsResponse>(url);
       

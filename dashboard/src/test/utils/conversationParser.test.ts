@@ -294,8 +294,7 @@ describe('conversationParser - MCP Error Handling', () => {
     const actionSteps = stage.steps.filter(step => step.type === 'action')
     const thoughtSteps = stage.steps.filter(step => step.type === 'thought')
     
-    // Debug output to see what we actually got
-    console.log('Parsed steps:', stage.steps.map(s => ({ type: s.type, actionName: s.actionName, success: s.success, errorMessage: s.errorMessage })))
+    // Verify parsed steps structure
     
     // Should have at least one action step
     expect(actionSteps.length).toBeGreaterThan(0)

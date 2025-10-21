@@ -145,14 +145,6 @@ describe('API Client Retry Logic', () => {
     expect(mockClient.get).toHaveBeenCalledTimes(3);
     expect(mockClient.get).toHaveBeenCalledWith('/api/v1/history/active-sessions');
 
-    // Verify retry messages were logged with correct delays
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining(`Get active sessions failed, retrying in ${INITIAL_RETRY_DELAY}ms`)
-    );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining(`Get active sessions failed, retrying in ${INITIAL_RETRY_DELAY * 2}ms`)
-    );
-
     // Restore real timers
     vi.useRealTimers();
   });
@@ -244,14 +236,6 @@ describe('API Client Retry Logic', () => {
     expect(firstCallUrl).toContain('alert_type=PodCrashLooping');
     expect(firstCallUrl).toContain('page=1');
     expect(firstCallUrl).toContain('page_size=25');
-
-    // Verify retry messages were logged with correct delays
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining(`Get filtered sessions failed, retrying in ${INITIAL_RETRY_DELAY}ms`)
-    );
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining(`Get filtered sessions failed, retrying in ${INITIAL_RETRY_DELAY * 2}ms`)
-    );
 
     // Restore real timers
     vi.useRealTimers();

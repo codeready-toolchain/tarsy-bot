@@ -3,19 +3,23 @@ import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
 import { theme } from './theme';
 import { AuthProvider } from './contexts/AuthContext';
+import { VersionProvider, useVersion } from './contexts/VersionContext';
 import DashboardView from './components/DashboardView';
 import SessionDetailWrapper from './components/SessionDetailWrapper';
 import ManualAlertSubmission from './components/ManualAlertSubmission';
 import NotFoundPage from './components/NotFoundPage';
+import VersionUpdateBanner from './components/VersionUpdateBanner';
 
 /**
- * Main App component for the Tarsy Dashboard - Enhanced with Conversation View
- * Provides React Router setup with dual session detail views (conversation + technical)
+ * AppContent component - Contains routes and version-aware components
+ * Separated from App to allow useVersion hook inside VersionProvider
  */
-function App() {
+function AppContent() {
+  const { dashboardVersionChanged } = useVersion();
+  
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <>
+      <VersionUpdateBanner show={dashboardVersionChanged} />
       <AuthProvider>
         <Router>
           <Routes>
@@ -35,6 +39,22 @@ function App() {
           </Routes>
         </Router>
       </AuthProvider>
+    </>
+  );
+}
+
+/**
+ * Main App component for the Tarsy Dashboard - Enhanced with Conversation View
+ * Provides React Router setup with dual session detail views (conversation + technical)
+ * Includes version monitoring with update banner
+ */
+function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <VersionProvider>
+        <AppContent />
+      </VersionProvider>
     </ThemeProvider>
   );
 }

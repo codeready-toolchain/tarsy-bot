@@ -14,8 +14,20 @@ test-backend: ## Run backend tests only
 	$(MAKE) -C backend test
 
 .PHONY: test-dashboard
-test-dashboard: ## Run dashboard tests only
+test-dashboard: ## Run dashboard tests (CI mode - runs once)
+	@echo -e "$(GREEN)Running dashboard tests...$(NC)"
 	cd dashboard && npm run test:run
+	@echo -e "$(GREEN)✅ Dashboard tests completed$(NC)"
+
+.PHONY: test-dashboard-watch
+test-dashboard-watch: ## Run dashboard tests in watch mode (for development)
+	@echo -e "$(GREEN)Starting dashboard tests in watch mode...$(NC)"
+	cd dashboard && npm test
+
+.PHONY: test-dashboard-ui
+test-dashboard-ui: ## Run dashboard tests with UI (interactive mode)
+	@echo -e "$(GREEN)Starting dashboard tests with UI...$(NC)"
+	cd dashboard && npm run test:ui
 
 .PHONY: test-dashboard-build
 test-dashboard-build: ## Run dashboard TypeScript build check (for CI)
