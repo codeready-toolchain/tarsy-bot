@@ -360,6 +360,8 @@ function ConversationTimeline({
           content += `   Error: ${item.errorMessage}\n`;
         }
         content += '\n';
+      } else if (item.type === 'summarization') {
+        content += `📋 Tool Result Summary${item.mcp_event_id ? ` (MCP: ${item.mcp_event_id})` : ''}:\n${item.content}\n\n`;
       } else if (item.type === 'final_answer') {
         content += `🎯 Final Answer:\n${item.content}\n\n`;
       }

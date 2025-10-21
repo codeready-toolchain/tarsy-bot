@@ -57,6 +57,14 @@ export const formatInteractionForCopy = (interaction: TimelineItem): string => {
       const llmDetails = interaction.details as LLMInteraction;
       content += `Model: ${llmDetails.model_name || 'N/A'}\n`;
       
+      // Show interaction type if it's a summarization
+      const interactionType = llmDetails.interaction_type || 'investigation';
+      if (interactionType === 'summarization') {
+        content += `Interaction Type: Summarization${llmDetails.mcp_event_id ? ` (MCP Event: ${llmDetails.mcp_event_id})` : ''}\n`;
+      } else if (interactionType === 'final_analysis') {
+        content += `Interaction Type: Final Analysis\n`;
+      }
+      
       // EP-0014: Use getMessages helper to extract conversation messages properly
       const messages = getMessages(llmDetails);
       

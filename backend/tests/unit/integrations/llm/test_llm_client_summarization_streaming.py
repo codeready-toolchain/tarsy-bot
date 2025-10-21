@@ -66,7 +66,7 @@ class TestLLMClientSummarizationStreaming:
                 })
         
         with patch("tarsy.database.init_db.get_async_session_factory") as mock_factory, \
-             patch("tarsy.services.events.publisher.publish_transient_event", side_effect=capture_publish):
+             patch("tarsy.services.events.publisher.publish_transient_event", new_callable=AsyncMock, side_effect=capture_publish):
             mock_session = AsyncMock()
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
@@ -127,7 +127,7 @@ class TestLLMClientSummarizationStreaming:
                 })
         
         with patch("tarsy.database.init_db.get_async_session_factory") as mock_factory, \
-             patch("tarsy.services.events.publisher.publish_transient_event", side_effect=capture_publish):
+             patch("tarsy.services.events.publisher.publish_transient_event", new_callable=AsyncMock, side_effect=capture_publish):
             mock_session = AsyncMock()
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
@@ -170,7 +170,7 @@ class TestLLMClientSummarizationStreaming:
                 published_events.append(args[2])
         
         with patch("tarsy.database.init_db.get_async_session_factory") as mock_factory, \
-             patch("tarsy.services.events.publisher.publish_transient_event", side_effect=capture_publish):
+             patch("tarsy.services.events.publisher.publish_transient_event", new_callable=AsyncMock, side_effect=capture_publish):
             mock_session = AsyncMock()
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
@@ -210,7 +210,7 @@ class TestLLMClientSummarizationStreaming:
                 published_events.append(args[2])
         
         with patch("tarsy.database.init_db.get_async_session_factory") as mock_factory, \
-             patch("tarsy.services.events.publisher.publish_transient_event", side_effect=capture_publish):
+             patch("tarsy.services.events.publisher.publish_transient_event", new_callable=AsyncMock, side_effect=capture_publish):
             mock_session = AsyncMock()
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
@@ -254,7 +254,7 @@ class TestLLMClientSummarizationStreaming:
                 })
         
         with patch("tarsy.database.init_db.get_async_session_factory") as mock_factory, \
-             patch("tarsy.services.events.publisher.publish_transient_event", side_effect=capture_publish):
+             patch("tarsy.services.events.publisher.publish_transient_event", new_callable=AsyncMock, side_effect=capture_publish):
             mock_session = AsyncMock()
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session

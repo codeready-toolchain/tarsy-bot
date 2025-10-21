@@ -287,8 +287,8 @@ class LLMClient:
                             token = self._extract_token_content(chunk)
                             accumulated_content += token
                             
-                            # Detect start of "Thought:" streaming
-                            if not is_streaming_thought and not is_streaming_final_answer:
+                            # Detect start of "Thought:" streaming (disabled during summarization)
+                            if (not is_streaming_summarization) and (not is_streaming_thought) and (not is_streaming_final_answer):
                                 if "Thought:" in accumulated_content and "Final Answer:" not in accumulated_content:
                                     is_streaming_thought = True
                                     token_count_since_last_send = 0
@@ -734,7 +734,7 @@ class LLMClient:
                         logger.warning(
                             f"LLM streaming requested but database is {db_dialect}. "
                             "Real-time streaming requires PostgreSQL with NOTIFY support. "
-                            "Streaming events will be skipped."
+                            "Events will be published but may not be delivered in real time."
                         )
                         self._sqlite_warning_logged = True
                 
@@ -766,7 +766,7 @@ class LLMClient:
             delay_match = re.search(r'retry_delay\s*{\s*seconds:\s*(\d+)', error_message)
             if delay_match:
                 return int(delay_match.group(1))
-        except:
+        except Exception:
             pass
         return None
     

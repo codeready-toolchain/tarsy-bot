@@ -885,6 +885,120 @@ describe('chatFlowParser - Integration with Existing Features', () => {
     }
   })
 
+  it('should correctly use last assistant message for summarization even when user message is last', () => {
+    // Regression test: ensures we use the computed lastAssistantMessage
+    // instead of messages[messages.length - 1] which could pick a user message
+    const mockSession: DetailedSession = {
+      session_id: 'test-session-user-last',
+      alert_type: 'TestAlert',
+      agent_type: 'test-agent',
+      status: 'completed',
+      started_at_us: 1000000,
+      completed_at_us: 2000000,
+      alert_data: {},
+      stages: [{
+        execution_id: 'stage-1',
+        session_id: 'test-session-user-last',
+        stage_id: 'user-last',
+        stage_index: 0,
+        stage_name: 'Edge Case Test',
+        agent: 'TestAgent',
+        status: 'completed',
+        started_at_us: 1000000,
+        completed_at_us: 2000000,
+        duration_ms: 1000,
+        llm_interactions: [{
+          event_id: 'llm-1',
+          type: 'llm',
+          timestamp_us: 1100000,
+          duration_ms: 200,
+          step_description: 'Summarization with trailing user message',
+          details: {
+            model_name: 'test-model',
+            interaction_type: 'summarization',
+            mcp_event_id: 'mcp-1',
+            conversation: {
+              messages: [
+                {
+                  role: 'user',
+                  content: 'Summarize this tool result: ...'
+                },
+                {
+                  role: 'assistant',
+                  content: 'The tool successfully completed and returned the expected results.'
+                },
+                {
+                  role: 'user',
+                  content: 'Some trailing user message'
+                }
+              ]
+            },
+            success: true,
+            total_tokens: 50,
+            input_tokens: 20,
+            output_tokens: 30,
+            temperature: null,
+            error_message: null,
+            tool_calls: null,
+            tool_results: null
+          }
+        }],
+        mcp_communications: [{
+          event_id: 'mcp-1',
+          type: 'mcp',
+          timestamp_us: 1050000,
+          duration_ms: 100,
+          step_description: 'Tool call',
+          details: {
+            tool_name: 'test_tool',
+            server_name: 'test-server',
+            communication_type: 'tool_call',
+            parameters: {},
+            result: { success: true },
+            available_tools: {},
+            success: true,
+            error_message: null
+          }
+        }],
+        total_interactions: 2,
+        stage_output: null,
+        error_message: null,
+        llm_interaction_count: 1,
+        mcp_communication_count: 1,
+        stage_input_tokens: null,
+        stage_output_tokens: null,
+        stage_total_tokens: null
+      }],
+      total_interactions: 2,
+      final_analysis: null,
+      session_metadata: {},
+      chain_definition: null,
+      current_stage_id: null,
+      current_stage_index: 0,
+      chain_id: null,
+      session_input_tokens: null,
+      session_output_tokens: null,
+      session_total_tokens: null,
+      duration_ms: 1000,
+      created_at: null,
+      updated_at: null,
+      chronological_interactions: []
+    } as unknown as DetailedSession
+
+    const chatFlow = parseSessionChatFlow(mockSession)
+
+    // Should have: stage_start, tool_call, summarization
+    expect(chatFlow.length).toBe(3)
+
+    const summarization = chatFlow.find(item => item.type === 'summarization')
+    expect(summarization).toBeDefined()
+    
+    // Should use the assistant message content, not the trailing user message
+    expect(summarization!.content).toBe('The tool successfully completed and returned the expected results.')
+    expect(summarization!.content).not.toContain('trailing user message')
+    expect(summarization!.mcp_event_id).toBe('mcp-1')
+  })
+
   it('should work correctly with getChatFlowStats (no summarization count)', () => {
     const mockSession: DetailedSession = {
       session_id: 'test-session-stats',

@@ -33,7 +33,8 @@ class TestLLMClientStreamingWithMCPEventID:
         with patch(
             "tarsy.database.init_db.get_async_session_factory"
         ) as mock_factory, patch(
-            "tarsy.services.events.publisher.publish_transient_event"
+            "tarsy.services.events.publisher.publish_transient_event",
+            new_callable=AsyncMock
         ) as mock_publish:
             mock_session = AsyncMock()
             mock_session_context = AsyncMock()
@@ -64,7 +65,8 @@ class TestLLMClientStreamingWithMCPEventID:
         with patch(
             "tarsy.database.init_db.get_async_session_factory"
         ) as mock_factory, patch(
-            "tarsy.services.events.publisher.publish_transient_event"
+            "tarsy.services.events.publisher.publish_transient_event",
+            new_callable=AsyncMock
         ) as mock_publish:
             mock_session = AsyncMock()
             mock_session_context = AsyncMock()

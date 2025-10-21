@@ -138,7 +138,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
         }
       } else if (interactionType === 'summarization') {
         // Summarization interactions have plain text in the last assistant message
-        const lastAssistantMessage = messages[messages.length - 1];
+        // Use the lastAssistantMessage already computed earlier (not messages[messages.length - 1])
         if (lastAssistantMessage && lastAssistantMessage.content) {
           chatItems.push({
             type: 'summarization',
