@@ -281,7 +281,7 @@ class TestPublishMCPToolCallStarted:
              patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
             await publish_mcp_tool_call_started(
                 session_id="test-session-123",
-                request_id="request-456",
+                communication_id="comm-456",
                 server_name="kubernetes",
                 tool_name="kubectl_get_pods",
                 tool_arguments={"namespace": "default"},
@@ -294,7 +294,7 @@ class TestPublishMCPToolCallStarted:
             event = call_args[0][2]
             assert event.type == "mcp.tool_call.started"
             assert event.session_id == "test-session-123"
-            assert event.request_id == "request-456"
+            assert event.communication_id == "comm-456"
             assert event.server_name == "kubernetes"
             assert event.tool_name == "kubectl_get_pods"
             assert event.tool_arguments == {"namespace": "default"}
@@ -312,7 +312,7 @@ class TestPublishMCPToolCallStarted:
              patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
             await publish_mcp_tool_call_started(
                 session_id="test-session-123",
-                request_id="request-456",
+                communication_id="comm-456",
                 server_name="kubernetes",
                 tool_name="kubectl_get_pods",
                 tool_arguments={}
@@ -340,7 +340,7 @@ class TestPublishMCPToolCallStarted:
              patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
             await publish_mcp_tool_call_started(
                 session_id="test-session-123",
-                request_id="request-789",
+                communication_id="comm-789",
                 server_name="kubernetes",
                 tool_name="kubectl_get_pods",
                 tool_arguments=complex_args
@@ -362,7 +362,7 @@ class TestPublishMCPToolCallStarted:
             # Should not raise
             await publish_mcp_tool_call_started(
                 session_id="test-session-123",
-                request_id="request-456",
+                communication_id="comm-456",
                 server_name="kubernetes",
                 tool_name="kubectl_get_pods",
                 tool_arguments={}
