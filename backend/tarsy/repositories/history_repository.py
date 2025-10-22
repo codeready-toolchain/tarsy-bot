@@ -781,6 +781,7 @@ class HistoryRepository:
                 alert_type=session.alert_type,
                 agent_type=session.agent_type,
                 status=AlertSessionStatus(session.status),
+                author=session.author,
                 
                 # Timing info
                 started_at_us=session.started_at_us,
