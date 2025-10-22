@@ -76,11 +76,26 @@ class MCPClient:
                 env_keys = sorted(env.keys()) if env else []
                 logger.debug("  Env keys: %s", env_keys)
 
-                # Create and initialize session using shared helper
-                session = await self._create_session(server_id, server_config)
-                self.sessions[server_id] = session
-                logger.info(f"Successfully initialized MCP server: {server_id}")
+                # Create and initialize session using shared helper with timeout
+                # Use a reasonable timeout to prevent hanging during startup
+                try:
+                    session = await asyncio.wait_for(
+                        self._create_session(server_id, server_config),
+                        timeout=30.0  # 30 second timeout for initialization
+                    )
+                    self.sessions[server_id] = session
+                    logger.info(f"Successfully initialized MCP server: {server_id}")
+                except asyncio.TimeoutError:
+                    raise Exception(f"Server initialization timed out after 30 seconds") from None
 
+            except asyncio.CancelledError:
+                # Handle cancellation during initialization (e.g., timeout or shutdown)
+                error_msg = "Server initialization was cancelled (timeout or connection failure)"
+                logger.warning(f"MCP server {server_id} initialization cancelled: {error_msg}")
+                self.failed_servers[server_id] = error_msg
+                # Ensure we don't leave partial state in sessions dict
+                if server_id in self.sessions:
+                    del self.sessions[server_id]
             except Exception as e:
                 error_details = extract_error_details(e)
                 logger.error(f"Failed to initialize MCP server {server_id}: {error_details}", exc_info=True)
