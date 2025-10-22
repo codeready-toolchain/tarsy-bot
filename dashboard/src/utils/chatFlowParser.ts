@@ -18,7 +18,7 @@ export interface ChatFlowItemData {
   success?: boolean; // For tool_call
   errorMessage?: string; // For tool_call
   duration_ms?: number | null; // For tool_call
-  mcp_event_id?: string; // For summarization - links to the tool call being summarized
+  mcp_event_id?: string; // For tool_call and summarization - used for deduplication
 }
 
 
@@ -97,6 +97,9 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
 
     for (const mcp of mcpCommunications) {
+      // API returns 'id' or 'event_id' (maps to communication_id in DB)
+      const mcpEventId = mcp.event_id || mcp.id;
+      
       chatItems.push({
         type: 'tool_call',
         timestamp_us: mcp.timestamp_us,
@@ -106,7 +109,8 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
         serverName: mcp.details.server_name,
         success: mcp.details.success !== false,
         errorMessage: mcp.details.error_message || undefined,
-        duration_ms: mcp.duration_ms
+        duration_ms: mcp.duration_ms,
+        mcp_event_id: mcpEventId // For deduplication with streaming items
       });
     }
   }

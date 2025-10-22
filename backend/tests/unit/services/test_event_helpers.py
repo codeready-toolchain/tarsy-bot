@@ -13,6 +13,7 @@ from tarsy.services.events.event_helpers import (
     publish_session_completed,
     publish_session_failed,
     publish_llm_interaction,
+    publish_mcp_tool_call_started,
     publish_mcp_tool_call,
     publish_mcp_tool_list,
     publish_stage_started,
@@ -262,6 +263,110 @@ class TestPublishLLMInteraction:
              patch("tarsy.services.events.event_helpers.publish_event", side_effect=Exception("DB error")):
             # Should not raise
             await publish_llm_interaction("test-session-123", "interaction-456")
+
+
+@pytest.mark.unit
+class TestPublishMCPToolCallStarted:
+    """Test publish_mcp_tool_call_started helper."""
+
+    @pytest.mark.asyncio
+    async def test_publishes_mcp_tool_call_started_event(self):
+        """Test that it publishes mcp.tool_call.started event with all required fields."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
+            await publish_mcp_tool_call_started(
+                session_id="test-session-123",
+                communication_id="comm-456",
+                server_name="kubernetes",
+                tool_name="kubectl_get_pods",
+                tool_arguments={"namespace": "default"},
+                stage_id="stage-789"
+            )
+
+            mock_publish.assert_called_once()
+            call_args = mock_publish.call_args
+            assert call_args[0][1] == EventChannel.session_details("test-session-123")
+            event = call_args[0][2]
+            assert event.type == "mcp.tool_call.started"
+            assert event.session_id == "test-session-123"
+            assert event.communication_id == "comm-456"
+            assert event.server_name == "kubernetes"
+            assert event.tool_name == "kubectl_get_pods"
+            assert event.tool_arguments == {"namespace": "default"}
+            assert event.stage_id == "stage-789"
+
+    @pytest.mark.asyncio
+    async def test_publishes_without_stage_id(self):
+        """Test publishing without stage_id."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
+            await publish_mcp_tool_call_started(
+                session_id="test-session-123",
+                communication_id="comm-456",
+                server_name="kubernetes",
+                tool_name="kubectl_get_pods",
+                tool_arguments={}
+            )
+
+            event = mock_publish.call_args[0][2]
+            assert event.stage_id is None
+
+    @pytest.mark.asyncio
+    async def test_publishes_with_complex_arguments(self):
+        """Test publishing with complex tool arguments."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        complex_args = {
+            "namespace": "production",
+            "labels": {"app": "frontend", "version": "v1.2.3"},
+            "limit": 100,
+            "nested": {"field": "value"}
+        }
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
+            await publish_mcp_tool_call_started(
+                session_id="test-session-123",
+                communication_id="comm-789",
+                server_name="kubernetes",
+                tool_name="kubectl_get_pods",
+                tool_arguments=complex_args
+            )
+
+            event = mock_publish.call_args[0][2]
+            assert event.tool_arguments == complex_args
+
+    @pytest.mark.asyncio
+    async def test_handles_publish_error(self):
+        """Test that it handles publish errors gracefully."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", side_effect=Exception("DB error")):
+            # Should not raise
+            await publish_mcp_tool_call_started(
+                session_id="test-session-123",
+                communication_id="comm-456",
+                server_name="kubernetes",
+                tool_name="kubectl_get_pods",
+                tool_arguments={}
+            )
 
 
 @pytest.mark.unit

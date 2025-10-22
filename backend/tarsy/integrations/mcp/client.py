@@ -406,6 +406,17 @@ class MCPClient:
             # Get request ID for logging
             request_id = ctx.get_request_id()
             
+            # Emit started event before execution (for real-time UI feedback)
+            from tarsy.services.events.event_helpers import publish_mcp_tool_call_started
+            await publish_mcp_tool_call_started(
+                session_id=session_id,
+                communication_id=ctx.interaction.communication_id,
+                server_name=server_name,
+                tool_name=tool_name,
+                tool_arguments=parameters,
+                stage_id=stage_execution_id
+            )
+            
             # Log the outgoing tool call
             self._log_mcp_request(server_name, tool_name, parameters, request_id)
             

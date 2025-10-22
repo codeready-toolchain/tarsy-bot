@@ -70,6 +70,22 @@ class LLMInteractionEvent(BaseEvent):
     )
 
 
+class MCPToolCallStartedEvent(BaseEvent):
+    """MCP tool call started - before execution."""
+
+    type: Literal["mcp.tool_call.started"] = "mcp.tool_call.started"
+    session_id: str = Field(description="Session identifier")
+    communication_id: str = Field(
+        description="Communication ID (primary key) for deduplication with DB"
+    )
+    stage_id: Optional[str] = Field(
+        default=None, description="Stage execution identifier"
+    )
+    server_name: str = Field(description="MCP server name")
+    tool_name: str = Field(description="Tool name")
+    tool_arguments: dict = Field(description="Tool arguments")
+
+
 class MCPToolCallEvent(BaseEvent):
     """MCP tool was called during processing."""
 

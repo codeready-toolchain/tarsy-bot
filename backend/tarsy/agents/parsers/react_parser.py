@@ -99,17 +99,12 @@ class ReActParser:
         # Parse sections using existing logic from builders.py
         sections = ReActParser._extract_sections(response)
         
-        # Check for final answer first
-        if sections.get('final_answer'):
-            return ReActResponse(
-                response_type=ResponseType.FINAL_ANSWER,
-                thought=sections.get('thought'),
-                final_answer=sections['final_answer']
-            )
-        
-        # Check for action (with or without thought - LLMs sometimes skip thought)
+        # Check for action first (with or without thought - LLMs sometimes skip thought)
         action = sections.get('action')
         action_input = sections.get('action_input')
+        
+        # If both Final Answer AND Action+ActionInput exist, prefer Action
+        # (Final Answer should be terminal - nothing should come after it)
         if action and action_input is not None:  # Allow empty action_input for tools with no parameters
             try:
                 tool_call = ReActParser._convert_to_tool_call(action, action_input)
@@ -124,6 +119,14 @@ class ReActParser:
                 # Log the error and return malformed response
                 logger.error(f"Invalid action format: {str(e)}")
                 return ReActResponse(response_type=ResponseType.MALFORMED, thought=None)
+        
+        # Check for final answer (only if no valid action was found)
+        if sections.get('final_answer'):
+            return ReActResponse(
+                response_type=ResponseType.FINAL_ANSWER,
+                thought=sections.get('thought'),
+                final_answer=sections['final_answer']
+            )
         
         # Malformed response
         return ReActResponse(response_type=ResponseType.MALFORMED, thought=None)
@@ -178,9 +181,28 @@ class ReActParser:
                     found_sections.add('thought')
                     if line.startswith('Thought:'):
                         thought_content = ReActParser._extract_section_content(line, 'Thought:')
+                        
+                        # Check if there's a mid-line Final Answer in the thought content
+                        # This handles cases like "Thought: Some text.Final Answer: answer"
+                        if ReActParser._has_midline_final_answer(thought_content):
+                            # Split at the Final Answer boundary
+                            match = re.search(r'[.!?][`\s*]*Final Answer:', thought_content)
+                            if match:
+                                # Store thought up to the final answer
+                                parsed['thought'] = thought_content[:match.start() + 1].strip()  # Keep the punctuation
+                                # Extract the final answer content
+                                remaining = thought_content[match.start() + 1:].strip()  # Remove leading punctuation
+                                final_answer_match = re.search(r'Final Answer:\s*(.*)', remaining)
+                                if final_answer_match:
+                                    parsed['final_answer'] = final_answer_match.group(1).strip()
+                                    found_sections.add('final_answer')
+                                current_section = 'final_answer'  # Continue collecting final answer content
+                                content_lines = [parsed.get('final_answer', '')]
+                            else:
+                                content_lines = [thought_content]
                         # Check if there's a mid-line Action in the thought content
                         # This handles cases like "Thought: Some text.Action: tool"
-                        if ReActParser._has_midline_action(thought_content):
+                        elif ReActParser._has_midline_action(thought_content):
                             # Split at the Action boundary
                             match = re.search(r'[.!?][`\s*]*Action:', thought_content)
                             if match:
@@ -311,9 +333,25 @@ class ReActParser:
             if line.startswith('Final Answer:'):
                 return True
         
-        # TIER 2: If we're looking for final_answer and didn't find it, stop here
-        # This ensures we won't confuse mid-line "Action:" with "Final Answer:"
+        # TIER 2: If we're looking for final_answer and didn't find it in standard position,
+        # check for mid-line occurrence (similar to Action fallback)
         if section_type == 'final_answer':
+            # Don't detect mid-line Final Answer if the line starts with another section header
+            # (Thought/Action/ActionInput take precedence - they'll handle mid-line Final Answer themselves)
+            if line.startswith(('Thought:', 'Thought ', 'Action:', 'Action Input:')):
+                return False
+            
+            # Look for "Final Answer:" appearing mid-line after sentence-ending punctuation
+            # This handles cases where LLM doesn't add newline before Final Answer
+            if 'Final Answer:' in line:
+                # Match: sentence ending (. ! ?) + optional space/backtick/closing-markup + "Final Answer:"
+                pattern = r'[.!?][`\s*]*Final Answer:'
+                if re.search(pattern, line):
+                    logger.info(
+                        f"Parser fallback: detected mid-line 'Final Answer:' after sentence boundary in: "
+                        f"{line[:80]}{'...' if len(line) > 80 else ''}"
+                    )
+                    return True
             return False
         
         # TIER 3: Fallback detection for Action only - handle malformed LLM output
@@ -356,6 +394,14 @@ class ReActParser:
         if not text or 'Action:' not in text:
             return False
         pattern = r'[.!?][`\s*]*Action:'
+        return bool(re.search(pattern, text))
+    
+    @staticmethod
+    def _has_midline_final_answer(text: str) -> bool:
+        """Check if text contains a mid-line Final Answer: after sentence boundary."""
+        if not text or 'Final Answer:' not in text:
+            return False
+        pattern = r'[.!?][`\s*]*Final Answer:'
         return bool(re.search(pattern, text))
 
     @staticmethod
@@ -576,14 +622,23 @@ class ReActParser:
         return """
 IMPORTANT: Please follow the exact ReAct format:
 
-1. Use colons: "Thought:", "Action:", "Action Input:"
-2. Start each section on a NEW LINE
+1. Use colons: "Thought:", "Action:", "Action Input:", "Final Answer:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
 3. Stop after Action Input - the system provides Observations
 
-Required structure:
+Required structure for investigation:
 Thought: [your reasoning]
 Action: [tool name]
-Action Input: [parameters]"""
+Action Input: [parameters]
+
+For tools with no parameters (keep Action Input empty):
+Thought: [your reasoning]
+Action: [tool name]
+Action Input:
+
+Required structure for conclusion:
+Thought: [final reasoning]
+Final Answer: [complete analysis]"""
     
     @staticmethod  
     def format_observation(mcp_data: Dict[str, Any]) -> str:
