@@ -722,17 +722,42 @@ function ConversationTimeline({
             
             {/* Show streaming items at the end (will be cleared by deduplication when DB data arrives) */}
             {streamingItems.size > 0 && (
-              Array.from(streamingItems.entries())
-                // Sort by type to ensure thoughts appear before final answers (prevents visual glitches)
-                .sort(([_keyA, itemA], [_keyB, itemB]) => {
-                  // Type priority: thought = 0, final_answer = 1
-                  const priorityA = itemA.type === 'thought' ? 0 : 1;
-                  const priorityB = itemB.type === 'thought' ? 0 : 1;
-                  return priorityA - priorityB;
-                })
-                .map(([entryKey, entryValue]) => (
-                  <StreamingItemRenderer key={entryKey} item={entryValue} />
-                ))
+              (() => {
+                // Get recent DB items (last 3 items) to filter out streaming duplicates during deduplication lag
+                const recentDbItems = chatFlow.slice(-3);
+                
+                return Array.from(streamingItems.entries())
+                  // Filter out streaming items that match recent DB items (prevents visual duplicates during deduplication)
+                  .filter(([, streamItem]) => {
+                    // Check if a matching DB item exists (same type + content match)
+                    const hasMatchingDbItem = recentDbItems.some(dbItem => 
+                      dbItem.type === streamItem.type &&
+                      (
+                        // For thoughts/final_answer, check content match
+                        (dbItem.content && streamItem.content && 
+                         dbItem.content.trim() === streamItem.content.trim()) ||
+                        // For tool_call, check mcp_event_id match
+                        (streamItem.type === 'tool_call' && 
+                         dbItem.mcp_event_id === streamItem.mcp_event_id) ||
+                        // For summarization, check mcp_event_id match
+                        (streamItem.type === 'summarization' && 
+                         dbItem.mcp_event_id === streamItem.mcp_event_id)
+                      )
+                    );
+                    // Only show if no matching DB item found (prevents showing duplicates before deduplication clears them)
+                    return !hasMatchingDbItem;
+                  })
+                  // Sort by type to ensure thoughts appear before final answers (prevents visual glitches)
+                  .sort(([_keyA, itemA], [_keyB, itemB]) => {
+                    // Type priority: thought = 0, final_answer = 1
+                    const priorityA = itemA.type === 'thought' ? 0 : 1;
+                    const priorityB = itemB.type === 'thought' ? 0 : 1;
+                    return priorityA - priorityB;
+                  })
+                  .map(([entryKey, entryValue]) => (
+                    <StreamingItemRenderer key={entryKey} item={entryValue} />
+                  ));
+              })()
             )}
 
             {/* Processing indicator at bottom when session is still in progress */}
