@@ -145,8 +145,10 @@ async def submit_alert(request: Request) -> AlertResponse:
                 """Basic input sanitization to prevent XSS and injection attacks."""
                 if not isinstance(value, str):
                     return value
-                # Remove potentially dangerous characters
-                sanitized = re.sub(r'[<>"\'\x00-\x1f\x7f-\x9f]', '', value)
+                # Remove potentially dangerous characters while preserving newlines, tabs, and carriage returns
+                # Keep: \t (0x09), \n (0x0A), \r (0x0D)
+                # Remove: other control chars (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F, 0x7F-0x9F) and dangerous chars
+                sanitized = re.sub(r'[<>"\'\x00-\x08\x0B\x0C\x0E-\x1f\x7f-\x9f]', '', value)
                 # Limit string length
                 return sanitized[:10000]  # 10KB limit per string field
             

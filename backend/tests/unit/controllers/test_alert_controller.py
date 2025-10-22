@@ -360,6 +360,211 @@ class TestInputSanitization:
         # Should succeed after sanitization
         assert response.status_code == 200
 
+    @pytest.mark.parametrize(
+        "input_data,test_description",
+        [
+            (
+                {"message": "line1\nline2\nline3"},
+                "Simple newlines in message"
+            ),
+            (
+                {"yaml_data": "name: test\nnode: server1\ncontainers:\n    - name: app"},
+                "YAML-like structure with newlines"
+            ),
+            (
+                {"multiline": "First line\nSecond line\nThird line\nFourth line"},
+                "Multiple consecutive newlines"
+            ),
+            (
+                {"logs": "Error occurred\nStack trace:\n  at function1()\n  at function2()"},
+                "Log messages with indentation"
+            ),
+        ],
+    )
+    def test_sanitization_preserves_newlines(
+        self, client, input_data, test_description
+    ):
+        """Test that alerts with newlines are accepted and processed successfully."""
+        alert_data = {
+            "alert_type": "test",
+            "runbook": "https://example.com/runbook.md",
+            "data": input_data
+        }
+        
+        # Mock the callback
+        app.state.process_alert_callback = AsyncMock()
+        
+        response = client.post("/api/v1/alerts", json=alert_data)
+        
+        # If newlines were being stripped (old bug), special characters in newlines 
+        # would cause sanitization issues. Success means newlines were preserved.
+        assert response.status_code == 200, f"{test_description}: Failed to process alert with newlines"
+        data = response.json()
+        assert data["status"] == "queued"
+        assert "session_id" in data
+
+    @pytest.mark.parametrize(
+        "input_data,test_description",
+        [
+            (
+                {"message": "column1\tcolumn2\tcolumn3"},
+                "Tab-separated values"
+            ),
+            (
+                {"code": "def function():\n\treturn True"},
+                "Code with tab indentation"
+            ),
+            (
+                {"data": "field1\tfield2\nvalue1\tvalue2"},
+                "Mixed tabs and newlines"
+            ),
+        ],
+    )
+    def test_sanitization_preserves_tabs(
+        self, client, input_data, test_description
+    ):
+        """Test that alerts with tabs are accepted and processed successfully."""
+        alert_data = {
+            "alert_type": "test",
+            "runbook": "https://example.com/runbook.md",
+            "data": input_data
+        }
+        
+        # Mock the callback
+        app.state.process_alert_callback = AsyncMock()
+        
+        response = client.post("/api/v1/alerts", json=alert_data)
+        
+        assert response.status_code == 200, f"{test_description}: Failed to process alert with tabs"
+        data = response.json()
+        assert data["status"] == "queued"
+        assert "session_id" in data
+
+    def test_sanitization_preserves_carriage_returns(self, client):
+        """Test that carriage returns are preserved in sanitized data."""
+        alert_data = {
+            "alert_type": "test",
+            "runbook": "https://example.com/runbook.md",
+            "data": {
+                "message": "line1\r\nline2\r\nline3"
+            }
+        }
+        
+        # Mock the callback
+        app.state.process_alert_callback = AsyncMock()
+        
+        response = client.post("/api/v1/alerts", json=alert_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "queued"
+        assert "session_id" in data
+
+    def test_sanitization_removes_dangerous_characters_but_keeps_whitespace(self, client):
+        """Test that dangerous characters are removed but whitespace is preserved."""
+        alert_data = {
+            "alert_type": "test",
+            "runbook": "https://example.com/runbook.md",
+            "data": {
+                "message": "<script>alert('xss')</script>\nLegitimate data\twith tab"
+            }
+        }
+        
+        # Mock the callback
+        app.state.process_alert_callback = AsyncMock()
+        
+        response = client.post("/api/v1/alerts", json=alert_data)
+        
+        # Should successfully sanitize and accept the alert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "queued"
+        assert "session_id" in data
+
+    def test_yaml_structure_preservation(self, client):
+        """Test that YAML-like structures with newlines and indentation are accepted."""
+        yaml_data = """name: nanochat-0
+node: ip-10-0-67-102.ec2.internal
+ec2_instance: i-08428461af8eea9e4
+containers:
+    - name: nanochat
+      reports:
+        - analyzer: file-system-analyzer
+          outcome: suspicious
+          contents:
+            - detected: Ragnarok
+              source: /proc/1169670/root/opt/app-root/src/models/file.jsonl"""
+        
+        alert_data = {
+            "alert_type": "kubernetes",
+            "runbook": "https://example.com/runbook.md",
+            "data": {
+                "message": yaml_data
+            }
+        }
+        
+        # Mock the callback
+        app.state.process_alert_callback = AsyncMock()
+        
+        response = client.post("/api/v1/alerts", json=alert_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "queued"
+        assert "session_id" in data
+
+    def test_deep_sanitization_preserves_newlines_in_nested_structures(self, client):
+        """Test that deeply nested objects with newlines are accepted successfully."""
+        nested_data = {
+            "alert_type": "test",
+            "runbook": "https://example.com/runbook.md",
+            "data": {
+                "level1": {
+                    "message": "First\nSecond\nThird",
+                    "level2": {
+                        "logs": "Error\nStack trace:\n  Line 1\n  Line 2",
+                        "level3": {
+                            "details": "Info\nMore info\nEven more"
+                        }
+                    }
+                }
+            }
+        }
+        
+        # Mock the callback
+        app.state.process_alert_callback = AsyncMock()
+        
+        response = client.post("/api/v1/alerts", json=nested_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "queued"
+        assert "session_id" in data
+
+    def test_sanitization_preserves_whitespace_in_arrays(self, client):
+        """Test that array elements with whitespace are accepted successfully."""
+        alert_data = {
+            "alert_type": "test",
+            "runbook": "https://example.com/runbook.md",
+            "data": {
+                "logs": [
+                    "Log line 1\nwith newline",
+                    "Log line 2\twith tab",
+                    "Log line 3\r\nwith CRLF"
+                ]
+            }
+        }
+        
+        # Mock the callback
+        app.state.process_alert_callback = AsyncMock()
+        
+        response = client.post("/api/v1/alerts", json=alert_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "queued"
+        assert "session_id" in data
+
     def test_deep_sanitization_nested_objects(self, client):
         """Test deep sanitization of nested objects."""
         nested_data = {

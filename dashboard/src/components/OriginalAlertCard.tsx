@@ -47,7 +47,7 @@ const getEnvironmentColor = (environment: string): 'default' | 'primary' | 'seco
  * Component to render individual field values based on their type
  */
 const FieldRenderer: React.FC<{ fieldKey: string; renderedValue: RenderableValue }> = ({ fieldKey, renderedValue }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true); // Start expanded by default
 
   switch (renderedValue.type) {
     case 'url':
@@ -117,24 +117,72 @@ const FieldRenderer: React.FC<{ fieldKey: string; renderedValue: RenderableValue
 
     case 'multiline':
       return (
-        <Typography
-          component="pre"
-          sx={{ 
-            backgroundColor: 'grey.50', 
-            p: 1.5, 
-            borderRadius: 1,
-            fontFamily: 'monospace',
-            fontSize: '0.825rem',
-            lineHeight: 1.6,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            overflowX: 'auto',
-            maxHeight: '200px',
-            overflowY: 'auto'
-          }}
-        >
-          {renderedValue.displayValue}
-        </Typography>
+        <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <IconButton
+              size="small"
+              onClick={() => setIsExpanded(!isExpanded)}
+              sx={{ mr: 1 }}
+            >
+              {isExpanded ? <ExpandLess /> : <ExpandMore />}
+            </IconButton>
+            <Typography variant="caption" color="text.secondary">
+              {isExpanded ? 'Collapse' : 'Expand'} ({renderedValue.displayValue.split('\n').length} lines)
+            </Typography>
+          </Box>
+          <Collapse in={isExpanded}>
+            <Typography
+              component="pre"
+              sx={{ 
+                backgroundColor: 'grey.50', 
+                p: 1.5, 
+                borderRadius: 1,
+                fontFamily: 'monospace',
+                fontSize: '0.825rem',
+                lineHeight: 1.6,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                overflowX: 'auto',
+                maxHeight: '500px',
+                overflowY: 'auto',
+                border: '1px solid',
+                borderColor: 'grey.300'
+              }}
+            >
+              {renderedValue.displayValue}
+            </Typography>
+          </Collapse>
+          {!isExpanded && (
+            <Typography
+              component="pre"
+              sx={{ 
+                backgroundColor: 'grey.50', 
+                p: 1.5, 
+                borderRadius: 1,
+                fontFamily: 'monospace',
+                fontSize: '0.825rem',
+                lineHeight: 1.6,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                overflowX: 'auto',
+                maxHeight: '80px',
+                overflowY: 'hidden',
+                position: 'relative',
+                '&::after': {
+                  content: '""',
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: '30px',
+                  background: 'linear-gradient(to bottom, transparent, rgba(0,0,0,0.05))'
+                }
+              }}
+            >
+              {renderedValue.displayValue.split('\n').slice(0, 3).join('\n')}
+            </Typography>
+          )}
+        </Box>
       );
 
     case 'timestamp':
@@ -178,6 +226,7 @@ const FieldRenderer: React.FC<{ fieldKey: string; renderedValue: RenderableValue
  * Displays any alert data structure dynamically with proper formatting
  */
 function OriginalAlertCard({ alertData }: OriginalAlertCardProps) {
+  const [isExpanded, setIsExpanded] = useState(true); // Start expanded by default
   const sortedFields = sortAlertFields(alertData);
 
   // Extract special fields for header if they exist
@@ -185,110 +234,133 @@ function OriginalAlertCard({ alertData }: OriginalAlertCardProps) {
   const environment = alertData.environment;
   const alertType = alertData.alert_type;
 
+  // Count total number of fields
+  const fieldCount = sortedFields.length;
+
   return (
     <Paper sx={{ p: 3 }}>
-      <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-        Original Alert Data
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          Original Alert Data
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="caption" color="text.secondary">
+            {fieldCount} {fieldCount === 1 ? 'field' : 'fields'}
+          </Typography>
+          <IconButton
+            size="small"
+            onClick={() => setIsExpanded(!isExpanded)}
+            aria-label={isExpanded ? 'Collapse alert data' : 'Expand alert data'}
+            sx={{ 
+              transition: 'transform 0.2s',
+              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
+            }}
+          >
+            <ExpandMore />
+          </IconButton>
+        </Box>
+      </Box>
       
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {/* Alert Header - Show special fields if they exist */}
-        <ErrorBoundary 
-          componentName="Alert Header"
-          fallback={
-            <Typography variant="body2" color="error">
-              Error displaying alert header information
-            </Typography>
-          }
-        >
-          {(severity || environment || alertType) && (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                {severity && (
-                  <Chip 
-                    label={String(severity).toUpperCase()} 
-                    color={getSeverityColor(String(severity))} 
-                    size="small"
-                    sx={{ fontWeight: 600 }}
-                  />
-                )}
-                {environment && (
-                  <Chip 
-                    label={String(environment).toUpperCase()} 
-                    color={getEnvironmentColor(String(environment))} 
-                    size="small"
-                    variant="outlined"
-                  />
-                )}
-                {alertType && (
-                  <Typography variant="body2" color="text.secondary">
-                    {String(alertType)}
-                  </Typography>
-                )}
+      <Collapse in={isExpanded}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {/* Alert Header - Show special fields if they exist */}
+          <ErrorBoundary 
+            componentName="Alert Header"
+            fallback={
+              <Typography variant="body2" color="error">
+                Error displaying alert header information
+              </Typography>
+            }
+          >
+            {(severity || environment || alertType) && (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                  {severity && (
+                    <Chip 
+                      label={String(severity).toUpperCase()} 
+                      color={getSeverityColor(String(severity))} 
+                      size="small"
+                      sx={{ fontWeight: 600 }}
+                    />
+                  )}
+                  {environment && (
+                    <Chip 
+                      label={String(environment).toUpperCase()} 
+                      color={getEnvironmentColor(String(environment))} 
+                      size="small"
+                      variant="outlined"
+                    />
+                  )}
+                  {alertType && (
+                    <Typography variant="body2" color="text.secondary">
+                      {String(alertType)}
+                    </Typography>
+                  )}
+                </Box>
               </Box>
-            </Box>
-          )}
-        </ErrorBoundary>
+            )}
+          </ErrorBoundary>
 
-        {/* Dynamic Fields */}
-        <ErrorBoundary 
-          componentName="Dynamic Alert Fields"
-          fallback={
-            <Box sx={{ p: 2, border: '1px dashed', borderColor: 'error.main', borderRadius: 1 }}>
-              <Typography variant="body2" color="error" gutterBottom>
-                Error displaying alert data fields
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                The alert data structure may be corrupted or contain invalid content.
-                Raw data: {JSON.stringify(alertData).substring(0, 200)}...
-              </Typography>
-            </Box>
-          }
-        >
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {sortedFields.map(([key, value]) => {
-              try {
-                const renderedValue = renderValue(value, key);
-                const displayKey = formatKeyName(key);
+          {/* Dynamic Fields */}
+          <ErrorBoundary 
+            componentName="Dynamic Alert Fields"
+            fallback={
+              <Box sx={{ p: 2, border: '1px dashed', borderColor: 'error.main', borderRadius: 1 }}>
+                <Typography variant="body2" color="error" gutterBottom>
+                  Error displaying alert data fields
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  The alert data structure may be corrupted or contain invalid content.
+                  Raw data: {JSON.stringify(alertData).substring(0, 200)}...
+                </Typography>
+              </Box>
+            }
+          >
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {sortedFields.map(([key, value]) => {
+                try {
+                  const renderedValue = renderValue(value, key);
+                  const displayKey = formatKeyName(key);
 
-                return (
-                  <ErrorBoundary 
-                    key={key}
-                    componentName={`Field: ${key}`}
-                    fallback={
-                      <Box sx={{ p: 1, bgcolor: 'error.50', border: '1px solid', borderColor: 'error.200', borderRadius: 1 }}>
-                        <Typography variant="caption" color="error">
-                          Error rendering field "{key}": {String(value).substring(0, 100)}
+                  return (
+                    <ErrorBoundary 
+                      key={key}
+                      componentName={`Field: ${key}`}
+                      fallback={
+                        <Box sx={{ p: 1, bgcolor: 'error.50', border: '1px solid', borderColor: 'error.200', borderRadius: 1 }}>
+                          <Typography variant="caption" color="error">
+                            Error rendering field "{key}": {String(value).substring(0, 100)}
+                          </Typography>
+                        </Box>
+                      }
+                    >
+                      <Box>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                          {displayKey}
                         </Typography>
+                        <FieldRenderer fieldKey={key} renderedValue={renderedValue} />
                       </Box>
-                    }
-                  >
-                    <Box>
-                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        {displayKey}
+                    </ErrorBoundary>
+                  );
+                } catch (error) {
+                  // Fallback for individual field rendering errors
+                  return (
+                    <Box key={key} sx={{ p: 1, bgcolor: 'warning.50', border: '1px solid', borderColor: 'warning.200', borderRadius: 1 }}>
+                      <Typography variant="subtitle2" color="warning.dark" gutterBottom>
+                        {formatKeyName(key)} (Rendering Error)
                       </Typography>
-                      <FieldRenderer fieldKey={key} renderedValue={renderedValue} />
+                      <Typography variant="caption" color="text.secondary">
+                        Failed to render this field. Raw value: {String(value).substring(0, 100)}
+                        {String(value).length > 100 && '...'}
+                      </Typography>
                     </Box>
-                  </ErrorBoundary>
-                );
-              } catch (error) {
-                // Fallback for individual field rendering errors
-                return (
-                  <Box key={key} sx={{ p: 1, bgcolor: 'warning.50', border: '1px solid', borderColor: 'warning.200', borderRadius: 1 }}>
-                    <Typography variant="subtitle2" color="warning.dark" gutterBottom>
-                      {formatKeyName(key)} (Rendering Error)
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Failed to render this field. Raw value: {String(value).substring(0, 100)}
-                      {String(value).length > 100 && '...'}
-                    </Typography>
-                  </Box>
-                );
-              }
+                  );
+                }
             })}
           </Box>
         </ErrorBoundary>
-      </Box>
+        </Box>
+      </Collapse>
     </Paper>
   );
 }
