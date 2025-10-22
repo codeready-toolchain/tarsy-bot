@@ -425,6 +425,116 @@ Final Answer: This second one should be ignored."""
         assert result.final_answer.startswith("First analysis result.")
         assert result.response_type == ResponseType.FINAL_ANSWER
     
+    def test_parse_midline_final_answer_after_sentence(self):
+        """Test parsing Final Answer that appears mid-line after sentence boundary.
+        
+        This tests the fallback detection for cases where LLM doesn't add newline
+        before Final Answer, similar to the case that occurred in production where
+        the LLM wrote: '...legitimate and the alert as a false positive.Final Answer:'
+        """
+        # Test with period (most common case)
+        response = """Thought: The investigation is complete. The cluster is healthy.Final Answer:
+**User Activity Summary**: Cluster healthy.
+
+**Classification**: HEALTHY"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.FINAL_ANSWER
+        assert result.is_final_answer is True
+        assert result.thought == "The investigation is complete. The cluster is healthy."
+        assert result.final_answer == """**User Activity Summary**: Cluster healthy.
+
+**Classification**: HEALTHY"""
+        
+        # Test with exclamation mark
+        response2 = """Thought: This is clearly not an issue!Final Answer: Everything is working correctly."""
+        result2 = ReActParser.parse_response(response2)
+        assert result2.response_type == ResponseType.FINAL_ANSWER
+        assert result2.thought == "This is clearly not an issue!"
+        assert result2.final_answer == "Everything is working correctly."
+        
+        # Test with question mark
+        response3 = """Thought: Is this a problem?Final Answer: No, it is not."""
+        result3 = ReActParser.parse_response(response3)
+        assert result3.response_type == ResponseType.FINAL_ANSWER
+        assert result3.thought == "Is this a problem?"
+        assert result3.final_answer == "No, it is not."
+    
+    def test_parse_action_takes_precedence_over_final_answer(self):
+        """Test that Action+ActionInput takes precedence when both Final Answer and Action exist.
+        
+        This ensures Final Answer is terminal - if there's a complete Action+ActionInput pair,
+        the LLM clearly intended to take an action, not provide a final answer.
+        """
+        # Case 1: Action+ActionInput AFTER Final Answer - should prefer Action
+        response1 = """Thought: The investigation is complete.Final Answer: Everything is healthy.
+Action: kubernetes-server.pods_list
+Action Input: namespace: default"""
+        
+        result1 = ReActParser.parse_response(response1)
+        
+        assert result1.response_type == ResponseType.THOUGHT_ACTION
+        assert result1.has_action is True
+        assert result1.is_final_answer is False
+        assert result1.action == "kubernetes-server.pods_list"
+        assert result1.action_input == "namespace: default"
+        assert result1.tool_call is not None
+        assert result1.tool_call.server == "kubernetes-server"
+        assert result1.tool_call.tool == "pods_list"
+        
+        # Case 2: Final Answer AFTER Action+ActionInput - should still prefer Action
+        response2 = """Thought: I need to check the pods.
+Action: kubernetes-server.pods_list
+Action Input: namespace: default
+Final Answer: This should be ignored."""
+        
+        result2 = ReActParser.parse_response(response2)
+        
+        assert result2.response_type == ResponseType.THOUGHT_ACTION
+        assert result2.has_action is True
+        assert result2.is_final_answer is False
+        assert result2.action == "kubernetes-server.pods_list"
+    
+    def test_parse_final_answer_when_action_incomplete(self):
+        """Test that Final Answer is returned when Action is incomplete (no ActionInput).
+        
+        If there's only Action without ActionInput, the action is malformed,
+        so we should return Final Answer if it exists.
+        """
+        response = """Thought: Analysis complete.
+Action: kubernetes-server.pods_list
+Final Answer: The pods are running normally."""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.FINAL_ANSWER
+        assert result.is_final_answer is True
+        assert result.has_action is False
+        assert result.final_answer == "The pods are running normally."
+        assert result.thought == "Analysis complete."
+    
+    def test_parse_final_answer_only_no_action(self):
+        """Test that Final Answer works normally when there's no Action at all."""
+        # Case 1: Standard format
+        response1 = """Thought: Analysis complete.
+Final Answer: Everything is working correctly."""
+        
+        result1 = ReActParser.parse_response(response1)
+        
+        assert result1.response_type == ResponseType.FINAL_ANSWER
+        assert result1.is_final_answer is True
+        assert result1.final_answer == "Everything is working correctly."
+        
+        # Case 2: Mid-line format (from previous test)
+        response2 = """Thought: Done.Final Answer: All good."""
+        
+        result2 = ReActParser.parse_response(response2)
+        
+        assert result2.response_type == ResponseType.FINAL_ANSWER
+        assert result2.is_final_answer is True
+        assert result2.final_answer == "All good."
+    
     def test_parse_stops_at_hallucinated_observation(self):
         """Test parsing stops at hallucinated observations."""
         response = """Thought: I need to check the namespace status.
