@@ -8,16 +8,18 @@ import sys
 
 class HealthEndpointFilter(logging.Filter):
     """
-    Filter to suppress logging of successful health endpoint requests.
+    Filter to suppress logging of successful health and monitoring endpoint requests.
     
-    This filter prevents health check requests (used by Kubernetes probes)
-    from cluttering the logs. Only logs health endpoint requests that have errors
-    or return non-200 status codes.
+    This filter prevents frequently-polled monitoring endpoints from cluttering logs:
+    - /health - Kubernetes health probes
+    - /api/v1/system/warnings - Dashboard warning polling
+    
+    Only logs requests that have errors or return non-200 status codes.
     """
     
     def filter(self, record: logging.LogRecord) -> bool:
         """
-        Filter out successful health endpoint requests.
+        Filter out successful monitoring endpoint requests.
         
         Args:
             record: Log record to filter
@@ -36,9 +38,9 @@ class HealthEndpointFilter(logging.Filter):
                     path = record.args[2] if len(record.args) > 2 else ""
                     status_code = record.args[4] if len(record.args) > 4 else 0
                     
-                    # Filter out successful health endpoint requests (status 200)
+                    # Filter out successful monitoring endpoint requests (status 200)
                     # Still log errors (4xx, 5xx) and warnings (3xx)
-                    if path == "/health" and method == "GET":
+                    if method == "GET" and path in ("/health", "/api/v1/system/warnings"):
                         # Only suppress successful requests (200-299)
                         if isinstance(status_code, int) and 200 <= status_code < 300:
                             return False  # Suppress this log
@@ -81,8 +83,8 @@ def setup_logging(log_level: str = "INFO") -> None:
     logging.getLogger('tarsy').setLevel(numeric_level)
     logging.getLogger('uvicorn').setLevel(logging.INFO)
     
-    # Add filter to uvicorn.access logger to suppress health endpoint noise
-    # This prevents Kubernetes/OpenShift health probes from cluttering logs
+    # Add filter to uvicorn.access logger to suppress monitoring endpoint noise
+    # This prevents frequently-polled endpoints (health checks, warnings) from cluttering logs
     uvicorn_access_logger = logging.getLogger('uvicorn.access')
     uvicorn_access_logger.addFilter(HealthEndpointFilter())
     

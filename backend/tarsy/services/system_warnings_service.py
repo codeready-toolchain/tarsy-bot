@@ -108,22 +108,18 @@ class SystemWarningsService:
 
         logger = get_module_logger(__name__)
 
-        logger.info(
+        logger.debug(
             f"clear_warning_by_server_id: category={category}, server_id={server_id}, "
             f"current_warnings={len(self._warnings)}"
         )
 
         for warning_id, warning in list(self._warnings.items()):
-            logger.info(
-                f"  Checking warning {warning_id}: category={warning.category}, "
-                f"server_id={warning.server_id}, matches={warning.category == category and warning.server_id == server_id}"
-            )
             if warning.category == category and warning.server_id == server_id:
                 del self._warnings[warning_id]
-                logger.info(f"✓ Cleared warning {warning_id} for server: {server_id}")
+                logger.info(f"✓ Cleared warning for server: {server_id}")
                 return True
 
-        logger.info(f"✗ No warning found for server: {server_id}")
+        logger.debug(f"No warning found for server: {server_id}")
         return False
 
 

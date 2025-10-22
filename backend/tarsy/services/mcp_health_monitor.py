@@ -170,7 +170,7 @@ class MCPHealthMonitor:
         # Case 2: Server has no session OR ping failed (need recovery)
         # try_initialize_server() creates new session (replaces dead one if exists)
         if not has_session:
-            logger.info(f"Server {server_id} has no session, attempting initialization...")
+            logger.debug(f"Server {server_id} has no session, attempting initialization...")
         
         success = await self._mcp_client.try_initialize_server(server_id)
         
@@ -179,13 +179,13 @@ class MCPHealthMonitor:
             logger.debug(f"Session created for {server_id}, verifying with ping...")
             is_healthy = await self._mcp_client.ping(server_id)
             if is_healthy:
-                logger.info(f"✓ Successfully initialized {server_id}")
+                logger.info(f"✓ Successfully recovered {server_id}")
                 return True
             else:
-                logger.warning(f"✗ Session created for {server_id} but ping failed")
+                logger.debug(f"Session created for {server_id} but ping failed")
                 return False
         else:
-            logger.debug(f"✗ Failed to initialize {server_id}")
+            logger.debug(f"Failed to initialize {server_id}")
             return False
     
     def _ensure_warning(self, server_id: str) -> None:
@@ -228,10 +228,8 @@ class MCPHealthMonitor:
         Clear any warnings for this MCP server.
         Idempotent - safe to call even if no warning exists.
         """
-        result = self._warnings_service.clear_warning_by_server_id(
+        self._warnings_service.clear_warning_by_server_id(
             category=WarningCategory.MCP_INITIALIZATION,
             server_id=server_id,
         )
-        if result:
-            logger.info(f"✓ Cleared warning for recovered server: {server_id}")
 

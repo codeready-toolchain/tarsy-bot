@@ -387,7 +387,7 @@ class MCPClient:
                 if server_id in self.failed_servers:
                     del self.failed_servers[server_id]
                 
-                logger.info(f"✓ Successfully initialized previously failed server: {server_id}")
+                logger.debug(f"✓ Successfully initialized previously failed server: {server_id}")
                 return True
                 
             except asyncio.TimeoutError:
