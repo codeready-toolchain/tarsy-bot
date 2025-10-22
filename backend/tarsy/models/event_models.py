@@ -75,8 +75,8 @@ class MCPToolCallStartedEvent(BaseEvent):
 
     type: Literal["mcp.tool_call.started"] = "mcp.tool_call.started"
     session_id: str = Field(description="Session identifier")
-    request_id: str = Field(
-        description="Request identifier (will become interaction_id)"
+    communication_id: str = Field(
+        description="Communication ID (primary key) for deduplication with DB"
     )
     stage_id: Optional[str] = Field(
         default=None, description="Stage execution identifier"

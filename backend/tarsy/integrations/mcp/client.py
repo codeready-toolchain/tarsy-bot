@@ -410,7 +410,7 @@ class MCPClient:
             from tarsy.services.events.event_helpers import publish_mcp_tool_call_started
             await publish_mcp_tool_call_started(
                 session_id=session_id,
-                request_id=request_id,
+                communication_id=ctx.interaction.communication_id,
                 server_name=server_name,
                 tool_name=tool_name,
                 tool_arguments=parameters,

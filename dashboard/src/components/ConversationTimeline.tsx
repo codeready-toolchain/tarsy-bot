@@ -416,19 +416,17 @@ function ConversationTimeline({
     
     const handleStreamEvent = (event: any) => {
       if (event.type === 'mcp.tool_call.started') {
-        console.log('🔧 MCP tool call started:', event.tool_name, event.request_id);
-        
         setStreamingItems(prev => {
           const updated = new Map(prev);
-          // Use request_id as key (will match interaction_id later)
-          const key = `tool-${event.request_id}`;
+          // Use communication_id as key for deduplication with DB
+          const key = `tool-${event.communication_id}`;
           
           updated.set(key, {
-            type: 'tool_call',
+            type: 'tool_call' as const,
             toolName: event.tool_name,
             toolArguments: event.tool_arguments,
             serverName: event.server_name,
-            mcp_event_id: event.request_id, // For deduplication
+            mcp_event_id: event.communication_id, // Matches event_id in DB
             stage_execution_id: event.stage_id,
             waitingForDb: false
           });

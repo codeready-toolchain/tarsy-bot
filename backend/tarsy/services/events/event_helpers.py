@@ -133,7 +133,7 @@ async def publish_llm_interaction(
 
 async def publish_mcp_tool_call_started(
     session_id: str,
-    request_id: str,
+    communication_id: str,
     server_name: str,
     tool_name: str,
     tool_arguments: dict,
@@ -144,7 +144,7 @@ async def publish_mcp_tool_call_started(
 
     Args:
         session_id: Session identifier
-        request_id: Request identifier (will become interaction_id)
+        communication_id: Communication ID (primary key) for deduplication
         server_name: MCP server name
         tool_name: Tool name
         tool_arguments: Tool arguments
@@ -155,7 +155,7 @@ async def publish_mcp_tool_call_started(
         async with async_session_factory() as session:
             event = MCPToolCallStartedEvent(
                 session_id=session_id,
-                request_id=request_id,
+                communication_id=communication_id,
                 stage_id=stage_id,
                 server_name=server_name,
                 tool_name=tool_name,
@@ -164,7 +164,7 @@ async def publish_mcp_tool_call_started(
             await publish_event(
                 session, EventChannel.session_details(session_id), event
             )
-            logger.debug(f"Published mcp.tool_call.started event for {request_id}")
+            logger.debug(f"Published mcp.tool_call.started event for {communication_id}")
     except Exception as e:
         logger.warning(f"Failed to publish mcp.tool_call.started event: {e}")
 
