@@ -342,10 +342,11 @@ class MCPClient:
                 return False
             
             # Use list_tools as health check with short timeout
+            # 5 seconds is enough for local servers; connection refused is immediate
             session = self.sessions[server_id]
             await asyncio.wait_for(
                 session.list_tools(),
-                timeout=10.0  # Quick health check
+                timeout=5.0  # Fast failure detection for crashes
             )
             return True
             

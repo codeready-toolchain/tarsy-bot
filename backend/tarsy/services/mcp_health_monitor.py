@@ -145,8 +145,8 @@ class MCPHealthMonitor:
         Check if a single server is healthy.
         
         Handles two cases:
-        1. Server has session: ping it, if fails try to reinitialize
-        2. Server has no session: try to initialize it
+        1. Server has session: ping it - if fails, try to recover with new session
+        2. Server has no session: try to initialize it (startup failure recovery)
         
         Args:
             server_id: ID of the server to check
@@ -155,29 +155,35 @@ class MCPHealthMonitor:
             True if healthy, False otherwise
         """
         # Case 1: Server has a session - ping it
-        if server_id in self._mcp_client.sessions:
+        has_session = server_id in self._mcp_client.sessions
+        if has_session:
             is_healthy = await self._mcp_client.ping(server_id)
             if is_healthy:
                 logger.debug(f"✓ Server {server_id}: healthy")
                 return True
             else:
-                # Ping failed - try to reinitialize (will replace dead session)
-                logger.warning(f"✗ Server {server_id}: ping failed, attempting reinitialization")
-                success = await self._mcp_client.try_initialize_server(server_id)
-                if success:
-                    logger.info(f"✓ Successfully reinitialized {server_id}")
-                    return True
-                else:
-                    logger.debug(f"✗ Failed to reinitialize {server_id}")
-                    return False
+                # Ping failed - session is dead, try to recover with new session
+                # try_initialize_server() will replace the dead session
+                logger.warning(f"✗ Server {server_id}: ping failed, attempting recovery")
+                # Fall through to recovery attempt
         
-        # Case 2: Server has no session - try to initialize it
-        logger.info(f"Server {server_id} has no session, attempting initialization...")
+        # Case 2: Server has no session OR ping failed (need recovery)
+        # try_initialize_server() creates new session (replaces dead one if exists)
+        if not has_session:
+            logger.info(f"Server {server_id} has no session, attempting initialization...")
+        
         success = await self._mcp_client.try_initialize_server(server_id)
         
         if success:
-            logger.info(f"✓ Successfully initialized {server_id}")
-            return True
+            # Session created/replaced successfully - verify it works
+            logger.debug(f"Session created for {server_id}, verifying with ping...")
+            is_healthy = await self._mcp_client.ping(server_id)
+            if is_healthy:
+                logger.info(f"✓ Successfully initialized {server_id}")
+                return True
+            else:
+                logger.warning(f"✗ Session created for {server_id} but ping failed")
+                return False
         else:
             logger.debug(f"✗ Failed to initialize {server_id}")
             return False

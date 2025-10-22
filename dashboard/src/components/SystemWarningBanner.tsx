@@ -12,10 +12,10 @@ import { apiClient } from '../services/api';
  * - Missing GitHub token (using default runbook)
  * - Other configuration issues
  * 
- * Polls the backend API every 30 seconds (configurable) to fetch updated warnings.
+ * Polls the backend API every 10 seconds (configurable) to fetch updated warnings.
  */
 export const SystemWarningBanner: React.FC<SystemWarningBannerProps> = ({ 
-  pollInterval = 30000 
+  pollInterval = 10000 
 }) => {
   const [warnings, setWarnings] = useState<SystemWarning[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
