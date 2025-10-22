@@ -170,16 +170,18 @@ class TestAlertServiceAsyncInitialization:
         warnings = warnings_service.get_warnings()
         assert len(warnings) == 2
         
-        # Check first warning (argocd-server)
+        # Check first warning (argocd-server) - uses standardized message format
         assert warnings[0].category == WarningCategory.MCP_INITIALIZATION
         assert "argocd-server" in warnings[0].message
-        assert "FileNotFoundError" in warnings[0].message
+        assert "unreachable" in warnings[0].message.lower()
+        assert "FileNotFoundError" in warnings[0].details
         assert "Check argocd-server configuration" in warnings[0].details
         
-        # Check second warning (github-server)
+        # Check second warning (github-server) - uses standardized message format
         assert warnings[1].category == WarningCategory.MCP_INITIALIZATION
         assert "github-server" in warnings[1].message
-        assert "ConnectionError" in warnings[1].message
+        assert "unreachable" in warnings[1].message.lower()
+        assert "ConnectionError" in warnings[1].details
         assert "Check github-server configuration" in warnings[1].details
 
         # Verify agent factory was still initialized

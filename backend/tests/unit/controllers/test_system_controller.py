@@ -91,11 +91,14 @@ def test_get_system_warnings_response_format(client: TestClient) -> None:
         "message",
         "details",
         "timestamp",
+        "server_id",
     }
     assert isinstance(warning["warning_id"], str)
     assert isinstance(warning["category"], str)
     assert isinstance(warning["message"], str)
     assert isinstance(warning["timestamp"], int)
+    # server_id can be None or str
+    assert warning["server_id"] is None or isinstance(warning["server_id"], str)
 
 
 @pytest.mark.unit

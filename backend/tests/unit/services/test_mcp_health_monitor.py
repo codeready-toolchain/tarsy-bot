@@ -90,14 +90,18 @@ class TestMCPHealthMonitor:
         health_monitor: MCPHealthMonitor,
         mock_mcp_client: MagicMock,
     ) -> None:
-        """Test checking a server that has a session but ping fails."""
+        """Test checking a server that has a session but ping fails and recovery fails."""
         mock_mcp_client.sessions = {"server1": MagicMock()}
         mock_mcp_client.ping.return_value = False
+        mock_mcp_client.try_initialize_server.return_value = False
 
         is_healthy = await health_monitor._check_server("server1")
 
         assert is_healthy is False
-        mock_mcp_client.ping.assert_called_once_with("server1")
+        # Ping is called once to check health
+        assert mock_mcp_client.ping.call_count == 1
+        # Recovery is attempted after ping fails
+        mock_mcp_client.try_initialize_server.assert_called_once_with("server1")
 
     @pytest.mark.asyncio
     async def test_check_server_no_session_init_success(
@@ -105,15 +109,17 @@ class TestMCPHealthMonitor:
         health_monitor: MCPHealthMonitor,
         mock_mcp_client: MagicMock,
     ) -> None:
-        """Test checking a server with no session - initialization succeeds."""
+        """Test checking a server with no session - initialization succeeds and ping verifies."""
         mock_mcp_client.sessions = {}
         mock_mcp_client.try_initialize_server.return_value = True
+        mock_mcp_client.ping.return_value = True  # Verify session works
 
         is_healthy = await health_monitor._check_server("server1")
 
         assert is_healthy is True
         mock_mcp_client.try_initialize_server.assert_called_once_with("server1")
-        mock_mcp_client.ping.assert_not_called()
+        # After successful init, we ping to verify the session works
+        mock_mcp_client.ping.assert_called_once_with("server1")
 
     @pytest.mark.asyncio
     async def test_check_server_no_session_init_failure(
