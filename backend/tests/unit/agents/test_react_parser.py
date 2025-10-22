@@ -461,6 +461,42 @@ Final Answer: This second one should be ignored."""
         assert result3.thought == "Is this a problem?"
         assert result3.final_answer == "No, it is not."
     
+    def test_parse_midline_final_answer_with_thought_no_colon(self):
+        """Test parsing Final Answer mid-line when Thought section has no colon.
+        
+        Regression test for the case where:
+        1. Thought section starts with just "Thought" (no colon)
+        2. Content continues on following lines
+        3. Final Answer appears mid-line after sentence boundary
+        
+        This was failing before because mid-line Final Answer detection only worked
+        for "Thought:" (with colon), not "Thought" (without colon).
+        """
+        response = """Thought
+The configuration file confirms the application is running version 2.3.4 of the standard web server.
+
+I have enough information to provide a final answer.Final Answer:
+**System Status Summary**: The application is operating normally with expected resource utilization patterns.
+
+Recommended Action: MONITOR
+
+**Confidence Level**: HIGH"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.FINAL_ANSWER
+        assert result.is_final_answer is True
+        # Thought should be exactly the text before ".Final Answer:"
+        assert result.thought == """The configuration file confirms the application is running version 2.3.4 of the standard web server.
+
+I have enough information to provide a final answer."""
+        # Final answer should be exactly the text after "Final Answer:"
+        assert result.final_answer == """**System Status Summary**: The application is operating normally with expected resource utilization patterns.
+
+Recommended Action: MONITOR
+
+**Confidence Level**: HIGH"""
+    
     def test_parse_action_takes_precedence_over_final_answer(self):
         """Test that Action+ActionInput takes precedence when both Final Answer and Action exist.
         

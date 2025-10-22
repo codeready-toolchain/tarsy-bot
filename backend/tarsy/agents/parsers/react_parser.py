@@ -169,6 +169,15 @@ class ReActParser:
                 
                 # Handle Final Answer (can appear at any time)
                 if ReActParser._is_section_header(line, 'final_answer', found_sections):
+                    # If we're in a thought section and Final Answer appears mid-line,
+                    # add the thought content before Final Answer to the thought
+                    if current_section == 'thought' and ReActParser._has_midline_final_answer(line):
+                        match = re.search(r'[.!?][`\s*]*Final Answer:', line)
+                        if match:
+                            thought_before = line[:match.start() + 1].strip()
+                            if thought_before:
+                                content_lines.append(thought_before)
+                    
                     ReActParser._finalize_current_section(parsed, current_section, content_lines)
                     current_section = 'final_answer'
                     found_sections.add('final_answer')
@@ -246,7 +255,32 @@ class ReActParser:
                 else:
                     # Only add content if we're in a valid section
                     if current_section and content_lines is not None:
-                        content_lines.append(line)
+                        # Special handling: check for mid-line Final Answer in thought sections
+                        # (Backup detection in case section header detection misses it)
+                        if current_section == 'thought' and ReActParser._has_midline_final_answer(line):
+                            # Split at the Final Answer boundary
+                            match = re.search(r'[.!?][`\s*]*Final Answer:', line)
+                            if match:
+                                # Add thought content up to the final answer
+                                thought_before = line[:match.start() + 1].strip()  # Keep the punctuation
+                                if thought_before:
+                                    content_lines.append(thought_before)
+                                
+                                # Finalize thought section
+                                ReActParser._finalize_current_section(parsed, current_section, content_lines)
+                                
+                                # Extract the final answer content
+                                remaining = line[match.start() + 1:].strip()  # Remove leading punctuation
+                                final_answer_match = re.search(r'Final Answer:\s*(.*)', remaining)
+                                if final_answer_match:
+                                    parsed['final_answer'] = final_answer_match.group(1).strip()
+                                    found_sections.add('final_answer')
+                                    current_section = 'final_answer'  # Continue collecting final answer content
+                                    content_lines = [parsed['final_answer']]
+                            else:
+                                content_lines.append(line)
+                        else:
+                            content_lines.append(line)
             
             # Handle last section
             ReActParser._finalize_current_section(parsed, current_section, content_lines)
