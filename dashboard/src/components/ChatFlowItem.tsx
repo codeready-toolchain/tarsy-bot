@@ -8,7 +8,7 @@ import {
   hasMarkdownSyntax, 
   finalAnswerMarkdownComponents, 
   thoughtMarkdownComponents 
-} from '../utils/markdownComponents.tsx';
+} from '../utils/markdownComponents';
 
 interface ChatFlowItemProps {
   item: ChatFlowItemData;

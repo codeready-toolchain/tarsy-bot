@@ -18,7 +18,7 @@ import {
   hasMarkdownSyntax, 
   finalAnswerMarkdownComponents, 
   thoughtMarkdownComponents 
-} from '../utils/markdownComponents.tsx';
+} from '../utils/markdownComponents';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface ProcessingIndicatorProps {
