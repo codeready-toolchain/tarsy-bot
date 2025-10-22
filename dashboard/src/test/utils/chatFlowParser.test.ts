@@ -1184,3 +1184,291 @@ describe('chatFlowParser - Integration with Existing Features', () => {
   })
 })
 
+describe('chatFlowParser - MCP Tool Call Event ID Extraction', () => {
+  it('should extract mcp_event_id from tool call using event_id field', () => {
+    const mockSession: DetailedSession = {
+      session_id: 'test-session-event-id',
+      alert_type: 'TestAlert',
+      agent_type: 'test-agent',
+      status: 'completed',
+      started_at_us: 1000000,
+      completed_at_us: 2000000,
+      alert_data: {},
+      stages: [{
+        execution_id: 'stage-1',
+        session_id: 'test-session-event-id',
+        stage_id: 'test',
+        stage_index: 0,
+        stage_name: 'Test Stage',
+        agent: 'TestAgent',
+        status: 'completed',
+        started_at_us: 1000000,
+        completed_at_us: 2000000,
+        duration_ms: 1000,
+        llm_interactions: [],
+        mcp_communications: [{
+          event_id: 'mcp-event-123',
+          type: 'mcp',
+          timestamp_us: 1100000,
+          duration_ms: 200,
+          step_description: 'Get pods',
+          details: {
+            tool_name: 'get_pods',
+            server_name: 'kubernetes-server',
+            communication_type: 'tool_call',
+            tool_arguments: { namespace: 'default' },
+            tool_result: { pods: ['pod-1', 'pod-2'] },
+            available_tools: {},
+            success: true,
+            error_message: null
+          }
+        }],
+        total_interactions: 1,
+        stage_output: null,
+        error_message: null,
+        llm_interaction_count: 0,
+        mcp_communication_count: 1,
+        stage_input_tokens: null,
+        stage_output_tokens: null,
+        stage_total_tokens: null
+      }],
+      total_interactions: 1,
+      final_analysis: null,
+      session_metadata: {},
+      chain_definition: null,
+      current_stage_id: null,
+      current_stage_index: 0,
+      chain_id: null,
+      session_input_tokens: null,
+      session_output_tokens: null,
+      session_total_tokens: null,
+      duration_ms: 1000,
+      created_at: null,
+      updated_at: null,
+      chronological_interactions: []
+    } as unknown as DetailedSession
+
+    const chatFlow = parseSessionChatFlow(mockSession)
+
+    const toolCall = chatFlow.find(item => item.type === 'tool_call')
+    expect(toolCall).toBeDefined()
+    expect(toolCall!.mcp_event_id).toBe('mcp-event-123')
+    expect(toolCall!.toolName).toBe('get_pods')
+  })
+
+  it('should extract mcp_event_id from tool call using id field as fallback', () => {
+    const mockSession: DetailedSession = {
+      session_id: 'test-session-id-fallback',
+      alert_type: 'TestAlert',
+      agent_type: 'test-agent',
+      status: 'completed',
+      started_at_us: 1000000,
+      completed_at_us: 2000000,
+      alert_data: {},
+      stages: [{
+        execution_id: 'stage-1',
+        session_id: 'test-session-id-fallback',
+        stage_id: 'test',
+        stage_index: 0,
+        stage_name: 'Test Stage',
+        agent: 'TestAgent',
+        status: 'completed',
+        started_at_us: 1000000,
+        completed_at_us: 2000000,
+        duration_ms: 1000,
+        llm_interactions: [],
+        mcp_communications: [{
+          id: 'mcp-id-456', // Using id field instead of event_id
+          type: 'mcp',
+          timestamp_us: 1100000,
+          duration_ms: 200,
+          step_description: 'Get deployments',
+          details: {
+            tool_name: 'get_deployments',
+            server_name: 'kubernetes-server',
+            communication_type: 'tool_call',
+            tool_arguments: { namespace: 'production' },
+            tool_result: { deployments: ['deployment-1'] },
+            available_tools: {},
+            success: true,
+            error_message: null
+          }
+        } as any], // Cast to any since id field might not be in strict type
+        total_interactions: 1,
+        stage_output: null,
+        error_message: null,
+        llm_interaction_count: 0,
+        mcp_communication_count: 1,
+        stage_input_tokens: null,
+        stage_output_tokens: null,
+        stage_total_tokens: null
+      }],
+      total_interactions: 1,
+      final_analysis: null,
+      session_metadata: {},
+      chain_definition: null,
+      current_stage_id: null,
+      current_stage_index: 0,
+      chain_id: null,
+      session_input_tokens: null,
+      session_output_tokens: null,
+      session_total_tokens: null,
+      duration_ms: 1000,
+      created_at: null,
+      updated_at: null,
+      chronological_interactions: []
+    } as unknown as DetailedSession
+
+    const chatFlow = parseSessionChatFlow(mockSession)
+
+    const toolCall = chatFlow.find(item => item.type === 'tool_call')
+    expect(toolCall).toBeDefined()
+    expect(toolCall!.mcp_event_id).toBe('mcp-id-456')
+    expect(toolCall!.toolName).toBe('get_deployments')
+  })
+
+  it('should handle tool call with both event_id and id fields (event_id takes precedence)', () => {
+    const mockSession: DetailedSession = {
+      session_id: 'test-session-both-ids',
+      alert_type: 'TestAlert',
+      agent_type: 'test-agent',
+      status: 'completed',
+      started_at_us: 1000000,
+      completed_at_us: 2000000,
+      alert_data: {},
+      stages: [{
+        execution_id: 'stage-1',
+        session_id: 'test-session-both-ids',
+        stage_id: 'test',
+        stage_index: 0,
+        stage_name: 'Test Stage',
+        agent: 'TestAgent',
+        status: 'completed',
+        started_at_us: 1000000,
+        completed_at_us: 2000000,
+        duration_ms: 1000,
+        llm_interactions: [],
+        mcp_communications: [{
+          event_id: 'mcp-event-789',
+          id: 'mcp-id-999', // This should be ignored since event_id is present
+          type: 'mcp',
+          timestamp_us: 1100000,
+          duration_ms: 200,
+          step_description: 'Get services',
+          details: {
+            tool_name: 'get_services',
+            server_name: 'kubernetes-server',
+            communication_type: 'tool_call',
+            tool_arguments: { namespace: 'staging' },
+            tool_result: { services: ['service-1'] },
+            available_tools: {},
+            success: true,
+            error_message: null
+          }
+        } as any],
+        total_interactions: 1,
+        stage_output: null,
+        error_message: null,
+        llm_interaction_count: 0,
+        mcp_communication_count: 1,
+        stage_input_tokens: null,
+        stage_output_tokens: null,
+        stage_total_tokens: null
+      }],
+      total_interactions: 1,
+      final_analysis: null,
+      session_metadata: {},
+      chain_definition: null,
+      current_stage_id: null,
+      current_stage_index: 0,
+      chain_id: null,
+      session_input_tokens: null,
+      session_output_tokens: null,
+      session_total_tokens: null,
+      duration_ms: 1000,
+      created_at: null,
+      updated_at: null,
+      chronological_interactions: []
+    } as unknown as DetailedSession
+
+    const chatFlow = parseSessionChatFlow(mockSession)
+
+    const toolCall = chatFlow.find(item => item.type === 'tool_call')
+    expect(toolCall).toBeDefined()
+    // event_id should take precedence over id
+    expect(toolCall!.mcp_event_id).toBe('mcp-event-789')
+    expect(toolCall!.toolName).toBe('get_services')
+  })
+
+  it('should handle tool call with neither event_id nor id (mcp_event_id should be undefined)', () => {
+    const mockSession: DetailedSession = {
+      session_id: 'test-session-no-id',
+      alert_type: 'TestAlert',
+      agent_type: 'test-agent',
+      status: 'completed',
+      started_at_us: 1000000,
+      completed_at_us: 2000000,
+      alert_data: {},
+      stages: [{
+        execution_id: 'stage-1',
+        session_id: 'test-session-no-id',
+        stage_id: 'test',
+        stage_index: 0,
+        stage_name: 'Test Stage',
+        agent: 'TestAgent',
+        status: 'completed',
+        started_at_us: 1000000,
+        completed_at_us: 2000000,
+        duration_ms: 1000,
+        llm_interactions: [],
+        mcp_communications: [{
+          // No event_id or id field
+          type: 'mcp',
+          timestamp_us: 1100000,
+          duration_ms: 200,
+          step_description: 'Get nodes',
+          details: {
+            tool_name: 'get_nodes',
+            server_name: 'kubernetes-server',
+            communication_type: 'tool_call',
+            tool_arguments: {},
+            tool_result: { nodes: [] },
+            available_tools: {},
+            success: true,
+            error_message: null
+          }
+        } as any],
+        total_interactions: 1,
+        stage_output: null,
+        error_message: null,
+        llm_interaction_count: 0,
+        mcp_communication_count: 1,
+        stage_input_tokens: null,
+        stage_output_tokens: null,
+        stage_total_tokens: null
+      }],
+      total_interactions: 1,
+      final_analysis: null,
+      session_metadata: {},
+      chain_definition: null,
+      current_stage_id: null,
+      current_stage_index: 0,
+      chain_id: null,
+      session_input_tokens: null,
+      session_output_tokens: null,
+      session_total_tokens: null,
+      duration_ms: 1000,
+      created_at: null,
+      updated_at: null,
+      chronological_interactions: []
+    } as unknown as DetailedSession
+
+    const chatFlow = parseSessionChatFlow(mockSession)
+
+    const toolCall = chatFlow.find(item => item.type === 'tool_call')
+    expect(toolCall).toBeDefined()
+    expect(toolCall!.mcp_event_id).toBeUndefined()
+    expect(toolCall!.toolName).toBe('get_nodes')
+  })
+})
+
