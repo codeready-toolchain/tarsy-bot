@@ -369,6 +369,38 @@ function ConversationTimeline({
     return content;
   }, [chatFlow, chatStats, session.session_id, session.status, session.chain_id]);
 
+  // Filter and sort streaming items for display (avoids showing duplicates during deduplication lag)
+  const displayedStreamingItems = useMemo(() => {
+    if (streamingItems.size === 0) return [];
+    
+    // Get recent DB items (last 3) to filter out duplicates
+    const recentDbItems = chatFlow.slice(-3);
+    
+    return Array.from(streamingItems.entries())
+      .filter(([, streamItem]) => {
+        // Check if matching DB item exists
+        const hasMatchingDbItem = recentDbItems.some(dbItem => {
+          if (dbItem.type !== streamItem.type) return false;
+          
+          // Match by content for thoughts/final_answer
+          if (streamItem.type === 'thought' || streamItem.type === 'final_answer') {
+            return dbItem.content && streamItem.content && 
+                   dbItem.content.trim() === streamItem.content.trim();
+          }
+          
+          // Match by mcp_event_id for tool_call/summarization
+          return dbItem.mcp_event_id === streamItem.mcp_event_id;
+        });
+        
+        return !hasMatchingDbItem;
+      })
+      .sort(([_keyA, itemA], [_keyB, itemB]) => {
+        const priorityA = itemA.type === 'thought' ? 0 : 1;
+        const priorityB = itemB.type === 'thought' ? 0 : 1;
+        return priorityA - priorityB;
+      });
+  }, [streamingItems, chatFlow]);
+
   // Parse session data into chat flow
   useEffect(() => {
     if (session) {
@@ -513,22 +545,30 @@ function ConversationTimeline({
         for (let i = searchStart; i < searchEnd; i++) {
           const dbItem = chatFlow[i];
           
-          // Create unique key for this DB item (timestamp + type + identifier)
-          const itemKey = `${dbItem.timestamp_us}-${dbItem.type}-${dbItem.mcp_event_id || dbItem.content?.substring(0, 50)}`;
+          // Create unique key for this DB item based on its primary identifier
+          const itemKey = dbItem.mcp_event_id 
+            ? `${dbItem.timestamp_us}-${dbItem.type}-event-${dbItem.mcp_event_id}`
+            : `${dbItem.timestamp_us}-${dbItem.type}-content-${dbItem.content?.substring(0, 50)}`;
           
-          // Check if: matching type + (content OR mcp_event_id), AND not already claimed
-          const typesMatch = dbItem.type === streamingItem.type;
-          const contentsMatch = dbItem.content?.trim() === streamingItem.content?.trim();
+          // Separate matching logic by type for clarity
+          let shouldMatch = false;
           
-          // For tool calls and summarizations, match by mcp_event_id (communication_id)
-          const mcpEventMatches = streamingItem.type === 'tool_call'
-            ? dbItem.type === 'tool_call' && dbItem.mcp_event_id === streamingItem.mcp_event_id
-            : streamingItem.type === 'summarization'
-              ? dbItem.mcp_event_id === streamingItem.mcp_event_id
-              : true; // For thoughts/final_answer, ignore mcp_event_id
-          
-          // Match on either content (for thoughts/final_answer) or mcp_event_id (for tool_call/summarization)
-          const shouldMatch = typesMatch && (contentsMatch || streamingItem.type === 'tool_call') && mcpEventMatches && !newlyClaimed.has(itemKey);
+          if (newlyClaimed.has(itemKey)) {
+            // Skip already claimed items
+            shouldMatch = false;
+          } else if (streamingItem.type === 'tool_call') {
+            // Tool calls match by type and mcp_event_id only
+            shouldMatch = dbItem.type === 'tool_call' && 
+                         dbItem.mcp_event_id === streamingItem.mcp_event_id;
+          } else if (streamingItem.type === 'summarization') {
+            // Summarizations match by type and mcp_event_id
+            shouldMatch = dbItem.type === 'summarization' && 
+                         dbItem.mcp_event_id === streamingItem.mcp_event_id;
+          } else {
+            // Thoughts and final_answer match by type and content
+            shouldMatch = dbItem.type === streamingItem.type && 
+                         dbItem.content?.trim() === streamingItem.content?.trim();
+          }
           
           if (shouldMatch) {
             // Found unclaimed match!
@@ -721,44 +761,9 @@ function ConversationTimeline({
             ))}
             
             {/* Show streaming items at the end (will be cleared by deduplication when DB data arrives) */}
-            {streamingItems.size > 0 && (
-              (() => {
-                // Get recent DB items (last 3 items) to filter out streaming duplicates during deduplication lag
-                const recentDbItems = chatFlow.slice(-3);
-                
-                return Array.from(streamingItems.entries())
-                  // Filter out streaming items that match recent DB items (prevents visual duplicates during deduplication)
-                  .filter(([, streamItem]) => {
-                    // Check if a matching DB item exists (same type + content match)
-                    const hasMatchingDbItem = recentDbItems.some(dbItem => 
-                      dbItem.type === streamItem.type &&
-                      (
-                        // For thoughts/final_answer, check content match
-                        (dbItem.content && streamItem.content && 
-                         dbItem.content.trim() === streamItem.content.trim()) ||
-                        // For tool_call, check mcp_event_id match
-                        (streamItem.type === 'tool_call' && 
-                         dbItem.mcp_event_id === streamItem.mcp_event_id) ||
-                        // For summarization, check mcp_event_id match
-                        (streamItem.type === 'summarization' && 
-                         dbItem.mcp_event_id === streamItem.mcp_event_id)
-                      )
-                    );
-                    // Only show if no matching DB item found (prevents showing duplicates before deduplication clears them)
-                    return !hasMatchingDbItem;
-                  })
-                  // Sort by type to ensure thoughts appear before final answers (prevents visual glitches)
-                  .sort(([_keyA, itemA], [_keyB, itemB]) => {
-                    // Type priority: thought = 0, final_answer = 1
-                    const priorityA = itemA.type === 'thought' ? 0 : 1;
-                    const priorityB = itemB.type === 'thought' ? 0 : 1;
-                    return priorityA - priorityB;
-                  })
-                  .map(([entryKey, entryValue]) => (
-                    <StreamingItemRenderer key={entryKey} item={entryValue} />
-                  ));
-              })()
-            )}
+            {displayedStreamingItems.map(([entryKey, entryValue]) => (
+              <StreamingItemRenderer key={entryKey} item={entryValue} />
+            ))}
 
             {/* Processing indicator at bottom when session is still in progress */}
             {session.status === 'in_progress' && <ProcessingIndicator />}
