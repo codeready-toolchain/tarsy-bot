@@ -49,7 +49,17 @@ export function parseReActMessage(content: string): ParsedReActMessage {
     // Try malformed format: "Thought" on its own line without colon
     thoughtMatch = content.match(/(?:^|\n)\s*(?:Thought|THOUGHT)\s*\n(.*?)(?=\n\s*(?:Action|ACTION|Final Answer|FINAL ANSWER):|$)/s);
     if (thoughtMatch) {
-      result.thought = thoughtMatch[1].trim();
+      let thought = thoughtMatch[1].trim();
+      
+      // Handle mid-line Final Answer (e.g., "...final answer.Final Answer:")
+      // This matches the backend parser's behavior for consistency
+      // Use greedy match to capture everything up to the last sentence before Final Answer
+      const midlineFinalAnswerMatch = thought.match(/^(.*[.!?])\s*(?:Final Answer|FINAL ANSWER):/s);
+      if (midlineFinalAnswerMatch) {
+        thought = midlineFinalAnswerMatch[1].trim();
+      }
+      
+      result.thought = thought;
     }
   }
 
@@ -66,7 +76,12 @@ export function parseReActMessage(content: string): ParsedReActMessage {
   }
 
   // Extract Final Answer
-  const finalAnswerMatch = content.match(/(?:^|\n)\s*(?:Final Answer|FINAL ANSWER):\s*(.*?)$/s);
+  // Handle both newline-prefixed and mid-line Final Answer (e.g., "...answer.Final Answer:")
+  let finalAnswerMatch = content.match(/(?:^|\n)\s*(?:Final Answer|FINAL ANSWER):\s*(.*?)$/s);
+  if (!finalAnswerMatch) {
+    // Try mid-line Final Answer after sentence boundary
+    finalAnswerMatch = content.match(/[.!?]\s*(?:Final Answer|FINAL ANSWER):\s*(.*?)$/s);
+  }
   if (finalAnswerMatch) {
     result.finalAnswer = finalAnswerMatch[1].trim();
   } else {
@@ -116,11 +131,17 @@ export function parseThoughtAndAction(responseText: string): { thought: string; 
       // Find the start of content (next line after "Thought")
       const thoughtStart = thoughtIndex + thoughtMatch[0].length;
       
-      // Find where Action starts (or end of text)
+      // Find where Action or Final Answer starts (or end of text)
       const actionMatch = responseText.substring(thoughtStart).match(/^\s*(?:Action|ACTION):/m);
-      const thoughtEnd = actionMatch 
-        ? thoughtStart + actionMatch.index! 
-        : responseText.length;
+      const finalAnswerMatch = responseText.substring(thoughtStart).match(/[.!?]\s*(?:Final Answer|FINAL ANSWER):/);
+      
+      let thoughtEnd = responseText.length;
+      if (actionMatch && (!finalAnswerMatch || actionMatch.index! < finalAnswerMatch.index!)) {
+        thoughtEnd = thoughtStart + actionMatch.index!;
+      } else if (finalAnswerMatch) {
+        // Include text up to and including the sentence-ending punctuation
+        thoughtEnd = thoughtStart + finalAnswerMatch.index! + 1;
+      }
       
       // Extract and clean thought content
       thought = responseText.substring(thoughtStart, thoughtEnd).trim();

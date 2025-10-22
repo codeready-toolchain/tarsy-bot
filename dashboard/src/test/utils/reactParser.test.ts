@@ -117,6 +117,23 @@ Action Input: pod: app-1`
       expect(result.thought).toBe('I need to investigate the issue.\nThought about it for a moment and decided to proceed.\nLet me check the logs.')
       expect(result.action).toBe('get_logs')
     })
+
+    it('should handle mid-line Final Answer with malformed Thought (no colon)', () => {
+      const content = `Thought
+The configuration file confirms the application is running version 2.3.4 of the standard web server.
+
+I have enough information to provide a final answer.Final Answer:
+**System Status Summary**: The application is operating normally with expected resource utilization patterns.
+
+Recommended Action: MONITOR
+
+**Confidence Level**: HIGH`
+
+      const result = parseReActMessage(content)
+
+      expect(result.thought).toBe('The configuration file confirms the application is running version 2.3.4 of the standard web server.\n\nI have enough information to provide a final answer.')
+      expect(result.finalAnswer).toBe('**System Status Summary**: The application is operating normally with expected resource utilization patterns.\n\nRecommended Action: MONITOR\n\n**Confidence Level**: HIGH')
+    })
   })
 
   describe('Edge cases', () => {
@@ -245,6 +262,19 @@ My investigation plan:
 
       expect(result.thought).toBe(expectedThought)
       expect(result.action).toBe('investigate_user\nAction Input: user: danielzhe')
+    })
+
+    it('should handle mid-line Final Answer with malformed Thought (no colon)', () => {
+      const content = `Thought
+The configuration file confirms the application is running version 2.3.4 of the standard web server.
+
+I have enough information to provide a final answer.Final Answer:
+**System Status Summary**: The application is operating normally.`
+
+      const result = parseThoughtAndAction(content)
+
+      expect(result.thought).toBe('The configuration file confirms the application is running version 2.3.4 of the standard web server.\n\nI have enough information to provide a final answer.')
+      expect(result.action).toBe('')
     })
   })
 
