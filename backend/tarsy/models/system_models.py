@@ -27,6 +27,9 @@ class SystemWarning(BaseModel):
         None, description="Optional detailed error information"
     )
     timestamp: int = Field(..., description="Warning timestamp in microseconds")
+    server_id: Optional[str] = Field(
+        None, description="Server ID for MCP/service-specific warnings"
+    )
 
     class Config:
         """Pydantic configuration."""

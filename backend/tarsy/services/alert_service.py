@@ -158,10 +158,17 @@ class AlertService:
                 
                 for server_id, error_msg in failed_servers.items():
                     logger.critical(f"MCP server '{server_id}' failed to initialize: {error_msg}")
+                    # Use standardized warning message format for consistency with health monitor
+                    from tarsy.services.mcp_health_monitor import _mcp_warning_message
                     warnings.add_warning(
-                        WarningCategory.MCP_INITIALIZATION,
-                        f"MCP Server '{server_id}' failed to initialize: {error_msg}",
-                        details=f"Check {server_id} configuration and connectivity. MCP-dependent tools from this server will be unavailable.",
+                        category=WarningCategory.MCP_INITIALIZATION,
+                        message=_mcp_warning_message(server_id),
+                        details=(
+                            f"Failed to initialize during startup: {error_msg}\n\n"
+                            f"Check {server_id} configuration and connectivity. "
+                            f"The health monitor will automatically clear this warning when the server becomes available."
+                        ),
+                        server_id=server_id,
                     )
 
             # Validate that configured LLM provider NAME exists in configuration

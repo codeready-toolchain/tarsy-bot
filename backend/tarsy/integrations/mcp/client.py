@@ -358,7 +358,8 @@ class MCPClient:
         Attempt to initialize a server that failed during startup.
         
         Used by health monitor to recover misconfigured servers that
-        become available after startup.
+        become available after startup. Also replaces dead sessions if
+        a session exists but is unresponsive.
         
         Args:
             server_id: ID of the server to initialize
@@ -369,21 +370,33 @@ class MCPClient:
         try:
             server_config = self.mcp_registry.get_server_config_safe(server_id)
             if not server_config or not server_config.enabled:
+                logger.debug(f"Cannot initialize {server_id}: no config or disabled")
                 return False
             
-            # Create session
-            session = await self._create_session(server_id, server_config)
-            self.sessions[server_id] = session
-            
-            # Remove from failed servers tracking
-            if server_id in self.failed_servers:
-                del self.failed_servers[server_id]
-            
-            logger.info(f"Successfully initialized previously failed server: {server_id}")
-            return True
+            # Create session with timeout (health monitor shouldn't wait forever)
+            try:
+                session = await asyncio.wait_for(
+                    self._create_session(server_id, server_config),
+                    timeout=10.0  # Quick timeout for health monitor
+                )
+                self.sessions[server_id] = session
+                
+                # Remove from failed servers tracking
+                if server_id in self.failed_servers:
+                    del self.failed_servers[server_id]
+                
+                logger.info(f"✓ Successfully initialized previously failed server: {server_id}")
+                return True
+                
+            except asyncio.TimeoutError:
+                logger.debug(f"✗ Timeout initializing {server_id} (10s)")
+                return False
+            except asyncio.CancelledError:
+                logger.debug(f"✗ Initialization cancelled for {server_id}")
+                return False
             
         except Exception as e:
-            logger.debug(f"Failed to initialize {server_id}: {extract_error_details(e)}")
+            logger.debug(f"✗ Failed to initialize {server_id}: {extract_error_details(e)}")
             return False
     
     async def _maybe_summarize_result(

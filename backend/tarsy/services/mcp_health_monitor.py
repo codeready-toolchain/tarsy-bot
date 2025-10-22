@@ -91,45 +91,62 @@ class MCPHealthMonitor:
         
         try:
             while self._running:
+                # Sleep FIRST - ensures app is fully started before first check
+                # and matches the pattern of other background services
+                await asyncio.sleep(self._check_interval)
+                
+                # Then check servers (app is definitely ready by now)
                 try:
                     await self._check_all_servers()
+                except asyncio.CancelledError:
+                    # Re-raise cancellation to stop cleanly
+                    raise
                 except Exception as e:
                     logger.error(f"Error in health monitor loop: {e}", exc_info=True)
                 
-                # Sleep before next check
-                await asyncio.sleep(self._check_interval)
-                
         except asyncio.CancelledError:
             logger.info("Health monitor loop cancelled")
-        
-        logger.info("Health monitor loop stopped")
+        finally:
+            logger.info("Health monitor loop stopped")
     
     async def _check_all_servers(self) -> None:
-        """Check health of all configured MCP servers."""
+        """Check health of all configured MCP servers concurrently."""
         # Get all configured server IDs
         all_server_ids = self._mcp_client.mcp_registry.get_all_server_ids()
         
-        for server_id in all_server_ids:
-            try:
-                is_healthy = await self._check_server(server_id)
+        # Check all servers concurrently (don't let slow servers block others)
+        tasks = [
+            self._check_and_update_warnings(server_id)
+            for server_id in all_server_ids
+        ]
+        
+        # Wait for all checks to complete
+        await asyncio.gather(*tasks, return_exceptions=True)
+    
+    async def _check_and_update_warnings(self, server_id: str) -> None:
+        """Check a single server and update its warning status."""
+        try:
+            is_healthy = await self._check_server(server_id)
+            
+            if is_healthy:
+                # Clear any existing warning
+                self._clear_warning(server_id)
+            else:
+                # Ensure warning exists
+                self._ensure_warning(server_id)
                 
-                if is_healthy:
-                    # Clear any existing warning
-                    self._clear_warning(server_id)
-                else:
-                    # Ensure warning exists
-                    self._ensure_warning(server_id)
-                    
-            except Exception as e:
-                logger.error(f"Error checking server {server_id}: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Error checking server {server_id}: {e}", exc_info=True)
+            # On error, ensure warning exists
+            self._ensure_warning(server_id)
     
     async def _check_server(self, server_id: str) -> bool:
         """
         Check if a single server is healthy.
         
         Handles two cases:
-        1. Server has session: ping it
-        2. Server failed at startup: try to initialize it
+        1. Server has session: ping it, if fails try to reinitialize
+        2. Server has no session: try to initialize it
         
         Args:
             server_id: ID of the server to check
@@ -137,16 +154,24 @@ class MCPHealthMonitor:
         Returns:
             True if healthy, False otherwise
         """
-        # Case 1: Server has a session - just ping it
+        # Case 1: Server has a session - ping it
         if server_id in self._mcp_client.sessions:
             is_healthy = await self._mcp_client.ping(server_id)
             if is_healthy:
                 logger.debug(f"✓ Server {server_id}: healthy")
+                return True
             else:
-                logger.warning(f"✗ Server {server_id}: ping failed")
-            return is_healthy
+                # Ping failed - try to reinitialize (will replace dead session)
+                logger.warning(f"✗ Server {server_id}: ping failed, attempting reinitialization")
+                success = await self._mcp_client.try_initialize_server(server_id)
+                if success:
+                    logger.info(f"✓ Successfully reinitialized {server_id}")
+                    return True
+                else:
+                    logger.debug(f"✗ Failed to reinitialize {server_id}")
+                    return False
         
-        # Case 2: Server failed at startup - try to initialize it
+        # Case 2: Server has no session - try to initialize it
         logger.info(f"Server {server_id} has no session, attempting initialization...")
         success = await self._mcp_client.try_initialize_server(server_id)
         

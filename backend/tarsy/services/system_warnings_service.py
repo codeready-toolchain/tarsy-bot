@@ -34,7 +34,11 @@ class SystemWarningsService:
         return cls._instance
 
     def add_warning(
-        self, category: str, message: str, details: Optional[str] = None
+        self,
+        category: str,
+        message: str,
+        details: Optional[str] = None,
+        server_id: Optional[str] = None,
     ) -> str:
         """
         Add a system warning.
@@ -43,6 +47,7 @@ class SystemWarningsService:
             category: Warning category (use WarningCategory constants)
             message: User-facing warning message
             details: Optional detailed error information
+            server_id: Optional server ID for MCP-related warnings
 
         Returns:
             warning_id: Unique identifier for the warning
@@ -57,6 +62,7 @@ class SystemWarningsService:
             message=message,
             details=details,
             timestamp=timestamp,
+            server_id=server_id,
         )
 
         from tarsy.utils.logger import get_module_logger
@@ -83,6 +89,42 @@ class SystemWarningsService:
             True if warning was found and cleared
         """
         return self._warnings.pop(warning_id, None) is not None
+
+    def clear_warning_by_server_id(
+        self, category: str, server_id: str
+    ) -> bool:
+        """
+        Clear warning matching category and server_id.
+        Used to clear MCP warnings when servers recover.
+
+        Args:
+            category: Warning category (e.g., "mcp_initialization")
+            server_id: Server ID (e.g., "kubernetes-server")
+
+        Returns:
+            True if warning was found and cleared
+        """
+        from tarsy.utils.logger import get_module_logger
+
+        logger = get_module_logger(__name__)
+
+        logger.info(
+            f"clear_warning_by_server_id: category={category}, server_id={server_id}, "
+            f"current_warnings={len(self._warnings)}"
+        )
+
+        for warning_id, warning in list(self._warnings.items()):
+            logger.info(
+                f"  Checking warning {warning_id}: category={warning.category}, "
+                f"server_id={warning.server_id}, matches={warning.category == category and warning.server_id == server_id}"
+            )
+            if warning.category == category and warning.server_id == server_id:
+                del self._warnings[warning_id]
+                logger.info(f"✓ Cleared warning {warning_id} for server: {server_id}")
+                return True
+
+        logger.info(f"✗ No warning found for server: {server_id}")
+        return False
 
 
 def get_warnings_service() -> SystemWarningsService:
