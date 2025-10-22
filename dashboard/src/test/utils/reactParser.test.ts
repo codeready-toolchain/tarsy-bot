@@ -134,6 +134,22 @@ Recommended Action: MONITOR
       expect(result.thought).toBe('The configuration file confirms the application is running version 2.3.4 of the standard web server.\n\nI have enough information to provide a final answer.')
       expect(result.finalAnswer).toBe('**System Status Summary**: The application is operating normally with expected resource utilization patterns.\n\nRecommended Action: MONITOR\n\n**Confidence Level**: HIGH')
     })
+
+    it('should stop Final Answer capture at next section header (prevent over-capture)', () => {
+      const content = `Thought: I need to investigate this issue.
+Final Answer: The system is healthy.
+
+Action: get_logs
+Action Input: pod: test-pod`
+
+      const result = parseReActMessage(content)
+
+      expect(result.thought).toBe('I need to investigate this issue.')
+      // Should NOT include the Action section in Final Answer
+      expect(result.finalAnswer).toBe('The system is healthy.')
+      expect(result.action).toBe('get_logs')
+      expect(result.actionInput).toBe('pod: test-pod')
+    })
   })
 
   describe('Edge cases', () => {

@@ -77,11 +77,11 @@ export function parseReActMessage(content: string): ParsedReActMessage {
 
   // Extract Final Answer
   // Handle both newline-prefixed and mid-line Final Answer (e.g., "...answer.Final Answer:")
-  let finalAnswerMatch = content.match(/(?:^|\n)\s*(?:Final Answer|FINAL ANSWER):\s*(.*?)$/s);
-  if (!finalAnswerMatch) {
-    // Try mid-line Final Answer after sentence boundary
-    finalAnswerMatch = content.match(/[.!?]\s*(?:Final Answer|FINAL ANSWER):\s*(.*?)$/s);
-  }
+  // Use lookahead to stop at next section header (prevents over-capture if malformed sections follow)
+  let finalAnswerMatch = 
+    content.match(/(?:^|\n)\s*Final Answer:\s*(.*?)(?=\n\s*(?:Action|Actions|Action Input|Thought|Observation|Reasoning|Analysis|Plan|Next Steps|Final Answer):|$)/is) ||
+    content.match(/[.!?]\s*Final Answer:\s*(.*?)(?=\n\s*(?:Action|Actions|Action Input|Thought|Observation|Reasoning|Analysis|Plan|Next Steps|Final Answer):|$)/is);
+  
   if (finalAnswerMatch) {
     result.finalAnswer = finalAnswerMatch[1].trim();
   } else {
