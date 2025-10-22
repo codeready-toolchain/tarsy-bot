@@ -110,8 +110,13 @@ export const formatDurationMs = (durationMs: number): string => {
 export const isWithinLastMinutes = (timestampUs: number, minutes: number): boolean => {
   const now = getCurrentTimestampUs();
   const minutesInUs = minutes * 60 * 1000 * 1000; // Convert to microseconds
-  // Timestamp must be in the past AND within the time range
-  return timestampUs <= now && (now - timestampUs) <= minutesInUs;
+  
+  // Edge case: minutes = 0 means "right now" with small tolerance for function call overhead
+  // Use 500 microseconds tolerance to account for timing between captures
+  const tolerance = minutes === 0 ? 500 : 0; // 500 microseconds (0.5ms)
+  
+  // Timestamp must be in the past AND within the time range (plus tolerance)
+  return timestampUs <= now && (now - timestampUs) <= (minutesInUs + tolerance);
 };
 
 /**
