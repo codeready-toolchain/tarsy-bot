@@ -1173,6 +1173,8 @@ GET /api/v1/history/sessions?start_date_us=1734476400000000&end_date_us=17345627
 
 The system warnings API surfaces critical but non-fatal initialization errors (MCP server failures, LLM provider issues, missing runbook service configuration) that don't prevent startup but affect functionality. Warnings are displayed in the dashboard UI and included in the main health endpoint response.
 
+**MCP Health Monitoring**: A background service (`MCPHealthMonitor`) continuously monitors MCP server health, automatically attempts recovery for failed servers, and manages warning lifecycle. The service checks servers every 15 seconds, attempts to reinitialize failed servers when they become available, and automatically clears warnings upon successful recovery.
+
 **Multi-Replica Health Monitoring:**
 - Health check validates database connectivity required for cross-pod coordination
 - Event system health includes PostgreSQL LISTEN connection status

@@ -53,7 +53,7 @@ graph LR
 - **Real-time LLM streaming** - see agent thinking process as it happens (Thought and Final Answer sections)
 - Complete audit trail of what each stage and agent did and why
 - Stage execution tracking with detailed performance metrics
-- System health warnings for initialization issues (MCP/LLM failures, configuration)
+- **MCP Health Monitoring** - background service monitors MCP server health, automatically attempts recovery, and displays warnings for unavailable servers
 - SREs can observe and learn from multi-stage decision processes
 
 ## How It Works
