@@ -375,6 +375,7 @@ class MCPClient:
                 return False
             
             # Create session with timeout (health monitor shouldn't wait forever)
+            # Note: MCP library may log asyncio errors for connection failures - these are harmless
             try:
                 session = await asyncio.wait_for(
                     self._create_session(server_id, server_config),

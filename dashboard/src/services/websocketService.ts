@@ -14,7 +14,6 @@ class WebSocketService {
   private ws: WebSocket | null = null;
   private baseUrl: string = '';
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 10;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private isConnecting = false;
   private urlResolutionPromise: Promise<void> | null = null;
@@ -122,13 +121,11 @@ class WebSocketService {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('❌ Max reconnection attempts reached');
-      return;
-    }
-
     this.reconnectAttempts++;
-    const delay = Math.min(200 * Math.pow(2, this.reconnectAttempts - 1), 30000);
+    
+    // Exponential backoff: 200ms, 400ms, 800ms, 1.6s, then cap at 3s
+    // Never give up - backend might be down for hours during maintenance
+    const delay = Math.min(200 * Math.pow(2, this.reconnectAttempts - 1), 3000);
     console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
     this.reconnectTimeout = setTimeout(() => {
