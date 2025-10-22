@@ -523,10 +523,10 @@ class LLMClient:
     
     def _contains_final_answer(self, conversation: LLMConversation) -> bool:
         """
-        Check if the LAST message is from assistant and starts with 'Final Answer:'.
+        Check if the LAST message is from assistant and contains 'Final Answer:'.
         
-        This indicates a ReAct stage conclusion. Only checks the very last message
-        in the conversation to avoid false positives.
+        Uses the centralized ReAct parser to determine if the response contains
+        a final answer, ensuring consistency across the codebase.
         
         Args:
             conversation: The conversation to check
@@ -544,16 +544,12 @@ class LLMClient:
         if last_msg.role != MessageRole.ASSISTANT:
             return False
         
-        # Check if Final Answer appears at start of line
-        content = last_msg.content.strip()
-        if content.startswith("Final Answer:"):
-            return True
+        # Use the centralized ReAct parser to determine if this is a final answer
+        # This ensures all Final Answer detection logic is in one place
+        from tarsy.agents.parsers.react_parser import ReActParser
         
-        # Also check for Final Answer after newlines (multi-line messages)
-        if "\nFinal Answer:" in last_msg.content:
-            return True
-        
-        return False
+        parsed = ReActParser.parse_response(last_msg.content)
+        return parsed.is_final_answer
     
     def get_max_tool_result_tokens(self) -> int:
         """Return the maximum tool result tokens for the current provider."""

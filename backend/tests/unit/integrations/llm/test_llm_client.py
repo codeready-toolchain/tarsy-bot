@@ -1502,3 +1502,146 @@ class TestLLMManager:
         
         # Assert - None should be handled gracefully by the client itself
         assert result is None  # Client handles invalid values, manager just passes through
+
+
+@pytest.mark.unit
+class TestLLMClientFinalAnswerDetection:
+    """Test _contains_final_answer method that determines interaction_type.
+    
+    This method now uses the centralized ReAct parser, so these tests verify
+    that the integration works correctly.
+    """
+    
+    def test_final_answer_at_start_of_content(self):
+        """Test detection when Final Answer is at the very start."""
+        config = create_test_config()
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Final Answer: The system is healthy.")
+            ])
+            
+            assert client._contains_final_answer(conversation) is True
+    
+    def test_final_answer_after_newline(self):
+        """Test detection when Final Answer appears after a newline."""
+        config = create_test_config()
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Thought: I have investigated.\n\nFinal Answer: Issue resolved.")
+            ])
+            
+            assert client._contains_final_answer(conversation) is True
+    
+    def test_final_answer_mid_line_after_period(self):
+        """Test detection when Final Answer appears mid-line after a period (no newline).
+        
+        This is a common case where LLMs forget to add a newline before Final Answer.
+        Example: "I have enough information.Final Answer: ..."
+        """
+        config = create_test_config()
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.ASSISTANT, 
+                          content="I have enough information to provide a final answer.Final Answer: LEGITIMATE")
+            ])
+            
+            assert client._contains_final_answer(conversation) is True
+    
+    def test_final_answer_mid_line_after_exclamation(self):
+        """Test detection when Final Answer appears mid-line after exclamation mark."""
+        config = create_test_config()
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.ASSISTANT, content="This is clear!Final Answer: No issues found.")
+            ])
+            
+            assert client._contains_final_answer(conversation) is True
+    
+    def test_final_answer_mid_line_after_question(self):
+        """Test detection when Final Answer appears mid-line after question mark."""
+        config = create_test_config()
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Is this normal?Final Answer: Yes, it is normal.")
+            ])
+            
+            assert client._contains_final_answer(conversation) is True
+    
+    def test_no_final_answer_in_thought_only(self):
+        """Test that thought-only messages return False."""
+        config = create_test_config()
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Thought: I need to investigate this issue further.")
+            ])
+            
+            assert client._contains_final_answer(conversation) is False
+    
+    def test_no_final_answer_narrative_text(self):
+        """Test that narrative text mentioning 'final answer' doesn't trigger detection."""
+        config = create_test_config()
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.ASSISTANT, 
+                          content="I'm working towards a final answer but need more data.")
+            ])
+            
+            assert client._contains_final_answer(conversation) is False
+    
+    def test_empty_conversation(self):
+        """Test that empty conversation returns False."""
+        config = create_test_config()
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant.")
+            ])
+            
+            assert client._contains_final_answer(conversation) is False
+    
+    def test_final_answer_only_checks_last_message(self):
+        """Test that only the last message is checked (not earlier messages)."""
+        config = create_test_config()
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI'):
+            client = LLMClient("openai", config)
+            
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Final Answer: First answer"),
+                LLMMessage(role=MessageRole.USER, content="Please reconsider"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Thought: Reconsidering the issue.")
+            ])
+            
+            # Last message is thought, so should return False
+            assert client._contains_final_answer(conversation) is False
