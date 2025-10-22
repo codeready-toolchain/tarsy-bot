@@ -10,6 +10,7 @@ from tarsy.models.event_models import (
     SessionCompletedEvent,
     SessionFailedEvent,
     LLMInteractionEvent,
+    MCPToolCallStartedEvent,
     MCPToolCallEvent,
     MCPToolListEvent,
     StageStartedEvent,
@@ -128,6 +129,44 @@ async def publish_llm_interaction(
             logger.debug(f"Published llm.interaction event for {interaction_id}")
     except Exception as e:
         logger.warning(f"Failed to publish llm.interaction event: {e}")
+
+
+async def publish_mcp_tool_call_started(
+    session_id: str,
+    request_id: str,
+    server_name: str,
+    tool_name: str,
+    tool_arguments: dict,
+    stage_id: Optional[str] = None,
+) -> None:
+    """
+    Publish mcp.tool_call.started event.
+
+    Args:
+        session_id: Session identifier
+        request_id: Request identifier (will become interaction_id)
+        server_name: MCP server name
+        tool_name: Tool name
+        tool_arguments: Tool arguments
+        stage_id: Optional stage execution identifier
+    """
+    try:
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = MCPToolCallStartedEvent(
+                session_id=session_id,
+                request_id=request_id,
+                stage_id=stage_id,
+                server_name=server_name,
+                tool_name=tool_name,
+                tool_arguments=tool_arguments,
+            )
+            await publish_event(
+                session, EventChannel.session_details(session_id), event
+            )
+            logger.debug(f"Published mcp.tool_call.started event for {request_id}")
+    except Exception as e:
+        logger.warning(f"Failed to publish mcp.tool_call.started event: {e}")
 
 
 async def publish_mcp_tool_call(

@@ -5,7 +5,8 @@ import {
   Card,
   CardContent,
   Chip,
-  Alert
+  Alert,
+  alpha
 } from '@mui/material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { parseSessionChatFlow, getChatFlowStats } from '../utils/chatFlowParser';
@@ -87,11 +88,15 @@ interface ConversationTimelineProps {
 }
 
 interface StreamingItem {
-  type: 'thought' | 'final_answer' | 'summarization';
-  content: string;
+  type: 'thought' | 'final_answer' | 'summarization' | 'tool_call';
+  content?: string; // For thought/final_answer/summarization
   stage_execution_id?: string;
-  mcp_event_id?: string; // For summarization - links to tool call
+  mcp_event_id?: string; // For tool_call and summarization
   waitingForDb?: boolean; // True when stream completed, waiting for DB confirmation
+  // Tool call specific fields
+  toolName?: string;
+  toolArguments?: any;
+  serverName?: string;
 }
 
 /**
@@ -102,7 +107,7 @@ interface StreamingItem {
 const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
   if (item.type === 'thought') {
     // Render thought with hybrid markdown support (matching DB rendering)
-    const hasMarkdown = hasMarkdownSyntax(item.content);
+    const hasMarkdown = hasMarkdownSyntax(item.content || '');
     
     return (
       <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
@@ -146,7 +151,7 @@ const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
   
   if (item.type === 'summarization') {
     // Render summarization with hybrid markdown support (maintains amber styling)
-    const hasMarkdown = hasMarkdownSyntax(item.content);
+    const hasMarkdown = hasMarkdownSyntax(item.content || '');
     
     return (
       <Box sx={{ mb: 1.5 }}>
@@ -211,6 +216,58 @@ const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
               {item.content}
             </Typography>
           )}
+        </Box>
+      </Box>
+    );
+  }
+  
+  if (item.type === 'tool_call') {
+    // Render in-progress tool call with loading indicator
+    return (
+      <Box sx={{ ml: 4, my: 1, mr: 1 }}>
+        <Box
+          sx={(theme) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            px: 1.5,
+            py: 0.75,
+            border: `2px dashed`,
+            borderColor: alpha(theme.palette.primary.main, 0.4),
+            borderRadius: 1.5,
+            bgcolor: alpha(theme.palette.primary.main, 0.05),
+          })}
+        >
+          {/* Spinning loader */}
+          <Box
+            sx={{
+              width: 18,
+              height: 18,
+              border: '2px solid',
+              borderColor: 'primary.main',
+              borderTopColor: 'transparent',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              '@keyframes spin': {
+                '0%': { transform: 'rotate(0deg)' },
+                '100%': { transform: 'rotate(360deg)' }
+              }
+            }}
+          />
+          <Typography
+            variant="body2"
+            sx={{
+              fontFamily: 'monospace',
+              fontWeight: 600,
+              fontSize: '0.9rem',
+              color: 'primary.main'
+            }}
+          >
+            {item.toolName || 'Tool'}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.8rem', flex: 1 }}>
+            Executing...
+          </Typography>
         </Box>
       </Box>
     );
@@ -358,7 +415,27 @@ function ConversationTimeline({
     if (!session.session_id) return;
     
     const handleStreamEvent = (event: any) => {
-      if (event.type === 'llm.stream.chunk') {
+      if (event.type === 'mcp.tool_call.started') {
+        console.log('🔧 MCP tool call started:', event.tool_name, event.request_id);
+        
+        setStreamingItems(prev => {
+          const updated = new Map(prev);
+          // Use request_id as key (will match interaction_id later)
+          const key = `tool-${event.request_id}`;
+          
+          updated.set(key, {
+            type: 'tool_call',
+            toolName: event.tool_name,
+            toolArguments: event.tool_arguments,
+            serverName: event.server_name,
+            mcp_event_id: event.request_id, // For deduplication
+            stage_execution_id: event.stage_id,
+            waitingForDb: false
+          });
+          
+          return updated;
+        });
+      } else if (event.type === 'llm.stream.chunk') {
         console.log('🌊 Received streaming chunk:', event.stream_type, event.is_complete, event.mcp_event_id);
         
         setStreamingItems(prev => {
@@ -438,17 +515,24 @@ function ConversationTimeline({
         for (let i = searchStart; i < searchEnd; i++) {
           const dbItem = chatFlow[i];
           
-          // Create unique key for this DB item (timestamp + type + content hash)
-          const itemKey = `${dbItem.timestamp_us}-${dbItem.type}-${dbItem.content?.substring(0, 50)}`;
+          // Create unique key for this DB item (timestamp + type + identifier)
+          const itemKey = `${dbItem.timestamp_us}-${dbItem.type}-${dbItem.mcp_event_id || dbItem.content?.substring(0, 50)}`;
           
-          // Check if: matching type + content (+ mcp_event_id for summarizations), AND not already claimed
+          // Check if: matching type + (content OR mcp_event_id), AND not already claimed
           const typesMatch = dbItem.type === streamingItem.type;
           const contentsMatch = dbItem.content?.trim() === streamingItem.content?.trim();
-          const mcpEventMatches = streamingItem.type === 'summarization' 
-            ? dbItem.mcp_event_id === streamingItem.mcp_event_id 
-            : true; // For non-summarization, ignore mcp_event_id
           
-          if (typesMatch && contentsMatch && mcpEventMatches && !newlyClaimed.has(itemKey)) {
+          // For tool calls and summarizations, match by mcp_event_id (communication_id)
+          const mcpEventMatches = streamingItem.type === 'tool_call'
+            ? dbItem.type === 'tool_call' && dbItem.mcp_event_id === streamingItem.mcp_event_id
+            : streamingItem.type === 'summarization'
+              ? dbItem.mcp_event_id === streamingItem.mcp_event_id
+              : true; // For thoughts/final_answer, ignore mcp_event_id
+          
+          // Match on either content (for thoughts/final_answer) or mcp_event_id (for tool_call/summarization)
+          const shouldMatch = typesMatch && (contentsMatch || streamingItem.type === 'tool_call') && mcpEventMatches && !newlyClaimed.has(itemKey);
+          
+          if (shouldMatch) {
             // Found unclaimed match!
             updated.delete(key); // Clear streaming item
             newlyClaimed.add(itemKey); // Mark DB item as claimed
