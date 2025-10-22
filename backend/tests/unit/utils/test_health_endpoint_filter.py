@@ -134,3 +134,49 @@ class TestHealthEndpointFilter:
             # All 2xx should be suppressed
             assert filter_instance.filter(record) is False, f"Status {status_code} should be suppressed"
 
+    def test_filter_suppresses_successful_warnings_endpoint_requests(self) -> None:
+        """Test that successful warnings endpoint requests are filtered out."""
+        filter_instance = HealthEndpointFilter()
+        
+        # Mock a uvicorn access log record for successful warnings check
+        record = MagicMock(spec=logging.LogRecord)
+        record.args = ("127.0.0.1:12345", "GET", "/api/v1/system/warnings", "HTTP/1.1", 200)
+        
+        # Should return False to suppress the log (prevents noise from dashboard polling)
+        assert filter_instance.filter(record) is False
+
+    def test_filter_allows_warnings_endpoint_errors(self) -> None:
+        """Test that warnings endpoint errors are logged (not suppressed)."""
+        filter_instance = HealthEndpointFilter()
+        
+        # Mock a uvicorn access log record for failed warnings check (500)
+        record = MagicMock(spec=logging.LogRecord)
+        record.args = ("127.0.0.1:12345", "GET", "/api/v1/system/warnings", "HTTP/1.1", 500)
+        
+        # Should return True to allow the log (errors should be visible)
+        assert filter_instance.filter(record) is True
+
+    def test_filter_allows_non_get_warnings_requests(self) -> None:
+        """Test that non-GET requests to warnings endpoint are logged."""
+        filter_instance = HealthEndpointFilter()
+        
+        # Mock a uvicorn access log record for POST to warnings (unusual but should log)
+        record = MagicMock(spec=logging.LogRecord)
+        record.args = ("127.0.0.1:12345", "POST", "/api/v1/system/warnings", "HTTP/1.1", 200)
+        
+        # Should return True to allow the log (non-GET methods are noteworthy)
+        assert filter_instance.filter(record) is True
+
+    def test_filter_suppresses_both_monitoring_endpoints(self) -> None:
+        """Test that both health and warnings monitoring endpoints are suppressed."""
+        filter_instance = HealthEndpointFilter()
+        
+        # Test that both frequently-polled endpoints are suppressed with 200 OK
+        endpoints = ["/health", "/api/v1/system/warnings"]
+        
+        for endpoint in endpoints:
+            record = MagicMock(spec=logging.LogRecord)
+            record.args = ("127.0.0.1:12345", "GET", endpoint, "HTTP/1.1", 200)
+            
+            assert filter_instance.filter(record) is False, f"Endpoint {endpoint} should be suppressed"
+
