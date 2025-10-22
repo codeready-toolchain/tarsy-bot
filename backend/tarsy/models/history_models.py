@@ -154,6 +154,7 @@ class SessionOverview(BaseModel):
     alert_type: Optional[str] = None
     agent_type: str
     status: AlertSessionStatus
+    author: Optional[str] = None
     
     # Timing info
     started_at_us: int
@@ -287,6 +288,7 @@ class DetailedSession(BaseModel):
     alert_type: Optional[str] = None
     agent_type: str
     status: AlertSessionStatus
+    author: Optional[str] = None
     started_at_us: int
     completed_at_us: Optional[int] = None
     error_message: Optional[str] = None

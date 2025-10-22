@@ -65,6 +65,10 @@ class ChainContext(BaseModel):
         default_factory=dict,
         description="Results from completed stages"
     )
+    author: Optional[str] = Field(
+        None, 
+        description="User or API Client who submitted the alert (from oauth2-proxy X-Forwarded-User header)"
+    )
     
     # === Processing support ===
     runbook_content: Optional[str] = Field(None, description="Downloaded runbook content")
@@ -75,7 +79,8 @@ class ChainContext(BaseModel):
         cls,
         processing_alert: ProcessingAlert,
         session_id: str,
-        current_stage_name: str = "initializing"
+        current_stage_name: str = "initializing",
+        author: Optional[str] = None
     ) -> "ChainContext":
         """
         Create ChainContext from ProcessingAlert.
@@ -86,6 +91,7 @@ class ChainContext(BaseModel):
             processing_alert: Processed alert with metadata
             session_id: Processing session ID
             current_stage_name: Initial stage name
+            author: User or API Client who submitted the alert (optional, from oauth2-proxy X-Forwarded-User header)
             
         Returns:
             ChainContext ready for processing
@@ -93,7 +99,8 @@ class ChainContext(BaseModel):
         return cls(
             processing_alert=processing_alert,
             session_id=session_id,
-            current_stage_name=current_stage_name
+            current_stage_name=current_stage_name,
+            author=author
         )
     
     def get_runbook_content(self) -> str:

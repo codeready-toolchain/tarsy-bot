@@ -238,6 +238,15 @@ async def submit_alert(request: Request) -> AlertResponse:
         # Generate session_id BEFORE starting background processing
         session_id = str(uuid.uuid4())
         
+        # Extract author from oauth2-proxy headers
+        # oauth2-proxy injects X-Forwarded-User and X-Forwarded-Email headers when pass_user_headers=true (OAuth flow)
+        # For JWT-authenticated API clients, oauth2-proxy validates but doesn't inject user headers
+        author = request.headers.get("X-Forwarded-User") or request.headers.get("X-Forwarded-Email")
+        
+        # If no user headers present, this is likely a JWT-authenticated API client
+        if not author:
+            author = "api-client"
+        
         # Create ChainContext for processing  
         from tarsy.models.processing_context import ChainContext
         
@@ -245,7 +254,8 @@ async def submit_alert(request: Request) -> AlertResponse:
         alert_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
             session_id=session_id,
-            current_stage_name="initializing"  # Will be updated to actual stage names from config during execution
+            current_stage_name="initializing",  # Will be updated to actual stage names from config during execution
+            author=author  # Pass author to context
         )
         
         # Start background processing using callback from app state

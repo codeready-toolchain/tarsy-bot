@@ -100,6 +100,12 @@ class AlertSession(SQLModel, table=True):
         description="Additional context and metadata for the session"
     )
     
+    author: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="User or API Client who submitted the alert (from oauth2-proxy X-Forwarded-User header)"
+    )
+    
     # Chain execution tracking
     chain_id: str = Field(description="Chain identifier for this execution")
     chain_definition: Optional[dict] = Field(default=None, sa_column=Column(JSON), description="Complete chain definition snapshot")
