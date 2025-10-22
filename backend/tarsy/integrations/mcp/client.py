@@ -309,6 +309,68 @@ class MCPClient:
             
             return all_tools
     
+    async def ping(self, server_id: str) -> bool:
+        """
+        Check if an MCP server is healthy and responsive.
+        
+        Uses list_tools() as a lightweight health check. Does not modify
+        session state - the client handles automatic recovery on failures.
+        
+        Args:
+            server_id: ID of the server to ping
+            
+        Returns:
+            True if server is healthy and responsive, False otherwise
+        """
+        try:
+            if server_id not in self.sessions:
+                return False
+            
+            # Use list_tools as health check with short timeout
+            session = self.sessions[server_id]
+            await asyncio.wait_for(
+                session.list_tools(),
+                timeout=10.0  # Quick health check
+            )
+            return True
+            
+        except Exception as e:
+            logger.debug(f"Ping failed for {server_id}: {extract_error_details(e)}")
+            return False
+    
+    async def try_initialize_server(self, server_id: str) -> bool:
+        """
+        Attempt to initialize a server that failed during startup.
+        
+        Used by health monitor to recover misconfigured servers that
+        become available after startup.
+        
+        Args:
+            server_id: ID of the server to initialize
+            
+        Returns:
+            True if initialization succeeded, False otherwise
+        """
+        try:
+            server_config = self.mcp_registry.get_server_config_safe(server_id)
+            if not server_config or not server_config.enabled:
+                return False
+            
+            # Create session
+            session = await self._create_session(server_id, server_config)
+            self.sessions[server_id] = session
+            
+            # Remove from failed servers tracking
+            if server_id in self.failed_servers:
+                del self.failed_servers[server_id]
+            
+            logger.info(f"Successfully initialized previously failed server: {server_id}")
+            return True
+            
+        except Exception as e:
+            logger.debug(f"Failed to initialize {server_id}: {extract_error_details(e)}")
+            return False
+    
     async def _maybe_summarize_result(
         self, 
         server_name: str, 

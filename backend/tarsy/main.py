@@ -62,13 +62,14 @@ alert_service: Optional[AlertService] = None
 alert_processing_semaphore: Optional[asyncio.Semaphore] = None
 event_system_manager: Optional["EventSystemManager"] = None
 history_cleanup_service: Optional["HistoryCleanupService"] = None
+mcp_health_monitor: Optional[Any] = None  # MCPHealthMonitor for server health monitoring
 db_manager: Optional[Any] = None  # DatabaseManager for history cleanup service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
-    global alert_service, alert_processing_semaphore, event_system_manager, history_cleanup_service, db_manager
+    global alert_service, alert_processing_semaphore, event_system_manager, history_cleanup_service, mcp_health_monitor, db_manager
     
     # Initialize services
     settings = get_settings()
@@ -116,6 +117,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         import sys
         sys.exit(1)  # Exit with error code
+    
+    # Start MCP health monitoring (after AlertService is ready)
+    try:
+        from tarsy.services.mcp_health_monitor import MCPHealthMonitor
+        from tarsy.services.system_warnings_service import get_warnings_service
+        
+        mcp_health_monitor = MCPHealthMonitor(
+            mcp_client=alert_service.mcp_client,
+            warnings_service=get_warnings_service(),
+            check_interval=15.0  # Check every 15 seconds
+        )
+        await mcp_health_monitor.start()
+        logger.info("MCP health monitoring started")
+    except Exception as e:
+        logger.error(f"Failed to start MCP health monitor: {e}", exc_info=True)
+        logger.warning("Application will continue without MCP health monitoring")
     
     # Initialize typed hook system
     from tarsy.hooks.hook_registry import get_hook_registry
@@ -193,6 +210,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Shutdown: Mark in-progress sessions as interrupted for graceful shutdown
     logger.info("Tarsy shutting down...")
+    
+    # Stop MCP health monitor
+    if mcp_health_monitor is not None:
+        try:
+            await mcp_health_monitor.stop()
+            logger.info("MCP health monitor stopped")
+        except Exception as e:
+            logger.error(f"Error stopping MCP health monitor: {e}", exc_info=True)
     
     if settings.history_enabled and db_init_success:
         try:
