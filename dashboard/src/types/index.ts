@@ -3,6 +3,7 @@ export interface Session {
   alert_type: string | null;
   agent_type: string;
   status: 'completed' | 'failed' | 'in_progress' | 'pending';
+  author: string | null;
   started_at_us: number; // Unix timestamp (microseconds since epoch)
   completed_at_us: number | null; // Unix timestamp (microseconds since epoch)
   duration_ms: number | null; // Computed property from backend

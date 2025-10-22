@@ -386,6 +386,17 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
             >
               {session.session_id}
             </Typography>
+            
+            {/* Author information */}
+            {session.author && (
+              <Typography 
+                variant="body2" 
+                color="text.secondary"
+                sx={{ mt: 0.5 }}
+              >
+                Submitted by: <strong>{session.author}</strong>
+              </Typography>
+            )}
           </Box>
 
           {/* Right side: Duration Timer - Consistent Layout */}

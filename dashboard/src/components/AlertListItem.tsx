@@ -65,6 +65,11 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
       </TableCell>
       <TableCell>
         <Typography variant="body2" color="text.secondary">
+          {session.author ?? '—'}
+        </Typography>
+      </TableCell>
+      <TableCell>
+        <Typography variant="body2" color="text.secondary">
           {formatTimestamp(session.started_at_us, 'short')}
         </Typography>
       </TableCell>
