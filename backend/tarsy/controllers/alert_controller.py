@@ -243,7 +243,11 @@ async def submit_alert(request: Request) -> AlertResponse:
         # For JWT-authenticated API clients, oauth2-proxy validates but doesn't inject user headers
         author = request.headers.get("X-Forwarded-User") or request.headers.get("X-Forwarded-Email")
         
-        # If no user headers present, this is likely a JWT-authenticated API client
+        # Strip whitespace and check if empty
+        if author:
+            author = author.strip()
+        
+        # If no user headers present or empty after stripping, this is likely a JWT-authenticated API client
         if not author:
             author = "api-client"
         

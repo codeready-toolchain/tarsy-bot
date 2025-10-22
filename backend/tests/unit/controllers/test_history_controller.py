@@ -1137,7 +1137,9 @@ class TestHistoryControllerResponseFormat:
             "duration_ms", "llm_interaction_count", "mcp_communication_count", "total_interactions",
             "current_stage_index", "failed_stages", "total_stages", "chain_id", "completed_stages",
             # Token usage fields added in EP-0009
-            "session_input_tokens", "session_output_tokens", "session_total_tokens"
+            "session_input_tokens", "session_output_tokens", "session_total_tokens",
+            # Author field for user tracking
+            "author"
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)
