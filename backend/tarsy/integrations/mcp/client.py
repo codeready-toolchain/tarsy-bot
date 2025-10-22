@@ -86,7 +86,7 @@ class MCPClient:
                     self.sessions[server_id] = session
                     logger.info(f"Successfully initialized MCP server: {server_id}")
                 except asyncio.TimeoutError:
-                    raise Exception(f"Server initialization timed out after 30 seconds") from None
+                    raise Exception("Server initialization timed out after 30 seconds") from None
 
             except asyncio.CancelledError:
                 # Handle cancellation during initialization (e.g., timeout or shutdown)
@@ -129,6 +129,7 @@ class MCPClient:
         Raises:
             Exception: If session creation fails
         """
+        transport = None
         try:
             # Get already-parsed transport configuration
             transport_config = server_config.transport
@@ -140,11 +141,11 @@ class MCPClient:
                 self.exit_stack if transport_config.type == TRANSPORT_STDIO else None
             )
             
-            # Store transport for lifecycle management
-            self.transports[server_id] = transport
-            
             # Create session via transport
             session = await transport.create_session()
+            
+            # Store transport for lifecycle management ONLY after successful session creation
+            self.transports[server_id] = transport
             
             logger.info(f"Created {transport_config.type} session for server: {server_id}")
             return session
@@ -152,6 +153,22 @@ class MCPClient:
         except Exception as e:
             error_details = extract_error_details(e)
             logger.error(f"Failed to create session for {server_id}: {error_details}", exc_info=True)
+            
+            # Clean up transport resources on failure, but only for non-stdio transports
+            # Stdio transports use a shared exit_stack that must not be closed prematurely
+            if transport is not None:
+                transport_config = server_config.transport
+                if transport_config.type != TRANSPORT_STDIO:
+                    # HTTP/SSE transports have their own exit_stack - clean it up to prevent leaks
+                    # We can't use transport.close() because _connected=False, so close exit_stack directly
+                    try:
+                        if hasattr(transport, 'exit_stack'):
+                            await transport.exit_stack.aclose()
+                            logger.debug(f"Cleaned up {transport_config.type} transport resources for {server_id}")
+                    except Exception as cleanup_error:
+                        # Log but don't re-raise - original error is more important
+                        logger.warning(f"Error cleaning up transport for {server_id}: {extract_error_details(cleanup_error)}")
+            
             raise
     
     async def list_tools(

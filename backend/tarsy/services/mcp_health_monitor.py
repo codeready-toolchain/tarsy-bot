@@ -154,6 +154,15 @@ class MCPHealthMonitor:
         Returns:
             True if healthy, False otherwise
         """
+        # Early check: Skip disabled or missing servers
+        server_config = self._mcp_client.mcp_registry.get_server_config_safe(server_id)
+        if server_config is None or not server_config.enabled:
+            # Server is disabled or config is missing - clear any stale warnings
+            # and skip health checks to avoid false warnings
+            logger.debug(f"Skipping health check for {server_id}: {'disabled' if server_config else 'config missing'}")
+            self._clear_warning(server_id)
+            return False
+        
         # Case 1: Server has a session - ping it
         has_session = server_id in self._mcp_client.sessions
         if has_session:

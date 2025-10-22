@@ -36,6 +36,8 @@ from tarsy.utils.logger import get_module_logger, setup_logging
 if TYPE_CHECKING:
     from tarsy.services.events.manager import EventSystemManager
     from tarsy.services.history_cleanup_service import HistoryCleanupService
+    from tarsy.services.mcp_health_monitor import MCPHealthMonitor
+    from tarsy.repositories.base_repository import DatabaseManager
 
 # Setup logger for this module
 logger = get_module_logger(__name__)
@@ -62,8 +64,8 @@ alert_service: Optional[AlertService] = None
 alert_processing_semaphore: Optional[asyncio.Semaphore] = None
 event_system_manager: Optional["EventSystemManager"] = None
 history_cleanup_service: Optional["HistoryCleanupService"] = None
-mcp_health_monitor: Optional[Any] = None  # MCPHealthMonitor for server health monitoring
-db_manager: Optional[Any] = None  # DatabaseManager for history cleanup service
+mcp_health_monitor: Optional["MCPHealthMonitor"] = None  # MCPHealthMonitor for server health monitoring
+db_manager: Optional["DatabaseManager"] = None  # DatabaseManager for history cleanup service
 
 
 @asynccontextmanager

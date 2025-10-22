@@ -69,12 +69,64 @@ class TestMCPHealthMonitor:
         await health_monitor.stop()
 
     @pytest.mark.asyncio
+    async def test_check_server_disabled(
+        self,
+        health_monitor: MCPHealthMonitor,
+        mock_mcp_client: MagicMock,
+        mock_warnings_service: MagicMock,
+    ) -> None:
+        """Test checking a server that is disabled - should skip checks and clear warnings."""
+        # Mock a disabled server config
+        mock_config = MagicMock()
+        mock_config.enabled = False
+        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
+
+        is_healthy = await health_monitor._check_server("disabled_server")
+
+        assert is_healthy is False
+        # Should not attempt to ping or initialize
+        mock_mcp_client.ping.assert_not_called()
+        mock_mcp_client.try_initialize_server.assert_not_called()
+        # Should clear any stale warnings
+        mock_warnings_service.clear_warning_by_server_id.assert_called_once_with(
+            category=WarningCategory.MCP_INITIALIZATION,
+            server_id="disabled_server",
+        )
+
+    @pytest.mark.asyncio
+    async def test_check_server_missing_config(
+        self,
+        health_monitor: MCPHealthMonitor,
+        mock_mcp_client: MagicMock,
+        mock_warnings_service: MagicMock,
+    ) -> None:
+        """Test checking a server with missing config - should skip checks and clear warnings."""
+        # Mock missing config (returns None)
+        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = None
+
+        is_healthy = await health_monitor._check_server("missing_server")
+
+        assert is_healthy is False
+        # Should not attempt to ping or initialize
+        mock_mcp_client.ping.assert_not_called()
+        mock_mcp_client.try_initialize_server.assert_not_called()
+        # Should clear any stale warnings
+        mock_warnings_service.clear_warning_by_server_id.assert_called_once_with(
+            category=WarningCategory.MCP_INITIALIZATION,
+            server_id="missing_server",
+        )
+
+    @pytest.mark.asyncio
     async def test_check_server_with_session_healthy(
         self,
         health_monitor: MCPHealthMonitor,
         mock_mcp_client: MagicMock,
     ) -> None:
         """Test checking a server that has a session and is healthy."""
+        # Mock an enabled server config
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
         mock_mcp_client.sessions = {"server1": MagicMock()}
         mock_mcp_client.ping.return_value = True
 
@@ -91,6 +143,10 @@ class TestMCPHealthMonitor:
         mock_mcp_client: MagicMock,
     ) -> None:
         """Test checking a server that has a session but ping fails and recovery fails."""
+        # Mock an enabled server config
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
         mock_mcp_client.sessions = {"server1": MagicMock()}
         mock_mcp_client.ping.return_value = False
         mock_mcp_client.try_initialize_server.return_value = False
@@ -110,6 +166,10 @@ class TestMCPHealthMonitor:
         mock_mcp_client: MagicMock,
     ) -> None:
         """Test checking a server with no session - initialization succeeds and ping verifies."""
+        # Mock an enabled server config
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
         mock_mcp_client.sessions = {}
         mock_mcp_client.try_initialize_server.return_value = True
         mock_mcp_client.ping.return_value = True  # Verify session works
@@ -128,6 +188,10 @@ class TestMCPHealthMonitor:
         mock_mcp_client: MagicMock,
     ) -> None:
         """Test checking a server with no session - initialization fails."""
+        # Mock an enabled server config
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
         mock_mcp_client.sessions = {}
         mock_mcp_client.try_initialize_server.return_value = False
 
@@ -209,6 +273,10 @@ class TestMCPHealthMonitor:
         mock_warnings_service: MagicMock,
     ) -> None:
         """Test checking all servers when they are all healthy."""
+        # Mock enabled server configs
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
         mock_mcp_client.sessions = {"server1": MagicMock(), "server2": MagicMock()}
         mock_mcp_client.ping.return_value = True
 
@@ -227,6 +295,10 @@ class TestMCPHealthMonitor:
         mock_warnings_service: MagicMock,
     ) -> None:
         """Test checking all servers with mixed health states."""
+        # Mock enabled server configs
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
         mock_mcp_client.sessions = {"server1": MagicMock()}
         # server1 healthy, server2 has no session and init fails
         mock_mcp_client.ping.return_value = True
