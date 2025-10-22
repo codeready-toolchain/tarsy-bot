@@ -148,6 +148,7 @@ class TestHistoryRepository:
             alert_type="kubernetes",
             agent_type="kubernetes", 
             status=AlertSessionStatus.COMPLETED.value,
+            author="test-user",
             started_at_us=now_us(),
             completed_at_us=now_us() + 1000000,  # 1 second later
             chain_id="chain-1",
@@ -210,6 +211,7 @@ class TestHistoryRepository:
         assert overview.alert_type == "kubernetes"
         assert overview.agent_type == "kubernetes"
         assert overview.status == AlertSessionStatus.COMPLETED
+        assert overview.author == "test-user"
         assert overview.chain_id == "chain-1"
         assert overview.total_stages == 2
         assert overview.completed_stages == 1
@@ -251,6 +253,7 @@ class TestHistoryRepository:
             },
             agent_type="KubernetesAgent",
             alert_type="NamespaceTerminating",
+            author="test-user",
             status="in_progress",
             started_at_us=now_us(),
             session_metadata={"test": "metadata"},
@@ -418,6 +421,7 @@ class TestHistoryRepository:
             alert_data={"alert_type": "HighCPU"},
             agent_type="KubernetesAgent",
             alert_type="HighCPU",
+            author="api-client",
             status="completed",
             started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
             completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
@@ -429,6 +433,7 @@ class TestHistoryRepository:
         result = repository.get_alert_sessions(status="completed")
         assert len(result.sessions) == 1
         assert result.sessions[0].session_id == session2.session_id
+        assert result.sessions[0].author == "api-client"
         
         # Test agent_type filter
         result = repository.get_alert_sessions(agent_type="KubernetesAgent")
@@ -438,6 +443,61 @@ class TestHistoryRepository:
         result = repository.get_alert_sessions(alert_type="NamespaceTerminating")
         assert len(result.sessions) == 1
         assert result.sessions[0].session_id == session1.session_id
+        assert result.sessions[0].author == "test-user"
+    
+    @pytest.mark.unit
+    def test_get_alert_sessions_author_field(self, repository):
+        """Test that author field is properly returned in SessionOverview."""
+        from tarsy.utils.timestamp import now_us
+        
+        # Create sessions with different author values
+        session_with_user = AlertSession(
+            session_id="session-user",
+            alert_data={},
+            agent_type="TestAgent",
+            alert_type="test",
+            author="github-user",
+            status="completed",
+            started_at_us=now_us(),
+            chain_id="chain-1"
+        )
+        
+        session_with_api_client = AlertSession(
+            session_id="session-api",
+            alert_data={},
+            agent_type="TestAgent",
+            alert_type="test",
+            author="api-client",
+            status="completed",
+            started_at_us=now_us(),
+            chain_id="chain-2"
+        )
+        
+        session_without_author = AlertSession(
+            session_id="session-null",
+            alert_data={},
+            agent_type="TestAgent",
+            alert_type="test",
+            author=None,  # Old session before migration
+            status="completed",
+            started_at_us=now_us(),
+            chain_id="chain-3"
+        )
+        
+        repository.create_alert_session(session_with_user)
+        repository.create_alert_session(session_with_api_client)
+        repository.create_alert_session(session_without_author)
+        
+        # Test all sessions are returned with correct author values
+        result = repository.get_alert_sessions()
+        assert len(result.sessions) == 3
+        
+        # Find sessions by ID and verify author
+        sessions_by_id = {s.session_id: s for s in result.sessions}
+        
+        assert sessions_by_id["session-user"].author == "github-user"
+        assert sessions_by_id["session-api"].author == "api-client"
+        assert sessions_by_id["session-null"].author is None  # Should be None for old sessions
     
     @pytest.mark.unit
     def test_get_alert_sessions_with_date_filters(self, repository):
@@ -454,6 +514,7 @@ class TestHistoryRepository:
             agent_type="TestAgent",
             alert_type="test",
             status="completed",
+            author="old-user",
             started_at_us=five_days_ago_us,
             completed_at_us=five_days_ago_us,
             chain_id="test-chain-old"
@@ -465,6 +526,7 @@ class TestHistoryRepository:
             agent_type="TestAgent",
             alert_type="test",
             status="completed",
+            author="new-user",
             started_at_us=one_hour_ago_us,
             completed_at_us=one_hour_ago_us,
             chain_id="test-chain-new"

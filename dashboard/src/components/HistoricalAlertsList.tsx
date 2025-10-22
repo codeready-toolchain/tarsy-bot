@@ -74,7 +74,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
     { field: 'status', label: 'Status' },
     { field: 'alert_type', label: 'Type' },
     { field: 'agent_type', label: 'Agent Chain' },
-    { field: 'author', label: 'Author' },
+    { field: 'author', label: 'Submitted by' },
     { field: 'started_at_us', label: 'Time' },
     { field: 'duration_ms', label: 'Duration' },
     { field: 'session_total_tokens', label: 'Tokens' }, // EP-0009: Add token column

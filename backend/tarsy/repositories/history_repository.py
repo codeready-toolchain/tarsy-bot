@@ -448,6 +448,7 @@ class HistoryRepository:
                     alert_type=alert_session.alert_type,
                     agent_type=alert_session.agent_type,
                     status=AlertSessionStatus(alert_session.status),
+                    author=alert_session.author,
                     
                     # Timing info
                     started_at_us=alert_session.started_at_us,
@@ -643,6 +644,7 @@ class HistoryRepository:
                 alert_type=session.alert_type,
                 agent_type=session.agent_type,
                 status=AlertSessionStatus(session.status),
+                author=session.author,
                 started_at_us=session.started_at_us,
                 completed_at_us=session.completed_at_us,
                 error_message=session.error_message,

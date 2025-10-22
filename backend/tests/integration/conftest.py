@@ -949,6 +949,7 @@ def sample_alert_session():
         },
         agent_type="KubernetesAgent",
         alert_type="NamespaceTerminating",
+        author="test-user",
         status="in_progress",
         started_at_us=started_at_us,
         session_metadata={"test": "metadata"},
