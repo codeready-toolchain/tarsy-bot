@@ -90,7 +90,8 @@ class TestHistoryCleanupServiceLifecycle:
         await service.stop()
 
         assert service.running is False
-        assert service.cleanup_task.done()
+        # Task reference should be cleared after stop
+        assert service.cleanup_task is None
 
     @pytest.mark.asyncio
     async def test_stop_handles_already_stopped_service(self, service):
@@ -110,8 +111,8 @@ class TestHistoryCleanupServiceLifecycle:
         await service.start()
         second_task = service.cleanup_task
 
-        # Second start creates a new task
-        assert first_task is not second_task
+        # Second start should be idempotent - same task reference
+        assert first_task is second_task
 
         # Clean up
         await service.stop()

@@ -57,6 +57,11 @@ class HistoryCleanupService:
 
     async def start(self) -> None:
         """Start background cleanup task."""
+        # Guard against double start to prevent duplicate background tasks
+        if self.cleanup_task and not self.cleanup_task.done():
+            logger.warning("History cleanup service already running; ignoring start()")
+            return
+        
         self.running = True
         self.cleanup_task = asyncio.create_task(self._cleanup_loop())
 
@@ -78,6 +83,8 @@ class HistoryCleanupService:
                 await self.cleanup_task
             except asyncio.CancelledError:
                 pass
+            # Clear task reference to make state explicit
+            self.cleanup_task = None
 
         logger.info("History cleanup service stopped")
 
