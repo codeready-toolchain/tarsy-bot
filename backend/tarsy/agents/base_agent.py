@@ -5,6 +5,7 @@ This module provides the abstract base class that all specialized agents must in
 It implements common processing logic and defines abstract methods for agent-specific behavior.
 """
 
+import asyncio
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Dict, List, Optional, TYPE_CHECKING
@@ -388,10 +389,17 @@ class BaseAgent(ABC):
                     raise ValueError(f"Tool '{tool_name}' from server '{server_name}' not allowed for agent {self.__class__.__name__}")
                 
                 # Pass investigation conversation for context-aware summarization
-                result = await self.mcp_client.call_tool(
-                    server_name, tool_name, tool_params, session_id, 
-                    self._current_stage_execution_id, investigation_conversation
-                )
+                # Wrap with timeout to catch cases where MCP client's internal timeout fails
+                try:
+                    result = await asyncio.wait_for(
+                        self.mcp_client.call_tool(
+                            server_name, tool_name, tool_params, session_id, 
+                            self._current_stage_execution_id, investigation_conversation
+                        ),
+                        timeout=150  # 2.5 minutes (allows for 2 retries of 60s each plus overhead)
+                    )
+                except asyncio.TimeoutError:
+                    raise TimeoutError(f"MCP tool call {tool_name} on {server_name} exceeded 150s timeout") from None
                 
                 # Organize results by server
                 if server_name not in results:

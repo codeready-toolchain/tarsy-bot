@@ -5,6 +5,7 @@ This module provides the minimal interface and types needed by
 all iteration controller implementations.
 """
 
+import asyncio
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -209,12 +210,21 @@ class ReactController(IterationController):
             self.logger.info(f"ReAct iteration {iteration + 1}/{max_iterations}")
             
             try:
-                # 3. Call LLM with current conversation
-                conversation = await self.llm_client.generate_response(
-                    conversation=conversation,
-                    session_id=context.session_id,
-                    stage_execution_id=context.agent.get_current_stage_execution_id()
-                )
+                # 3. Call LLM with current conversation - wrap with timeout to prevent hanging
+                # This protects against cases where the LLM call gets stuck before streaming starts
+                try:
+                    conversation = await asyncio.wait_for(
+                        self.llm_client.generate_response(
+                            conversation=conversation,
+                            session_id=context.session_id,
+                            stage_execution_id=context.agent.get_current_stage_execution_id()
+                        ),
+                        timeout=120  # 2 minutes per iteration (generous but prevents infinite hang)
+                    )
+                except asyncio.TimeoutError:
+                    error_msg = f"LLM call timed out after 120s in iteration {iteration + 1}"
+                    self.logger.error(error_msg)
+                    raise Exception(error_msg) from None
                 
                 # 4. Extract and parse assistant response
                 assistant_message = conversation.get_latest_assistant_message()

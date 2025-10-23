@@ -537,12 +537,26 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
             try:
                 # Use configurable timeout for alert processing
                 timeout_seconds = settings.alert_processing_timeout
-                await asyncio.wait_for(
-                    alert_service.process_alert(alert),
-                    timeout=timeout_seconds
-                )
-            except asyncio.TimeoutError:
-                raise TimeoutError(f"Alert processing exceeded timeout limit of {timeout_seconds}s") from None
+                logger.info(f"Processing session {session_id} with {timeout_seconds}s timeout")
+                
+                # Create task explicitly so we can cancel it if needed
+                task = asyncio.create_task(alert_service.process_alert(alert))
+                try:
+                    await asyncio.wait_for(task, timeout=timeout_seconds)
+                except asyncio.TimeoutError:
+                    # Timeout occurred - try to cancel the task
+                    logger.warning(f"Session {session_id} exceeded {timeout_seconds}s timeout, attempting to cancel task")
+                    task.cancel()
+                    try:
+                        await task  # Wait for cancellation to complete
+                    except asyncio.CancelledError:
+                        logger.info(f"Session {session_id} task cancelled successfully")
+                    except Exception as e:
+                        logger.error(f"Error while cancelling session {session_id}: {e}")
+                    raise TimeoutError(f"Alert processing exceeded timeout limit of {timeout_seconds}s") from None
+            except asyncio.CancelledError:
+                # Task was cancelled (possibly by timeout handler above)
+                raise TimeoutError(f"Alert processing was cancelled (timeout: {timeout_seconds}s)") from None
             
             # Calculate processing duration
             duration = (datetime.now() - start_time).total_seconds()
