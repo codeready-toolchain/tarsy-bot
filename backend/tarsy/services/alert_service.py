@@ -444,11 +444,13 @@ class AlertService:
                 await self._update_session_current_stage(chain_context.session_id, i, stage_execution_id)
                 
                 # Record stage transition as interaction (non-blocking)
-                if self.history_service:
-                    await asyncio.to_thread(
-                        self.history_service.record_session_interaction,
-                        chain_context.session_id
-                    )
+                if self.history_service and hasattr(self.history_service, "record_session_interaction"):
+                    rec = self.history_service.record_session_interaction
+                    # If async, await directly; if sync, offload to thread
+                    if asyncio.iscoroutinefunction(rec):
+                        await rec(chain_context.session_id)
+                    else:
+                        await asyncio.to_thread(rec, chain_context.session_id)
                 
                 try:
                     # Mark stage as started

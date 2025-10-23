@@ -390,16 +390,17 @@ class BaseAgent(ABC):
                 
                 # Pass investigation conversation for context-aware summarization
                 # Wrap with timeout to catch cases where MCP client's internal timeout fails
+                # MCP client uses a single 60s timeout with no retries, so allow ~10s overhead
                 try:
                     result = await asyncio.wait_for(
                         self.mcp_client.call_tool(
                             server_name, tool_name, tool_params, session_id, 
                             self._current_stage_execution_id, investigation_conversation
                         ),
-                        timeout=150  # 2.5 minutes (allows for 2 retries of 60s each plus overhead)
+                        timeout=70  # Wraps single 60s MCP call (no retries) with ~10s overhead
                     )
                 except asyncio.TimeoutError:
-                    raise TimeoutError(f"MCP tool call {tool_name} on {server_name} exceeded 150s timeout") from None
+                    raise TimeoutError(f"MCP tool call {tool_name} on {server_name} exceeded 70s timeout") from None
                 
                 # Organize results by server
                 if server_name not in results:

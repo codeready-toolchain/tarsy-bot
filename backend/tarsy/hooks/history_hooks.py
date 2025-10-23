@@ -44,10 +44,12 @@ class LLMHistoryHook(BaseHook[LLMInteraction]):
                 
                 # Update last interaction timestamp for orphan detection (non-blocking)
                 if interaction.session_id:
-                    await asyncio.to_thread(
-                        self.history_service.record_session_interaction, 
-                        interaction.session_id
-                    )
+                    rec = self.history_service.record_session_interaction
+                    # If async, await directly; if sync, offload to thread
+                    if asyncio.iscoroutinefunction(rec):
+                        await rec(interaction.session_id)
+                    else:
+                        await asyncio.to_thread(rec, interaction.session_id)
             else:
                 logger.warning(
                     f"History service returned False for LLM interaction {interaction.interaction_id}"
@@ -87,10 +89,12 @@ class MCPHistoryHook(BaseHook[MCPInteraction]):
                 
                 # Update last interaction timestamp for orphan detection (non-blocking)
                 if interaction.session_id:
-                    await asyncio.to_thread(
-                        self.history_service.record_session_interaction, 
-                        interaction.session_id
-                    )
+                    rec = self.history_service.record_session_interaction
+                    # If async, await directly; if sync, offload to thread
+                    if asyncio.iscoroutinefunction(rec):
+                        await rec(interaction.session_id)
+                    else:
+                        await asyncio.to_thread(rec, interaction.session_id)
             else:
                 logger.warning(
                     f"History service returned False for MCP interaction {interaction.request_id}"

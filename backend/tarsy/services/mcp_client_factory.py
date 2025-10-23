@@ -17,6 +17,9 @@ logger = get_module_logger(__name__)
 class MCPClientFactory:
     """Factory for creating isolated MCP client instances."""
 
+    settings: Settings
+    mcp_registry: MCPServerRegistry
+
     def __init__(self, settings: Settings, mcp_registry: MCPServerRegistry):
         """
         Initialize the MCP client factory.
