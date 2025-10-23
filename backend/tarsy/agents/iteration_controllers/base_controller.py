@@ -204,83 +204,125 @@ class ReactController(IterationController):
         
         # 2. Track last interaction success for failure detection
         last_interaction_failed = False
+        consecutive_timeout_failures = 0  # Track consecutive timeout failures specifically
         
         # 3. ReAct iteration loop with timeout protection  
         for iteration in range(max_iterations):
             self.logger.info(f"ReAct iteration {iteration + 1}/{max_iterations}")
             
+            # Check for consecutive timeout failures (prevent infinite retry loops)
+            if consecutive_timeout_failures >= 2:
+                error_msg = f"Stopping after {consecutive_timeout_failures} consecutive tool timeout failures"
+                self.logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            # Wrap ENTIRE iteration (LLM + tool execution) with timeout
+            # This timeout is longer than MCP's full retry cycle (2 × 60s = 120s) to allow retries to complete
             try:
-                # 3. Call LLM with current conversation - wrap with timeout to prevent hanging
-                # This protects against cases where the LLM call gets stuck before streaming starts
-                try:
-                    conversation = await asyncio.wait_for(
-                        self.llm_client.generate_response(
-                            conversation=conversation,
-                            session_id=context.session_id,
-                            stage_execution_id=context.agent.get_current_stage_execution_id()
-                        ),
-                        timeout=120  # 2 minutes per iteration (generous but prevents infinite hang)
+                async def run_iteration():
+                    nonlocal conversation, last_interaction_failed, consecutive_timeout_failures
+                    
+                    # 3. Call LLM with current conversation
+                    conversation_result = await self.llm_client.generate_response(
+                        conversation=conversation,
+                        session_id=context.session_id,
+                        stage_execution_id=context.agent.get_current_stage_execution_id()
                     )
-                except asyncio.TimeoutError:
-                    error_msg = f"LLM call timed out after 120s in iteration {iteration + 1}"
-                    self.logger.error(error_msg)
-                    raise Exception(error_msg) from None
-                
-                # 4. Extract and parse assistant response
-                assistant_message = conversation.get_latest_assistant_message()
-                if not assistant_message:
-                    raise Exception("No assistant response received from LLM")
-                
-                response = assistant_message.content
-                self.logger.debug(f"LLM Response (first 500 chars): {response[:500]}")
-                
-                parsed_response = self.parser.parse_response(response)
-                
-                # Mark this interaction as successful
-                last_interaction_failed = False
-                
-                # 5. Handle final answer (completion)
-                if parsed_response.is_final_answer:
-                    self.logger.info("ReAct analysis completed with final answer")
-                    return self._build_final_result(conversation, parsed_response.final_answer)
                     
-                # 6. Handle tool action
-                elif parsed_response.has_action:
-                    try:
-                        self.logger.debug(f"ReAct Action: {parsed_response.action} with input: {parsed_response.action_input[:100] if parsed_response.action_input else 'None'}...")
-                        
-                        # Execute tool using parsed tool call, passing conversation context for summarization
-                        mcp_data = await agent.execute_mcp_tools([parsed_response.tool_call.model_dump()], context.session_id, conversation)
-                        
-                        # Format observation
-                        observation = self.parser.format_observation(mcp_data)
-                        conversation.append_observation(f"Observation: {observation}")
-                        
-                        self.logger.debug(f"ReAct Observation: {observation[:150]}...")
-                        
-                    except Exception as e:
-                        self.logger.error(f"Failed to execute ReAct action: {str(e)}")
-                        error_observation = f"Error executing action: {str(e)}"
-                        conversation.append_observation(f"Observation: {error_observation}")
-                        
-                # 7. Handle malformed response
-                else:
-                    self.logger.warning("ReAct response is malformed - removing it and sending format correction")
+                    # 4. Extract and parse assistant response
+                    assistant_message = conversation_result.get_latest_assistant_message()
+                    if not assistant_message:
+                        raise Exception("No assistant response received from LLM")
                     
-                    # Remove the malformed assistant message from conversation
-                    # This prevents the LLM from seeing its own malformed output
-                    if conversation.messages and conversation.messages[-1].role == MessageRole.ASSISTANT:
-                        conversation.messages.pop()
-                        self.logger.debug("Removed malformed assistant message from conversation")
+                    response = assistant_message.content
+                    self.logger.debug(f"LLM Response (first 500 chars): {response[:500]}")
                     
-                    # Add brief format correction reminder as user message
-                    format_reminder = self.parser.get_format_correction_reminder()
-                    conversation.append_observation(format_reminder)
+                    parsed_response = self.parser.parse_response(response)
+                    
+                    # Mark this interaction as successful
+                    last_interaction_failed = False
+                    consecutive_timeout_failures = 0  # Reset on successful LLM call
+                    
+                    # 5. Handle final answer (completion)
+                    if parsed_response.is_final_answer:
+                        self.logger.info("ReAct analysis completed with final answer")
+                        return self._build_final_result(conversation_result, parsed_response.final_answer)
+                        
+                    # 6. Handle tool action
+                    elif parsed_response.has_action:
+                        try:
+                            self.logger.debug(f"ReAct Action: {parsed_response.action} with input: {parsed_response.action_input[:100] if parsed_response.action_input else 'None'}...")
+                            
+                            # Execute tool using parsed tool call, passing conversation context for summarization
+                            mcp_data = await agent.execute_mcp_tools([parsed_response.tool_call.model_dump()], context.session_id, conversation_result)
+                            
+                            # Format observation
+                            observation = self.parser.format_observation(mcp_data)
+                            conversation_result.append_observation(f"Observation: {observation}")
+                            
+                            self.logger.debug(f"ReAct Observation: {observation[:150]}...")
+                            
+                        except Exception as e:
+                            self.logger.error(f"Failed to execute ReAct action: {str(e)}")
+                            error_observation = f"Error executing action: {str(e)}"
+                            conversation_result.append_observation(f"Observation: {error_observation}")
+                            
+                            # Track timeout failures specifically
+                            error_str = str(e).lower()
+                            if 'timeout' in error_str or 'timed out' in error_str:
+                                consecutive_timeout_failures += 1
+                                self.logger.warning(f"Tool timeout detected ({consecutive_timeout_failures} consecutive)")
+                            else:
+                                consecutive_timeout_failures = 0  # Reset on non-timeout errors
+                            
+                    # 7. Handle malformed response
+                    else:
+                        self.logger.warning("ReAct response is malformed - removing it and sending format correction")
+                        
+                        # Remove the malformed assistant message from conversation
+                        # This prevents the LLM from seeing its own malformed output
+                        if conversation_result.messages and conversation_result.messages[-1].role == MessageRole.ASSISTANT:
+                            conversation_result.messages.pop()
+                            self.logger.debug("Removed malformed assistant message from conversation")
+                        
+                        # Add brief format correction reminder as user message
+                        format_reminder = self.parser.get_format_correction_reminder()
+                        conversation_result.append_observation(format_reminder)
+                    
+                    return conversation_result
+                
+                # Run iteration with 180s timeout (allows full MCP retry cycle: 2 × 60s + overhead)
+                # If tools consistently timeout, consecutive_timeout_failures check will break the loop
+                conversation = await asyncio.wait_for(run_iteration(), timeout=180)
+                    
+            except asyncio.TimeoutError:
+                error_msg = f"Iteration {iteration + 1} exceeded 180s timeout - LLM or tool call stuck"
+                self.logger.error(error_msg)
+                consecutive_timeout_failures += 1
+                self.logger.warning(f"Iteration timeout ({consecutive_timeout_failures} consecutive)")
+                
+                # Check if we should stop
+                if consecutive_timeout_failures >= 2:
+                    raise Exception(f"Stopping after {consecutive_timeout_failures} consecutive iteration timeouts") from None
+                
+                # Otherwise, append error observation and continue
+                error_observation = f"Error: {error_msg}"
+                conversation.append_observation(f"Observation: {error_observation}")
                     
             except Exception as e:
                 self.logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
                 # Mark this interaction as failed
                 last_interaction_failed = True
+                
+                # Check if it's a timeout-related failure
+                error_str = str(e).lower()
+                if 'timeout' in error_str or 'timed out' in error_str:
+                    consecutive_timeout_failures += 1
+                    self.logger.warning(f"Exception contains timeout ({consecutive_timeout_failures} consecutive)")
+                    if consecutive_timeout_failures >= 2:
+                        raise Exception(f"Stopping after {consecutive_timeout_failures} consecutive timeout failures") from e
+                else:
+                    consecutive_timeout_failures = 0  # Reset on non-timeout errors
                 
                 # Remove malformed assistant message if present (LLM call succeeded but processing failed)
                 if conversation.messages and conversation.messages[-1].role == MessageRole.ASSISTANT:

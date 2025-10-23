@@ -554,9 +554,16 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                     except Exception as e:
                         logger.error(f"Error while cancelling session {session_id}: {e}")
                     raise TimeoutError(f"Alert processing exceeded timeout limit of {timeout_seconds}s") from None
-            except asyncio.CancelledError:
-                # Task was cancelled (possibly by timeout handler above)
-                raise TimeoutError(f"Alert processing was cancelled (timeout: {timeout_seconds}s)") from None
+            except asyncio.CancelledError as e:
+                # Task was cancelled - but distinguish between deliberate timeout cancellation 
+                # and spurious cancellations from cleanup/recovery operations
+                # Only raise TimeoutError if this is genuinely from the timeout handler above
+                # Otherwise, let the cancellation propagate to reveal the real issue
+                logger.error(
+                    f"Session {session_id} was cancelled unexpectedly (not from timeout). "
+                    f"This may indicate a bug in cleanup/recovery logic. Original cancellation: {e}"
+                )
+                raise  # Re-raise to preserve the original CancelledError for debugging
             
             # Calculate processing duration
             duration = (datetime.now() - start_time).total_seconds()

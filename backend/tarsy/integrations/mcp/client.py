@@ -673,8 +673,21 @@ class MCPClient:
         logger.info(f"Recovering session for MCP server: {server_name}")
 
         # Remove from sessions dict - the exit stack will handle cleanup
+        # Shield this from cancellation to prevent cleanup errors from killing parent tasks
         if server_name in self.sessions:
+            old_session = self.sessions[server_name]
             del self.sessions[server_name]
+            
+            # Clean up old session - shield to prevent cancel scope errors from propagating
+            try:
+                # The transport cleanup may have cancel scope issues when called from
+                # a different task context - shield to prevent them from cancelling parent
+                # Note: We don't await the cleanup task - let it happen in background (best-effort)
+                asyncio.create_task(self._cleanup_session(server_name, old_session))
+                # Let cleanup happen in background, don't wait for it
+            except Exception as e:
+                # Cleanup errors should never fail recovery
+                logger.warning(f"Non-critical error during old session cleanup for {server_name}: {e}")
 
         # Get server configuration
         server_config = self.mcp_registry.get_server_config_safe(server_name)
@@ -691,8 +704,30 @@ class MCPClient:
             logger.error(f"Failed to recover session for {server_name}: {extract_error_details(e)}")
             raise Exception(f"Session recovery failed for {server_name}: {str(e)}") from e
     
+    async def _cleanup_session(self, server_name: str, session: Any) -> None:
+        """Clean up an old session (best-effort, errors are logged but not raised).
+        
+        Args:
+            server_name: Name of the server
+            session: The session to clean up
+        """
+        try:
+            # Try to close the transport if it has one
+            if hasattr(session, '_transport') and hasattr(session._transport, 'close'):
+                await session._transport.close()
+        except asyncio.CancelledError:
+            # Cancellation during cleanup is non-critical
+            logger.debug(f"Session cleanup was cancelled for {server_name} (non-critical)")
+        except Exception as e:
+            # Log but don't raise - cleanup is best-effort
+            logger.debug(f"Non-critical error during session cleanup for {server_name}: {e}")
+    
     def _log_mcp_request(self, server_name: str, tool_name: str, parameters: Dict[str, Any], request_id: str) -> None:
         """Log the outgoing MCP tool call request with sensitive data masked."""
+        # Log event at INFO level (without content)
+        mcp_comm_logger.info(f"MCP Request: {server_name}.{tool_name} [ID: {request_id}]")
+        
+        # Log detailed content at DEBUG level
         # Apply data masking to parameters before logging to prevent credential/PII exposure
         try:
             masked_parameters = self.data_masking_service.mask_response(parameters, server_name)
@@ -701,24 +736,29 @@ class MCPClient:
             # Fallback: log only parameter keys, not values
             masked_parameters = {k: "***MASKED***" for k in parameters.keys()}
         
-        mcp_comm_logger.info(f"=== MCP REQUEST [{server_name}] [ID: {request_id}] ===")
-        mcp_comm_logger.info(f"Request ID: {request_id}")
-        mcp_comm_logger.info(f"Server: {server_name}")
-        mcp_comm_logger.info(f"Tool: {tool_name}")
-        mcp_comm_logger.info(f"Parameters: {json.dumps(masked_parameters, indent=2, default=str)}")
-        mcp_comm_logger.info(f"=== END REQUEST [ID: {request_id}] ===")
+        mcp_comm_logger.debug(f"=== MCP REQUEST [{server_name}] [ID: {request_id}] ===")
+        mcp_comm_logger.debug(f"Request ID: {request_id}")
+        mcp_comm_logger.debug(f"Server: {server_name}")
+        mcp_comm_logger.debug(f"Tool: {tool_name}")
+        mcp_comm_logger.debug(f"Parameters: {json.dumps(masked_parameters, indent=2, default=str)}")
+        mcp_comm_logger.debug(f"=== END REQUEST [ID: {request_id}] ===")
     
     def _log_mcp_response(self, server_name: str, tool_name: str, response: Dict[str, Any], request_id: str) -> None:
         """Log the MCP tool call response."""
         response_content = response.get("result", str(response))
-        mcp_comm_logger.info(f"=== MCP RESPONSE [{server_name}] [ID: {request_id}] ===")
-        mcp_comm_logger.info(f"Request ID: {request_id}")
-        mcp_comm_logger.info(f"Server: {server_name}")
-        mcp_comm_logger.info(f"Tool: {tool_name}")
-        mcp_comm_logger.info(f"Response length: {len(response_content)} characters")
-        mcp_comm_logger.info("--- RESPONSE CONTENT ---")
-        mcp_comm_logger.info(response_content)
-        mcp_comm_logger.info(f"=== END RESPONSE [ID: {request_id}] ===")
+        
+        # Log event at INFO level (without content)
+        mcp_comm_logger.info(f"MCP Response: {server_name}.{tool_name} ({len(response_content)} chars) [ID: {request_id}]")
+        
+        # Log detailed content at DEBUG level
+        mcp_comm_logger.debug(f"=== MCP RESPONSE [{server_name}] [ID: {request_id}] ===")
+        mcp_comm_logger.debug(f"Request ID: {request_id}")
+        mcp_comm_logger.debug(f"Server: {server_name}")
+        mcp_comm_logger.debug(f"Tool: {tool_name}")
+        mcp_comm_logger.debug(f"Response length: {len(response_content)} characters")
+        mcp_comm_logger.debug("--- RESPONSE CONTENT ---")
+        mcp_comm_logger.debug(response_content)
+        mcp_comm_logger.debug(f"=== END RESPONSE [ID: {request_id}] ===")
     
     def _log_mcp_error(self, server_name: str, tool_name: str, error_message: str, request_id: str) -> None:
         """Log MCP tool call errors."""
@@ -732,23 +772,31 @@ class MCPClient:
     def _log_mcp_list_tools_request(self, server_name: Optional[str], request_id: str) -> None:
         """Log the MCP list tools request."""
         target = server_name if server_name else "ALL_SERVERS"
-        mcp_comm_logger.info(f"=== MCP LIST TOOLS REQUEST [{target}] [ID: {request_id}] ===")
-        mcp_comm_logger.info(f"Request ID: {request_id}")
-        mcp_comm_logger.info(f"Target: {target}")
-        mcp_comm_logger.info(f"=== END LIST TOOLS REQUEST [ID: {request_id}] ===")
+        # Log event at INFO level
+        mcp_comm_logger.info(f"MCP List Tools Request: {target} [ID: {request_id}]")
+        
+        # Log detailed info at DEBUG level
+        mcp_comm_logger.debug(f"=== MCP LIST TOOLS REQUEST [{target}] [ID: {request_id}] ===")
+        mcp_comm_logger.debug(f"Request ID: {request_id}")
+        mcp_comm_logger.debug(f"Target: {target}")
+        mcp_comm_logger.debug(f"=== END LIST TOOLS REQUEST [ID: {request_id}] ===")
     
     def _log_mcp_list_tools_response(self, server_name: str, tools: List[Tool], request_id: str) -> None:
         """Log the MCP list tools response."""
-        mcp_comm_logger.info(f"=== MCP LIST TOOLS RESPONSE [{server_name}] [ID: {request_id}] ===")
-        mcp_comm_logger.info(f"Request ID: {request_id}")
-        mcp_comm_logger.info(f"Server: {server_name}")
-        mcp_comm_logger.info(f"Tools count: {len(tools)}")
-        mcp_comm_logger.info("--- TOOLS ---")
+        # Log event at INFO level (without detailed tool content)
+        mcp_comm_logger.info(f"MCP List Tools Response: {server_name} ({len(tools)} tools) [ID: {request_id}]")
+        
+        # Log detailed content at DEBUG level
+        mcp_comm_logger.debug(f"=== MCP LIST TOOLS RESPONSE [{server_name}] [ID: {request_id}] ===")
+        mcp_comm_logger.debug(f"Request ID: {request_id}")
+        mcp_comm_logger.debug(f"Server: {server_name}")
+        mcp_comm_logger.debug(f"Tools count: {len(tools)}")
+        mcp_comm_logger.debug("--- TOOLS ---")
         for i, tool in enumerate(tools):
-            mcp_comm_logger.info(f"Tool {i+1}: {tool.name}")
-            mcp_comm_logger.info(f"  Description: {tool.description or 'No description'}")
-            mcp_comm_logger.info(f"  Schema: {json.dumps(tool.inputSchema or {}, indent=2, default=str)}")
-        mcp_comm_logger.info(f"=== END LIST TOOLS RESPONSE [ID: {request_id}] ===")
+            mcp_comm_logger.debug(f"Tool {i+1}: {tool.name}")
+            mcp_comm_logger.debug(f"  Description: {tool.description or 'No description'}")
+            mcp_comm_logger.debug(f"  Schema: {json.dumps(tool.inputSchema or {}, indent=2, default=str)}")
+        mcp_comm_logger.debug(f"=== END LIST TOOLS RESPONSE [ID: {request_id}] ===")
     
     def _log_mcp_list_tools_error(self, server_name: str, error_message: str, request_id: str) -> None:
         """Log MCP list tools errors."""

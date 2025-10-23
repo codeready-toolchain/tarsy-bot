@@ -83,6 +83,10 @@ def setup_logging(log_level: str = "INFO") -> None:
     logging.getLogger('tarsy').setLevel(numeric_level)
     logging.getLogger('uvicorn').setLevel(logging.INFO)
     
+    # Suppress verbose httpx logging (only show warnings and errors)
+    # httpx logs every HTTP request at INFO level by default, which clutters logs
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    
     # Add filter to uvicorn.access logger to suppress monitoring endpoint noise
     # This prevents frequently-polled endpoints (health checks, warnings) from cluttering logs
     uvicorn_access_logger = logging.getLogger('uvicorn.access')

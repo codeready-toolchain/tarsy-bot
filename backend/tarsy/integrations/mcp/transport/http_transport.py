@@ -96,11 +96,21 @@ class HTTPTransport(MCPTransport):
     
     async def close(self):
         """Close HTTP transport (handled automatically by exit_stack)."""
+        import asyncio
+        
         if self._connected:
             logger.info(f"Closing HTTP transport for server: {self.server_id}")
             try:
-                await self.exit_stack.aclose()
+                # Shield from cancellation to prevent cancel scope errors from propagating
+                # This prevents HTTP transport cleanup errors from cancelling parent tasks
+                await asyncio.shield(self.exit_stack.aclose())
+            except asyncio.CancelledError:
+                # Cancellation during cleanup should not propagate
+                # Log but don't raise - this allows parent tasks to continue
+                logger.warning(f"HTTP transport cleanup was cancelled for {self.server_id} (non-critical)")
             except Exception as e:
+                # Log other errors but don't raise them - cleanup is best-effort
+                # Cancel scope errors from MCP SDK should not kill the parent session
                 logger.error(f"Error closing HTTP transport for {self.server_id}: {e}")
             finally:
                 self._connected = False
