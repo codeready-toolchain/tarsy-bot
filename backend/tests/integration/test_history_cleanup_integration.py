@@ -304,7 +304,8 @@ class TestHistoryCleanupServiceIntegration:
         # Stop service
         await service.stop()
         assert service.running is False
-        assert service.cleanup_task.done()
+        # Task reference is cleared after stop
+        assert service.cleanup_task is None
 
     @pytest.mark.asyncio
     async def test_dual_cleanup_methods_exist_and_callable(self, test_session_factory):
