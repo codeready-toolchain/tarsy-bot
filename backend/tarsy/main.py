@@ -42,9 +42,6 @@ if TYPE_CHECKING:
 # Setup logger for this module
 logger = get_module_logger(__name__)
 
-# Session timeout for orphan detection
-SESSION_TIMEOUT_MINUTES = 30
-
 
 def get_pod_id() -> str:
     """
@@ -94,13 +91,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         sys.exit(1)  # Exit with error code
     
     # Clean up any orphaned sessions from previous pod crashes
-    # Timeout-based detection: sessions with no interaction for 30+ minutes are marked as failed
+    # Timeout-based detection: sessions with no interaction for configured timeout are marked as failed
     # This should happen after database initialization but before processing new alerts
     if settings.history_enabled and db_init_success:
         try:
             from tarsy.services.history_service import get_history_service
             history_service = get_history_service()
-            cleaned_sessions = history_service.cleanup_orphaned_sessions(SESSION_TIMEOUT_MINUTES)
+            cleaned_sessions = history_service.cleanup_orphaned_sessions(settings.orphaned_session_timeout_minutes)
             if cleaned_sessions > 0:
                 logger.info(f"Startup cleanup: marked {cleaned_sessions} orphaned sessions as failed")
         except Exception as e:
@@ -181,13 +178,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             db_manager.initialize()
             
             # Create and start history cleanup service
+            # Handles both orphaned sessions (every 10m) and old history retention (every 12h)
             history_cleanup_service = HistoryCleanupService(
                 db_session_factory=db_manager.get_session,
                 retention_days=settings.history_retention_days,
-                cleanup_interval_hours=settings.history_cleanup_interval_hours
+                retention_cleanup_interval_hours=settings.history_cleanup_interval_hours,
+                orphaned_timeout_minutes=settings.orphaned_session_timeout_minutes,
+                orphaned_check_interval_minutes=settings.orphaned_session_check_interval_minutes,
             )
             await history_cleanup_service.start()
-            logger.info("History cleanup service started successfully")
+            logger.info("History cleanup service started successfully (handles orphaned sessions + retention)")
         except Exception as e:
             logger.critical(
                 f"Failed to initialize history cleanup service: {e}. "

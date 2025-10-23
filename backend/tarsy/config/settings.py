@@ -126,7 +126,15 @@ class Settings(BaseSettings):
     )
     history_cleanup_interval_hours: int = Field(
         default=12,
-        description="How often to run history cleanup (hours)"
+        description="How often to run history retention cleanup (hours)"
+    )
+    orphaned_session_timeout_minutes: int = Field(
+        default=30,
+        description="Mark sessions as orphaned if no activity for N minutes"
+    )
+    orphaned_session_check_interval_minutes: int = Field(
+        default=10,
+        description="How often to check for orphaned sessions (minutes)"
     )
     
     # Event System Configuration

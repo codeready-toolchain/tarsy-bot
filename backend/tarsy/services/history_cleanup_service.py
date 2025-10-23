@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from typing import Callable, Optional
 
 from sqlmodel import Session
@@ -14,10 +15,15 @@ logger = logging.getLogger(__name__)
 
 class HistoryCleanupService:
     """
-    Periodically cleans up old alert processing history based on retention policy.
+    Periodically cleans up old alert processing history and orphaned sessions.
 
     Runs as background task on each pod (idempotent - multiple pods
     running cleanup simultaneously is safe).
+    
+    Two cleanup operations:
+    1. Orphaned sessions: Checked every N minutes (default: 10)
+    2. Old history retention: Checked every M hours (default: 12)
+    
     Uses HistoryRepository for type-safe database operations with CASCADE deletes.
     """
 
@@ -25,7 +31,9 @@ class HistoryCleanupService:
         self,
         db_session_factory: Callable[[], Session],
         retention_days: int = 90,
-        cleanup_interval_hours: int = 12,
+        retention_cleanup_interval_hours: int = 12,
+        orphaned_timeout_minutes: int = 30,
+        orphaned_check_interval_minutes: int = 10,
     ):
         """
         Initialize history cleanup service.
@@ -33,14 +41,19 @@ class HistoryCleanupService:
         Args:
             db_session_factory: Context manager that yields sync database session
             retention_days: Keep history for N days (default: 90)
-            cleanup_interval_hours: Run cleanup every N hours (default: 12)
+            retention_cleanup_interval_hours: Run retention cleanup every N hours (default: 12)
+            orphaned_timeout_minutes: Mark sessions as orphaned if no activity for N minutes (default: 30)
+            orphaned_check_interval_minutes: Check for orphaned sessions every N minutes (default: 10)
         """
         self.db_session_factory = db_session_factory
         self.retention_days = retention_days
-        self.cleanup_interval_hours = cleanup_interval_hours
+        self.retention_cleanup_interval_hours = retention_cleanup_interval_hours
+        self.orphaned_timeout_minutes = orphaned_timeout_minutes
+        self.orphaned_check_interval_minutes = orphaned_check_interval_minutes
 
         self.cleanup_task: Optional[asyncio.Task] = None
         self.running = False
+        self.last_retention_cleanup_time: float = 0.0  # Track last retention cleanup
 
     async def start(self) -> None:
         """Start background cleanup task."""
@@ -49,8 +62,10 @@ class HistoryCleanupService:
 
         logger.info(
             f"History cleanup service started "
-            f"(retention: {self.retention_days} days, "
-            f"interval: {self.cleanup_interval_hours}h)"
+            f"(orphaned sessions: check every {self.orphaned_check_interval_minutes}m, "
+            f"timeout: {self.orphaned_timeout_minutes}m | "
+            f"retention: {self.retention_days} days, "
+            f"check every {self.retention_cleanup_interval_hours}h)"
         )
 
     async def stop(self) -> None:
@@ -67,13 +82,24 @@ class HistoryCleanupService:
         logger.info("History cleanup service stopped")
 
     async def _cleanup_loop(self) -> None:
-        """Background task that runs cleanup periodically."""
+        """
+        Background task that runs cleanup periodically.
+        
+        Checks for orphaned sessions every N minutes.
+        Checks for old history retention every M hours.
+        """
         while self.running:
             try:
-                await self._cleanup_old_history()
-
-                # Wait until next cleanup
-                await asyncio.sleep(self.cleanup_interval_hours * 3600)
+                # Always check for orphaned sessions
+                await self._cleanup_orphaned_sessions()
+                
+                # Only cleanup old history when interval has elapsed
+                if self._should_run_retention_cleanup():
+                    await self._cleanup_old_history()
+                    self._update_last_retention_cleanup()
+                
+                # Wait until next orphaned session check
+                await asyncio.sleep(self.orphaned_check_interval_minutes * 60)
 
             except asyncio.CancelledError:
                 break
@@ -127,4 +153,62 @@ class HistoryCleanupService:
             deleted_count = history_repo.delete_sessions_older_than(cutoff_timestamp_us)
 
             return deleted_count
+    
+    async def _cleanup_orphaned_sessions(self) -> int:
+        """
+        Check for and mark orphaned sessions as failed.
+        
+        Returns:
+            Number of sessions marked as failed
+        """
+        try:
+            # Run synchronous database operation in thread pool to avoid blocking event loop
+            cleaned_count = await asyncio.to_thread(self._cleanup_orphaned_sync)
+
+            if cleaned_count > 0:
+                logger.info(
+                    f"Marked {cleaned_count} orphaned session(s) as failed "
+                    f"(inactive for {self.orphaned_timeout_minutes}+ minutes)"
+                )
+            else:
+                logger.debug("No orphaned sessions to clean up")
+            
+            return cleaned_count
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup orphaned sessions: {e}", exc_info=True)
+            raise
+    
+    def _cleanup_orphaned_sync(self) -> int:
+        """
+        Mark orphaned sessions as failed synchronously (called from thread pool).
+        
+        Returns:
+            Number of sessions marked as failed
+        """
+        from tarsy.services.history_service import get_history_service
+        
+        # Get history service instance
+        history_service = get_history_service()
+        
+        # Call the existing cleanup_orphaned_sessions method
+        return history_service.cleanup_orphaned_sessions(self.orphaned_timeout_minutes)
+    
+    def _should_run_retention_cleanup(self) -> bool:
+        """
+        Check if enough time has elapsed since last retention cleanup.
+        
+        Returns:
+            True if retention cleanup should run, False otherwise
+        """
+        if self.last_retention_cleanup_time == 0.0:
+            # Never run before - run now
+            return True
+        
+        elapsed_hours = (time.time() - self.last_retention_cleanup_time) / 3600
+        return elapsed_hours >= self.retention_cleanup_interval_hours
+    
+    def _update_last_retention_cleanup(self) -> None:
+        """Update the timestamp of the last retention cleanup."""
+        self.last_retention_cleanup_time = time.time()
 
