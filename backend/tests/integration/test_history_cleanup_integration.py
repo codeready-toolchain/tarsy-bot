@@ -98,7 +98,7 @@ class TestHistoryCleanupServiceIntegration:
 
         # Run cleanup with 90 day retention
         service = HistoryCleanupService(
-            test_session_factory, retention_days=90, cleanup_interval_hours=12
+            test_session_factory, retention_days=90, retention_cleanup_interval_hours=12
         )
         await service._cleanup_old_history()
 
@@ -130,7 +130,7 @@ class TestHistoryCleanupServiceIntegration:
 
         # Run cleanup with 30 day retention
         service = HistoryCleanupService(
-            test_session_factory, retention_days=30, cleanup_interval_hours=12
+            test_session_factory, retention_days=30, retention_cleanup_interval_hours=12
         )
         await service._cleanup_old_history()
 
@@ -169,7 +169,7 @@ class TestHistoryCleanupServiceIntegration:
 
         # Run cleanup
         service = HistoryCleanupService(
-            test_session_factory, retention_days=90, cleanup_interval_hours=12
+            test_session_factory, retention_days=90, retention_cleanup_interval_hours=12
         )
         await service._cleanup_old_history()
 
@@ -204,7 +204,7 @@ class TestHistoryCleanupServiceIntegration:
 
         # Run cleanup
         service = HistoryCleanupService(
-            test_session_factory, retention_days=90, cleanup_interval_hours=12
+            test_session_factory, retention_days=90, retention_cleanup_interval_hours=12
         )
         await service._cleanup_old_history()
 
@@ -247,7 +247,7 @@ class TestHistoryCleanupServiceIntegration:
 
         # Run cleanup
         service = HistoryCleanupService(
-            test_session_factory, retention_days=90, cleanup_interval_hours=12
+            test_session_factory, retention_days=90, retention_cleanup_interval_hours=12
         )
         deleted_count = await service._cleanup_old_history()
 
@@ -282,7 +282,7 @@ class TestHistoryCleanupServiceIntegration:
 
         # Run cleanup
         service = HistoryCleanupService(
-            test_session_factory, retention_days=90, cleanup_interval_hours=12
+            test_session_factory, retention_days=90, retention_cleanup_interval_hours=12
         )
         deleted_count = await service._cleanup_old_history()
 
@@ -293,7 +293,7 @@ class TestHistoryCleanupServiceIntegration:
     async def test_cleanup_service_start_and_stop(self, test_session_factory):
         """Test that cleanup service can start and stop cleanly."""
         service = HistoryCleanupService(
-            test_session_factory, retention_days=90, cleanup_interval_hours=12
+            test_session_factory, retention_days=90, retention_cleanup_interval_hours=12
         )
 
         # Start service
@@ -305,4 +305,80 @@ class TestHistoryCleanupServiceIntegration:
         await service.stop()
         assert service.running is False
         assert service.cleanup_task.done()
+
+    @pytest.mark.asyncio
+    async def test_dual_cleanup_methods_exist_and_callable(self, test_session_factory):
+        """Test that dual-cleanup methods exist and can be called."""
+        # Create service with both cleanup configurations
+        service = HistoryCleanupService(
+            test_session_factory,
+            retention_days=90,
+            retention_cleanup_interval_hours=12,
+            orphaned_timeout_minutes=30,
+            orphaned_check_interval_minutes=10,
+        )
+
+        # Verify the service has the new attributes
+        assert hasattr(service, "orphaned_timeout_minutes")
+        assert hasattr(service, "orphaned_check_interval_minutes")
+        assert hasattr(service, "last_retention_cleanup_time")
+        
+        # Verify methods exist
+        assert hasattr(service, "_cleanup_orphaned_sessions")
+        assert hasattr(service, "_should_run_retention_cleanup")
+        assert hasattr(service, "_update_last_retention_cleanup")
+
+        # Verify initial state
+        assert service.orphaned_timeout_minutes == 30
+        assert service.orphaned_check_interval_minutes == 10
+        assert service.last_retention_cleanup_time == 0.0
+
+    def test_retention_cleanup_timing_integration(self, test_session_factory):
+        """Test retention cleanup timing logic with real time values."""
+        import time
+        
+        service = HistoryCleanupService(
+            test_session_factory,
+            retention_cleanup_interval_hours=1,  # 1 hour for faster testing
+        )
+
+        # Initially should run (time = 0)
+        assert service._should_run_retention_cleanup()
+
+        # Update time
+        service._update_last_retention_cleanup()
+        first_time = service.last_retention_cleanup_time
+        assert first_time > 0
+
+        # Immediately after, should NOT run (less than 1 hour)
+        assert not service._should_run_retention_cleanup()
+
+        # Simulate time passage (set to 2 hours ago)
+        service.last_retention_cleanup_time = time.time() - (2 * 3600)
+        
+        # Now should run again
+        assert service._should_run_retention_cleanup()
+
+    @pytest.mark.asyncio
+    async def test_service_initialization_with_dual_cleanup_config(self, test_session_factory):
+        """Test service can be initialized with full dual-cleanup configuration."""
+        service = HistoryCleanupService(
+            test_session_factory,
+            retention_days=30,
+            retention_cleanup_interval_hours=6,
+            orphaned_timeout_minutes=15,
+            orphaned_check_interval_minutes=5,
+        )
+
+        # Verify all parameters were set correctly
+        assert service.retention_days == 30
+        assert service.retention_cleanup_interval_hours == 6
+        assert service.orphaned_timeout_minutes == 15
+        assert service.orphaned_check_interval_minutes == 5
+
+        # Start and stop to verify lifecycle
+        await service.start()
+        assert service.running
+        await service.stop()
+        assert not service.running
 
