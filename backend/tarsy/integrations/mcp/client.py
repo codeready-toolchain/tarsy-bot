@@ -144,18 +144,14 @@ class MCPClient:
             # Create session via transport
             session = await transport.create_session()
             
-            # Close old transport before replacement (only for non-stdio to avoid shared resource conflicts)
-            # This prevents resource leaks when recovering/replacing failed sessions
+            # Remove old transport reference before replacement
+            # DO NOT attempt to close - MCP SDK cancel scopes cause CancelledError propagation
+            # Abandoning the old transport is acceptable to avoid killing parent tasks
             if server_id in self.transports:
                 old_transport = self.transports[server_id]
                 if transport_config.type != TRANSPORT_STDIO:
-                    # HTTP/SSE transports have their own exit_stack and can be closed independently
-                    try:
-                        await old_transport.close()
-                        logger.debug(f"Closed old {transport_config.type} transport for {server_id} before replacement")
-                    except Exception as close_error:
-                        # Log but don't fail - we still want to store the new transport
-                        logger.warning(f"Error closing old transport during replacement for {server_id}: {extract_error_details(close_error)}")
+                    # Just log that we're abandoning it - cleanup causes more harm than good
+                    logger.debug(f"Abandoning old {transport_config.type} transport for {server_id} (cleanup causes cancel scope issues)")
             
             # Store transport for lifecycle management ONLY after successful session creation
             self.transports[server_id] = transport
@@ -178,9 +174,10 @@ class MCPClient:
                         if hasattr(transport, 'exit_stack'):
                             await transport.exit_stack.aclose()
                             logger.debug(f"Cleaned up {transport_config.type} transport resources for {server_id}")
-                    except Exception as cleanup_error:
+                    except BaseException as cleanup_error:
+                        # Catch ALL exceptions including CancelledError to prevent propagation
                         # Log but don't re-raise - original error is more important
-                        logger.warning(f"Error cleaning up transport for {server_id}: {extract_error_details(cleanup_error)}")
+                        logger.warning(f"Error cleaning up transport for {server_id}: {type(cleanup_error).__name__}")
             
             raise
     
@@ -672,22 +669,14 @@ class MCPClient:
         """
         logger.info(f"Recovering session for MCP server: {server_name}")
 
-        # Remove from sessions dict - the exit stack will handle cleanup
-        # Shield this from cancellation to prevent cleanup errors from killing parent tasks
+        # Remove from sessions dict - abandon the old session without cleanup
+        # The MCP SDK's cancel scopes cause issues when cleaned up from different task contexts
+        # Resource leaks are acceptable here - better than killing the parent session
         if server_name in self.sessions:
-            old_session = self.sessions[server_name]
+            logger.debug(f"Abandoning old session for {server_name} (cleanup causes cancel scope issues)")
             del self.sessions[server_name]
-            
-            # Clean up old session - shield to prevent cancel scope errors from propagating
-            try:
-                # The transport cleanup may have cancel scope issues when called from
-                # a different task context - shield to prevent them from cancelling parent
-                # Note: We don't await the cleanup task - let it happen in background (best-effort)
-                asyncio.create_task(self._cleanup_session(server_name, old_session))
-                # Let cleanup happen in background, don't wait for it
-            except Exception as e:
-                # Cleanup errors should never fail recovery
-                logger.warning(f"Non-critical error during old session cleanup for {server_name}: {e}")
+            # DO NOT attempt cleanup - it causes CancelledError to propagate
+            # The old session will be garbage collected naturally
 
         # Get server configuration
         server_config = self.mcp_registry.get_server_config_safe(server_name)
@@ -703,24 +692,6 @@ class MCPClient:
         except Exception as e:
             logger.error(f"Failed to recover session for {server_name}: {extract_error_details(e)}")
             raise Exception(f"Session recovery failed for {server_name}: {str(e)}") from e
-    
-    async def _cleanup_session(self, server_name: str, session: Any) -> None:
-        """Clean up an old session (best-effort, errors are logged but not raised).
-        
-        Args:
-            server_name: Name of the server
-            session: The session to clean up
-        """
-        try:
-            # Try to close the transport if it has one
-            if hasattr(session, '_transport') and hasattr(session._transport, 'close'):
-                await session._transport.close()
-        except asyncio.CancelledError:
-            # Cancellation during cleanup is non-critical
-            logger.debug(f"Session cleanup was cancelled for {server_name} (non-critical)")
-        except Exception as e:
-            # Log but don't raise - cleanup is best-effort
-            logger.debug(f"Non-critical error during session cleanup for {server_name}: {e}")
     
     def _log_mcp_request(self, server_name: str, tool_name: str, parameters: Dict[str, Any], request_id: str) -> None:
         """Log the outgoing MCP tool call request with sensitive data masked."""

@@ -293,7 +293,15 @@ class ReactController(IterationController):
                 
                 # Run iteration with 180s timeout (allows full MCP retry cycle: 2 × 60s + overhead)
                 # If tools consistently timeout, consecutive_timeout_failures check will break the loop
-                conversation = await asyncio.wait_for(run_iteration(), timeout=180)
+                result = await asyncio.wait_for(run_iteration(), timeout=180)
+                
+                # Check if we got a final answer (string) or a conversation object
+                if isinstance(result, str):
+                    # Final answer - return it immediately
+                    return result
+                else:
+                    # Update conversation for next iteration
+                    conversation = result
                     
             except asyncio.TimeoutError:
                 error_msg = f"Iteration {iteration + 1} exceeded 180s timeout - LLM or tool call stuck"
