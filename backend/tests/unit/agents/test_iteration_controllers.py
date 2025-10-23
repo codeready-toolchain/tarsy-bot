@@ -799,101 +799,129 @@ class TestIterationControllerIntegration:
 
 @pytest.mark.unit
 class TestFinalAnswerExtraction:
-    """Test final answer extraction from ReAct responses."""
+    """
+    Test controller-level final answer extraction functionality.
     
-    def test_multiline_final_answer_extraction(self):
-        """Test extraction of multi-line Final Answer content."""
-        # Create controller for testing (using SimpleReActController which has _extract_react_final_analysis)
+    Note: Detailed ReAct parsing edge cases are tested in test_react_parser.py.
+    These tests focus on the controller's integration with ReActParser and fallback behavior.
+    """
+    
+    def test_extract_final_answer_uses_react_parser(self):
+        """Test that controller uses ReActParser to extract Final Answer."""
         controller = SimpleReActController(Mock(), Mock())
         
-        # Test response with multi-line Final Answer
-        test_response = """Thought: I have gathered sufficient information.
-
-Final Answer: ### Analysis Report: Test Alert
-
-#### 1. Root Cause Analysis
-The issue is caused by a stuck finalizer.
-
-#### 2. Current System State  
-- Namespace: test-namespace
-- Status: Terminating
-
-#### 3. Remediation Steps
-1. Check operator status
-2. Remove finalizer if safe
-
-#### 4. Prevention Recommendations
-- Monitor operator health
-- Implement cleanup policies"""
-        
-        # Mock StageContext for testing
-        mock_context = Mock(spec=StageContext)
-        
-        result = controller._extract_react_final_analysis(
-            analysis_result=test_response,
-            completion_patterns=["Analysis completed"],
-            incomplete_patterns=["Analysis incomplete:"],
-
-            fallback_message="No analysis found",
-            context=mock_context
-        )
-        
-        # Verify the full content was extracted
-        assert "### Analysis Report: Test Alert" in result
-        assert "#### 1. Root Cause Analysis" in result
-        assert "The issue is caused by a stuck finalizer." in result
-        assert "#### 2. Current System State" in result
-        assert "#### 3. Remediation Steps" in result
-        assert "#### 4. Prevention Recommendations" in result
-        assert "- Monitor operator health" in result
-        
-        # Verify proper structure preservation
-        lines = result.split('\n')
-        assert len(lines) >= 10  # Should have multiple lines
-        
-    def test_single_line_final_answer_extraction(self):
-        """Test extraction of single-line Final Answer content."""
-        controller = SimpleReActController(Mock(), Mock())
-        
+        # Standard ReAct response with Final Answer
         test_response = """Thought: Analysis complete.
-Final Answer: Simple analysis result."""
+
+Final Answer: The system is operating normally."""
         
-        # Mock StageContext for testing
         mock_context = Mock(spec=StageContext)
         
         result = controller._extract_react_final_analysis(
             analysis_result=test_response,
             completion_patterns=["Analysis completed"],
             incomplete_patterns=["Analysis incomplete:"],
-
             fallback_message="No analysis found",
             context=mock_context
         )
         
-        assert result == "Simple analysis result."
+        assert result == "The system is operating normally."
+    
+    def test_extract_midline_final_answer(self):
+        """Test extraction of Final Answer appearing mid-line (regression test).
         
-    def test_final_answer_with_subsequent_sections(self):
-        """Test that extraction stops at next ReAct section."""
+        Verifies that the controller properly uses ReActParser which handles
+        "Final Answer:" appearing after sentence boundaries without newlines.
+        """
         controller = SimpleReActController(Mock(), Mock())
         
-        test_response = """Final Answer: This is the analysis result.
-This continues the analysis.
+        test_response = """Thought
+Analysis shows critical issues identified.
 
-Thought: This should not be included.
-Action: some-action"""
+Ready to provide final analysis.Final Answer:
+**Impact**: HIGH
+
+Recommended Actions:
+Increase memory limit to 1Gi"""
         
-        # Mock StageContext for testing
         mock_context = Mock(spec=StageContext)
         
         result = controller._extract_react_final_analysis(
             analysis_result=test_response,
             completion_patterns=["Analysis completed"],
             incomplete_patterns=["Analysis incomplete:"],
+            fallback_message="Analysis completed but no clear final answer was provided",
+            context=mock_context
+        )
+        
+        expected_result = """**Impact**: HIGH
 
+Recommended Actions:
+Increase memory limit to 1Gi"""
+        
+        assert result == expected_result
+    
+    def test_fallback_to_completion_pattern(self):
+        """Test fallback to completion patterns when no Final Answer exists."""
+        controller = SimpleReActController(Mock(), Mock())
+        
+        # Response without Final Answer but with completion pattern
+        test_response = """Thought: Starting investigation.
+Action: check_logs
+Action Input: pod_name=test-pod
+Observation: Logs retrieved
+Analysis completed: Investigation finished with partial results"""
+        
+        mock_context = Mock(spec=StageContext)
+        
+        result = controller._extract_react_final_analysis(
+            analysis_result=test_response,
+            completion_patterns=["Analysis completed"],
+            incomplete_patterns=["Analysis incomplete:"],
             fallback_message="No analysis found",
             context=mock_context
         )
         
-        assert result == "This is the analysis result.\nThis continues the analysis."
-        assert "This should not be included" not in result
-        assert "Action: some-action" not in result
+        assert result == "Investigation finished with partial results"
+    
+    def test_fallback_to_incomplete_pattern(self):
+        """Test fallback to incomplete patterns when iteration limit reached."""
+        controller = SimpleReActController(Mock(), Mock())
+        
+        # Response with incomplete pattern
+        test_response = """Thought: Need more investigation.
+Action: check_status
+Analysis incomplete: Maximum iterations reached"""
+        
+        mock_context = Mock(spec=StageContext)
+        
+        result = controller._extract_react_final_analysis(
+            analysis_result=test_response,
+            completion_patterns=["Analysis completed"],
+            incomplete_patterns=["Analysis incomplete"],
+            fallback_message="No analysis found",
+            context=mock_context
+        )
+        
+        assert result == "Analysis incomplete due to iteration limits"
+    
+    def test_fallback_message_when_no_patterns_match(self):
+        """Test ultimate fallback message when no patterns match."""
+        controller = SimpleReActController(Mock(), Mock())
+        
+        # Response with no Final Answer and no patterns
+        test_response = """Thought: Starting work.
+Action: do_something
+Action Input: param=value"""
+        
+        mock_context = Mock(spec=StageContext)
+        
+        result = controller._extract_react_final_analysis(
+            analysis_result=test_response,
+            completion_patterns=["Analysis completed"],
+            incomplete_patterns=["Analysis incomplete:"],
+            fallback_message="Custom fallback message",
+            context=mock_context
+        )
+        
+        assert result == "Custom fallback message"

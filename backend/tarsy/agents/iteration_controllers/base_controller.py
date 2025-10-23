@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from ...models.unified_interactions import MessageRole
+from ..parsers.react_parser import ReActParser
 
 if TYPE_CHECKING:
     from ...models.processing_context import StageContext
@@ -108,6 +109,8 @@ class IterationController(ABC):
         """
         Shared utility for extracting final analysis from ReAct conversations.
         
+        Uses ReActParser to properly handle all edge cases.
+        
         Args:
             analysis_result: Full ReAct conversation history
             completion_patterns: List of patterns to look for completion messages
@@ -121,45 +124,24 @@ class IterationController(ABC):
         if not analysis_result:
             return fallback_message
         
+        # Use ReActParser to extract sections
+        sections = ReActParser._extract_sections(analysis_result)
+        
+        # Check if Final Answer was found by the parser
+        if sections.get('final_answer'):
+            final_answer = sections['final_answer'].strip()
+            if final_answer:
+                return final_answer
+        
+        # Fallback: Look for stage-specific completion patterns
         lines = analysis_result.split('\n')
-        
-        # Look for final answer first (universal across all ReAct controllers)
-        final_answer_content = []
-        collecting_final_answer = False
-        
-        for i, line in enumerate(lines):
-            if line.startswith("Final Answer:"):
-                collecting_final_answer = True
-                # Add content from the same line if any
-                content = line.replace("Final Answer:", "").strip()
-                if content:
-                    final_answer_content.append(content)
-                continue
-            
-            if collecting_final_answer:
-                # Stop collecting if we hit another ReAct section
-                if (line.startswith("Thought:") or 
-                    line.startswith("Action:") or 
-                    line.startswith("Observation:")):
-                    break
-                
-                # Add all content lines (including empty ones within the final answer)
-                final_answer_content.append(line)
-        
-        if final_answer_content:
-            # Clean up trailing empty lines but preserve internal structure
-            while final_answer_content and final_answer_content[-1].strip() == "":
-                final_answer_content.pop()
-            return '\n'.join(final_answer_content)
-        
-        # Look for stage-specific completion patterns
         for line in lines:
             for pattern in completion_patterns:
                 if pattern in line and ":" in line:
                     summary_start = line.find(':') + 1
                     return line[summary_start:].strip()
         
-        # Look for incomplete patterns
+        # Fallback: Look for incomplete patterns
         for line in lines:
             for pattern in incomplete_patterns:
                 if line.startswith(pattern):
