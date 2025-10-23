@@ -348,6 +348,7 @@ def e2e_realistic_kubernetes_alert():
             "namespace": "test-namespace",
             "description": "Namespace stuck in Terminating state",
             "cluster": "test-cluster",
+            "contact": "admin@example.com",  # Email to test masking
             "labels": {
                 "env": "test",
                 "team": "platform"

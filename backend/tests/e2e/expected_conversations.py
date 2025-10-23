@@ -112,6 +112,7 @@ Question: Investigate this test-kubernetes alert and provide stage-specific anal
   "namespace": "test-namespace",
   "description": "Namespace stuck in Terminating state",
   "cluster": "test-cluster",
+  "contact": "***MASKED_EMAIL***",
   "labels": {
     "env": "test",
     "team": "platform"
@@ -432,6 +433,7 @@ Question: Investigate this test-kubernetes alert and provide stage-specific anal
   "namespace": "test-namespace",
   "description": "Namespace stuck in Terminating state",
   "cluster": "test-cluster",
+  "contact": "***MASKED_EMAIL***",
   "labels": {
     "env": "test",
     "team": "platform"
@@ -656,6 +658,7 @@ Question: Analyze this test-kubernetes alert and provide actionable recommendati
   "namespace": "test-namespace",
   "description": "Namespace stuck in Terminating state",
   "cluster": "test-cluster",
+  "contact": "***MASKED_EMAIL***",
   "labels": {
     "env": "test",
     "team": "platform"
@@ -804,6 +807,7 @@ Please provide detailed, actionable insights about what's happening and potentia
   "namespace": "test-namespace",
   "description": "Namespace stuck in Terminating state",
   "cluster": "test-cluster",
+  "contact": "***MASKED_EMAIL***",
   "labels": {
     "env": "test",
     "team": "platform"
