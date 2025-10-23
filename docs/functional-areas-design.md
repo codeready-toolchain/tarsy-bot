@@ -568,15 +568,61 @@ graph TB
 
 #### Key Components
 
+**📍 MCP Client Factory**: `backend/tarsy/services/mcp_client_factory.py`
+- **On-demand client instantiation** for per-session isolation
+- **Dependency injection** of settings and registry
+- **Clean separation** between factory and client lifecycle
+
 **📍 MCP Client**: `backend/tarsy/integrations/mcp/client.py`
 - **Official MCP SDK integration** supporting stdio, HTTP, and SSE transports
 - **Multi-transport architecture** with automatic transport selection based on configuration
-- **Session management** with AsyncExitStack for proper cleanup
+- **Per-session lifecycle** tied to single async task context
 - **Tool discovery** and execution coordination
 - **Integrated data masking** on all tool responses
+- **Immediate timeout failure** without retries (60s tool call timeout)
+
+#### MCP Client Lifecycle Architecture
+
+**Per-Session Client Isolation**: Each alert processing session gets its own dedicated MCP client instance to prevent async context interference:
 
 ```python
-# MCP client initialization and tool execution
+# In AlertService.process_alert()
+async with self.mcp_client_factory.create_client() as session_mcp_client:
+    # Client scoped to this specific alert session
+    # Agent gets this isolated client
+    agent = self.agent_factory.get_agent(agent_name, mcp_client=session_mcp_client)
+    result = await agent.process_alert(context)
+    # Client cleanup happens automatically when session completes
+```
+
+**Three Independent MCP Client Contexts**:
+
+1. **Health Monitor Client** (global, long-lived)
+   - Created once at `AlertService.__init__()`
+   - Stored as `self.health_check_mcp_client`
+   - Used ONLY for health checks/ping operations
+   - Lives for entire application lifetime
+
+2. **Alert Session Clients** (per-session, short-lived)
+   - Created fresh in each `process_alert()` call via factory
+   - Used for all agent tool execution in that specific alert
+   - Cleanup when alert completes (success or failure)
+   - Each concurrent alert gets completely isolated client
+
+3. **Zero Sharing**
+   - Health checks use only `health_check_mcp_client`
+   - Alert sessions never share clients
+   - Each operates in isolated async context
+
+**Benefits**:
+- **Eliminates `CancelledError` propagation** between async contexts
+- **Session isolation** - timeout in one session doesn't affect others
+- **Natural cleanup** - client dies with task (no cross-context cleanup)
+- **Simplified error handling** - timeouts fail immediately, LLM can retry with different approach
+
+**Tool Execution**:
+```python
+# MCP client tool execution with automatic masking
 async with mcp_interaction_context(session_id, server_name, tool_name, parameters) as ctx:
     result = await session.call_tool(tool_name, parameters)
     # Automatic data masking applied before returning
