@@ -12,7 +12,8 @@ import {
   Psychology, 
   ContentCopy, 
   ExpandMore, 
-  ExpandLess 
+  ExpandLess,
+  AutoAwesome 
 } from '@mui/icons-material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import type { FinalAnalysisCardProps } from '../types';
@@ -171,6 +172,22 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage }: FinalAnaly
             Copy Analysis
           </Button>
         </Box>
+
+        {/* AI-Generated Content Warning */}
+        <Alert 
+          severity="info" 
+          icon={<AutoAwesome />}
+          sx={{ mb: 2 }}
+        >
+          <Box>
+            <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.5, fontSize: '1rem' }}>
+              AI-Generated Content
+            </Typography>
+            <Typography variant="body1" sx={{ fontSize: '0.95rem' }}>
+              Always review AI generated content prior to use.
+            </Typography>
+          </Box>
+        </Alert>
 
         {/* Analysis Content with Expand/Collapse */}
         <Box sx={{ position: 'relative' }}>
