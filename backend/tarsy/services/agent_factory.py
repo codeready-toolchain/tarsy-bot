@@ -39,7 +39,6 @@ class AgentFactory:
     def __init__(
         self,
         llm_client: LLMClient,
-        mcp_client: MCPClient,
         mcp_registry: MCPServerRegistry,
         agent_configs: Optional[Dict[str, "AgentConfigModel"]] = None
     ):
@@ -48,12 +47,14 @@ class AgentFactory:
         
         Args:
             llm_client: Client for LLM interactions
-            mcp_client: Client for MCP server interactions
             mcp_registry: Registry of MCP server configurations (REQUIRED)
             agent_configs: Optional dictionary of configured agents for ConfigurableAgent creation
+            
+        Note:
+            MCP client is NOT stored - it must be provided per agent creation
+            to ensure proper isolation between alert sessions.
         """
         self.llm_client = llm_client
-        self.mcp_client = mcp_client
         self.mcp_registry = mcp_registry
         self.agent_configs = agent_configs
         
@@ -90,7 +91,7 @@ class AgentFactory:
                 raise ValueError(f"Built-in agent '{class_name}' could not be loaded: {e}")
     
 
-    def create_agent(self, agent_name: str) -> BaseAgent:
+    def create_agent(self, agent_name: str, mcp_client: MCPClient) -> BaseAgent:
         """
         Create an agent instance with dependency injection.
         
@@ -99,6 +100,7 @@ class AgentFactory:
         
         Args:
             agent_name: Name of the agent (configured agents take precedence over built-in)
+            mcp_client: Session-scoped MCP client for this agent instance
             
         Returns:
             Instantiated agent with injected dependencies
@@ -109,18 +111,18 @@ class AgentFactory:
         try:
             # Check configured agents first (they're more specific and can override built-ins)
             if self.agent_configs and agent_name in self.agent_configs:
-                return self._create_configured_agent(agent_name)
+                return self._create_configured_agent(agent_name, mcp_client)
             
             # Check built-in agents second
             if agent_name in self.static_agent_classes:
-                return self._create_traditional_agent(agent_name)
+                return self._create_traditional_agent(agent_name, mcp_client)
             
             # Handle legacy format for backwards compatibility
             if agent_name.startswith("ConfigurableAgent:"):
                 legacy_agent_name = agent_name.split(":", 1)[1]
                 if self.agent_configs and legacy_agent_name in self.agent_configs:
                     logger.warning(f"Using legacy format '{agent_name}'. Consider updating to just '{legacy_agent_name}'")
-                    return self._create_configured_agent(legacy_agent_name)
+                    return self._create_configured_agent(legacy_agent_name, mcp_client)
             
             # Generate helpful error message
             available_agents = []
@@ -135,7 +137,7 @@ class AgentFactory:
             logger.error(f"Failed to create agent '{agent_name}': {e}")
             raise
 
-    def get_agent(self, agent_identifier: str, iteration_strategy: Optional[str] = None) -> BaseAgent:
+    def get_agent(self, agent_identifier: str, mcp_client: MCPClient, iteration_strategy: Optional[str] = None) -> BaseAgent:
         """
         Get agent instance by identifier with optional strategy override.
         
@@ -150,8 +152,8 @@ class AgentFactory:
         Returns:
             Agent instance configured with appropriate strategy
         """
-        # Create agent using existing create_agent method
-        agent = self.create_agent(agent_identifier)
+        # Create agent using existing create_agent method with session-scoped client
+        agent = self.create_agent(agent_identifier, mcp_client)
         
         # Override strategy if provided
         if iteration_strategy:
@@ -163,12 +165,13 @@ class AgentFactory:
         
         return agent
     
-    def _create_traditional_agent(self, agent_class_name: str) -> BaseAgent:
+    def _create_traditional_agent(self, agent_class_name: str, mcp_client: MCPClient) -> BaseAgent:
         """
         Create a traditional BaseAgent subclass instance.
         
         Args:
             agent_class_name: Name of the agent class to instantiate
+            mcp_client: Session-scoped MCP client for this agent instance
             
         Returns:
             Instantiated traditional agent
@@ -197,7 +200,7 @@ class AgentFactory:
             
             agent = agent_class(
                 llm_client=self.llm_client,
-                mcp_client=self.mcp_client,
+                mcp_client=mcp_client,
                 mcp_registry=self.mcp_registry,
                 iteration_strategy=iteration_strategy
             )
@@ -210,12 +213,13 @@ class AgentFactory:
         except Exception as e:
             raise ValueError(f"Failed to create '{agent_class_name}': {e}")
     
-    def _create_configured_agent(self, agent_name: str) -> BaseAgent:
+    def _create_configured_agent(self, agent_name: str, mcp_client: MCPClient) -> BaseAgent:
         """
         Create a ConfigurableAgent instance.
         
         Args:
             agent_name: Name of the configured agent (no prefix required)
+            mcp_client: Session-scoped MCP client for this agent instance
             
         Returns:
             Instantiated configured agent
@@ -237,7 +241,7 @@ class AgentFactory:
             agent = ConfigurableAgent(
                 config=self.agent_configs[agent_name],
                 llm_client=self.llm_client,
-                mcp_client=self.mcp_client,
+                mcp_client=mcp_client,
                 mcp_registry=self.mcp_registry,
                 agent_name=agent_name
             )
@@ -268,8 +272,6 @@ class AgentFactory:
         if self.llm_client is None:
             errors.append("LLM client is not initialized")
         
-        if self.mcp_client is None:
-            errors.append("MCP client is not initialized")
         
         if self.mcp_registry is None:
             errors.append("MCP registry is not initialized")
@@ -291,9 +293,6 @@ class AgentFactory:
         
         if self.llm_client is None:
             errors.append("LLM client is not initialized")
-        
-        if self.mcp_client is None:
-            errors.append("MCP client is not initialized")
         
         if self.mcp_registry is None:
             errors.append("MCP registry is not initialized")

@@ -120,16 +120,15 @@ class TestAlertServiceAsyncInitialization:
         with patch('tarsy.services.alert_service.AgentFactory') as mock_factory:
             await alert_service.initialize()
             
-            # Verify MCP client initialization
-            alert_service.mcp_client.initialize.assert_called_once()
+            # Verify health check MCP client initialization (renamed from mcp_client)
+            alert_service.health_check_mcp_client.initialize.assert_called_once()
             
             # Verify LLM availability check
             alert_service.llm_manager.is_available.assert_called_once()
             
-            # Verify agent factory creation
+            # Verify agent factory creation (no longer receives mcp_client in constructor)
             mock_factory.assert_called_once_with(
                 llm_client=alert_service.llm_manager,
-                mcp_client=alert_service.mcp_client,
                 mcp_registry=alert_service.mcp_server_registry,
                 agent_configs={}  # Empty dict when no config path is provided
             )
@@ -157,7 +156,7 @@ class TestAlertServiceAsyncInitialization:
         SystemWarningsService._instance = None
 
         # Simulate two MCP servers failing
-        alert_service.mcp_client.get_failed_servers.return_value = {
+        alert_service.health_check_mcp_client.get_failed_servers.return_value = {
             "argocd-server": "Type=FileNotFoundError | Message=[Errno 2] No such file or directory",
             "github-server": "Type=ConnectionError | Message=Connection refused"
         }

@@ -83,10 +83,15 @@ class AlertService:
         )
         
         # Initialize services that depend on registries
-        self.mcp_client = MCPClient(settings, self.mcp_server_registry)
+        # Note: This health check client is ONLY for health monitoring, never for alert processing
+        self.health_check_mcp_client = MCPClient(settings, self.mcp_server_registry)
         self.llm_manager = LLMManager(settings)
         
-        # Initialize agent factory with dependencies
+        # Initialize MCP client factory for creating per-session clients
+        from tarsy.services.mcp_client_factory import MCPClientFactory
+        self.mcp_client_factory = MCPClientFactory(settings, self.mcp_server_registry)
+        
+        # Initialize agent factory with dependencies (no MCP client - provided per agent)
         self.agent_factory = None  # Will be initialized in initialize()
         
         logger.info(f"AlertService initialized with agent delegation support "
@@ -144,11 +149,11 @@ class AlertService:
         Validates configuration completeness (not runtime availability).
         """
         try:
-            # Initialize MCP client
-            await self.mcp_client.initialize()
+            # Initialize health check MCP client (used ONLY for health monitoring)
+            await self.health_check_mcp_client.initialize()
             
             # Check for failed servers and create individual warnings
-            failed_servers = self.mcp_client.get_failed_servers()
+            failed_servers = self.health_check_mcp_client.get_failed_servers()
             if failed_servers:
                 from tarsy.models.system_models import WarningCategory
                 from tarsy.services.system_warnings_service import (
@@ -212,10 +217,9 @@ class AlertService:
                         details=f"Check {provider_name} configuration (base_url, SSL settings, network connectivity). This provider will be unavailable.",
                     )
 
-            # Initialize agent factory with dependencies
+            # Initialize agent factory with dependencies (no MCP client - provided per agent)
             self.agent_factory = AgentFactory(
                 llm_client=self.llm_manager,
-                mcp_client=self.mcp_client,
                 mcp_registry=self.mcp_server_registry,
                 agent_configs=self.parsed_config.agents,
             )
@@ -234,12 +238,17 @@ class AlertService:
         """
         Process an alert by delegating to the appropriate specialized agent.
         
+        Creates a session-scoped MCP client for isolation and proper resource cleanup.
+        
         Args:
             chain_context: Chain context with all processing data
             
         Returns:
             Analysis result as a string
         """
+        # Create session-scoped MCP client for this alert processing
+        session_mcp_client = None
+        
         try:
             # Step 1: Validate prerequisites
             if not self.llm_manager.is_available():
@@ -248,7 +257,12 @@ class AlertService:
             if not self.agent_factory:
                 raise Exception("Agent factory not initialized - call initialize() first")
             
-            # Step 2: Get chain for alert type
+            # Step 2: Create isolated MCP client for this session
+            logger.info(f"Creating session-scoped MCP client for session {chain_context.session_id}")
+            session_mcp_client = await self.mcp_client_factory.create_client()
+            logger.debug(f"Session-scoped MCP client created for session {chain_context.session_id}")
+            
+            # Step 3: Get chain for alert type
             try:
                 chain_definition = self.chain_registry.get_chain_for_alert_type(chain_context.processing_alert.alert_type)
             except ValueError as e:
@@ -300,7 +314,7 @@ class AlertService:
                 chain_context.processing_alert.alert_type
             )
             
-            # Step 3: Extract runbook from alert data and download once per chain
+            # Step 4: Extract runbook from alert data and download once per chain
             # If no runbook URL provided, use the built-in default runbook
             runbook = chain_context.processing_alert.runbook_url
             if runbook:
@@ -311,17 +325,31 @@ class AlertService:
                 from tarsy.config.builtin_config import DEFAULT_RUNBOOK_CONTENT
                 runbook_content = DEFAULT_RUNBOOK_CONTENT
             
-            # Step 4: Set up chain context
+            # Step 5: Set up chain context
             chain_context.set_chain_context(chain_definition.chain_id)
             chain_context.set_runbook_content(runbook_content)
             
-            # Step 5: Execute chain stages sequentially  
-            chain_result = await self._execute_chain_stages(
-                chain_definition=chain_definition,
-                chain_context=chain_context
-            )
+            # Step 6: Execute chain stages sequentially with 600s overall timeout
+            try:
+                chain_result = await asyncio.wait_for(
+                    self._execute_chain_stages(
+                        chain_definition=chain_definition,
+                        chain_context=chain_context,
+                        session_mcp_client=session_mcp_client
+                    ),
+                    timeout=600.0  # 10 minute overall session limit
+                )
+            except asyncio.TimeoutError:
+                error_msg = "Alert processing exceeded 600s overall timeout"
+                logger.error(f"{error_msg} for session {chain_context.session_id}")
+                # Update history session with timeout error
+                self._update_session_error(chain_context.session_id, error_msg)
+                # Publish session.failed event
+                from tarsy.services.events.event_helpers import publish_session_failed
+                await publish_session_failed(chain_context.session_id)
+                return self._format_error_response(chain_context, error_msg)
             
-            # Step 6: Format and return results
+            # Step 7: Format and return results
             if chain_result.status == ChainStatus.COMPLETED:
                 analysis = chain_result.final_analysis or 'No analysis provided'
                 
@@ -367,11 +395,23 @@ class AlertService:
             await publish_session_failed(chain_context.session_id)
             
             return self._format_error_response(chain_context, error_msg)
+        
+        finally:
+            # Always cleanup session-scoped MCP client
+            if session_mcp_client:
+                try:
+                    logger.debug(f"Closing session-scoped MCP client for session {chain_context.session_id}")
+                    await session_mcp_client.close()
+                    logger.debug(f"Session-scoped MCP client closed for session {chain_context.session_id}")
+                except Exception as cleanup_error:
+                    # Log but don't raise - cleanup errors shouldn't fail the session
+                    logger.warning(f"Error closing session MCP client: {cleanup_error}")
 
     async def _execute_chain_stages(
         self, 
         chain_definition: ChainConfigModel, 
-        chain_context: ChainContext
+        chain_context: ChainContext,
+        session_mcp_client: MCPClient
     ) -> ChainExecutionResult:
         """
         Execute chain stages sequentially with accumulated data flow.
@@ -379,6 +419,7 @@ class AlertService:
         Args:
             chain_definition: Chain definition with stages
             chain_context: Chain context with all processing data
+            session_mcp_client: Session-scoped MCP client for all stages in this chain
             
         Returns:
             ChainExecutionResult with execution results
@@ -414,8 +455,10 @@ class AlertService:
                     await self._update_stage_execution_started(stage_execution_id)
                     
                     # Get agent instance with stage-specific strategy (always creates unique instance)
+                    # Pass session-scoped MCP client for isolation
                     agent = self.agent_factory.get_agent(
                         agent_identifier=stage.agent,
+                        mcp_client=session_mcp_client,
                         iteration_strategy=stage.iteration_strategy
                     )
                     
@@ -1018,9 +1061,9 @@ class AlertService:
                 if asyncio.iscoroutine(result):
                     await result
             
-            # Safely close MCP client (handle both sync and async close methods)
-            if hasattr(self.mcp_client, 'close'):
-                result = self.mcp_client.close()
+            # Safely close health check MCP client (handle both sync and async close methods)
+            if hasattr(self.health_check_mcp_client, 'close'):
+                result = self.health_check_mcp_client.close()
                 if asyncio.iscoroutine(result):
                     await result
             

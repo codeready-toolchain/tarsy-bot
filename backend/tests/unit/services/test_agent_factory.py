@@ -30,12 +30,11 @@ class TestAgentFactoryInitialization:
         """Test successful AgentFactory initialization."""
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
-            mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
         assert factory.llm_client == mock_dependencies['llm_client']
-        assert factory.mcp_client == mock_dependencies['mcp_client']
+        # mcp_client is no longer stored in factory - provided per agent creation
         assert factory.mcp_registry == mock_dependencies['mcp_registry']
         assert factory.agent_configs is None  # Default value
         assert isinstance(factory.static_agent_classes, dict)
@@ -46,14 +45,13 @@ class TestAgentFactoryInitialization:
         mock_agent_configs = AgentServiceFactory.create_agent_configs()
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
-            mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry'],
             agent_configs=mock_agent_configs
         )
         
         assert factory.agent_configs == mock_agent_configs
         assert factory.llm_client == mock_dependencies['llm_client']
-        assert factory.mcp_client == mock_dependencies['mcp_client']
+        # mcp_client is no longer stored in factory - provided per agent creation
         assert factory.mcp_registry == mock_dependencies['mcp_registry']
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
@@ -61,7 +59,6 @@ class TestAgentFactoryInitialization:
         """Test that agents are properly registered during initialization."""
         factory = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
-            mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -73,13 +70,11 @@ class TestAgentFactoryInitialization:
         """Test that agent registry is properly isolated between instances."""
         factory1 = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
-            mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
         factory2 = AgentFactory(
             llm_client=mock_dependencies['llm_client'],
-            mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         

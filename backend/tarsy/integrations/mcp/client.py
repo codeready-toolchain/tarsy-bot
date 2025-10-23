@@ -208,125 +208,71 @@ class MCPClient:
             if server_name:
                 # List tools from specific server
                 if server_name in self.sessions:
-                    max_retries = 2
                     timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
-                    for attempt in range(max_retries):
-                        try:
-                            session = self.sessions[server_name]
-                            # Wrap list_tools call with timeout
-                            tools_result = await asyncio.wait_for(
-                                session.list_tools(),
-                                timeout=timeout_seconds
-                            )
-                            # Keep the official Tool objects with full schema information
-                            all_tools[server_name] = tools_result.tools
-                            
-                            # Log the successful response
-                            self._log_mcp_list_tools_response(server_name, tools_result.tools, request_id)
-                            break  # Success, exit retry loop
+                    try:
+                        session = self.sessions[server_name]
+                        # Wrap list_tools call with timeout
+                        tools_result = await asyncio.wait_for(
+                            session.list_tools(),
+                            timeout=timeout_seconds
+                        )
+                        # Keep the official Tool objects with full schema information
+                        all_tools[server_name] = tools_result.tools
                         
-                        except asyncio.TimeoutError:
-                            error_msg = f"List tools timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries})"
-                            logger.error(f"{error_msg} for {server_name}")
-                            
-                            if attempt < max_retries - 1:
-                                logger.warning("Retrying list_tools after timeout...")
-                                try:
-                                    await self._recover_session(server_name)
-                                    logger.info(f"Successfully recovered session for server: {server_name}")
-                                    continue
-                                except Exception as recovery_error:
-                                    logger.error(f"Failed to recover session for {server_name}: {extract_error_details(recovery_error)}")
-                            
-                            # Final attempt or recovery failed
-                            logger.error(f"List tools timed out for {server_name} after {max_retries} attempts")
-                            self._log_mcp_list_tools_error(server_name, error_msg, request_id)
-                            all_tools[server_name] = []
-                            break
-                            
-                        except Exception as e:
-                            error_details = extract_error_details(e)
-                            
-                            if attempt < max_retries - 1:
-                                logger.warning(f"List tools failed on attempt {attempt + 1}/{max_retries} for {server_name}: {error_details}")
-                                logger.info(f"Attempting to recover session for server: {server_name}")
-                                
-                                try:
-                                    await self._recover_session(server_name)
-                                    logger.info(f"Successfully recovered session for server: {server_name}")
-                                    continue  # Retry with the new session
-                                except Exception as recovery_error:
-                                    logger.error(f"Failed to recover session for {server_name}: {extract_error_details(recovery_error)}")
-                                    # Continue to final attempt logic below
-                            
-                            # Final attempt or recovery failed
-                            logger.error(f"Error listing tools from {server_name}: {error_details}")
-                            self._log_mcp_list_tools_error(server_name, error_details, request_id)
-                            all_tools[server_name] = []
-                            break  # Exit retry loop
+                        # Log the successful response
+                        self._log_mcp_list_tools_response(server_name, tools_result.tools, request_id)
+                    
+                    except asyncio.TimeoutError:
+                        # No retry - let LLM handle it
+                        error_msg = f"List tools timed out after {timeout_seconds}s"
+                        logger.error(f"{error_msg} for {server_name}")
+                        self._log_mcp_list_tools_error(server_name, error_msg, request_id)
+                        # Return empty list so processing can continue
+                        all_tools[server_name] = []
+                        
+                    except Exception as e:
+                        # No retry - fail fast
+                        error_details = extract_error_details(e)
+                        logger.error(f"List tools failed for {server_name}: {error_details}")
+                        self._log_mcp_list_tools_error(server_name, error_details, request_id)
+                        # Return empty list so processing can continue
+                        all_tools[server_name] = []
             else:
                 # List tools from all servers
                 for name in list(self.sessions.keys()):  # Use list() to avoid dict changed during iteration
-                    max_retries = 2
                     timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
-                    for attempt in range(max_retries):
-                        try:
-                            session = self.sessions.get(name)
-                            if not session:
-                                all_tools[name] = []
-                                break
-                            
-                            # Wrap list_tools call with timeout
-                            tools_result = await asyncio.wait_for(
-                                session.list_tools(),
-                                timeout=timeout_seconds
-                            )
-                            # Keep the official Tool objects with full schema information
-                            all_tools[name] = tools_result.tools
-                            
-                            # Log the successful response for this server
-                            self._log_mcp_list_tools_response(name, tools_result.tools, request_id)
-                            break  # Success, exit retry loop
+                    try:
+                        session = self.sessions.get(name)
+                        if not session:
+                            all_tools[name] = []
+                            continue
                         
-                        except asyncio.TimeoutError:
-                            error_msg = f"List tools timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries})"
-                            logger.error(f"{error_msg} for {name}")
-                            
-                            if attempt < max_retries - 1:
-                                logger.warning("Retrying list_tools after timeout...")
-                                try:
-                                    await self._recover_session(name)
-                                    logger.info(f"Successfully recovered session for server: {name}")
-                                    continue
-                                except Exception as recovery_error:
-                                    logger.error(f"Failed to recover session for {name}: {extract_error_details(recovery_error)}")
-                            
-                            # Final attempt or recovery failed
-                            logger.error(f"List tools timed out for {name} after {max_retries} attempts")
-                            self._log_mcp_list_tools_error(name, error_msg, request_id)
-                            all_tools[name] = []
-                            break
-                            
-                        except Exception as e:
-                            error_details = extract_error_details(e)
-                            
-                            if attempt < max_retries - 1:
-                                logger.warning(f"List tools failed on attempt {attempt + 1}/{max_retries} for {name}: {error_details}")
-                                logger.info(f"Attempting to recover session for server: {name}")
-                                
-                                try:
-                                    await self._recover_session(name)
-                                    logger.info(f"Successfully recovered session for server: {name}")
-                                    continue  # Retry with the new session
-                                except Exception as recovery_error:
-                                    logger.error(f"Failed to recover session for {name}: {extract_error_details(recovery_error)}")
-                                    # Continue to final attempt logic below
-                            
-                            # Final attempt or recovery failed
-                            logger.error(f"Error listing tools from {name}: {error_details}")
-                            self._log_mcp_list_tools_error(name, error_details, request_id)
-                            all_tools[name] = []
-                            break  # Exit retry loop
+                        # Wrap list_tools call with timeout
+                        tools_result = await asyncio.wait_for(
+                            session.list_tools(),
+                            timeout=timeout_seconds
+                        )
+                        # Keep the official Tool objects with full schema information
+                        all_tools[name] = tools_result.tools
+                        
+                        # Log the successful response for this server
+                        self._log_mcp_list_tools_response(name, tools_result.tools, request_id)
+                    
+                    except asyncio.TimeoutError:
+                        # No retry - let LLM handle it
+                        error_msg = f"List tools timed out after {timeout_seconds}s"
+                        logger.error(f"{error_msg} for {name}")
+                        self._log_mcp_list_tools_error(name, error_msg, request_id)
+                        # Return empty list so processing can continue
+                        all_tools[name] = []
+                        
+                    except Exception as e:
+                        # No retry - fail fast
+                        error_details = extract_error_details(e)
+                        logger.error(f"List tools failed for {name}: {error_details}")
+                        self._log_mcp_list_tools_error(name, error_details, request_id)
+                        # Return empty list so processing can continue
+                        all_tools[name] = []
             
             # Convert Tool objects to dictionaries for JSON serialization in hook context
             serializable_tools: Dict[str, List[Dict[str, Any]]] = {}
@@ -539,111 +485,80 @@ class MCPClient:
             # Log the outgoing tool call
             self._log_mcp_request(server_name, tool_name, parameters, request_id)
             
-            # Try the tool call with automatic session recovery on failure
-            max_retries = 2
+            # Execute tool call with timeout - fail fast on any error
             timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
             
-            for attempt in range(max_retries):
-                session = self.sessions.get(server_name)
-                if not session:
-                    raise Exception(f"MCP server not found: {server_name}")
+            session = self.sessions.get(server_name)
+            if not session:
+                raise Exception(f"MCP server not found: {server_name}")
+            
+            try:
+                # Wrap MCP call with timeout to prevent indefinite hanging
+                result = await asyncio.wait_for(
+                    session.call_tool(tool_name, parameters),
+                    timeout=timeout_seconds
+                )
                 
-                try:
-                    # Wrap MCP call with timeout to prevent indefinite hanging
-                    result = await asyncio.wait_for(
-                        session.call_tool(tool_name, parameters),
-                        timeout=timeout_seconds
-                    )
-                    
-                    # Convert result to dictionary
-                    if hasattr(result, 'content'):
-                        # Handle different content types
-                        content = result.content
-                        if isinstance(content, list):
-                            # Extract text content from the list
-                            text_parts = []
-                            for item in content:
-                                if hasattr(item, 'text'):
-                                    text_parts.append(item.text)
-                                elif hasattr(item, 'type') and item.type == 'text':
-                                    text_parts.append(str(item))
-                            response_dict = {"result": "\n".join(text_parts)}
-                        else:
-                            response_dict = {"result": str(content)}
+                # Convert result to dictionary
+                if hasattr(result, 'content'):
+                    # Handle different content types
+                    content = result.content
+                    if isinstance(content, list):
+                        # Extract text content from the list
+                        text_parts = []
+                        for item in content:
+                            if hasattr(item, 'text'):
+                                text_parts.append(item.text)
+                            elif hasattr(item, 'type') and item.type == 'text':
+                                text_parts.append(str(item))
+                        response_dict = {"result": "\n".join(text_parts)}
                     else:
-                        response_dict = {"result": str(result)}
-                    
-                    # Apply data masking if service is available
-                    if self.data_masking_service:
-                        try:
-                            logger.debug("Applying data masking for server: %s", server_name)
-                            response_dict = self.data_masking_service.mask_response(response_dict, server_name)
-                            logger.debug("Data masking completed for server: %s", server_name)
-                        except Exception as e:
-                            logger.error("Error during data masking for server '%s': %s", server_name, e)
-                            # Never return unmasked data - redact on masking failure
-                            response_dict = {"result": "[REDACTED: masking failure]"}
-                            raise Exception(f"Data masking failed for server '{server_name}': {str(e)}") from e
-                    
-                    # Log the successful response with ACTUAL result (before optional summarization)
-                    self._log_mcp_response(server_name, tool_name, response_dict, request_id)
-                    
-                    # Store ACTUAL result in interaction (this is what goes to DB)
-                    ctx.interaction.tool_result = response_dict
-                    
-                    # Capture MCP event ID before completion (for linking summarization)
-                    mcp_event_id = ctx.interaction.communication_id
-                    
-                    # Complete the typed context with success
-                    # This triggers MCP hooks and stores the interaction to DB with actual result
-                    await ctx.complete_success({})
-                    
-                    # Store actual result and event ID for potential summarization outside the context
-                    actual_result = response_dict
-                    break  # Success, exit retry loop
+                        response_dict = {"result": str(content)}
+                else:
+                    response_dict = {"result": str(result)}
                 
-                except asyncio.TimeoutError:
-                    # Handle timeout specifically
-                    error_msg = f"MCP tool call timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries})"
-                    logger.error(f"{error_msg} for {server_name}.{tool_name}")
+                # Apply data masking if service is available
+                if self.data_masking_service:
+                    try:
+                        logger.debug("Applying data masking for server: %s", server_name)
+                        response_dict = self.data_masking_service.mask_response(response_dict, server_name)
+                        logger.debug("Data masking completed for server: %s", server_name)
+                    except Exception as e:
+                        logger.error("Error during data masking for server '%s': %s", server_name, e)
+                        # Never return unmasked data - redact on masking failure
+                        response_dict = {"result": "[REDACTED: masking failure]"}
+                        raise Exception(f"Data masking failed for server '{server_name}': {str(e)}") from e
+                
+                # Log the successful response with ACTUAL result (before optional summarization)
+                self._log_mcp_response(server_name, tool_name, response_dict, request_id)
+                
+                # Store ACTUAL result in interaction (this is what goes to DB)
+                ctx.interaction.tool_result = response_dict
+                
+                # Capture MCP event ID before completion (for linking summarization)
+                mcp_event_id = ctx.interaction.communication_id
+                
+                # Complete the typed context with success
+                # This triggers MCP hooks and stores the interaction to DB with actual result
+                await ctx.complete_success({})
+                
+                # Store actual result and event ID for potential summarization outside the context
+                actual_result = response_dict
+            
+            except asyncio.TimeoutError:
+                # No retry - let LLM handle it
+                error_msg = f"MCP tool call timed out after {timeout_seconds}s"
+                logger.error(f"{error_msg} for {server_name}.{tool_name}")
+                self._log_mcp_error(server_name, tool_name, error_msg, request_id)
+                raise TimeoutError(error_msg) from None
                     
-                    if attempt < max_retries - 1:
-                        logger.warning("Retrying after timeout...")
-                        try:
-                            # Attempt to recover the session after timeout
-                            await self._recover_session(server_name)
-                            logger.info(f"Successfully recovered session for server: {server_name}")
-                            continue  # Retry with the new session
-                        except Exception as recovery_error:
-                            logger.error(f"Failed to recover session for {server_name}: {extract_error_details(recovery_error)}")
-                            # Continue to final attempt logic below
-                    
-                    # Final attempt or recovery failed - raise timeout error
-                    final_error_msg = f"MCP tool call {tool_name} on {server_name} timed out after {max_retries} attempts ({timeout_seconds}s each)"
-                    self._log_mcp_error(server_name, tool_name, final_error_msg, request_id)
-                    raise TimeoutError(final_error_msg) from None
-                        
-                except Exception as e:
-                    error_details = extract_error_details(e)
-                    
-                    if attempt < max_retries - 1:
-                        # Always attempt recovery on first failure - simpler and more robust
-                        logger.warning(f"Tool call failed on attempt {attempt + 1}/{max_retries} for {server_name}.{tool_name}: {error_details}")
-                        logger.info(f"Attempting to recover session for server: {server_name}")
-                        
-                        try:
-                            # Attempt to recover the session
-                            await self._recover_session(server_name)
-                            logger.info(f"Successfully recovered session for server: {server_name}")
-                            continue  # Retry with the new session
-                        except Exception as recovery_error:
-                            logger.error(f"Failed to recover session for {server_name}: {extract_error_details(recovery_error)}")
-                            # Continue to final attempt logic below
-                    
-                    # Final attempt or recovery failed - raise the original error
-                    error_msg = f"Failed to call tool {tool_name} on {server_name} after {max_retries} attempts: {error_details}"
-                    self._log_mcp_error(server_name, tool_name, error_details, request_id)
-                    raise Exception(error_msg) from e
+            except Exception as e:
+                # No retry - fail fast
+                error_details = extract_error_details(e)
+                error_msg = f"Failed to call tool {tool_name} on {server_name}: {error_details}"
+                logger.error(error_msg)
+                self._log_mcp_error(server_name, tool_name, error_details, request_id)
+                raise Exception(error_msg) from e
         
         # MCP interaction is now stored in DB with actual result
         # Now perform summarization if needed (creates separate LLM interaction with later timestamp)
@@ -657,41 +572,6 @@ class MCPClient:
         
         # Return actual result if no summarization needed
         return actual_result
-    
-    async def _recover_session(self, server_name: str) -> None:
-        """Recover a failed MCP session by recreating it.
-
-        Args:
-            server_name: Name of the server whose session needs recovery
-
-        Raises:
-            Exception: If session recovery fails
-        """
-        logger.info(f"Recovering session for MCP server: {server_name}")
-
-        # Remove from sessions dict - abandon the old session without cleanup
-        # The MCP SDK's cancel scopes cause issues when cleaned up from different task contexts
-        # Resource leaks are acceptable here - better than killing the parent session
-        if server_name in self.sessions:
-            logger.debug(f"Abandoning old session for {server_name} (cleanup causes cancel scope issues)")
-            del self.sessions[server_name]
-            # DO NOT attempt cleanup - it causes CancelledError to propagate
-            # The old session will be garbage collected naturally
-
-        # Get server configuration
-        server_config = self.mcp_registry.get_server_config_safe(server_name)
-        if not server_config:
-            raise Exception(f"Server configuration not found for: {server_name}")
-
-        # Recreate the session using shared helper
-        try:
-            session = await self._create_session(server_name, server_config)
-            self.sessions[server_name] = session
-            logger.info(f"Successfully recovered MCP server session: {server_name}")
-
-        except Exception as e:
-            logger.error(f"Failed to recover session for {server_name}: {extract_error_details(e)}")
-            raise Exception(f"Session recovery failed for {server_name}: {str(e)}") from e
     
     def _log_mcp_request(self, server_name: str, tool_name: str, parameters: Dict[str, Any], request_id: str) -> None:
         """Log the outgoing MCP tool call request with sensitive data masked."""

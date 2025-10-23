@@ -121,12 +121,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         sys.exit(1)  # Exit with error code
     
     # Start MCP health monitoring (after AlertService is ready)
+    # Uses dedicated health_check_mcp_client to avoid interfering with alert sessions
     try:
         from tarsy.services.mcp_health_monitor import MCPHealthMonitor
         from tarsy.services.system_warnings_service import get_warnings_service
         
         mcp_health_monitor = MCPHealthMonitor(
-            mcp_client=alert_service.mcp_client,
+            mcp_client=alert_service.health_check_mcp_client,
             warnings_service=get_warnings_service(),
             check_interval=15.0  # Check every 15 seconds
         )
