@@ -1,5 +1,7 @@
 """Integration tests for HistoryCleanupService with real database."""
 
+import time
+
 import pytest
 
 from tarsy.models.db_models import AlertSession, StageExecution
@@ -308,7 +310,7 @@ class TestHistoryCleanupServiceIntegration:
         assert service.cleanup_task is None
 
     @pytest.mark.asyncio
-    async def test_dual_cleanup_methods_exist_and_callable(self, test_session_factory):
+    async def test_dual_cleanup_methods_exist_and_callable(self, test_session_factory) -> None:
         """Test that dual-cleanup methods exist and can be called."""
         # Create service with both cleanup configurations
         service = HistoryCleanupService(
@@ -324,20 +326,18 @@ class TestHistoryCleanupServiceIntegration:
         assert hasattr(service, "orphaned_check_interval_minutes")
         assert hasattr(service, "last_retention_cleanup_time")
         
-        # Verify methods exist
-        assert hasattr(service, "_cleanup_orphaned_sessions")
-        assert hasattr(service, "_should_run_retention_cleanup")
-        assert hasattr(service, "_update_last_retention_cleanup")
+        # Verify methods exist and are callable
+        assert callable(getattr(service, "_cleanup_orphaned_sessions"))
+        assert callable(getattr(service, "_should_run_retention_cleanup"))
+        assert callable(getattr(service, "_update_last_retention_cleanup"))
 
         # Verify initial state
         assert service.orphaned_timeout_minutes == 30
         assert service.orphaned_check_interval_minutes == 10
         assert service.last_retention_cleanup_time == 0.0
 
-    def test_retention_cleanup_timing_integration(self, test_session_factory):
+    def test_retention_cleanup_timing_integration(self, test_session_factory) -> None:
         """Test retention cleanup timing logic with real time values."""
-        import time
-        
         service = HistoryCleanupService(
             test_session_factory,
             retention_cleanup_interval_hours=1,  # 1 hour for faster testing
@@ -361,7 +361,7 @@ class TestHistoryCleanupServiceIntegration:
         assert service._should_run_retention_cleanup()
 
     @pytest.mark.asyncio
-    async def test_service_initialization_with_dual_cleanup_config(self, test_session_factory):
+    async def test_service_initialization_with_dual_cleanup_config(self, test_session_factory) -> None:
         """Test service can be initialized with full dual-cleanup configuration."""
         service = HistoryCleanupService(
             test_session_factory,
