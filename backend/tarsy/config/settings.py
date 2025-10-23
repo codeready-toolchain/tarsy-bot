@@ -183,6 +183,16 @@ class Settings(BaseSettings):
         description="Path to JWT public key file for token validation"
     )
     
+    # Alert Data Masking Configuration
+    alert_data_masking_enabled: bool = Field(
+        default=True,
+        description="Enable masking of sensitive data in incoming alerts"
+    )
+    alert_data_masking_pattern_group: str = Field(
+        default="security",
+        description="Pattern group to use for alert data masking (basic, secrets, security, kubernetes, all)"
+    )
+    
     # Template Variable Defaults
     # These provide default values for template variables if not set in environment
     kubeconfig_default: str = Field(

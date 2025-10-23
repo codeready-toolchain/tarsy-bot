@@ -796,3 +796,63 @@ type: Opaque"""
         # Registry error means no masking config found, so return original
         assert result == response
         assert result["result"] == "Some sensitive data"
+
+
+@pytest.mark.unit
+class TestMaskAlertData:
+    """Test mask_alert_data() wrapper method for alert data masking."""
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.service = DataMaskingService()
+    
+    def test_invalid_pattern_group_raises_error(self):
+        """Test that invalid pattern group raises ValueError."""
+        alert_data = {"test": "data"}
+        
+        with pytest.raises(ValueError) as exc_info:
+            self.service.mask_alert_data(alert_data, pattern_group="invalid_group")
+        
+        assert "Unknown pattern group 'invalid_group'" in str(exc_info.value)
+        assert "Available:" in str(exc_info.value)
+    
+    def test_security_pattern_group_masks_data(self):
+        """Test that security pattern group masks sensitive data in alerts."""
+        alert_data = {
+            "config": 'api_key: "sk_test_key_1234567890abcdefghijk"',
+            "contact": "admin@example.com",
+            "safe_field": "safe_value"
+        }
+        
+        result = self.service.mask_alert_data(alert_data, pattern_group="security")
+        
+        # Sensitive data should be masked
+        assert "sk_test_key_1234567890abcdefghijk" not in str(result)
+        assert "admin@example.com" not in str(result)
+        assert "***MASKED" in str(result)
+        
+        # Non-sensitive data should be preserved
+        assert result["safe_field"] == "safe_value"
+    
+    def test_empty_data_returns_empty(self):
+        """Test that empty data returns empty."""
+        result = self.service.mask_alert_data({}, pattern_group="security")
+        assert result == {}
+    
+    def test_basic_pattern_group_only_masks_api_key_and_password(self):
+        """Test that basic pattern group only masks api_key and password."""
+        alert_data = {
+            "creds": 'api_key: "sk_test_1234567890abcdefghijklm" password: "secret123"',
+            "token_field": "token: should_not_mask_in_basic",
+            "email": "user@example.com"
+        }
+        
+        result = self.service.mask_alert_data(alert_data, pattern_group="basic")
+        
+        # Basic group should mask api_key and password
+        assert "sk_test_1234567890abcdefghijklm" not in str(result)
+        assert "secret123" not in str(result)
+        
+        # Token and email should NOT be masked (not in basic group)
+        assert "should_not_mask_in_basic" in str(result)
+        assert "user@example.com" in str(result)

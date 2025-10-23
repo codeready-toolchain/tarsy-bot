@@ -106,6 +106,61 @@ class DataMaskingService:
         logger.debug(f"Successfully compiled {len(compiled_pattern_names)} custom patterns")
         return compiled_pattern_names
     
+    def mask_alert_data(self, alert_data: Dict[str, Any], pattern_group: str = "security") -> Dict[str, Any]:
+        """Mask sensitive data in alert payloads using specified pattern group.
+        
+        This method provides standalone alert data masking without requiring
+        MCP server configuration. It's used for masking incoming alert data
+        at the API entry point.
+        
+        Uses the same core masking mechanism as mask_response() to apply
+        regex patterns to data structures.
+        
+        Args:
+            alert_data: The alert data dictionary to mask
+            pattern_group: Pattern group name (default: "security")
+                          Available groups: basic, secrets, security, kubernetes, all
+            
+        Returns:
+            Masked alert data dictionary with sensitive information replaced
+            
+        Raises:
+            ValueError: If pattern_group is not recognized
+        """
+        logger.debug(f"mask_alert_data called with pattern_group: {pattern_group}")
+        
+        try:
+            # Validate pattern group exists
+            if pattern_group not in BUILTIN_PATTERN_GROUPS:
+                available_groups = list(BUILTIN_PATTERN_GROUPS.keys())
+                error_msg = f"Unknown pattern group '{pattern_group}'. Available: {available_groups}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            
+            # Expand pattern group to individual patterns
+            patterns = self._expand_pattern_groups([pattern_group])
+            
+            if not patterns:
+                logger.warning(f"Pattern group '{pattern_group}' expanded to no patterns - returning data unchanged")
+                return alert_data
+            
+            logger.debug(f"Applying {len(patterns)} patterns from group '{pattern_group}' to alert data")
+            
+            # Use the same core masking mechanism as mask_response()
+            masked_data = self._mask_data_structure(alert_data, patterns)
+            
+            logger.debug(f"Alert data masking completed for pattern group '{pattern_group}'")
+            return masked_data
+            
+        except ValueError:
+            # Re-raise validation errors
+            raise
+        except Exception as e:
+            # Log error but don't fail - return original data for reliability
+            logger.error(f"Error during alert data masking with pattern group '{pattern_group}': {e}", exc_info=True)
+            logger.warning("Returning original alert data due to masking error (fail-open for reliability)")
+            return alert_data
+    
     def mask_response(self, response: Dict[str, Any], server_name: str) -> Dict[str, Any]:
         """Apply server-specific masking patterns to response data.
         

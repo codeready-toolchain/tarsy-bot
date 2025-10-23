@@ -170,6 +170,32 @@ async def submit_alert(request: Request) -> AlertResponse:
             # Validate using Alert model
             alert_data = Alert(**sanitized_data)
             
+            # Apply data masking if enabled
+            from tarsy.config.settings import get_settings
+            settings = get_settings()
+            
+            if settings.alert_data_masking_enabled:
+                try:
+                    from tarsy.services.data_masking_service import DataMaskingService
+                    
+                    # Initialize masking service (no MCP registry needed for alert data masking)
+                    masking_service = DataMaskingService(mcp_registry=None)
+                    
+                    # Mask the alert data using configured pattern group
+                    alert_data.data = masking_service.mask_alert_data(
+                        alert_data.data,
+                        pattern_group=settings.alert_data_masking_pattern_group
+                    )
+                    
+                    logger.debug(f"Alert data masking applied with pattern group: {settings.alert_data_masking_pattern_group}")
+                    
+                except Exception as mask_error:
+                    # Log error but continue processing - fail-open for reliability
+                    logger.error(f"Failed to apply alert data masking: {mask_error}", exc_info=True)
+                    logger.warning("Continuing with unmasked alert data due to masking error")
+            else:
+                logger.debug("Alert data masking is disabled")
+            
         except ValidationError as e:
             # Provide detailed validation error messages
             errors = []
