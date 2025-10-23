@@ -144,6 +144,19 @@ class MCPClient:
             # Create session via transport
             session = await transport.create_session()
             
+            # Close old transport before replacement (only for non-stdio to avoid shared resource conflicts)
+            # This prevents resource leaks when recovering/replacing failed sessions
+            if server_id in self.transports:
+                old_transport = self.transports[server_id]
+                if transport_config.type != TRANSPORT_STDIO:
+                    # HTTP/SSE transports have their own exit_stack and can be closed independently
+                    try:
+                        await old_transport.close()
+                        logger.debug(f"Closed old {transport_config.type} transport for {server_id} before replacement")
+                    except Exception as close_error:
+                        # Log but don't fail - we still want to store the new transport
+                        logger.warning(f"Error closing old transport during replacement for {server_id}: {extract_error_details(close_error)}")
+            
             # Store transport for lifecycle management ONLY after successful session creation
             self.transports[server_id] = transport
             
@@ -679,12 +692,20 @@ class MCPClient:
             raise Exception(f"Session recovery failed for {server_name}: {str(e)}") from e
     
     def _log_mcp_request(self, server_name: str, tool_name: str, parameters: Dict[str, Any], request_id: str) -> None:
-        """Log the outgoing MCP tool call request."""
+        """Log the outgoing MCP tool call request with sensitive data masked."""
+        # Apply data masking to parameters before logging to prevent credential/PII exposure
+        try:
+            masked_parameters = self.data_masking_service.mask_response(parameters, server_name)
+        except Exception as e:
+            logger.warning(f"Failed to mask request parameters for logging: {e}. Using parameter keys only.")
+            # Fallback: log only parameter keys, not values
+            masked_parameters = {k: "***MASKED***" for k in parameters.keys()}
+        
         mcp_comm_logger.info(f"=== MCP REQUEST [{server_name}] [ID: {request_id}] ===")
         mcp_comm_logger.info(f"Request ID: {request_id}")
         mcp_comm_logger.info(f"Server: {server_name}")
         mcp_comm_logger.info(f"Tool: {tool_name}")
-        mcp_comm_logger.info(f"Parameters: {json.dumps(parameters, indent=2, default=str)}")
+        mcp_comm_logger.info(f"Parameters: {json.dumps(masked_parameters, indent=2, default=str)}")
         mcp_comm_logger.info(f"=== END REQUEST [ID: {request_id}] ===")
     
     def _log_mcp_response(self, server_name: str, tool_name: str, response: Dict[str, Any], request_id: str) -> None:

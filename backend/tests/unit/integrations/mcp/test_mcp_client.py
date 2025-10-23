@@ -298,7 +298,12 @@ class TestMCPClientToolCalling:
             )
             
             assert "***MASKED_API_KEY***" in str(result)
-            mock_masking.mask_response.assert_called_once()
+            # mask_response is now called twice: once for request parameters (logging), once for response
+            assert mock_masking.mask_response.call_count == 2
+            # Verify masking was called for both request parameters and response
+            calls = mock_masking.mask_response.call_args_list
+            assert calls[0][0] == ({'param': 'value'}, 'test-server')  # Request parameters
+            assert 'api_key' in str(calls[1][0][0])  # Response
     
     @pytest.mark.asyncio
     async def test_call_tool_server_not_found(self, client_with_session):
