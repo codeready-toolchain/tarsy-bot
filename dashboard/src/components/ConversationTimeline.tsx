@@ -442,6 +442,14 @@ function ConversationTimeline({
     }
   }, [session]);
 
+  // Clear streaming items when session completes or fails
+  useEffect(() => {
+    if (session.status === 'completed' || session.status === 'failed') {
+      console.log('✅ Session ended, clearing all streaming items');
+      setStreamingItems(new Map());
+    }
+  }, [session.status]);
+
   // Subscribe to streaming events
   useEffect(() => {
     if (!session.session_id) return;
