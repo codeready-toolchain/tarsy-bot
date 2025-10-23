@@ -109,8 +109,8 @@ class TestSimpleReActController:
         """Test successful ReAct analysis loop with final answer."""
         result = await controller.execute_analysis_loop(sample_context)
         
-        # Should return final answer
-        assert result == "Analysis complete"
+        # Should return last assistant message containing final answer
+        assert result == "Final Answer: Analysis complete"
         
         # Verify LLM was called
         mock_llm_client.generate_response.assert_called()
@@ -172,11 +172,8 @@ class TestSimpleReActController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        # Should return full ReAct history including actions and final answer
-        assert "Thought: Need to get more info" in result
-        assert "Action: test-server.test-tool" in result
-        assert "Observation: test-server.test-tool: success" in result 
-        assert "Final Answer: Complete analysis" in result
+        # Should return last assistant message containing final answer
+        assert result == "Thought: Now I have enough info\nFinal Answer: Complete analysis"
         
         # Verify tool was executed
         mock_agent.execute_mcp_tools.assert_called_once()
@@ -254,11 +251,8 @@ class TestSimpleReActController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        # Should return full ReAct history including error handling and final answer
-        assert "Thought: Need to use tool" in result
-        assert "Action: test-server.test-tool" in result
-        assert "Observation: Error executing action: Tool execution failed" in result
-        assert "Final Answer: Analysis with error" in result
+        # Should return last assistant message containing final answer
+        assert result == "Thought: Tool failed but continuing\nFinal Answer: Analysis with error"
         
         # Verify tool execution was attempted
         mock_agent.execute_mcp_tools.assert_called_once()
@@ -605,11 +599,8 @@ class TestReactStageController:
         
         result = await controller.execute_analysis_loop(sample_context)
         
-        # Should return full ReAct history with tool execution for partial analysis
-        assert "Thought: Need to analyze with tools" in result
-        assert "Action: test-server.analysis-tool" in result
-        assert "Observation: analysis-server.analysis-tool: analysis data" in result
-        assert "Final Answer: Comprehensive partial analysis" in result
+        # Should return last assistant message containing final answer
+        assert result == "Thought: Analysis completed successfully\nFinal Answer: Comprehensive partial analysis"
         
         # Verify tool was executed
         mock_agent.execute_mcp_tools.assert_called_once()
@@ -722,7 +713,7 @@ class TestIterationControllerFactory:
             assert agent.iteration_strategy == IterationStrategy.REACT
     
     def test_create_unknown_iteration_strategy_fails(self, mock_llm_client, mock_prompt_builder):
-        """Test that unknown iteration strategy raises ValueError."""
+        """Test that unknown iteration strategy raises AssertionError via assert_never."""
         from tarsy.agents.base_agent import BaseAgent
         
         class TestAgent(BaseAgent):
@@ -732,7 +723,7 @@ class TestIterationControllerFactory:
                 return "test"
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', return_value=mock_prompt_builder):
-            with pytest.raises(ValueError, match="Unknown iteration strategy"):
+            with pytest.raises(AssertionError, match="Expected code to be unreachable"):
                 TestAgent(
                     llm_client=mock_llm_client,
                     mcp_client=Mock(),

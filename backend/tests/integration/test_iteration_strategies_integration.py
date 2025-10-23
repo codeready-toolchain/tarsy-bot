@@ -603,7 +603,7 @@ mcp_servers:
                 return "test"
         
         with patch('tarsy.agents.base_agent.get_prompt_builder'):
-            with pytest.raises(ValueError, match="Unknown iteration strategy"):
+            with pytest.raises(AssertionError, match="Expected code to be unreachable"):
                 TestAgent(
                     llm_client=Mock(),
                     mcp_client=Mock(),

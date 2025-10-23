@@ -683,27 +683,6 @@ Test runbook content
 #### Analysis Result
 
 <!-- Analysis Result START -->
-Thought: I need to get namespace information first.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get: {
-  "result": "stuck-namespace   Terminating   45m"
-}
-Action: kubernetes-server.kubectl_describe
-Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: Type=McpError | Message=tool 'kubectl_describe' not found: tool not found | error=ErrorData(code=-32602, message="tool 'kubectl_describe' not found: tool not found", data=None)
-Thought: Let me also collect system information to understand resource constraints.
-Action: test-data-server.collect_system_info
-Action Input: {"detailed": false}
-Observation: test-data-server.collect_system_info: {
-  "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
-}
-Thought: Let me gather more information about the current state.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "events", "namespace": "test-namespace"}
-Observation: kubernetes-server.kubectl_get: {
-  "result": "Mock kubectl get events response"
-}
 Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
 <!-- Analysis Result END -->
 
@@ -832,27 +811,6 @@ Test runbook content
 #### Analysis Result
 
 <!-- Analysis Result START -->
-Thought: I need to get namespace information first.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get: {
-  "result": "stuck-namespace   Terminating   45m"
-}
-Action: kubernetes-server.kubectl_describe
-Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: Type=McpError | Message=tool 'kubectl_describe' not found: tool not found | error=ErrorData(code=-32602, message="tool 'kubectl_describe' not found: tool not found", data=None)
-Thought: Let me also collect system information to understand resource constraints.
-Action: test-data-server.collect_system_info
-Action Input: {"detailed": false}
-Observation: test-data-server.collect_system_info: {
-  "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
-}
-Thought: Let me gather more information about the current state.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "events", "namespace": "test-namespace"}
-Observation: kubernetes-server.kubectl_get: {
-  "result": "Mock kubectl get events response"
-}
 Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
 <!-- Analysis Result END -->
 
@@ -861,12 +819,6 @@ Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Te
 #### Analysis Result
 
 <!-- Analysis Result START -->
-Thought: I need to verify the namespace status.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-Observation: kubernetes-server.kubectl_get: {
-  "result": "stuck-namespace   Terminating   45m"
-}
 Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion.
 <!-- Analysis Result END -->
 
