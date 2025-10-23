@@ -57,14 +57,13 @@ class TestAgentFactoryIntegration:
         # Act
         factory = AgentFactory(
             llm_client=mock_llm_manager,
-            mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
         
         # Assert
         assert factory is not None
         assert factory.llm_client == mock_llm_manager
-        assert factory.mcp_client == mock_mcp_client
+        # mcp_client is no longer stored in factory, it's passed to create_agent()
         assert factory.mcp_registry == mock_mcp_server_registry
         assert len(factory.static_agent_classes) > 0
         assert "KubernetesAgent" in factory.static_agent_classes
@@ -79,12 +78,11 @@ class TestAgentFactoryIntegration:
         # Arrange
         factory = AgentFactory(
             llm_client=mock_llm_manager,
-            mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
         
         # Act
-        agent = factory.create_agent("KubernetesAgent")
+        agent = factory.create_agent("KubernetesAgent", mcp_client=mock_mcp_client)
         
         # Assert
         assert isinstance(agent, KubernetesAgent)
@@ -102,13 +100,12 @@ class TestAgentFactoryIntegration:
         # Arrange
         factory = AgentFactory(
             llm_client=mock_llm_manager,
-            mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
         
         # Act & Assert
         with pytest.raises(ValueError, match="Unknown agent 'UnknownAgent'"):
-            factory.create_agent("UnknownAgent")
+            factory.create_agent("UnknownAgent", mcp_client=mock_mcp_client)
 
 
 @pytest.mark.asyncio
@@ -306,7 +303,6 @@ class TestServiceInteractionPatterns:
         registry = ChainRegistry()
         factory = AgentFactory(
             llm_client=mock_llm_manager,
-            mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
         
@@ -316,7 +312,7 @@ class TestServiceInteractionPatterns:
         chain_config = registry.get_chain_for_alert_type(alert_type)
         # Get the agent name from the first stage of the chain
         first_stage = chain_config.stages[0]
-        agent = factory.create_agent(first_stage.agent)
+        agent = factory.create_agent(first_stage.agent, mcp_client=mock_mcp_client)
         
         # Assert
         assert chain_config.chain_id == "kubernetes-agent-chain"

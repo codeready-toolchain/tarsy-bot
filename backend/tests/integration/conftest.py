@@ -785,11 +785,14 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
         return mock_agent
     
     # Make get_agent synchronous to match AlertService expectations
-    def mock_get_agent(agent_identifier, iteration_strategy=None):
+    def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None):
+        return create_mock_agent(agent_identifier, iteration_strategy)
+    
+    def mock_create_agent(agent_identifier, mcp_client, iteration_strategy=None):
         return create_mock_agent(agent_identifier, iteration_strategy)
     
     factory.get_agent = Mock(side_effect=mock_get_agent)
-    factory.create_agent = Mock(side_effect=create_mock_agent)
+    factory.create_agent = Mock(side_effect=mock_create_agent)
     factory.progress_callback = None
     return factory
 
@@ -812,8 +815,14 @@ async def alert_service(ensure_integration_test_isolation, mock_settings, mock_r
     service.runbook_service = mock_runbook_service
     service.chain_registry = mock_chain_registry
     service.mcp_server_registry = mock_mcp_server_registry
-    service.mcp_client = mock_mcp_client
+    service.health_check_mcp_client = mock_mcp_client
     service.llm_manager = mock_llm_manager
+    
+    # Mock the MCP client factory to return the mock client instantly (no subprocess spawning)
+    from tarsy.services.mcp_client_factory import MCPClientFactory
+    mock_factory = Mock(spec=MCPClientFactory)
+    mock_factory.create_client = AsyncMock(return_value=mock_mcp_client)
+    service.mcp_client_factory = mock_factory
     
     # Initialize the service (this creates the real agent_factory)
     await service.initialize()
@@ -841,11 +850,18 @@ def alert_service_with_mocks(
     
     # Inject mocked dependencies
     service.llm_manager = mock_llm_manager
-    service.mcp_client = mock_mcp_client
+    service.health_check_mcp_client = mock_mcp_client
     service.mcp_server_registry = mock_mcp_server_registry
     service.runbook_service = mock_runbook_service
     service.chain_registry = mock_chain_registry
     service.agent_factory = mock_agent_factory
+    
+    # Mock the MCP client factory to return the mock client instantly (no subprocess spawning)
+    from tarsy.services.mcp_client_factory import MCPClientFactory
+    mock_factory = Mock(spec=MCPClientFactory)
+    mock_factory.create_client = AsyncMock(return_value=mock_mcp_client)
+    service.mcp_client_factory = mock_factory
+    
     # Create mock history service for proper testing
     mock_history_service = Mock(spec=HistoryService)
     mock_history_service.is_enabled = True

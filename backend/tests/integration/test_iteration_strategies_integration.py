@@ -272,12 +272,11 @@ class TestIterationStrategiesIntegration:
         # Create factory after patching KubernetesAgent 
         factory = AgentFactory(
             llm_client=mock_llm_client,
-            mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
         
         # Create agent - should use default REACT strategy
-        agent = factory.create_agent("KubernetesAgent")
+        agent = factory.create_agent("KubernetesAgent", mcp_client=mock_mcp_client)
         
         # Verify factory called agent with REACT strategy
         mock_k8s_agent.assert_called_with(
@@ -449,14 +448,13 @@ mcp_servers:
             # Create agent factory
             factory = AgentFactory(
                 llm_client=mock_llm_client,
-                mcp_client=mock_mcp_client,
                 mcp_registry=mcp_registry,
                 agent_configs=config.agents
             )
             
             # Create agents with different strategies
-            react_stage_agent = factory.create_agent("ConfigurableAgent:test-react-stage-agent")
-            react_agent = factory.create_agent("ConfigurableAgent:test-react-agent")
+            react_stage_agent = factory.create_agent("ConfigurableAgent:test-react-stage-agent", mcp_client=mock_mcp_client)
+            react_agent = factory.create_agent("ConfigurableAgent:test-react-agent", mcp_client=mock_mcp_client)
             
             # Verify correct strategies assigned
             assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
