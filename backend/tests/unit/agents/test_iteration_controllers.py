@@ -20,13 +20,6 @@ from tarsy.models.constants import IterationStrategy
 from tarsy.models.processing_context import AvailableTools, ChainContext, StageContext
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 
-# TestIterationContext removed - IterationContext class no longer exists
-# It was replaced by StageContext in the EP-0012 context architecture redesign
-
-
-# Removed TestRegularIterationController - REGULAR strategy no longer supported
-
-
 @pytest.mark.unit
 class TestSimpleReActController:
     """Test SimpleReActController implementation."""
@@ -806,32 +799,23 @@ class TestFinalAnswerExtraction:
     These tests focus on the controller's integration with ReActParser and fallback behavior.
     """
     
-    def test_extract_final_answer_uses_react_parser(self):
-        """Test that controller uses ReActParser to extract Final Answer."""
+    def test_extract_simple_final_answer(self):
+        """Test extraction of simple single-line Final Answer."""
         controller = SimpleReActController(Mock(), Mock())
         
-        # Standard ReAct response with Final Answer
         test_response = """Thought: Analysis complete.
 
 Final Answer: The system is operating normally."""
         
-        mock_context = Mock(spec=StageContext)
-        
-        result = controller._extract_react_final_analysis(
-            analysis_result=test_response,
-            completion_patterns=["Analysis completed"],
-            incomplete_patterns=["Analysis incomplete:"],
-            fallback_message="No analysis found",
-            context=mock_context
-        )
+        result = controller._extract_react_final_analysis(test_response)
         
         assert result == "The system is operating normally."
     
     def test_extract_midline_final_answer(self):
-        """Test extraction of Final Answer appearing mid-line (regression test).
+        """Test extraction of Final Answer appearing mid-line (bug fix regression test).
         
-        Verifies that the controller properly uses ReActParser which handles
-        "Final Answer:" appearing after sentence boundaries without newlines.
+        This was the original bug: "Final Answer:" appearing after a sentence boundary
+        without a newline (e.g., "...action.Final Answer:") was not being extracted.
         """
         controller = SimpleReActController(Mock(), Mock())
         
@@ -844,15 +828,7 @@ Ready to provide final analysis.Final Answer:
 Recommended Actions:
 Increase memory limit to 1Gi"""
         
-        mock_context = Mock(spec=StageContext)
-        
-        result = controller._extract_react_final_analysis(
-            analysis_result=test_response,
-            completion_patterns=["Analysis completed"],
-            incomplete_patterns=["Analysis incomplete:"],
-            fallback_message="Analysis completed but no clear final answer was provided",
-            context=mock_context
-        )
+        result = controller._extract_react_final_analysis(test_response)
         
         expected_result = """**Impact**: HIGH
 
@@ -861,67 +837,86 @@ Increase memory limit to 1Gi"""
         
         assert result == expected_result
     
-    def test_fallback_to_completion_pattern(self):
-        """Test fallback to completion patterns when no Final Answer exists."""
+    def test_extract_complex_multi_section_final_answer(self):
+        """Test extraction of complex multi-section Final Answer."""
         controller = SimpleReActController(Mock(), Mock())
         
-        # Response without Final Answer but with completion pattern
-        test_response = """Thought: Starting investigation.
-Action: check_logs
-Action Input: pod_name=test-pod
-Observation: Logs retrieved
-Analysis completed: Investigation finished with partial results"""
+        test_response = """Thought: Comprehensive analysis complete.
+
+Final Answer:
+## Summary
+The system is experiencing high latency.
+
+## Root Cause
+Database queries are not optimized.
+
+## Recommendations
+1. Add indexes to frequently queried columns
+2. Implement query caching
+3. Monitor query performance
+
+## Impact Assessment
+- Current: 2000ms average response time
+- Expected after fix: 200ms average response time"""
         
-        mock_context = Mock(spec=StageContext)
+        result = controller._extract_react_final_analysis(test_response)
         
-        result = controller._extract_react_final_analysis(
-            analysis_result=test_response,
-            completion_patterns=["Analysis completed"],
-            incomplete_patterns=["Analysis incomplete:"],
-            fallback_message="No analysis found",
-            context=mock_context
-        )
+        expected_result = """## Summary
+The system is experiencing high latency.
+
+## Root Cause
+Database queries are not optimized.
+
+## Recommendations
+1. Add indexes to frequently queried columns
+2. Implement query caching
+3. Monitor query performance
+
+## Impact Assessment
+- Current: 2000ms average response time
+- Expected after fix: 200ms average response time"""
         
-        assert result == "Investigation finished with partial results"
+        assert result == expected_result
     
-    def test_fallback_to_incomplete_pattern(self):
-        """Test fallback to incomplete patterns when iteration limit reached."""
+    def test_returns_entire_message_when_no_final_answer(self):
+        """Test fallback: returns entire message when no Final Answer exists.
+        
+        When the last assistant message doesn't contain "Final Answer:",
+        the method returns the entire message as-is so the user sees
+        what the LLM generated (partial progress, incomplete analysis, etc).
+        """
         controller = SimpleReActController(Mock(), Mock())
         
-        # Response with incomplete pattern
-        test_response = """Thought: Need more investigation.
-Action: check_status
-Analysis incomplete: Maximum iterations reached"""
-        
-        mock_context = Mock(spec=StageContext)
-        
-        result = controller._extract_react_final_analysis(
-            analysis_result=test_response,
-            completion_patterns=["Analysis completed"],
-            incomplete_patterns=["Analysis incomplete"],
-            fallback_message="No analysis found",
-            context=mock_context
-        )
-        
-        assert result == "Analysis incomplete due to iteration limits"
-    
-    def test_fallback_message_when_no_patterns_match(self):
-        """Test ultimate fallback message when no patterns match."""
-        controller = SimpleReActController(Mock(), Mock())
-        
-        # Response with no Final Answer and no patterns
-        test_response = """Thought: Starting work.
+        # Various messages without Final Answer
+        test_cases = [
+            # Case 1: Thought and Action only
+            """Thought: Starting work.
 Action: do_something
-Action Input: param=value"""
+Action Input: param=value""",
+            
+            # Case 2: Incomplete analysis message
+            """Thought: Need more investigation.
+Action: check_status
+Analysis incomplete: Maximum iterations reached""",
+            
+            # Case 3: Message with observations (shouldn't happen with new _build_final_result, but test anyway)
+            """Thought: Starting investigation.
+Action: check_logs
+Action Input: pod_name=test-pod"""
+        ]
         
-        mock_context = Mock(spec=StageContext)
+        for test_response in test_cases:
+            result = controller._extract_react_final_analysis(test_response)
+            assert result == test_response, f"Failed for: {test_response[:50]}..."
+    
+    def test_extract_with_empty_input(self):
+        """Test extraction with empty/None input (edge case)."""
+        controller = SimpleReActController(Mock(), Mock())
         
-        result = controller._extract_react_final_analysis(
-            analysis_result=test_response,
-            completion_patterns=["Analysis completed"],
-            incomplete_patterns=["Analysis incomplete:"],
-            fallback_message="Custom fallback message",
-            context=mock_context
-        )
+        # Empty string
+        result = controller._extract_react_final_analysis("")
+        assert result == "No analysis generated"
         
-        assert result == "Custom fallback message"
+        # None should be handled gracefully
+        result = controller._extract_react_final_analysis(None)
+        assert result == "No analysis generated"

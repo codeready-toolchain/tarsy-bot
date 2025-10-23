@@ -57,10 +57,4 @@ class SimpleReActController(ReactController):
         
         Looks for the Final Answer in the ReAct history.
         """
-        return self._extract_react_final_analysis(
-            analysis_result=analysis_result,
-            completion_patterns=["Analysis completed"],
-            incomplete_patterns=["Analysis incomplete:"],
-            fallback_message="Analysis completed but no clear final answer was provided",
-            context=context
-        )
+        return self._extract_react_final_analysis(analysis_result)

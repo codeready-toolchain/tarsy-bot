@@ -51,10 +51,4 @@ class ReactStageController(ReactController):
         
         Similar to full analysis but focused on partial/intermediate findings.
         """
-        return self._extract_react_final_analysis(
-            analysis_result=analysis_result,
-            completion_patterns=["Partial analysis completed"],
-            incomplete_patterns=["Partial analysis incomplete:"],
-            fallback_message="Partial analysis stage completed with limited findings",
-            context=context
-        )
+        return self._extract_react_final_analysis(analysis_result)
