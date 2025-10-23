@@ -443,16 +443,24 @@ function ConversationTimeline({
   }, [session]);
 
   // Clear streaming items when session completes or fails
+  // Also clear immediately on mount if session is already completed
   useEffect(() => {
     if (session.status === 'completed' || session.status === 'failed') {
       console.log('✅ Session ended, clearing all streaming items');
       setStreamingItems(new Map());
     }
-  }, [session.status]);
+  }, [session.status, session.session_id]); // Include session_id to trigger on mount/session change
 
   // Subscribe to streaming events
+  // Don't subscribe if session is already completed/failed
   useEffect(() => {
     if (!session.session_id) return;
+    
+    // Don't subscribe to streaming events for completed/failed sessions
+    if (session.status === 'completed' || session.status === 'failed') {
+      console.log('⏭️ Skipping streaming subscription for completed/failed session');
+      return;
+    }
     
     const handleStreamEvent = (event: any) => {
       if (event.type === 'mcp.tool_call.started') {
