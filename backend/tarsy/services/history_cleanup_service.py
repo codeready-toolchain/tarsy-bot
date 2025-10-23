@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from typing import Callable, Optional
+from typing import Callable, ContextManager, Optional
 
 from sqlmodel import Session
 
@@ -29,7 +29,7 @@ class HistoryCleanupService:
 
     def __init__(
         self,
-        db_session_factory: Callable[[], Session],
+        db_session_factory: Callable[[], ContextManager[Session]],
         retention_days: int = 90,
         retention_cleanup_interval_hours: int = 12,
         orphaned_timeout_minutes: int = 30,
