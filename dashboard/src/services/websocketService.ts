@@ -24,6 +24,12 @@ class WebSocketService {
   // Global event handlers
   private eventHandlers: Map<string, EventHandler[]> = new Map();
   private connectionHandlers: Array<(connected: boolean) => void> = [];
+  
+  // Keepalive ping/pong mechanism
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private pongTimeout: ReturnType<typeof setTimeout> | null = null;
+  private readonly PING_INTERVAL_MS = 20000; // 20 seconds - send ping every 20s
+  private readonly PONG_TIMEOUT_MS = 10000;  // 10 seconds - expect pong within 10s
 
   constructor() {
     // Initialize base URL from config
@@ -88,6 +94,9 @@ class WebSocketService {
         this.reconnectAttempts = 0;
         this.notifyConnectionChange(true);
         
+        // Start keepalive ping/pong
+        this.startKeepalive();
+        
         // Resubscribe to all channels
         this.resubscribeAll();
       };
@@ -95,6 +104,13 @@ class WebSocketService {
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          
+          // Handle pong response for keepalive
+          if (data.type === 'pong') {
+            this.handlePong();
+            return;
+          }
+          
           this.handleEvent(data);
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error);
@@ -108,6 +124,7 @@ class WebSocketService {
 
       this.ws.onclose = () => {
         console.log('🔌 WebSocket closed');
+        this.stopKeepalive();
         this.ws = null;
         this.isConnecting = false;
         this.notifyConnectionChange(false);
@@ -281,7 +298,55 @@ class WebSocketService {
     this.connectionHandlers.forEach(h => h(connected));
   }
 
+  private startKeepalive(): void {
+    // Clear any existing keepalive timers
+    this.stopKeepalive();
+    
+    // Send ping every PING_INTERVAL_MS
+    this.pingInterval = setInterval(() => {
+      this.sendPing();
+    }, this.PING_INTERVAL_MS);
+    
+    // Also send an initial ping
+    this.sendPing();
+  }
+
+  private stopKeepalive(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout);
+      this.pongTimeout = null;
+    }
+  }
+
+  private sendPing(): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ action: 'ping' }));
+      
+      // Set timeout for pong response
+      this.pongTimeout = setTimeout(() => {
+        console.warn('⚠️ No pong received - connection may be stale, closing...');
+        // Close connection to trigger reconnect
+        if (this.ws) {
+          this.ws.close();
+        }
+      }, this.PONG_TIMEOUT_MS);
+    }
+  }
+
+  private handlePong(): void {
+    // Clear pong timeout - we got a response!
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout);
+      this.pongTimeout = null;
+    }
+  }
+
   disconnect(): void {
+    this.stopKeepalive();
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
     }

@@ -75,10 +75,12 @@ class TestSetupLogging:
         with patch("logging.basicConfig"), patch("logging.getLogger") as mock_get_logger:
             mock_tarsy_logger = MagicMock()
             mock_uvicorn_logger = MagicMock()
+            mock_httpx_logger = MagicMock()
             mock_uvicorn_access_logger = MagicMock()
             mock_get_logger.side_effect = [
                 mock_tarsy_logger, 
-                mock_uvicorn_logger, 
+                mock_uvicorn_logger,
+                mock_httpx_logger,
                 mock_uvicorn_access_logger
             ]
 
