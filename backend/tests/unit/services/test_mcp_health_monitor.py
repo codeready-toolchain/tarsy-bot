@@ -330,7 +330,10 @@ class TestMCPHealthMonitor:
             health_monitor._running = False
 
         with patch.object(
-            health_monitor, "_check_all_servers", side_effect=check_with_error
+            health_monitor,
+            "_check_all_servers",
+            new_callable=AsyncMock,
+            side_effect=check_with_error,
         ):
             await health_monitor.start()
             # Give it time to run a couple iterations

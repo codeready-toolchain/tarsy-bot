@@ -51,7 +51,7 @@ class MCPClient:
         self._initialized = False
         self.failed_servers: Dict[str, str] = {}  # server_id -> error_message
     
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize MCP servers based on registry configuration."""
         if self._initialized:
             return
@@ -678,7 +678,7 @@ class MCPClient:
             logger.error(f"Failed to recover session for {server_name}: {extract_error_details(e)}")
             raise Exception(f"Session recovery failed for {server_name}: {str(e)}") from e
     
-    def _log_mcp_request(self, server_name: str, tool_name: str, parameters: Dict[str, Any], request_id: str):
+    def _log_mcp_request(self, server_name: str, tool_name: str, parameters: Dict[str, Any], request_id: str) -> None:
         """Log the outgoing MCP tool call request."""
         mcp_comm_logger.info(f"=== MCP REQUEST [{server_name}] [ID: {request_id}] ===")
         mcp_comm_logger.info(f"Request ID: {request_id}")
@@ -687,7 +687,7 @@ class MCPClient:
         mcp_comm_logger.info(f"Parameters: {json.dumps(parameters, indent=2, default=str)}")
         mcp_comm_logger.info(f"=== END REQUEST [ID: {request_id}] ===")
     
-    def _log_mcp_response(self, server_name: str, tool_name: str, response: Dict[str, Any], request_id: str):
+    def _log_mcp_response(self, server_name: str, tool_name: str, response: Dict[str, Any], request_id: str) -> None:
         """Log the MCP tool call response."""
         response_content = response.get("result", str(response))
         mcp_comm_logger.info(f"=== MCP RESPONSE [{server_name}] [ID: {request_id}] ===")
@@ -699,7 +699,7 @@ class MCPClient:
         mcp_comm_logger.info(response_content)
         mcp_comm_logger.info(f"=== END RESPONSE [ID: {request_id}] ===")
     
-    def _log_mcp_error(self, server_name: str, tool_name: str, error_message: str, request_id: str):
+    def _log_mcp_error(self, server_name: str, tool_name: str, error_message: str, request_id: str) -> None:
         """Log MCP tool call errors."""
         mcp_comm_logger.error(f"=== MCP ERROR [{server_name}] [ID: {request_id}] ===")
         mcp_comm_logger.error(f"Request ID: {request_id}")
@@ -708,7 +708,7 @@ class MCPClient:
         mcp_comm_logger.error(f"Error: {error_message}")
         mcp_comm_logger.error(f"=== END ERROR [ID: {request_id}] ===")
     
-    def _log_mcp_list_tools_request(self, server_name: Optional[str], request_id: str):
+    def _log_mcp_list_tools_request(self, server_name: Optional[str], request_id: str) -> None:
         """Log the MCP list tools request."""
         target = server_name if server_name else "ALL_SERVERS"
         mcp_comm_logger.info(f"=== MCP LIST TOOLS REQUEST [{target}] [ID: {request_id}] ===")
@@ -716,7 +716,7 @@ class MCPClient:
         mcp_comm_logger.info(f"Target: {target}")
         mcp_comm_logger.info(f"=== END LIST TOOLS REQUEST [ID: {request_id}] ===")
     
-    def _log_mcp_list_tools_response(self, server_name: str, tools: List[Tool], request_id: str):
+    def _log_mcp_list_tools_response(self, server_name: str, tools: List[Tool], request_id: str) -> None:
         """Log the MCP list tools response."""
         mcp_comm_logger.info(f"=== MCP LIST TOOLS RESPONSE [{server_name}] [ID: {request_id}] ===")
         mcp_comm_logger.info(f"Request ID: {request_id}")
@@ -729,7 +729,7 @@ class MCPClient:
             mcp_comm_logger.info(f"  Schema: {json.dumps(tool.inputSchema or {}, indent=2, default=str)}")
         mcp_comm_logger.info(f"=== END LIST TOOLS RESPONSE [ID: {request_id}] ===")
     
-    def _log_mcp_list_tools_error(self, server_name: str, error_message: str, request_id: str):
+    def _log_mcp_list_tools_error(self, server_name: str, error_message: str, request_id: str) -> None:
         """Log MCP list tools errors."""
         mcp_comm_logger.error(f"=== MCP LIST TOOLS ERROR [{server_name}] [ID: {request_id}] ===")
         mcp_comm_logger.error(f"Request ID: {request_id}")
@@ -737,7 +737,7 @@ class MCPClient:
         mcp_comm_logger.error(f"Error: {error_message}")
         mcp_comm_logger.error(f"=== END LIST TOOLS ERROR [ID: {request_id}] ===")
 
-    async def close(self):
+    async def close(self) -> None:
         """Close all MCP client connections and transports."""
         # Close all transports
         for server_id, transport in self.transports.items():
