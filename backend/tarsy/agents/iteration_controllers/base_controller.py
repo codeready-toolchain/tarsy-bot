@@ -139,9 +139,7 @@ class ReactController(IterationController):
         self.prompt_builder = prompt_builder
         # Import here to avoid circular imports during class definition
         from tarsy.utils.logger import get_module_logger
-        from tarsy.agents.parsers.react_parser import ReActParser
         self.logger = get_module_logger(__name__)
-        self.parser = ReActParser
         
     def needs_mcp_tools(self) -> bool:
         """All ReAct controllers use tools."""
@@ -194,7 +192,7 @@ class ReactController(IterationController):
                     response = assistant_message.content
                     self.logger.debug(f"LLM Response (first 500 chars): {response[:500]}")
                     
-                    parsed_response = self.parser.parse_response(response)
+                    parsed_response = ReActParser.parse_response(response)
                     
                     # Mark this interaction as successful
                     last_interaction_failed = False
@@ -214,7 +212,7 @@ class ReactController(IterationController):
                             mcp_data = await agent.execute_mcp_tools([parsed_response.tool_call.model_dump()], context.session_id, conversation_result)
                             
                             # Format observation
-                            observation = self.parser.format_observation(mcp_data)
+                            observation = ReActParser.format_observation(mcp_data)
                             conversation_result.append_observation(f"Observation: {observation}")
                             
                             self.logger.debug(f"ReAct Observation: {observation[:150]}...")
@@ -243,7 +241,7 @@ class ReactController(IterationController):
                             self.logger.debug("Removed malformed assistant message from conversation")
                         
                         # Add brief format correction reminder as user message
-                        format_reminder = self.parser.get_format_correction_reminder()
+                        format_reminder = ReActParser.get_format_correction_reminder()
                         conversation_result.append_observation(format_reminder)
                     
                     return conversation_result
@@ -295,7 +293,7 @@ class ReactController(IterationController):
                     self.logger.debug("Removed malformed assistant message after exception")
                 
                 # Add format correction instead of generic error message
-                format_reminder = self.parser.get_format_correction_reminder()
+                format_reminder = ReActParser.get_format_correction_reminder()
                 conversation.append_observation(format_reminder)
                 continue
                 

@@ -442,14 +442,19 @@ function ConversationTimeline({
     }
   }, [session]);
 
-  // Clear streaming items when session completes or fails
-  // Also clear immediately on mount if session is already completed
+  // Clear streaming items when switching sessions (prevents stale data from previous session)
+  useEffect(() => {
+    console.log('🔄 Session changed, clearing all streaming items');
+    setStreamingItems(new Map());
+  }, [session.session_id]);
+
+  // Clear streaming items when session completes or fails (with logging)
   useEffect(() => {
     if (session.status === 'completed' || session.status === 'failed') {
       console.log('✅ Session ended, clearing all streaming items');
       setStreamingItems(new Map());
     }
-  }, [session.status, session.session_id]); // Include session_id to trigger on mount/session change
+  }, [session.status]);
 
   // Subscribe to streaming events
   // Don't subscribe if session is already completed/failed

@@ -159,7 +159,7 @@ class BaseAgent(ABC):
         Process alert.
         
         Args:
-            chain_context: ChainContext containing all processing data
+            context: ChainContext containing all processing data
         
         Returns:
             Structured AgentExecutionResult with rich investigation summary
