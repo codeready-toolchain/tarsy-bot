@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -25,7 +26,8 @@ import {
   Add as AddIcon, 
   Close as CloseIcon,
   Description as DescriptionIcon,
-  TableChart as TableChartIcon
+  TableChart as TableChartIcon,
+  InfoOutlined as InfoIcon
 } from '@mui/icons-material';
 
 import type { KeyValuePair, ManualAlertFormProps } from '../types';
@@ -194,6 +196,13 @@ const isValidRunbookUrl = (url: string | null, approvedRunbooks: string[]): bool
 };
 
 const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // Re-submission state
+  const [sourceSessionId, setSourceSessionId] = useState<string | null>(null);
+  const [showResubmitBanner, setShowResubmitBanner] = useState(false);
+  
   // Common fields
   const [alertType, setAlertType] = useState('');
   const [runbook, setRunbook] = useState<string | null>(DEFAULT_RUNBOOK);
@@ -253,6 +262,52 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
 
     loadOptions();
   }, []);
+
+  // Handle pre-population from location state (re-submit feature)
+  useEffect(() => {
+    const state = location.state as any;
+    if (state?.resubmit && state?.alertData) {
+      console.log('Pre-populating form from session:', state.sessionId);
+      
+      // Set re-submission state
+      setSourceSessionId(state.sessionId || null);
+      setShowResubmitBanner(true);
+      
+      // Set alert type
+      if (state.alertType) {
+        setAlertType(state.alertType);
+      }
+      
+      // Set runbook
+      if (state.runbook) {
+        setRunbook(state.runbook);
+      }
+      
+      // Process alert data
+      const alertData = state.alertData;
+      
+      // Filter out meta fields (runbook, alert_type) from the data
+      const filteredData = { ...alertData };
+      delete filteredData.runbook;
+      delete filteredData.alert_type;
+      
+      // Always use text mode for re-submissions
+      setMode(1);
+      
+      // Special case: if data is just {"message": "text"}, extract the plain text
+      const keys = Object.keys(filteredData);
+      if (keys.length === 1 && keys[0] === 'message' && typeof filteredData.message === 'string') {
+        // Extract just the message text (form will wrap it back when submitting)
+        setFreeText(filteredData.message);
+      } else {
+        // Format the data as JSON for easy editing
+        setFreeText(JSON.stringify(filteredData, null, 2));
+      }
+      
+      // Clear location state to prevent re-population on refresh
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
 
   /**
    * Add a new empty key-value pair
@@ -470,6 +525,37 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
           Select a runbook from the dropdown or use the default.
         </Typography>
       </Box>
+
+      {/* Re-submit banner */}
+      {showResubmitBanner && sourceSessionId && (
+        <Box sx={{ mb: 3, px: 3 }}>
+          <MuiAlert 
+            severity="info"
+            icon={<InfoIcon />}
+            onClose={() => setShowResubmitBanner(false)}
+            sx={{ 
+              borderRadius: 3,
+              '& .MuiAlert-icon': { fontSize: 24 }
+            }}
+          >
+            <Typography variant="body2">
+              <strong>Pre-filled from previous session:</strong>{' '}
+              <code style={{ 
+                backgroundColor: 'rgba(0, 0, 0, 0.05)', 
+                padding: '2px 6px', 
+                borderRadius: '4px',
+                fontFamily: 'monospace',
+                fontSize: '0.875rem'
+              }}>
+                {sourceSessionId.slice(-12)}
+              </code>
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              You can modify any fields before submitting.
+            </Typography>
+          </MuiAlert>
+        </Box>
+      )}
 
       <Card 
         elevation={0} 
