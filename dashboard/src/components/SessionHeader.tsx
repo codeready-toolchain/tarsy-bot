@@ -307,8 +307,8 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     session.status === SESSION_STATUS.IN_PROGRESS ||
     session.status === SESSION_STATUS.PENDING ||
     session.status === SESSION_STATUS.CANCELING;
-  const isCanceling = session.status === SESSION_STATUS.CANCELING;
-  const canCancel = isInProgress || isCanceling;
+  const sessionIsCanceling = session.status === SESSION_STATUS.CANCELING;
+  const canCancel = isInProgress || sessionIsCanceling;
   const isTerminalStatus = 
     session.status === SESSION_STATUS.COMPLETED ||
     session.status === SESSION_STATUS.FAILED ||
@@ -317,7 +317,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
   
   // Cancel dialog state
   const [showCancelDialog, setShowCancelDialog] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   
   // Detect status changes from in_progress to completed and trigger refresh
@@ -347,12 +347,12 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     previousStatusRef.current = currentStatus;
   }, [session.status, onRefresh]);
   
-  // Clear cancelling state when session status changes to cancelled
+  // Clear canceling state when session status changes to cancelled
   useEffect(() => {
-    if (session.status === SESSION_STATUS.CANCELLED && isCancelling) {
-      setIsCancelling(false);
+    if (session.status === SESSION_STATUS.CANCELLED && isCanceling) {
+      setIsCanceling(false);
     }
-  }, [session.status, isCancelling]);
+  }, [session.status, isCanceling]);
   
   // Handle cancel button click
   const handleCancelClick = () => {
@@ -360,9 +360,9 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     setCancelError(null);
   };
   
-  // Handle dialog close without cancelling
+  // Handle dialog close without canceling
   const handleDialogClose = () => {
-    if (!isCancelling) {
+    if (!isCanceling) {
       setShowCancelDialog(false);
       setCancelError(null);
     }
@@ -370,19 +370,19 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
   
   // Handle cancel confirmation
   const handleConfirmCancel = async () => {
-    setIsCancelling(true);
+    setIsCanceling(true);
     setCancelError(null);
     
     try {
       await apiClient.cancelSession(session.session_id);
       // Close dialog on success
       setShowCancelDialog(false);
-      // Keep isCancelling true - will be cleared when WebSocket updates status to 'cancelled'
+      // Keep isCanceling true - will be cleared when WebSocket updates status to 'cancelled'
     } catch (error) {
       // Show error, allow retry
       const errorMessage = handleAPIError(error);
       setCancelError(errorMessage);
-      setIsCancelling(false);
+      setIsCanceling(false);
     }
   };
   
@@ -570,7 +570,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                   variant="outlined"
                   size="large"
                   onClick={handleCancelClick}
-                  disabled={isCancelling || isCanceling}
+                  disabled={isCanceling || sessionIsCanceling}
                   sx={{
                     minWidth: 180,
                     textTransform: 'none',
@@ -590,7 +590,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                     transition: 'all 0.2s ease-in-out',
                   }}
                 >
-                  {isCancelling || isCanceling ? (
+                  {isCanceling || sessionIsCanceling ? (
                     <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />
                   ) : (
                     <CancelOutlined 
@@ -600,7 +600,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                       }} 
                     />
                   )}
-                  {isCancelling ? 'CANCELLING...' : isCanceling ? 'CANCELING...' : 'CANCEL SESSION'}
+                  {isCanceling || sessionIsCanceling ? 'CANCELING...' : 'CANCEL SESSION'}
                 </Button>
               )}
               
@@ -668,7 +668,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button 
               onClick={handleDialogClose} 
-              disabled={isCancelling}
+              disabled={isCanceling}
               color="inherit"
             >
               Cancel
@@ -677,10 +677,10 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               onClick={handleConfirmCancel} 
               variant="contained" 
               color="warning"
-              disabled={isCancelling}
-              startIcon={isCancelling ? <CircularProgress size={16} color="inherit" /> : undefined}
+              disabled={isCanceling}
+              startIcon={isCanceling ? <CircularProgress size={16} color="inherit" /> : undefined}
             >
-              {isCancelling ? 'CANCELLING...' : 'CONFIRM CANCELLATION'}
+              {isCanceling ? 'CANCELING...' : 'CONFIRM CANCELLATION'}
             </Button>
           </DialogActions>
         </Dialog>

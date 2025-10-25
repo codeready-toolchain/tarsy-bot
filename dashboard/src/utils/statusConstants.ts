@@ -137,9 +137,9 @@ export function canCancelSession(status: string): boolean {
 }
 
 /**
- * Check if a session is in a cancelling state
+ * Check if a session is in a canceling state
  */
-export function isCancellingSession(status: string): boolean {
+export function isCancelingSession(status: string): boolean {
   return status === SESSION_STATUS.CANCELING;
 }
 
