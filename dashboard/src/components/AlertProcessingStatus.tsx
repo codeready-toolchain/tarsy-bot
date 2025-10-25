@@ -1,5 +1,5 @@
 /**
- * Alert processing status component - EP-0018
+ * Alert processing status component
  * Adapted from alert-dev-ui ProcessingStatus.tsx for dashboard integration
  * Shows real-time progress of alert processing via WebSocket
  */
@@ -23,12 +23,19 @@ import {
   HourglassTop as HourglassIcon,
   OpenInNew as OpenInNewIcon,
   Visibility as VisibilityIcon,
+  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 
 import type { ProcessingStatus, ProcessingStatusProps } from '../types';
 import { websocketService } from '../services/websocketService';
 import { apiClient } from '../services/api';
+import { SESSION_EVENTS, isTerminalSessionEvent } from '../utils/eventTypes';
+import {
+  ALERT_PROCESSING_STATUS,
+  getAlertProcessingStatusChipColor,
+  getAlertProcessingStatusProgressColor,
+} from '../utils/statusConstants';
 
 const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onComplete }) => {
   const [status, setStatus] = useState<ProcessingStatus | null>(null);
@@ -71,7 +78,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     // Set initial processing status
     setStatus({
       session_id: sessionId,
-      status: 'processing',
+      status: ALERT_PROCESSING_STATUS.PROCESSING,
       progress: 10,
       current_step: 'Session initialized, processing alert...',
       timestamp: new Date().toISOString()
@@ -120,15 +127,21 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
 
       if (eventType.startsWith('session.')) {
         // Session lifecycle events
-        const isCompleted = eventType === 'session.completed';
-        const isFailed = eventType === 'session.failed';
+        const isCompleted = eventType === SESSION_EVENTS.COMPLETED;
+        const isFailed = eventType === SESSION_EVENTS.FAILED;
+        const isCancelled = eventType === SESSION_EVENTS.CANCELLED;
         
         updatedStatus = {
           session_id: sessionId,
-          status: isCompleted ? 'completed' : isFailed ? 'error' : 'processing',
+          status: isCompleted ? ALERT_PROCESSING_STATUS.COMPLETED : 
+                  isFailed ? ALERT_PROCESSING_STATUS.ERROR : 
+                  isCancelled ? ALERT_PROCESSING_STATUS.CANCELLED : 
+                  ALERT_PROCESSING_STATUS.PROCESSING,
           progress: 0,
           current_step: isCompleted ? 'Processing completed' : 
-                       isFailed ? 'Processing failed' : 'Processing...',
+                       isFailed ? 'Processing failed' : 
+                       isCancelled ? 'Processing cancelled' : 
+                       'Processing...',
           timestamp: new Date().toISOString(),
           error: update.error_message || undefined,
           result: update.final_analysis || undefined
@@ -156,7 +169,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
         // Terminal state is only determined by session.completed/session.failed
         updatedStatus = {
           session_id: sessionId,
-          status: 'processing',
+          status: ALERT_PROCESSING_STATUS.PROCESSING,
           progress: 0,
           current_step: `Stage: ${update.stage_name || 'Processing'}`,
           timestamp: new Date().toISOString()
@@ -166,7 +179,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
         // LLM interaction events
         updatedStatus = {
           session_id: sessionId,
-          status: 'processing',
+          status: ALERT_PROCESSING_STATUS.PROCESSING,
           progress: 0,
           current_step: 'Analyzing with AI...',
           timestamp: new Date().toISOString()
@@ -176,7 +189,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
         // MCP interaction events
         updatedStatus = {
           session_id: sessionId,
-          status: 'processing',
+          status: ALERT_PROCESSING_STATUS.PROCESSING,
           progress: 0,
           current_step: 'Gathering system information...',
           timestamp: new Date().toISOString()
@@ -185,15 +198,15 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
 
       if (updatedStatus) {
         // Mark terminal state immediately (before React state update) to prevent race conditions
-        // Only session.completed or session.failed should trigger terminal state
-        const isSessionTerminal = eventType === 'session.completed' || eventType === 'session.failed';
+        // Only terminal session events should trigger terminal state
+        const isSessionTerminal = isTerminalSessionEvent(eventType);
         if (isSessionTerminal) {
           isTerminalRef.current = true;
         }
         
         setStatus(updatedStatus);
         
-        // Call onComplete callback only when session completes or fails (not on stage.failed)
+        // Call onComplete callback when session reaches any terminal state
         if (isSessionTerminal && onCompleteRef.current && !didCompleteRef.current) {
           didCompleteRef.current = true; // Mark as completed to prevent duplicate calls
           setTimeout(() => {
@@ -214,28 +227,16 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     };
   }, [sessionId]); // sessionId dependency
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'queued':
-      case 'processing':
-        return 'info'; // Match main dashboard color for processing
-      case 'completed':
-        return 'success';
-      case 'error':
-        return 'error';
-      default:
-        return 'primary';
-    }
-  };
-
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'completed':
+      case ALERT_PROCESSING_STATUS.COMPLETED:
         return <CheckCircleIcon color="success" />;
-      case 'error':
+      case ALERT_PROCESSING_STATUS.ERROR:
         return <ErrorIcon color="error" />;
-      case 'processing':
-      case 'queued':
+      case ALERT_PROCESSING_STATUS.CANCELLED:
+        return <CancelIcon color="disabled" />;
+      case ALERT_PROCESSING_STATUS.PROCESSING:
+      case ALERT_PROCESSING_STATUS.QUEUED:
         return <HourglassIcon color="primary" />;
       default:
         return null;
@@ -280,7 +281,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
               {getStatusIcon(status.status)}
               <Chip 
                 label={status.status.toUpperCase()} 
-                color={getStatusColor(status.status)} 
+                color={getAlertProcessingStatusChipColor(status.status)} 
                 size="small"
               />
             </Box>
@@ -323,7 +324,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
             <Typography variant="body1" gutterBottom>
               {status.current_step}
             </Typography>
-            {status.status === 'processing' && (
+            {status.status === ALERT_PROCESSING_STATUS.PROCESSING && (
               <LinearProgress 
                 variant="indeterminate" 
                 sx={{ 
@@ -333,7 +334,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
                     borderRadius: 1,
                   }
                 }} 
-                color={getStatusColor(status.status)} 
+                color={getAlertProcessingStatusProgressColor(status.status)} 
               />
             )}
           </Box>
@@ -359,7 +360,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
         </CardContent>
       </Card>
 
-      {status.result && status.status === 'completed' && (
+      {status.result && status.status === ALERT_PROCESSING_STATUS.COMPLETED && (
         <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>

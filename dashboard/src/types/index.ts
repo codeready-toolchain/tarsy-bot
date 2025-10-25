@@ -556,7 +556,7 @@ export interface AlertSubmissionResponse {
 
 export interface ProcessingStatus {
   session_id: string;
-  status: 'queued' | 'processing' | 'completed' | 'error';
+  status: 'queued' | 'processing' | 'completed' | 'error' | 'cancelled';
   progress: number;
   current_step: string;
   result?: string;

@@ -25,7 +25,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import TimeRangeModal from './TimeRangeModal';
 import type { FilterPanelProps, Session } from '../types';
-import { ALL_STATUSES, getStatusDisplayName, getStatusColor } from '../utils/sessionStatus';
+import { ALL_SESSION_STATUSES, getSessionStatusDisplayName, getSessionStatusChipColor } from '../utils/statusConstants';
 
 /**
  * FilterPanel component for Phase 6 - Advanced Filtering & Pagination
@@ -72,7 +72,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
   const defaultFilterOptions = {
     agent_types: filterOptions?.agent_types || ['kubernetes', 'network', 'database'],
     alert_types: filterOptions?.alert_types || ['NamespaceTerminating', 'PodCrashLooping', 'NodeNotReady'],
-    status_options: ALL_STATUSES
+    status_options: ALL_SESSION_STATUSES
   };
 
   // Handler functions
@@ -224,9 +224,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     {selected.map((value) => (
                       <Chip 
                         key={value} 
-                        label={getStatusDisplayName(value)} 
+                        label={getSessionStatusDisplayName(value)} 
                         size="small" 
-                        color={getStatusColor(value)}
+                        color={getSessionStatusChipColor(value)}
                       />
                     ))}
                   </Box>
@@ -234,7 +234,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
               >
                 {defaultFilterOptions.status_options.map((status) => (
                   <MenuItem key={status} value={status}>
-                    {getStatusDisplayName(status)}
+                    {getSessionStatusDisplayName(status)}
                   </MenuItem>
                 ))}
               </Select>
@@ -371,11 +371,11 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
               {filters.status && filters.status.map(status => (
                 <Chip
                   key={status}
-                  label={`Status: ${getStatusDisplayName(status)}`}
+                  label={`Status: ${getSessionStatusDisplayName(status)}`}
                   onDelete={() => handleClearStatus(status)}
                   size="small"
                   variant="outlined"
-                  color={getStatusColor(status)}
+                  color={getSessionStatusChipColor(status)}
                 />
               ))}
 

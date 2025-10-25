@@ -23,11 +23,12 @@ import type { AlertSubmissionResponse } from '../types';
 import ManualAlertForm from './ManualAlertForm';
 import AlertProcessingStatus from './AlertProcessingStatus';
 import { apiClient } from '../services/api';
+import { MANUAL_ALERT_APP_STATE, type ManualAlertAppState } from '../utils/statusConstants';
 
-type AppState = 'form' | 'processing' | 'completed';
+type AppState = ManualAlertAppState;
 
 function ManualAlertSubmission() {
-  const [appState, setAppState] = useState<AppState>('form');
+  const [appState, setAppState] = useState<AppState>(MANUAL_ALERT_APP_STATE.FORM);
   const [currentAlert, setCurrentAlert] = useState<AlertSubmissionResponse | null>(null);
   const [backendStatus, setBackendStatus] = useState<'unknown' | 'healthy' | 'error'>('unknown');
 
@@ -48,15 +49,15 @@ function ManualAlertSubmission() {
 
   const handleAlertSubmitted = (alertResponse: AlertSubmissionResponse) => {
     setCurrentAlert(alertResponse);
-    setAppState('processing');
+    setAppState(MANUAL_ALERT_APP_STATE.PROCESSING);
   };
 
   const handleProcessingComplete = () => {
-    setAppState('completed');
+    setAppState(MANUAL_ALERT_APP_STATE.COMPLETED);
   };
 
   const handleNewAlert = () => {
-    setAppState('form');
+    setAppState(MANUAL_ALERT_APP_STATE.FORM);
     setCurrentAlert(null);
   };
 
@@ -71,7 +72,7 @@ function ManualAlertSubmission() {
 
   const renderContent = () => {
     switch (appState) {
-      case 'form':
+      case MANUAL_ALERT_APP_STATE.FORM:
         return (
           <Fade in timeout={500}>
             <Box>
@@ -80,7 +81,7 @@ function ManualAlertSubmission() {
           </Fade>
         );
 
-      case 'processing':
+      case MANUAL_ALERT_APP_STATE.PROCESSING:
         return (
           <Fade in timeout={500}>
             <Box>
@@ -95,7 +96,7 @@ function ManualAlertSubmission() {
           </Fade>
         );
 
-      case 'completed':
+      case MANUAL_ALERT_APP_STATE.COMPLETED:
         return (
           <Fade in timeout={500}>
             <Box>

@@ -28,7 +28,7 @@ import {
   mergeWithDefaults
 } from '../utils/filterPersistence';
 import type { Session, SessionFilter, PaginationState, SortState, FilterOptions } from '../types';
-import { HISTORICAL_STATUSES } from '../utils/sessionStatus';
+import { TERMINAL_SESSION_STATUSES } from '../utils/statusConstants';
 
 /**
  * DashboardView component for the Tarsy Dashboard - Phase 6
@@ -157,7 +157,7 @@ function DashboardView() {
           // For historical view, include all terminal statuses by default unless specific status filter is applied
           status: filters.status && filters.status.length > 0 
             ? filters.status 
-            : HISTORICAL_STATUSES
+            : TERMINAL_SESSION_STATUSES
         };
         response = await apiClient.getFilteredSessions(historicalFilters, pagination.page, pagination.pageSize);
       } else {
@@ -227,7 +227,7 @@ function DashboardView() {
           // For historical view, include all terminal statuses by default unless specific status filter is applied
           status: requestFilters.status && requestFilters.status.length > 0 
             ? requestFilters.status 
-            : HISTORICAL_STATUSES
+            : TERMINAL_SESSION_STATUSES
         };
         response = await apiClient.getFilteredSessionsWithRetry(historicalFilters, requestPage, requestPageSize);
       } else {

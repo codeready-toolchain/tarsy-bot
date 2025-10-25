@@ -19,27 +19,28 @@ import {
 import type { ActiveAlertCardProps } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import ProgressIndicator from './ProgressIndicator';
+import { SESSION_STATUS, getSessionStatusDisplayName } from '../utils/statusConstants';
 
 // Helper function to get status chip configuration
 const getStatusChipConfig = (status: string) => {
   switch (status) {
-    case 'in_progress':
+    case SESSION_STATUS.IN_PROGRESS:
       return {
         color: 'info' as const,
         icon: <Refresh sx={{ fontSize: 16 }} />,
-        label: 'In Progress',
+        label: getSessionStatusDisplayName(SESSION_STATUS.IN_PROGRESS),
       };
-    case 'pending':
+    case SESSION_STATUS.PENDING:
       return {
         color: 'warning' as const,
         icon: <Schedule sx={{ fontSize: 16 }} />,
-        label: 'Pending',
+        label: getSessionStatusDisplayName(SESSION_STATUS.PENDING),
       };
-    case 'failed':
+    case SESSION_STATUS.FAILED:
       return {
         color: 'error' as const,
         icon: <Error sx={{ fontSize: 16 }} />,
-        label: 'Failed',
+        label: getSessionStatusDisplayName(SESSION_STATUS.FAILED),
       };
     default:
       return {
@@ -86,7 +87,7 @@ const LiveDuration: React.FC<{
         // Use completed duration
         const durationUs = completedAt - startedAt;
         durationMs = durationUs / 1000; // Convert to milliseconds
-      } else if (status === 'in_progress' || status === 'pending') {
+      } else if (status === SESSION_STATUS.IN_PROGRESS || status === SESSION_STATUS.PENDING) {
         // Calculate live duration
         const now = Date.now() * 1000; // Convert to microseconds
         const durationUs = now - startedAt;
@@ -105,7 +106,7 @@ const LiveDuration: React.FC<{
     setLiveDuration(calculateDuration());
 
     // For active sessions, update every second
-    if ((status === 'in_progress' || status === 'pending') && !completedAt) {
+    if ((status === SESSION_STATUS.IN_PROGRESS || status === SESSION_STATUS.PENDING) && !completedAt) {
       const timer = setInterval(() => {
         setLiveDuration(calculateDuration());
       }, 1000);
@@ -161,7 +162,7 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
           transform: 'translateY(-1px)',
           boxShadow: 4,
         } : {},
-        ...(session.status === 'in_progress' ? animationStyles.breathingGlow : {}),
+        ...(session.status === SESSION_STATUS.IN_PROGRESS ? animationStyles.breathingGlow : {}),
         position: 'relative',
       }}
       onClick={handleCardClick}
@@ -224,11 +225,11 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
         </Box>
 
         {/* Progress Indicator for active sessions */}
-        {(session.status === 'in_progress' || session.status === 'pending') && (
+        {(session.status === SESSION_STATUS.IN_PROGRESS || session.status === SESSION_STATUS.PENDING) && (
           <Box sx={{ mb: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                {session.status === 'in_progress' ? 'Processing Progress' : 'Queue Status'}
+                {session.status === SESSION_STATUS.IN_PROGRESS ? 'Processing Progress' : 'Queue Status'}
               </Typography>
             </Box>
             <ProgressIndicator 
@@ -243,7 +244,7 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
         )}
 
         {/* Error Message (for failed sessions) */}
-        {session.status === 'failed' && session.error_message && (
+        {session.status === SESSION_STATUS.FAILED && session.error_message && (
           <Box sx={{ mt: 1, p: 1, bgcolor: 'error.light', borderRadius: 1, border: '1px solid', borderColor: 'error.main' }}>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
               Error:

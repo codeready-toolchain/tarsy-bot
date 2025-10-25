@@ -26,17 +26,18 @@ import {
 } from '@mui/icons-material';
 import type { ChainTimelineProps, StageExecution } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
+import { STAGE_STATUS, getStageStatusChipColor } from '../utils/statusConstants';
 
 // Helper function to get stage status icon
 const getStageStatusIcon = (status: string) => {
   switch (status) {
-    case 'completed':
+    case STAGE_STATUS.COMPLETED:
       return <CheckCircle color="success" />;
-    case 'failed':
+    case STAGE_STATUS.FAILED:
       return <ErrorIcon color="error" />;
-    case 'active':
+    case STAGE_STATUS.ACTIVE:
       return <PlayArrow color="primary" />;
-    case 'pending':
+    case STAGE_STATUS.PENDING:
     default:
       return <Schedule color="disabled" />;
   }
@@ -44,17 +45,12 @@ const getStageStatusIcon = (status: string) => {
 
 // Helper function to get stage status color
 const getStageStatusColor = (status: string): 'success' | 'error' | 'primary' | 'default' => {
-  switch (status) {
-    case 'completed':
-      return 'success';
-    case 'failed':
-      return 'error';
-    case 'active':
-      return 'primary';
-    case 'pending':
-    default:
-      return 'default';
+  const chipColor = getStageStatusChipColor(status);
+  // Map to compatible types
+  if (chipColor === 'warning' || chipColor === 'info') {
+    return 'default';
   }
+  return chipColor as 'success' | 'error' | 'primary' | 'default';
 };
 
 // Helper function to get interaction type icon
@@ -127,12 +123,12 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
               variant="outlined" 
             />
             <Chip 
-              label={`${chainExecution.stages.filter(s => s.status === 'completed').length} completed`} 
+              label={`${chainExecution.stages.filter(s => s.status === STAGE_STATUS.COMPLETED).length} completed`} 
               color="success" 
               variant="outlined" 
             />
             <Chip 
-              label={`${chainExecution.stages.filter(s => s.status === 'failed').length} failed`} 
+              label={`${chainExecution.stages.filter(s => s.status === STAGE_STATUS.FAILED).length} failed`} 
               color="error" 
               variant="outlined" 
             />

@@ -26,36 +26,37 @@ import type { ChainProgressCardProps, Session } from '../types';
 import { formatTimestamp, formatDuration, getCurrentTimestampUs, formatDurationMs } from '../utils/timestamp';
 import ProgressIndicator from './ProgressIndicator';
 import StageProgressBar from './StageProgressBar';
+import { SESSION_STATUS, CHAIN_OVERALL_STATUS, getSessionStatusDisplayName } from '../utils/statusConstants';
 
 // Helper function to get status chip configuration
 const getStatusChipConfig = (status: string) => {
   switch (status) {
-    case 'in_progress':
-    case 'processing':
+    case SESSION_STATUS.IN_PROGRESS:
+    case CHAIN_OVERALL_STATUS.PROCESSING:
       return {
         color: 'info' as const,
         icon: <Refresh sx={{ fontSize: 16 }} />,
         label: 'In Progress',
       };
-    case 'pending':
+    case SESSION_STATUS.PENDING:
       return {
         color: 'warning' as const,
         icon: <Schedule sx={{ fontSize: 16 }} />,
-        label: 'Pending',
+        label: getSessionStatusDisplayName(SESSION_STATUS.PENDING),
       };
-    case 'failed':
+    case SESSION_STATUS.FAILED:
       return {
         color: 'error' as const,
         icon: <ErrorIcon sx={{ fontSize: 16 }} />,
-        label: 'Failed',
+        label: getSessionStatusDisplayName(SESSION_STATUS.FAILED),
       };
-    case 'completed':
+    case SESSION_STATUS.COMPLETED:
       return {
         color: 'success' as const,
         icon: <CheckCircle sx={{ fontSize: 16 }} />,
-        label: 'Completed',
+        label: getSessionStatusDisplayName(SESSION_STATUS.COMPLETED),
       };
-    case 'partial':
+    case CHAIN_OVERALL_STATUS.PARTIAL:
       return {
         color: 'warning' as const,
         icon: <Warning sx={{ fontSize: 16 }} />,
@@ -84,10 +85,10 @@ const getCurrentStageName = (
   if (chainProgress?.current_stage) {
     return chainProgress.current_stage;
   }
-  if (session.status === 'completed') {
+  if (session.status === SESSION_STATUS.COMPLETED) {
     return 'All stages completed';
   }
-  if (session.status === 'failed') {
+  if (session.status === SESSION_STATUS.FAILED) {
     return 'Processing failed';
   }
   return 'Starting...';
@@ -105,7 +106,7 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
 
   // Update current time every second for active sessions
   useEffect(() => {
-    if (session.status === 'in_progress') {
+    if (session.status === SESSION_STATUS.IN_PROGRESS) {
       const interval = setInterval(() => {
         setCurrentTime(getCurrentTimestampUs());
       }, 1000);
@@ -254,7 +255,7 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
         {/* Duration and progress */}
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Box>
-            {session.status === 'in_progress' ? (
+            {session.status === SESSION_STATUS.IN_PROGRESS ? (
               <Typography variant="caption" color="text.secondary">
                 Running for {formatDuration(session.started_at_us, currentTime)}
               </Typography>
@@ -265,9 +266,9 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
             ) : null}
           </Box>
           
-          {session.status === 'in_progress' && (
+          {session.status === SESSION_STATUS.IN_PROGRESS && (
             <ProgressIndicator 
-              status="in_progress" 
+              status={SESSION_STATUS.IN_PROGRESS} 
               startedAt={session.started_at_us}
               variant="circular"
               size="small"

@@ -3,7 +3,7 @@ import { Clear } from '@mui/icons-material';
 import SearchBar from './SearchBar';
 import StatusFilter from './StatusFilter';
 import type { FilterBarProps, Session } from '../types';
-import { getStatusDisplayName, getStatusColor } from '../utils/sessionStatus';
+import { getSessionStatusDisplayName, getSessionStatusChipColor } from '../utils/statusConstants';
 
 /**
  * FilterBar component for Phase 4 - Search & Basic Filtering
@@ -118,11 +118,11 @@ const FilterBar: React.FC<FilterBarProps> = ({
           {filters.status && filters.status.map(status => (
             <Chip
               key={status}
-              label={`Status: ${getStatusDisplayName(status)}`}
+              label={`Status: ${getSessionStatusDisplayName(status)}`}
               onDelete={() => handleClearStatusFilter(status)}
               size="small"
               variant="outlined"
-              color={getStatusColor(status)}
+              color={getSessionStatusChipColor(status)}
               deleteIcon={<Clear />}
             />
           ))}

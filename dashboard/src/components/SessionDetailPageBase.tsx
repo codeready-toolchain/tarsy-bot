@@ -23,6 +23,8 @@ import { websocketService } from '../services/websocketService';
 import { useSession } from '../contexts/SessionContext';
 import type { DetailedSession } from '../types';
 import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
+import { isTerminalSessionEvent } from '../utils/eventTypes';
+import { SESSION_STATUS } from '../utils/statusConstants';
 
 // Lazy load shared components
 const SessionHeader = lazy(() => import('./SessionHeader'));
@@ -107,7 +109,7 @@ function SessionDetailPageBase({
   // Auto-scroll settings - only enable by default for active sessions
   const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(() => {
     // Initialize based on session status if available
-    return session ? (session.status === 'in_progress' || session.status === 'pending') : false;
+    return session ? (session.status === SESSION_STATUS.IN_PROGRESS || session.status === SESSION_STATUS.PENDING) : false;
   });
   
   // Track previous session status to detect transitions
@@ -123,8 +125,8 @@ function SessionDetailPageBase({
   // Update auto-scroll enabled state when session transitions between active/inactive
   useEffect(() => {
     if (session) {
-      const previousActive = prevStatusRef.current === 'in_progress' || prevStatusRef.current === 'pending';
-      const currentActive = session.status === 'in_progress' || session.status === 'pending';
+      const previousActive = prevStatusRef.current === SESSION_STATUS.IN_PROGRESS || prevStatusRef.current === SESSION_STATUS.PENDING;
+      const currentActive = session.status === SESSION_STATUS.IN_PROGRESS || session.status === SESSION_STATUS.PENDING;
       
       // Only update auto-scroll on first load or when crossing active↔inactive boundary
       if (prevStatusRef.current === undefined || previousActive !== currentActive) {
@@ -157,7 +159,7 @@ function SessionDetailPageBase({
       !loading && 
       !hasPerformedInitialScrollRef.current && 
       autoScrollEnabled &&
-      (session.status === 'in_progress' || session.status === 'pending')
+      (session.status === SESSION_STATUS.IN_PROGRESS || session.status === SESSION_STATUS.PENDING)
     ) {
       // Wait for content to render, then scroll to bottom
       const scrollTimer = setTimeout(() => {
@@ -251,12 +253,12 @@ function SessionDetailPageBase({
       
       // Use pattern matching for robust event handling
       if (eventType.startsWith('session.')) {
-        // Session lifecycle events (session.created, session.started, session.completed, session.failed)
+        // Session lifecycle events (session.created, session.started, session.completed, session.failed, session.cancelled)
         console.log('🔄 Session lifecycle event, refreshing data');
         
-        // For major status changes (completed/failed/cancelled), refresh everything
-        if (eventType === 'session.completed' || eventType === 'session.failed' || eventType === 'session.cancelled') {
-          console.log('🔄 Session completed/failed/cancelled - full refresh');
+        // For terminal session events, refresh everything
+        if (isTerminalSessionEvent(eventType)) {
+          console.log('🔄 Session reached terminal state - full refresh');
           throttledUpdate(() => {
             if (sessionId) {
               refreshSessionStages(sessionId);
@@ -288,7 +290,7 @@ function SessionDetailPageBase({
       else if (eventType.startsWith('llm.') || eventType.startsWith('mcp.')) {
         // LLM/MCP interaction events (llm.interaction, mcp.tool_call, mcp.list_tools)
         // Only update if session is in progress
-        if (sessionRef.current?.status === 'in_progress') {
+        if (sessionRef.current?.status === SESSION_STATUS.IN_PROGRESS) {
           console.log('🔄 Activity update, using partial refresh');
           
           // Always update summary for real-time statistics (lightweight)

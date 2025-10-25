@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { apiClient, handleAPIError } from '../services/api';
 import type { DetailedSession, Session } from '../types';
-import { isValidStatus, SESSION_STATUS } from '../utils/sessionStatus';
+import { isValidSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
 
 interface SessionContextData {
   session: DetailedSession | null;
@@ -63,7 +63,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       const sessionData = await apiClient.getSessionDetail(sessionId);
       
       // Validate and normalize session status
-      const normalizedStatus = isValidStatus(sessionData.status)
+      const normalizedStatus = isValidSessionStatus(sessionData.status)
         ? sessionData.status 
         : SESSION_STATUS.IN_PROGRESS;
       

@@ -23,6 +23,7 @@ import CopyButton from './CopyButton';
 import TypingIndicator from './TypingIndicator';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
+import { STAGE_STATUS, getStageStatusDisplayName } from '../utils/statusConstants';
 
 export interface StageConversationCardProps {
   stage: StageConversation;
@@ -37,36 +38,36 @@ const getStageStatusConfig = (status: string, stageIndex: number) => {
   const defaultColor = stageColors[stageIndex % stageColors.length];
   
   switch (status) {
-    case 'completed':
+    case STAGE_STATUS.COMPLETED:
       return {
         color: defaultColor as 'primary' | 'info' | 'warning' | 'secondary',
         icon: <CheckCircle />,
-        label: 'Completed',
+        label: getStageStatusDisplayName(STAGE_STATUS.COMPLETED),
         bgColor: (theme: any) => alpha(theme.palette[defaultColor].main, 0.06),
         borderColor: `${defaultColor}.main`
       };
-    case 'failed':
+    case STAGE_STATUS.FAILED:
       return {
         color: 'error' as const,
         icon: <ErrorIcon />,
-        label: 'Failed',
+        label: getStageStatusDisplayName(STAGE_STATUS.FAILED),
         bgColor: (theme: any) => alpha(theme.palette.error.main, 0.06),
         borderColor: 'error.main'
       };
-    case 'active':
+    case STAGE_STATUS.ACTIVE:
       return {
         color: 'primary' as const,
         icon: <PlayArrow />,
-        label: 'Active',
+        label: getStageStatusDisplayName(STAGE_STATUS.ACTIVE),
         bgColor: (theme: any) => alpha(theme.palette.primary.main, 0.06),
         borderColor: 'primary.main'
       };
-    case 'pending':
+    case STAGE_STATUS.PENDING:
     default:
       return {
         color: 'default' as const,
         icon: <Schedule />,
-        label: 'Pending',
+        label: getStageStatusDisplayName(STAGE_STATUS.PENDING),
         bgColor: (theme: any) => alpha(theme.palette.grey[400], 0.06),
         borderColor: 'grey.400'
       };
@@ -371,7 +372,7 @@ function StageConversationCard({
           }}>
             <Build sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
             <Typography variant="body2">
-              {stage.status === 'pending' ? 
+              {stage.status === STAGE_STATUS.PENDING ? 
                 'Stage is waiting to begin...' :
                 'No conversation steps recorded for this stage'
               }
@@ -381,7 +382,7 @@ function StageConversationCard({
 
         {/* Show typing indicator for active or pending stages */}
         {(() => {
-          const shouldShow = stage.status === 'active' || stage.status === 'pending';
+          const shouldShow = stage.status === STAGE_STATUS.ACTIVE || stage.status === STAGE_STATUS.PENDING;
           
           if (shouldShow) {
             return (

@@ -31,37 +31,38 @@ import {
 import TokenUsageDisplay from './TokenUsageDisplay';
 import type { StageCardProps, TimelineItem } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
+import { STAGE_STATUS, getStageStatusDisplayName } from '../utils/statusConstants';
 
 // Helper function to get stage status configuration
 const getStageStatusConfig = (status: string) => {
   switch (status) {
-    case 'completed':
+    case STAGE_STATUS.COMPLETED:
       return {
         color: 'success' as const,
         icon: <CheckCircle />,
-        label: 'Completed',
+        label: getStageStatusDisplayName(STAGE_STATUS.COMPLETED),
         bgColor: 'success.light',
       };
-    case 'failed':
+    case STAGE_STATUS.FAILED:
       return {
         color: 'error' as const,
         icon: <ErrorIcon />,
-        label: 'Failed',
+        label: getStageStatusDisplayName(STAGE_STATUS.FAILED),
         bgColor: 'error.light',
       };
-    case 'active':
+    case STAGE_STATUS.ACTIVE:
       return {
         color: 'primary' as const,
         icon: <PlayArrow />,
         label: 'Running',
         bgColor: 'primary.light',
       };
-    case 'pending':
+    case STAGE_STATUS.PENDING:
     default:
       return {
         color: 'default' as const,
         icon: <Schedule />,
-        label: 'Pending',
+        label: getStageStatusDisplayName(STAGE_STATUS.PENDING),
         bgColor: 'grey.100',
       };
   }
@@ -105,7 +106,7 @@ const StageCard: React.FC<StageCardProps> = ({
         border: '1px solid',
         borderColor: statusConfig.color === 'default' ? 'divider' : `${statusConfig.color}.main`,
         backgroundColor: expanded ? statusConfig.bgColor : 'background.paper',
-        opacity: stage.status === 'pending' ? 0.7 : 1,
+        opacity: stage.status === STAGE_STATUS.PENDING ? 0.7 : 1,
       }}
     >
       <CardContent sx={{ pb: 1 }}>
@@ -181,7 +182,7 @@ const StageCard: React.FC<StageCardProps> = ({
         )}
 
         {/* Success indicator */}
-        {stage.status === 'completed' && !hasError && (
+        {stage.status === STAGE_STATUS.COMPLETED && !hasError && (
           <Box
             sx={{
               mt: 1,

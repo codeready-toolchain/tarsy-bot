@@ -43,6 +43,7 @@ import MCPInteractionPreview from './MCPInteractionPreview';
 import CopyButton from './CopyButton';
 import InteractionCountBadges from './InteractionCountBadges';
 import TypingIndicator from './TypingIndicator';
+import { STAGE_STATUS } from '../utils/statusConstants';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface NestedAccordionTimelineProps {
@@ -53,13 +54,13 @@ interface NestedAccordionTimelineProps {
 // Helper function to get stage status icon
 const getStageStatusIcon = (status: string) => {
   switch (status) {
-    case 'completed':
+    case STAGE_STATUS.COMPLETED:
       return <CheckCircle fontSize="small" />;
-    case 'failed':
+    case STAGE_STATUS.FAILED:
       return <ErrorIcon fontSize="small" />;
-    case 'active':
+    case STAGE_STATUS.ACTIVE:
       return <PlayArrow fontSize="small" />;
-    case 'pending':
+    case STAGE_STATUS.PENDING:
     default:
       return <Schedule fontSize="small" />;
   }
@@ -122,8 +123,8 @@ const getInteractionTypeStyle = (interaction: TimelineItem) => {
 const formatEntireFlowForCopy = (chainExecution: ChainExecution): string => {
   let content = `====== CHAIN EXECUTION: ${chainExecution.chain_id} ======\n`;
   content += `Total Stages: ${chainExecution.stages.length}\n`;
-  content += `Completed: ${chainExecution.stages.filter(s => s.status === 'completed').length}\n`;
-  content += `Failed: ${chainExecution.stages.filter(s => s.status === 'failed').length}\n`;
+  content += `Completed: ${chainExecution.stages.filter(s => s.status === STAGE_STATUS.COMPLETED).length}\n`;
+  content += `Failed: ${chainExecution.stages.filter(s => s.status === STAGE_STATUS.FAILED).length}\n`;
   content += `Current Stage: ${chainExecution.current_stage_index !== null ? chainExecution.current_stage_index + 1 : 'None'}\n\n`;
   
   chainExecution.stages.forEach((stage, stageIndex) => {
@@ -308,11 +309,11 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
         <Box display="flex" gap={2} alignItems="center" mb={2}>
           <LinearProgress 
             variant="determinate" 
-            value={(chainExecution.stages.filter(s => s.status === 'completed').length / chainExecution.stages.length) * 100}
+            value={(chainExecution.stages.filter(s => s.status === STAGE_STATUS.COMPLETED).length / chainExecution.stages.length) * 100}
             sx={{ height: 6, borderRadius: 3, flex: 1 }}
           />
           <Typography variant="body2" color="text.secondary">
-            {chainExecution.stages.filter(s => s.status === 'completed').length} / {chainExecution.stages.length} completed
+            {chainExecution.stages.filter(s => s.status === STAGE_STATUS.COMPLETED).length} / {chainExecution.stages.length} completed
           </Typography>
         </Box>
 
@@ -325,21 +326,21 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
             size="small"
           />
           <Chip 
-            label={`${chainExecution.stages.filter(s => s.status === 'completed').length} completed`} 
+            label={`${chainExecution.stages.filter(s => s.status === STAGE_STATUS.COMPLETED).length} completed`} 
             color="success" 
             variant="outlined" 
             size="small"
           />
-          {chainExecution.stages.filter(s => s.status === 'failed').length > 0 && (
+          {chainExecution.stages.filter(s => s.status === STAGE_STATUS.FAILED).length > 0 && (
             <Chip 
-              label={`${chainExecution.stages.filter(s => s.status === 'failed').length} failed`} 
+              label={`${chainExecution.stages.filter(s => s.status === STAGE_STATUS.FAILED).length} failed`} 
               color="error" 
               variant="outlined" 
               size="small"
             />
           )}
           {chainExecution.current_stage_index !== null && 
-           !chainExecution.stages.every(stage => stage.status === 'completed') && (
+           !chainExecution.stages.every(stage => stage.status === STAGE_STATUS.COMPLETED) && (
             <Chip 
               label={`Current: Stage ${chainExecution.current_stage_index + 1}`} 
               color="primary" 
@@ -744,7 +745,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
 
                 {/* Show typing indicator for active or pending stages */}
                 {(() => {
-                  const shouldShow = stage.status === 'active' || stage.status === 'pending';
+                  const shouldShow = stage.status === STAGE_STATUS.ACTIVE || stage.status === STAGE_STATUS.PENDING;
                   
                   if (shouldShow) {
                     return (
@@ -762,9 +763,9 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                 {/* Stage Summary/Next Steps */}
                 <Box mt={1.5} display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2" color="text.secondary">
-                    {stage.status === 'completed' 
+                    {stage.status === STAGE_STATUS.COMPLETED 
                       ? `Stage completed in ${formatDurationMs(stage.duration_ms || 0)}`
-                      : stage.status === 'active'
+                      : stage.status === STAGE_STATUS.ACTIVE
                       ? 'Stage in progress...'
                       : 'Waiting for stage to begin'
                     }

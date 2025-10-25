@@ -14,6 +14,7 @@ import ActiveAlertCard from './ActiveAlertCard';
 import ChainProgressCard from './ChainProgressCard';
 import { websocketService } from '../services/websocketService';
 import type { ActiveAlertsPanelProps, SessionUpdate, ChainProgressUpdate, StageProgressUpdate } from '../types';
+import { SESSION_EVENTS, CHAIN_EVENTS } from '../utils/eventTypes';
 
 /**
  * ActiveAlertsPanel component displays currently active/processing alerts
@@ -135,14 +136,14 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
       const eventType = update.type || '';
       if (eventType.startsWith('session.')) {
         handleSessionUpdate(update);
-        if (eventType === 'session.completed') {
+        if (eventType === SESSION_EVENTS.COMPLETED) {
           handleSessionCompleted(update);
-        } else if (eventType === 'session.failed') {
+        } else if (eventType === SESSION_EVENTS.FAILED) {
           handleSessionFailed(update);
-        } else if (eventType === 'session.cancelled') {
+        } else if (eventType === SESSION_EVENTS.CANCELLED) {
           handleSessionCancelled(update);
         }
-      } else if (eventType === 'chain.progress') {
+      } else if (eventType === CHAIN_EVENTS.PROGRESS) {
         handleChainProgress(update);
       } else if (eventType.startsWith('stage.')) {
         handleStageProgress(update);
