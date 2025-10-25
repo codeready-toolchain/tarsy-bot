@@ -16,6 +16,9 @@ import {
   Paper,
   Button,
   Tooltip,
+  CircularProgress,
+  Fade,
+  Zoom,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -24,6 +27,7 @@ import {
   OpenInNew as OpenInNewIcon,
   Visibility as VisibilityIcon,
   Cancel as CancelIcon,
+  HourglassEmpty as HourglassEmptyIcon,
 } from '@mui/icons-material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 
@@ -41,6 +45,8 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
   const [status, setStatus] = useState<ProcessingStatus | null>(null);
   const [wsError, setWsError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
+  const [sessionExists, setSessionExists] = useState<boolean>(false);
+  const [checkingSession, setCheckingSession] = useState<boolean>(true);
 
   // Store onComplete in a ref to avoid effect re-runs when it changes
   const onCompleteRef = useRef(onComplete);
@@ -62,6 +68,9 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     didCompleteRef.current = false;
     // Reset terminal state for new session
     isTerminalRef.current = false;
+    // Reset session existence check
+    setSessionExists(false);
+    setCheckingSession(true);
     
     // Initialize WebSocket connection status
     const initialConnectionStatus = websocketService.isConnected;
@@ -96,6 +105,63 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     return () => {
       isMountedRef.current = false; // Mark component as unmounted
       unsubscribeConnection();
+    };
+  }, [sessionId]);
+
+  // Poll to check if session exists in the database
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout | null = null;
+    let attempts = 0;
+    const maxAttempts = 30; // 30 attempts * 1 second = 30 seconds max
+    
+    const checkSessionExists = async () => {
+      try {
+        // Try to fetch the session detail to confirm it exists
+        await apiClient.getSessionDetail(sessionId);
+        
+        // If we get here, session exists
+        if (isMountedRef.current) {
+          setSessionExists(true);
+          setCheckingSession(false);
+          console.log(`✅ Session ${sessionId} confirmed to exist in database`);
+          
+          // Stop polling
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        }
+      } catch (error) {
+        // Session doesn't exist yet or other error
+        attempts++;
+        
+        if (attempts >= maxAttempts) {
+          // Give up after max attempts
+          console.warn(`⚠️ Session ${sessionId} not found after ${maxAttempts} attempts`);
+          if (isMountedRef.current) {
+            setCheckingSession(false);
+            // Still allow button to be enabled after timeout
+            setSessionExists(true);
+          }
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        }
+      }
+    };
+    
+    // Initial check
+    checkSessionExists();
+    
+    // Set up polling interval (check every 1 second)
+    pollInterval = setInterval(checkSessionExists, 1000);
+    
+    // Cleanup
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
     };
   }, [sessionId]);
 
@@ -299,25 +365,75 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
               Session ID: {status.session_id}
             </Typography>
             
-            <Tooltip title="Open detailed alert view in new tab" arrow>
-              <Button
-                variant="contained"
-                color="success"
-                size="medium"
-                startIcon={<VisibilityIcon />}
-                endIcon={<OpenInNewIcon />}
-                onClick={handleViewDetails}
-                sx={{ 
-                  boxShadow: 2,
-                  px: 2.5,
-                  '&:hover': {
-                    boxShadow: 4,
-                  }
-                }}
-              >
-                View Full Details
-              </Button>
-            </Tooltip>
+            {/* Show loading state while checking if session exists */}
+            {checkingSession && !sessionExists ? (
+              <Zoom in timeout={300}>
+                <Box 
+                  display="flex" 
+                  alignItems="center" 
+                  gap={1.5}
+                  sx={{
+                    px: 2.5,
+                    py: 1,
+                    bgcolor: 'action.hover',
+                    borderRadius: 1,
+                    border: '1px dashed',
+                    borderColor: 'primary.main',
+                  }}
+                >
+                  <CircularProgress size={20} thickness={4} />
+                  <Box display="flex" alignItems="center" gap={0.5}>
+                    <HourglassEmptyIcon 
+                      sx={{ 
+                        fontSize: 20,
+                        color: 'primary.main',
+                        animation: 'pulse 1.5s ease-in-out infinite',
+                        '@keyframes pulse': {
+                          '0%, 100%': { opacity: 1 },
+                          '50%': { opacity: 0.5 },
+                        }
+                      }} 
+                    />
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      Initializing session...
+                    </Typography>
+                  </Box>
+                </Box>
+              </Zoom>
+            ) : (
+              <Fade in timeout={500}>
+                <Tooltip 
+                  title={sessionExists ? "Open detailed alert view in new tab" : "Session is being created..."} 
+                  arrow
+                >
+                  <span>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      size="medium"
+                      startIcon={sessionExists ? <VisibilityIcon /> : <CircularProgress size={16} color="inherit" />}
+                      endIcon={<OpenInNewIcon />}
+                      onClick={handleViewDetails}
+                      disabled={!sessionExists}
+                      sx={{ 
+                        boxShadow: 2,
+                        px: 2.5,
+                        transition: 'all 0.3s ease-in-out',
+                        '&:hover': {
+                          boxShadow: 4,
+                          transform: 'translateY(-2px)',
+                        },
+                        '&:disabled': {
+                          opacity: 0.6,
+                        }
+                      }}
+                    >
+                      View Full Details
+                    </Button>
+                  </span>
+                </Tooltip>
+              </Fade>
+            )}
           </Box>
 
           <Box mb={3}>

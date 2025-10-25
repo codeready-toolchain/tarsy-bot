@@ -18,6 +18,47 @@ import {
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import type { FinalAnalysisCardProps } from '../types';
 import CopyButton from './CopyButton';
+import { isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
+
+/**
+ * Generate a fake analysis message for terminal sessions without analysis
+ */
+function generateFakeAnalysis(status: string, errorMessage?: string | null): string {
+  switch (status) {
+    case SESSION_STATUS.CANCELLED:
+      return `# Session Cancelled
+
+This analysis session was cancelled before completion. No final analysis is available.
+
+**Status:** Session was terminated by user request or system intervention.
+
+If you need to investigate this alert, please submit a new analysis session.`;
+
+    case SESSION_STATUS.FAILED:
+      return `# Session Failed
+
+This analysis session failed before completion. No final analysis could be generated.
+
+**Error Details:**
+${errorMessage ? `\`\`\`\n${errorMessage}\n\`\`\`` : '_No error details available_'}
+
+Please review the session logs or submit a new analysis session.`;
+
+    case SESSION_STATUS.COMPLETED:
+      return `# Analysis Completed
+
+This session completed successfully, but no final analysis was generated.
+
+**Note:** This may indicate an issue with the analysis generation process. Please check the session stages for more details.`;
+
+    default:
+      return `# No Analysis Available
+
+This session has reached a terminal state (${status}), but no final analysis is available.
+
+Please review the session details or contact support if this is unexpected.`;
+  }
+}
 
 /**
  * FinalAnalysisCard component - Phase 3
@@ -71,17 +112,17 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage }: FinalAnaly
   }, [analysis, prevAnalysis, sessionStatus]);
 
   // Handle copy to clipboard
-  const handleCopyAnalysis = async () => {
-    if (!analysis) return;
+  const handleCopyAnalysis = async (textToCopy: string) => {
+    if (!textToCopy) return;
     
     try {
-      await navigator.clipboard.writeText(analysis);
+      await navigator.clipboard.writeText(textToCopy);
       setCopySuccess(true);
     } catch (error) {
       console.error('Failed to copy analysis:', error);
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
-      textArea.value = analysis;
+      textArea.value = textToCopy;
       document.body.appendChild(textArea);
       textArea.select();
       document.execCommand('copy');
@@ -95,34 +136,20 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage }: FinalAnaly
     setCopySuccess(false);
   };
 
-  // Show error state if session failed and no analysis available
-  if (sessionStatus === 'failed' && !analysis && errorMessage) {
-    return (
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Psychology color="primary" />
-          Final AI Analysis
-        </Typography>
-        
-        <Alert severity="error" sx={{ mt: 2 }}>
-          <AlertTitle>Processing Error</AlertTitle>
-          <Typography variant="body2">
-            Session failed before analysis could be completed.
-          </Typography>
-          <Typography variant="body2" sx={{ mt: 1, fontFamily: 'monospace', fontSize: '0.875rem' }}>
-            {errorMessage}
-          </Typography>
-        </Alert>
-      </Paper>
-    );
-  }
-
-  // Hide entirely if no analysis available - don't show empty state
-  if (!analysis) {
+  // Determine the actual analysis to display
+  // For terminal sessions without analysis, generate a fake one
+  const displayAnalysis = analysis || 
+    (isTerminalSessionStatus(sessionStatus) ? generateFakeAnalysis(sessionStatus, errorMessage) : null);
+  
+  // If session is still active and no analysis yet, hide the card
+  if (!displayAnalysis) {
     return null;
   }
 
-  const isLongAnalysis = analysis.length > 1000;
+  // Check if this is a fake analysis (for styling purposes)
+  const isFakeAnalysis = !analysis && isTerminalSessionStatus(sessionStatus);
+
+  const isLongAnalysis = displayAnalysis.length > 1000;
   const shouldShowExpandButton = isLongAnalysis && !analysisExpanded;
 
   return (
@@ -167,27 +194,41 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage }: FinalAnaly
             startIcon={<ContentCopy />}
             variant="outlined"
             size="small"
-            onClick={handleCopyAnalysis}
+            onClick={() => handleCopyAnalysis(displayAnalysis)}
           >
-            Copy Analysis
+            Copy {isFakeAnalysis ? 'Message' : 'Analysis'}
           </Button>
         </Box>
 
-        {/* AI-Generated Content Warning */}
-        <Alert 
-          severity="info" 
-          icon={<AutoAwesome />}
-          sx={{ mb: 2 }}
-        >
-          <Box>
-            <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.5, fontSize: '1rem' }}>
-              AI-Generated Content
+        {/* AI-Generated Content Warning - only show for real analysis */}
+        {!isFakeAnalysis && (
+          <Alert 
+            severity="info" 
+            icon={<AutoAwesome />}
+            sx={{ mb: 2 }}
+          >
+            <Box>
+              <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.5, fontSize: '1rem' }}>
+                AI-Generated Content
+              </Typography>
+              <Typography variant="body1" sx={{ fontSize: '0.95rem' }}>
+                Always review AI generated content prior to use.
+              </Typography>
+            </Box>
+          </Alert>
+        )}
+        
+        {/* Status indicator for fake analysis */}
+        {isFakeAnalysis && (
+          <Alert 
+            severity="warning" 
+            sx={{ mb: 2 }}
+          >
+            <Typography variant="body2">
+              This session did not complete successfully.
             </Typography>
-            <Typography variant="body1" sx={{ fontSize: '0.95rem' }}>
-              Always review AI generated content prior to use.
-            </Typography>
-          </Box>
-        </Alert>
+          </Alert>
+        )}
 
         {/* Analysis Content with Expand/Collapse */}
         <Box sx={{ position: 'relative' }}>
@@ -381,7 +422,7 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage }: FinalAnaly
                   }
                 }}
               >
-                {analysis}
+                {displayAnalysis}
               </ReactMarkdown>
             </Paper>
           </Box>
@@ -426,8 +467,8 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage }: FinalAnaly
           )}
         </Box>
 
-        {/* Error message for failed sessions with analysis */}
-        {sessionStatus === 'failed' && errorMessage && (
+        {/* Error message for failed sessions with real analysis (not fake) */}
+        {sessionStatus === 'failed' && errorMessage && !isFakeAnalysis && (
           <Alert severity="error" sx={{ mt: 2 }}>
             <AlertTitle>Session completed with errors</AlertTitle>
             <Typography variant="body2">
