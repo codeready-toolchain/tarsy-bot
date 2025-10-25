@@ -201,12 +201,6 @@ async def test_parse_numeric_value(
         assert result == expected_result
 ```
 
-**Benefits:**
-- ✅ All test cases visible at a glance
-- ✅ Easy to add new cases without code duplication
-- ✅ Clear relationship between inputs and expected outputs
-- ✅ Reduces test maintenance burden
-
 **Use parameterization when:**
 - Testing the same logic with different inputs
 - Validating boundary conditions
@@ -247,7 +241,7 @@ Before considering a feature complete, verify:
 
 - ✅ Unit tests written for all new business logic
 - ✅ Integration tests written for database operations and service interactions
-- ✅ E2E tests written for new API endpoints
+- ✅ Consider writing E2E tests for new API endpoints but only if it doesn't require heavy mocking
 - ✅ Happy path tested with valid inputs
 - ✅ Edge cases tested (empty, null, boundary values)
 - ✅ Error handling tested with invalid inputs
@@ -258,6 +252,8 @@ Before considering a feature complete, verify:
 - ✅ Tests follow project conventions and standards
 
 ---
+
+IMPORTANT!!! BE PRACTICAL! CREATE ONLY TESTS WHICH BRING REAL VALUE! DO NOT DUPLICATE TESTS!
 
 **Now create comprehensive tests for the new functionality following the above guidelines.**
 
