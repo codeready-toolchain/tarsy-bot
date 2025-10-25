@@ -544,7 +544,6 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                   variant="contained"
                   color="warning"
                   size="large"
-                  startIcon={isCancelling || isCanceling ? <CircularProgress size={20} color="inherit" /> : <CancelOutlined />}
                   onClick={handleCancelClick}
                   disabled={isCancelling || isCanceling}
                   sx={{
@@ -558,10 +557,25 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                     '&:hover': {
                       boxShadow: 6,
                       transform: 'translateY(-2px)',
+                      '& .button-icon': {
+                        transform: 'scale(1.2)',
+                      },
                     },
                     transition: 'all 0.2s ease-in-out',
                   }}
                 >
+                  {isCancelling || isCanceling ? (
+                    <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} />
+                  ) : (
+                    <CancelOutlined 
+                      className="button-icon"
+                      sx={{ 
+                        mr: 1,
+                        fontSize: '1.3rem',
+                        transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      }} 
+                    />
+                  )}
                   {isCancelling ? 'Cancelling...' : isCanceling ? 'Canceling...' : 'Cancel Session'}
                 </Button>
               )}
@@ -573,7 +587,6 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                     variant="contained"
                     color="info"
                     size="large"
-                    startIcon={<ReplayIcon sx={{ fontSize: '1.3rem' }} />}
                     onClick={handleResubmit}
                     sx={{
                       minWidth: 180,
@@ -586,10 +599,21 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                       '&:hover': {
                         boxShadow: 6,
                         transform: 'translateY(-2px)',
+                        '& .button-icon': {
+                          transform: 'rotate(360deg)',
+                        },
                       },
                       transition: 'all 0.2s ease-in-out',
                     }}
                   >
+                    <ReplayIcon 
+                      className="button-icon"
+                      sx={{ 
+                        mr: 1,
+                        fontSize: '1.3rem',
+                        transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                      }} 
+                    />
                     Re-submit Alert
                   </Button>
                 </Tooltip>
