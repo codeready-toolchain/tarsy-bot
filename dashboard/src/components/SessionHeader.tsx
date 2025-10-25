@@ -429,7 +429,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                   wordBreak: 'break-word'
                 }}
               >
-                {session.alert_data?.alert_type || session.alert_type || 'Alert Processing'}
+                {session.alert_type || 'Alert Processing'}
                 {session.chain_definition?.name && (
                   <Typography component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}>
                     {' - '}{session.chain_definition.name}

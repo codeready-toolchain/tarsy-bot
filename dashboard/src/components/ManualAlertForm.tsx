@@ -4,7 +4,7 @@
  * Supports runbook dropdown with GitHub repository integration
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -199,6 +199,12 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
   const location = useLocation();
   const navigate = useNavigate();
   
+  // Track if we've already processed resubmit state (prevents re-processing on re-renders)
+  const resubmitProcessedRef = useRef(false);
+  
+  // Default alert type to use (set by resubmit or will use API default)
+  const defaultAlertTypeRef = useRef<string | null>(null);
+  
   // Re-submission state
   const [sourceSessionId, setSourceSessionId] = useState<string | null>(null);
   const [showResubmitBanner, setShowResubmitBanner] = useState(false);
@@ -230,53 +236,22 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
   const [success, setSuccess] = useState<string | null>(null);
   const [runbookError, setRunbookError] = useState<string | null>(null);
 
-  // Load available alert types and runbooks on component mount
-  useEffect(() => {
-    const loadOptions = async () => {
-      try {
-        // Load alert types
-        const alertTypes = await apiClient.getAlertTypes();
-        if (Array.isArray(alertTypes)) {
-          setAvailableAlertTypes(alertTypes);
-          // Set default alertType to 'kubernetes' if available, otherwise first available type
-          if (alertTypes.includes('kubernetes')) {
-            setAlertType('kubernetes');
-          } else if (alertTypes.length > 0) {
-            setAlertType(alertTypes[0]);
-          }
-        }
-
-        // Load runbooks
-        const runbooks = await apiClient.getRunbooks();
-        if (Array.isArray(runbooks)) {
-          // Add "Default Runbook" as first option
-          setAvailableRunbooks([DEFAULT_RUNBOOK, ...runbooks]);
-        } else {
-          setAvailableRunbooks([DEFAULT_RUNBOOK]);
-        }
-      } catch (error) {
-        console.error('Failed to load options:', error);
-        setError('Failed to load options from backend. Please check if the backend is running.');
-      }
-    };
-
-    loadOptions();
-  }, []);
-
-  // Handle pre-population from location state (re-submit feature)
+  // STEP 1: Process resubmit FIRST - set the default alert type before API loads
   useEffect(() => {
     const state = location.state as any;
-    if (state?.resubmit && state?.alertData) {
-      console.log('Pre-populating form from session:', state.sessionId);
+    
+    // Only process resubmit once (prevents issues with StrictMode and re-renders)
+    if (state?.resubmit && state?.alertData && !resubmitProcessedRef.current) {
+      resubmitProcessedRef.current = true;
+      
+      // Set the default alert type for API loading to use
+      if (state.alertType) {
+        defaultAlertTypeRef.current = state.alertType;
+      }
       
       // Set re-submission state
       setSourceSessionId(state.sessionId || null);
       setShowResubmitBanner(true);
-      
-      // Set alert type
-      if (state.alertType) {
-        setAlertType(state.alertType);
-      }
       
       // Set runbook
       if (state.runbook) {
@@ -308,6 +283,51 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location, navigate]);
+
+  // STEP 2: Load available alert types and runbooks from API
+  useEffect(() => {
+    const loadOptions = async () => {
+      try {
+        // Load alert types from API
+        const alertTypes = await apiClient.getAlertTypes();
+        if (Array.isArray(alertTypes)) {
+          // Check if we have a default alert type (from resubmit)
+          const defaultType = defaultAlertTypeRef.current;
+          
+          // Ensure default type is in the list
+          let finalAlertTypes = alertTypes;
+          if (defaultType && !alertTypes.includes(defaultType)) {
+            finalAlertTypes = [defaultType, ...alertTypes];
+          }
+          
+          setAvailableAlertTypes(finalAlertTypes);
+          
+          // Set the alert type (use default if available, otherwise use API default)
+          if (defaultType) {
+            setAlertType(defaultType);
+          } else if (alertTypes.includes('kubernetes')) {
+            setAlertType('kubernetes');
+          } else if (alertTypes.length > 0) {
+            setAlertType(alertTypes[0]);
+          }
+        }
+
+        // Load runbooks
+        const runbooks = await apiClient.getRunbooks();
+        if (Array.isArray(runbooks)) {
+          // Add "Default Runbook" as first option
+          setAvailableRunbooks([DEFAULT_RUNBOOK, ...runbooks]);
+        } else {
+          setAvailableRunbooks([DEFAULT_RUNBOOK]);
+        }
+      } catch (error) {
+        console.error('Failed to load options:', error);
+        setError('Failed to load options from backend. Please check if the backend is running.');
+      }
+    };
+
+    loadOptions();
+  }, []);
 
   /**
    * Add a new empty key-value pair
