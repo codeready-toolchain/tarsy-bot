@@ -486,6 +486,32 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                 Submitted by: <strong>{session.author}</strong>
               </Typography>
             )}
+            
+            {/* Runbook URL information */}
+            {session.runbook_url && (
+              <Typography 
+                variant="body2" 
+                color="text.secondary"
+                sx={{ mt: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}
+              >
+                Runbook: 
+                <a 
+                  href={session.runbook_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  style={{ 
+                    color: 'inherit',
+                    textDecoration: 'underline',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85em'
+                  }}
+                >
+                  {session.runbook_url.length > 200 
+                    ? `${session.runbook_url.substring(0, 197)}...` 
+                    : session.runbook_url}
+                </a>
+              </Typography>
+            )}
           </Box>
 
           {/* Right side: Duration Timer and Action Buttons */}
