@@ -645,6 +645,7 @@ class HistoryRepository:
                 agent_type=session.agent_type,
                 status=AlertSessionStatus(session.status),
                 author=session.author,
+                runbook_url=session.runbook_url,
                 started_at_us=session.started_at_us,
                 completed_at_us=session.completed_at_us,
                 error_message=session.error_message,

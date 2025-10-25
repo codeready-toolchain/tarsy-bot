@@ -4,6 +4,7 @@ export interface Session {
   agent_type: string;
   status: 'pending' | 'in_progress' | 'canceling' | 'completed' | 'failed' | 'cancelled';
   author: string | null;
+  runbook_url: string | null;
   started_at_us: number; // Unix timestamp (microseconds since epoch)
   completed_at_us: number | null; // Unix timestamp (microseconds since epoch)
   duration_ms: number | null; // Computed property from backend

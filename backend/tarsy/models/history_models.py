@@ -289,6 +289,7 @@ class DetailedSession(BaseModel):
     agent_type: str
     status: AlertSessionStatus
     author: Optional[str] = None
+    runbook_url: Optional[str] = None
     started_at_us: int
     completed_at_us: Optional[int] = None
     error_message: Optional[str] = None

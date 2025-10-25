@@ -273,7 +273,8 @@ class HistoryService:
                     status=AlertSessionStatus.PENDING.value,
                     chain_id=chain_definition.chain_id,
                     chain_definition=chain_definition.model_dump(),  # Store as JSON-serializable dict
-                    author=chain_context.author  # User who submitted the alert (from oauth2-proxy headers)
+                    author=chain_context.author,  # User who submitted the alert (from oauth2-proxy headers)
+                    runbook_url=chain_context.processing_alert.runbook_url  # Runbook URL for re-submission
                 )
                 
                 created_session = repo.create_alert_session(session)

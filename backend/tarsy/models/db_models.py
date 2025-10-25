@@ -106,6 +106,11 @@ class AlertSession(SQLModel, table=True):
         description="User or API Client who submitted the alert (from oauth2-proxy X-Forwarded-User header)"
     )
     
+    runbook_url: Optional[str] = Field(
+        default=None,
+        description="Runbook URL used for processing this alert (if provided)"
+    )
+    
     # Chain execution tracking
     chain_id: str = Field(description="Chain identifier for this execution")
     chain_definition: Optional[dict] = Field(default=None, sa_column=Column(JSON), description="Complete chain definition snapshot")

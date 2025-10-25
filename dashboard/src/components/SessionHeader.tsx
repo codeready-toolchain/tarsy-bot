@@ -392,7 +392,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
       state: {
         resubmit: true,
         alertType: session.alert_type,
-        runbook: session.alert_data?.runbook || null,
+        runbook: session.runbook_url || null,
         alertData: session.alert_data,
         sessionId: session.session_id
       }

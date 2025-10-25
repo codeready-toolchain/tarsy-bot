@@ -1214,3 +1214,92 @@ class TestDuplicatePreventionIntegration:
             
             # Should return False on error, not crash
             assert error_session is False
+    
+    @pytest.mark.integration
+    def test_optional_metadata_persistence_and_retrieval(self, history_service_with_test_db):
+        """Test that optional metadata (author, runbook_url) are properly persisted and retrieved."""
+        # Test case 1: Session with both author and runbook_url
+        runbook_url = "https://github.com/company/runbooks/blob/main/k8s-troubleshooting.md"
+        author = "integration-test-user"
+        
+        from tarsy.models.alert import Alert, ProcessingAlert
+        alert = Alert(
+            alert_type="NamespaceTerminating",
+            runbook=runbook_url,
+            data={
+                "namespace": "test-namespace",
+                "cluster": "production",
+                "message": "Namespace stuck in terminating state"
+            }
+        )
+        
+        processing_alert = ProcessingAlert.from_api_alert(alert)
+        assert processing_alert.runbook_url == runbook_url
+        
+        from tarsy.models.processing_context import ChainContext
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-metadata-session-1",
+            current_stage_name="initial",
+            author=author
+        )
+        
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        chain_definition = ChainConfigModel(
+            chain_id="test-metadata-chain",
+            alert_types=["NamespaceTerminating"],
+            stages=[
+                ChainStageConfigModel(
+                    name="Initial Analysis",
+                    agent="base"
+                )
+            ]
+        )
+        
+        # Create session
+        result = history_service_with_test_db.create_session(context, chain_definition)
+        assert result is True
+        
+        # Retrieve and verify both author and runbook_url are persisted
+        detailed_session = history_service_with_test_db.get_session_details("test-metadata-session-1")
+        assert detailed_session is not None
+        assert detailed_session.author == author
+        assert detailed_session.runbook_url == runbook_url
+        assert detailed_session.session_id == "test-metadata-session-1"
+        
+        # Test case 2: Session without optional metadata
+        alert_no_metadata = Alert(
+            alert_type="PodCrashLoop",
+            data={"pod": "test-pod", "namespace": "default"}
+        )
+        
+        processing_alert_no_metadata = ProcessingAlert.from_api_alert(alert_no_metadata)
+        assert processing_alert_no_metadata.runbook_url is None
+        
+        context_no_metadata = ChainContext.from_processing_alert(
+            processing_alert=processing_alert_no_metadata,
+            session_id="test-metadata-session-2",
+            current_stage_name="initial"
+            # No author provided
+        )
+        
+        chain_definition_2 = ChainConfigModel(
+            chain_id="test-no-metadata-chain",
+            alert_types=["PodCrashLoop"],
+            stages=[
+                ChainStageConfigModel(
+                    name="Initial Analysis",
+                    agent="base"
+                )
+            ]
+        )
+        
+        result_2 = history_service_with_test_db.create_session(context_no_metadata, chain_definition_2)
+        assert result_2 is True
+        
+        # Retrieve and verify both fields are None
+        detailed_session_2 = history_service_with_test_db.get_session_details("test-metadata-session-2")
+        assert detailed_session_2 is not None
+        assert detailed_session_2.author is None
+        assert detailed_session_2.runbook_url is None
+        assert detailed_session_2.session_id == "test-metadata-session-2"
