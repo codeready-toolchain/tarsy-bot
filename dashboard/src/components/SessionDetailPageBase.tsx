@@ -254,9 +254,9 @@ function SessionDetailPageBase({
         // Session lifecycle events (session.created, session.started, session.completed, session.failed)
         console.log('🔄 Session lifecycle event, refreshing data');
         
-        // For major status changes (completed/failed), refresh everything
-        if (eventType === 'session.completed' || eventType === 'session.failed') {
-          console.log('🔄 Session completed/failed - full refresh');
+        // For major status changes (completed/failed/cancelled), refresh everything
+        if (eventType === 'session.completed' || eventType === 'session.failed' || eventType === 'session.cancelled') {
+          console.log('🔄 Session completed/failed/cancelled - full refresh');
           throttledUpdate(() => {
             if (sessionId) {
               refreshSessionStages(sessionId);

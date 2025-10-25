@@ -14,18 +14,20 @@ class AlertSessionStatus(Enum):
     
     PENDING = "pending"
     IN_PROGRESS = "in_progress"  
+    CANCELING = "canceling"  # Intermediate state - cancellation requested
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"  # Terminal state - cancellation completed
     
     @classmethod
     def get_active_statuses(cls) -> List['AlertSessionStatus']:
         """Statuses that indicate session is still being processed."""
-        return [cls.PENDING, cls.IN_PROGRESS]
+        return [cls.PENDING, cls.IN_PROGRESS, cls.CANCELING]
     
     @classmethod
     def get_terminal_statuses(cls) -> List['AlertSessionStatus']:
         """Statuses that indicate session processing is finished."""
-        return [cls.COMPLETED, cls.FAILED]
+        return [cls.COMPLETED, cls.FAILED, cls.CANCELLED]
     
     @classmethod
     def get_all_statuses(cls) -> List['AlertSessionStatus']:

@@ -351,6 +351,22 @@ class APIClient {
     }
   }
 
+  /**
+   * Cancel an active session
+   * 
+   * Sends a cancellation request for the specified session.
+   * The backend will attempt to cancel the processing task and mark the session as cancelled.
+   */
+  async cancelSession(sessionId: string): Promise<{ success: boolean; message: string; status: string }> {
+    try {
+      const response = await this.client.post(`/api/v1/history/sessions/${sessionId}/cancel`);
+      return response.data;
+    } catch (error) {
+      console.error('Error cancelling session:', error);
+      throw error;
+    }
+  }
+
   // Phase 4: Search and filtering methods
 
   /**

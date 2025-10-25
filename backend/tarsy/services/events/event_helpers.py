@@ -4,11 +4,14 @@ import logging
 from typing import Optional
 
 from tarsy.database.init_db import get_async_session_factory
+from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.event_models import (
     SessionCreatedEvent,
     SessionStartedEvent,
     SessionCompletedEvent,
     SessionFailedEvent,
+    SessionCancelRequestedEvent,
+    SessionCancelledEvent,
     LLMInteractionEvent,
     MCPToolCallStartedEvent,
     MCPToolCallEvent,
@@ -74,7 +77,7 @@ async def publish_session_completed(session_id: str) -> None:
     try:
         async_session_factory = get_async_session_factory()
         async with async_session_factory() as session:
-            event = SessionCompletedEvent(session_id=session_id, status="completed")
+            event = SessionCompletedEvent(session_id=session_id, status=AlertSessionStatus.COMPLETED.value)
             # Publish to global 'sessions' channel for dashboard
             await publish_event(session, EventChannel.SESSIONS, event)
             # Also publish to session-specific channel for detail views
@@ -94,7 +97,7 @@ async def publish_session_failed(session_id: str) -> None:
     try:
         async_session_factory = get_async_session_factory()
         async with async_session_factory() as session:
-            event = SessionFailedEvent(session_id=session_id, status="failed")
+            event = SessionFailedEvent(session_id=session_id, status=AlertSessionStatus.FAILED.value)
             # Publish to global 'sessions' channel for dashboard
             await publish_event(session, EventChannel.SESSIONS, event)
             # Also publish to session-specific channel for detail views
@@ -285,4 +288,48 @@ async def publish_stage_completed(
             logger.debug(f"Published stage.completed event for {stage_id}")
     except Exception as e:
         logger.warning(f"Failed to publish stage.completed event: {e}")
+
+
+async def publish_cancel_request(session_id: str) -> None:
+    """
+    Publish cancellation request to backend pods.
+
+    This is published to the 'cancellations' channel which all pods subscribe to.
+    The pod owning the task will cancel it.
+
+    Args:
+        session_id: Session identifier
+    """
+    try:
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = SessionCancelRequestedEvent(session_id=session_id)
+            # Publish to cancellations channel (backend-only)
+            await publish_event(session, EventChannel.CANCELLATIONS, event)
+            logger.info(f"[EVENT] Published session.cancel_requested for {session_id}")
+    except Exception as e:
+        logger.warning(f"Failed to publish cancel request: {e}")
+
+
+async def publish_session_cancelled(session_id: str) -> None:
+    """
+    Publish cancellation confirmation to clients.
+
+    This updates the UI to show the session as cancelled.
+    Published when the task is actually cancelled or after orphan timeout.
+
+    Args:
+        session_id: Session identifier
+    """
+    try:
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = SessionCancelledEvent(session_id=session_id, status=AlertSessionStatus.CANCELLED.value)
+            # Publish to global 'sessions' channel for dashboard
+            await publish_event(session, EventChannel.SESSIONS, event)
+            # Also publish to session-specific channel for detail views
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published session.cancelled to channels")
+    except Exception as e:
+        logger.warning(f"Failed to publish session.cancelled event: {e}")
 

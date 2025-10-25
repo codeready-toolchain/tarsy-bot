@@ -3,12 +3,20 @@ import {
   Paper,
   Box,
   Typography,
-  Button
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  CircularProgress
 } from '@mui/material';
+import { CancelOutlined } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import ProgressIndicator from './ProgressIndicator';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { formatTimestamp } from '../utils/timestamp';
+import { apiClient, handleAPIError } from '../services/api';
 import type { SessionHeaderProps } from '../types';
 
 // Animation styles for processing sessions
@@ -287,16 +295,23 @@ function SessionSummary({ summary, sessionStatus, sessionTokens }: {
  */
 function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
   const isInProgress = session.status === 'in_progress' || session.status === 'pending';
+  const isCanceling = session.status === 'canceling';
+  const canCancel = isInProgress || isCanceling;
   const previousStatusRef = useRef<string>(session.status);
+  
+  // Cancel dialog state
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   
   // Detect status changes from in_progress to completed and trigger refresh
   useEffect(() => {
     const previousStatus = previousStatusRef.current;
     const currentStatus = session.status;
     
-    // Check if status changed from in_progress/pending to completed/failed
-    const wasInProgress = previousStatus === 'in_progress' || previousStatus === 'pending';
-    const nowCompleted = currentStatus === 'completed' || currentStatus === 'failed';
+    // Check if status changed from in_progress/pending to completed/failed/cancelled
+    const wasInProgress = previousStatus === 'in_progress' || previousStatus === 'pending' || previousStatus === 'canceling';
+    const nowCompleted = currentStatus === 'completed' || currentStatus === 'failed' || currentStatus === 'cancelled';
     
     if (wasInProgress && nowCompleted && onRefresh) {
       console.log(`🔄 Status changed from ${previousStatus} to ${currentStatus}, refreshing session data for final stats`);
@@ -309,6 +324,45 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     // Update the ref for next comparison
     previousStatusRef.current = currentStatus;
   }, [session.status, onRefresh]);
+  
+  // Clear cancelling state when session status changes to cancelled
+  useEffect(() => {
+    if (session.status === 'cancelled' && isCancelling) {
+      setIsCancelling(false);
+    }
+  }, [session.status, isCancelling]);
+  
+  // Handle cancel button click
+  const handleCancelClick = () => {
+    setShowCancelDialog(true);
+    setCancelError(null);
+  };
+  
+  // Handle dialog close without cancelling
+  const handleDialogClose = () => {
+    if (!isCancelling) {
+      setShowCancelDialog(false);
+      setCancelError(null);
+    }
+  };
+  
+  // Handle cancel confirmation
+  const handleConfirmCancel = async () => {
+    setIsCancelling(true);
+    setCancelError(null);
+    
+    try {
+      await apiClient.cancelSession(session.session_id);
+      // Close dialog on success
+      setShowCancelDialog(false);
+      // Keep isCancelling true - will be cleared when WebSocket updates status to 'cancelled'
+    } catch (error) {
+      // Show error, allow retry
+      const errorMessage = handleAPIError(error);
+      setCancelError(errorMessage);
+      setIsCancelling(false);
+    }
+  };
 
   return (
     <Paper 
@@ -399,12 +453,12 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
             )}
           </Box>
 
-          {/* Right side: Duration Timer - Consistent Layout */}
+          {/* Right side: Duration Timer and Cancel Button */}
           <Box sx={{ 
             display: 'flex', 
             flexDirection: 'column',
             alignItems: 'flex-end',
-            gap: 0.5,
+            gap: 1,
             minWidth: 180
           }}>
             {/* Duration Label */}
@@ -440,8 +494,69 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                 size="large"
               />
             </Box>
+            
+            {/* Cancel Button - Only for active sessions */}
+            {canCancel && (
+              <Button
+                variant="outlined"
+                color="warning"
+                size="small"
+                startIcon={isCancelling || isCanceling ? <CircularProgress size={16} /> : <CancelOutlined />}
+                onClick={handleCancelClick}
+                disabled={isCancelling || isCanceling}
+                sx={{
+                  mt: 0.5,
+                  minWidth: 120,
+                  textTransform: 'none',
+                  fontWeight: 600
+                }}
+              >
+                {isCancelling ? 'Cancelling...' : isCanceling ? 'Canceling...' : 'Cancel Session'}
+              </Button>
+            )}
           </Box>
         </Box>
+
+        {/* Cancel Confirmation Dialog */}
+        <Dialog
+          open={showCancelDialog}
+          onClose={handleDialogClose}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Cancel Session?</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Are you sure you want to cancel this session? This action cannot be undone.
+              The session will be marked as cancelled and any ongoing processing will be stopped.
+            </DialogContentText>
+            {cancelError && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'error.50', borderRadius: 1, border: '1px solid', borderColor: 'error.main' }}>
+                <Typography variant="body2" color="error.main">
+                  {cancelError}
+                </Typography>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button 
+              onClick={handleDialogClose} 
+              disabled={isCancelling}
+              color="inherit"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleConfirmCancel} 
+              variant="contained" 
+              color="warning"
+              disabled={isCancelling}
+              startIcon={isCancelling ? <CircularProgress size={16} color="inherit" /> : undefined}
+            >
+              {isCancelling ? 'Cancelling...' : 'Confirm Cancellation'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Summary section */}
         <Box>

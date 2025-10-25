@@ -12,6 +12,14 @@ class EventChannel:
     Consumers: Dashboard main page, monitoring tools, CLI
     """
 
+    CANCELLATIONS = "cancellations"
+    """
+    Backend-only channel for session cancellation requests.
+
+    Events: session.cancel_requested
+    Consumers: All backend pods (for cross-pod cancellation coordination)
+    """
+
     @staticmethod
     def session_details(session_id: str) -> str:
         """

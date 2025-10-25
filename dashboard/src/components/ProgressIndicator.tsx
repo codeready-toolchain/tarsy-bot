@@ -3,7 +3,7 @@ import { Box, LinearProgress, CircularProgress, Typography } from '@mui/material
 import { formatDurationMs } from '../utils/timestamp';
 
 interface ProgressIndicatorProps {
-  status: 'completed' | 'failed' | 'in_progress' | 'pending';
+  status: 'completed' | 'failed' | 'in_progress' | 'pending' | 'canceling' | 'cancelled';
   startedAt?: number; // Unix timestamp in microseconds
   duration?: number | null; // Duration in milliseconds
   variant?: 'linear' | 'circular';
@@ -39,7 +39,7 @@ function ProgressIndicator({
   // Live ticking timer for active sessions
   useEffect(() => {
     // Only start timer for active sessions without final duration
-    if ((status === 'in_progress' || status === 'pending') && startedAt !== undefined && startedAt !== null && !duration) {
+    if ((status === 'in_progress' || status === 'pending' || status === 'canceling') && startedAt !== undefined && startedAt !== null && !duration) {
       // Update immediately
       setLiveDuration(getLiveDuration());
       
@@ -64,13 +64,14 @@ function ProgressIndicator({
   };
 
   // For active sessions, show progress indicator
-  if (status === 'in_progress') {
+  if (status === 'in_progress' || status === 'canceling') {
+    const progressColor = status === 'canceling' ? 'warning' : 'info';
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         {variant === 'circular' ? (
           <CircularProgress 
             size={sizeMap[size]} 
-            color="info"
+            color={progressColor}
             variant="indeterminate"
           />
         ) : (
@@ -84,7 +85,7 @@ function ProgressIndicator({
                 borderRadius: 1,
               }
             }} 
-            color="info"
+            color={progressColor}
           />
         )}
         {showDuration && currentDuration && (
@@ -129,12 +130,18 @@ function ProgressIndicator({
     );
   }
 
-  // For completed/failed sessions, show duration if available
+  // For completed/failed/cancelled sessions, show duration if available
   if (showDuration && currentDuration) {
+    const color = 
+      status === 'completed' ? 'success.main' : 
+      status === 'failed' ? 'error.main' : 
+      status === 'cancelled' ? 'text.disabled' : 
+      'text.secondary';
+    
     return (
       <Typography 
         variant="caption" 
-        color={status === 'completed' ? 'success.main' : status === 'failed' ? 'error.main' : 'text.secondary'}
+        color={color}
         sx={{ fontWeight: 500 }}
       >
         {formatDurationMs(currentDuration)}

@@ -56,6 +56,21 @@ class SessionFailedEvent(BaseEvent):
     status: Literal["failed"] = "failed"  # For instant client update
 
 
+class SessionCancelRequestedEvent(BaseEvent):
+    """Session cancellation requested (backend-to-backend communication)."""
+
+    type: Literal["session.cancel_requested"] = "session.cancel_requested"
+    session_id: str = Field(description="Session identifier")
+
+
+class SessionCancelledEvent(BaseEvent):
+    """Session cancelled successfully."""
+
+    type: Literal["session.cancelled"] = "session.cancelled"
+    session_id: str = Field(description="Session identifier")
+    status: Literal["cancelled"] = "cancelled"  # For instant client update
+
+
 # ===== Per-Session Detail Events (channel: 'session:{session_id}') =====
 
 

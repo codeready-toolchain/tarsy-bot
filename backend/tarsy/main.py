@@ -64,6 +64,40 @@ history_cleanup_service: Optional["HistoryCleanupService"] = None
 mcp_health_monitor: Optional["MCPHealthMonitor"] = None  # MCPHealthMonitor for server health monitoring
 db_manager: Optional["DatabaseManager"] = None  # DatabaseManager for history cleanup service
 
+# Task tracking for session cancellation
+active_tasks: Dict[str, asyncio.Task] = {}  # Maps session_id to asyncio Task
+active_tasks_lock: asyncio.Lock = asyncio.Lock()  # Lock for thread-safe access
+
+
+async def handle_cancel_request(event: dict) -> None:
+    """
+    Handle cross-pod cancellation requests.
+    
+    This handler is called when a cancellation request is received on the
+    'cancellations' channel. If this pod owns the session task, it will
+    cancel it.
+    
+    Args:
+        event: Event dict containing session_id
+    """
+    session_id = event.get("session_id")
+    if not session_id:
+        logger.warning("Received cancel request without session_id")
+        return
+    
+    async with active_tasks_lock:
+        task = active_tasks.get(session_id)
+    
+    if task:
+        logger.info(f"Cancelling session {session_id} on this pod")
+        task.cancel()
+        # The task cleanup in process_alert_background will handle:
+        # - Removing from active_tasks
+        # - Updating status to CANCELLED
+        # - Publishing session.cancelled event
+    else:
+        logger.debug(f"Session {session_id} not found on this pod (owned by another pod)")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -162,6 +196,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await event_system_manager.start()
         set_event_system(event_system_manager)
         logger.info("Event system started successfully")
+        
+        # Register cancellation handler for cross-pod cancellation
+        from tarsy.services.events.channels import EventChannel
+        await event_system_manager.register_channel_handler(
+            EventChannel.CANCELLATIONS,
+            handle_cancel_request
+        )
+        logger.info("Registered cancellation handler for cross-pod coordination")
     except Exception as e:
         logger.error(f"Failed to initialize event system: {e}", exc_info=True)
         logger.warning("Application will continue without event system")
@@ -528,6 +570,8 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
         
     async with alert_processing_semaphore:
         start_time = datetime.now()
+        settings = get_settings()
+        
         try:
             logger.info(f"Starting background processing for session {session_id}")
             
@@ -542,6 +586,11 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                 
                 # Create task explicitly so we can cancel it if needed
                 task = asyncio.create_task(alert_service.process_alert(alert))
+                
+                # Register task for cancellation tracking
+                async with active_tasks_lock:
+                    active_tasks[session_id] = task
+                
                 try:
                     await asyncio.wait_for(task, timeout=timeout_seconds)
                 except asyncio.TimeoutError:
@@ -555,16 +604,37 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                     except Exception as e:
                         logger.error(f"Error while cancelling session {session_id}: {e}")
                     raise TimeoutError(f"Alert processing exceeded timeout limit of {timeout_seconds}s") from None
-            except asyncio.CancelledError as e:
-                # Task was cancelled - but distinguish between deliberate timeout cancellation 
-                # and spurious cancellations from cleanup/recovery operations
-                # Only raise TimeoutError if this is genuinely from the timeout handler above
-                # Otherwise, let the cancellation propagate to reveal the real issue
-                logger.error(
-                    f"Session {session_id} was cancelled unexpectedly (not from timeout). "
-                    f"This may indicate a bug in cleanup/recovery logic. Original cancellation: {e}"
-                )
-                raise  # Re-raise to preserve the original CancelledError for debugging
+            except asyncio.CancelledError:
+                # Task was cancelled - check if this is user-requested cancellation
+                logger.info(f"Session {session_id} task was cancelled")
+                
+                # Check if this is a user-requested cancellation (status is CANCELING)
+                from tarsy.services.history_service import get_history_service
+                from tarsy.services.events.event_helpers import publish_session_cancelled
+                from tarsy.models.constants import AlertSessionStatus
+                
+                is_user_cancellation = False
+                history_service = get_history_service()
+                if history_service:
+                    session = history_service.get_session(session_id)
+                    is_user_cancellation = session and session.status == AlertSessionStatus.CANCELING.value
+                    
+                    if is_user_cancellation:
+                        # User-requested cancellation
+                        history_service.update_session_status(
+                            session_id=session_id,
+                            status=AlertSessionStatus.CANCELLED.value,
+                            error_message="Session cancelled by user"
+                        )
+                        
+                        # Publish cancellation event
+                        await publish_session_cancelled(session_id)
+                        logger.info(f"Session {session_id} cancelled by user request")
+                    else:
+                        # Other cancellation (spurious, not user-requested)
+                        logger.warning(f"Session {session_id} cancelled (not user-requested)")
+                
+                raise  # Re-raise to preserve the original CancelledError
             
             # Calculate processing duration
             duration = (datetime.now() - start_time).total_seconds()
@@ -602,6 +672,12 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                 f"Session {session_id} unexpected error after {duration:.2f}s: {error_msg}"
             )
             mark_session_as_failed(alert, error_msg)
+        
+        finally:
+            # Always remove task from active_tasks when done (success, failure, or cancellation)
+            async with active_tasks_lock:
+                active_tasks.pop(session_id, None)
+            logger.debug(f"Removed session {session_id} from active tasks")
 
 if __name__ == "__main__":
     import uvicorn

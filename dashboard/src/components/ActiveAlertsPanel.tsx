@@ -77,6 +77,27 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
       });
     };
 
+    const handleSessionCancelled = (update: SessionUpdate) => {
+      console.log('Session cancelled:', update);
+      // Remove from progress tracking when cancelled
+      setProgressData(prev => {
+        const newProgress = { ...prev };
+        delete newProgress[update.session_id];
+        return newProgress;
+      });
+      // Also clean up chain progress data
+      setChainProgressData(prev => {
+        const newData = { ...prev };
+        delete newData[update.session_id];
+        return newData;
+      });
+      setStageProgressData(prev => {
+        const newData = { ...prev };
+        delete newData[update.session_id];
+        return newData;
+      });
+    };
+
     // Chain progress handlers
     const handleChainProgress = (update: ChainProgressUpdate) => {
       console.log('Chain progress update:', update);
@@ -118,6 +139,8 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
           handleSessionCompleted(update);
         } else if (eventType === 'session.failed') {
           handleSessionFailed(update);
+        } else if (eventType === 'session.cancelled') {
+          handleSessionCancelled(update);
         }
       } else if (eventType === 'chain.progress') {
         handleChainProgress(update);

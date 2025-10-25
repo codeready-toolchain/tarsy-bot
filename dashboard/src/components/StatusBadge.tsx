@@ -4,7 +4,9 @@ import {
   CheckCircle, 
   Error, 
   Schedule, 
-  Refresh 
+  Refresh,
+  HourglassEmpty,
+  Cancel
 } from '@mui/icons-material';
 import type { StatusBadgeProps } from '../types';
 
@@ -15,6 +17,24 @@ const getStatusConfig = (status: string): {
   label: string 
 } => {
   switch (status) {
+    case 'pending': 
+      return { 
+        color: 'warning', 
+        icon: <Schedule sx={{ fontSize: 16 }} />, 
+        label: 'Pending' 
+      };
+    case 'in_progress':
+      return { 
+        color: 'info', 
+        icon: <Refresh sx={{ fontSize: 16 }} />, 
+        label: 'In Progress' 
+      };
+    case 'canceling':
+      return { 
+        color: 'warning', 
+        icon: <HourglassEmpty sx={{ fontSize: 16 }} />, 
+        label: 'Canceling' 
+      };
     case 'completed': 
       return { 
         color: 'success', 
@@ -27,17 +47,11 @@ const getStatusConfig = (status: string): {
         icon: <Error sx={{ fontSize: 16 }} />, 
         label: 'Failed' 
       };
-    case 'in_progress':
+    case 'cancelled': 
       return { 
-        color: 'info', 
-        icon: <Refresh sx={{ fontSize: 16 }} />, 
-        label: 'In Progress' 
-      };
-    case 'pending': 
-      return { 
-        color: 'warning', 
-        icon: <Schedule sx={{ fontSize: 16 }} />, 
-        label: 'Pending' 
+        color: 'default', 
+        icon: <Cancel sx={{ fontSize: 16 }} />, 
+        label: 'Cancelled' 
       };
     default: 
       return { 

@@ -178,6 +178,14 @@ class Settings(BaseSettings):
         default=600,
         description="Timeout in seconds for processing a single alert (default: 10 minutes)"
     )
+    llm_iteration_timeout: int = Field(
+        default=180,
+        description="Timeout in seconds for a single LLM iteration (default: 3 minutes)"
+    )
+    mcp_tool_call_timeout: int = Field(
+        default=70,
+        description="Timeout in seconds for a single MCP tool call (default: 70 seconds)"
+    )
     
     # Agent Configuration
     agent_config_path: str = Field(

@@ -377,6 +377,8 @@ class BaseAgent(ABC):
             Dictionary organized by server containing tool execution results
         """
         results = {}
+        settings = get_settings()
+        mcp_timeout = settings.mcp_tool_call_timeout
         
         for tool_call in tools_to_call:
             try:
@@ -397,10 +399,10 @@ class BaseAgent(ABC):
                             server_name, tool_name, tool_params, session_id, 
                             self._current_stage_execution_id, investigation_conversation
                         ),
-                        timeout=70  # Wraps single 60s MCP call (no retries) with ~10s overhead
+                        timeout=mcp_timeout  # Wraps MCP call (no retries) with ~10s overhead
                     )
                 except asyncio.TimeoutError:
-                    raise TimeoutError(f"MCP tool call {tool_name} on {server_name} exceeded 70s timeout") from None
+                    raise TimeoutError(f"MCP tool call {tool_name} on {server_name} exceeded {mcp_timeout}s timeout") from None
                 
                 # Organize results by server
                 if server_name not in results:

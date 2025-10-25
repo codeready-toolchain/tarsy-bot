@@ -2,7 +2,7 @@ export interface Session {
   session_id: string;
   alert_type: string | null;
   agent_type: string;
-  status: 'completed' | 'failed' | 'in_progress' | 'pending';
+  status: 'pending' | 'in_progress' | 'canceling' | 'completed' | 'failed' | 'cancelled';
   author: string | null;
   started_at_us: number; // Unix timestamp (microseconds since epoch)
   completed_at_us: number | null; // Unix timestamp (microseconds since epoch)
@@ -374,7 +374,7 @@ export interface BackButtonProps {
 // Phase 4: Search and filtering types
 export interface SessionFilter {
   search?: string; // Text search across alert types and error messages
-  status?: ('completed' | 'failed' | 'in_progress' | 'pending')[]; // Status filter (multiple selection)
+  status?: Session['status'][]; // Status filter (multiple selection)
   agent_type?: string[]; // Agent type filter (backend expects single value, but UI can select multiple - first is used) 
   alert_type?: string[]; // Alert type filter (backend expects single value, but UI can select multiple - first is used)
   start_date?: string | null; // Start date filter (ISO string)
@@ -386,7 +386,7 @@ export interface SessionFilter {
 export interface FilterOptions {
   agent_types: string[]; // Available agent types
   alert_types: string[]; // Available alert types
-  status_options: ('completed' | 'failed' | 'in_progress' | 'pending')[]; // Available status options
+  status_options: Session['status'][]; // Available status options
 }
 
 // Phase 4: Search results with highlighting
@@ -439,7 +439,7 @@ export interface InteractionDetailsProps {
 }
 
 export interface ProgressIndicatorProps {
-  status: 'completed' | 'failed' | 'in_progress' | 'pending';
+  status: Session['status'];
   startedAt?: number; // Unix timestamp in microseconds
   duration?: number | null; // Duration in milliseconds
   variant?: 'linear' | 'circular';

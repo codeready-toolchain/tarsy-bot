@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from ...models.unified_interactions import MessageRole
+from ...config.settings import get_settings
 from ..parsers.react_parser import ReActParser
 
 if TYPE_CHECKING:
@@ -153,6 +154,8 @@ class ReactController(IterationController):
             raise ValueError("Agent reference is required in context")
         
         max_iterations = agent.max_iterations
+        settings = get_settings()
+        iteration_timeout = settings.llm_iteration_timeout
         
         # 1. Build initial conversation (controller-specific)
         conversation = self.build_initial_conversation(context)
@@ -172,7 +175,7 @@ class ReactController(IterationController):
                 raise Exception(error_msg)
             
             # Wrap ENTIRE iteration (LLM + tool execution) with timeout
-            # This timeout is longer than MCP's full retry cycle (2 × 60s = 120s) to allow retries to complete
+            # This timeout is configurable and should allow MCP.s full retry cycle to complete
             try:
                 async def run_iteration():
                     nonlocal conversation, last_interaction_failed, consecutive_timeout_failures
@@ -246,9 +249,9 @@ class ReactController(IterationController):
                     
                     return conversation_result
                 
-                # Run iteration with 180s timeout (allows full MCP retry cycle: 2 × 60s + overhead)
+                # Run iteration with configurable timeout (allows full MCP retry cycle to complete)
                 # If tools consistently timeout, consecutive_timeout_failures check will break the loop
-                result = await asyncio.wait_for(run_iteration(), timeout=180)
+                result = await asyncio.wait_for(run_iteration(), timeout=iteration_timeout)
                 
                 # Check if we got a final answer (string) or a conversation object
                 if isinstance(result, str):
@@ -259,7 +262,7 @@ class ReactController(IterationController):
                     conversation = result
                     
             except asyncio.TimeoutError:
-                error_msg = f"Iteration {iteration + 1} exceeded 180s timeout - LLM or tool call stuck"
+                error_msg = f"Iteration {iteration + 1} exceeded {iteration_timeout}s timeout - LLM or tool call stuck"
                 self.logger.error(error_msg)
                 consecutive_timeout_failures += 1
                 self.logger.warning(f"Iteration timeout ({consecutive_timeout_failures} consecutive)")

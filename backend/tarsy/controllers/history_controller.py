@@ -8,10 +8,11 @@ Uses Unix timestamps (microseconds since epoch) throughout for optimal
 performance and consistency with the rest of the system.
 """
 
+import asyncio
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 
 from tarsy.utils.logger import get_logger
 from tarsy.models.history_models import (
@@ -313,5 +314,163 @@ async def get_filter_options(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get filter options: {str(e)}")
+
+
+async def check_cancellation_completion(
+    session_id: str,
+    history_service: HistoryService,
+    timeout_seconds: int = 300
+) -> None:
+    """
+    Periodically check if cancellation completed, mark as orphaned if timeout reached.
+    
+    This runs as a background task after cancel_session returns.
+    It checks every 10 seconds to see if the owning pod cancelled the task.
+    If status is still CANCELING after timeout, marks as orphaned.
+    
+    Args:
+        session_id: Session to check
+        history_service: History service for database access
+        timeout_seconds: How long to wait before declaring orphaned
+    """
+    from tarsy.models.constants import AlertSessionStatus
+    from tarsy.services.events.event_helpers import publish_session_cancelled
+    
+    logger.info(f"Starting orphan detection for session {session_id} (timeout: {timeout_seconds}s)")
+    
+    check_interval = 10  # Check every 10 seconds
+    elapsed = 0
+    
+    while elapsed < timeout_seconds:
+        # Wait for check interval
+        await asyncio.sleep(check_interval)
+        elapsed += check_interval
+        
+        # Check current session status
+        session = history_service.get_session(session_id)
+        
+        if not session:
+            logger.warning(f"Session {session_id} not found during orphan detection")
+            return
+        
+        # If no longer CANCELING, cancellation completed (or failed naturally)
+        if session.status != AlertSessionStatus.CANCELING.value:
+            logger.info(
+                f"Session {session_id} cancellation completed after {elapsed}s: {session.status}"
+            )
+            return  # Exit background task early
+        
+        # Still CANCELING, continue waiting
+        logger.debug(f"Session {session_id} still CANCELING after {elapsed}s, checking again...")
+    
+    # Timeout reached and still CANCELING - mark as orphaned
+    session = history_service.get_session(session_id)
+    
+    if not session:
+        logger.warning(f"Session {session_id} not found after timeout")
+        return
+    
+    # Double-check still CANCELING (could have changed in final interval)
+    if session.status == AlertSessionStatus.CANCELING.value:
+        logger.warning(
+            f"Session {session_id} still CANCELING after {timeout_seconds}s - "
+            f"marking as orphaned and cancelled"
+        )
+        
+        # Update to CANCELLED with orphan message
+        history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.CANCELLED.value,
+            error_message="Session cancelled (no response from processing pod - likely orphaned)"
+        )
+        
+        # Publish cancellation event for UI
+        await publish_session_cancelled(session_id)
+        logger.info(f"Orphaned session {session_id} marked as cancelled")
+    else:
+        # Status changed in the final interval
+        logger.info(
+            f"Session {session_id} status changed to {session.status} just before timeout"
+        )
+
+
+@router.post(
+    "/sessions/{session_id}/cancel",
+    summary="Cancel Session",
+    description="Cancel an active alert processing session"
+)
+async def cancel_session(
+    session_id: str = Path(..., description="Session ID to cancel"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    history_service: HistoryService = Depends(get_history_service)
+) -> dict:
+    """
+    Cancel an active session.
+    
+    For active sessions (with recent activity), this publishes a cancellation request
+    to all backend pods. The pod owning the task will cancel it.
+    
+    For orphaned sessions (no recent activity), a background task monitors the
+    cancellation and marks the session as cancelled if no pod responds.
+    
+    Args:
+        session_id: Session identifier
+        background_tasks: FastAPI background tasks
+        history_service: Injected history service
+        
+    Returns:
+        Success response with cancellation status
+        
+    Raises:
+        HTTPException: 404 if session not found, 400 if already terminal
+    """
+    from tarsy.config.settings import get_settings
+    from tarsy.models.constants import AlertSessionStatus
+    from tarsy.services.events.event_helpers import publish_cancel_request
+    
+    # Step 1: Validate session exists
+    session = history_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    
+    # Step 2: Atomically update status to CANCELING
+    success, current_status = history_service.update_session_to_canceling(session_id)
+    
+    if not success:
+        if current_status in AlertSessionStatus.terminal_values():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Session already {current_status}, cannot cancel"
+            )
+        else:
+            raise HTTPException(status_code=500, detail="Failed to update session status")
+    
+    # If already CANCELING, this is idempotent - continue normally
+    
+    # Step 3: Publish cancellation request
+    await publish_cancel_request(session_id)
+    logger.info(f"Published cancellation request for session {session_id}")
+    
+    # Step 4: Start orphan detection background task
+    settings = get_settings()
+    # Use LLM iteration timeout + buffer for orphan detection
+    # This is the maximum time a single iteration can take, which is what
+    # we need to wait for during cancellation (not the full session timeout)
+    orphan_timeout = settings.llm_iteration_timeout + 60  # Add 60s buffer
+    
+    background_tasks.add_task(
+        check_cancellation_completion,
+        session_id,
+        history_service,
+        timeout_seconds=orphan_timeout
+    )
+    
+    # Step 5: Return success immediately
+    return {
+        "success": True,
+        "message": "Cancellation request sent",
+        "status": "canceling"
+    }
+
 
 # Note: Exception handlers should be registered at the app level in main.py 

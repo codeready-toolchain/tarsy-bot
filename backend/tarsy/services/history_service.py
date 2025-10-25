@@ -333,6 +333,76 @@ class HistoryService:
         
         result = self._retry_database_operation("update_session_status", _update_status_operation)
         return result if result is not None else False
+    
+    def get_session(self, session_id: str) -> Optional['AlertSession']:
+        """
+        Get session by ID.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            AlertSession if found, None otherwise
+        """
+        if not self.is_enabled or not session_id:
+            return None
+        
+        def _get_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return None
+                return repo.get_alert_session(session_id)
+        
+        return self._retry_database_operation("get_session", _get_operation)
+    
+    def update_session_to_canceling(self, session_id: str) -> tuple[bool, str]:
+        """
+        Atomically update session to CANCELING if not already terminal.
+        
+        This is used for session cancellation to ensure we don't cancel
+        sessions that have already completed or failed.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            (success, current_status): True if updated to CANCELING, False if already terminal.
+                                        Also returns the current status.
+        """
+        if not self.is_enabled or not session_id:
+            return (False, "unknown")
+        
+        def _update_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    raise RuntimeError("History repository unavailable")
+                
+                session = repo.get_alert_session(session_id)
+                if not session:
+                    return (False, "not_found")
+                
+                # Check if already terminal - don't update if so
+                if session.status in AlertSessionStatus.terminal_values():
+                    logger.info(f"Session {session_id} already terminal: {session.status}")
+                    return (False, session.status)
+                
+                # Check if already canceling - idempotent
+                if session.status == AlertSessionStatus.CANCELING.value:
+                    logger.info(f"Session {session_id} already canceling")
+                    return (True, session.status)
+                
+                # Update to CANCELING
+                session.status = AlertSessionStatus.CANCELING.value
+                success = repo.update_alert_session(session)
+                
+                if success:
+                    logger.info(f"Updated session {session_id} to CANCELING")
+                    return (True, AlertSessionStatus.CANCELING.value)
+                
+                return (False, session.status)
+        
+        result = self._retry_database_operation("update_to_canceling", _update_operation)
+        return result if result else (False, "error")
 
     # Stage Execution Methods for Chain Processing
     async def create_stage_execution(self, stage_execution: StageExecution) -> str:
