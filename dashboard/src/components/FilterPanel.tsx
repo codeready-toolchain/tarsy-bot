@@ -68,7 +68,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
   // Filter options with defaults
   // Always show all possible status options, regardless of what's in the database
-  const allStatusOptions = ['completed', 'failed', 'in_progress', 'pending'];
+  const allStatusOptions = ['completed', 'failed', 'cancelled', 'in_progress', 'pending', 'canceling'];
   
   const defaultFilterOptions = {
     agent_types: filterOptions?.agent_types || ['kubernetes', 'network', 'database'],
@@ -87,7 +87,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
   const handleStatusChange = (statuses: string[]) => {
     onFiltersChange({
       ...filters,
-      status: statuses as ('completed' | 'failed' | 'in_progress' | 'pending')[]
+      status: statuses as ('completed' | 'failed' | 'cancelled' | 'in_progress' | 'pending' | 'canceling')[]
     });
   };
 

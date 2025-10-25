@@ -21,7 +21,7 @@ import { hasActiveFilters } from '../utils/search';
 import type { EnhancedHistoricalAlertsListProps } from '../types';
 
 /**
- * HistoricalAlertsList component displays completed and failed alerts
+ * HistoricalAlertsList component displays completed, failed, and cancelled alerts
  * in a table format, enhanced for Phase 6 with advanced filtering, sorting, and pagination
  */
 const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
@@ -175,7 +175,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
                               No Historical Alerts
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                              No completed or failed alerts found.
+                              No completed, failed, or cancelled alerts found.
                             </Typography>
                           </>
                         )}
@@ -211,7 +211,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
           {sessions.length > 0 && !pagination && (
             <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
               <Typography variant="body2" color="text.secondary">
-                Showing {sessions.length} historical alert{sessions.length !== 1 ? 's' : ''} (completed/failed)
+                Showing {sessions.length} historical alert{sessions.length !== 1 ? 's' : ''} (completed/failed/cancelled)
               </Typography>
             </Box>
           )}

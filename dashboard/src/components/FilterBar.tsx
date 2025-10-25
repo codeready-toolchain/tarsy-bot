@@ -32,10 +32,14 @@ const FilterBar: React.FC<FilterBarProps> = ({
         return 'Completed';
       case 'failed':
         return 'Failed';
+      case 'cancelled':
+        return 'Cancelled';
       case 'in_progress':
         return 'In Progress';
       case 'pending':
         return 'Pending';
+      case 'canceling':
+        return 'Canceling';
       default:
         return status;
     }
@@ -48,9 +52,13 @@ const FilterBar: React.FC<FilterBarProps> = ({
         return 'success';
       case 'failed':
         return 'error';
+      case 'cancelled':
+        return 'default';
       case 'in_progress':
         return 'info';
       case 'pending':
+        return 'warning';
+      case 'canceling':
         return 'warning';
       default:
         return 'default';
@@ -73,7 +81,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
   const handleStatusChange = (statuses: string[]) => {
     onFiltersChange({
       ...filters,
-      status: statuses as ('completed' | 'failed' | 'in_progress' | 'pending')[]
+      status: statuses as ('completed' | 'failed' | 'cancelled' | 'in_progress' | 'pending' | 'canceling')[]
     });
   };
 

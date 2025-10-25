@@ -200,8 +200,8 @@ class APIClient {
   }
 
   /**
-   * Fetch historical sessions (completed/failed) - Phase 2
-   * Gets sessions with status 'completed' or 'failed'
+   * Fetch historical sessions (completed/failed/cancelled)
+   * Gets sessions with terminal statuses
    */
   async getHistoricalSessions(page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
     try {
@@ -209,6 +209,7 @@ class APIClient {
       const queryParams = new URLSearchParams();
       queryParams.append('status', 'completed');
       queryParams.append('status', 'failed');
+      queryParams.append('status', 'cancelled');
       queryParams.append('page', page.toString());
       queryParams.append('page_size', pageSize.toString());
       const url = `/api/v1/history/sessions?${queryParams.toString()}`;

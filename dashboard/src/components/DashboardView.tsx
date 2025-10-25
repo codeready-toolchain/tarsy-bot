@@ -153,14 +153,14 @@ function DashboardView() {
         // Use filtered API if filters are active
         const historicalFilters: SessionFilter = {
           ...filters,
-          // For historical view, include completed and failed by default unless specific status filter is applied
+          // For historical view, include completed, failed, and cancelled by default unless specific status filter is applied
           status: filters.status && filters.status.length > 0 
             ? filters.status 
-            : ['completed', 'failed'] as ('completed' | 'failed' | 'in_progress' | 'pending')[]
+            : ['completed', 'failed', 'cancelled'] as ('completed' | 'failed' | 'cancelled' | 'in_progress' | 'pending' | 'canceling')[]
         };
         response = await apiClient.getFilteredSessions(historicalFilters, pagination.page, pagination.pageSize);
       } else {
-        // Use the original historical API (completed + failed sessions only)
+        // Use the original historical API (completed + failed + cancelled sessions only)
         response = await apiClient.getHistoricalSessions(pagination.page, pagination.pageSize);
       }
       
@@ -223,10 +223,10 @@ function DashboardView() {
         console.log('🔍 Reconnection sync with active filters - using filtered retry API');
         const historicalFilters: SessionFilter = {
           ...requestFilters,
-          // For historical view, include completed and failed by default unless specific status filter is applied
+          // For historical view, include completed, failed, and cancelled by default unless specific status filter is applied
           status: requestFilters.status && requestFilters.status.length > 0 
             ? requestFilters.status 
-            : ['completed', 'failed'] as ('completed' | 'failed' | 'in_progress' | 'pending')[]
+            : ['completed', 'failed', 'cancelled'] as ('completed' | 'failed' | 'cancelled' | 'in_progress' | 'pending' | 'canceling')[]
         };
         response = await apiClient.getFilteredSessionsWithRetry(historicalFilters, requestPage, requestPageSize);
       } else {

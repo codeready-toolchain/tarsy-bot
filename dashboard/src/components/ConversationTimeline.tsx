@@ -448,22 +448,22 @@ function ConversationTimeline({
     setStreamingItems(new Map());
   }, [session.session_id]);
 
-  // Clear streaming items when session completes or fails (with logging)
+  // Clear streaming items when session completes, fails, or is cancelled (with logging)
   useEffect(() => {
-    if (session.status === 'completed' || session.status === 'failed') {
+    if (session.status === 'completed' || session.status === 'failed' || session.status === 'cancelled') {
       console.log('✅ Session ended, clearing all streaming items');
       setStreamingItems(new Map());
     }
   }, [session.status]);
 
   // Subscribe to streaming events
-  // Don't subscribe if session is already completed/failed
+  // Don't subscribe if session is already completed/failed/cancelled
   useEffect(() => {
     if (!session.session_id) return;
     
-    // Don't subscribe to streaming events for completed/failed sessions
-    if (session.status === 'completed' || session.status === 'failed') {
-      console.log('⏭️ Skipping streaming subscription for completed/failed session');
+    // Don't subscribe to streaming events for completed/failed/cancelled sessions
+    if (session.status === 'completed' || session.status === 'failed' || session.status === 'cancelled') {
+      console.log('⏭️ Skipping streaming subscription for terminal session');
       return;
     }
     

@@ -62,13 +62,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
       const sessionData = await apiClient.getSessionDetail(sessionId);
       
       // Validate and normalize session status
-      const normalizedStatus = ['completed', 'failed', 'in_progress', 'pending'].includes(sessionData.status) 
+      const normalizedStatus = ['completed', 'failed', 'cancelled', 'in_progress', 'pending', 'canceling'].includes(sessionData.status) 
         ? sessionData.status 
         : 'in_progress';
       
       const normalizedSession = {
         ...sessionData,
-        status: normalizedStatus as 'completed' | 'failed' | 'in_progress' | 'pending'
+        status: normalizedStatus as 'completed' | 'failed' | 'cancelled' | 'in_progress' | 'pending' | 'canceling'
       };
       
       setSession(normalizedSession);
