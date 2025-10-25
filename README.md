@@ -9,6 +9,14 @@
 
 Inspired by the spirit of sci-fi AI, TARSy is your reliable companion for SRE operations. 🚀
 
+<div align="center">
+  <video width="600" controls>
+    <source src="./tarsy.webm" type="video/webm">
+    Your browser doesn't support the video tag.
+  </video>
+  <p><em>TARSy in action: Real-time alert processing with multi-stage agent analysis</em></p>
+</div>
+
 ## Documentation
 
 - **[README.md](README.md)**: This file - project overview and quick start
