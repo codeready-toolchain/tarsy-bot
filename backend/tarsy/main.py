@@ -66,7 +66,7 @@ db_manager: Optional["DatabaseManager"] = None  # DatabaseManager for history cl
 
 # Task tracking for session cancellation
 active_tasks: Dict[str, asyncio.Task] = {}  # Maps session_id to asyncio Task
-active_tasks_lock: asyncio.Lock = asyncio.Lock()  # Lock for thread-safe access
+active_tasks_lock: Optional[asyncio.Lock] = None  # Initialized in lifespan()
 
 
 async def handle_cancel_request(event: dict) -> None:
@@ -85,6 +85,7 @@ async def handle_cancel_request(event: dict) -> None:
         logger.warning("Received cancel request without session_id")
         return
     
+    assert active_tasks_lock is not None, "active_tasks_lock not initialized"
     async with active_tasks_lock:
         task = active_tasks.get(session_id)
     
@@ -102,7 +103,7 @@ async def handle_cancel_request(event: dict) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
-    global alert_service, alert_processing_semaphore, event_system_manager, history_cleanup_service, mcp_health_monitor, db_manager
+    global alert_service, alert_processing_semaphore, event_system_manager, history_cleanup_service, mcp_health_monitor, db_manager, active_tasks_lock
     
     # Initialize services
     settings = get_settings()
@@ -112,6 +113,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Initialize concurrency control
     alert_processing_semaphore = asyncio.Semaphore(settings.max_concurrent_alerts)
+    active_tasks_lock = asyncio.Lock()
     logger.info(f"Alert processing concurrency limit: {settings.max_concurrent_alerts}")
     
     # Initialize database for history service
@@ -588,6 +590,7 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                 task = asyncio.create_task(alert_service.process_alert(alert))
                 
                 # Register task for cancellation tracking
+                assert active_tasks_lock is not None, "active_tasks_lock not initialized"
                 async with active_tasks_lock:
                     active_tasks[session_id] = task
                 
@@ -706,6 +709,7 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
         
         finally:
             # Always remove task from active_tasks when done (success, failure, or cancellation)
+            assert active_tasks_lock is not None, "active_tasks_lock not initialized"
             async with active_tasks_lock:
                 active_tasks.pop(session_id, None)
             logger.debug(f"Removed session {session_id} from active tasks")

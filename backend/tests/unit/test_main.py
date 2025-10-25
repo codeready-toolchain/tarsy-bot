@@ -759,9 +759,12 @@ class TestBackgroundProcessing:
         mock_history_service = Mock()
         mock_history_service.get_session.return_value = mock_session
         
+        # Create lock in async context (Python 3.13+ requirement)
+        test_lock = asyncio.Lock()
+        
         with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
-             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
+             patch('tarsy.main.active_tasks_lock', test_lock), \
              patch('tarsy.main.active_tasks', {}):
             
             # Should not raise exception and should exit gracefully
@@ -798,9 +801,12 @@ class TestBackgroundProcessing:
         mock_history_service = Mock()
         mock_history_service.get_session.return_value = mock_session
         
+        # Create lock in async context (Python 3.13+ requirement)
+        test_lock = asyncio.Lock()
+        
         with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
-             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
+             patch('tarsy.main.active_tasks_lock', test_lock), \
              patch('tarsy.main.active_tasks', {}):
             
             # Should not raise exception and should handle gracefully
@@ -844,9 +850,12 @@ class TestBackgroundProcessing:
         mock_history_service = Mock()
         mock_history_service.get_session.return_value = mock_session
         
+        # Create lock in async context (Python 3.13+ requirement)
+        test_lock = asyncio.Lock()
+        
         with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
-             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
+             patch('tarsy.main.active_tasks_lock', test_lock), \
              patch('tarsy.main.active_tasks', {}):
             
             # Should not raise exception and should exit gracefully
