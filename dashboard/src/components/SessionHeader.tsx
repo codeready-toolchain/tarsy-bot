@@ -557,9 +557,6 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                     '&:hover': {
                       boxShadow: 6,
                       transform: 'translateY(-2px)',
-                      '& .button-icon': {
-                        transform: 'scale(1.2)',
-                      },
                     },
                     transition: 'all 0.2s ease-in-out',
                   }}
@@ -568,11 +565,9 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                     <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} />
                   ) : (
                     <CancelOutlined 
-                      className="button-icon"
                       sx={{ 
                         mr: 1,
                         fontSize: '1.3rem',
-                        transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                       }} 
                     />
                   )}
@@ -599,19 +594,14 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                       '&:hover': {
                         boxShadow: 6,
                         transform: 'translateY(-2px)',
-                        '& .button-icon': {
-                          transform: 'rotate(360deg)',
-                        },
                       },
                       transition: 'all 0.2s ease-in-out',
                     }}
                   >
                     <ReplayIcon 
-                      className="button-icon"
                       sx={{ 
                         mr: 1,
                         fontSize: '1.3rem',
-                        transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                       }} 
                     />
                     Re-submit Alert
