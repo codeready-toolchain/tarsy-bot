@@ -567,37 +567,40 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               {/* Cancel Button - Only for active sessions */}
               {canCancel && (
                 <Button
-                  variant="contained"
-                  color="warning"
+                  variant="outlined"
                   size="large"
                   onClick={handleCancelClick}
                   disabled={isCancelling || isCanceling}
                   sx={{
                     minWidth: 180,
                     textTransform: 'none',
-                    fontWeight: 700,
-                    fontSize: '1rem',
-                    py: 1.5,
-                    px: 3,
-                    boxShadow: 3,
+                    fontWeight: 600,
+                    fontSize: '0.95rem',
+                    py: 1,
+                    px: 2.5,
+                    backgroundColor: 'white',
+                    color: 'error.main',
+                    borderColor: 'error.main',
+                    borderWidth: 1.5,
                     '&:hover': {
-                      boxShadow: 6,
-                      transform: 'translateY(-2px)',
+                      backgroundColor: 'error.main',
+                      borderColor: 'error.main',
+                      color: 'white',
                     },
                     transition: 'all 0.2s ease-in-out',
                   }}
                 >
                   {isCancelling || isCanceling ? (
-                    <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} />
+                    <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />
                   ) : (
                     <CancelOutlined 
                       sx={{ 
                         mr: 1,
-                        fontSize: '1.3rem',
+                        fontSize: '1.2rem',
                       }} 
                     />
                   )}
-                  {isCancelling ? 'Cancelling...' : isCanceling ? 'Canceling...' : 'Cancel Session'}
+                  {isCancelling ? 'CANCELLING...' : isCanceling ? 'CANCELING...' : 'CANCEL SESSION'}
                 </Button>
               )}
               
@@ -605,21 +608,24 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               {isTerminalStatus && (
                 <Tooltip title="Submit a new alert with the same data" placement="left">
                   <Button
-                    variant="contained"
-                    color="info"
+                    variant="outlined"
                     size="large"
                     onClick={handleResubmit}
                     sx={{
                       minWidth: 180,
                       textTransform: 'none',
-                      fontWeight: 700,
-                      fontSize: '1rem',
-                      py: 1.5,
-                      px: 3,
-                      boxShadow: 3,
+                      fontWeight: 600,
+                      fontSize: '0.95rem',
+                      py: 1,
+                      px: 2.5,
+                      backgroundColor: 'white',
+                      color: 'info.main',
+                      borderColor: 'info.main',
+                      borderWidth: 1.5,
                       '&:hover': {
-                        boxShadow: 6,
-                        transform: 'translateY(-2px)',
+                        backgroundColor: 'info.main',
+                        borderColor: 'info.main',
+                        color: 'white',
                       },
                       transition: 'all 0.2s ease-in-out',
                     }}
@@ -627,10 +633,10 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                     <ReplayIcon 
                       sx={{ 
                         mr: 1,
-                        fontSize: '1.3rem',
+                        fontSize: '1.2rem',
                       }} 
                     />
-                    Re-submit Alert
+                    RE-SUBMIT ALERT
                   </Button>
                 </Tooltip>
               )}
@@ -674,7 +680,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               disabled={isCancelling}
               startIcon={isCancelling ? <CircularProgress size={16} color="inherit" /> : undefined}
             >
-              {isCancelling ? 'Cancelling...' : 'Confirm Cancellation'}
+              {isCancelling ? 'CANCELLING...' : 'CONFIRM CANCELLATION'}
             </Button>
           </DialogActions>
         </Dialog>
