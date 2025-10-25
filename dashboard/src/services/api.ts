@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
 import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult, SystemWarning } from '../types';
 import { authService } from './auth';
+import { HISTORICAL_STATUSES } from '../utils/sessionStatus';
 
 // API base URL configuration  
 // In development, use Vite proxy (relative URLs) to handle CORS with OAuth2 proxy
@@ -207,9 +208,10 @@ class APIClient {
     try {
       // Build query string manually to ensure proper FastAPI format
       const queryParams = new URLSearchParams();
-      queryParams.append('status', 'completed');
-      queryParams.append('status', 'failed');
-      queryParams.append('status', 'cancelled');
+      // Add all terminal statuses
+      HISTORICAL_STATUSES.forEach(status => {
+        queryParams.append('status', status);
+      });
       queryParams.append('page', page.toString());
       queryParams.append('page_size', pageSize.toString());
       const url = `/api/v1/history/sessions?${queryParams.toString()}`;

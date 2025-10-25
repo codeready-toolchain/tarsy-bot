@@ -1,6 +1,7 @@
 import { FormControl, InputLabel, Select, MenuItem, Chip, Box } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material';
 import type { StatusFilterProps } from '../types';
+import { ALL_STATUSES, getStatusDisplayName, getStatusColor } from '../utils/sessionStatus';
 
 /**
  * StatusFilter component for Phase 4 - Search & Basic Filtering
@@ -9,51 +10,11 @@ import type { StatusFilterProps } from '../types';
 const StatusFilter: React.FC<StatusFilterProps> = ({
   value,
   onChange,
-  options = ['completed', 'failed', 'cancelled', 'in_progress', 'pending', 'canceling']
+  options = ALL_STATUSES
 }) => {
   const handleChange = (event: SelectChangeEvent<string[]>) => {
     const selectedValues = event.target.value as string[];
     onChange(selectedValues);
-  };
-
-  // Get display name for status values
-  const getStatusDisplayName = (status: string): string => {
-    switch (status) {
-      case 'completed':
-        return 'Completed';
-      case 'failed':
-        return 'Failed';
-      case 'cancelled':
-        return 'Cancelled';
-      case 'in_progress':
-        return 'In Progress';
-      case 'pending':
-        return 'Pending';
-      case 'canceling':
-        return 'Canceling';
-      default:
-        return status;
-    }
-  };
-
-  // Get color for status chip
-  const getStatusColor = (status: string): 'success' | 'error' | 'info' | 'warning' | 'default' => {
-    switch (status) {
-      case 'completed':
-        return 'success';
-      case 'failed':
-        return 'error';
-      case 'cancelled':
-        return 'default';
-      case 'in_progress':
-        return 'info';
-      case 'pending':
-        return 'warning';
-      case 'canceling':
-        return 'warning';
-      default:
-        return 'default';
-    }
   };
 
   return (

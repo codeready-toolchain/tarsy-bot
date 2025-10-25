@@ -2,7 +2,8 @@ import { Paper, Button, Box, Typography, Chip, CircularProgress, Stack } from '@
 import { Clear } from '@mui/icons-material';
 import SearchBar from './SearchBar';
 import StatusFilter from './StatusFilter';
-import type { FilterBarProps } from '../types';
+import type { FilterBarProps, Session } from '../types';
+import { getStatusDisplayName, getStatusColor } from '../utils/sessionStatus';
 
 /**
  * FilterBar component for Phase 4 - Search & Basic Filtering
@@ -25,46 +26,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
     filters.status && filters.status.length > 0 ? filters.status.length : 0
   ].reduce((sum, count) => sum + count, 0);
 
-  // Get display name for status values
-  const getStatusDisplayName = (status: string): string => {
-    switch (status) {
-      case 'completed':
-        return 'Completed';
-      case 'failed':
-        return 'Failed';
-      case 'cancelled':
-        return 'Cancelled';
-      case 'in_progress':
-        return 'In Progress';
-      case 'pending':
-        return 'Pending';
-      case 'canceling':
-        return 'Canceling';
-      default:
-        return status;
-    }
-  };
-
-  // Get color for status chip
-  const getStatusColor = (status: string): 'success' | 'error' | 'info' | 'warning' | 'default' => {
-    switch (status) {
-      case 'completed':
-        return 'success';
-      case 'failed':
-        return 'error';
-      case 'cancelled':
-        return 'default';
-      case 'in_progress':
-        return 'info';
-      case 'pending':
-        return 'warning';
-      case 'canceling':
-        return 'warning';
-      default:
-        return 'default';
-    }
-  };
-
   const handleSearchChange = (value: string) => {
     onFiltersChange({
       ...filters,
@@ -81,7 +42,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
   const handleStatusChange = (statuses: string[]) => {
     onFiltersChange({
       ...filters,
-      status: statuses as ('completed' | 'failed' | 'cancelled' | 'in_progress' | 'pending' | 'canceling')[]
+      status: statuses as Session['status'][]
     });
   };
 
