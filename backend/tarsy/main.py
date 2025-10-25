@@ -651,7 +651,11 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
             history_service = get_history_service()
             if history_service:
                 session = history_service.get_session(session_id)
-                is_user_cancellation = session and session.status == AlertSessionStatus.CANCELING.value
+                # Check for both CANCELING and CANCELLED status (inner handler may have already updated it)
+                is_user_cancellation = session and session.status in (
+                    AlertSessionStatus.CANCELING.value,
+                    AlertSessionStatus.CANCELLED.value
+                )
                 
                 if is_user_cancellation:
                     # User-requested cancellation - already handled in inner block
