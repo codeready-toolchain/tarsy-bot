@@ -9,7 +9,8 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  CircularProgress
+  CircularProgress,
+  alpha,
 } from '@mui/material';
 import { CancelOutlined } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
@@ -17,6 +18,7 @@ import ProgressIndicator from './ProgressIndicator';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { formatTimestamp } from '../utils/timestamp';
 import { apiClient, handleAPIError } from '../services/api';
+import { SESSION_STATUS } from '../utils/statusConstants';
 import type { SessionHeaderProps } from '../types';
 
 // Animation styles for processing sessions
@@ -69,7 +71,10 @@ function SessionSummary({ summary, sessionStatus, sessionTokens }: {
 
   // Handle statistics object from backend
   if (typeof summary === 'object' && summary.total_interactions !== undefined) {
-    const isInProgress = sessionStatus === 'in_progress' || sessionStatus === 'pending';
+    const isInProgress =
+      sessionStatus === SESSION_STATUS.IN_PROGRESS ||
+      sessionStatus === SESSION_STATUS.PENDING ||
+      sessionStatus === SESSION_STATUS.CANCELING;
     
     return (
       <Box sx={{ mt: 2 }}>
@@ -81,17 +86,17 @@ function SessionSummary({ summary, sessionStatus, sessionTokens }: {
         }}>
           📊 Session Summary
           {isInProgress && (
-            <Box sx={{ 
+            <Box sx={(theme) => ({ 
               display: 'flex', 
               alignItems: 'center', 
               gap: 0.5,
               px: 1, 
               py: 0.25, 
-              backgroundColor: 'info.50',
+              backgroundColor: alpha(theme.palette.info.main, 0.05),
               borderRadius: '12px',
               border: '1px solid',
-              borderColor: 'info.200'
-            }}>
+              borderColor: alpha(theme.palette.info.main, 0.2)
+            })}>
               <Box sx={{ 
                 width: 6, 
                 height: 6, 
@@ -135,17 +140,17 @@ function SessionSummary({ summary, sessionStatus, sessionTokens }: {
           </Box>
           
           {/* LLM calls badge */}
-          <Box sx={{ 
+          <Box sx={(theme) => ({ 
             display: 'flex',
             alignItems: 'center',
             gap: 0.5,
             px: 1,
             py: 0.5,
-            backgroundColor: 'primary.50',
+            backgroundColor: alpha(theme.palette.primary.main, 0.05),
             borderRadius: '16px',
             border: '1px solid',
-            borderColor: 'primary.200'
-          }}>
+            borderColor: alpha(theme.palette.primary.main, 0.2)
+          })}>
             <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
               🧠 {isInProgress ? '...' : summary.llm_interactions}
             </Typography>
@@ -155,17 +160,17 @@ function SessionSummary({ summary, sessionStatus, sessionTokens }: {
           </Box>
           
           {/* MCP calls badge */}
-          <Box sx={{ 
+          <Box sx={(theme) => ({ 
             display: 'flex',
             alignItems: 'center',
             gap: 0.5,
             px: 1,
             py: 0.5,
-            backgroundColor: 'secondary.50',
+            backgroundColor: alpha(theme.palette.secondary.main, 0.05),
             borderRadius: '16px',
             border: '1px solid',
-            borderColor: 'secondary.200'
-          }}>
+            borderColor: alpha(theme.palette.secondary.main, 0.2)
+          })}>
             <Typography variant="body2" sx={{ fontWeight: 600, color: 'secondary.main' }}>
               🔧 {isInProgress ? '...' : summary.mcp_communications}
             </Typography>
@@ -176,17 +181,17 @@ function SessionSummary({ summary, sessionStatus, sessionTokens }: {
           
           {/* Errors badge - only show if there are actual errors */}
           {summary.errors_count > 0 && (
-            <Box sx={{ 
+            <Box sx={(theme) => ({ 
               display: 'flex',
               alignItems: 'center',
               gap: 0.5,
               px: 1,
               py: 0.5,
-              backgroundColor: 'error.50',
+              backgroundColor: alpha(theme.palette.error.main, 0.05),
               borderRadius: '16px',
               border: '1px solid',
-              borderColor: 'error.200'
-            }}>
+              borderColor: alpha(theme.palette.error.main, 0.2)
+            })}>
               <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main' }}>
                 ⚠️ {summary.errors_count}
               </Typography>
@@ -198,17 +203,17 @@ function SessionSummary({ summary, sessionStatus, sessionTokens }: {
           
            {/* Chain progress badge */}
            {summary.chain_statistics && (
-             <Box sx={{ 
+             <Box sx={(theme) => ({ 
                display: 'flex',
                alignItems: 'center',
                gap: 0.5,
                px: 1,
                py: 0.5,
-               backgroundColor: 'info.50',
+               backgroundColor: alpha(theme.palette.info.main, 0.05),
                borderRadius: '16px',
                border: '1px solid',
-               borderColor: 'info.200'
-             }}>
+               borderColor: alpha(theme.palette.info.main, 0.2)
+             })}>
                <Typography variant="body2" sx={{ fontWeight: 600, color: 'info.main' }}>
                  🔗 {isInProgress ? '...' : summary.chain_statistics.total_stages}
                </Typography>
@@ -220,17 +225,17 @@ function SessionSummary({ summary, sessionStatus, sessionTokens }: {
            
            {/* EP-0009: Token usage badge */}
            {sessionTokens && (sessionTokens.total_tokens || sessionTokens.input_tokens || sessionTokens.output_tokens) && (
-             <Box sx={{ 
+             <Box sx={(theme) => ({ 
                display: 'flex',
                alignItems: 'center',
                gap: 0.5,
                px: 1,
                py: 0.5,
-               backgroundColor: 'success.50',
+               backgroundColor: alpha(theme.palette.success.main, 0.05),
                borderRadius: '16px',
                border: '1px solid',
-               borderColor: 'success.200'
-             }}>
+               borderColor: alpha(theme.palette.success.main, 0.2)
+             })}>
                <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.main' }}>
                  🪙 {isInProgress ? '...' : (sessionTokens.total_tokens?.toLocaleString() || '—')}
                </Typography>
@@ -294,8 +299,11 @@ function SessionSummary({ summary, sessionStatus, sessionTokens }: {
  * Displays session metadata including status, timing, and summary information
  */
 function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
-  const isInProgress = session.status === 'in_progress' || session.status === 'pending';
-  const isCanceling = session.status === 'canceling';
+  const isInProgress =
+    session.status === SESSION_STATUS.IN_PROGRESS ||
+    session.status === SESSION_STATUS.PENDING ||
+    session.status === SESSION_STATUS.CANCELING;
+  const isCanceling = session.status === SESSION_STATUS.CANCELING;
   const canCancel = isInProgress || isCanceling;
   const previousStatusRef = useRef<string>(session.status);
   
@@ -310,8 +318,14 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     const currentStatus = session.status;
     
     // Check if status changed from in_progress/pending to completed/failed/cancelled
-    const wasInProgress = previousStatus === 'in_progress' || previousStatus === 'pending' || previousStatus === 'canceling';
-    const nowCompleted = currentStatus === 'completed' || currentStatus === 'failed' || currentStatus === 'cancelled';
+    const wasInProgress =
+      previousStatus === SESSION_STATUS.IN_PROGRESS ||
+      previousStatus === SESSION_STATUS.PENDING ||
+      previousStatus === SESSION_STATUS.CANCELING;
+    const nowCompleted =
+      currentStatus === SESSION_STATUS.COMPLETED ||
+      currentStatus === SESSION_STATUS.FAILED ||
+      currentStatus === SESSION_STATUS.CANCELLED;
     
     if (wasInProgress && nowCompleted && onRefresh) {
       console.log(`🔄 Status changed from ${previousStatus} to ${currentStatus}, refreshing session data for final stats`);
@@ -327,7 +341,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
   
   // Clear cancelling state when session status changes to cancelled
   useEffect(() => {
-    if (session.status === 'cancelled' && isCancelling) {
+    if (session.status === SESSION_STATUS.CANCELLED && isCancelling) {
       setIsCancelling(false);
     }
   }, [session.status, isCancelling]);
@@ -531,7 +545,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               The session will be marked as cancelled and any ongoing processing will be stopped.
             </DialogContentText>
             {cancelError && (
-              <Box sx={{ mt: 2, p: 2, bgcolor: 'error.50', borderRadius: 1, border: '1px solid', borderColor: 'error.main' }}>
+              <Box sx={(theme) => ({ mt: 2, p: 2, bgcolor: alpha(theme.palette.error.main, 0.05), borderRadius: 1, border: '1px solid', borderColor: 'error.main' })}>
                 <Typography variant="body2" color="error.main">
                   {cancelError}
                 </Typography>
@@ -560,7 +574,10 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
 
         {/* Summary section */}
         <Box>
-          {(session.total_interactions > 0 || session.status === 'in_progress' || session.status === 'pending') && (
+          {(session.total_interactions > 0 ||
+            session.status === SESSION_STATUS.IN_PROGRESS ||
+            session.status === SESSION_STATUS.PENDING ||
+            session.status === SESSION_STATUS.CANCELING) && (
             <SessionSummary 
               summary={{
                 total_interactions: session.total_interactions,

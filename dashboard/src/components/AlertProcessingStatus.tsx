@@ -47,6 +47,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
   const [wsConnected, setWsConnected] = useState(false);
   const [sessionExists, setSessionExists] = useState<boolean>(false);
   const [checkingSession, setCheckingSession] = useState<boolean>(true);
+  const [pollError, setPollError] = useState<string | null>(null);
 
   // Store onComplete in a ref to avoid effect re-runs when it changes
   const onCompleteRef = useRef(onComplete);
@@ -60,6 +61,9 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
   
   // Track terminal state immediately (not waiting for React state update)
   const isTerminalRef = useRef(false);
+  
+  // Track pending timeout for cleanup
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Reset mount flag on (re)mount or session change
@@ -71,6 +75,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     // Reset session existence check
     setSessionExists(false);
     setCheckingSession(true);
+    setPollError(null);
     
     // Initialize WebSocket connection status
     const initialConnectionStatus = websocketService.isConnected;
@@ -105,16 +110,27 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     return () => {
       isMountedRef.current = false; // Mark component as unmounted
       unsubscribeConnection();
+      // Clear any pending poll timeout
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
     };
   }, [sessionId]);
 
   // Poll to check if session exists in the database
   useEffect(() => {
-    let pollInterval: NodeJS.Timeout | null = null;
     let attempts = 0;
-    const maxAttempts = 30; // 30 attempts * 1 second = 30 seconds max
+    const maxAttempts = 30;
+    let currentDelay = 1000; // Start with 1 second
+    const maxDelay = 5000; // Cap at 5 seconds
     
     const checkSessionExists = async () => {
+      // Don't proceed if component is unmounted
+      if (!isMountedRef.current) {
+        return;
+      }
+      
       try {
         // Try to fetch the session detail to confirm it exists
         await apiClient.getSessionDetail(sessionId);
@@ -123,44 +139,77 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
         if (isMountedRef.current) {
           setSessionExists(true);
           setCheckingSession(false);
+          setPollError(null);
           console.log(`✅ Session ${sessionId} confirmed to exist in database`);
           
-          // Stop polling
-          if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
+          // Clear any pending timeout
+          if (pollTimeoutRef.current) {
+            clearTimeout(pollTimeoutRef.current);
+            pollTimeoutRef.current = null;
           }
         }
-      } catch (error) {
-        // Session doesn't exist yet or other error
+      } catch (error: any) {
         attempts++;
         
+        // Check if it's a 404 error (session not found)
+        const is404 = error?.response?.status === 404;
+        
+        if (is404) {
+          // Stop polling immediately for 404 - session doesn't exist
+          console.warn(`❌ Session ${sessionId} not found (404)`);
+          if (isMountedRef.current) {
+            setCheckingSession(false);
+            setSessionExists(false); // Keep disabled
+            setPollError('Session not found. The alert processing may not have started yet.');
+          }
+          // Clear any pending timeout
+          if (pollTimeoutRef.current) {
+            clearTimeout(pollTimeoutRef.current);
+            pollTimeoutRef.current = null;
+          }
+          return;
+        }
+        
+        // For other errors, check if we've hit max attempts
         if (attempts >= maxAttempts) {
-          // Give up after max attempts
           console.warn(`⚠️ Session ${sessionId} not found after ${maxAttempts} attempts`);
           if (isMountedRef.current) {
             setCheckingSession(false);
-            // Still allow button to be enabled after timeout
-            setSessionExists(true);
+            setSessionExists(false); // Keep disabled - don't enable on timeout
+            setPollError('Unable to verify session existence. Please try refreshing the page.');
           }
-          if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
+          // Clear any pending timeout
+          if (pollTimeoutRef.current) {
+            clearTimeout(pollTimeoutRef.current);
+            pollTimeoutRef.current = null;
           }
+          return;
+        }
+        
+        // For non-404 errors, retry with exponential backoff
+        // Double the delay each time, capped at maxDelay
+        currentDelay = Math.min(currentDelay * 2, maxDelay);
+        
+        console.log(
+          `⚠️ Failed to check session ${sessionId} (attempt ${attempts}/${maxAttempts}), ` +
+          `retrying in ${currentDelay}ms...`
+        );
+        
+        // Schedule next attempt with backoff delay
+        if (isMountedRef.current) {
+          pollTimeoutRef.current = setTimeout(checkSessionExists, currentDelay);
         }
       }
     };
     
-    // Initial check
+    // Initial check (immediate)
     checkSessionExists();
-    
-    // Set up polling interval (check every 1 second)
-    pollInterval = setInterval(checkSessionExists, 1000);
     
     // Cleanup
     return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
       }
     };
   }, [sessionId]);
@@ -366,7 +415,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
             </Typography>
             
             {/* Show loading state while checking if session exists */}
-            {checkingSession && !sessionExists ? (
+            {checkingSession && !sessionExists && !pollError ? (
               <Zoom in timeout={300}>
                 <Box 
                   display="flex" 
@@ -400,6 +449,12 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
                   </Box>
                 </Box>
               </Zoom>
+            ) : pollError ? (
+              <Fade in timeout={500}>
+                <Alert severity="warning" sx={{ flex: 1, maxWidth: 500 }}>
+                  {pollError}
+                </Alert>
+              </Fade>
             ) : (
               <Fade in timeout={500}>
                 <Tooltip 

@@ -167,7 +167,7 @@ describe('API Client Retry Logic', () => {
       toJSON: () => ({}),
     };
 
-    // Mock successful response for the third attempt
+    // Mock successful response for the third attempt (backend returns flat structure)
     const successResponse = {
       data: {
         sessions: [
@@ -177,6 +177,7 @@ describe('API Client Retry Logic', () => {
         total_count: 2,
         page: 1,
         page_size: 25,
+        total_pages: 1,
       },
       status: 200,
       statusText: 'OK',
@@ -214,15 +215,19 @@ describe('API Client Retry Logic', () => {
     // Third attempt succeeds
     const result = await resultPromise;
 
-    // Verify the result matches the SessionsResponse format
+    // Verify the result matches the normalized SessionsResponse format
     expect(result).toEqual({
       sessions: [
         { session_id: 'test-1', status: 'completed', alert_type: 'PodCrashLooping' },
         { session_id: 'test-2', status: 'failed', alert_type: 'PodCrashLooping' },
       ],
-      total_count: 2,
-      page: 1,
-      page_size: 25,
+      pagination: {
+        page: 1,
+        page_size: 25,
+        total_pages: 1,
+        total_items: 2,
+      },
+      filters_applied: {},
     });
 
     // Verify axios client was called 3 times (2 failures + 1 success)
@@ -239,6 +244,60 @@ describe('API Client Retry Logic', () => {
 
     // Restore real timers
     vi.useRealTimers();
+  });
+
+  it('should handle already-nested pagination format from backend', async () => {
+    // Get reference to the mock axios client
+    const mockClient = mockedAxios.create();
+    
+    // Mock response with already-nested pagination structure
+    const nestedResponse = {
+      data: {
+        sessions: [
+          { session_id: 'test-1', status: 'completed', alert_type: 'PodCrashLooping' },
+        ],
+        pagination: {
+          page: 1,
+          page_size: 25,
+          total_pages: 1,
+          total_items: 1,
+        },
+        filters_applied: {
+          status: ['completed'],
+        },
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    };
+
+    mockClient.get.mockResolvedValueOnce(nestedResponse);
+
+    // Test with filters
+    const testFilters = {
+      status: ['completed'] as ('completed')[],
+    };
+
+    const result = await (apiClient as any).getFilteredSessions(testFilters, 1, 25);
+
+    // Verify the result is returned as-is when already nested
+    expect(result).toEqual({
+      sessions: [
+        { session_id: 'test-1', status: 'completed', alert_type: 'PodCrashLooping' },
+      ],
+      pagination: {
+        page: 1,
+        page_size: 25,
+        total_pages: 1,
+        total_items: 1,
+      },
+      filters_applied: {
+        status: ['completed'],
+      },
+    });
+
+    expect(mockClient.get).toHaveBeenCalledTimes(1);
   });
 
   it('should not retry on HTTP errors (4xx, 5xx)', async () => {

@@ -221,7 +221,26 @@ class APIClient {
       
       
       if (response.data && typeof response.data === 'object' && 'sessions' in response.data) {
-        return response.data;
+        // Transform flat response to SessionsResponse structure
+        const data: any = response.data;
+        
+        // Check if pagination is already nested (new format) or flat (old format)
+        if (data.pagination) {
+          // Already in the correct nested format
+          return response.data;
+        } else {
+          // Transform flat structure to nested SessionsResponse format
+          return {
+            sessions: data.sessions,
+            pagination: {
+              page: data.page || 1,
+              page_size: data.page_size || 25,
+              total_pages: data.total_pages || 0,
+              total_items: data.total_count || 0,
+            },
+            filters_applied: data.filters_applied || {},
+          };
+        }
       } else {
         throw new Error('Invalid historical sessions response format');
       }
@@ -476,7 +495,26 @@ class APIClient {
       
       
       if (response.data && typeof response.data === 'object' && 'sessions' in response.data) {
-        return response.data;
+        // Transform flat response to SessionsResponse structure
+        const data: any = response.data;
+        
+        // Check if pagination is already nested (new format) or flat (old format)
+        if (data.pagination) {
+          // Already in the correct nested format
+          return response.data;
+        } else {
+          // Transform flat structure to nested SessionsResponse format
+          return {
+            sessions: data.sessions,
+            pagination: {
+              page: data.page || 1,
+              page_size: data.page_size || 25,
+              total_pages: data.total_pages || 0,
+              total_items: data.total_count || 0,
+            },
+            filters_applied: data.filters_applied || {},
+          };
+        }
       } else {
         throw new Error('Invalid filtered sessions response format');
       }

@@ -10,7 +10,7 @@ performance and consistency with the rest of the system.
 
 import asyncio
 import logging
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 
@@ -63,6 +63,7 @@ router = APIRouter(prefix="/api/v1/history", tags=["history"])
     """
 )
 async def list_sessions(
+    *,
     status: Optional[List[str]] = Query(None, description="Filter by session status(es) - supports multiple values"),
     agent_type: Optional[str] = Query(None, description="Filter by agent type"),
     alert_type: Optional[str] = Query(None, description="Filter by alert type"),
@@ -71,7 +72,7 @@ async def list_sessions(
     end_date_us: Optional[int] = Query(None, description="Filter sessions started before this timestamp (microseconds since epoch UTC)"),
     page: int = Query(1, ge=1, description="Page number for pagination"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page (1-100)"),
-    history_service: HistoryService = Depends(get_history_service)
+    history_service: Annotated[HistoryService, Depends(get_history_service)]
 ) -> PaginatedSessions:
     """
     List alert processing sessions with filtering and pagination.
@@ -174,8 +175,9 @@ async def list_sessions(
 )
 
 async def get_session_detail(
+    *,
     session_id: str = Path(..., description="Unique session identifier"),
-    history_service: HistoryService = Depends(get_history_service)
+    history_service: Annotated[HistoryService, Depends(get_history_service)]
 ) -> DetailedSession:
     """
     Get detailed session information with chronological timeline.
@@ -225,8 +227,9 @@ async def get_session_detail(
     """
 )
 async def get_session_summary(
+    *,
     session_id: str = Path(..., description="Unique session identifier"),
-    history_service: HistoryService = Depends(get_history_service)
+    history_service: Annotated[HistoryService, Depends(get_history_service)]
 ) -> SessionStats:
     """Get summary statistics for a specific session (lightweight)."""
     try:
@@ -260,7 +263,7 @@ async def get_session_summary(
     description="Get currently active/processing sessions"
 )
 async def get_active_sessions(
-    history_service: HistoryService = Depends(get_history_service)
+    history_service: Annotated[HistoryService, Depends(get_history_service)]
 ):
     """Get list of currently active sessions."""
     try:
@@ -299,7 +302,7 @@ async def get_active_sessions(
     description="Get available filter options for dashboard filtering"
 )
 async def get_filter_options(
-    history_service: HistoryService = Depends(get_history_service)
+    history_service: Annotated[HistoryService, Depends(get_history_service)]
 ):
     """Get available filter options for the dashboard."""
     try:
@@ -400,9 +403,10 @@ async def check_cancellation_completion(
     description="Cancel an active alert processing session"
 )
 async def cancel_session(
+    *,
     session_id: str = Path(..., description="Session ID to cancel"),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
-    history_service: HistoryService = Depends(get_history_service)
+    background_tasks: BackgroundTasks,
+    history_service: Annotated[HistoryService, Depends(get_history_service)]
 ) -> dict:
     """
     Cancel an active session.

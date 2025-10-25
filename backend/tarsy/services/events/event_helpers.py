@@ -329,7 +329,7 @@ async def publish_session_cancelled(session_id: str) -> None:
             await publish_event(session, EventChannel.SESSIONS, event)
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
-            logger.info(f"[EVENT] Published session.cancelled to channels")
+            logger.info("[EVENT] Published session.cancelled to channels")
     except Exception as e:
         logger.warning(f"Failed to publish session.cancelled event: {e}")
 

@@ -7,7 +7,8 @@ import {
   Stack,
   CircularProgress,
   Alert,
-  Skeleton
+  Skeleton,
+  alpha,
 } from '@mui/material';
 import type { LLMInteraction, MCPInteraction, SystemEvent, LLMMessage } from '../types';
 
@@ -363,18 +364,18 @@ const LazyDetailsRenderer = memo(({
             </Box>
             <Typography 
               variant="body2" 
-              sx={{ 
+              sx={(theme) => ({ 
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
                 p: 1.5,
-                bgcolor: 'error.50',
+                bgcolor: alpha(theme.palette.error.main, 0.05),
                 borderRadius: 1,
                 color: 'error.main',
                 fontFamily: 'monospace',
                 fontSize: '0.875rem',
                 maxHeight: 200,
                 overflow: 'auto'
-              }}
+              })}
             >
               {llmDetails.error_message || 'LLM request failed - no response received'}
             </Typography>
@@ -483,18 +484,18 @@ const LazyDetailsRenderer = memo(({
             </Box>
             <Typography 
               variant="body2" 
-              sx={{ 
+              sx={(theme) => ({ 
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
                 p: 1.5,
-                bgcolor: 'error.50',
+                bgcolor: alpha(theme.palette.error.main, 0.05),
                 borderRadius: 1,
                 color: 'error.main',
                 fontFamily: 'monospace',
                 fontSize: '0.875rem',
                 maxHeight: 600,
                 overflow: 'auto'
-              }}
+              })}
             >
               {mcpDetails.error_message || 'MCP tool call failed - no response received'}
             </Typography>

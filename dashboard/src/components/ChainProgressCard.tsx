@@ -36,7 +36,7 @@ const getStatusChipConfig = (status: string) => {
       return {
         color: 'info' as const,
         icon: <Refresh sx={{ fontSize: 16 }} />,
-        label: 'In Progress',
+        label: getSessionStatusDisplayName(SESSION_STATUS.IN_PROGRESS),
       };
     case SESSION_STATUS.PENDING:
       return {
@@ -55,6 +55,18 @@ const getStatusChipConfig = (status: string) => {
         color: 'success' as const,
         icon: <CheckCircle sx={{ fontSize: 16 }} />,
         label: getSessionStatusDisplayName(SESSION_STATUS.COMPLETED),
+      };
+    case SESSION_STATUS.CANCELING:
+      return {
+        color: 'warning' as const,
+        icon: <Schedule sx={{ fontSize: 16 }} />,
+        label: getSessionStatusDisplayName(SESSION_STATUS.CANCELING),
+      };
+    case SESSION_STATUS.CANCELLED:
+      return {
+        color: 'default' as const,
+        icon: <Warning sx={{ fontSize: 16 }} />,
+        label: getSessionStatusDisplayName(SESSION_STATUS.CANCELLED),
       };
     case CHAIN_OVERALL_STATUS.PARTIAL:
       return {
@@ -91,6 +103,12 @@ const getCurrentStageName = (
   if (session.status === SESSION_STATUS.FAILED) {
     return 'Processing failed';
   }
+  if (session.status === SESSION_STATUS.CANCELLED) {
+    return 'Cancelled';
+  }
+  if (session.status === SESSION_STATUS.CANCELING) {
+    return 'Canceling…';
+  }
   return 'Starting...';
 };
 
@@ -106,7 +124,7 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
 
   // Update current time every second for active sessions
   useEffect(() => {
-    if (session.status === SESSION_STATUS.IN_PROGRESS) {
+    if (session.status === SESSION_STATUS.IN_PROGRESS || session.status === SESSION_STATUS.CANCELING) {
       const interval = setInterval(() => {
         setCurrentTime(getCurrentTimestampUs());
       }, 1000);
@@ -255,7 +273,7 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
         {/* Duration and progress */}
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Box>
-            {session.status === SESSION_STATUS.IN_PROGRESS ? (
+            {session.status === SESSION_STATUS.IN_PROGRESS || session.status === SESSION_STATUS.CANCELING ? (
               <Typography variant="caption" color="text.secondary">
                 Running for {formatDuration(session.started_at_us, currentTime)}
               </Typography>
@@ -266,9 +284,9 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
             ) : null}
           </Box>
           
-          {session.status === SESSION_STATUS.IN_PROGRESS && (
+          {(session.status === SESSION_STATUS.IN_PROGRESS || session.status === SESSION_STATUS.CANCELING) && (
             <ProgressIndicator 
-              status={SESSION_STATUS.IN_PROGRESS} 
+              status={session.status}
               startedAt={session.started_at_us}
               variant="circular"
               size="small"

@@ -42,11 +42,23 @@ const getStatusChipConfig = (status: string) => {
         icon: <Error sx={{ fontSize: 16 }} />,
         label: getSessionStatusDisplayName(SESSION_STATUS.FAILED),
       };
+    case SESSION_STATUS.CANCELING:
+      return {
+        color: 'warning' as const,
+        icon: <Schedule sx={{ fontSize: 16 }} />,
+        label: getSessionStatusDisplayName(SESSION_STATUS.CANCELING),
+      };
+    case SESSION_STATUS.CANCELLED:
+      return {
+        color: 'default' as const,
+        icon: <Warning sx={{ fontSize: 16 }} />,
+        label: getSessionStatusDisplayName(SESSION_STATUS.CANCELLED),
+      };
     default:
       return {
         color: 'default' as const,
         icon: <Warning sx={{ fontSize: 16 }} />,
-        label: status,
+        label: getSessionStatusDisplayName(status),
       };
   }
 };
@@ -87,7 +99,11 @@ const LiveDuration: React.FC<{
         // Use completed duration
         const durationUs = completedAt - startedAt;
         durationMs = durationUs / 1000; // Convert to milliseconds
-      } else if (status === SESSION_STATUS.IN_PROGRESS || status === SESSION_STATUS.PENDING) {
+      } else if (
+        status === SESSION_STATUS.IN_PROGRESS ||
+        status === SESSION_STATUS.PENDING ||
+        status === SESSION_STATUS.CANCELING
+      ) {
         // Calculate live duration
         const now = Date.now() * 1000; // Convert to microseconds
         const durationUs = now - startedAt;
@@ -106,7 +122,12 @@ const LiveDuration: React.FC<{
     setLiveDuration(calculateDuration());
 
     // For active sessions, update every second
-    if ((status === SESSION_STATUS.IN_PROGRESS || status === SESSION_STATUS.PENDING) && !completedAt) {
+    if (
+      (status === SESSION_STATUS.IN_PROGRESS ||
+        status === SESSION_STATUS.PENDING ||
+        status === SESSION_STATUS.CANCELING) &&
+      !completedAt
+    ) {
       const timer = setInterval(() => {
         setLiveDuration(calculateDuration());
       }, 1000);
@@ -225,11 +246,17 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
         </Box>
 
         {/* Progress Indicator for active sessions */}
-        {(session.status === SESSION_STATUS.IN_PROGRESS || session.status === SESSION_STATUS.PENDING) && (
+        {(session.status === SESSION_STATUS.IN_PROGRESS ||
+          session.status === SESSION_STATUS.PENDING ||
+          session.status === SESSION_STATUS.CANCELING) && (
           <Box sx={{ mb: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                {session.status === SESSION_STATUS.IN_PROGRESS ? 'Processing Progress' : 'Queue Status'}
+                {session.status === SESSION_STATUS.IN_PROGRESS
+                  ? 'Processing Progress'
+                  : session.status === SESSION_STATUS.PENDING
+                  ? 'Queue Status'
+                  : 'Canceling…'}
               </Typography>
             </Box>
             <ProgressIndicator 

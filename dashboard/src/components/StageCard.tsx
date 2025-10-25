@@ -305,17 +305,17 @@ const StageCard: React.FC<StageCardProps> = ({
                     
                     {/* LLM interactions badge */}
                     {stage.llm_interaction_count > 0 && (
-                      <Box sx={{ 
+                      <Box sx={(theme) => ({ 
                         display: 'flex',
                         alignItems: 'center',
                         gap: 0.25,
                         px: 0.75,
                         py: 0.25,
-                        backgroundColor: 'primary.50',
+                        backgroundColor: alpha(theme.palette.primary.main, 0.05),
                         borderRadius: '12px',
                         border: '1px solid',
-                        borderColor: 'primary.200'
-                      }}>
+                        borderColor: alpha(theme.palette.primary.main, 0.2)
+                      })}>
                         <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.7rem' }}>
                           🧠 {stage.llm_interaction_count}
                         </Typography>
@@ -327,17 +327,17 @@ const StageCard: React.FC<StageCardProps> = ({
                     
                     {/* MCP interactions badge */}
                     {stage.mcp_communication_count > 0 && (
-                      <Box sx={{ 
+                      <Box sx={(theme) => ({ 
                         display: 'flex',
                         alignItems: 'center',
                         gap: 0.25,
                         px: 0.75,
                         py: 0.25,
-                        backgroundColor: 'secondary.50',
+                        backgroundColor: alpha(theme.palette.secondary.main, 0.05),
                         borderRadius: '12px',
                         border: '1px solid',
-                        borderColor: 'secondary.200'
-                      }}>
+                        borderColor: alpha(theme.palette.secondary.main, 0.2)
+                      })}>
                         <Typography variant="caption" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.7rem' }}>
                           🔧 {stage.mcp_communication_count}
                         </Typography>

@@ -640,6 +640,33 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
             duration = (datetime.now() - start_time).total_seconds()
             logger.info(f"Session {session_id} processed successfully in {duration:.2f} seconds")
             
+        except asyncio.CancelledError:
+            # Handle cancellation explicitly to prevent it from being caught by Exception handler
+            # Check if this is a user-requested cancellation
+            from tarsy.services.history_service import get_history_service
+            from tarsy.services.events.event_helpers import publish_session_cancelled
+            from tarsy.models.constants import AlertSessionStatus
+            
+            is_user_cancellation = False
+            history_service = get_history_service()
+            if history_service:
+                session = history_service.get_session(session_id)
+                is_user_cancellation = session and session.status == AlertSessionStatus.CANCELING.value
+                
+                if is_user_cancellation:
+                    # User-requested cancellation - already handled in inner block
+                    # Just exit without marking as failed
+                    logger.info(f"Session {session_id} cancelled by user - exiting gracefully")
+                    return
+                else:
+                    # Non-user cancellation (e.g., pod shutdown, other asyncio cancellation)
+                    # Mark as failed with appropriate message
+                    logger.warning(f"Session {session_id} cancelled (not user-requested) - marking as failed")
+                    mark_session_as_failed(alert, "Session cancelled due to system shutdown or timeout")
+            else:
+                # History service not available, log and exit
+                logger.warning(f"Session {session_id} cancelled but history service unavailable")
+            
         except ValueError as e:
             # Configuration or data validation errors
             error_msg = f"Invalid alert data: {str(e)}"

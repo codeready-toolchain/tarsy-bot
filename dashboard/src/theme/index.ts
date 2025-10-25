@@ -1,5 +1,8 @@
 import { createTheme } from '@mui/material/styles';
 
+// Note: We use MUI's alpha() utility to create lighter/darker color variants
+// instead of defining numeric shades (50, 100, 200, etc.) in the palette.
+// This provides more flexibility and avoids undefined palette references.
 export const theme = createTheme({
   palette: {
     mode: 'light',

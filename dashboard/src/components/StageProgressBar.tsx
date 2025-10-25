@@ -7,6 +7,7 @@ import {
   Stepper,
   StepContent,
   Chip,
+  alpha,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -31,23 +32,6 @@ const getStepIcon = (status: string, isActive: boolean = false) => {
     case STAGE_STATUS.PENDING:
     default:
       return <Schedule color={isActive ? 'primary' : 'disabled'} />;
-  }
-};
-
-// Helper function to get step color
-const getStepColor = (status: string): string => {
-  const chipColor = getStageStatusChipColor(status);
-  // Map chip color to string color names
-  switch (chipColor) {
-    case 'success':
-      return 'success';
-    case 'error':
-      return 'error';
-    case 'primary':
-      return 'primary';
-    case 'warning':
-    default:
-      return 'grey';
   }
 };
 
@@ -119,7 +103,7 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
                       <Chip
                         label={formatStageStatus(stage.status)}
                         size="small"
-                        color={getStepColor(stage.status) as any}
+                        color={getStageStatusChipColor(stage.status)}
                         variant={isActive ? 'filled' : 'outlined'}
                         sx={{ height: 20, fontSize: '0.65rem' }}
                       />
@@ -158,17 +142,17 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
                           
                           {/* LLM interactions badge */}
                           {stage.llm_interaction_count > 0 && (
-                            <Box sx={{ 
+                            <Box sx={(theme) => ({ 
                               display: 'flex',
                               alignItems: 'center',
                               gap: 0.25,
                               px: 0.5,
                               py: 0.25,
-                              backgroundColor: 'primary.50',
+                              backgroundColor: alpha(theme.palette.primary.main, 0.05),
                               borderRadius: '8px',
                               border: '1px solid',
-                              borderColor: 'primary.200'
-                            }}>
+                              borderColor: alpha(theme.palette.primary.main, 0.2)
+                            })}>
                               <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', fontSize: '0.6rem' }}>
                                 🧠 {stage.llm_interaction_count}
                               </Typography>
@@ -177,17 +161,17 @@ const StageProgressBar: React.FC<StageProgressBarProps> = ({
                           
                           {/* MCP interactions badge */}
                           {stage.mcp_communication_count > 0 && (
-                            <Box sx={{ 
+                            <Box sx={(theme) => ({ 
                               display: 'flex',
                               alignItems: 'center',
                               gap: 0.25,
                               px: 0.5,
                               py: 0.25,
-                              backgroundColor: 'secondary.50',
+                              backgroundColor: alpha(theme.palette.secondary.main, 0.05),
                               borderRadius: '8px',
                               border: '1px solid',
-                              borderColor: 'secondary.200'
-                            }}>
+                              borderColor: alpha(theme.palette.secondary.main, 0.2)
+                            })}>
                               <Typography variant="caption" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.6rem' }}>
                                 🔧 {stage.mcp_communication_count}
                               </Typography>

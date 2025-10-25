@@ -731,6 +731,87 @@ class TestBackgroundProcessing:
         assert call_args[0][0] == mock_alert_data.session_id
         assert "processing error" in call_args[0][1].lower()
 
+    @patch('tarsy.main.alert_service')
+    async def test_process_alert_background_user_cancellation(
+        self, mock_alert_service, mock_alert_data
+    ):
+        """Test user-requested cancellation does not mark session as FAILED."""
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
+        from tarsy.utils.timestamp import now_us
+        
+        # Make process_alert raise CancelledError (simulating user cancellation)
+        mock_alert_service.process_alert = AsyncMock(
+            side_effect=asyncio.CancelledError()
+        )
+        mock_alert_service._update_session_error = Mock()
+        
+        # Mock session in CANCELING status (user-requested)
+        mock_session = AlertSession(
+            session_id="test-session-123",
+            alert_type="kubernetes",
+            agent_type="KubernetesAgent",
+            status=AlertSessionStatus.CANCELING.value,
+            started_at_us=now_us(),
+            chain_id="chain-1"
+        )
+        
+        mock_history_service = Mock()
+        mock_history_service.get_session.return_value = mock_session
+        
+        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
+             patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
+             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
+             patch('tarsy.main.active_tasks', {}):
+            
+            # Should not raise exception and should exit gracefully
+            await process_alert_background("test-session-123", mock_alert_data)
+        
+        # Verify session was NOT marked as failed (user cancellation handled gracefully)
+        mock_alert_service._update_session_error.assert_not_called()
+
+    @patch('tarsy.main.alert_service')
+    async def test_process_alert_background_non_user_cancellation(
+        self, mock_alert_service, mock_alert_data
+    ):
+        """Test non-user cancellation (e.g., timeout) marks session as FAILED."""
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
+        from tarsy.utils.timestamp import now_us
+        
+        # Make process_alert raise CancelledError (simulating non-user cancellation)
+        mock_alert_service.process_alert = AsyncMock(
+            side_effect=asyncio.CancelledError()
+        )
+        mock_alert_service._update_session_error = Mock()
+        
+        # Mock session in IN_PROGRESS status (not user-requested cancellation)
+        mock_session = AlertSession(
+            session_id="test-session-123",
+            alert_type="kubernetes",
+            agent_type="KubernetesAgent",
+            status=AlertSessionStatus.IN_PROGRESS.value,
+            started_at_us=now_us(),
+            chain_id="chain-1"
+        )
+        
+        mock_history_service = Mock()
+        mock_history_service.get_session.return_value = mock_session
+        
+        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
+             patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
+             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
+             patch('tarsy.main.active_tasks', {}):
+            
+            # Should not raise exception and should handle gracefully
+            await process_alert_background("test-session-123", mock_alert_data)
+        
+        # Verify session was marked as failed (non-user cancellation)
+        mock_alert_service._update_session_error.assert_called_once()
+        call_args = mock_alert_service._update_session_error.call_args
+        assert call_args[0][0] == mock_alert_data.session_id
+        assert "cancelled" in call_args[0][1].lower()
+
 
 
 @pytest.mark.unit 

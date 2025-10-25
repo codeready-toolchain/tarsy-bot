@@ -14,6 +14,7 @@ import {
   Breadcrumbs,
   Link,
   IconButton,
+  alpha,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -362,23 +363,23 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
               key={stage.execution_id}
               expanded={isExpanded}
               onChange={() => handleStageToggle(stage.execution_id, stageIndex)}
-              sx={{
+              sx={(theme) => ({
                 mb: 1,
                 '&:before': { display: 'none' },
                 boxShadow: isCurrentStage ? 3 : 1,
-                bgcolor: isCurrentStage ? 'primary.50' : 'inherit',
+                bgcolor: isCurrentStage ? alpha(theme.palette.primary.main, 0.05) : 'inherit',
                 border: isCurrentStage ? 2 : 1,
                 borderColor: isCurrentStage ? 'primary.main' : 'divider'
-              }}
+              })}
             >
               <AccordionSummary 
                 expandIcon={<ExpandMore />}
-                sx={{ 
-                  bgcolor: isCurrentStage ? 'primary.100' : 'grey.50',
+                sx={(theme) => ({ 
+                  bgcolor: isCurrentStage ? alpha(theme.palette.primary.main, 0.1) : 'grey.50',
                   '&.Mui-expanded': {
-                    bgcolor: isCurrentStage ? 'primary.100' : 'grey.100'
+                    bgcolor: isCurrentStage ? alpha(theme.palette.primary.main, 0.1) : 'grey.100'
                   }
-                }}
+                })}
               >
                 <Box display="flex" alignItems="center" gap={2} width="100%">
                   <Avatar sx={{
@@ -518,7 +519,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                     </Box>
                     
                     {stage.error_message && (
-                      <Box mt={2} p={2} bgcolor="error.50" borderRadius={1}>
+                      <Box mt={2} p={2} sx={(theme) => ({ bgcolor: alpha(theme.palette.error.main, 0.05) })} borderRadius={1}>
                         <Typography variant="body2" color="error.main">
                           <strong>Error:</strong> {stage.error_message}
                         </Typography>

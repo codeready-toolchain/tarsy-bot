@@ -1,4 +1,4 @@
-import { Paper, Typography, Box, Chip, Link, IconButton, Collapse } from '@mui/material';
+import { Paper, Typography, Box, Chip, Link, IconButton, Collapse, alpha } from '@mui/material';
 import { AccessTime, OpenInNew, ExpandMore, ExpandLess } from '@mui/icons-material';
 import { useState } from 'react';
 import type { AlertData } from '../types';
@@ -56,11 +56,11 @@ const FieldRenderer: React.FC<{ fieldKey: string; renderedValue: RenderableValue
           href={renderedValue.displayValue}
           target="_blank"
           rel="noopener noreferrer"
-          sx={{ 
+          sx={(theme) => ({ 
             display: 'flex',
             alignItems: 'center',
             gap: 1,
-            backgroundColor: fieldKey === 'runbook' ? 'info.50' : 'grey.50',
+            backgroundColor: fieldKey === 'runbook' ? alpha(theme.palette.info.main, 0.05) : 'grey.50',
             color: fieldKey === 'runbook' ? 'info.main' : 'text.primary',
             p: 1.5, 
             borderRadius: 1,
@@ -69,10 +69,10 @@ const FieldRenderer: React.FC<{ fieldKey: string; renderedValue: RenderableValue
             textDecoration: 'none',
             wordBreak: 'break-word',
             '&:hover': {
-              backgroundColor: fieldKey === 'runbook' ? 'info.100' : 'grey.100',
+              backgroundColor: fieldKey === 'runbook' ? alpha(theme.palette.info.main, 0.1) : 'grey.100',
               textDecoration: 'underline'
             }
-          }}
+          })}
         >
           <OpenInNew fontSize="small" />
           {renderedValue.displayValue}
@@ -327,7 +327,7 @@ function OriginalAlertCard({ alertData }: OriginalAlertCardProps) {
                       key={key}
                       componentName={`Field: ${key}`}
                       fallback={
-                        <Box sx={{ p: 1, bgcolor: 'error.50', border: '1px solid', borderColor: 'error.200', borderRadius: 1 }}>
+                        <Box sx={(theme) => ({ p: 1, bgcolor: alpha(theme.palette.error.main, 0.05), border: '1px solid', borderColor: alpha(theme.palette.error.main, 0.2), borderRadius: 1 })}>
                           <Typography variant="caption" color="error">
                             Error rendering field "{key}": {String(value).substring(0, 100)}
                           </Typography>
