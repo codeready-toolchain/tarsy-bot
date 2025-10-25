@@ -1575,7 +1575,7 @@ class TestHistoryRepositoryErrorHandling:
         # Should return default structure with empty lists on error
         assert result.agent_types == []
         assert result.alert_types == []
-        assert result.status_options == ["pending", "in_progress", "completed", "failed"]
+        assert result.status_options == ["pending", "in_progress", "canceling", "completed", "failed", "cancelled"]
         assert len(result.time_ranges) == 5
 
 class TestHistoryRepositoryPerformance:
@@ -1701,11 +1701,13 @@ class TestHistoryRepositoryPerformance:
         
         # Verify status options
         assert hasattr(result, 'status_options')
-        assert len(result.status_options) == 4
+        assert len(result.status_options) == 6
         assert "pending" in result.status_options
         assert "in_progress" in result.status_options
+        assert "canceling" in result.status_options
         assert "completed" in result.status_options
         assert "failed" in result.status_options
+        assert "cancelled" in result.status_options
         
         # Verify time ranges
         assert hasattr(result, 'time_ranges')
@@ -1722,8 +1724,8 @@ class TestHistoryRepositoryPerformance:
         assert result.agent_types == []
         assert result.alert_types == []
         # Status options should always return all possible statuses (not dynamic from database)
-        assert len(result.status_options) == 4
-        assert result.status_options == ["pending", "in_progress", "completed", "failed"]
+        assert len(result.status_options) == 6
+        assert result.status_options == ["pending", "in_progress", "canceling", "completed", "failed", "cancelled"]
         
         # Time ranges should still be present (static)
         assert len(result.time_ranges) == 5
@@ -1750,7 +1752,7 @@ class TestHistoryRepositoryPerformance:
         assert result.agent_types == sorted(result.agent_types)
         assert result.alert_types == sorted(result.alert_types)
         # Status options are returned in constant definition order (not sorted)
-        assert result.status_options == ["pending", "in_progress", "completed", "failed"]
+        assert result.status_options == ["pending", "in_progress", "canceling", "completed", "failed", "cancelled"]
 
 @pytest.mark.unit  
 class TestHistoryRepositoryDuplicatePrevention:
