@@ -452,3 +452,98 @@ describe('API Client Retry Logic', () => {
   });
 });
 
+describe('API Client Session Cancellation', () => {
+  let consoleErrorSpy: any;
+  const mockClient = mockedAxios.create();
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('should successfully cancel a session', async () => {
+    const sessionId = 'test-session-123';
+    const successResponse = {
+      data: {
+        success: true,
+        message: 'Cancellation request sent',
+        status: 'canceling'
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    };
+
+    mockClient.post.mockResolvedValueOnce(successResponse);
+
+    const result = await apiClient.cancelSession(sessionId);
+
+    expect(result).toEqual({
+      success: true,
+      message: 'Cancellation request sent',
+      status: 'canceling'
+    });
+    expect(mockClient.post).toHaveBeenCalledWith(`/api/v1/history/sessions/${sessionId}/cancel`);
+    expect(mockClient.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('should handle 404 when cancelling non-existent session', async () => {
+    const sessionId = 'non-existent-session';
+    const notFoundError: any = {
+      isAxiosError: true,
+      request: {},
+      response: {
+        status: 404,
+        data: { detail: 'Session non-existent-session not found' },
+      },
+      message: 'Request failed with status code 404',
+    };
+
+    mockClient.post.mockRejectedValueOnce(notFoundError);
+
+    await expect(apiClient.cancelSession(sessionId)).rejects.toThrow();
+    expect(mockClient.post).toHaveBeenCalledWith(`/api/v1/history/sessions/${sessionId}/cancel`);
+  });
+
+  it('should handle 400 when cancelling already completed session', async () => {
+    const sessionId = 'completed-session';
+    const badRequestError: any = {
+      isAxiosError: true,
+      request: {},
+      response: {
+        status: 400,
+        data: { detail: 'Session already completed, cannot cancel' },
+      },
+      message: 'Request failed with status code 400',
+    };
+
+    mockClient.post.mockRejectedValueOnce(badRequestError);
+
+    await expect(apiClient.cancelSession(sessionId)).rejects.toThrow();
+    expect(mockClient.post).toHaveBeenCalledWith(`/api/v1/history/sessions/${sessionId}/cancel`);
+  });
+
+  it('should handle network errors when cancelling session', async () => {
+    const sessionId = 'test-session-456';
+    const networkError: any = {
+      isAxiosError: true,
+      request: {},
+      response: undefined,
+      message: 'Network Error',
+    };
+
+    mockClient.post.mockRejectedValueOnce(networkError);
+
+    await expect(apiClient.cancelSession(sessionId)).rejects.toThrow();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Error cancelling session:',
+      networkError
+    );
+  });
+});
+
