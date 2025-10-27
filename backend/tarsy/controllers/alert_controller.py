@@ -74,6 +74,19 @@ async def get_runbooks() -> list[str]:
 @router.post("/alerts", response_model=AlertResponse)
 async def submit_alert(request: Request) -> AlertResponse:
     """Submit a new alert for processing with flexible data structure and comprehensive error handling."""
+    # Check if service is shutting down - reject new sessions immediately
+    from tarsy.main import shutdown_in_progress
+    
+    if shutdown_in_progress:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "Service shutting down",
+                "message": "Service is shutting down gracefully. Please retry your request.",
+                "retry_after": 30  # Suggest retry after 30 seconds (another pod should be available)
+            }
+        )
+    
     try:
         # Check content length (prevent extremely large payloads)
         MAX_PAYLOAD_SIZE = 10 * 1024 * 1024  # 10MB

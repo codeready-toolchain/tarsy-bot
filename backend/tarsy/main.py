@@ -68,6 +68,9 @@ db_manager: Optional["DatabaseManager"] = None  # DatabaseManager for history cl
 active_tasks: Dict[str, asyncio.Task] = {}  # Maps session_id to asyncio Task
 active_tasks_lock: Optional[asyncio.Lock] = None  # Initialized in lifespan()
 
+# Graceful shutdown flag
+shutdown_in_progress: bool = False
+
 
 async def handle_cancel_request(event: dict) -> None:
     """
@@ -100,10 +103,40 @@ async def handle_cancel_request(event: dict) -> None:
         logger.debug(f"Session {session_id} not found on this pod (owned by another pod)")
 
 
+async def mark_active_sessions_as_interrupted(reason: str) -> None:
+    """
+    Helper function to mark active sessions as interrupted during shutdown.
+    
+    Args:
+        reason: Reason for marking sessions as interrupted (e.g., "after timeout", "after error")
+    """
+    settings = get_settings()
+    
+    # Only mark sessions if history is enabled
+    if not settings.history_enabled:
+        return
+    
+    try:
+        from tarsy.services.history_service import get_history_service
+        history_service = get_history_service()
+        
+        # Safety check: ensure service was successfully initialized
+        if not history_service:
+            return
+        
+        pod_id = get_pod_id()
+        interrupted_count = await history_service.mark_pod_sessions_interrupted(pod_id)
+        
+        if interrupted_count > 0:
+            logger.info(f"Marked {interrupted_count} session(s) as interrupted {reason} for pod {pod_id}")
+    except Exception as e:
+        logger.error(f"Failed to mark sessions as interrupted {reason}: {str(e)}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
-    global alert_service, alert_processing_semaphore, event_system_manager, history_cleanup_service, mcp_health_monitor, db_manager, active_tasks_lock
+    global alert_service, alert_processing_semaphore, event_system_manager, history_cleanup_service, mcp_health_monitor, db_manager, active_tasks_lock, shutdown_in_progress
     
     # Initialize services
     settings = get_settings()
@@ -255,8 +288,44 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     yield
     
-    # Shutdown: Mark in-progress sessions as interrupted for graceful shutdown
+    # Shutdown: Wait for active sessions to complete before marking as interrupted
     logger.info("Tarsy shutting down...")
+    
+    # Mark as shutting down to prevent new sessions
+    shutdown_in_progress = True
+    logger.info("Marked service as shutting down - will reject new alert submissions")
+    
+    # Wait for active sessions to complete gracefully
+    if active_tasks:
+        session_count = len(active_tasks)
+        timeout = settings.alert_processing_timeout
+        logger.info(f"Waiting for {session_count} active session(s) to complete (timeout: {timeout}s)...")
+        
+        try:
+            async with active_tasks_lock:
+                tasks_to_wait = list(active_tasks.values())
+            
+            # Wait for all active tasks with timeout (same as session processing timeout)
+            await asyncio.wait_for(
+                asyncio.gather(*tasks_to_wait, return_exceptions=True),
+                timeout=timeout
+            )
+            logger.info(f"All {session_count} active session(s) completed gracefully")
+            
+        except asyncio.TimeoutError:
+            remaining = len(active_tasks)
+            logger.warning(f"Graceful shutdown timeout after {timeout}s - {remaining} session(s) still active")
+            
+            # Mark remaining sessions as interrupted after timeout
+            await mark_active_sessions_as_interrupted("after timeout")
+        
+        except Exception as e:
+            logger.error(f"Error during graceful shutdown wait: {e}", exc_info=True)
+            
+            # Still try to mark sessions as interrupted on error
+            await mark_active_sessions_as_interrupted("after error")
+    else:
+        logger.info("No active sessions during shutdown")
     
     # Stop MCP health monitor
     if mcp_health_monitor is not None:
@@ -265,17 +334,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("MCP health monitor stopped")
         except Exception as e:
             logger.error(f"Error stopping MCP health monitor: {e}", exc_info=True)
-    
-    if settings.history_enabled and db_init_success:
-        try:
-            from tarsy.services.history_service import get_history_service
-            history_service = get_history_service()
-            pod_id = get_pod_id()
-            interrupted_count = await history_service.mark_pod_sessions_interrupted(pod_id)
-            if interrupted_count > 0:
-                logger.info(f"Graceful shutdown: marked {interrupted_count} sessions as interrupted for pod {pod_id}")
-        except Exception as e:
-            logger.error(f"Failed to mark sessions as interrupted during shutdown: {str(e)}")
     
     # Shutdown history cleanup service
     if history_cleanup_service is not None:
@@ -343,6 +401,15 @@ async def health_check(response: Response) -> Dict[str, Any]:
         - HTTP 200: All critical systems healthy
         - HTTP 503: Critical system degraded/unhealthy (Kubernetes will restart pod)
     """
+    # Check if shutdown is in progress - immediately return 503 to remove from service
+    if shutdown_in_progress:
+        response.status_code = 503
+        return {
+            "status": "shutting_down",
+            "service": "tarsy",
+            "message": "Pod is shutting down gracefully - waiting for active sessions to complete"
+        }
+    
     try:
         from tarsy.utils.version import VERSION
         
