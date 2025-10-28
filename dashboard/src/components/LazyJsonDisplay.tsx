@@ -113,10 +113,85 @@ function LazyJsonDisplay({
       };
     }
 
-    // Handle MCP results with nested content
+    // Handle MCP results with nested content (JSON/YAML/text)
     if (typeof data === 'object' && data !== null) {
       if ('result' in data && typeof data.result === 'string') {
         const resultContent = data.result.trim();
+        
+        // First, try to parse as JSON (most common case)
+        try {
+          const parsedJson = JSON.parse(resultContent);
+          
+          // Successfully parsed as JSON
+          if (typeof parsedJson === 'object' && parsedJson !== null) {
+            // Check for common text fields that might have formatted content
+            const textFields = ['analysis', 'result', 'output', 'message', 'description', 'text'];
+            const foundTextField = textFields.find(
+              field => field in parsedJson && 
+              typeof parsedJson[field] === 'string' && 
+              parsedJson[field].length > 50 && 
+              parsedJson[field].includes('\n')
+            );
+            
+            if (foundTextField) {
+              // This JSON contains a formatted text field - show both
+              const jsonSection = {
+                title: 'MCP Tool Result (JSON)',
+                type: 'json',
+                content: parsedJson,
+                raw: JSON.stringify(parsedJson, null, 2),
+                size: JSON.stringify(parsedJson).length
+              };
+              
+              const sections = [jsonSection];
+              
+              // If the text field is particularly long or formatted, add it as a separate section
+              if (parsedJson[foundTextField].length > 200) {
+                sections.push({
+                  title: `${foundTextField.charAt(0).toUpperCase() + foundTextField.slice(1)} (Formatted)`,
+                  type: 'text',
+                  content: parsedJson[foundTextField],
+                  raw: parsedJson[foundTextField],
+                  size: parsedJson[foundTextField].length
+                });
+              }
+              
+              return {
+                type: 'mixed',
+                content: { text: '', sections: [] },
+                sections
+              };
+            }
+            
+            // Regular JSON object without special formatting
+            return {
+              type: 'mixed',
+              content: { text: '', sections: [] },
+              sections: [{
+                title: 'MCP Tool Result (JSON)',
+                type: 'json',
+                content: parsedJson,
+                raw: JSON.stringify(parsedJson, null, 2),
+                size: JSON.stringify(parsedJson).length
+              }]
+            };
+          }
+          
+          // Parsed JSON is a simple value
+          return {
+            type: 'mixed',
+            content: { text: '', sections: [] },
+            sections: [{
+              title: 'MCP Tool Result',
+              type: 'json',
+              content: parsedJson,
+              raw: JSON.stringify(parsedJson, null, 2),
+              size: JSON.stringify(parsedJson).length
+            }]
+          };
+        } catch {
+          // Not valid JSON, try other formats
+        }
         
         if (resultContent.includes('apiVersion:') || 
             resultContent.includes('kind:') || 

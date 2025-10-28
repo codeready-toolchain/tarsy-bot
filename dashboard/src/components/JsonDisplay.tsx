@@ -39,11 +39,87 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
       return { type: 'plain-text', content: String(value) };
     }
 
-    // Special handling for MCP results that contain YAML/text content
+    // Special handling for MCP results that contain YAML/text/JSON content
     if (typeof value === 'object' && value !== null) {
-      // Check if this is an MCP result with a nested text/YAML result
+      // Check if this is an MCP result with a nested text/YAML/JSON result
       if ('result' in value && typeof value.result === 'string') {
         const resultContent = value.result.trim();
+        
+        // First, try to parse as JSON (most common case)
+        try {
+          const parsedJson = JSON.parse(resultContent);
+          
+          // Successfully parsed as JSON
+          // Check if it's a nested object with formatted text (like "analysis" field)
+          if (typeof parsedJson === 'object' && parsedJson !== null) {
+            // Check for common text fields that might have formatted content
+            const textFields = ['analysis', 'result', 'output', 'message', 'description', 'text'];
+            const foundTextField = textFields.find(
+              field => field in parsedJson && 
+              typeof parsedJson[field] === 'string' && 
+              parsedJson[field].length > 50 && 
+              parsedJson[field].includes('\n')
+            );
+            
+            if (foundTextField) {
+              // This JSON contains a formatted text field - show both
+              const sections = [
+                {
+                  title: 'MCP Tool Result (JSON)',
+                  type: 'json',
+                  content: parsedJson,
+                  raw: JSON.stringify(parsedJson, null, 2)
+                }
+              ];
+              
+              // If the text field is particularly long or formatted, add it as a separate section
+              if (parsedJson[foundTextField].length > 200) {
+                sections.push({
+                  title: `${foundTextField.charAt(0).toUpperCase() + foundTextField.slice(1)} (Formatted)`,
+                  type: 'text',
+                  content: parsedJson[foundTextField],
+                  raw: parsedJson[foundTextField]
+                });
+              }
+              
+              return {
+                type: 'mixed',
+                content: { text: '', sections: [] },
+                sections
+              };
+            }
+            
+            // Regular JSON object without special formatting
+            return {
+              type: 'mixed',
+              content: { text: '', sections: [] },
+              sections: [
+                {
+                  title: 'MCP Tool Result (JSON)',
+                  type: 'json',
+                  content: parsedJson,
+                  raw: JSON.stringify(parsedJson, null, 2)
+                }
+              ]
+            };
+          }
+          
+          // Parsed JSON is a simple value (string, number, etc.)
+          return {
+            type: 'mixed',
+            content: { text: '', sections: [] },
+            sections: [
+              {
+                title: 'MCP Tool Result',
+                type: 'json',
+                content: parsedJson,
+                raw: JSON.stringify(parsedJson, null, 2)
+              }
+            ]
+          };
+        } catch {
+          // Not valid JSON, try other formats
+        }
         
         // Check if the result contains YAML content
         if (resultContent.includes('apiVersion:') || 
