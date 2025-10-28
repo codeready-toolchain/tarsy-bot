@@ -203,7 +203,7 @@ function ToolCallBox({
               />
             </Box>
             {toolResult ? (
-              <JsonDisplay data={toolResult} collapsed={1} maxHeight={300} />
+              <JsonDisplay data={toolResult} maxHeight={300} />
             ) : (
               <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                 No result
