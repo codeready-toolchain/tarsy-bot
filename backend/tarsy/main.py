@@ -653,10 +653,12 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                 timeout_seconds = settings.alert_processing_timeout
                 logger.info(f"Processing session {session_id} with {timeout_seconds}s timeout")
                 
-                # Create task explicitly so we can cancel it if needed
+                # Create the actual processing task
+                # Note: The outer task (this function) was already registered by the controller
                 task = asyncio.create_task(alert_service.process_alert(alert))
                 
-                # Register task for cancellation tracking
+                # Update active_tasks to track the inner processing task instead of the outer wrapper
+                # This allows cancellation to properly stop the actual processing work
                 assert active_tasks_lock is not None, "active_tasks_lock not initialized"
                 async with active_tasks_lock:
                     active_tasks[session_id] = task

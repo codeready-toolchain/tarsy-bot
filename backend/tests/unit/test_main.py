@@ -436,6 +436,23 @@ class TestMainEndpoints:
                 if isinstance(db_status, Exception):
                     assert str(db_status) in data["error"]
 
+    @patch('tarsy.main.shutdown_in_progress', True)
+    def test_health_endpoint_during_shutdown(self, client):
+        """Test health endpoint returns 503 when shutdown is in progress."""
+        response = client.get("/health")
+        
+        # Assert HTTP 503 status code
+        assert response.status_code == 503
+        
+        # Parse response JSON
+        data = response.json()
+        
+        # Assert status is "shutting_down"
+        assert data["status"] == "shutting_down"
+        
+        # Assert message contains "shutting down" (case-insensitive)
+        assert "shutting down" in data["message"].lower()
+
     @patch('tarsy.main.get_database_info')
     def test_health_endpoint_with_warnings(self, mock_db_info, client):
         """Test health endpoint includes system warnings."""
