@@ -1514,9 +1514,9 @@ BUILTIN_PATTERN_GROUPS = {
 
 **Example Patterns**:
 - **Kubernetes Secrets**: Masks entire `data:` sections in YAML
-- **API Keys**: `api_key: sk-abc123...` → `api_key: "***MASKED_API_KEY***"`
-- **Certificates**: `-----BEGIN CERTIFICATE-----...` → `***MASKED_CERTIFICATE***`
-- **Base64 Values**: Long base64 strings → `***MASKED_BASE64_VALUE***`
+- **API Keys**: `api_key: sk-abc123...` → `api_key: "__MASKED_API_KEY__"`
+- **Certificates**: `-----BEGIN CERTIFICATE-----...` → `__MASKED_CERTIFICATE__`
+- **Base64 Values**: Long base64 strings → `__MASKED_BASE64_VALUE__`
 
 #### Server-Specific Configuration
 
@@ -1542,7 +1542,7 @@ mcp_servers:
       custom_patterns:
         - name: "custom_token"
           pattern: "CUSTOM-[A-Z0-9]{16}"
-          replacement: "***MASKED_CUSTOM_TOKEN***"
+          replacement: "__MASKED_CUSTOM_TOKEN__"
 ```
 
 #### Security Integration Points

@@ -282,7 +282,7 @@ class DataMaskingService:
         except Exception as e:
             logger.error(f"Error in fail-safe masking: {e}")
             # Ultimate fail-safe
-            return {"result": "***MASKED_ERROR***"}
+            return {"result": "__MASKED_ERROR__"}
     
     def _apply_patterns(self, text: str, patterns: List[str]) -> str:
         """Apply a list of compiled regex patterns to mask text content.

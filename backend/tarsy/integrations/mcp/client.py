@@ -585,7 +585,7 @@ class MCPClient:
         except Exception as e:
             logger.warning(f"Failed to mask request parameters for logging: {e}. Using parameter keys only.")
             # Fallback: log only parameter keys, not values
-            masked_parameters = {k: "***MASKED***" for k in parameters.keys()}
+            masked_parameters = {k: "__MASKED__" for k in parameters.keys()}
         
         mcp_comm_logger.debug(f"=== MCP REQUEST [{server_name}] [ID: {request_id}] ===")
         mcp_comm_logger.debug(f"Request ID: {request_id}")
