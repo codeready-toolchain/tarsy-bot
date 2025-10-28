@@ -712,3 +712,58 @@ class TestAlertControllerCriticalCoverage:
                 
                 # Each should be processed successfully
                 assert response.status_code == 200
+
+
+@pytest.mark.unit
+class TestGracefulShutdownBehavior:
+    """Test graceful shutdown behavior in alert controller."""
+
+    @pytest.fixture
+    def client(self):
+        """Create test client."""
+        return TestClient(app)
+
+    @patch('tarsy.main.shutdown_in_progress', True)
+    def test_submit_alert_rejects_during_shutdown(self, client):
+        """Test that submit_alert endpoint rejects new sessions during shutdown."""
+        from tests.utils import AlertFactory
+        
+        alert = AlertFactory.create_kubernetes_alert()
+        alert_data = {
+            "alert_type": alert.alert_type,
+            "runbook": alert.runbook,
+            "severity": alert.severity,
+            "data": alert.data
+        }
+        
+        response = client.post("/api/v1/alerts", json=alert_data)
+        
+        # Should return 503 during shutdown
+        assert response.status_code == 503
+        data = response.json()
+        assert "detail" in data
+        assert "shutting down" in data["detail"]["error"].lower()
+
+    @patch('tarsy.main.shutdown_in_progress', False)
+    def test_submit_alert_accepts_when_not_shutting_down(self, client):
+        """Test that submit_alert endpoint accepts new sessions when not shutting down."""
+        from tests.utils import AlertFactory
+        
+        # Mock the process callback in app state
+        app.state.process_alert_callback = AsyncMock()
+        
+        alert = AlertFactory.create_kubernetes_alert()
+        alert_data = {
+            "alert_type": alert.alert_type,
+            "runbook": alert.runbook,
+            "severity": alert.severity,
+            "data": alert.data
+        }
+        
+        response = client.post("/api/v1/alerts", json=alert_data)
+        
+        # Should return 200 when not shutting down
+        assert response.status_code == 200
+        data = response.json()
+        assert "session_id" in data
+        assert data["status"] == "queued"
