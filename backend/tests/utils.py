@@ -1547,7 +1547,7 @@ class MCPServerMaskingFactory:
                 {
                     "name": "server_id",
                     "pattern": r"server_id_\d{8}",
-                    "replacement": "***MASKED_SERVER_ID***",
+                    "replacement": "__MASKED_SERVER_ID__",
                     "description": "Server internal IDs",
                     "enabled": True
                 }

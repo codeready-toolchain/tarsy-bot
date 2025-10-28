@@ -22,13 +22,13 @@ class TestMaskingPattern:
         pattern = MaskingPattern(
             name="test_pattern",
             pattern=r"secret_\d+",
-            replacement="***MASKED_SECRET***",
+            replacement="__MASKED_SECRET__",
             description="Test secret pattern"
         )
         
         assert pattern.name == "test_pattern"
         assert pattern.pattern == r"secret_\d+"
-        assert pattern.replacement == "***MASKED_SECRET***"
+        assert pattern.replacement == "__MASKED_SECRET__"
         assert pattern.description == "Test secret pattern"
         assert pattern.enabled is True  # Default value
     
@@ -37,7 +37,7 @@ class TestMaskingPattern:
         pattern = MaskingPattern(
             name="disabled_pattern",
             pattern=r"test_\d+",
-            replacement="***MASKED***",
+            replacement="__MASKED__",
             description="Disabled pattern",
             enabled=False
         )
@@ -50,7 +50,7 @@ class TestMaskingPattern:
             MaskingPattern(
                 name="invalid",
                 pattern=r"[unclosed bracket",  # Invalid regex
-                replacement="***MASKED***",
+                replacement="__MASKED__",
                 description="Invalid pattern"
             )
         
@@ -68,7 +68,7 @@ class TestMaskingPattern:
             MaskingPattern(
                 name=invalid_name,
                 pattern=r"valid_\d+",
-                replacement="***MASKED***",
+                replacement="__MASKED__",
                 description="Valid pattern"
             )
         
@@ -80,7 +80,7 @@ class TestMaskingPattern:
         pattern = MaskingPattern(
             name="  trimmed_name  ",
             pattern=r"test_\d+",
-            replacement="***MASKED***",
+            replacement="__MASKED__",
             description="Test trimming"
         )
         
@@ -91,7 +91,7 @@ class TestMaskingPattern:
         valid_data = {
             "name": "test_pattern",
             "pattern": r"secret_\d+",
-            "replacement": "***MASKED_SECRET***",
+            "replacement": "__MASKED_SECRET__",
             "description": "Test secret pattern",
             "enabled": True
         }
@@ -111,7 +111,7 @@ class TestMaskingPattern:
             pattern = MaskingPattern(
                 name=f"pattern_{i}",
                 pattern=regex,
-                replacement="***MASKED***",
+                replacement="__MASKED__",
                 description=f"Test pattern {i}"
             )
             assert pattern.pattern == regex
@@ -135,7 +135,7 @@ class TestMaskingConfig:
         custom_pattern = MaskingPattern(
             name="custom_test",
             pattern=r"test_\d+",
-            replacement="***MASKED_TEST***",
+            replacement="__MASKED_TEST__",
             description="Custom test pattern"
         )
         
@@ -171,13 +171,13 @@ class TestMaskingConfig:
             MaskingPattern(
                 name="pattern1",
                 pattern=r"test1_\d+",
-                replacement="***MASKED_1***",
+                replacement="__MASKED_1__",
                 description="First pattern"
             ),
             MaskingPattern(
                 name="pattern2",
                 pattern=r"test2_\d+",
-                replacement="***MASKED_2***",
+                replacement="__MASKED_2__",
                 description="Second pattern"
             )
         ]
@@ -207,7 +207,7 @@ class TestMaskingConfig:
         custom_pattern = MaskingPattern(
             name="custom_test",
             pattern=r"test_\d+",
-            replacement="***MASKED_TEST***",
+            replacement="__MASKED_TEST__",
             description="Custom test pattern"
         )
         
@@ -239,7 +239,7 @@ class TestMaskingConfig:
                 MaskingPattern(
                     name="internal_id",
                     pattern=r"internal_id_\d{8}",
-                    replacement="***MASKED_ID***",
+                    replacement="__MASKED_ID__",
                     description="Internal system IDs"
                 )
             ]
@@ -265,13 +265,13 @@ class TestMaskingConfigValidation:
             MaskingPattern(
                 name="duplicate",
                 pattern=r"test1_\d+",
-                replacement="***MASKED_1***",
+                replacement="__MASKED_1__",
                 description="First pattern"
             ),
             MaskingPattern(
                 name="duplicate",  # Same name
                 pattern=r"test2_\d+", 
-                replacement="***MASKED_2***",
+                replacement="__MASKED_2__",
                 description="Second pattern"
             )
         ]
@@ -291,13 +291,13 @@ class TestMaskingConfigValidation:
                     MaskingPattern(
                         name="valid_pattern",
                         pattern=r"valid_\d+",
-                        replacement="***MASKED***",
+                        replacement="__MASKED__",
                         description="Valid pattern"
                     ),
                     MaskingPattern(
                         name="invalid_pattern",
                         pattern=r"[invalid regex(",  # Invalid regex
-                        replacement="***MASKED***",
+                        replacement="__MASKED__",
                         description="Invalid pattern"
                     )
                 ]
@@ -313,7 +313,7 @@ class TestMaskingConfigValidation:
                 MaskingPattern(
                     name="test_pattern",
                     pattern=r"test_\d+",
-                    replacement="***MASKED***",
+                    replacement="__MASKED__",
                     description="Test pattern"
                 )
             ]

@@ -22,6 +22,31 @@ interface ParsedContent {
 }
 
 /**
+ * Calculate smart collapse level based on JSON content size
+ * Returns more generous expansion for smaller content
+ */
+const calculateSmartCollapseLevel = (
+  content: any,
+  collapsedProp?: boolean | number
+): boolean | number => {
+  // If user explicitly set collapsed prop, respect it
+  if (collapsedProp === false || collapsedProp === true) return collapsedProp;
+  
+  try {
+    const jsonString = JSON.stringify(content);
+    const size = jsonString.length;
+    
+    // Be generous with expansion for typical MCP results
+    if (size < 500) return false;      // Fully expand small JSON (<500 chars)
+    if (size < 2000) return 3;         // Show 3 levels for medium JSON
+    if (size < 5000) return 2;         // Show 2 levels for larger JSON
+    return typeof collapsedProp === 'number' ? collapsedProp : 1; // Use prop or default
+  } catch {
+    return typeof collapsedProp === 'number' ? collapsedProp : 2;
+  }
+};
+
+/**
  * JsonDisplay component - Enhanced Phase 5
  * Intelligent content parser with support for JSON, Python objects, and mixed content
  */
@@ -553,7 +578,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
               {section.type === 'json' ? (
                 <JsonView 
                   value={section.content}
-                  collapsed={1}
+                  collapsed={calculateSmartCollapseLevel(section.content, collapsed)}
                   displayDataTypes={false}
                   displayObjectSize={false}
                   enableClipboard={false}
@@ -648,7 +673,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
     }}>
       <JsonView 
         value={content}
-        collapsed={collapsed}
+        collapsed={calculateSmartCollapseLevel(content, collapsed)}
         displayDataTypes={false}
         displayObjectSize={false}
         enableClipboard={false}

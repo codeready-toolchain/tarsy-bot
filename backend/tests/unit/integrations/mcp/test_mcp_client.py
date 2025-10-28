@@ -283,7 +283,7 @@ class TestMCPClientToolCalling:
         
         # Mock data masking service
         mock_masking = Mock()
-        mock_masking.mask_response.return_value = {"result": "Result with api_key: ***MASKED_API_KEY***"}
+        mock_masking.mask_response.return_value = {"result": "Result with api_key: __MASKED_API_KEY__"}
         client.data_masking_service = mock_masking
         
         with patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
@@ -297,7 +297,7 @@ class TestMCPClientToolCalling:
                 "test-session"
             )
             
-            assert "***MASKED_API_KEY***" in str(result)
+            assert "__MASKED_API_KEY__" in str(result)
             # mask_response is now called twice: once for request parameters (logging), once for response
             assert mock_masking.mask_response.call_count == 2
             # Verify masking was called for both request parameters and response

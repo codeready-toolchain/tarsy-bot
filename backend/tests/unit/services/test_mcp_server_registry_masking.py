@@ -199,7 +199,7 @@ class TestMCPServerRegistryMaskingServiceIntegration:
                             {
                                 "name": "invalid_pattern",
                                 "pattern": "[invalid regex(",  # Invalid regex
-                                "replacement": "***MASKED***",
+                                "replacement": "__MASKED__",
                                 "description": "Invalid pattern"
                             }
                         ]
@@ -229,7 +229,7 @@ class TestMCPServerRegistryMaskingServiceIntegration:
                         {
                             "name": "k8s_token",
                             "pattern": r"token:\s*[A-Za-z0-9\-_]{40,}",
-                            "replacement": "token: ***MASKED_K8S_TOKEN***",
+                            "replacement": "token: __MASKED_K8S_TOKEN__",
                             "description": "Kubernetes service account tokens"
                         }
                     ]
@@ -337,7 +337,7 @@ class TestMCPServerRegistryMaskingEdgeCases:
                         {
                             "name": "test_pattern",
                             "pattern": r"test_\d+",
-                            "replacement": "***MASKED_TEST***",
+                            "replacement": "__MASKED_TEST__",
                             "description": "Test pattern for serialization"
                         }
                     ]

@@ -141,57 +141,57 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
 BUILTIN_MASKING_PATTERNS: Dict[str, Dict[str, str]] = {
     "kubernetes_data_section": {
         "pattern": r'^(data:)(\s*\n(?:\s+[^:\n]+:[^\n]*\n?)*)',
-        "replacement": r'\1 ***MASKED_SECRET_DATA***\n',
+        "replacement": r'\1 __MASKED_SECRET_DATA__\n',
         "description": "Masks entire Kubernetes data: section in YAML (line-start only, not metadata:)"
     },
     "kubernetes_stringdata_json": {
         "pattern": r'("stringData":)(\{[^}]*\})',
-        "replacement": r'\1***MASKED_SECRET_DATA***',
+        "replacement": r'\1__MASKED_SECRET_DATA__',
         "description": "Masks stringData objects in JSON (quoted context only)"
     },
     "base64_secret": {
         "pattern": r'\b([A-Za-z0-9+/]{20,}={0,2})\b',
-        "replacement": "***MASKED_BASE64_VALUE***",
+        "replacement": "__MASKED_BASE64_VALUE__",
         "description": "Base64-encoded values in secret contexts (20+ chars)"
     },
     "base64_short": {
         "pattern": r'(?<=:\s)([A-Za-z0-9+/]{4,19}={0,2})(?=\s|$)',
-        "replacement": "***MASKED_SHORT_BASE64***",
+        "replacement": "__MASKED_SHORT_BASE64__",
         "description": "Short base64-encoded values (4-19 chars) after colons in Kubernetes contexts"
     },
     "api_key": {
         "pattern": r'(?i)(?:api[_-]?key|apikey|key)["\']?\s*[:=]\s*["\']?([A-Za-z0-9_\-]{20,})["\']?',
-        "replacement": r'"api_key": "***MASKED_API_KEY***"',
+        "replacement": r'"api_key": "__MASKED_API_KEY__"',
         "description": "API keys in various formats"
     },
     "password": {
         "pattern": r'(?i)(?:password|pwd|pass)["\']?\s*[:=]\s*["\']?([^"\'\s\n]{6,})["\']?',
-        "replacement": r'"password": "***MASKED_PASSWORD***"',
+        "replacement": r'"password": "__MASKED_PASSWORD__"',
         "description": "Password fields"
     },
     "certificate": {
         "pattern": r'-----BEGIN [A-Z ]+-----.*?-----END [A-Z ]+-----',
-        "replacement": '***MASKED_CERTIFICATE***',
+        "replacement": '__MASKED_CERTIFICATE__',
         "description": "SSL/TLS certificates and private keys"
     },
     "certificate_authority_data": {
         "pattern": r'(?i)certificate-authority-data:\s*([A-Za-z0-9+/]{20,}={0,2})',
-        "replacement": r'certificate-authority-data: ***MASKED_CA_CERTIFICATE***',
+        "replacement": r'certificate-authority-data: __MASKED_CA_CERTIFICATE__',
         "description": "Certificate authority data in Kubernetes configs and YAML files"
     },
     "email": {
-        "pattern": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*\.[A-Za-z]{2,}\b',
-        "replacement": '***MASKED_EMAIL***',
-        "description": "Email addresses in various contexts"
+        "pattern": r'(?<!\\)\b[A-Za-z0-9._%+-]+@[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*\.[A-Za-z]{2,16}\b(?!\()',
+        "replacement": '__MASKED_EMAIL__',
+        "description": "Email addresses"
     },
     "token": {
         "pattern": r'(?i)(?:token|bearer|jwt)["\']?\s*[:=]\s*["\']?([A-Za-z0-9_\-\.]{20,})["\']?',
-        "replacement": r'"token": "***MASKED_TOKEN***"',
+        "replacement": r'"token": "__MASKED_TOKEN__"',
         "description": "Access tokens, bearer tokens, and JWTs"
     },
     "ssh_key": {
         "pattern": r'ssh-(?:rsa|dss|ed25519|ecdsa)\s+[A-Za-z0-9+/=]+',
-        "replacement": "***MASKED_SSH_KEY***",
+        "replacement": "__MASKED_SSH_KEY__",
         "description": "SSH public keys (all common algorithms)"
     }
 }

@@ -270,8 +270,8 @@ class DataMaskingService:
         
         try:
             # Convert response to string and mask it entirely
-            response_str = json.dumps(response, default=str)
-            masked_content = "***MASKED_ERROR***"
+            json.dumps(response, default=str)
+            masked_content = "__MASKED_ERROR__"
             
             # Try to preserve the basic response structure
             if "result" in response:

@@ -59,21 +59,21 @@ class TestBasicPatternMatching:
     
     @pytest.mark.parametrize("test_data,patterns,expected_masked,expected_preserved", [
         (f'api_key: "{TEST_DATA_WITH_SECRETS["api_key"]}"', ["api_key"], 
-         ["***MASKED_API_KEY***"], [TEST_DATA_WITH_SECRETS["api_key"]]),
+         ["__MASKED_API_KEY__"], [TEST_DATA_WITH_SECRETS["api_key"]]),
         (f'"password": "{TEST_DATA_WITH_SECRETS["password"]}"', ["password"], 
-         ["***MASKED_PASSWORD***"], [TEST_DATA_WITH_SECRETS["password"]]),
+         ["__MASKED_PASSWORD__"], [TEST_DATA_WITH_SECRETS["password"]]),
         ("""-----BEGIN CERTIFICATE-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890
 -----END CERTIFICATE-----""", ["certificate"], 
-         ["***MASKED_CERTIFICATE***"], ["MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890"]),
+         ["__MASKED_CERTIFICATE__"], ["MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890"]),
         ("certificate-authority-data: LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZPQ==", ["certificate_authority_data"], 
-         ["***MASKED_CA_CERTIFICATE***"], ["LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZPQ=="]),
+         ["__MASKED_CA_CERTIFICATE__"], ["LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZPQ=="]),
         ("Contact support at support@example.com for help", ["email"], 
-         ["***MASKED_EMAIL***"], ["support@example.com"]),
+         ["__MASKED_EMAIL__"], ["support@example.com"]),
         ("This is just normal text without secrets", ["api_key", "password"], 
          [], []),  # No masking
         (f'api_key: "{TEST_DATA_WITH_SECRETS["api_key"]}" password: "secretpass123"', ["api_key", "password"], 
-         ["***MASKED_API_KEY***", "***MASKED_PASSWORD***"], 
+         ["__MASKED_API_KEY__", "__MASKED_PASSWORD__"], 
          [TEST_DATA_WITH_SECRETS["api_key"], "secretpass123"]),
     ])
     def test_pattern_masking_scenarios(self, test_data, patterns, expected_masked, expected_preserved):
@@ -102,7 +102,7 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890
         assert "YWRtaW4=" not in result
         assert "c3VwZXJzZWNyZXRwYXNzd29yZDEyMw==" not in result
         assert "xyz" not in result
-        assert "***MASKED_SECRET_DATA***" in result
+        assert "__MASKED_SECRET_DATA__" in result
         
         # Metadata should be preserved
         assert "my-secret" in result
@@ -127,7 +127,7 @@ contexts:
         
         # Certificate authority data should be masked
         assert "LS0tLS1CRUdJTi1DRVJUSUZJQ0FURS0tLS0tCk1JSUREakNDQWZZQ0NRQ1dFamxNOW9zPQ==" not in result
-        assert "***MASKED_CA_CERTIFICATE***" in result
+        assert "__MASKED_CA_CERTIFICATE__" in result
         
         # Other config data should be preserved
         assert "https://api.crc.testing:6443" in result
@@ -167,7 +167,7 @@ contexts:
             
             # Should not be masked - original text should remain unchanged
             assert result == test_case, f"False positive detected in: {test_case}"
-            assert "***MASKED_CA_CERTIFICATE***" not in result, f"Incorrectly masked: {test_case}"
+            assert "__MASKED_CA_CERTIFICATE__" not in result, f"Incorrectly masked: {test_case}"
 
     def test_certificate_authority_data_valid_cases_are_masked(self):
         """Test that valid certificate-authority-data cases ARE properly masked."""
@@ -196,41 +196,59 @@ contexts:
             result = self.service._apply_patterns(test_case, ["certificate_authority_data"])
             
             # Should be masked
-            assert "***MASKED_CA_CERTIFICATE***" in result, f"Should have been masked: {test_case}"
+            assert "__MASKED_CA_CERTIFICATE__" in result, f"Should have been masked: {test_case}"
             # Original base64 data should not be present
             original_data = test_case.split(': ', 1)[1] if ': ' in test_case else test_case.split(':\t', 1)[1] if ':\t' in test_case else test_case.split(':', 1)[1]
             assert original_data.strip() not in result, f"Original data still present: {test_case}"
 
     def test_email_no_false_positives(self):
-        """Test that email pattern doesn't create false positives."""
-        # Test cases that should NOT be masked - clearly invalid email formats
+        """Test that email pattern doesn't create false positives on invalid formats and code constructs."""
+        # Test cases that should NOT be masked
         test_cases = [
-            # No @ symbol
-            "email.domain.com",
-            "user.domain.com",
+            # Invalid email formats
+            "email.domain.com",  # No @ symbol
+            "user.domain.com",  # No @ symbol
+            "user@domain",  # No domain extension
+            "support@localhost",  # No domain extension
+            "user@@domain.com",  # Double @
+            "@domain.com",  # Missing username
+            "user@",  # Missing domain
+            "user@.com",  # Missing domain name
+            "user@domain.",  # Missing TLD
+            "user@domain..com",  # Double dot
+            "user@domain.c",  # TLD too short (< 2 chars)
+            "user@domain.1",  # TLD too short
+            "user@-domain.com",  # Domain starts with hyphen
+            "user@.domain.com",  # Domain starts with dot
             
-            # No domain extension
-            "user@domain",
-            "support@localhost",
+            # Python decorators (the case we fixed)
+            "@base.ReleaseTrack.ALPHA",
+            "@base.ReleaseTrack.BETA", 
+            "@base.ReleaseTrack.GA",
+            "@base.ReleaseTrack()",
+            "@app.route('/path')",
+            "@pytest.mark.parametrize()",
+            "@staticmethod.decorator()",
             
-            # Invalid characters or formats
-            "user@@domain.com",
-            "@domain.com", 
-            "user@",
-            "user@.com",
-            "user@domain.",
-            "user@domain..com",
+            # Function calls with @ symbol
+            "test@foo.Function()",
+            "call@module.Method()",
+            "var@namespace.func()",
             
-            # Too short TLD (less than 2 chars) 
-            "user@domain.c",
-            "user@domain.1",
+            # TypeScript/JavaScript decorators
+            "@Component({})",
+            "@Injectable()",
+            "@NgModule()",
             
-            # Domain starting with hyphen or dot
-            "user@-domain.com",
-            "user@.domain.com",
+            # Multiple decorators in code
+            """@base.ReleaseTrack.ALPHA
+@base.ReleaseTrack.BETA
+class MyClass:
+    pass""",
             
-            # Empty username
-            "@domain.com",
+            # Decorators with domains that look like TLDs
+            "@router.get('/api')",
+            "@app.post('/data')",
         ]
         
         for test_case in test_cases:
@@ -238,7 +256,7 @@ contexts:
             
             # Should not be masked - original text should remain unchanged
             assert result == test_case, f"False positive detected in: {test_case}"
-            assert "***MASKED_EMAIL***" not in result, f"Incorrectly masked: {test_case}"
+            assert "__MASKED_EMAIL__" not in result, f"Incorrectly masked: {test_case}"
 
     def test_email_contextual_cases(self):
         """Test email pattern in various contextual cases that should be masked."""
@@ -258,7 +276,7 @@ contexts:
             result = self.service._apply_patterns(test_case, ["email"])
             
             # Should mask the email part
-            assert "***MASKED_EMAIL***" in result, f"Should have masked email in: {test_case}"
+            assert "__MASKED_EMAIL__" in result, f"Should have masked email in: {test_case}"
 
     def test_email_valid_cases_are_masked(self):
         """Test that valid email addresses ARE properly masked."""
@@ -307,7 +325,7 @@ contexts:
             result = self.service._apply_patterns(test_case, ["email"])
             
             # Should be masked
-            assert "***MASKED_EMAIL***" in result, f"Should have been masked: {test_case}"
+            assert "__MASKED_EMAIL__" in result, f"Should have been masked: {test_case}"
             
             # Check that specific email addresses are masked
             import re
@@ -359,7 +377,7 @@ contexts:
             result = self.service._apply_patterns(test_case, ["ssh_key"])
             
             # Should NOT mask these cases
-            assert "***MASKED_SSH_KEY***" not in result, f"Should NOT have masked: {test_case}"
+            assert "__MASKED_SSH_KEY__" not in result, f"Should NOT have masked: {test_case}"
             assert result == test_case, f"Content changed unexpectedly: {test_case}"
 
     def test_ssh_key_contextual_cases(self):
@@ -389,7 +407,7 @@ contexts:
             result = self.service._apply_patterns(test_case, ["ssh_key"])
             
             # Should mask the SSH key
-            assert "***MASKED_SSH_KEY***" in result, f"Should have masked SSH key in: {test_case}"
+            assert "__MASKED_SSH_KEY__" in result, f"Should have masked SSH key in: {test_case}"
             
             # Original key data should not be present
             assert "AAAAB3NzaC1" not in result and "AAAAC3NzaC1" not in result and "AAAAE2VjZHNh" not in result, \
@@ -435,7 +453,7 @@ contexts:
             result = self.service._apply_patterns(test_case, ["ssh_key"])
             
             # Should be masked
-            assert "***MASKED_SSH_KEY***" in result, f"Should have been masked: {test_case}"
+            assert "__MASKED_SSH_KEY__" in result, f"Should have been masked: {test_case}"
             
             # Check that SSH key data is not present
             import re
@@ -457,7 +475,7 @@ contexts:
         test_data = "Key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7 user@host"
         result = self.service._apply_patterns(test_data, expanded_patterns)
         
-        assert "***MASKED_SSH_KEY***" in result
+        assert "__MASKED_SSH_KEY__" in result
         assert "AAAAB3NzaC1" not in result
 
     def test_ssh_key_with_other_patterns(self):
@@ -472,10 +490,10 @@ contexts:
         result = self.service._apply_patterns(test_data, ["api_key", "ssh_key", "password", "email"])
         
         # All patterns should be masked
-        assert "***MASKED_API_KEY***" in result
-        assert "***MASKED_SSH_KEY***" in result
-        assert "***MASKED_PASSWORD***" in result
-        assert "***MASKED_EMAIL***" in result
+        assert "__MASKED_API_KEY__" in result
+        assert "__MASKED_SSH_KEY__" in result
+        assert "__MASKED_PASSWORD__" in result
+        assert "__MASKED_EMAIL__" in result
         
         # Original sensitive data should not be present
         assert "sk-1234567890abcdefghijklmnopqrstuvwxyz" not in result
@@ -485,11 +503,11 @@ contexts:
 
     @pytest.mark.parametrize("test_data,patterns,expected_masked,expected_preserved", [
         (f'token: {BASE64_TEST_DATA["token"]} another_field: {BASE64_TEST_DATA["another_field"]}', ["base64_secret"], 
-         ["***MASKED_BASE64_VALUE***"], 
+         ["__MASKED_BASE64_VALUE__"], 
          [BASE64_TEST_DATA["token"], BASE64_TEST_DATA["another_field"]]),
         (f'username: {BASE64_TEST_DATA["username"]} password: {BASE64_TEST_DATA["password"]} ' +
          f'token: {BASE64_TEST_DATA["short_token"]}', ["base64_short"], 
-         ["***MASKED_SHORT_BASE64***"], 
+         ["__MASKED_SHORT_BASE64__"], 
          [BASE64_TEST_DATA["username"], BASE64_TEST_DATA["password"], BASE64_TEST_DATA["short_token"]]),
     ])
     def test_base64_masking_scenarios(self, test_data, patterns, expected_masked, expected_preserved):
@@ -514,12 +532,12 @@ class TestDataStructureTraversal:
     
     @pytest.mark.parametrize("data,patterns,expected_masked,expected_preserved", [
         ({"result": {"config": f"api_key: {TEST_DATA_WITH_SECRETS['api_key']}", "normal_field": "normal_value"}}, ["api_key"], 
-         ["***MASKED_API_KEY***"], [TEST_DATA_WITH_SECRETS["api_key"]]),
+         ["__MASKED_API_KEY__"], [TEST_DATA_WITH_SECRETS["api_key"]]),
         (["normal item", "password: secret123", f"api_key: {TEST_DATA_WITH_SECRETS['api_key']}"], ["password", "api_key"], 
-         ["***MASKED_PASSWORD***", "***MASKED_API_KEY***"], 
+         ["__MASKED_PASSWORD__", "__MASKED_API_KEY__"], 
          ["secret123", TEST_DATA_WITH_SECRETS["api_key"]]),
         (NESTED_DATA_STRUCTURE, ["password", "api_key"], 
-         ["***MASKED_PASSWORD***", "***MASKED_API_KEY***"], 
+         ["__MASKED_PASSWORD__", "__MASKED_API_KEY__"], 
          ["secret123", TEST_DATA_WITH_SECRETS["api_key"]]),
     ])
     def test_data_structure_masking_scenarios(self, data, patterns, expected_masked, expected_preserved):
@@ -590,7 +608,7 @@ class TestCustomPatterns:
             MaskingPattern(
                 name="test_pattern",
                 pattern=r"test_\d+",
-                replacement="***MASKED_TEST***",
+                replacement="__MASKED_TEST__",
                 description="Test pattern"
             )
         ]
@@ -608,7 +626,7 @@ class TestCustomPatterns:
             MaskingPattern(
                 name="invalid_pattern",
                 pattern=r"[invalid regex(",  # Invalid regex
-                replacement="***MASKED***",
+                replacement="__MASKED__",
                 description="Invalid pattern"
             )
         
@@ -616,7 +634,7 @@ class TestCustomPatterns:
         valid_pattern = MaskingPattern(
             name="valid_pattern",
             pattern=r"valid_\d+",
-            replacement="***MASKED_VALID***",
+            replacement="__MASKED_VALID__",
             description="Valid pattern"
         )
         
@@ -632,7 +650,7 @@ class TestCustomPatterns:
             MaskingPattern(
                 name="credit_card",
                 pattern=r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b",
-                replacement="***MASKED_CREDIT_CARD***",
+                replacement="__MASKED_CREDIT_CARD__",
                 description="Credit card numbers"
             )
         ]
@@ -643,7 +661,7 @@ class TestCustomPatterns:
         result = self.service._apply_patterns(test_data, ["custom_credit_card"])
         
         assert "1234-5678-9012-3456" not in result
-        assert "***MASKED_CREDIT_CARD***" in result
+        assert "__MASKED_CREDIT_CARD__" in result
 
 
 @pytest.mark.unit
@@ -664,7 +682,7 @@ class TestFailsafeBehavior:
         result = self.service._apply_failsafe_masking(response)
         
         # Failsafe preserves structure but masks content
-        assert result["result"] == "***MASKED_ERROR***"
+        assert result["result"] == "__MASKED_ERROR__"
     
     def test_mask_response_with_no_registry(self):
         """Test mask_response without registry returns original response."""
@@ -715,7 +733,7 @@ class TestMaskResponseIntegration:
         
         # Should mask the API key
         assert "not-a-real-api-key-123456789012345678901234567890" not in str(result)
-        assert "***MASKED_API_KEY***" in str(result)
+        assert "__MASKED_API_KEY__" in str(result)
 
     def test_mask_response_kubernetes_secret_comprehensive(self):
         """Test complete masking flow with realistic Kubernetes secret."""
@@ -749,7 +767,7 @@ type: Opaque"""
         result = self.service.mask_response(response, "kubernetes-server")
         
         # Test that sensitive data is properly masked
-        assert "***MASKED_SECRET_DATA***" in str(result)  # Our new comprehensive masking
+        assert "__MASKED_SECRET_DATA__" in str(result)  # Our new comprehensive masking
         
         # Verify secrets are masked and metadata is preserved
         result_str = str(result)
@@ -768,7 +786,7 @@ type: Opaque"""
         custom_pattern = MaskingPattern(
             name="test_id",
             pattern=r"id_\d{6}",
-            replacement="***MASKED_ID***",
+            replacement="__MASKED_ID__",
             description="Test ID pattern"
         )
         mock_server_config = Mock()
@@ -783,7 +801,7 @@ type: Opaque"""
         
         # Should mask the custom pattern
         assert "id_123456" not in str(result)
-        assert "***MASKED_ID***" in str(result)
+        assert "__MASKED_ID__" in str(result)
     
     def test_mask_response_registry_error_returns_original(self):
         """Test that registry errors return original response (no masking)."""
@@ -829,7 +847,7 @@ class TestMaskAlertData:
         # Sensitive data should be masked
         assert "sk_test_key_1234567890abcdefghijk" not in str(result)
         assert "admin@example.com" not in str(result)
-        assert "***MASKED" in str(result)
+        assert "__MASKED" in str(result)
         
         # Non-sensitive data should be preserved
         assert result["safe_field"] == "safe_value"
