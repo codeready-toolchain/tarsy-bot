@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import JsonDisplay from '../components/JsonDisplay';
+import JsonDisplay from '../../components/JsonDisplay';
 
 /**
  * Tests for enhanced MCP tool result rendering in JsonDisplay component
