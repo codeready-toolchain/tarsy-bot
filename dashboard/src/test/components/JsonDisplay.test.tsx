@@ -63,14 +63,22 @@ describe('JsonDisplay - MCP Tool Result Rendering', () => {
   });
   
   it('should safely handle invalid JSON and fall back to text rendering', () => {
+    // Test data that triggers text fallback (not YAML):
+    // - More than 50 characters
+    // - Contains newlines
+    // - No : or - characters (to avoid YAML detection)
+    // - Invalid JSON
     const mcpResult = {
-      result: 'This is not valid JSON: {invalid}'
+      result: 'This text contains {invalid JSON syntax}\nIt has multiple lines here\nMore than fifty characters total in length\nThis triggers the text rendering path not YAML'
     };
     
-    const { container } = render(<JsonDisplay data={mcpResult} />);
+    const { getByText } = render(<JsonDisplay data={mcpResult} />);
     
-    // Should not throw an error and should display as text
-    expect(container).toBeTruthy();
+    // Should fall back to text rendering with the appropriate label
+    expect(getByText('MCP Tool Result (Text)')).toBeInTheDocument();
+    
+    // Should also display the actual content
+    expect(getByText(/This text contains/)).toBeInTheDocument();
   });
   
   it('should handle YAML content correctly', () => {

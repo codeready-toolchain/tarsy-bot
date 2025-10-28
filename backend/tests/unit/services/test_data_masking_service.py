@@ -287,10 +287,12 @@ class MyClass:
             "Send logs to admin@company.org",
             "Email: support@domain.net",
             
-            # Various TLD lengths
+            # Various TLD lengths (including long TLDs > 16 chars)
             "user@example.co.uk",
             "admin@site.museum",
             "info@domain.travel",
+            "contact@company.international",  # 13 chars TLD
+            "support@example.travelersinsurance",  # 19 chars TLD (tests max valid TLD length)
             
             # Numbers in domain/user
             "user123@example123.com",

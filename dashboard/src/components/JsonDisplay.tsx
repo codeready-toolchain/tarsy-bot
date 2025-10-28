@@ -76,7 +76,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   
   // Debug info for long content
-  const contentLength = String(data).length;
+  const contentLength = typeof data === 'string'
+    ? data.length
+    : (() => { try { return JSON.stringify(data).length; } catch { return String(data).length; } })();
   const showDebugInfo = contentLength > 1000;
 
   // Enhanced content parser
@@ -402,10 +404,10 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
   };
 
   const handleSectionExpand = (sectionId: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [sectionId]: !prev[sectionId]
-    }));
+    setExpandedSections(prev => {
+      const current = prev[sectionId] ?? true;
+      return { ...prev, [sectionId]: !current };
+    });
   };
 
   const parsedContent = parseContent(data);
@@ -508,8 +510,8 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
                   size="small"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigator.clipboard.writeText(section.content);
-                    // You could add a toast notification here
+                    const text = typeof section.raw === 'string' ? section.raw : String(section.content);
+                    navigator.clipboard?.writeText(text).catch(() => {/* no-op */});
                   }}
                   sx={{ 
                     p: 0.5,
@@ -668,7 +670,8 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
                   size="small"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigator.clipboard.writeText(section.content);
+                    const text = typeof section.raw === 'string' ? section.raw : String(section.content);
+                    navigator.clipboard?.writeText(text).catch(() => {/* no-op */});
                   }}
                   sx={{ 
                     p: 0.5,

@@ -180,7 +180,7 @@ BUILTIN_MASKING_PATTERNS: Dict[str, Dict[str, str]] = {
         "description": "Certificate authority data in Kubernetes configs and YAML files"
     },
     "email": {
-        "pattern": r'(?<!\\)\b[A-Za-z0-9._%+-]+@[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*\.[A-Za-z]{2,16}\b(?!\()',
+        "pattern": r'(?<!\\)\b[A-Za-z0-9._%+-]+@[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*\.[A-Za-z]{2,63}\b(?!\()',
         "replacement": '__MASKED_EMAIL__',
         "description": "Email addresses"
     },
