@@ -57,7 +57,7 @@
 - Async/await preferred for I/O operations
 - Google-style docstrings for public APIs
 - Specific exception types with clear error messages
-- Import order: stdlib → third-party → local (auto-sorted by Ruff)
+- **Import order:** stdlib → third-party → local (auto-sorted by Ruff via `backend/pyproject.toml`)
 
 ## TypeScript (Dashboard)
 - Strict type checking enabled
