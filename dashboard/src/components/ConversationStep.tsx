@@ -615,7 +615,6 @@ function ConversationStep({
                     {typeof step.actionResult === 'object' && step.actionResult !== null ? (
                       <JsonDisplay 
                         data={step.actionResult} 
-                        collapsed={false}
                         maxHeight={300}
                       />
                     ) : (

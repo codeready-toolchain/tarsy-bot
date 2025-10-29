@@ -2,9 +2,17 @@
  * Escape HTML to prevent XSS attacks
  */
 const escapeHtml = (text: string): string => {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  if (!text) return '';
+  
+  const htmlEntities: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  };
+  
+  return text.replace(/[&<>"']/g, (char) => htmlEntities[char]);
 };
 
 /**

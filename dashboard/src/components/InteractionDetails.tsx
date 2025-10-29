@@ -361,7 +361,7 @@ function InteractionDetails({
               {mcpDetails.tool_name}
             </Typography>
             {mcpDetails.tool_arguments && Object.keys(mcpDetails.tool_arguments).length > 0 && (
-              <JsonDisplay data={mcpDetails.tool_arguments} collapsed={false} />
+              <JsonDisplay data={mcpDetails.tool_arguments} />
             )}
           </Box>
         </Box>
@@ -410,7 +410,6 @@ function InteractionDetails({
         </Box>
         <JsonDisplay 
           data={isToolList(mcpDetails) ? mcpDetails.available_tools : mcpDetails.tool_result} 
-          collapsed={false}
           maxHeight={800}
         />
       </Box>
@@ -453,7 +452,7 @@ function InteractionDetails({
               tooltip="Copy metadata"
             />
           </Box>
-          <JsonDisplay data={systemDetails.metadata} collapsed={false} />
+          <JsonDisplay data={systemDetails.metadata} />
         </Box>
       )}
     </Stack>

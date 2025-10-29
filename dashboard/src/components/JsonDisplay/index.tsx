@@ -9,22 +9,16 @@ import {
   Chip,
   IconButton,
   Tabs,
-  Tab,
-  Button
+  Tab
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
-import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import { useState } from 'react';
 
 import type { JsonDisplayProps, ParsedContent } from './types';
 import {
   highlightYaml,
-  parseContent,
-  calculateSmartCollapseLevel,
-  calculateShortenTextAfterLength,
-  isAlreadyFullyExpanded
+  parseContent
 } from './utils';
 
 /**
@@ -33,15 +27,14 @@ import {
  * Features:
  * - Automatically detects and parses JSON, YAML, text, and mixed content
  * - Syntax highlighting for YAML
- * - Smart collapse/expand based on content size
  * - Supports MCP tool results with special formatting
  * - Tab interface for mixed content (formatted vs raw)
+ * - Fully expands all content by default for immediate visibility
  */
-function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayProps) {
+function JsonDisplay({ data, collapsed = false, maxHeight = 400 }: JsonDisplayProps) {
   const theme = useTheme();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<number>(0);
-  const [isFullyExpanded, setIsFullyExpanded] = useState<boolean>(false);
   
   // Debug info for long content
   const contentLength = typeof data === 'string'
@@ -58,41 +51,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
 
   const parsedContent = parseContent(data);
 
-  // Helper to get visible section IDs based on active tab
-  const getVisibleSectionIds = (): string[] => {
-    if (parsedContent.type !== 'mixed' || !parsedContent.sections) {
-      return [];
-    }
-    
-    if (activeTab === 0) {
-      // Formatted Text tab: return text sections
-      return parsedContent.sections
-        .filter(s => s.type === 'text')
-        .map(s => s.id);
-    } else if (activeTab === 1) {
-      // Raw Data tab: return json, yaml, code sections
-      return parsedContent.sections
-        .filter(s => s.type === 'json' || s.type === 'yaml' || s.type === 'code')
-        .map(s => s.id);
-    } else {
-      // Other tabs: return all section IDs
-      return parsedContent.sections.map(s => s.id);
-    }
-  };
 
-  // Determine if expand/collapse is useful (only for JSON content that has something to expand)
-  const hasExpandableContent = (() => {
-    if (parsedContent.type === 'json') {
-      return !isAlreadyFullyExpanded(parsedContent.content);
-    }
-    if (parsedContent.type === 'mixed' && parsedContent.sections) {
-      // Check if any JSON section has something to expand
-      return parsedContent.sections.some(s => 
-        s.type === 'json' && !isAlreadyFullyExpanded(s.content)
-      );
-    }
-    return false;
-  })();
 
   // Render based on content type
   const renderContent = () => {
@@ -277,11 +236,11 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
             {section.type === 'json' ? (
               <JsonView 
                 value={section.content}
-                collapsed={isFullyExpanded ? false : calculateSmartCollapseLevel(section.content, collapsed)}
+                collapsed={collapsed}
                 displayDataTypes={false}
                 displayObjectSize={false}
                 enableClipboard={false}
-                shortenTextAfterLength={isFullyExpanded ? 0 : calculateShortenTextAfterLength(section.content)}
+                shortenTextAfterLength={0}
                 style={{
                   backgroundColor: theme.palette.grey[50],
                   padding: theme.spacing(1),
@@ -510,9 +469,6 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
   };
 
   const renderJsonContent = (content: any) => {
-    const effectiveCollapsed = isFullyExpanded ? false : calculateSmartCollapseLevel(content, collapsed);
-    const effectiveShortenText = isFullyExpanded ? 0 : calculateShortenTextAfterLength(content);
-    
     return (
       <Box sx={{ 
         maxWidth: '100%',
@@ -532,11 +488,11 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
       }}>
         <JsonView 
           value={content}
-          collapsed={effectiveCollapsed}
+          collapsed={collapsed}
           displayDataTypes={false}
           displayObjectSize={false}
           enableClipboard={false}
-          shortenTextAfterLength={effectiveShortenText}
+          shortenTextAfterLength={0}
           style={{
             backgroundColor: theme.palette.grey[50],
             padding: theme.spacing(2),
@@ -602,8 +558,8 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
       wordBreak: 'break-word',
       overflowWrap: 'break-word',
     }}>
-      {/* Header with debug info and expand/collapse button */}
-      {(showDebugInfo || hasExpandableContent) && (
+      {/* Header with debug info */}
+      {showDebugInfo && (
         <Box sx={{ 
           display: 'flex', 
           justifyContent: 'space-between', 
@@ -611,52 +567,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
           mb: 1,
           gap: 2
         }}>
-          {showDebugInfo && (
-            <Typography variant="caption" color="text.secondary">
-              Content length: {contentLength.toLocaleString()} characters • Scrollable area
-            </Typography>
-          )}
-          {hasExpandableContent && (
-            <Box sx={{ marginLeft: 'auto' }}>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={isFullyExpanded ? <UnfoldLessIcon /> : <UnfoldMoreIcon />}
-                onClick={() => {
-                  const newExpandedState = !isFullyExpanded;
-                  setIsFullyExpanded(newExpandedState);
-                  
-                  // Also toggle visible accordions based on active tab
-                  const visibleSectionIds = getVisibleSectionIds();
-                  if (visibleSectionIds.length > 0) {
-                    setExpandedSections(prev => {
-                      const updated = { ...prev };
-                      if (newExpandedState) {
-                        // Expanding: add visible section IDs
-                        visibleSectionIds.forEach(id => {
-                          updated[id] = true;
-                        });
-                      } else {
-                        // Collapsing: remove visible section IDs, preserve others
-                        visibleSectionIds.forEach(id => {
-                          delete updated[id];
-                        });
-                      }
-                      return updated;
-                    });
-                  }
-                }}
-                sx={{ 
-                  textTransform: 'none',
-                  fontSize: '0.75rem',
-                  py: 0.25,
-                  px: 1,
-                }}
-              >
-                {isFullyExpanded ? 'Collapse All' : 'Expand All'}
-              </Button>
-            </Box>
-          )}
+          <Typography variant="caption" color="text.secondary">
+            Content length: {contentLength.toLocaleString()} characters • Scrollable area
+          </Typography>
         </Box>
       )}
       {renderContent()}

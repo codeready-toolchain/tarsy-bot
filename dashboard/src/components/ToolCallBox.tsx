@@ -282,7 +282,7 @@ function ToolCallBox({
               isSimpleArguments(toolArguments) ? (
                 <SimpleArgumentsList args={toolArguments} />
               ) : (
-                <JsonDisplay data={toolArguments} collapsed={false} maxHeight={250} />
+                <JsonDisplay data={toolArguments} maxHeight={250} />
               )
             ) : (
               <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
@@ -305,7 +305,7 @@ function ToolCallBox({
               />
             </Box>
             {toolResult ? (
-              <JsonDisplay data={toolResult} collapsed={false} maxHeight={300} />
+              <JsonDisplay data={toolResult} maxHeight={300} />
             ) : (
               <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                 No result
