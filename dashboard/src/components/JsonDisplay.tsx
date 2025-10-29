@@ -12,12 +12,15 @@ interface JsonDisplayProps {
   maxHeight?: number;
 }
 
+type SectionType = 'json' | 'yaml' | 'code' | 'text' | 'system-prompt' | 'user-prompt';
+
 interface ParsedContent {
   type: 'json' | 'python-objects' | 'markdown' | 'mixed' | 'plain-text';
   content: any;
   sections?: Array<{
+    id: string;
     title: string;
-    type: string;
+    type: SectionType;
     content: any;
     raw: string;
   }>;
@@ -136,8 +139,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
               // Create sections: First the JSON, then each multi-line field formatted
               const sections = [
                 {
+                  id: 'mcp-json',
                   title: 'MCP Tool Result (JSON)',
-                  type: 'json',
+                  type: 'json' as SectionType,
                   content: parsedJson,
                   raw: JSON.stringify(parsedJson, null, 2)
                 }
@@ -149,10 +153,12 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
                 const title = path 
                   ? `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} (Formatted)`
                   : 'Formatted Text';
+                const id = `mlf:${path || fieldName}`;
                 
                 sections.push({
+                  id,
                   title,
-                  type: 'text',
+                  type: 'text' as SectionType,
                   content: content,
                   raw: content
                 });
@@ -171,8 +177,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
               content: { text: '', sections: [] },
               sections: [
                 {
+                  id: 'mcp-json',
                   title: 'MCP Tool Result (JSON)',
-                  type: 'json',
+                  type: 'json' as SectionType,
                   content: parsedJson,
                   raw: JSON.stringify(parsedJson, null, 2)
                 }
@@ -186,8 +193,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
             content: { text: '', sections: [] },
             sections: [
               {
+                id: 'mcp-json-simple',
                 title: 'MCP Tool Result',
-                type: 'json',
+                type: 'json' as SectionType,
                 content: parsedJson,
                 raw: JSON.stringify(parsedJson, null, 2)
               }
@@ -209,8 +217,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
             content: { text: '', sections: [] },
             sections: [
               {
+                id: 'mcp-yaml',
                 title: 'MCP Tool Result (YAML)',
-                type: 'yaml',
+                type: 'yaml' as SectionType,
                 content: resultContent,
                 raw: resultContent
               }
@@ -225,8 +234,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
             content: { text: '', sections: [] },
             sections: [
               {
+                id: 'mcp-text',
                 title: 'MCP Tool Result (Text)',
-                type: 'text',
+                type: 'text' as SectionType,
                 content: resultContent,
                 raw: resultContent
               }
@@ -349,9 +359,10 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
       });
 
       if (messages.length > 0) {
-        const sections = messages.map((msg) => ({
+        const sections = messages.map((msg, index) => ({
+          id: `llm-message-${msg.role}-${index}`,
           title: `${msg.role.charAt(0).toUpperCase() + msg.role.slice(1)} Message`,
-          type: msg.role === 'system' ? 'system-prompt' : 'user-prompt',
+          type: (msg.role === 'system' ? 'system-prompt' : 'user-prompt') as SectionType,
           content: msg.content,
           raw: `Role: ${msg.role}\n\n${msg.content}`
         }));
@@ -382,8 +393,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
       try {
         const jsonContent = JSON.parse(jsonMatch[1]);
         sections.push({
+          id: `json-block-${sectionIndex + 1}`,
           title: `JSON Block ${sectionIndex + 1}`,
-          type: 'json',
+          type: 'json' as SectionType,
           content: jsonContent,
           raw: jsonMatch[1]
         });
@@ -400,8 +412,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
     while ((codeMatch = codeRegex.exec(content)) !== null) {
       if (codeMatch[1] !== 'json') { // Skip JSON blocks (already handled above)
         sections.push({
+          id: `code-block-${sectionIndex + 1}`,
           title: `${codeMatch[1] || 'Code'} Block ${sectionIndex + 1}`,
-          type: 'code',
+          type: 'code' as SectionType,
           content: codeMatch[2],
           raw: codeMatch[2]
         });
@@ -490,9 +503,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
       
       {parsed.sections?.map((section, index) => (
         <Accordion
-          key={index}
-          expanded={expandedSections[section.title] ?? index === 0}
-          onChange={() => handleSectionExpand(section.title)}
+          key={section.id ?? index}
+          expanded={expandedSections[section.id] ?? index === 0}
+          onChange={() => handleSectionExpand(section.id)}
           sx={{ mb: 1, border: `1px solid ${theme.palette.divider}` }}
         >
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -606,9 +619,9 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
     // Helper function to render a section accordion
     const renderSectionAccordion = (section: any, index: number) => (
       <Accordion
-        key={index}
-        expanded={expandedSections[section.title] ?? true}
-        onChange={() => handleSectionExpand(section.title)}
+        key={section.id ?? index}
+        expanded={expandedSections[section.id] ?? false}
+        onChange={() => handleSectionExpand(section.id)}
         sx={{ mb: 1, border: `1px solid ${theme.palette.divider}` }}
       >
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>

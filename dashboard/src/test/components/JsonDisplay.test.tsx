@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import JsonDisplay from '../../components/JsonDisplay';
 
 /**
@@ -27,20 +28,31 @@ describe('JsonDisplay - MCP Tool Result Rendering', () => {
     expect(parsedResult.pods[0].name).toBe('workspacee878db8c624946ac-5d9c499c46-mjwfc');
   });
   
-  it('should parse and display MCP result with nested JSON containing formatted text', () => {
-    // Example from user: {"result": "{\"analysis\":\"CPU consumption analysis...\"}"} 
+  it('should parse and display MCP result with nested JSON containing formatted text', async () => {
+    // Example from user: {"result": "{\"analysis\":\"CPU consumption analysis...\"}"}
     const mcpResult = {
       result: '{"analysis":"CPU consumption analysis for EC2 instance \'i-0f6db88b1b51b00c9\' (looking back 2h):\\n\\n\\nThe **i-0f6db88b1b51b00c9** EC2 instance is running the **ip-10-0-87-9.ec2.internal** node on our **rm3** cluster.\\n\\nNothing suspicious pods detected ¯_(ツ)_/¯\\n\\n\\n"}'
     };
-    
-    const { container } = render(<JsonDisplay data={mcpResult} />);
-    
-    // Should display as "MCP Tool Result (JSON)" section
-    expect(container.textContent).toContain('MCP Tool Result (JSON)');
-    
-    // Should also create a separate "Analysis (Formatted)" section for the long text
+
+    const user = userEvent.setup();
+    const { container, getByRole } = render(<JsonDisplay data={mcpResult} />);
+
+    // Should create tabs for "Formatted Text" and "Raw Data"
+    expect(container.textContent).toContain('Formatted Text');
+    expect(container.textContent).toContain('Raw Data');
+
+    // Should create a separate "Analysis (Formatted)" section for the long text (visible in Formatted Text tab)
     expect(container.textContent).toContain('Analysis (Formatted)');
-    
+
+    // Click on the "Raw Data" tab to see the JSON section
+    const rawDataTab = getByRole('tab', { name: /raw data/i });
+    await user.click(rawDataTab);
+
+    // Wait for the tab content to update and display "MCP Tool Result (JSON)" section
+    await waitFor(() => {
+      expect(container.textContent).toContain('MCP Tool Result (JSON)');
+    });
+
     // Verify the parsed content
     const parsedResult = JSON.parse(mcpResult.result);
     expect(parsedResult.analysis).toContain('CPU consumption analysis');
