@@ -15,7 +15,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   debounceMs = 500
 }) => {
   const [localValue, setLocalValue] = useState(value);
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Update local value when external value changes
   useEffect(() => {

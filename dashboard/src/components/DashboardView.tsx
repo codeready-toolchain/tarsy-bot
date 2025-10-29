@@ -76,7 +76,7 @@ function DashboardView() {
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
 
   // Throttling state for API calls
-  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const REFRESH_THROTTLE_MS = 1000; // Wait 1 second between refreshes
 
   // In-flight request tracking to prevent overlapping reconnection syncs
@@ -504,7 +504,7 @@ function DashboardView() {
 
   const handleManualAlertSubmission = () => {
     // Open manual alert submission in new tab
-    window.open('/submit-alert', '_blank');
+    window.open('/submit-alert', '_blank', 'noopener,noreferrer');
     handleMenuClose();
   };
 

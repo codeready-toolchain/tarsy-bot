@@ -63,7 +63,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
   const isTerminalRef = useRef(false);
   
   // Track pending timeout for cleanup
-  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // Reset mount flag on (re)mount or session change

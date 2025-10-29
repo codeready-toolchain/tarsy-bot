@@ -50,13 +50,13 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
 
   // Refs for cleanup
   const mutationObserverRef = useRef<MutationObserver | null>(null);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const userScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const userScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const autoScrollMonitorRafRef = useRef<number | null>(null);
   const autoScrollStartTimeRef = useRef<number | null>(null);
   const userInteractionRef = useRef<boolean>(false);
-  const clearUserInteractionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const clearUserInteractionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Check if user is at bottom of page
   const isAtBottom = useCallback((): boolean => {
