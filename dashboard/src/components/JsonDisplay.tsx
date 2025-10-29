@@ -440,11 +440,11 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
     return { type: 'plain-text', content };
   };
 
-  const handleSectionExpand = (sectionId: string) => {
-    setExpandedSections(prev => {
-      const current = prev[sectionId] ?? true;
-      return { ...prev, [sectionId]: !current };
-    });
+  const handleSectionExpand = (sectionId: string, expanded: boolean) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [sectionId]: expanded
+    }));
   };
 
   const parsedContent = parseContent(data);
@@ -505,7 +505,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
         <Accordion
           key={section.id ?? index}
           expanded={expandedSections[section.id] ?? index === 0}
-          onChange={() => handleSectionExpand(section.id)}
+          onChange={(_, expanded) => handleSectionExpand(section.id, expanded)}
           sx={{ mb: 1, border: `1px solid ${theme.palette.divider}` }}
         >
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -621,7 +621,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
       <Accordion
         key={section.id ?? index}
         expanded={expandedSections[section.id] ?? false}
-        onChange={() => handleSectionExpand(section.id)}
+        onChange={(_, expanded) => handleSectionExpand(section.id, expanded)}
         sx={{ mb: 1, border: `1px solid ${theme.palette.divider}` }}
       >
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
