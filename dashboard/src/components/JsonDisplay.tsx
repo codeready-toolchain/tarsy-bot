@@ -12,7 +12,7 @@ interface JsonDisplayProps {
   maxHeight?: number;
 }
 
-type SectionType = 'json' | 'yaml' | 'code' | 'text' | 'system-prompt' | 'user-prompt';
+type SectionType = 'json' | 'yaml' | 'code' | 'text' | 'system-prompt' | 'user-prompt' | 'assistant-prompt';
 
 interface ParsedContent {
   type: 'json' | 'python-objects' | 'markdown' | 'mixed' | 'plain-text';
@@ -359,13 +359,24 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
       });
 
       if (messages.length > 0) {
-        const sections = messages.map((msg, index) => ({
-          id: `llm-message-${msg.role}-${index}`,
-          title: `${msg.role.charAt(0).toUpperCase() + msg.role.slice(1)} Message`,
-          type: (msg.role === 'system' ? 'system-prompt' : 'user-prompt') as SectionType,
-          content: msg.content,
-          raw: `Role: ${msg.role}\n\n${msg.content}`
-        }));
+        const sections = messages.map((msg, index) => {
+          let sectionType: SectionType;
+          if (msg.role === 'system') {
+            sectionType = 'system-prompt';
+          } else if (msg.role === 'assistant') {
+            sectionType = 'assistant-prompt';
+          } else {
+            sectionType = 'user-prompt';
+          }
+          
+          return {
+            id: `llm-message-${msg.role}-${index}`,
+            title: `${msg.role.charAt(0).toUpperCase() + msg.role.slice(1)} Message`,
+            type: sectionType,
+            content: msg.content,
+            raw: `Role: ${msg.role}\n\n${msg.content}`
+          };
+        });
 
         return {
           type: 'python-objects',
@@ -449,6 +460,28 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
 
   const parsedContent = parseContent(data);
 
+  // Helper to get visible section IDs based on active tab
+  const getVisibleSectionIds = (): string[] => {
+    if (parsedContent.type !== 'mixed' || !parsedContent.sections) {
+      return [];
+    }
+    
+    if (activeTab === 0) {
+      // Formatted Text tab: return text sections
+      return parsedContent.sections
+        .filter(s => s.type === 'text')
+        .map(s => s.id);
+    } else if (activeTab === 1) {
+      // Raw Data tab: return json, yaml, code sections
+      return parsedContent.sections
+        .filter(s => s.type === 'json' || s.type === 'yaml' || s.type === 'code')
+        .map(s => s.id);
+    } else {
+      // Other tabs: return all section IDs
+      return parsedContent.sections.map(s => s.id);
+    }
+  };
+
   // Check if JSON content is already fully expanded (nothing to collapse/expand)
   const isAlreadyFullyExpanded = (content: any): boolean => {
     try {
@@ -511,9 +544,17 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
               <Chip 
-                label={section.type === 'system-prompt' ? 'System' : 'User'} 
+                label={
+                  section.type === 'system-prompt' ? 'System' : 
+                  section.type === 'assistant-prompt' ? 'Assistant' : 
+                  'User'
+                } 
                 size="small" 
-                color={section.type === 'system-prompt' ? 'secondary' : 'primary'}
+                color={
+                  section.type === 'system-prompt' ? 'secondary' : 
+                  section.type === 'assistant-prompt' ? 'success' : 
+                  'primary'
+                }
                 variant="filled"
               />
               <Typography variant="subtitle2" sx={{ flex: 1 }}>
@@ -538,7 +579,10 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
                   bgcolor: theme.palette.grey[50],
                   borderRadius: 1,
                   border: `1px solid ${theme.palette.divider}`,
-                  maxHeight: section.type === 'user-prompt' ? 400 : 200,
+                  maxHeight: 
+                    section.type === 'user-prompt' ? 400 : 
+                    section.type === 'assistant-prompt' ? 600 : 
+                    200,
                   overflow: 'auto',
                   // Enhanced scrollbars
                   '&::-webkit-scrollbar': {
@@ -584,7 +628,11 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
                       color: 'white',
                     }
                   }}
-                  title={`Copy ${section.type === 'system-prompt' ? 'System' : 'User'} Message`}
+                  title={`Copy ${
+                    section.type === 'system-prompt' ? 'System' : 
+                    section.type === 'assistant-prompt' ? 'Assistant' : 
+                    'User'
+                  } Message`}
                 >
                   <ContentCopyIcon fontSize="small" />
                 </IconButton>
@@ -799,6 +847,28 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
         >
           {activeTab === 0 && (
             <Box>
+              {/* Main text content - only show if there's meaningful content after cleanup */}
+              {cleanedText && cleanedText.length > 20 && (
+                <Box 
+                  component="pre" 
+                  sx={{ 
+                    fontFamily: 'monospace',
+                    fontSize: '0.875rem',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    m: 0,
+                    mb: 2,
+                    p: 2,
+                    bgcolor: theme.palette.grey[50],
+                    borderRadius: 1,
+                    border: `1px solid ${theme.palette.divider}`,
+                    maxHeight: maxHeight / 2,
+                    overflow: 'auto',
+                  }}
+                >
+                  {cleanedText}
+                </Box>
+              )}
               {formattedTextSections.map((section, index) => renderSectionAccordion(section, index))}
             </Box>
           )}
@@ -934,7 +1004,30 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
                 size="small"
                 variant="outlined"
                 startIcon={isFullyExpanded ? <UnfoldLessIcon /> : <UnfoldMoreIcon />}
-                onClick={() => setIsFullyExpanded(!isFullyExpanded)}
+                onClick={() => {
+                  const newExpandedState = !isFullyExpanded;
+                  setIsFullyExpanded(newExpandedState);
+                  
+                  // Also toggle visible accordions based on active tab
+                  const visibleSectionIds = getVisibleSectionIds();
+                  if (visibleSectionIds.length > 0) {
+                    setExpandedSections(prev => {
+                      const updated = { ...prev };
+                      if (newExpandedState) {
+                        // Expanding: add visible section IDs
+                        visibleSectionIds.forEach(id => {
+                          updated[id] = true;
+                        });
+                      } else {
+                        // Collapsing: remove visible section IDs, preserve others
+                        visibleSectionIds.forEach(id => {
+                          delete updated[id];
+                        });
+                      }
+                      return updated;
+                    });
+                  }
+                }}
                 sx={{ 
                   textTransform: 'none',
                   fontSize: '0.75rem',

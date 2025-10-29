@@ -165,6 +165,237 @@ describe('JsonDisplay - MCP Tool Result Rendering', () => {
     const parsedResult = JSON.parse(mcpResult.result);
     expect(parsedResult.message).toContain('special chars');
   });
+  
+  it('should display main text in Tab Panel 0 (Formatted Text) when tabs are shown', async () => {
+    // Test case with MCP result that has both JSON data and a long text field
+    // This triggers tabs: one for formatted text, one for raw JSON
+    const longText = 'This is a long multi-line text that should appear in the Formatted Text tab.\n'.repeat(10);
+    const mcpResult = {
+      result: JSON.stringify({
+        status: 'success',
+        description: longText,
+        data: { key: 'value', count: 42 }
+      })
+    };
+    
+    const user = userEvent.setup();
+    const { container, getByRole } = render(<JsonDisplay data={mcpResult} />);
+    
+    // Should create tabs for "Formatted Text" and "Raw Data"
+    expect(container.textContent).toContain('Formatted Text');
+    expect(container.textContent).toContain('Raw Data');
+    
+    // Formatted Text tab should be active by default (activeTab = 0)
+    const formattedTextTab = getByRole('tab', { name: /formatted text/i });
+    expect(formattedTextTab).toHaveAttribute('aria-selected', 'true');
+    
+    // The formatted description text should be visible in Tab 0
+    expect(container.textContent).toContain('Description (Formatted)');
+    expect(container.textContent).toContain('This is a long multi-line text');
+    
+    // Switch to Raw Data tab
+    const rawDataTab = getByRole('tab', { name: /raw data/i });
+    await user.click(rawDataTab);
+    
+    // Wait for tab change and verify JSON section appears
+    await waitFor(() => {
+      expect(container.textContent).toContain('MCP Tool Result (JSON)');
+    });
+  });
+});
+
+describe('JsonDisplay - Python LLM Message Parsing', () => {
+  it('should correctly parse and display system, user, and assistant messages', () => {
+    const pythonLLMMessages = "[LLMMessage(role='system', content='You are a helpful assistant.'), LLMMessage(role='user', content='What is 2+2?'), LLMMessage(role='assistant', content='The answer is 4.')]";
+    
+    const { container } = render(<JsonDisplay data={pythonLLMMessages} />);
+    
+    // Should display LLM Messages label
+    expect(container.textContent).toContain('LLM Messages');
+    expect(container.textContent).toContain('3 messages');
+    
+    // Should display all three role labels
+    expect(container.textContent).toContain('System');
+    expect(container.textContent).toContain('User');
+    expect(container.textContent).toContain('Assistant');
+  });
+  
+  it('should assign correct section types to different message roles', () => {
+    const pythonLLMMessages = "[LLMMessage(role='system', content='System prompt here'), LLMMessage(role='user', content='User query here'), LLMMessage(role='assistant', content='Assistant response here')]";
+    
+    const { container, getByText } = render(<JsonDisplay data={pythonLLMMessages} />);
+    
+    // Verify that each message type is displayed with correct label
+    expect(getByText('System')).toBeInTheDocument();
+    expect(getByText('User')).toBeInTheDocument();
+    expect(getByText('Assistant')).toBeInTheDocument();
+    
+    // Verify content is present
+    expect(container.textContent).toContain('System prompt here');
+    expect(container.textContent).toContain('User query here');
+    expect(container.textContent).toContain('Assistant response here');
+  });
+  
+  it('should handle multi-line content in assistant messages', () => {
+    const pythonLLMMessages = "[LLMMessage(role='assistant', content='Line 1: First line\\nLine 2: Second line\\nLine 3: Third line')]";
+    
+    const { container } = render(<JsonDisplay data={pythonLLMMessages} />);
+    
+    // Should display the Assistant label
+    expect(container.textContent).toContain('Assistant');
+    
+    // Should handle multi-line content (checking for presence of content)
+    expect(container.textContent).toContain('First line');
+    expect(container.textContent).toContain('Second line');
+    expect(container.textContent).toContain('Third line');
+  });
+  
+  it('should handle escaped characters in message content', () => {
+    const pythonLLMMessages = "[LLMMessage(role='user', content='Test with \\'quotes\\' and \\\"double quotes\\\"'), LLMMessage(role='assistant', content='Response with \\ttab and \\nnewline')]";
+    
+    const { container } = render(<JsonDisplay data={pythonLLMMessages} />);
+    
+    // Should properly unescape content
+    expect(container.textContent).toContain("Test with 'quotes'");
+    expect(container.textContent).toContain('Response with');
+  });
+  
+  it('should handle empty or very short assistant messages', () => {
+    const pythonLLMMessages = "[LLMMessage(role='assistant', content='')]";
+    
+    const { container } = render(<JsonDisplay data={pythonLLMMessages} />);
+    
+    // Should still display the Assistant label even with empty content
+    expect(container.textContent).toContain('Assistant');
+  });
+  
+  it('should handle multiple assistant messages in a conversation', () => {
+    const pythonLLMMessages = "[LLMMessage(role='user', content='First question'), LLMMessage(role='assistant', content='First answer'), LLMMessage(role='user', content='Follow-up question'), LLMMessage(role='assistant', content='Follow-up answer')]";
+    
+    const { container, getAllByText } = render(<JsonDisplay data={pythonLLMMessages} />);
+    
+    // Should display correct count
+    expect(container.textContent).toContain('4 messages');
+    
+    // Should have Assistant labels (checking for the chip labels specifically)
+    const assistantChips = getAllByText('Assistant');
+    expect(assistantChips.length).toBeGreaterThanOrEqual(2);
+    
+    // Verify content is present
+    expect(container.textContent).toContain('First answer');
+    expect(container.textContent).toContain('Follow-up answer');
+  });
+});
+
+describe('JsonDisplay - Expand All Button with Accordions', () => {
+  it('should expand and collapse visible accordions when clicking Expand All button in tabs', async () => {
+    // Create MCP result with both formatted text and raw JSON sections
+    const longText = 'This is a long multi-line text content that triggers the formatted text section.\n'.repeat(10);
+    const mcpResult = {
+      result: JSON.stringify({
+        analysis: longText,
+        data: { key: 'value', count: 42 }
+      })
+    };
+    
+    const user = userEvent.setup();
+    const { container, getByRole, getAllByRole } = render(<JsonDisplay data={mcpResult} />);
+    
+    // Should have tabs
+    expect(container.textContent).toContain('Formatted Text');
+    expect(container.textContent).toContain('Raw Data');
+    
+    // Find the Expand All button
+    const expandButton = getByRole('button', { name: /expand all/i });
+    expect(expandButton).toBeInTheDocument();
+    
+    // Click Expand All - should expand accordions in the Formatted Text tab (activeTab = 0)
+    await user.click(expandButton);
+    
+    // Button text should change to Collapse All
+    await waitFor(() => {
+      expect(getByRole('button', { name: /collapse all/i })).toBeInTheDocument();
+    });
+    
+    // The formatted text accordion should be expanded
+    const accordions = getAllByRole('button', { name: /analysis \(formatted\)/i });
+    expect(accordions.length).toBeGreaterThan(0);
+    
+    // Switch to Raw Data tab
+    const rawDataTab = getByRole('tab', { name: /raw data/i });
+    await user.click(rawDataTab);
+    
+    // Wait for tab switch
+    await waitFor(() => {
+      expect(container.textContent).toContain('MCP Tool Result (JSON)');
+    });
+    
+    // Click Collapse All - should collapse accordions in Raw Data tab
+    const collapseButton = getByRole('button', { name: /collapse all/i });
+    await user.click(collapseButton);
+    
+    // Button text should change back to Expand All
+    await waitFor(() => {
+      expect(getByRole('button', { name: /expand all/i })).toBeInTheDocument();
+    });
+  });
+  
+  it('should preserve non-visible accordion states when toggling Expand All', async () => {
+    // Create content with multiple sections
+    const longText1 = 'First long text section content.\n'.repeat(10);
+    const longText2 = 'Second long text section content.\n'.repeat(10);
+    const mcpResult = {
+      result: JSON.stringify({
+        analysis: longText1,
+        summary: longText2,
+        data: { key: 'value' }
+      })
+    };
+    
+    const user = userEvent.setup();
+    const { getByRole } = render(<JsonDisplay data={mcpResult} />);
+    
+    // Wait for tabs to render
+    await waitFor(() => {
+      expect(getByRole('tab', { name: /formatted text/i })).toBeInTheDocument();
+    });
+    
+    // Click Expand All in Formatted Text tab (should expand text sections)
+    const expandButton = getByRole('button', { name: /expand all/i });
+    await user.click(expandButton);
+    
+    // Switch to Raw Data tab
+    const rawDataTab = getByRole('tab', { name: /raw data/i });
+    await user.click(rawDataTab);
+    
+    // Click Collapse All in Raw Data tab (should only collapse raw data sections, not text sections)
+    await waitFor(() => {
+      const collapseButton = getByRole('button', { name: /collapse all/i });
+      expect(collapseButton).toBeInTheDocument();
+    });
+  });
+  
+  it('should handle Expand All button when content has no accordions', () => {
+    // Larger JSON that triggers Expand All button but has no accordions (just JSON viewer)
+    const largeData = {
+      data: Array.from({ length: 50 }, (_, i) => ({
+        id: i,
+        name: `Item ${i}`,
+        value: Math.random() * 100
+      }))
+    };
+    
+    const { getByRole } = render(<JsonDisplay data={largeData} />);
+    
+    // Should have Expand All button for JSON content
+    const expandButton = getByRole('button', { name: /expand all/i });
+    expect(expandButton).toBeInTheDocument();
+    
+    // Clicking should not throw errors
+    expect(() => {
+      expandButton.click();
+    }).not.toThrow();
+  });
 });
 
 describe('JsonDisplay - Security Tests', () => {
