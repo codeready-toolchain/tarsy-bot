@@ -10,13 +10,13 @@ const escapeHtml = (text: string): string => {
 /**
  * Apply syntax highlighting to YAML content
  * 
- * Colors used (GitHub-inspired palette):
- * - Keys: #22863a (green, bold)
- * - String values: #032f62 (dark blue)
- * - Numbers/booleans: #005cc5 (blue)
- * - Null values: #d73a49 (red)
- * - List markers: #6f42c1 (purple)
- * - Comments: #6a737d (gray, italic)
+ * Color palette based on the Nord theme with enhanced contrast:
+ * - Keys: #5E81AC (Darker Nord9 - bold) - cool, clear structural element
+ * - String values: #7FAF6E (Darker Nord14 - bold) - enhanced readability
+ * - Numbers/booleans: #9570A0 (Darker Nord15 - bold) - stronger distinction
+ * - Null values: #BF616A (Nord11 - bold) - clear indication
+ * - List markers: #5E9DB8 (Darker Nord8) - harmonious structural element
+ * - Comments: #4C566A (Nord3 - italic) - muted, unobtrusive
  * 
  * @param yaml - YAML content as string
  * @returns HTML string with syntax highlighting
@@ -30,7 +30,7 @@ export const highlightYaml = (yaml: string): string => {
     
     // Comment lines
     if (trimmedLine.startsWith('#')) {
-      return `${leadingSpaces}<span style="color: #6a737d; font-style: italic;">${escapeHtml(trimmedLine)}</span>`;
+      return `${leadingSpaces}<span style="color: #4C566A; font-style: italic;">${escapeHtml(trimmedLine)}</span>`;
     }
     
     // Key-value pairs
@@ -43,27 +43,27 @@ export const highlightYaml = (yaml: string): string => {
       
       // Highlight different value types
       if (value === 'null' || value === '~') {
-        highlightedValue = `<span style="color: #d73a49;">${escapeHtml(value)}</span>`;
+        highlightedValue = `<span style="color: #BF616A; font-weight: 600;">${escapeHtml(value)}</span>`;
       } else if (value === 'true' || value === 'false') {
-        highlightedValue = `<span style="color: #005cc5;">${escapeHtml(value)}</span>`;
+        highlightedValue = `<span style="color: #9570A0; font-weight: 600;">${escapeHtml(value)}</span>`;
       } else if (/^-?\d+(\.\d+)?$/.test(value.trim())) {
-        highlightedValue = `<span style="color: #005cc5;">${escapeHtml(value)}</span>`;
+        highlightedValue = `<span style="color: #9570A0; font-weight: 600;">${escapeHtml(value)}</span>`;
       } else if (value.startsWith('"') && value.endsWith('"')) {
-        highlightedValue = `<span style="color: #032f62;">${escapeHtml(value)}</span>`;
+        highlightedValue = `<span style="color: #7FAF6E; font-weight: 600;">${escapeHtml(value)}</span>`;
       } else if (value.startsWith("'") && value.endsWith("'")) {
-        highlightedValue = `<span style="color: #032f62;">${escapeHtml(value)}</span>`;
+        highlightedValue = `<span style="color: #7FAF6E; font-weight: 600;">${escapeHtml(value)}</span>`;
       } else if (value.trim() && !value.startsWith('-') && !value.startsWith('[') && !value.startsWith('{')) {
         // Unquoted string value
-        highlightedValue = `<span style="color: #032f62;">${escapeHtml(value)}</span>`;
+        highlightedValue = `<span style="color: #7FAF6E; font-weight: 600;">${escapeHtml(value)}</span>`;
       }
       
-      return `${leadingSpaces}<span style="color: #22863a; font-weight: 600;">${escapeHtml(key)}</span>: ${highlightedValue}`;
+      return `${leadingSpaces}<span style="color: #5E81AC; font-weight: 700;">${escapeHtml(key)}</span>: ${highlightedValue}`;
     }
     
     // List items
     if (trimmedLine.startsWith('- ')) {
       const content = trimmedLine.substring(2);
-      return `${leadingSpaces}<span style="color: #6f42c1;">-</span> ${escapeHtml(content)}`;
+      return `${leadingSpaces}<span style="color: #5E9DB8; font-weight: 600;">-</span> ${escapeHtml(content)}`;
     }
     
     // Default: return escaped line
