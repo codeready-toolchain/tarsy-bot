@@ -1,4 +1,5 @@
-import JsonView from '@uiw/react-json-view';
+import { JsonView, allExpanded, collapseAllNested } from 'react-json-view-lite';
+import 'react-json-view-lite/dist/index.css';
 import {
   Box,
   Typography,
@@ -234,23 +235,24 @@ function JsonDisplay({ data, collapsed = false, maxHeight = 400 }: JsonDisplayPr
         <AccordionDetails>
           <Box sx={{ position: 'relative' }}>
             {section.type === 'json' ? (
-              <JsonView 
-                value={section.content}
-                collapsed={collapsed}
-                displayDataTypes={false}
-                displayObjectSize={false}
-                enableClipboard={false}
-                shortenTextAfterLength={0}
-                style={{
-                  backgroundColor: theme.palette.grey[50],
-                  padding: theme.spacing(1),
+              <Box sx={{
+                backgroundColor: theme.palette.grey[50],
+                padding: theme.spacing(1),
+                borderRadius: 1,
+                border: `1px solid ${theme.palette.divider}`,
+                maxHeight: 600,
+                overflow: 'auto',
+                '& .json-view-wrapper': {
                   wordBreak: 'break-word',
                   overflowWrap: 'break-word',
                   whiteSpace: 'normal',
-                  overflow: 'auto',
-                  maxWidth: '100%',
-                }}
-              />
+                }
+              }}>
+                <JsonView 
+                  data={section.content}
+                  shouldExpandNode={collapsed ? collapseAllNested : allExpanded}
+                />
+              </Box>
             ) : section.type === 'yaml' ? (
               <Box 
                 component="pre" 
@@ -472,36 +474,23 @@ function JsonDisplay({ data, collapsed = false, maxHeight = 400 }: JsonDisplayPr
     return (
       <Box sx={{ 
         maxWidth: '100%',
-        overflow: 'hidden',
-        '& .w-rjv': {
-          backgroundColor: `${theme.palette.grey[50]} !important`,
-          borderRadius: theme.shape.borderRadius,
-          border: `1px solid ${theme.palette.divider}`,
-          fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace !important',
-          fontSize: '0.875rem !important',
-          maxHeight: maxHeight,
-          overflow: 'auto',
-          maxWidth: '100%',
+        backgroundColor: theme.palette.grey[50],
+        borderRadius: theme.shape.borderRadius,
+        border: `1px solid ${theme.palette.divider}`,
+        padding: theme.spacing(2),
+        maxHeight: maxHeight,
+        overflow: 'auto',
+        '& .json-view-wrapper': {
+          fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+          fontSize: '0.875rem',
           wordBreak: 'break-word',
           overflowWrap: 'break-word',
+          whiteSpace: 'normal',
         }
       }}>
         <JsonView 
-          value={content}
-          collapsed={collapsed}
-          displayDataTypes={false}
-          displayObjectSize={false}
-          enableClipboard={false}
-          shortenTextAfterLength={0}
-          style={{
-            backgroundColor: theme.palette.grey[50],
-            padding: theme.spacing(2),
-            wordBreak: 'break-word',
-            overflowWrap: 'break-word',
-            whiteSpace: 'normal',
-            overflow: 'auto',
-            maxWidth: '100%',
-          }}
+          data={content}
+          shouldExpandNode={collapsed ? collapseAllNested : allExpanded}
         />
       </Box>
     );

@@ -72,7 +72,9 @@ describe('ToolCallBox - Argument Display', () => {
     await user.click(expandButton);
     
     // Should display as JSON (JsonDisplay component should be used, fully expanded)
-    expect(container.innerHTML).toContain('w-rjv'); // JsonDisplay component class
+    // Check for JSON tree structure (react-json-view-lite uses role="tree")
+    const jsonTrees = container.querySelectorAll('[role="tree"]');
+    expect(jsonTrees.length).toBeGreaterThan(0);
   });
   
   it('should display arguments with small arrays as a list', async () => {
@@ -127,7 +129,9 @@ describe('ToolCallBox - Argument Display', () => {
     await user.click(expandButton);
     
     // Should fall back to JSON display for large arrays (fully expanded)
-    expect(container.innerHTML).toContain('w-rjv');
+    // Check for JSON tree structure (react-json-view-lite uses role="tree")
+    const jsonTrees = container.querySelectorAll('[role="tree"]');
+    expect(jsonTrees.length).toBeGreaterThan(0);
   });
   
   it('should handle empty arguments gracefully', async () => {

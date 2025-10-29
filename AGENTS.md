@@ -20,7 +20,7 @@
 - **Containers:** podman, podman-compose
 
 ## Dashboard (TypeScript/React)
-- **Framework:** React 18+ with TypeScript 5+
+- **Framework:** React 19+ with TypeScript 5+
 - **Build Tool:** Vite
 - **UI:** Material-UI (MUI) with custom theme
 - **Real-time:** WebSocket for LLM streaming
