@@ -720,7 +720,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
                   bgcolor: theme.palette.grey[50],
                   borderRadius: 1,
                   border: `1px solid ${theme.palette.divider}`,
-                  maxHeight: section.type === 'yaml' ? 500 : maxHeight / 2,
+                  maxHeight: 600,
                   overflow: 'auto',
                   // Enhanced scrollbars for YAML content
                   '&::-webkit-scrollbar': {
