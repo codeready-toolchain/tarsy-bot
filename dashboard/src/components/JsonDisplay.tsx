@@ -1,7 +1,9 @@
 import JsonView from '@uiw/react-json-view';
-import { Box, Typography, useTheme, Accordion, AccordionSummary, AccordionDetails, Chip, IconButton, Tabs, Tab } from '@mui/material';
+import { Box, Typography, useTheme, Accordion, AccordionSummary, AccordionDetails, Chip, IconButton, Tabs, Tab, Button } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import { useState } from 'react';
 
 interface JsonDisplayProps {
@@ -75,6 +77,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
   const theme = useTheme();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<number>(0);
+  const [isFullyExpanded, setIsFullyExpanded] = useState<boolean>(false);
   
   // Debug info for long content
   const contentLength = typeof data === 'string'
@@ -101,18 +104,33 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
           // Successfully parsed as JSON
           // Check if it's a nested object with multi-line text fields
           if (typeof parsedJson === 'object' && parsedJson !== null) {
-            // Find ALL fields that contain multi-line text (generic approach)
-            const multiLineFields: Array<{ fieldName: string; content: string }> = [];
+            // Recursively find ALL fields that contain multi-line text
+            const multiLineFields: Array<{ path: string; fieldName: string; content: string }> = [];
             
-            for (const [key, value] of Object.entries(parsedJson)) {
-              if (
-                typeof value === 'string' && 
-                value.length > 200 &&  // Only create separate section for substantial content
-                value.includes('\n')   // Must be multi-line
-              ) {
-                multiLineFields.push({ fieldName: key, content: value });
+            const findMultiLineFields = (obj: any, path: string[] = []) => {
+              if (typeof obj === 'string' && obj.length > 200 && obj.includes('\n')) {
+                // Found a multi-line text field
+                const fieldName = path[path.length - 1] || 'content';
+                const fullPath = path.join(' → ');
+                multiLineFields.push({ 
+                  path: fullPath, 
+                  fieldName, 
+                  content: obj 
+                });
+              } else if (Array.isArray(obj)) {
+                // Search through array elements
+                obj.forEach((item, index) => {
+                  findMultiLineFields(item, [...path, `[${index}]`]);
+                });
+              } else if (typeof obj === 'object' && obj !== null) {
+                // Search through object properties
+                for (const [key, value] of Object.entries(obj)) {
+                  findMultiLineFields(value, [...path, key]);
+                }
               }
-            }
+            };
+            
+            findMultiLineFields(parsedJson);
             
             if (multiLineFields.length > 0) {
               // Create sections: First the JSON, then each multi-line field formatted
@@ -126,9 +144,14 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
               ];
               
               // Add a formatted section for each multi-line field
-              for (const { fieldName, content } of multiLineFields) {
+              for (const { path, fieldName, content } of multiLineFields) {
+                // Create a readable title from the path
+                const title = path 
+                  ? `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} (Formatted)`
+                  : 'Formatted Text';
+                
                 sections.push({
-                  title: `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} (Formatted)`,
+                  title,
                   type: 'text',
                   content: content,
                   raw: content
@@ -413,6 +436,33 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
 
   const parsedContent = parseContent(data);
 
+  // Check if JSON content is already fully expanded (nothing to collapse/expand)
+  const isAlreadyFullyExpanded = (content: any): boolean => {
+    try {
+      const jsonString = JSON.stringify(content);
+      const size = jsonString.length;
+      // If content is tiny (<300 chars), it's already fully shown
+      // This matches the threshold in calculateSmartCollapseLevel
+      return size < 300;
+    } catch {
+      return false;
+    }
+  };
+
+  // Determine if expand/collapse is useful (only for JSON content that has something to expand)
+  const hasExpandableContent = (() => {
+    if (parsedContent.type === 'json') {
+      return !isAlreadyFullyExpanded(parsedContent.content);
+    }
+    if (parsedContent.type === 'mixed' && parsedContent.sections) {
+      // Check if any JSON section has something to expand
+      return parsedContent.sections.some(s => 
+        s.type === 'json' && !isAlreadyFullyExpanded(s.content)
+      );
+    }
+    return false;
+  })();
+
   // Render based on content type
   const renderContent = () => {
     switch (parsedContent.type) {
@@ -581,11 +631,11 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
             {section.type === 'json' ? (
               <JsonView 
                 value={section.content}
-                collapsed={calculateSmartCollapseLevel(section.content, collapsed)}
+                collapsed={isFullyExpanded ? false : calculateSmartCollapseLevel(section.content, collapsed)}
                 displayDataTypes={false}
                 displayObjectSize={false}
                 enableClipboard={false}
-                shortenTextAfterLength={calculateShortenTextAfterLength(section.content)}
+                shortenTextAfterLength={isFullyExpanded ? 0 : calculateShortenTextAfterLength(section.content)}
                 style={{
                   backgroundColor: theme.palette.grey[50],
                   padding: theme.spacing(1),
@@ -758,42 +808,47 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
     );
   };
 
-  const renderJsonContent = (content: any) => (
-    <Box sx={{ 
-      maxWidth: '100%',
-      overflow: 'hidden',
-      '& .w-rjv': {
-        backgroundColor: `${theme.palette.grey[50]} !important`,
-        borderRadius: theme.shape.borderRadius,
-        border: `1px solid ${theme.palette.divider}`,
-        fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace !important',
-        fontSize: '0.875rem !important',
-        maxHeight: maxHeight,
-        overflow: 'auto',
+  const renderJsonContent = (content: any) => {
+    const effectiveCollapsed = isFullyExpanded ? false : calculateSmartCollapseLevel(content, collapsed);
+    const effectiveShortenText = isFullyExpanded ? 0 : calculateShortenTextAfterLength(content);
+    
+    return (
+      <Box sx={{ 
         maxWidth: '100%',
-        wordBreak: 'break-word',
-        overflowWrap: 'break-word',
-      }
-    }}>
-      <JsonView 
-        value={content}
-        collapsed={calculateSmartCollapseLevel(content, collapsed)}
-        displayDataTypes={false}
-        displayObjectSize={false}
-        enableClipboard={false}
-        shortenTextAfterLength={calculateShortenTextAfterLength(content)}
-        style={{
-          backgroundColor: theme.palette.grey[50],
-          padding: theme.spacing(2),
-          wordBreak: 'break-word',
-          overflowWrap: 'break-word',
-          whiteSpace: 'normal',
+        overflow: 'hidden',
+        '& .w-rjv': {
+          backgroundColor: `${theme.palette.grey[50]} !important`,
+          borderRadius: theme.shape.borderRadius,
+          border: `1px solid ${theme.palette.divider}`,
+          fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace !important',
+          fontSize: '0.875rem !important',
+          maxHeight: maxHeight,
           overflow: 'auto',
           maxWidth: '100%',
-        }}
-      />
-    </Box>
-  );
+          wordBreak: 'break-word',
+          overflowWrap: 'break-word',
+        }
+      }}>
+        <JsonView 
+          value={content}
+          collapsed={effectiveCollapsed}
+          displayDataTypes={false}
+          displayObjectSize={false}
+          enableClipboard={false}
+          shortenTextAfterLength={effectiveShortenText}
+          style={{
+            backgroundColor: theme.palette.grey[50],
+            padding: theme.spacing(2),
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            whiteSpace: 'normal',
+            overflow: 'auto',
+            maxWidth: '100%',
+          }}
+        />
+      </Box>
+    );
+  };
 
   const renderMarkdownContent = (content: string) => (
     <Box 
@@ -846,10 +901,39 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
       wordBreak: 'break-word',
       overflowWrap: 'break-word',
     }}>
-      {showDebugInfo && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          Content length: {contentLength.toLocaleString()} characters • Scrollable area
-        </Typography>
+      {/* Header with debug info and expand/collapse button */}
+      {(showDebugInfo || hasExpandableContent) && (
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          mb: 1,
+          gap: 2
+        }}>
+          {showDebugInfo && (
+            <Typography variant="caption" color="text.secondary">
+              Content length: {contentLength.toLocaleString()} characters • Scrollable area
+            </Typography>
+          )}
+          {hasExpandableContent && (
+            <Box sx={{ marginLeft: 'auto' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={isFullyExpanded ? <UnfoldLessIcon /> : <UnfoldMoreIcon />}
+                onClick={() => setIsFullyExpanded(!isFullyExpanded)}
+                sx={{ 
+                  textTransform: 'none',
+                  fontSize: '0.75rem',
+                  py: 0.25,
+                  px: 1,
+                }}
+              >
+                {isFullyExpanded ? 'Collapse All' : 'Expand All'}
+              </Button>
+            </Box>
+          )}
+        </Box>
       )}
       {renderContent()}
     </Box>
