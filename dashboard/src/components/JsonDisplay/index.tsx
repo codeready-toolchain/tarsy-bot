@@ -1,5 +1,6 @@
-import { JsonView, allExpanded, collapseAllNested } from 'react-json-view-lite';
+import { JsonView, allExpanded, collapseAllNested, defaultStyles } from 'react-json-view-lite';
 import 'react-json-view-lite/dist/index.css';
+import './JsonDisplay.css';
 import {
   Box,
   Typography,
@@ -14,7 +15,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 import type { JsonDisplayProps, ParsedContent } from './types';
 import {
@@ -36,6 +37,18 @@ function JsonDisplay({ data, collapsed = false, maxHeight = 400 }: JsonDisplayPr
   const theme = useTheme();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<number>(0);
+  
+  // Custom JSON view style with transparent background and theme-aware colors
+  const customJsonStyle = useMemo(() => ({
+    ...defaultStyles,
+    container: 'json-custom-container', // Custom class for transparent background
+    stringValue: 'json-string-value',
+    numberValue: 'json-number-value',
+    booleanValue: 'json-boolean-value',
+    nullValue: 'json-null-value',
+    label: 'json-label',
+    punctuation: 'json-punctuation',
+  }), []);
   
   // Debug info for long content
   const contentLength = typeof data === 'string'
@@ -238,7 +251,6 @@ function JsonDisplay({ data, collapsed = false, maxHeight = 400 }: JsonDisplayPr
               <Box sx={{
                 backgroundColor: theme.palette.grey[50],
                 padding: theme.spacing(1),
-                borderRadius: 1,
                 border: `1px solid ${theme.palette.divider}`,
                 maxHeight: 600,
                 overflow: 'auto',
@@ -251,6 +263,7 @@ function JsonDisplay({ data, collapsed = false, maxHeight = 400 }: JsonDisplayPr
                 <JsonView 
                   data={section.content}
                   shouldExpandNode={collapsed ? collapseAllNested : allExpanded}
+                  style={customJsonStyle}
                 />
               </Box>
             ) : section.type === 'yaml' ? (
@@ -475,7 +488,6 @@ function JsonDisplay({ data, collapsed = false, maxHeight = 400 }: JsonDisplayPr
       <Box sx={{ 
         maxWidth: '100%',
         backgroundColor: theme.palette.grey[50],
-        borderRadius: theme.shape.borderRadius,
         border: `1px solid ${theme.palette.divider}`,
         padding: theme.spacing(2),
         maxHeight: maxHeight,
@@ -491,6 +503,7 @@ function JsonDisplay({ data, collapsed = false, maxHeight = 400 }: JsonDisplayPr
         <JsonView 
           data={content}
           shouldExpandNode={collapsed ? collapseAllNested : allExpanded}
+          style={customJsonStyle}
         />
       </Box>
     );
