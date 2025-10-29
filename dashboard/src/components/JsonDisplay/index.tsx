@@ -1,80 +1,41 @@
 import JsonView from '@uiw/react-json-view';
-import { Box, Typography, useTheme, Accordion, AccordionSummary, AccordionDetails, Chip, IconButton, Tabs, Tab, Button } from '@mui/material';
+import {
+  Box,
+  Typography,
+  useTheme,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Chip,
+  IconButton,
+  Tabs,
+  Tab,
+  Button
+} from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import { useState } from 'react';
 
-interface JsonDisplayProps {
-  data: any;
-  collapsed?: boolean | number;
-  maxHeight?: number;
-}
-
-type SectionType = 'json' | 'yaml' | 'code' | 'text' | 'system-prompt' | 'user-prompt' | 'assistant-prompt';
-
-interface ParsedContent {
-  type: 'json' | 'python-objects' | 'markdown' | 'mixed' | 'plain-text';
-  content: any;
-  sections?: Array<{
-    id: string;
-    title: string;
-    type: SectionType;
-    content: any;
-    raw: string;
-  }>;
-}
+import type { JsonDisplayProps, ParsedContent } from './types';
+import {
+  highlightYaml,
+  parseContent,
+  calculateSmartCollapseLevel,
+  calculateShortenTextAfterLength,
+  isAlreadyFullyExpanded
+} from './utils';
 
 /**
- * Calculate smart collapse level based on JSON content size
- * Returns more conservative expansion for readability
- */
-const calculateSmartCollapseLevel = (
-  content: any,
-  collapsedProp?: boolean | number
-): boolean | number => {
-  // Only respect explicit false or numeric values
-  // Let true fall through to smart sizing
-  if (collapsedProp === false) return false;
-  if (typeof collapsedProp === 'number') return collapsedProp;
-  
-  try {
-    const jsonString = JSON.stringify(content);
-    const size = jsonString.length;
-    
-    // More conservative thresholds for better readability
-    if (size < 300) return false;      // Fully expand tiny JSON (<300 chars)
-    if (size < 1000) return 2;         // Show 2 levels for small JSON
-    if (size < 3000) return 1;         // Show 1 level for medium JSON
-    return 1; // Collapse to 1 level for large JSON
-  } catch {
-    return 1; // Default to collapsed
-  }
-};
-
-/**
- * Calculate smart string truncation based on JSON content size
- * Returns number of chars before truncating strings
- */
-const calculateShortenTextAfterLength = (content: any): number => {
-  try {
-    const jsonString = JSON.stringify(content);
-    const size = jsonString.length;
-    
-    // More aggressive truncation for larger content
-    if (size < 500) return 0;          // No truncation for tiny JSON
-    if (size < 2000) return 200;       // Truncate at 200 chars for small JSON
-    if (size < 5000) return 100;       // Truncate at 100 chars for medium JSON
-    return 80;                         // Truncate at 80 chars for large JSON
-  } catch {
-    return 100; // Default truncation
-  }
-};
-
-/**
- * JsonDisplay component - Enhanced Phase 5
- * Intelligent content parser with support for JSON, Python objects, and mixed content
+ * JsonDisplay component - Enhanced content display with smart parsing
+ * 
+ * Features:
+ * - Automatically detects and parses JSON, YAML, text, and mixed content
+ * - Syntax highlighting for YAML
+ * - Smart collapse/expand based on content size
+ * - Supports MCP tool results with special formatting
+ * - Tab interface for mixed content (formatted vs raw)
  */
 function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayProps) {
   const theme = useTheme();
@@ -87,369 +48,6 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
     ? data.length
     : (() => { try { return JSON.stringify(data).length; } catch { return String(data).length; } })();
   const showDebugInfo = contentLength > 1000;
-
-  // Enhanced content parser
-  const parseContent = (value: any): ParsedContent => {
-    if (value === null || value === undefined) {
-      return { type: 'plain-text', content: String(value) };
-    }
-
-    // Special handling for MCP results that contain YAML/text/JSON content
-    if (typeof value === 'object' && value !== null) {
-      // Check if this is an MCP result with a nested text/YAML/JSON result
-      if ('result' in value && typeof value.result === 'string') {
-        const resultContent = value.result.trim();
-        
-        // First, try to parse as JSON (most common case)
-        try {
-          const parsedJson = JSON.parse(resultContent);
-          
-          // Successfully parsed as JSON
-          // Check if it's a nested object with multi-line text fields
-          if (typeof parsedJson === 'object' && parsedJson !== null) {
-            // Recursively find ALL fields that contain multi-line text
-            const multiLineFields: Array<{ path: string; fieldName: string; content: string }> = [];
-            
-            const findMultiLineFields = (obj: any, path: string[] = []) => {
-              if (typeof obj === 'string' && obj.length > 200 && obj.includes('\n')) {
-                // Found a multi-line text field
-                const fieldName = path[path.length - 1] || 'content';
-                const fullPath = path.join(' → ');
-                multiLineFields.push({ 
-                  path: fullPath, 
-                  fieldName, 
-                  content: obj 
-                });
-              } else if (Array.isArray(obj)) {
-                // Search through array elements
-                obj.forEach((item, index) => {
-                  findMultiLineFields(item, [...path, `[${index}]`]);
-                });
-              } else if (typeof obj === 'object' && obj !== null) {
-                // Search through object properties
-                for (const [key, value] of Object.entries(obj)) {
-                  findMultiLineFields(value, [...path, key]);
-                }
-              }
-            };
-            
-            findMultiLineFields(parsedJson);
-            
-            if (multiLineFields.length > 0) {
-              // Create sections: First the JSON, then each multi-line field formatted
-              const sections = [
-                {
-                  id: 'mcp-json',
-                  title: 'MCP Tool Result (JSON)',
-                  type: 'json' as SectionType,
-                  content: parsedJson,
-                  raw: JSON.stringify(parsedJson, null, 2)
-                }
-              ];
-              
-              // Add a formatted section for each multi-line field
-              for (const { path, fieldName, content } of multiLineFields) {
-                // Create a readable title from the path
-                const title = path 
-                  ? `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)} (Formatted)`
-                  : 'Formatted Text';
-                const id = `mlf:${path || fieldName}`;
-                
-                sections.push({
-                  id,
-                  title,
-                  type: 'text' as SectionType,
-                  content: content,
-                  raw: content
-                });
-              }
-              
-              return {
-                type: 'mixed',
-                content: { text: '', sections: [] },
-                sections
-              };
-            }
-            
-            // Regular JSON object without special formatting
-            return {
-              type: 'mixed',
-              content: { text: '', sections: [] },
-              sections: [
-                {
-                  id: 'mcp-json',
-                  title: 'MCP Tool Result (JSON)',
-                  type: 'json' as SectionType,
-                  content: parsedJson,
-                  raw: JSON.stringify(parsedJson, null, 2)
-                }
-              ]
-            };
-          }
-          
-          // Parsed JSON is a simple value (string, number, etc.)
-          return {
-            type: 'mixed',
-            content: { text: '', sections: [] },
-            sections: [
-              {
-                id: 'mcp-json-simple',
-                title: 'MCP Tool Result',
-                type: 'json' as SectionType,
-                content: parsedJson,
-                raw: JSON.stringify(parsedJson, null, 2)
-              }
-            ]
-          };
-        } catch {
-          // Not valid JSON (possibly malformed escape sequences), try other formats
-        }
-        
-        // Check if the result contains YAML content
-        if (resultContent.includes('apiVersion:') || 
-            resultContent.includes('kind:') || 
-            resultContent.includes('metadata:') ||
-            resultContent.includes('\n') && (resultContent.includes(':') || resultContent.includes('-'))) {
-          
-          // This looks like YAML - format it nicely
-          return {
-            type: 'mixed',
-            content: { text: '', sections: [] },
-            sections: [
-              {
-                id: 'mcp-yaml',
-                title: 'MCP Tool Result (YAML)',
-                type: 'yaml' as SectionType,
-                content: resultContent,
-                raw: resultContent
-              }
-            ]
-          };
-        }
-        
-        // Check if it's other structured text content
-        if (resultContent.length > 50 && (resultContent.includes('\n') || resultContent.includes('\t'))) {
-          return {
-            type: 'mixed',
-            content: { text: '', sections: [] },
-            sections: [
-              {
-                id: 'mcp-text',
-                title: 'MCP Tool Result (Text)',
-                type: 'text' as SectionType,
-                content: resultContent,
-                raw: resultContent
-              }
-            ]
-          };
-        }
-      }
-      
-      // Fall through to normal JSON handling for other objects
-    }
-
-    if (typeof value === 'string') {
-      // Try to detect and parse different content types
-      const content = value.trim();
-      
-      // Check for Python list/object representations
-      if (content.startsWith('[') && content.includes('LLMMessage(') && content.includes('role=')) {
-        return parsePythonLLMMessages(content);
-      }
-      
-      // Check for pure JSON
-      try {
-        const parsed = JSON.parse(content);
-        if (typeof parsed === 'object') {
-          return { type: 'json', content: parsed };
-        }
-      } catch {
-        // Not pure JSON, continue parsing
-      }
-      
-      // Check for mixed content with JSON snippets
-      const jsonMatches = content.match(/```json\s*([\s\S]*?)\s*```/g);
-      const codeMatches = content.match(/```\w*\s*([\s\S]*?)\s*```/g);
-      
-      if (jsonMatches || codeMatches || content.includes('##') || content.includes('**')) {
-        return parseMixedContent(content);
-      }
-      
-      // Try to parse as JSON one more time for edge cases
-      try {
-        const parsed = JSON.parse(content);
-        return { type: 'json', content: parsed };
-      } catch {
-        return { type: 'plain-text', content };
-      }
-    }
-
-    // Handle objects directly
-    return { type: 'json', content: value };
-  };
-
-  // Parse Python LLMMessage objects
-  const parsePythonLLMMessages = (content: string): ParsedContent => {
-    try {
-      const messages: Array<{ role: string; content: string }> = [];
-
-      // Use a more robust approach: split by LLMMessage and parse each separately
-      const messageParts = content.split('LLMMessage(').slice(1); // Remove empty first element
-      
-      messageParts.forEach((part) => {
-        // Find the role
-        const roleMatch = part.match(/role='([^']+)'/);
-        if (!roleMatch) {
-          return;
-        }
-        
-        const role = roleMatch[1];
-        
-        // For content, we need to be more careful about finding the end
-        // Look for content=' and then find the matching closing quote
-        const contentStartMatch = part.match(/content='(.*)$/s);
-        if (!contentStartMatch) {
-          return;
-        }
-        
-        let rawContent = contentStartMatch[1];
-        let messageContent = '';
-        
-        // The content ends when we hit ')' that's not escaped and not inside nested quotes
-        // This is tricky, so let's use a character-by-character approach
-        let i = 0;
-        let escapeNext = false;
-        
-        while (i < rawContent.length) {
-          const char = rawContent[i];
-          
-          if (escapeNext) {
-            messageContent += char;
-            escapeNext = false;
-          } else if (char === '\\') {
-            messageContent += char;
-            escapeNext = true;
-          } else if (char === "'") {
-            // This might be the end of the content
-            // Look ahead to see if we have ')' or ', ' next
-            const nextChars = rawContent.substring(i + 1, i + 5);
-            if (nextChars.startsWith(')') || nextChars.match(/^,\s*[a-zA-Z_]+=/) || i === rawContent.length - 1) {
-              // This is likely the end of content
-              break;
-            }
-            messageContent += char;
-          } else {
-            messageContent += char;
-          }
-          i++;
-        }
-        
-        // Clean up escaped characters
-        messageContent = messageContent
-          .replace(/\\n/g, '\n')
-          .replace(/\\'/g, "'")
-          .replace(/\\"/g, '"')
-          .replace(/\\\\/g, '\\')
-          .replace(/\\t/g, '\t');
-        
-        messages.push({
-          role,
-          content: messageContent
-        });
-      });
-
-      if (messages.length > 0) {
-        const sections = messages.map((msg, index) => {
-          let sectionType: SectionType;
-          if (msg.role === 'system') {
-            sectionType = 'system-prompt';
-          } else if (msg.role === 'assistant') {
-            sectionType = 'assistant-prompt';
-          } else {
-            sectionType = 'user-prompt';
-          }
-          
-          return {
-            id: `llm-message-${msg.role}-${index}`,
-            title: `${msg.role.charAt(0).toUpperCase() + msg.role.slice(1)} Message`,
-            type: sectionType,
-            content: msg.content,
-            raw: `Role: ${msg.role}\n\n${msg.content}`
-          };
-        });
-
-        return {
-          type: 'python-objects',
-          content: messages,
-          sections
-        };
-      }
-    } catch (error) {
-      console.warn('Failed to parse Python LLMMessage objects:', error);
-    }
-
-    return { type: 'plain-text', content };
-  };
-
-  // Parse mixed content with JSON snippets, markdown, etc.
-  const parseMixedContent = (content: string): ParsedContent => {
-    const sections = [];
-    let remainingContent = content;
-    let sectionIndex = 0;
-
-    // Extract JSON code blocks
-    const jsonRegex = /```json\s*([\s\S]*?)\s*```/g;
-    let jsonMatch;
-    while ((jsonMatch = jsonRegex.exec(content)) !== null) {
-      try {
-        const jsonContent = JSON.parse(jsonMatch[1]);
-        sections.push({
-          id: `json-block-${sectionIndex + 1}`,
-          title: `JSON Block ${sectionIndex + 1}`,
-          type: 'json' as SectionType,
-          content: jsonContent,
-          raw: jsonMatch[1]
-        });
-        sectionIndex++;
-        remainingContent = remainingContent.replace(jsonMatch[0], `[JSON_BLOCK_${sectionIndex}]`);
-      } catch {
-        // Invalid JSON, skip
-      }
-    }
-
-    // Extract other code blocks
-    const codeRegex = /```(\w*)\s*([\s\S]*?)\s*```/g;
-    let codeMatch;
-    while ((codeMatch = codeRegex.exec(content)) !== null) {
-      if (codeMatch[1] !== 'json') { // Skip JSON blocks (already handled above)
-        sections.push({
-          id: `code-block-${sectionIndex + 1}`,
-          title: `${codeMatch[1] || 'Code'} Block ${sectionIndex + 1}`,
-          type: 'code' as SectionType,
-          content: codeMatch[2],
-          raw: codeMatch[2]
-        });
-        sectionIndex++;
-        remainingContent = remainingContent.replace(codeMatch[0], `[CODE_BLOCK_${sectionIndex}]`);
-      }
-    }
-
-    // If we found structured sections, return mixed content
-    if (sections.length > 0) {
-      return {
-        type: 'mixed',
-        content: { text: remainingContent, sections },
-        sections
-      };
-    }
-
-    // Check if it's markdown-like
-    if (content.includes('##') || content.includes('**') || content.includes('- ')) {
-      return { type: 'markdown', content };
-    }
-
-    return { type: 'plain-text', content };
-  };
 
   const handleSectionExpand = (sectionId: string, expanded: boolean) => {
     setExpandedSections(prev => ({
@@ -479,19 +77,6 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
     } else {
       // Other tabs: return all section IDs
       return parsedContent.sections.map(s => s.id);
-    }
-  };
-
-  // Check if JSON content is already fully expanded (nothing to collapse/expand)
-  const isAlreadyFullyExpanded = (content: any): boolean => {
-    try {
-      const jsonString = JSON.stringify(content);
-      const size = jsonString.length;
-      // If content is tiny (<300 chars), it's already fully shown
-      // This matches the threshold in calculateSmartCollapseLevel
-      return size < 300;
-    } catch {
-      return false;
     }
   };
 
@@ -537,7 +122,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
       {parsed.sections?.map((section, index) => (
         <Accordion
           key={section.id ?? index}
-          expanded={expandedSections[section.id] ?? index === 0}
+          expanded={expandedSections[section.id] ?? (!collapsed || index === 0)}
           onChange={(_, expanded) => handleSectionExpand(section.id, expanded)}
           sx={{ mb: 1, border: `1px solid ${theme.palette.divider}` }}
         >
@@ -668,7 +253,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
     const renderSectionAccordion = (section: any, index: number) => (
       <Accordion
         key={section.id ?? index}
-        expanded={expandedSections[section.id] ?? false}
+        expanded={expandedSections[section.id] ?? !collapsed}
         onChange={(_, expanded) => handleSectionExpand(section.id, expanded)}
         sx={{ mb: 1, border: `1px solid ${theme.palette.divider}` }}
       >
@@ -707,7 +292,7 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
                   maxWidth: '100%',
                 }}
               />
-            ) : (
+            ) : section.type === 'yaml' ? (
               <Box 
                 component="pre" 
                 sx={{ 
@@ -723,6 +308,39 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
                   maxHeight: 600,
                   overflow: 'auto',
                   // Enhanced scrollbars for YAML content
+                  '&::-webkit-scrollbar': {
+                    width: '8px',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    backgroundColor: theme.palette.grey[100],
+                    borderRadius: '4px',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    backgroundColor: theme.palette.grey[400],
+                    borderRadius: '4px',
+                    '&:hover': {
+                      backgroundColor: theme.palette.primary.main,
+                    },
+                  },
+                }}
+                dangerouslySetInnerHTML={{ __html: highlightYaml(section.content) }}
+              />
+            ) : (
+              <Box 
+                component="pre" 
+                sx={{ 
+                  fontFamily: 'monospace',
+                  fontSize: '0.875rem',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  m: 0,
+                  p: 2,
+                  bgcolor: theme.palette.grey[50],
+                  borderRadius: 1,
+                  border: `1px solid ${theme.palette.divider}`,
+                  maxHeight: 600,
+                  overflow: 'auto',
+                  // Enhanced scrollbars for text content
                   '&::-webkit-scrollbar': {
                     width: '8px',
                   },
@@ -1046,4 +664,4 @@ function JsonDisplay({ data, collapsed = true, maxHeight = 400 }: JsonDisplayPro
   );
 }
 
-export default JsonDisplay; 
+export default JsonDisplay;

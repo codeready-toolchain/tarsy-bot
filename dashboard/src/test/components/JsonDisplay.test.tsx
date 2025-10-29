@@ -398,6 +398,93 @@ describe('JsonDisplay - Expand All Button with Accordions', () => {
   });
 });
 
+describe('JsonDisplay - Single Field Result Unwrapping', () => {
+  it('should unwrap single-field result object with string value', () => {
+    const wrappedResult = {
+      result: 'Simple text value'
+    };
+    
+    const { container } = render(<JsonDisplay data={wrappedResult} />);
+    
+    // Should display the unwrapped string value directly
+    expect(container.textContent).toContain('Simple text value');
+    // Should not show the wrapper object
+    expect(container.textContent).not.toContain('"result"');
+  });
+  
+  it('should unwrap single-field result object with direct JSON object', () => {
+    const wrappedResult = {
+      result: {
+        status: 'success',
+        count: 42,
+        items: ['item1', 'item2']
+      }
+    };
+    
+    const { container } = render(<JsonDisplay data={wrappedResult} />);
+    
+    // Should display the unwrapped object with its actual structure
+    expect(container.textContent).toContain('status');
+    expect(container.textContent).toContain('success');
+    expect(container.textContent).toContain('count');
+    // Should not show the "result" wrapper key
+    expect(container.textContent).not.toMatch(/^result/);
+  });
+  
+  it('should unwrap single-field result object with array value', () => {
+    const wrappedResult = {
+      result: ['item1', 'item2', 'item3']
+    };
+    
+    const { container } = render(<JsonDisplay data={wrappedResult} />);
+    
+    // Should display the array directly
+    expect(container.textContent).toContain('item1');
+    expect(container.textContent).toContain('item2');
+    expect(container.textContent).toContain('item3');
+  });
+  
+  it('should unwrap nested single-field result objects recursively', () => {
+    const nestedWrappedResult = {
+      result: {
+        result: 'Deeply nested value'
+      }
+    };
+    
+    const { container } = render(<JsonDisplay data={nestedWrappedResult} />);
+    
+    // Should unwrap recursively to the innermost value
+    expect(container.textContent).toContain('Deeply nested value');
+  });
+  
+  it('should not unwrap result when there are multiple fields', () => {
+    const multiFieldResult = {
+      result: 'value',
+      otherField: 'other value'
+    };
+    
+    const { container } = render(<JsonDisplay data={multiFieldResult} />);
+    
+    // Should keep the wrapper object intact since it has multiple fields
+    expect(container.textContent).toContain('result');
+    expect(container.textContent).toContain('otherField');
+  });
+  
+  it('should preserve existing behavior for string result fields', () => {
+    // This is the existing behavior - result field with stringified JSON
+    const mcpResult = {
+      result: '{"status":"success","count":42}'
+    };
+    
+    const { container } = render(<JsonDisplay data={mcpResult} />);
+    
+    // Should unwrap and then parse the JSON string
+    expect(container.textContent).toContain('status');
+    expect(container.textContent).toContain('success');
+    expect(container.textContent).toContain('count');
+  });
+});
+
 describe('JsonDisplay - Security Tests', () => {
   it('should safely handle potentially malicious JSON strings', () => {
     const maliciousInputs = [

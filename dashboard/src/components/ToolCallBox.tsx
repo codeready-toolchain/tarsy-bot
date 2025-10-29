@@ -27,6 +27,104 @@ interface ToolCallBoxProps {
 }
 
 /**
+ * Check if the arguments are simple (flat key-value pairs with primitive values)
+ * Returns true if we can display as a simple list
+ */
+const isSimpleArguments = (args: any): boolean => {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return false;
+  }
+  
+  const keys = Object.keys(args);
+  if (keys.length === 0) {
+    return false;
+  }
+  
+  // Check if all values are primitives or simple arrays
+  return keys.every(key => {
+    const value = args[key];
+    const type = typeof value;
+    
+    // Allow primitives
+    if (value === null || type === 'string' || type === 'number' || type === 'boolean') {
+      return true;
+    }
+    
+    // Allow arrays only if they're small and contain primitives
+    if (Array.isArray(value)) {
+      return value.length <= 5 && value.every(item => {
+        const itemType = typeof item;
+        return item === null || itemType === 'string' || itemType === 'number' || itemType === 'boolean';
+      });
+    }
+    
+    // Reject objects and complex types
+    return false;
+  });
+};
+
+/**
+ * Render simple arguments as a clean list
+ */
+const SimpleArgumentsList = ({ args }: { args: any }) => {
+  return (
+    <Box
+      sx={(theme) => ({
+        bgcolor: theme.palette.grey[50],
+        borderRadius: 1,
+        border: `1px solid ${theme.palette.divider}`,
+        p: 1.5,
+        fontFamily: 'monospace',
+        fontSize: '0.875rem'
+      })}
+    >
+      {Object.entries(args).map(([key, value], index) => (
+        <Box
+          key={key}
+          sx={{
+            display: 'flex',
+            mb: index < Object.keys(args).length - 1 ? 0.75 : 0,
+            alignItems: 'flex-start'
+          }}
+        >
+          <Typography
+            component="span"
+            sx={(theme) => ({
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              color: theme.palette.primary.main,
+              mr: 1,
+              minWidth: '100px',
+              flexShrink: 0
+            })}
+          >
+            {key}:
+          </Typography>
+          <Typography
+            component="span"
+            sx={(theme) => ({
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+              color: theme.palette.text.primary,
+              wordBreak: 'break-word',
+              whiteSpace: 'pre-wrap'
+            })}
+          >
+            {Array.isArray(value) 
+              ? `[${value.map(v => typeof v === 'string' ? `"${v}"` : String(v)).join(', ')}]`
+              : typeof value === 'string' 
+                ? `"${value}"`
+                : String(value)
+            }
+          </Typography>
+        </Box>
+      ))}
+    </Box>
+  );
+};
+
+/**
  * ToolCallBox Component
  * Compact expandable box for displaying MCP tool calls
  */
@@ -181,7 +279,11 @@ function ToolCallBox({
               />
             </Box>
             {toolArguments && Object.keys(toolArguments).length > 0 ? (
-              <JsonDisplay data={toolArguments} collapsed={1} maxHeight={250} />
+              isSimpleArguments(toolArguments) ? (
+                <SimpleArgumentsList args={toolArguments} />
+              ) : (
+                <JsonDisplay data={toolArguments} collapsed={false} maxHeight={250} />
+              )
             ) : (
               <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                 No arguments
@@ -203,7 +305,7 @@ function ToolCallBox({
               />
             </Box>
             {toolResult ? (
-              <JsonDisplay data={toolResult} maxHeight={300} />
+              <JsonDisplay data={toolResult} collapsed={false} maxHeight={300} />
             ) : (
               <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                 No result
