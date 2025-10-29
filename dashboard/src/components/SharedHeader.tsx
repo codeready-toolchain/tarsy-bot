@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   AppBar,
   Toolbar,
@@ -37,9 +37,6 @@ export default function SharedHeader({
     }
   };
 
-  const handleLogoClick = () => {
-    navigate('/');
-  };
 
   return (
     <AppBar 
@@ -81,8 +78,10 @@ export default function SharedHeader({
         
         {/* Logo and Title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexGrow: 1 }}>
-          <Box 
-            onClick={handleLogoClick}
+          <Box
+            component={RouterLink}
+            to="/"
+            aria-label="Home"
             sx={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -97,7 +96,7 @@ export default function SharedHeader({
               transition: 'all 0.3s ease',
               position: 'relative',
               overflow: 'hidden',
-              cursor: 'pointer',
+              textDecoration: 'none',
               '&:before': {
                 content: '""',
                 position: 'absolute',
@@ -106,15 +105,19 @@ export default function SharedHeader({
                 width: '100%',
                 height: '100%',
                 background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent)',
-                animation: 'shimmer 2s infinite',
+                animation: 'none',
               },
               '&:hover': {
                 background: 'rgba(255, 255, 255, 0.15)',
                 transform: 'translateY(-2px) scale(1.05)',
                 boxShadow: '0 8px 25px rgba(0, 0, 0, 0.2), 0 0 30px rgba(255, 255, 255, 0.2)',
                 '&:before': {
-                  left: '100%',
+                  animation: 'shimmer 0.6s ease-out',
                 }
+              },
+              '&:focus-visible': {
+                outline: '2px solid rgba(255, 255, 255, 0.8)',
+                outlineOffset: '2px',
               },
               '@keyframes shimmer': {
                 '0%': { left: '-100%' },
@@ -124,7 +127,7 @@ export default function SharedHeader({
           >
             <img 
               src="/tarsy-logo.png" 
-              alt="Tarsy Logo" 
+              alt="TARSy logo" 
               style={{ 
                 height: '28px', 
                 width: 'auto', 
