@@ -79,6 +79,12 @@ make lint               # Format and lint all code
 make test-backend       # Backend tests only
 make test-dashboard     # Dashboard tests only
 
+# Backend-specific tests (run from backend/ directory)
+cd backend && make test-unit          # Unit tests only
+cd backend && make test-integration   # Integration tests only
+cd backend && make test-e2e           # End-to-end tests only
+cd backend && make test-coverage      # Tests with coverage report
+
 # Database Migrations
 make migration msg="description"  # Create new migration from model changes
 make migration-upgrade  # Apply pending migrations
