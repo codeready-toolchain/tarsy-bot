@@ -141,7 +141,6 @@ function ManualAlertSubmission() {
       <SharedHeader 
         title="Manual Alert Submission"
         showBackButton={true}
-        backUrl="/"
       >
         <Typography variant="body2" sx={{ opacity: 0.8, color: 'white', mr: 2 }}>
           Automated Incident Response

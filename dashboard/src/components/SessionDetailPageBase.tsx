@@ -384,7 +384,6 @@ function SessionDetailPageBase({
       <SharedHeader 
         title={`${viewType === 'conversation' ? 'AI Reasoning View' : 'Debug View'}${session ? ` - ${session.session_id?.slice(-8) || sessionId}` : ''}`}
         showBackButton={true}
-        backUrl="/"
       >
         {/* Session info */}
         {session && (
