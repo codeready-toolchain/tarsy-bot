@@ -54,12 +54,38 @@ const MAX_SUMMARY_LENGTH = 300;
 /**
  * Renders session summary with proper statistics display or fallback to JSON
  */
-function SessionSummary({ summary, sessionStatus, sessionTokens }: { 
+function SessionSummary({ summary, sessionStatus, sessionTokens, mcpSelection, stages }: { 
   summary: any, 
   sessionStatus: string, 
-  sessionTokens?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } 
+  sessionTokens?: { input_tokens?: number; output_tokens?: number; total_tokens?: number },
+  mcpSelection?: any,
+  stages?: any[]
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Calculate tool_list and tool_call counts from stage data
+  const mcpBreakdown = (() => {
+    if (!stages || stages.length === 0) {
+      return { toolListCalls: 0, toolCalls: 0, total: summary.mcp_communications || 0 };
+    }
+    
+    let toolListCalls = 0;
+    let toolCalls = 0;
+    
+    stages.forEach((stage: any) => {
+      if (stage.mcp_communications && Array.isArray(stage.mcp_communications)) {
+        stage.mcp_communications.forEach((mcp: any) => {
+          if (mcp.details?.communication_type === 'tool_list') {
+            toolListCalls++;
+          } else if (mcp.details?.communication_type === 'tool_call') {
+            toolCalls++;
+          }
+        });
+      }
+    });
+    
+    return { toolListCalls, toolCalls, total: toolListCalls + toolCalls };
+  })();
 
   // Check if summary is empty or just whitespace
   const isEmpty = !summary || 
@@ -162,24 +188,102 @@ function SessionSummary({ summary, sessionStatus, sessionTokens }: {
           </Box>
           
           {/* MCP calls badge */}
-          <Box sx={(theme) => ({ 
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.5,
-            px: 1,
-            py: 0.5,
-            backgroundColor: alpha(theme.palette.secondary.main, 0.05),
-            borderRadius: '16px',
-            border: '1px solid',
-            borderColor: alpha(theme.palette.secondary.main, 0.2)
-          })}>
-            <Typography variant="body2" sx={{ fontWeight: 600, color: 'secondary.main' }}>
-              🔧 {isInProgress ? '...' : summary.mcp_communications}
-            </Typography>
-            <Typography variant="caption" color="secondary.main">
-              MCP
-            </Typography>
-          </Box>
+          <Tooltip 
+            title={
+              <Box sx={{ py: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                  MCP Communications
+                </Typography>
+                
+                {/* Communication breakdown */}
+                <Box sx={{ mb: 1.5, pb: 1.5, borderBottom: '1px solid rgba(255,255,255,0.2)' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                    <Typography variant="body2">
+                      📋 Tool list calls:
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, ml: 2 }}>
+                      {mcpBreakdown.toolListCalls}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                    <Typography variant="body2">
+                      🔧 Tool calls:
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, ml: 2 }}>
+                      {mcpBreakdown.toolCalls}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5, pt: 0.5, borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      Total:
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700, ml: 2 }}>
+                      {mcpBreakdown.total}
+                    </Typography>
+                  </Box>
+                </Box>
+                
+                {/* MCP Configuration */}
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5, fontSize: '0.8rem' }}>
+                  Configuration
+                </Typography>
+                {!mcpSelection ? (
+                  <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                    🔹 Using default MCP servers
+                  </Typography>
+                ) : (
+                  <Box>
+                    <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500, fontSize: '0.85rem' }}>
+                      Selected Servers:
+                    </Typography>
+                    {mcpSelection.servers.map((server: any, idx: number) => (
+                      <Box key={idx} sx={{ ml: 1, mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.85rem' }}>
+                          • {server.name}
+                        </Typography>
+                        {server.tools && server.tools.length > 0 ? (
+                          <Typography variant="caption" sx={{ ml: 2, display: 'block', opacity: 0.9, fontSize: '0.75rem' }}>
+                            Tools: {server.tools.join(', ')}
+                          </Typography>
+                        ) : (
+                          <Typography variant="caption" sx={{ ml: 2, display: 'block', opacity: 0.9, fontSize: '0.75rem' }}>
+                            Tools: all
+                          </Typography>
+                        )}
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            }
+            placement="top"
+            arrow
+          >
+            <Box sx={(theme) => ({ 
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              px: 1,
+              py: 0.5,
+              backgroundColor: alpha(theme.palette.warning.main, 0.08),
+              borderRadius: '16px',
+              border: '1px solid',
+              borderColor: alpha(theme.palette.warning.main, 0.3),
+              cursor: 'pointer',
+              transition: 'all 0.2s ease-in-out',
+              '&:hover': {
+                backgroundColor: alpha(theme.palette.warning.main, 0.12),
+                borderColor: alpha(theme.palette.warning.main, 0.4),
+              }
+            })}>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: 'warning.main' }}>
+                🔧 {isInProgress ? '...' : summary.mcp_communications}
+              </Typography>
+              <Typography variant="caption" color="warning.main">
+                MCP
+              </Typography>
+            </Box>
+          </Tooltip>
           
           {/* Errors badge - only show if there are actual errors */}
           {summary.errors_count > 0 && (
@@ -710,6 +814,8 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                 output_tokens: session.session_output_tokens ?? undefined,
                 total_tokens: session.session_total_tokens ?? undefined
               }}
+              mcpSelection={session.mcp_selection}
+              stages={session.stages}
             />
           )}
           
