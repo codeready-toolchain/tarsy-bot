@@ -275,7 +275,38 @@ class TestBaseAgentMCPIntegration:
                 )]
             }
         )
-        client.call_tool = AsyncMock(return_value={"result": "success"})
+        
+        # Mock call_tool with validation logic
+        async def mock_call_tool_with_validation(
+            server_name, tool_name, parameters, session_id=None,
+            stage_execution_id=None, investigation_conversation=None,
+            mcp_selection=None, configured_servers=None
+        ):
+            # Validate like MCPClient does
+            if mcp_selection is not None:
+                selected_server = next(
+                    (s for s in mcp_selection.servers if s.name == server_name), None
+                )
+                if selected_server is None:
+                    allowed_servers = [s.name for s in mcp_selection.servers]
+                    raise ValueError(
+                        f"Tool '{tool_name}' from server '{server_name}' not allowed by MCP selection. "
+                        f"Allowed servers: {allowed_servers}"
+                    )
+                if selected_server.tools is not None and len(selected_server.tools) > 0:
+                    if tool_name not in selected_server.tools:
+                        raise ValueError(
+                            f"Tool '{tool_name}' not allowed by MCP selection. "
+                            f"Allowed tools from '{server_name}': {selected_server.tools}"
+                        )
+            elif configured_servers and server_name not in configured_servers:
+                raise ValueError(
+                    f"Tool '{tool_name}' from server '{server_name}' not allowed by agent configuration. "
+                    f"Configured servers: {configured_servers}"
+                )
+            return {"result": "success"}
+        
+        client.call_tool = AsyncMock(side_effect=mock_call_tool_with_validation)
         return client
 
     @pytest.fixture
@@ -649,7 +680,7 @@ class TestBaseAgentMCPIntegration:
         assert results["test-server"][0]["result"] == {"result": "success"}
 
         mock_mcp_client.call_tool.assert_called_once_with(
-            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-123", None, None
+            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-123", None, None, None, ["test-server"]
         )
 
     @pytest.mark.unit
@@ -670,7 +701,8 @@ class TestBaseAgentMCPIntegration:
         results = await base_agent.execute_mcp_tools(tools_to_call, "test-session-456")
 
         assert "forbidden-server" in results
-        assert "not allowed for agent" in results["forbidden-server"][0]["error"]
+        assert "not allowed" in results["forbidden-server"][0]["error"]
+        assert "configured servers" in results["forbidden-server"][0]["error"].lower()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -1180,7 +1212,7 @@ class TestBaseAgentSummarization:
         
         # Verify MCP client was called with investigation conversation
         mock_mcp_client.call_tool.assert_called_once_with(
-            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-summarization", None, investigation_conversation
+            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-summarization", None, investigation_conversation, None, ["test-server"]
         )
 
     @pytest.mark.asyncio
@@ -1240,5 +1272,5 @@ class TestBaseAgentSummarization:
         
         # Verify MCP client was called without investigation conversation (None)
         mock_mcp_client.call_tool.assert_called_once_with(
-            "test-server", "kubectl-get", {"resource": "nodes"}, "test-session-compat", None, None
+            "test-server", "kubectl-get", {"resource": "nodes"}, "test-session-compat", None, None, None, ["test-server"]
         )

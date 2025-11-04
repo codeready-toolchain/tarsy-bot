@@ -373,8 +373,50 @@ def mock_mcp_client():
     client.list_tools = AsyncMock(side_effect=mock_list_tools_sync)
     
     # Mock tool execution - use simpler return structure  
-    def mock_call_tool_sync(server_name, tool_name, parameters):
+    def mock_call_tool_sync(
+        server_name, 
+        tool_name, 
+        parameters, 
+        session_id=None, 
+        stage_execution_id=None, 
+        investigation_conversation=None,
+        mcp_selection=None,
+        configured_servers=None
+    ):
         """Mock tool execution response - synchronous version."""
+        # Validate tool call if mcp_selection or configured_servers are provided
+        # This mimics the validation logic in MCPClient
+        if mcp_selection is not None:
+            # Check if server is in the selection
+            selected_server = next(
+                (s for s in mcp_selection.servers if s.name == server_name), 
+                None
+            )
+            
+            if selected_server is None:
+                # Server not in selection - raise validation error
+                allowed_servers = [s.name for s in mcp_selection.servers]
+                raise ValueError(
+                    f"Tool '{tool_name}' from server '{server_name}' not allowed by MCP selection. "
+                    f"Allowed servers: {allowed_servers}"
+                )
+            
+            # If specific tools are selected for this server, check tool is in the list
+            if selected_server.tools is not None and len(selected_server.tools) > 0:
+                if tool_name not in selected_server.tools:
+                    raise ValueError(
+                        f"Tool '{tool_name}' not allowed by MCP selection. "
+                        f"Allowed tools from '{server_name}': {selected_server.tools}"
+                    )
+        
+        elif configured_servers and server_name not in configured_servers:
+            # Validate against configured servers if provided
+            raise ValueError(
+                f"Tool '{tool_name}' from server '{server_name}' not allowed by agent configuration. "
+                f"Configured servers: {configured_servers}"
+            )
+        
+        # If validation passes, return mock result
         if server_name == "kubernetes-server":
             if tool_name == "kubectl_get_namespace":
                 return {

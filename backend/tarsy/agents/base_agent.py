@@ -287,56 +287,6 @@ class BaseAgent(ABC):
         """Get the current stage execution ID."""
         return self._current_stage_execution_id
     
-    def _validate_tool_call(
-        self, 
-        server_name: str, 
-        tool_name: str, 
-        mcp_selection: Optional[MCPSelectionConfig]
-    ) -> None:
-        """
-        Validate that a tool call is allowed based on MCP selection or agent configuration.
-        
-        Args:
-            server_name: Name of the MCP server
-            tool_name: Name of the tool being called
-            mcp_selection: Optional MCP selection config (overrides agent defaults if provided)
-            
-        Raises:
-            ValueError: If the tool call is not allowed
-        """
-        # If MCP selection is provided, validate against it (user override)
-        if mcp_selection is not None:
-            # Check if server is in the selection
-            selected_server = next(
-                (s for s in mcp_selection.servers if s.name == server_name), 
-                None
-            )
-            
-            if selected_server is None:
-                # Server not in selection - not allowed
-                allowed_servers = [s.name for s in mcp_selection.servers]
-                raise ValueError(
-                    f"Tool '{tool_name}' from server '{server_name}' not allowed by MCP selection. "
-                    f"Allowed servers: {allowed_servers}"
-                )
-            
-            # If specific tools are selected for this server, check tool is in the list
-            if selected_server.tools is not None and len(selected_server.tools) > 0:
-                if tool_name not in selected_server.tools:
-                    raise ValueError(
-                        f"Tool '{tool_name}' not allowed by MCP selection. "
-                        f"Allowed tools from '{server_name}': {selected_server.tools}"
-                    )
-            # If tools is None or empty, all tools from this server are allowed
-            logger.debug(f"Tool call validated against MCP selection: {server_name}.{tool_name}")
-        
-        # Otherwise, validate against agent's default configured servers
-        elif self._configured_servers and server_name not in self._configured_servers:
-            raise ValueError(
-                f"Tool '{tool_name}' from server '{server_name}' not allowed for agent "
-                f"{self.__class__.__name__}. Configured servers: {self._configured_servers}"
-            )
-    
     async def _configure_mcp_client(self):
         """Configure MCP client with agent-specific server subset and summarizer."""
         mcp_server_ids = self.mcp_servers()
@@ -560,17 +510,16 @@ class BaseAgent(ABC):
                 tool_name = tool_call.get("tool")
                 tool_params = tool_call.get("parameters", {})
                 
-                # Validate tool call is allowed
-                self._validate_tool_call(server_name, tool_name, mcp_selection)
-                
                 # Pass investigation conversation for context-aware summarization
+                # MCP client now handles validation internally and records failures
                 # Wrap with timeout to catch cases where MCP client's internal timeout fails
                 # MCP client uses a single 60s timeout with no retries, so allow ~10s overhead
                 try:
                     result = await asyncio.wait_for(
                         self.mcp_client.call_tool(
                             server_name, tool_name, tool_params, session_id, 
-                            self._current_stage_execution_id, investigation_conversation
+                            self._current_stage_execution_id, investigation_conversation,
+                            mcp_selection, self._configured_servers
                         ),
                         timeout=mcp_timeout  # Wraps MCP call (no retries) with ~10s overhead
                     )

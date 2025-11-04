@@ -467,12 +467,8 @@ class TestMCPSelectionExecutionValidation:
             "parameters": {"name": "default"}
         }
         
-        # Mock the actual tool call (call_tool is async)
-        async def mock_call_tool(*args, **kwargs):
-            return {"status": "success"}
-        mock_mcp_client.call_tool = mock_call_tool
-        
-        # Should execute successfully
+        # The mock_mcp_client fixture now handles validation
+        # Should execute successfully since the tool is in the allowed list
         result = await agent.execute_mcp_tools(
             [allowed_tool_call],
             "test-session",

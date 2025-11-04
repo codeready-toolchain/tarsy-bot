@@ -398,7 +398,9 @@ class TestKubernetesAgentMCPIntegration:
             {"namespace": "production", "pod": "app-pod"},
             "test-session-123",
             None,
-            None
+            None,
+            None,
+            ["kubernetes-server"]
         )
     
     @pytest.mark.asyncio
@@ -406,6 +408,21 @@ class TestKubernetesAgentMCPIntegration:
         """Test that tool execution validates server is allowed for agent."""
         agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_mocks
         agent._configured_servers = ["kubernetes-server"]
+        
+        # Mock call_tool to perform validation
+        async def mock_call_tool_with_validation(
+            server_name, tool_name, parameters, session_id=None,
+            stage_execution_id=None, investigation_conversation=None,
+            mcp_selection=None, configured_servers=None
+        ):
+            if configured_servers and server_name not in configured_servers:
+                raise ValueError(
+                    f"Tool '{tool_name}' from server '{server_name}' not allowed by agent configuration. "
+                    f"Configured servers: {configured_servers}"
+                )
+            return {"result": "success"}
+        
+        mock_mcp.call_tool = AsyncMock(side_effect=mock_call_tool_with_validation)
         
         tools_to_call = [
             {
@@ -421,10 +438,10 @@ class TestKubernetesAgentMCPIntegration:
         # Should record error for unauthorized server
         assert "unauthorized-server" in result
         assert "error" in result["unauthorized-server"][0]
-        assert "not allowed for agent KubernetesAgent" in result["unauthorized-server"][0]["error"]
+        assert "not allowed" in result["unauthorized-server"][0]["error"].lower()
         
-        # Should not call MCP client
-        mock_mcp.call_tool.assert_not_called()
+        # MCP client call_tool should have been called (and raised the error)
+        mock_mcp.call_tool.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_execute_mcp_tools_error_handling(self, kubernetes_agent_with_mocks):
@@ -833,7 +850,9 @@ DOMAIN KNOWLEDGE:
             {"resource": "namespace", "name": "production"},
             "test-k8s-summarization",
             None,
-            investigation_conversation  # Investigation conversation should be passed
+            investigation_conversation,  # Investigation conversation should be passed
+            None,
+            ["kubernetes-server"]
         )
 
     @pytest.mark.asyncio
