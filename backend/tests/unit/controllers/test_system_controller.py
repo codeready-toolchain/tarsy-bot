@@ -174,7 +174,7 @@ async def test_get_mcp_servers_success(client: TestClient) -> None:
         return {}
     
     mock_mcp_client.list_tools_simple = AsyncMock(side_effect=mock_list_tools_simple)
-    mock_mcp_client.cleanup = AsyncMock()
+    mock_mcp_client.close = AsyncMock()
     
     # Patch alert_service in main module
     with patch("tarsy.main.alert_service", mock_alert_service):
@@ -202,8 +202,8 @@ async def test_get_mcp_servers_success(client: TestClient) -> None:
     assert len(argocd_server["tools"]) == 1
     assert argocd_server["tools"][0]["name"] == "get-application"
     
-    # Verify cleanup was called
-    mock_mcp_client.cleanup.assert_called_once()
+    # Verify close was called
+    mock_mcp_client.close.assert_called_once()
 
 
 @pytest.mark.unit
@@ -237,7 +237,7 @@ async def test_get_mcp_servers_empty_registry(client: TestClient) -> None:
     mock_registry.get_all_server_ids.return_value = []
     mock_alert_service.mcp_server_registry = mock_registry
     
-    mock_mcp_client.cleanup = AsyncMock()
+    mock_mcp_client.close = AsyncMock()
     
     with patch("tarsy.main.alert_service", mock_alert_service):
         response = client.get("/api/v1/system/mcp-servers")
@@ -247,8 +247,8 @@ async def test_get_mcp_servers_empty_registry(client: TestClient) -> None:
     assert "servers" in data
     assert len(data["servers"]) == 0
     
-    # Verify cleanup was called
-    mock_mcp_client.cleanup.assert_called_once()
+    # Verify close was called
+    mock_mcp_client.close.assert_called_once()
 
 
 @pytest.mark.unit
@@ -297,7 +297,7 @@ async def test_get_mcp_servers_with_disabled_server(client: TestClient) -> None:
         }
     
     mock_mcp_client.list_tools_simple = AsyncMock(side_effect=mock_list_tools_simple)
-    mock_mcp_client.cleanup = AsyncMock()
+    mock_mcp_client.close = AsyncMock()
     
     with patch("tarsy.main.alert_service", mock_alert_service):
         response = client.get("/api/v1/system/mcp-servers")
@@ -365,7 +365,7 @@ async def test_get_mcp_servers_tool_listing_failure(client: TestClient) -> None:
             raise Exception("Server communication failed")
     
     mock_mcp_client.list_tools_simple = AsyncMock(side_effect=mock_list_tools_simple)
-    mock_mcp_client.cleanup = AsyncMock()
+    mock_mcp_client.close = AsyncMock()
     
     with patch("tarsy.main.alert_service", mock_alert_service):
         response = client.get("/api/v1/system/mcp-servers")

@@ -5,6 +5,7 @@ export interface Session {
   status: 'pending' | 'in_progress' | 'canceling' | 'completed' | 'failed' | 'cancelled';
   author: string | null;
   runbook_url: string | null;
+  mcp_selection: MCPSelectionConfig | null;
   started_at_us: number; // Unix timestamp (microseconds since epoch)
   completed_at_us: number | null; // Unix timestamp (microseconds since epoch)
   duration_ms: number | null; // Computed property from backend

@@ -260,6 +260,11 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
         setRunbook(state.runbook);
       }
       
+      // Set MCP selection
+      if (state.mcpSelection) {
+        setMcpSelection(state.mcpSelection);
+      }
+      
       // Process alert data
       const alertData = state.alertData;
       

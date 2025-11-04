@@ -8,7 +8,7 @@ performance and consistency.
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from sqlmodel import Column, Field, SQLModel, Index
 from sqlalchemy import JSON, Integer, DateTime, ForeignKey, String, func
@@ -55,7 +55,7 @@ class AlertSession(SQLModel, table=True):
     
     alert_data: dict = Field(
         default_factory=dict,
-        sa_column=Column(JSON),
+        sa_column=Column[Any](JSON),
         description="Original alert payload and context data"
     )
     
@@ -74,7 +74,7 @@ class AlertSession(SQLModel, table=True):
     
     started_at_us: int = Field(
         default_factory=now_us,
-        sa_column=Column(BIGINT, index=True),
+        sa_column=Column[Any](BIGINT, index=True),
         description="Session start timestamp (microseconds since epoch UTC)"
     )
     
@@ -96,7 +96,7 @@ class AlertSession(SQLModel, table=True):
     
     session_metadata: Optional[dict] = Field(
         default=None,
-        sa_column=Column(JSON),
+        sa_column=Column[Any](JSON),
         description="Additional context and metadata for the session"
     )
     
@@ -109,6 +109,12 @@ class AlertSession(SQLModel, table=True):
     runbook_url: Optional[str] = Field(
         default=None,
         description="Runbook URL used for processing this alert (if provided)"
+    )
+    
+    mcp_selection: Optional[dict] = Field(
+        default=None,
+        sa_column=Column[Any](JSON),
+        description="MCP server/tool selection override (if provided)"
     )
     
     # Chain execution tracking
@@ -125,7 +131,7 @@ class AlertSession(SQLModel, table=True):
     
     last_interaction_at: Optional[int] = Field(
         default=None,
-        sa_column=Column(BIGINT),
+        sa_column=Column[Any](BIGINT),
         description="Last interaction timestamp (microseconds) for orphan detection"
     )
     
@@ -150,7 +156,7 @@ class StageExecution(SQLModel, table=True):
     )
     
     session_id: str = Field(
-        sa_column=Column(String, ForeignKey("alert_sessions.session_id", ondelete="CASCADE"), index=True),
+        sa_column=Column[Any](String, ForeignKey("alert_sessions.session_id", ondelete="CASCADE"), index=True),
         description="Reference to the parent alert session"
     )
     
@@ -167,7 +173,7 @@ class StageExecution(SQLModel, table=True):
     duration_ms: Optional[int] = Field(default=None, description="Stage execution duration")
     stage_output: Optional[dict] = Field(
         default=None, 
-        sa_column=Column(JSON), 
+        sa_column=Column[Any](JSON), 
         description="Data produced by stage (only for successful completion)"
     )
     error_message: Optional[str] = Field(
@@ -199,7 +205,7 @@ class Event(SQLModel, table=True):
 
     id: Optional[int] = Field(
         default=None,
-        sa_column=Column(Integer, primary_key=True, autoincrement=True),
+        sa_column=Column[Any](Integer, primary_key=True, autoincrement=True),
         description="Auto-incrementing event ID for ordering and catchup",
     )
 
@@ -210,13 +216,13 @@ class Event(SQLModel, table=True):
     )
 
     payload: dict = Field(
-        sa_column=Column(JSON),
+        sa_column=Column[Any](JSON),
         description="Event data as JSON (type, data, timestamp, id)",
     )
 
     created_at: Optional[datetime] = Field(
         default=None,
-        sa_column=Column(DateTime, nullable=False, server_default=func.now()),
+        sa_column=Column[Any](DateTime, nullable=False, server_default=func.now()),
         description="Event creation timestamp (for cleanup and ordering)",
     )
 

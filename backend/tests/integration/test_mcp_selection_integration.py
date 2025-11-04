@@ -408,3 +408,113 @@ class TestMCPSelectionEndToEnd:
         assert available_tools.tools[0].server == "argocd-server"
         assert available_tools.tools[0].tool.name == "get-application"
 
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestMCPSelectionPersistence:
+    """Test MCP selection persistence in database and retrieval via API."""
+    
+    def test_mcp_selection_serialization_roundtrip(self):
+        """Test that MCP selection can be serialized and deserialized correctly."""
+        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        
+        # Create MCP selection
+        original = MCPSelectionConfig(
+            servers=[
+                MCPServerSelection(name="kubernetes-server", tools=["list_pods", "get_pod"]),
+                MCPServerSelection(name="argocd-server")
+            ]
+        )
+        
+        # Serialize to dict (as stored in database)
+        serialized = original.model_dump()
+        
+        # Deserialize back (as returned from API)
+        deserialized = MCPSelectionConfig(**serialized)
+        
+        # Verify roundtrip preserves data
+        assert len(deserialized.servers) == 2
+        assert deserialized.servers[0].name == "kubernetes-server"
+        assert deserialized.servers[0].tools == ["list_pods", "get_pod"]
+        assert deserialized.servers[1].name == "argocd-server"
+        assert deserialized.servers[1].tools is None
+    
+    def test_mcp_selection_flows_through_alert_models(self):
+        """Test that MCP selection flows correctly through alert processing models."""
+        from tarsy.models.alert import Alert, ProcessingAlert
+        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.processing_context import ChainContext
+        
+        # Create alert with MCP selection
+        api_alert = Alert(
+            alert_type="kubernetes",
+            data={"namespace": "test"},
+            mcp=MCPSelectionConfig(
+                servers=[
+                    MCPServerSelection(name="kubernetes-server", tools=["list_pods"])
+                ]
+            )
+        )
+        
+        # Flow through ProcessingAlert
+        processing_alert = ProcessingAlert.from_api_alert(api_alert)
+        assert processing_alert.mcp is not None
+        assert processing_alert.mcp.servers[0].name == "kubernetes-server"
+        assert processing_alert.mcp.servers[0].tools == ["list_pods"]
+        
+        # Flow through ChainContext
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-flow",
+            current_stage_name="analysis"
+        )
+        assert chain_context.mcp is not None
+        assert chain_context.mcp.servers[0].name == "kubernetes-server"
+        assert chain_context.mcp.servers[0].tools == ["list_pods"]
+    
+    def test_history_models_support_mcp_selection(self):
+        """Test that history models can represent MCP selection."""
+        from tarsy.models.history_models import DetailedSession, SessionOverview
+        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.utils.timestamp import now_us
+        
+        mcp_selection = MCPSelectionConfig(
+            servers=[
+                MCPServerSelection(name="kubernetes-server", tools=["list_pods"])
+            ]
+        )
+        
+        # Test SessionOverview
+        overview = SessionOverview(
+            session_id="test-overview",
+            alert_type="kubernetes",
+            agent_type="chain:k8s",
+            status=AlertSessionStatus.COMPLETED,
+            started_at_us=now_us(),
+            chain_id="test-chain",
+            mcp_selection=mcp_selection
+        )
+        assert overview.mcp_selection is not None
+        assert isinstance(overview.mcp_selection, MCPSelectionConfig)
+        
+        # Test DetailedSession
+        detailed = DetailedSession(
+            session_id="test-detailed",
+            alert_type="kubernetes",
+            agent_type="chain:k8s",
+            status=AlertSessionStatus.COMPLETED,
+            started_at_us=now_us(),
+            alert_data={"test": "data"},
+            chain_id="test-chain",
+            chain_definition={},
+            mcp_selection=mcp_selection
+        )
+        assert detailed.mcp_selection is not None
+        assert isinstance(detailed.mcp_selection, MCPSelectionConfig)
+        
+        # Test serialization for API response
+        response_data = detailed.model_dump()
+        assert "mcp_selection" in response_data
+        assert response_data["mcp_selection"]["servers"][0]["name"] == "kubernetes-server"
+

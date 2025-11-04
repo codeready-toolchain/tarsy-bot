@@ -274,7 +274,8 @@ class HistoryService:
                     chain_id=chain_definition.chain_id,
                     chain_definition=chain_definition.model_dump(),  # Store as JSON-serializable dict
                     author=chain_context.author,  # User who submitted the alert (from oauth2-proxy headers)
-                    runbook_url=chain_context.processing_alert.runbook_url  # Runbook URL for re-submission
+                    runbook_url=chain_context.processing_alert.runbook_url,  # Runbook URL for re-submission
+                    mcp_selection=chain_context.mcp.model_dump() if chain_context.mcp else None  # MCP selection for re-submission
                 )
                 
                 created_session = repo.create_alert_session(session)

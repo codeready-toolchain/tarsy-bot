@@ -394,7 +394,8 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
         alertType: session.alert_type,
         runbook: session.runbook_url || null,
         alertData: session.alert_data,
-        sessionId: session.session_id
+        sessionId: session.session_id,
+        mcpSelection: session.mcp_selection || null
       }
     });
   };

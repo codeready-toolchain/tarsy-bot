@@ -178,6 +178,87 @@ class TestHistoryService:
             if scenario == "success":
                 dependencies['repository'].create_alert_session.assert_called_once()
     
+    @pytest.mark.parametrize("mcp_selection,expected_serialized", [
+        (None, None),  # No MCP selection
+        (
+            # MCP selection with server only (all tools)
+            {
+                "servers": [
+                    {"name": "kubernetes-server", "tools": None}
+                ]
+            },
+            {
+                "servers": [
+                    {"name": "kubernetes-server", "tools": None}
+                ]
+            }
+        ),
+        (
+            # MCP selection with specific tools
+            {
+                "servers": [
+                    {"name": "kubernetes-server", "tools": ["list_pods", "get_pod"]},
+                    {"name": "argocd-server", "tools": None}
+                ]
+            },
+            {
+                "servers": [
+                    {"name": "kubernetes-server", "tools": ["list_pods", "get_pod"]},
+                    {"name": "argocd-server", "tools": None}
+                ]
+            }
+        ),
+    ])
+    @pytest.mark.unit
+    def test_create_session_stores_mcp_selection(self, history_service, mcp_selection, expected_serialized):
+        """Test that create_session correctly stores MCP selection in database."""
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        from tarsy.models.processing_context import ChainContext
+        from tarsy.models.alert import ProcessingAlert, Alert
+        from tarsy.models.mcp_selection_models import MCPSelectionConfig
+        from tarsy.utils.timestamp import now_us
+        
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        history_service.is_enabled = True
+        
+        # Create alert with optional MCP selection
+        api_alert = Alert(
+            alert_type="kubernetes",
+            data={"namespace": "test"},
+            mcp=MCPSelectionConfig(**mcp_selection) if mcp_selection else None
+        )
+        
+        processing_alert = ProcessingAlert.from_api_alert(api_alert)
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session-id",
+            current_stage_name="analysis"
+        )
+        
+        chain_definition = ChainConfigModel(
+            chain_id="test-chain",
+            alert_types=["kubernetes"],
+            stages=[ChainStageConfigModel(name="analysis", agent="KubernetesAgent")]
+        )
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            result = history_service.create_session(
+                chain_context=chain_context,
+                chain_definition=chain_definition
+            )
+            
+            assert result is True
+            
+            # Verify the session was created with correct mcp_selection
+            call_args = dependencies['repository'].create_alert_session.call_args
+            assert call_args is not None
+            
+            created_session = call_args[0][0]  # First positional argument
+            assert created_session.mcp_selection == expected_serialized
+    
     @pytest.mark.parametrize("status,error_message,final_analysis,existing_analysis,expected_status,expected_analysis,expected_completion", [
         ("completed", None, None, None, "completed", None, True),  # Basic completion
         ("completed", None, "# Alert Analysis\n\nSuccessfully resolved the Kubernetes issue.", None, 

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, model_validator, computed_field
 # Import existing enums and models
 from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.unified_interactions import LLMInteraction
+from tarsy.models.mcp_selection_models import MCPSelectionConfig
 
 
 # =============================================================================
@@ -180,6 +181,9 @@ class SessionOverview(BaseModel):
     failed_stages: int = 0
     current_stage_index: Optional[int] = None  # Matches AlertSession field type
     
+    # MCP configuration override
+    mcp_selection: Optional[MCPSelectionConfig] = None
+    
     # Calculated properties
     @computed_field
     @property
@@ -304,6 +308,9 @@ class DetailedSession(BaseModel):
     chain_definition: dict
     current_stage_index: Optional[int] = None  # Matches AlertSession field type
     current_stage_id: Optional[str] = None  # Matches AlertSession field type
+    
+    # MCP configuration override
+    mcp_selection: Optional[MCPSelectionConfig] = None
     
     # Complete interaction data
     total_interactions: int = 0

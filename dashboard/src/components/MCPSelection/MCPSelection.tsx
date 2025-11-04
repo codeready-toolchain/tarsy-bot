@@ -115,15 +115,18 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
   };
 
   /**
-   * Build MCPSelectionConfig from current UI state
+   * Build MCPSelectionConfig from provided state
    */
-  const buildMCPConfig = (): MCPSelectionConfig | null => {
-    if (selectedServers.size === 0) {
+  const buildMCPConfig = (
+    servers: Set<string>,
+    toolSelections: Map<string, Set<string> | null>
+  ): MCPSelectionConfig | null => {
+    if (servers.size === 0) {
       return null;
     }
     
-    const servers = Array.from(selectedServers).map(serverId => {
-      const toolSelection = serverToolSelections.get(serverId);
+    const serverList = Array.from(servers).map(serverId => {
+      const toolSelection = toolSelections.get(serverId);
       
       return {
         name: serverId,
@@ -131,7 +134,7 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       };
     });
     
-    return { servers };
+    return { servers: serverList };
   };
 
   /**
@@ -139,15 +142,12 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
    */
   const handleServerToggle = (serverId: string) => {
     const newSelectedServers = new Set(selectedServers);
+    const newServerToolSelections = new Map(serverToolSelections);
     
     if (newSelectedServers.has(serverId)) {
       // Deselect server
       newSelectedServers.delete(serverId);
-      
-      // Remove tool selection for this server
-      const newServerToolSelections = new Map(serverToolSelections);
       newServerToolSelections.delete(serverId);
-      setServerToolSelections(newServerToolSelections);
       
       // Collapse tool selection if expanded
       const newExpandedServers = new Set(expandedServers);
@@ -156,17 +156,16 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     } else {
       // Select server (default to all tools)
       newSelectedServers.add(serverId);
-      
       // Set to null (all tools)
-      const newServerToolSelections = new Map(serverToolSelections);
       newServerToolSelections.set(serverId, null);
-      setServerToolSelections(newServerToolSelections);
     }
     
+    // Update state
     setSelectedServers(newSelectedServers);
+    setServerToolSelections(newServerToolSelections);
     
-    // Update parent with new config
-    const newConfig = buildMCPConfig();
+    // Update parent with new config (using new state values)
+    const newConfig = buildMCPConfig(newSelectedServers, newServerToolSelections);
     onChange(newConfig);
   };
 
@@ -199,13 +198,12 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       newServerToolSelections.set(serverId, new Set());
     }
     
+    // Update state
     setServerToolSelections(newServerToolSelections);
     
-    // Rebuild config and notify parent
-    setTimeout(() => {
-      const newConfig = buildMCPConfig();
-      onChange(newConfig);
-    }, 0);
+    // Update parent with new config (using new state values)
+    const newConfig = buildMCPConfig(selectedServers, newServerToolSelections);
+    onChange(newConfig);
   };
 
   /**
@@ -232,13 +230,13 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     }
     
     newServerToolSelections.set(serverId, toolSet);
+    
+    // Update state
     setServerToolSelections(newServerToolSelections);
     
-    // Rebuild config and notify parent
-    setTimeout(() => {
-      const newConfig = buildMCPConfig();
-      onChange(newConfig);
-    }, 0);
+    // Update parent with new config (using new state values)
+    const newConfig = buildMCPConfig(selectedServers, newServerToolSelections);
+    onChange(newConfig);
   };
 
   /**

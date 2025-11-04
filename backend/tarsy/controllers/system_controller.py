@@ -118,12 +118,12 @@ async def get_mcp_servers(request: Request) -> MCPServersResponse:
                 total_servers=len(servers_info),
                 total_tools=total_tools
             )
-            
+                
         finally:
             # Clean up MCP client
             if mcp_client:
                 logger.info("Cleaning up dedicated MCP client")
-                await mcp_client.cleanup()
+                await mcp_client.close()
                 
     except HTTPException:
         # Re-raise HTTP exceptions
