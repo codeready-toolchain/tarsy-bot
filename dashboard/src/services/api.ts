@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
-import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult, SystemWarning } from '../types';
+import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult, SystemWarning, MCPServersResponse } from '../types';
 import { authService } from './auth';
 import { TERMINAL_SESSION_STATUSES } from '../utils/statusConstants';
 
@@ -370,6 +370,31 @@ class APIClient {
       console.error('Error getting runbooks:', error);
       // Return empty array on error - don't fail the UI
       return [];
+    }
+  }
+
+  /**
+   * Get available MCP servers and their tools.
+   * 
+   * Returns information about all configured MCP servers including:
+   * - Server ID and type
+   * - Enabled status
+   * - Available tools with descriptions and input schemas
+   * 
+   * Used for building UI to select which MCP servers/tools to use for alert processing.
+   */
+  async getMCPServers(): Promise<MCPServersResponse> {
+    try {
+      const response = await this.client.get<MCPServersResponse>('/api/v1/system/mcp-servers');
+      
+      if (response.data && typeof response.data === 'object' && 'servers' in response.data) {
+        return response.data;
+      } else {
+        throw new Error('Invalid MCP servers response format');
+      }
+    } catch (error) {
+      console.error('Error fetching MCP servers:', error);
+      throw error;
     }
   }
 

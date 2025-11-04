@@ -30,8 +30,9 @@ import {
   InfoOutlined as InfoIcon
 } from '@mui/icons-material';
 
-import type { KeyValuePair, ManualAlertFormProps } from '../types';
+import type { KeyValuePair, ManualAlertFormProps, MCPSelectionConfig } from '../types';
 import { apiClient } from '../services/api';
+import MCPSelection from './MCPSelection/MCPSelection';
 
 /**
  * Generate a unique ID for key-value pairs
@@ -212,6 +213,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
   // Common fields
   const [alertType, setAlertType] = useState('');
   const [runbook, setRunbook] = useState<string | null>(DEFAULT_RUNBOOK);
+  const [mcpSelection, setMcpSelection] = useState<MCPSelectionConfig | null>(null);
   
   // Mode selection (0 = Structured, 1 = Text) - Default to Text
   const [mode, setMode] = useState(1);
@@ -415,6 +417,11 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
         alertData.runbook = runbook;
       }
 
+      // Add MCP selection if configured
+      if (mcpSelection && mcpSelection.servers.length > 0) {
+        alertData.mcp = mcpSelection;
+      }
+
       // Submit alert
       const response = await apiClient.submitAlert(alertData);
       
@@ -431,6 +438,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
         { id: generateId(), key: 'namespace', value: '' },
         { id: generateId(), key: 'message', value: '' }
       ]);
+      setMcpSelection(null);
 
     } catch (error: any) {
       console.error('Error submitting alert:', error);
@@ -490,6 +498,11 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
         alertData.runbook = runbook;
       }
 
+      // Add MCP selection if configured
+      if (mcpSelection && mcpSelection.servers.length > 0) {
+        alertData.mcp = mcpSelection;
+      }
+
       // Submit alert
       const response = await apiClient.submitAlert(alertData);
       
@@ -503,6 +516,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
 
       // Clear form on successful submission
       setFreeText('');
+      setMcpSelection(null);
 
     } catch (error: any) {
       console.error('Error submitting alert:', error);
@@ -703,6 +717,13 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
             </Stack>
 
           </Box>
+
+          {/* MCP Server Configuration (Advanced) */}
+          <MCPSelection 
+            value={mcpSelection}
+            onChange={setMcpSelection}
+            disabled={loading}
+          />
 
           {/* M3 Tabs Section */}
           <Box sx={{ px: 4, py: 2, bgcolor: 'rgba(25, 118, 210, 0.04)' }}>
