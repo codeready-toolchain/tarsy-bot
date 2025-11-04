@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from .agent_execution_result import AgentExecutionResult
 from .constants import StageStatus
 from .alert import ProcessingAlert
+from .mcp_selection_models import MCPSelectionConfig
 from mcp.types import Tool
 
 if TYPE_CHECKING:
@@ -70,6 +71,12 @@ class ChainContext(BaseModel):
         description="User or API Client who submitted the alert (from oauth2-proxy X-Forwarded-User header)"
     )
     
+    # === MCP Configuration Override ===
+    mcp: Optional[MCPSelectionConfig] = Field(
+        None,
+        description="Optional MCP server/tool selection to override default agent configuration (applies to all stages)"
+    )
+    
     # === Processing support ===
     runbook_content: Optional[str] = Field(None, description="Downloaded runbook content")
     chain_id: Optional[str] = Field(None, description="Chain identifier")
@@ -100,7 +107,8 @@ class ChainContext(BaseModel):
             processing_alert=processing_alert,
             session_id=session_id,
             current_stage_name=current_stage_name,
-            author=author
+            author=author,
+            mcp=processing_alert.mcp  # Pass through MCP selection from alert
         )
     
     def get_runbook_content(self) -> str:

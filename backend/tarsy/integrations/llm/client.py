@@ -6,10 +6,9 @@ Handles all LLM providers through LangChain's abstraction.
 import asyncio
 import httpx
 import pprint
-import re
 import traceback
 import urllib3
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel

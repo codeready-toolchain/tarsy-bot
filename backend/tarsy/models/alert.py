@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from tarsy.models.mcp_selection_models import MCPSelectionConfig
+
 
 class Alert(BaseModel):
     """
@@ -44,6 +46,10 @@ class Alert(BaseModel):
     data: Dict[str, Any] = Field(
         default_factory=dict, 
         description="Client's alert data - can be any complex nested JSON structure"
+    )
+    mcp: Optional[MCPSelectionConfig] = Field(
+        None,
+        description="Optional MCP server/tool selection to override default agent configuration"
     )
     
     @classmethod
@@ -106,6 +112,12 @@ class ProcessingAlert(BaseModel):
         description="Client's original alert data (pristine, no metadata mixed in)"
     )
     
+    # === MCP Configuration Override ===
+    mcp: Optional[MCPSelectionConfig] = Field(
+        None,
+        description="Optional MCP server/tool selection to override default agent configuration"
+    )
+    
     @classmethod
     def from_api_alert(cls, alert: Alert) -> ProcessingAlert:
         """
@@ -141,7 +153,8 @@ class ProcessingAlert(BaseModel):
             timestamp=timestamp,
             environment=environment,
             runbook_url=alert.runbook,
-            alert_data=alert.data  # ← PRISTINE!
+            alert_data=alert.data,  # ← PRISTINE!
+            mcp=alert.mcp  # Pass through MCP selection config
         )
 
 

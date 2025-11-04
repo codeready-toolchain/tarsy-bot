@@ -80,6 +80,52 @@ class ToolExecutionError(AgentError):
         return result
 
 
+class MCPServerSelectionError(AgentError):
+    """
+    Error when user-selected MCP servers don't exist or aren't available.
+    
+    Non-recoverable as it represents invalid user input for MCP selection.
+    """
+    
+    def __init__(self, message: str, requested_servers: list = None, 
+                 available_servers: list = None, context: Optional[Dict[str, Any]] = None):
+        super().__init__(message, context, recoverable=False)
+        self.requested_servers = requested_servers or []
+        self.available_servers = available_servers or []
+        
+    def to_dict(self) -> Dict[str, Any]:
+        result = super().to_dict()
+        result.update({
+            "requested_servers": self.requested_servers,
+            "available_servers": self.available_servers
+        })
+        return result
+
+
+class MCPToolSelectionError(AgentError):
+    """
+    Error when user-selected tools don't exist on the specified MCP server.
+    
+    Non-recoverable as it represents invalid user input for tool selection.
+    """
+    
+    def __init__(self, message: str, server_name: str = None, requested_tools: list = None,
+                 available_tools: list = None, context: Optional[Dict[str, Any]] = None):
+        super().__init__(message, context, recoverable=False)
+        self.server_name = server_name
+        self.requested_tools = requested_tools or []
+        self.available_tools = available_tools or []
+        
+    def to_dict(self) -> Dict[str, Any]:
+        result = super().to_dict()
+        result.update({
+            "server_name": self.server_name,
+            "requested_tools": self.requested_tools,
+            "available_tools": self.available_tools
+        })
+        return result
+
+
 
 class ConfigurationError(AgentError):
     """

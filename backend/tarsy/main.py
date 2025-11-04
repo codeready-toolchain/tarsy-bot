@@ -389,7 +389,7 @@ app.include_router(alert_router, tags=["alerts"])
 app.include_router(websocket_router, tags=["websocket"])
 
 from tarsy.controllers.system_controller import router as system_router
-app.include_router(system_router, prefix="/api/v1", tags=["system"])
+app.include_router(system_router, tags=["system"])
 
 
 @app.get("/health")
