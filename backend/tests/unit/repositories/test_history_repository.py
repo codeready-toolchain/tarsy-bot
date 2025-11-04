@@ -1085,6 +1085,119 @@ class TestHistoryRepository:
         assert active_sessions[0].status == "in_progress"
 
     @pytest.mark.unit
+    def test_get_session_details_with_mcp_selection(self, repository):
+        """Test that get_session_details includes mcp_selection field."""
+        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        
+        # Create session with MCP selection
+        session_with_mcp = AlertSession(
+            session_id="session-with-mcp",
+            alert_data={"test": "data"},
+            agent_type="TestAgent",
+            alert_type="test",
+            status="completed",
+            started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            chain_id="test-chain-mcp",
+            mcp_selection=MCPSelectionConfig(
+                servers=[
+                    MCPServerSelection(name="kubectl", tools=["get_pods", "describe_pod"]),
+                    MCPServerSelection(name="argocd")
+                ]
+            )
+        )
+        
+        repository.create_alert_session(session_with_mcp)
+        
+        # Get session details
+        result = repository.get_session_details("session-with-mcp")
+        
+        assert result is not None
+        assert result.mcp_selection is not None
+        assert len(result.mcp_selection.servers) == 2
+        assert result.mcp_selection.servers[0].name == "kubectl"
+        assert result.mcp_selection.servers[0].tools == ["get_pods", "describe_pod"]
+        assert result.mcp_selection.servers[1].name == "argocd"
+        assert result.mcp_selection.servers[1].tools is None
+    
+    @pytest.mark.unit
+    def test_get_session_details_without_mcp_selection(self, repository):
+        """Test that get_session_details handles null mcp_selection correctly."""
+        # Create session without MCP selection
+        session_without_mcp = AlertSession(
+            session_id="session-without-mcp",
+            alert_data={"test": "data"},
+            agent_type="TestAgent",
+            alert_type="test",
+            status="completed",
+            started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            chain_id="test-chain-no-mcp",
+            mcp_selection=None
+        )
+        
+        repository.create_alert_session(session_without_mcp)
+        
+        # Get session details
+        result = repository.get_session_details("session-without-mcp")
+        
+        assert result is not None
+        assert result.mcp_selection is None
+    
+    @pytest.mark.unit
+    def test_get_alert_sessions_with_mcp_selection(self, repository):
+        """Test that get_alert_sessions includes mcp_selection in SessionOverview."""
+        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        
+        # Create sessions with and without MCP selection
+        session_with_mcp = AlertSession(
+            session_id="list-with-mcp",
+            alert_data={"test": "data"},
+            agent_type="TestAgent",
+            alert_type="test",
+            status="completed",
+            started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            chain_id="test-chain-list-1",
+            mcp_selection=MCPSelectionConfig(
+                servers=[MCPServerSelection(name="kubectl", tools=["get_pods"])]
+            )
+        )
+        
+        session_without_mcp = AlertSession(
+            session_id="list-without-mcp",
+            alert_data={"test": "data"},
+            agent_type="TestAgent",
+            alert_type="test",
+            status="completed",
+            started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            chain_id="test-chain-list-2",
+            mcp_selection=None
+        )
+        
+        repository.create_alert_session(session_with_mcp)
+        repository.create_alert_session(session_without_mcp)
+        
+        # Get sessions list
+        result = repository.get_alert_sessions(page_size=10)
+        
+        assert result is not None
+        assert len(result.sessions) == 2
+        
+        # Find sessions by ID (order might vary)
+        session_with_mcp_result = next((s for s in result.sessions if s.session_id == "list-with-mcp"), None)
+        session_without_mcp_result = next((s for s in result.sessions if s.session_id == "list-without-mcp"), None)
+        
+        assert session_with_mcp_result is not None
+        assert session_with_mcp_result.mcp_selection is not None
+        assert len(session_with_mcp_result.mcp_selection.servers) == 1
+        assert session_with_mcp_result.mcp_selection.servers[0].name == "kubectl"
+        
+        assert session_without_mcp_result is not None
+        assert session_without_mcp_result.mcp_selection is None
+    
+    @pytest.mark.unit
     def test_get_session_details_empty_session(self, repository):
         """Test getting timeline for non-existent session."""
         result = repository.get_session_details("non-existent-session")

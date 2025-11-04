@@ -471,6 +471,9 @@ class HistoryRepository:
                     chain_id=alert_session.chain_id,
                     current_stage_index=alert_session.current_stage_index,
                     
+                    # MCP configuration override
+                    mcp_selection=alert_session.mcp_selection,
+                    
                     # Optional fields that may need calculation elsewhere (defaults from SessionOverview)
                     total_stages=None,
                     completed_stages=None,
@@ -646,6 +649,7 @@ class HistoryRepository:
                 status=AlertSessionStatus(session.status),
                 author=session.author,
                 runbook_url=session.runbook_url,
+                mcp_selection=session.mcp_selection,
                 started_at_us=session.started_at_us,
                 completed_at_us=session.completed_at_us,
                 error_message=session.error_message,
@@ -806,7 +810,10 @@ class HistoryRepository:
                 total_stages=len(stage_executions_db),
                 completed_stages=completed_stages,
                 failed_stages=failed_stages,
-                current_stage_index=session.current_stage_index
+                current_stage_index=session.current_stage_index,
+                
+                # MCP configuration override
+                mcp_selection=session.mcp_selection
             )
             
         except Exception as e:

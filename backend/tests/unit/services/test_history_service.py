@@ -415,6 +415,7 @@ class TestHistoryService:
             total_interactions=2,
             llm_interaction_count=1,
             mcp_communication_count=1,
+            mcp_selection=None,
             stages=[]
         )
         
@@ -455,6 +456,64 @@ class TestHistoryService:
             assert isinstance(timeline, DetailedSession)
             assert timeline.session_id == "test-session-id"
             assert timeline.status == AlertSessionStatus.COMPLETED
+    
+    @pytest.mark.unit
+    def test_get_session_details_with_mcp_selection(self, history_service):
+        """Test session details retrieval includes mcp_selection."""
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.history_models import DetailedSession
+        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        
+        # Create DetailedSession with MCP selection
+        mock_detailed_session = DetailedSession(
+            session_id="test-session-mcp",
+            alert_type="kubernetes",
+            agent_type="chain:k8s-analysis",
+            status=AlertSessionStatus.COMPLETED,
+            started_at_us=1000000,
+            completed_at_us=2000000,
+            error_message=None,
+            alert_data={"namespace": "test"},
+            final_analysis="Analysis complete",
+            session_metadata={},
+            chain_id="test-chain-mcp",
+            chain_definition={},
+            current_stage_index=None,
+            current_stage_id=None,
+            total_interactions=5,
+            llm_interaction_count=3,
+            mcp_communication_count=2,
+            mcp_selection=MCPSelectionConfig(
+                servers=[
+                    MCPServerSelection(name="kubectl", tools=["get_pods", "describe_pod"]),
+                    MCPServerSelection(name="argocd")
+                ]
+            ),
+            stages=[]
+        )
+        
+        dependencies['repository'].get_session_details.return_value = mock_detailed_session
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            result = history_service.get_session_details("test-session-mcp")
+            
+            assert result is not None
+            assert isinstance(result, DetailedSession)
+            assert result.session_id == "test-session-mcp"
+            assert result.status == AlertSessionStatus.COMPLETED
+            
+            # Verify MCP selection is included
+            assert result.mcp_selection is not None
+            assert len(result.mcp_selection.servers) == 2
+            assert result.mcp_selection.servers[0].name == "kubectl"
+            assert result.mcp_selection.servers[0].tools == ["get_pods", "describe_pod"]
+            assert result.mcp_selection.servers[1].name == "argocd"
+            assert result.mcp_selection.servers[1].tools is None
     
     @pytest.mark.parametrize("connection_success,expected_result", [
         (True, True),  # Connection successful
