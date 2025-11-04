@@ -1,6 +1,5 @@
 """System-level API endpoints."""
 
-import uuid
 from typing import List
 
 from fastapi import APIRouter, HTTPException, Request
@@ -63,9 +62,6 @@ async def get_mcp_servers(request: Request) -> MCPServersResponse:
             server_ids = alert_service.mcp_server_registry.get_all_server_ids()
             logger.info(f"Found {len(server_ids)} configured MCP servers")
             
-            # Generate temporary session ID for tool listing (not tied to alert)
-            temp_session_id = f"mcp-discovery-{uuid.uuid4().hex[:8]}"
-            
             servers_info = []
             total_tools = 0
             
@@ -75,9 +71,8 @@ async def get_mcp_servers(request: Request) -> MCPServersResponse:
                     # Get server configuration
                     server_config = alert_service.mcp_server_registry.get_server_config(server_id)
                     
-                    # List tools from this server
-                    server_tools_dict = await mcp_client.list_tools(
-                        session_id=temp_session_id,
+                    # List tools from this server (simple version without database storage)
+                    server_tools_dict = await mcp_client.list_tools_simple(
                         server_name=server_id
                     )
                     

@@ -181,13 +181,70 @@ class MCPClient:
             
             raise
     
+    async def list_tools_simple(
+        self,
+        server_name: Optional[str] = None,
+    ) -> Dict[str, List[Tool]]:
+        """
+        List available tools from MCP servers without database storage.
+        
+        This is a lightweight version for API discovery that doesn't use hook contexts
+        or store interactions in the database. Use this for non-alert scenarios like
+        the MCP servers discovery endpoint.
+        
+        Args:
+            server_name: Optional server name to list tools from. If None, lists from all servers.
+            
+        Returns:
+            Dictionary mapping server names to lists of Tool objects
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        all_tools = {}
+        
+        if server_name:
+            # List tools from specific server
+            if server_name in self.sessions:
+                try:
+                    session = self.sessions[server_name]
+                    tools_result = await asyncio.wait_for(
+                        session.list_tools(),
+                        timeout=MCP_OPERATION_TIMEOUT_SECONDS
+                    )
+                    all_tools[server_name] = tools_result.tools
+                    logger.debug(f"Listed {len(tools_result.tools)} tools from {server_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to list tools from {server_name}: {e}")
+                    all_tools[server_name] = []
+        else:
+            # List tools from all servers
+            for name in list[str](self.sessions.keys()):
+                try:
+                    session = self.sessions.get(name)
+                    if not session:
+                        all_tools[name] = []
+                        continue
+                    
+                    tools_result = await asyncio.wait_for(
+                        session.list_tools(),
+                        timeout=MCP_OPERATION_TIMEOUT_SECONDS
+                    )
+                    all_tools[name] = tools_result.tools
+                    logger.debug(f"Listed {len(tools_result.tools)} tools from {name}")
+                except Exception as e:
+                    logger.warning(f"Failed to list tools from {name}: {e}")
+                    all_tools[name] = []
+        
+        return all_tools
+    
     async def list_tools(
         self,
         session_id: str,
         server_name: Optional[str] = None,
         stage_execution_id: Optional[str] = None,
     ) -> Dict[str, List[Tool]]:
-        """List available tools from MCP servers."""
+        """List available tools from MCP servers with database storage."""
         if not self._initialized:
             await self.initialize()
         
@@ -239,7 +296,7 @@ class MCPClient:
                         all_tools[server_name] = []
             else:
                 # List tools from all servers
-                for name in list(self.sessions.keys()):  # Use list() to avoid dict changed during iteration
+                for name in list[str](self.sessions.keys()):  # Use list() to avoid dict changed during iteration
                     timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
                     try:
                         session = self.sessions.get(name)

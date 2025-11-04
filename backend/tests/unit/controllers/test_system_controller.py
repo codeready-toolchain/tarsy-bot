@@ -156,8 +156,8 @@ async def test_get_mcp_servers_success(client: TestClient) -> None:
     mock_registry.get_server_config.side_effect = mock_get_server_config
     mock_alert_service.mcp_server_registry = mock_registry
     
-    # Mock list_tools response
-    async def mock_list_tools(session_id, server_name):
+    # Mock list_tools_simple response
+    async def mock_list_tools_simple(server_name=None):
         if server_name == "kubernetes-server":
             return {
                 "kubernetes-server": [
@@ -173,7 +173,7 @@ async def test_get_mcp_servers_success(client: TestClient) -> None:
             }
         return {}
     
-    mock_mcp_client.list_tools.side_effect = mock_list_tools
+    mock_mcp_client.list_tools_simple = AsyncMock(side_effect=mock_list_tools_simple)
     mock_mcp_client.cleanup = AsyncMock()
     
     # Patch alert_service in main module
@@ -288,15 +288,15 @@ async def test_get_mcp_servers_with_disabled_server(client: TestClient) -> None:
     mock_registry.get_server_config.side_effect = mock_get_server_config
     mock_alert_service.mcp_server_registry = mock_registry
     
-    # Mock list_tools
-    async def mock_list_tools(session_id, server_name):
+    # Mock list_tools_simple
+    async def mock_list_tools_simple(server_name=None):
         return {
             server_name: [
                 Tool(name=f"{server_name}-tool", description="Test tool", inputSchema={})
             ]
         }
     
-    mock_mcp_client.list_tools.side_effect = mock_list_tools
+    mock_mcp_client.list_tools_simple = AsyncMock(side_effect=mock_list_tools_simple)
     mock_mcp_client.cleanup = AsyncMock()
     
     with patch("tarsy.main.alert_service", mock_alert_service):
@@ -353,8 +353,8 @@ async def test_get_mcp_servers_tool_listing_failure(client: TestClient) -> None:
     mock_registry.get_server_config.side_effect = mock_get_server_config
     mock_alert_service.mcp_server_registry = mock_registry
     
-    # Mock list_tools - one works, one fails
-    async def mock_list_tools(session_id, server_name):
+    # Mock list_tools_simple - one works, one fails
+    async def mock_list_tools_simple(server_name=None):
         if server_name == "working-server":
             return {
                 "working-server": [
@@ -364,7 +364,7 @@ async def test_get_mcp_servers_tool_listing_failure(client: TestClient) -> None:
         else:
             raise Exception("Server communication failed")
     
-    mock_mcp_client.list_tools.side_effect = mock_list_tools
+    mock_mcp_client.list_tools_simple = AsyncMock(side_effect=mock_list_tools_simple)
     mock_mcp_client.cleanup = AsyncMock()
     
     with patch("tarsy.main.alert_service", mock_alert_service):

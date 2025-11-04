@@ -221,6 +221,133 @@ class TestMCPClientToolListing:
 
 
 @pytest.mark.unit
+class TestMCPClientToolListingSimple:
+    """Test MCP client simple tool listing functionality (without database storage)."""
+    
+    @pytest.fixture
+    def mock_session(self):
+        """Mock MCP session."""
+        session = AsyncMock()
+        mock_tool = Tool(
+            name="test_tool",
+            description="Test tool description",
+            inputSchema={"type": "object", "properties": {}}
+        )
+        
+        mock_result = Mock()
+        mock_result.tools = [mock_tool]
+        session.list_tools.return_value = mock_result
+        return session
+    
+    @pytest.fixture
+    def client_with_session(self, mock_session):
+        """Create client with mocked session."""
+        client = MCPClient(Mock(), Mock())
+        client.sessions = {"test-server": mock_session}
+        client._initialized = True
+        return client
+    
+    @pytest.mark.asyncio
+    async def test_list_tools_simple_specific_server_success(self, client_with_session, mock_session):
+        """Test successful simple tool listing for specific server."""
+        result = await client_with_session.list_tools_simple("test-server")
+        
+        assert "test-server" in result
+        assert len(result["test-server"]) == 1
+        
+        tool = result["test-server"][0]
+        assert tool.name == "test_tool"
+        assert tool.description == "Test tool description"
+        assert tool.inputSchema == {"type": "object", "properties": {}}
+        
+        mock_session.list_tools.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_list_tools_simple_all_servers_success(self, client_with_session, mock_session):
+        """Test successful simple tool listing for all servers."""
+        result = await client_with_session.list_tools_simple()
+        
+        assert "test-server" in result
+        assert len(result["test-server"]) == 1
+        mock_session.list_tools.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_list_tools_simple_nonexistent_server(self, client_with_session):
+        """Test simple tool listing for nonexistent server returns empty."""
+        result = await client_with_session.list_tools_simple("nonexistent-server")
+        
+        assert result == {}
+    
+    @pytest.mark.asyncio
+    async def test_list_tools_simple_server_error_returns_empty(self, client_with_session, mock_session):
+        """Test simple tool listing handles server errors gracefully."""
+        mock_session.list_tools.side_effect = Exception("Server error")
+        
+        result = await client_with_session.list_tools_simple("test-server")
+        
+        assert "test-server" in result
+        assert result["test-server"] == []
+    
+    @pytest.mark.asyncio
+    async def test_list_tools_simple_auto_initialize(self):
+        """Test simple tool listing auto-initializes if needed."""
+        client = MCPClient(Mock(), Mock())
+        client._initialized = False
+        
+        with patch.object(client, 'initialize') as mock_init:
+            await client.list_tools_simple()
+            mock_init.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_list_tools_simple_multiple_servers(self):
+        """Test simple tool listing with multiple servers."""
+        client = MCPClient(Mock(), Mock())
+        
+        # Create multiple mock sessions with different tools
+        mock_session1 = AsyncMock()
+        mock_tool1 = Tool(name="tool1", description="Tool 1", inputSchema={})
+        mock_result1 = Mock()
+        mock_result1.tools = [mock_tool1]
+        mock_session1.list_tools.return_value = mock_result1
+        
+        mock_session2 = AsyncMock()
+        mock_tool2 = Tool(name="tool2", description="Tool 2", inputSchema={})
+        mock_result2 = Mock()
+        mock_result2.tools = [mock_tool2]
+        mock_session2.list_tools.return_value = mock_result2
+        
+        client.sessions = {
+            "server1": mock_session1,
+            "server2": mock_session2
+        }
+        client._initialized = True
+        
+        result = await client.list_tools_simple()
+        
+        assert len(result) == 2
+        assert "server1" in result
+        assert "server2" in result
+        assert result["server1"][0].name == "tool1"
+        assert result["server2"][0].name == "tool2"
+    
+    @pytest.mark.asyncio
+    async def test_list_tools_simple_no_database_interaction(self, client_with_session):
+        """Test that simple tool listing doesn't interact with database."""
+        # This test verifies that list_tools_simple doesn't use hook contexts
+        # by checking that it can run without any database session or hook mocking
+        
+        with patch('tarsy.integrations.mcp.client.mcp_list_context') as mock_context:
+            # Should NOT call mcp_list_context
+            result = await client_with_session.list_tools_simple("test-server")
+            
+            assert "test-server" in result
+            assert len(result["test-server"]) == 1
+            
+            # Verify no hook context was used
+            mock_context.assert_not_called()
+
+
+@pytest.mark.unit
 class TestMCPClientToolCalling:
     """Test MCP client tool calling functionality."""
     
