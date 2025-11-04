@@ -81,10 +81,15 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       
       value.servers.forEach(server => {
         newSelectedServers.add(server.name);
-        if (server.tools && server.tools.length > 0) {
-          newServerToolSelections.set(server.name, new Set(server.tools));
-        } else {
+        if (server.tools === null || server.tools === undefined) {
+          // Null/undefined = all tools explicitly selected
           newServerToolSelections.set(server.name, null);
+        } else if (server.tools.length === 0) {
+          // Empty array = no tools selected yet (will default to all)
+          newServerToolSelections.set(server.name, new Set());
+        } else {
+          // Specific tools selected
+          newServerToolSelections.set(server.name, new Set(server.tools));
         }
       });
       
@@ -116,6 +121,9 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
 
   /**
    * Build MCPSelectionConfig from provided state
+   * - null = all tools explicitly selected
+   * - empty array = no specific tools selected (backend interprets as all tools by default)
+   * - array with items = specific tools selected
    */
   const buildMCPConfig = (
     servers: Set<string>,
@@ -128,9 +136,22 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     const serverList = Array.from(servers).map(serverId => {
       const toolSelection = toolSelections.get(serverId);
       
+      // Preserve the distinction between null and empty
+      let tools: string[] | null = null;
+      if (toolSelection === null || toolSelection === undefined) {
+        // Explicitly all tools selected (or not set)
+        tools = null;
+      } else if (toolSelection.size === 0) {
+        // No tools selected yet - send empty array (backend will use all tools by default)
+        tools = [];
+      } else {
+        // Specific tools selected
+        tools = Array.from(toolSelection);
+      }
+      
       return {
         name: serverId,
-        tools: toolSelection ? Array.from(toolSelection) : null,
+        tools,
       };
     });
     
@@ -186,15 +207,16 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
 
   /**
    * Handle "All Tools" toggle for a server
+   * Checked = all tools (null), Unchecked = no tools selected yet (empty set)
    */
   const handleAllToolsToggle = (serverId: string, checked: boolean) => {
     const newServerToolSelections = new Map(serverToolSelections);
     
     if (checked) {
-      // All tools selected
+      // Select all tools - set to null
       newServerToolSelections.set(serverId, null);
     } else {
-      // Deselect all tools (empty set)
+      // Uncheck "All" - start with empty set (user can now select specific tools)
       newServerToolSelections.set(serverId, new Set());
     }
     
@@ -320,10 +342,18 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
           {/* Info text */}
           <Box sx={{ mb: 3, display: 'flex', gap: 1, alignItems: 'flex-start' }}>
             <InfoIcon sx={{ color: 'info.main', fontSize: 20, mt: 0.25 }} />
-            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-              Select which MCP servers and tools to use for alert processing. 
-              If not configured, default agent settings will be used.
-            </Typography>
+            <Box>
+              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                Select which MCP servers and tools to use for alert processing.
+              </Typography>
+              <Typography variant="body2" sx={{ lineHeight: 1.6, mt: 0.5, fontWeight: 500, color: 'primary.main' }}>
+                {selectedServers.size === 0 ? (
+                  <>💡 No servers selected: Default MCP servers for this alert type will be used.</>
+                ) : (
+                  <>✓ {selectedServers.size} server{selectedServers.size > 1 ? 's' : ''} configured</>
+                )}
+              </Typography>
+            </Box>
           </Box>
 
           {/* Loading state */}
@@ -443,22 +473,38 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
                                 borderColor: 'divider',
                               }}
                             >
-                              {/* All tools checkbox */}
-                              <FormControlLabel
-                                control={
-                                  <Checkbox
-                                    checked={allToolsSelected}
-                                    onChange={(e) => handleAllToolsToggle(server.server_id, e.target.checked)}
-                                    disabled={disabled}
-                                  />
-                                }
-                                label={
-                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                    All Tools
-                                  </Typography>
-                                }
-                                sx={{ mb: 1, display: 'block' }}
-                              />
+                              {/* All tools checkbox - inline with label */}
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                <Checkbox
+                                  checked={allToolsSelected}
+                                  onChange={(e) => handleAllToolsToggle(server.server_id, e.target.checked)}
+                                  disabled={disabled}
+                                />
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                  All Tools
+                                </Typography>
+                              </Box>
+                              
+                              {/* Show info when no specific tools selected (empty set, not null) */}
+                              {(() => {
+                                const toolSelection = serverToolSelections.get(server.server_id);
+                                const isEmptySet = toolSelection !== null && toolSelection !== undefined && toolSelection.size === 0;
+                                return isEmptySet && (
+                                  <MuiAlert 
+                                    severity="info" 
+                                    sx={{ 
+                                      mb: 1, 
+                                      fontSize: '0.75rem',
+                                      py: 0.5,
+                                      '& .MuiAlert-icon': {
+                                        fontSize: '1rem',
+                                      }
+                                    }}
+                                  >
+                                    No specific tools selected - all tools will be used by default
+                                  </MuiAlert>
+                                );
+                              })()}
 
                               <Divider sx={{ mb: 1 }} />
 
