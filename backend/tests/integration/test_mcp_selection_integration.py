@@ -411,6 +411,169 @@ class TestMCPSelectionEndToEnd:
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+class TestMCPSelectionExecutionValidation:
+    """Test that MCP selection is enforced at tool execution time."""
+    
+    async def test_unauthorized_tool_blocked_at_execution(
+        self,
+        mock_llm_manager,
+        mock_mcp_client,
+        mock_mcp_server_registry
+    ):
+        """Test that tool calls not in MCP selection are blocked at execution time."""
+        from tarsy.agents.kubernetes_agent import KubernetesAgent
+        from mcp.types import Tool
+        
+        # Mock the registry
+        mock_mcp_server_registry.get_all_server_ids.return_value = ["kubernetes-server"]
+        
+        # Mock list_tools - kubernetes-server has multiple tools available
+        async def mock_list_tools(session_id, server_name, stage_execution_id=None):
+            if server_name == "kubernetes-server":
+                return {
+                    "kubernetes-server": [
+                        Tool(name="kubectl_get_namespace", description="Get namespace", inputSchema={}),
+                        Tool(name="kubectl_get_pods", description="List pods", inputSchema={}),
+                        Tool(name="kubectl_describe_pod", description="Describe pod", inputSchema={})
+                    ]
+                }
+            return {}
+        
+        mock_mcp_client.list_tools.side_effect = mock_list_tools
+        
+        # Create agent
+        agent = KubernetesAgent(
+            llm_client=mock_llm_manager,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_server_registry
+        )
+        
+        await agent._configure_mcp_client()
+        
+        # Create MCP selection that only allows kubectl_get_namespace
+        mcp_selection = MCPSelectionConfig(
+            servers=[
+                MCPServerSelection(
+                    name="kubernetes-server",
+                    tools=["kubectl_get_namespace"]  # Only this tool is allowed
+                )
+            ]
+        )
+        
+        # Try to call an ALLOWED tool - should succeed
+        allowed_tool_call = {
+            "server": "kubernetes-server",
+            "tool": "kubectl_get_namespace",
+            "parameters": {"name": "default"}
+        }
+        
+        # Mock the actual tool call (call_tool is async)
+        async def mock_call_tool(*args, **kwargs):
+            return {"status": "success"}
+        mock_mcp_client.call_tool = mock_call_tool
+        
+        # Should execute successfully
+        result = await agent.execute_mcp_tools(
+            [allowed_tool_call],
+            "test-session",
+            mcp_selection=mcp_selection
+        )
+        assert result is not None
+        assert "kubernetes-server" in result
+        
+        # Now try to call a DISALLOWED tool - should return error result (not raise)
+        disallowed_tool_call = {
+            "server": "kubernetes-server",
+            "tool": "kubectl_describe_pod",  # NOT in the allowed tools list
+            "parameters": {"namespace": "default", "name": "test-pod"}
+        }
+        
+        # The method handles errors gracefully and returns them in the result
+        result = await agent.execute_mcp_tools(
+            [disallowed_tool_call],
+            "test-session",
+            mcp_selection=mcp_selection
+        )
+        
+        # Verify error result was returned
+        assert "kubernetes-server" in result
+        assert len(result["kubernetes-server"]) == 1
+        error_result = result["kubernetes-server"][0]
+        
+        # Check it's marked as an error (error field exists)
+        assert error_result["tool"] == "kubectl_describe_pod"
+        assert "error" in error_result
+        assert error_result["error_type"] == "tool_execution_failure"
+        
+        # Verify error message mentions the tool isn't allowed
+        error_msg = error_result["error"]
+        assert "kubectl_describe_pod" in error_msg
+        assert "not allowed" in error_msg.lower()
+        assert "kubectl_get_namespace" in error_msg  # Should mention what IS allowed
+    
+    async def test_unauthorized_server_blocked_at_execution(
+        self,
+        mock_llm_manager,
+        mock_mcp_client,
+        mock_mcp_server_registry
+    ):
+        """Test that tool calls to non-selected servers are blocked."""
+        from tarsy.agents.kubernetes_agent import KubernetesAgent
+        
+        # Mock the registry with multiple servers
+        mock_mcp_server_registry.get_all_server_ids.return_value = [
+            "kubernetes-server",
+            "argocd-server"
+        ]
+        
+        # Create agent
+        agent = KubernetesAgent(
+            llm_client=mock_llm_manager,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_server_registry
+        )
+        
+        await agent._configure_mcp_client()
+        
+        # Create MCP selection that only includes kubernetes-server
+        mcp_selection = MCPSelectionConfig(
+            servers=[
+                MCPServerSelection(name="kubernetes-server")
+            ]
+        )
+        
+        # Try to call a tool from a NON-SELECTED server - should return error result
+        disallowed_server_call = {
+            "server": "argocd-server",  # NOT in the selection
+            "tool": "get_application",
+            "parameters": {}
+        }
+        
+        result = await agent.execute_mcp_tools(
+            [disallowed_server_call],
+            "test-session",
+            mcp_selection=mcp_selection
+        )
+        
+        # Verify error result was returned
+        assert "argocd-server" in result
+        assert len(result["argocd-server"]) == 1
+        error_result = result["argocd-server"][0]
+        
+        # Check it's marked as an error
+        assert error_result["tool"] == "get_application"
+        assert "error" in error_result
+        assert error_result["error_type"] == "tool_execution_failure"
+        
+        # Verify error message
+        error_msg = error_result["error"]
+        assert "argocd-server" in error_msg
+        assert "not allowed" in error_msg.lower()
+        assert "kubernetes-server" in error_msg  # Should mention what IS allowed
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 class TestMCPSelectionPersistence:
     """Test MCP selection persistence in database and retrieval via API."""
     
