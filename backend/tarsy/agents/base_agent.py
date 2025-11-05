@@ -360,8 +360,8 @@ class BaseAgent(ABC):
                 missing_servers = set(requested_server_names) - set(available_server_ids)
 
                 if missing_servers:
-                    missing_list = sorted(list(missing_servers))
-                    available_list = sorted(list(available_server_ids))
+                    missing_list = sorted(missing_servers)
+                    available_list = sorted(available_server_ids)
                     error_msg = f"Requested MCP servers not found: {missing_list}. Available servers: {available_list}"
                     logger.error(error_msg)
                     raise MCPServerSelectionError(
@@ -400,8 +400,8 @@ class BaseAgent(ABC):
                         missing_tools = set(requested_tool_names) - available_tool_names
                         
                         if missing_tools:
-                            missing_list = sorted(list(missing_tools))
-                            available_list = sorted(list(available_tool_names))
+                            missing_list = sorted(missing_tools)
+                            available_list = sorted(available_tool_names)
                             error_msg = f"Requested tools not found on server '{server_name}': {missing_list}. Available tools: {available_list}"
                             logger.error(error_msg)
                             raise MCPToolSelectionError(
