@@ -119,17 +119,27 @@ def test_get_system_warnings_without_details(client: TestClient) -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_get_mcp_servers_success(client: TestClient) -> None:
-    """Test successfully retrieving MCP servers and their tools."""
-    from unittest.mock import AsyncMock, Mock, patch
+async def test_get_mcp_servers_success_with_cache(client: TestClient) -> None:
+    """Test successfully retrieving MCP servers and their tools from cache."""
+    from unittest.mock import Mock, patch
     from mcp.types import Tool
     
-    # Create mock alert_service with required components
+    # Create mock alert_service with cached tools
     mock_alert_service = Mock()
-    mock_mcp_client = AsyncMock()
-    mock_mcp_client_factory = Mock()
-    mock_mcp_client_factory.create_client = AsyncMock(return_value=mock_mcp_client)
-    mock_alert_service.mcp_client_factory = mock_mcp_client_factory
+    
+    # Mock health monitor with cached tools
+    mock_health_monitor = Mock()
+    cached_tools = {
+        "kubernetes-server": [
+            Tool(name="kubectl-get", description="Get Kubernetes resources", inputSchema={"type": "object"}),
+            Tool(name="kubectl-describe", description="Describe Kubernetes resources", inputSchema={"type": "object"})
+        ],
+        "argocd-server": [
+            Tool(name="get-application", description="Get ArgoCD application", inputSchema={"type": "object"})
+        ]
+    }
+    mock_health_monitor.get_cached_tools.return_value = cached_tools
+    mock_alert_service.mcp_health_monitor = mock_health_monitor
     
     # Mock MCP server registry
     mock_registry = Mock()
@@ -155,26 +165,6 @@ async def test_get_mcp_servers_success(client: TestClient) -> None:
     
     mock_registry.get_server_config.side_effect = mock_get_server_config
     mock_alert_service.mcp_server_registry = mock_registry
-    
-    # Mock list_tools_simple response
-    async def mock_list_tools_simple(server_name=None):
-        if server_name == "kubernetes-server":
-            return {
-                "kubernetes-server": [
-                    Tool(name="kubectl-get", description="Get Kubernetes resources", inputSchema={"type": "object"}),
-                    Tool(name="kubectl-describe", description="Describe Kubernetes resources", inputSchema={"type": "object"})
-                ]
-            }
-        elif server_name == "argocd-server":
-            return {
-                "argocd-server": [
-                    Tool(name="get-application", description="Get ArgoCD application", inputSchema={"type": "object"})
-                ]
-            }
-        return {}
-    
-    mock_mcp_client.list_tools_simple = AsyncMock(side_effect=mock_list_tools_simple)
-    mock_mcp_client.close = AsyncMock()
     
     # Patch alert_service in main module
     with patch("tarsy.main.alert_service", mock_alert_service):
@@ -202,7 +192,73 @@ async def test_get_mcp_servers_success(client: TestClient) -> None:
     assert len(argocd_server["tools"]) == 1
     assert argocd_server["tools"][0]["name"] == "get-application"
     
-    # Verify close was called
+    # Verify cache was used
+    mock_health_monitor.get_cached_tools.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_mcp_servers_fallback_to_direct_query(client: TestClient) -> None:
+    """Test fallback to direct MCP queries when cache is empty (startup period)."""
+    from unittest.mock import AsyncMock, Mock, patch
+    from mcp.types import Tool
+    
+    # Create mock alert_service with empty cache
+    mock_alert_service = Mock()
+    
+    # Mock health monitor with empty cache
+    mock_health_monitor = Mock()
+    mock_health_monitor.get_cached_tools.return_value = {}  # Empty cache
+    mock_alert_service.mcp_health_monitor = mock_health_monitor
+    
+    # Mock MCP client for fallback
+    mock_mcp_client = AsyncMock()
+    mock_mcp_client_factory = Mock()
+    mock_mcp_client_factory.create_client = AsyncMock(return_value=mock_mcp_client)
+    mock_alert_service.mcp_client_factory = mock_mcp_client_factory
+    
+    # Mock MCP server registry
+    mock_registry = Mock()
+    mock_registry.get_all_server_ids.return_value = ["kubernetes-server"]
+    
+    # Mock server config
+    k8s_config = Mock()
+    k8s_config.server_id = "kubernetes-server"
+    k8s_config.server_type = "kubernetes"
+    k8s_config.enabled = True
+    mock_registry.get_server_config.return_value = k8s_config
+    mock_alert_service.mcp_server_registry = mock_registry
+    
+    # Mock list_tools_simple response
+    async def mock_list_tools_simple(server_name=None):
+        return {
+            "kubernetes-server": [
+                Tool(name="kubectl-get", description="Get Kubernetes resources", inputSchema={"type": "object"})
+            ]
+        }
+    
+    mock_mcp_client.list_tools_simple = AsyncMock(side_effect=mock_list_tools_simple)
+    mock_mcp_client.close = AsyncMock()
+    
+    # Patch alert_service in main module
+    with patch("tarsy.main.alert_service", mock_alert_service):
+        response = client.get("/api/v1/system/mcp-servers")
+    
+    # Verify response
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert "servers" in data
+    assert len(data["servers"]) == 1
+    
+    # Verify kubernetes-server
+    k8s_server = data["servers"][0]
+    assert k8s_server["server_id"] == "kubernetes-server"
+    assert len(k8s_server["tools"]) == 1
+    
+    # Verify fallback was used
+    mock_health_monitor.get_cached_tools.assert_called_once()
+    mock_mcp_client_factory.create_client.assert_called_once()
     mock_mcp_client.close.assert_called_once()
 
 
@@ -224,20 +280,19 @@ async def test_get_mcp_servers_service_not_initialized(client: TestClient) -> No
 @pytest.mark.asyncio
 async def test_get_mcp_servers_empty_registry(client: TestClient) -> None:
     """Test retrieving MCP servers when no servers are configured."""
-    from unittest.mock import AsyncMock, Mock, patch
+    from unittest.mock import Mock, patch
     
     # Create mock alert_service with empty registry
     mock_alert_service = Mock()
-    mock_mcp_client = AsyncMock()
-    mock_mcp_client_factory = Mock()
-    mock_mcp_client_factory.create_client = AsyncMock(return_value=mock_mcp_client)
-    mock_alert_service.mcp_client_factory = mock_mcp_client_factory
+    
+    # Mock health monitor with cached tools
+    mock_health_monitor = Mock()
+    mock_health_monitor.get_cached_tools.return_value = {}
+    mock_alert_service.mcp_health_monitor = mock_health_monitor
     
     mock_registry = Mock()
     mock_registry.get_all_server_ids.return_value = []
     mock_alert_service.mcp_server_registry = mock_registry
-    
-    mock_mcp_client.close = AsyncMock()
     
     with patch("tarsy.main.alert_service", mock_alert_service):
         response = client.get("/api/v1/system/mcp-servers")
@@ -246,23 +301,29 @@ async def test_get_mcp_servers_empty_registry(client: TestClient) -> None:
     data = response.json()
     assert "servers" in data
     assert len(data["servers"]) == 0
-    
-    # Verify close was called
-    mock_mcp_client.close.assert_called_once()
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_get_mcp_servers_with_disabled_server(client: TestClient) -> None:
     """Test retrieving MCP servers including disabled ones."""
-    from unittest.mock import AsyncMock, Mock, patch
+    from unittest.mock import Mock, patch
     from mcp.types import Tool
     
     mock_alert_service = Mock()
-    mock_mcp_client = AsyncMock()
-    mock_mcp_client_factory = Mock()
-    mock_mcp_client_factory.create_client = AsyncMock(return_value=mock_mcp_client)
-    mock_alert_service.mcp_client_factory = mock_mcp_client_factory
+    
+    # Mock health monitor with cached tools
+    mock_health_monitor = Mock()
+    cached_tools = {
+        "enabled-server": [
+            Tool(name="enabled-server-tool", description="Test tool", inputSchema={})
+        ],
+        "disabled-server": [
+            Tool(name="disabled-server-tool", description="Test tool", inputSchema={})
+        ]
+    }
+    mock_health_monitor.get_cached_tools.return_value = cached_tools
+    mock_alert_service.mcp_health_monitor = mock_health_monitor
     
     mock_registry = Mock()
     mock_registry.get_all_server_ids.return_value = ["enabled-server", "disabled-server"]
@@ -288,17 +349,6 @@ async def test_get_mcp_servers_with_disabled_server(client: TestClient) -> None:
     mock_registry.get_server_config.side_effect = mock_get_server_config
     mock_alert_service.mcp_server_registry = mock_registry
     
-    # Mock list_tools_simple
-    async def mock_list_tools_simple(server_name=None):
-        return {
-            server_name: [
-                Tool(name=f"{server_name}-tool", description="Test tool", inputSchema={})
-            ]
-        }
-    
-    mock_mcp_client.list_tools_simple = AsyncMock(side_effect=mock_list_tools_simple)
-    mock_mcp_client.close = AsyncMock()
-    
     with patch("tarsy.main.alert_service", mock_alert_service):
         response = client.get("/api/v1/system/mcp-servers")
     
@@ -318,16 +368,23 @@ async def test_get_mcp_servers_with_disabled_server(client: TestClient) -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_get_mcp_servers_tool_listing_failure(client: TestClient) -> None:
-    """Test handling when tool listing fails for a server."""
-    from unittest.mock import AsyncMock, Mock, patch
+async def test_get_mcp_servers_partial_cache(client: TestClient) -> None:
+    """Test handling when some servers have cached tools and others don't."""
+    from unittest.mock import Mock, patch
     from mcp.types import Tool
     
     mock_alert_service = Mock()
-    mock_mcp_client = AsyncMock()
-    mock_mcp_client_factory = Mock()
-    mock_mcp_client_factory.create_client = AsyncMock(return_value=mock_mcp_client)
-    mock_alert_service.mcp_client_factory = mock_mcp_client_factory
+    
+    # Mock health monitor with partial cache (one server missing)
+    mock_health_monitor = Mock()
+    cached_tools = {
+        "working-server": [
+            Tool(name="test-tool", description="Test", inputSchema={})
+        ]
+        # "failing-server" not in cache - simulates it never became healthy
+    }
+    mock_health_monitor.get_cached_tools.return_value = cached_tools
+    mock_alert_service.mcp_health_monitor = mock_health_monitor
     
     mock_registry = Mock()
     mock_registry.get_all_server_ids.return_value = ["working-server", "failing-server"]
@@ -353,29 +410,20 @@ async def test_get_mcp_servers_tool_listing_failure(client: TestClient) -> None:
     mock_registry.get_server_config.side_effect = mock_get_server_config
     mock_alert_service.mcp_server_registry = mock_registry
     
-    # Mock list_tools_simple - one works, one fails
-    async def mock_list_tools_simple(server_name=None):
-        if server_name == "working-server":
-            return {
-                "working-server": [
-                    Tool(name="test-tool", description="Test", inputSchema={})
-                ]
-            }
-        else:
-            raise Exception("Server communication failed")
-    
-    mock_mcp_client.list_tools_simple = AsyncMock(side_effect=mock_list_tools_simple)
-    mock_mcp_client.close = AsyncMock()
-    
     with patch("tarsy.main.alert_service", mock_alert_service):
         response = client.get("/api/v1/system/mcp-servers")
     
-    # Request should still succeed (partial success)
+    # Request should still succeed
     assert response.status_code == 200
     data = response.json()
     
-    # Should have at least the working server
-    assert len(data["servers"]) >= 1
-    working_server = next((s for s in data["servers"] if s["server_id"] == "working-server"), None)
-    assert working_server is not None
+    # Both servers should be in response
+    assert len(data["servers"]) == 2
+    
+    # Working server should have tools
+    working_server = next(s for s in data["servers"] if s["server_id"] == "working-server")
     assert len(working_server["tools"]) == 1
+    
+    # Failing server should have no tools (not in cache yet)
+    failing_server = next(s for s in data["servers"] if s["server_id"] == "failing-server")
+    assert len(failing_server["tools"]) == 0

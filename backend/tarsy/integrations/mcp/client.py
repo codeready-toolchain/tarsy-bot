@@ -355,36 +355,6 @@ class MCPClient:
             
             return all_tools
     
-    async def ping(self, server_id: str) -> bool:
-        """
-        Check if an MCP server is healthy and responsive.
-        
-        Uses list_tools() as a lightweight health check. Does not modify
-        session state - the client handles automatic recovery on failures.
-        
-        Args:
-            server_id: ID of the server to ping
-            
-        Returns:
-            True if server is healthy and responsive, False otherwise
-        """
-        try:
-            if server_id not in self.sessions:
-                return False
-            
-            # Use list_tools as health check with short timeout
-            # 5 seconds is enough for local servers; connection refused is immediate
-            session = self.sessions[server_id]
-            await asyncio.wait_for(
-                session.list_tools(),
-                timeout=5.0  # Fast failure detection for crashes
-            )
-            return True
-            
-        except Exception as e:
-            logger.debug(f"Ping failed for {server_id}: {extract_error_details(e)}")
-            return False
-    
     async def try_initialize_server(self, server_id: str) -> bool:
         """
         Attempt to initialize a server that failed during startup.

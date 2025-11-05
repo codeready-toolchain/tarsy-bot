@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mcp.types import Tool
 
 from tarsy.models.system_models import WarningCategory
 from tarsy.services.mcp_health_monitor import MCPHealthMonitor, _mcp_warning_message
@@ -127,13 +128,20 @@ class TestMCPHealthMonitor:
         mock_config = MagicMock()
         mock_config.enabled = True
         mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
-        mock_mcp_client.sessions = {"server1": MagicMock()}
-        mock_mcp_client.ping.return_value = True
+        
+        # Mock session with successful list_tools
+        mock_session = AsyncMock()
+        test_tools = [Tool(name="test-tool", description="Test", inputSchema={})]
+        mock_tools_result = MagicMock()
+        mock_tools_result.tools = test_tools
+        mock_session.list_tools.return_value = mock_tools_result
+        mock_mcp_client.sessions = {"server1": mock_session}
 
         is_healthy = await health_monitor._check_server("server1")
 
         assert is_healthy is True
-        mock_mcp_client.ping.assert_called_once_with("server1")
+        # Should have called list_tools once (not ping separately)
+        mock_session.list_tools.assert_called_once()
         mock_mcp_client.try_initialize_server.assert_not_called()
 
     @pytest.mark.asyncio
@@ -147,15 +155,18 @@ class TestMCPHealthMonitor:
         mock_config = MagicMock()
         mock_config.enabled = True
         mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
-        mock_mcp_client.sessions = {"server1": MagicMock()}
-        mock_mcp_client.ping.return_value = False
+        
+        # Mock session with failed list_tools
+        mock_session = AsyncMock()
+        mock_session.list_tools.side_effect = Exception("Connection failed")
+        mock_mcp_client.sessions = {"server1": mock_session}
         mock_mcp_client.try_initialize_server.return_value = False
 
         is_healthy = await health_monitor._check_server("server1")
 
         assert is_healthy is False
-        # Ping is called once to check health
-        assert mock_mcp_client.ping.call_count == 1
+        # Should have called list_tools once (ping failed)
+        mock_session.list_tools.assert_called_once()
         # Recovery is attempted after ping fails
         mock_mcp_client.try_initialize_server.assert_called_once_with("server1")
 
@@ -172,14 +183,26 @@ class TestMCPHealthMonitor:
         mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
         mock_mcp_client.sessions = {}
         mock_mcp_client.try_initialize_server.return_value = True
-        mock_mcp_client.ping.return_value = True  # Verify session works
+        
+        # After init, mock the session with successful list_tools
+        mock_session = AsyncMock()
+        test_tools = [Tool(name="test-tool", description="Test", inputSchema={})]
+        mock_tools_result = MagicMock()
+        mock_tools_result.tools = test_tools
+        mock_session.list_tools.return_value = mock_tools_result
+        
+        # Simulate session being created after init
+        async def add_session_after_init(server_id):
+            mock_mcp_client.sessions[server_id] = mock_session
+            return True
+        mock_mcp_client.try_initialize_server.side_effect = add_session_after_init
 
         is_healthy = await health_monitor._check_server("server1")
 
         assert is_healthy is True
         mock_mcp_client.try_initialize_server.assert_called_once_with("server1")
-        # After successful init, we ping to verify the session works
-        mock_mcp_client.ping.assert_called_once_with("server1")
+        # After successful init, we ping/cache tools to verify the session works
+        mock_session.list_tools.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_check_server_no_session_init_failure(
@@ -277,13 +300,22 @@ class TestMCPHealthMonitor:
         mock_config = MagicMock()
         mock_config.enabled = True
         mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
-        mock_mcp_client.sessions = {"server1": MagicMock(), "server2": MagicMock()}
-        mock_mcp_client.ping.return_value = True
+        
+        # Mock sessions with successful list_tools
+        mock_session1 = AsyncMock()
+        mock_session2 = AsyncMock()
+        test_tools = [Tool(name="test-tool", description="Test", inputSchema={})]
+        mock_tools_result = MagicMock()
+        mock_tools_result.tools = test_tools
+        mock_session1.list_tools.return_value = mock_tools_result
+        mock_session2.list_tools.return_value = mock_tools_result
+        mock_mcp_client.sessions = {"server1": mock_session1, "server2": mock_session2}
 
         await health_monitor._check_all_servers()
 
-        # Both servers should be pinged
-        assert mock_mcp_client.ping.call_count == 2
+        # Both servers should have list_tools called (ping+cache)
+        mock_session1.list_tools.assert_called_once()
+        mock_session2.list_tools.assert_called_once()
         # Warnings should be cleared for both
         assert mock_warnings_service.clear_warning_by_server_id.call_count == 2
 
@@ -299,9 +331,16 @@ class TestMCPHealthMonitor:
         mock_config = MagicMock()
         mock_config.enabled = True
         mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
-        mock_mcp_client.sessions = {"server1": MagicMock()}
+        
+        # Mock session for server1 (healthy)
+        mock_session1 = AsyncMock()
+        test_tools = [Tool(name="test-tool", description="Test", inputSchema={})]
+        mock_tools_result = MagicMock()
+        mock_tools_result.tools = test_tools
+        mock_session1.list_tools.return_value = mock_tools_result
+        mock_mcp_client.sessions = {"server1": mock_session1}
+        
         # server1 healthy, server2 has no session and init fails
-        mock_mcp_client.ping.return_value = True
         mock_mcp_client.try_initialize_server.return_value = False
         mock_warnings_service.get_warnings.return_value = []
 
@@ -349,4 +388,152 @@ class TestMCPHealthMonitor:
         message = _mcp_warning_message("test-server")
         assert "test-server" in message
         assert "unreachable" in message.lower()
+    
+    @pytest.mark.asyncio
+    async def test_get_cached_tools_empty(self, health_monitor: MCPHealthMonitor) -> None:
+        """Test get_cached_tools returns empty dict initially."""
+        cached_tools = health_monitor.get_cached_tools()
+        assert cached_tools == {}
+    
+    @pytest.mark.asyncio
+    async def test_get_cached_tools_returns_copy(
+        self, health_monitor: MCPHealthMonitor
+    ) -> None:
+        """Test get_cached_tools returns a copy, not the original dict."""
+        # Add something to internal cache
+        test_tool = Tool(name="test-tool", description="Test", inputSchema={})
+        health_monitor._tool_cache["server1"] = [test_tool]
+        
+        # Get cached tools and modify it
+        cached_tools = health_monitor.get_cached_tools()
+        cached_tools["server2"] = []
+        
+        # Original cache should not be modified
+        assert "server2" not in health_monitor._tool_cache
+        assert "server1" in health_monitor._tool_cache
+    
+    @pytest.mark.asyncio
+    async def test_ping_and_cache_tools_success(
+        self, health_monitor: MCPHealthMonitor, mock_mcp_client: MagicMock
+    ) -> None:
+        """Test successfully pinging and caching tools from a server."""
+        # Mock session with list_tools
+        mock_session = AsyncMock()
+        test_tools = [
+            Tool(name="tool1", description="Tool 1", inputSchema={}),
+            Tool(name="tool2", description="Tool 2", inputSchema={})
+        ]
+        mock_tools_result = MagicMock()
+        mock_tools_result.tools = test_tools
+        mock_session.list_tools.return_value = mock_tools_result
+        
+        mock_mcp_client.sessions = {"server1": mock_session}
+        
+        # Ping and cache tools
+        is_healthy = await health_monitor._ping_and_cache_tools("server1")
+        
+        # Verify server is healthy
+        assert is_healthy is True
+        
+        # Verify tools are cached
+        cached_tools = health_monitor.get_cached_tools()
+        assert "server1" in cached_tools
+        assert len(cached_tools["server1"]) == 2
+        assert cached_tools["server1"][0].name == "tool1"
+        assert cached_tools["server1"][1].name == "tool2"
+    
+    @pytest.mark.asyncio
+    async def test_ping_and_cache_tools_no_session(
+        self, health_monitor: MCPHealthMonitor, mock_mcp_client: MagicMock
+    ) -> None:
+        """Test ping and cache when server has no session."""
+        mock_mcp_client.sessions = {}
+        
+        # Should return False
+        is_healthy = await health_monitor._ping_and_cache_tools("server1")
+        
+        assert is_healthy is False
+        
+        # Cache should remain empty
+        cached_tools = health_monitor.get_cached_tools()
+        assert "server1" not in cached_tools
+    
+    @pytest.mark.asyncio
+    async def test_ping_and_cache_tools_timeout(
+        self, health_monitor: MCPHealthMonitor, mock_mcp_client: MagicMock
+    ) -> None:
+        """Test ping and cache when list_tools times out."""
+        # Mock session that times out
+        mock_session = AsyncMock()
+        mock_session.list_tools.side_effect = asyncio.TimeoutError()
+        mock_mcp_client.sessions = {"server1": mock_session}
+        
+        # Should return False
+        is_healthy = await health_monitor._ping_and_cache_tools("server1")
+        
+        assert is_healthy is False
+        
+        # Cache should remain empty for this server
+        cached_tools = health_monitor.get_cached_tools()
+        assert "server1" not in cached_tools
+    
+    @pytest.mark.asyncio
+    async def test_check_server_caches_tools_on_success(
+        self, health_monitor: MCPHealthMonitor, mock_mcp_client: MagicMock
+    ) -> None:
+        """Test that checking a healthy server also caches its tools."""
+        # Mock enabled server config
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
+        
+        # Mock session with successful ping and list_tools
+        mock_session = AsyncMock()
+        test_tools = [Tool(name="test-tool", description="Test", inputSchema={})]
+        mock_tools_result = MagicMock()
+        mock_tools_result.tools = test_tools
+        mock_session.list_tools.return_value = mock_tools_result
+        
+        mock_mcp_client.sessions = {"server1": mock_session}
+        mock_mcp_client.ping.return_value = True
+        
+        # Check server
+        is_healthy = await health_monitor._check_server("server1")
+        
+        assert is_healthy is True
+        
+        # Verify tools were cached
+        cached_tools = health_monitor.get_cached_tools()
+        assert "server1" in cached_tools
+        assert len(cached_tools["server1"]) == 1
+        assert cached_tools["server1"][0].name == "test-tool"
+    
+    @pytest.mark.asyncio
+    async def test_check_server_retains_cache_on_failure(
+        self, health_monitor: MCPHealthMonitor, mock_mcp_client: MagicMock
+    ) -> None:
+        """Test that cache is retained even when server becomes unhealthy."""
+        # Pre-populate cache with tools
+        test_tool = Tool(name="test-tool", description="Test", inputSchema={})
+        health_monitor._tool_cache["server1"] = [test_tool]
+        
+        # Mock enabled server config
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
+        
+        # Mock unhealthy server (ping fails, recovery fails)
+        mock_mcp_client.sessions = {"server1": MagicMock()}
+        mock_mcp_client.ping.return_value = False
+        mock_mcp_client.try_initialize_server.return_value = False
+        
+        # Check server
+        is_healthy = await health_monitor._check_server("server1")
+        
+        assert is_healthy is False
+        
+        # Verify cache is still present (not cleared)
+        cached_tools = health_monitor.get_cached_tools()
+        assert "server1" in cached_tools
+        assert len(cached_tools["server1"]) == 1
 

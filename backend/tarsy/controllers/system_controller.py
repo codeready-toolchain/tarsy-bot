@@ -34,9 +34,8 @@ async def get_mcp_servers(request: Request) -> MCPServersResponse:
     """
     Get available MCP servers and their tools.
     
-    This endpoint creates a dedicated MCP client instance to discover all
-    available servers and list their tools. Useful for building UI for
-    MCP server/tool selection.
+    Uses cached tool lists from the health monitor when available, falling back
+    to direct MCP queries during the startup period (first ~15 seconds).
     
     Returns:
         MCPServersResponse with list of servers and their tools
@@ -51,79 +50,72 @@ async def get_mcp_servers(request: Request) -> MCPServersResponse:
         if alert_service is None:
             raise HTTPException(status_code=503, detail="Service not initialized")
         
-        # Create dedicated MCP client for this request
-        # Use MCPClientFactory to avoid async context issues
-        mcp_client = None
-        try:
-            logger.info("Creating dedicated MCP client for server discovery")
-            mcp_client = await alert_service.mcp_client_factory.create_client()
-            
-            # Get all server IDs from registry
-            server_ids = alert_service.mcp_server_registry.get_all_server_ids()
-            logger.info(f"Found {len(server_ids)} configured MCP servers")
-            
-            servers_info = []
-            total_tools = 0
-            
-            # Query each server for its tools
-            for server_id in server_ids:
+        # Try to use cached tools from health monitor first
+        cached_tools = {}
+        if alert_service.mcp_health_monitor is not None:
+            cached_tools = alert_service.mcp_health_monitor.get_cached_tools()
+        
+        # Get all server IDs from registry
+        server_ids = alert_service.mcp_server_registry.get_all_server_ids()
+        logger.info(f"Found {len(server_ids)} configured MCP servers")
+        
+        # If cache is empty (startup period), fall back to creating dedicated client
+        if not cached_tools:
+            logger.info("Tool cache empty (startup period), falling back to direct MCP queries")
+            return await _get_mcp_servers_direct(alert_service, server_ids)
+        
+        # Use cached tools - much faster!
+        logger.info(f"Using cached tools for {len(cached_tools)} servers")
+        servers_info = []
+        total_tools = 0
+        
+        for server_id in server_ids:
+            try:
+                # Get server configuration
+                server_config = alert_service.mcp_server_registry.get_server_config(server_id)
+                
+                # Get tools from cache (empty list if server not in cache yet)
+                tools = []
+                if server_id in cached_tools:
+                    for tool in cached_tools[server_id]:
+                        tools.append(MCPToolInfo(
+                            name=tool.name,
+                            description=tool.description or "",
+                            input_schema=tool.inputSchema or {}
+                        ))
+                
+                total_tools += len(tools)
+                
+                servers_info.append(MCPServerInfo(
+                    server_id=server_config.server_id,
+                    server_type=server_config.server_type,
+                    enabled=server_config.enabled,
+                    tools=tools
+                ))
+                
+                logger.debug(f"Server '{server_id}' has {len(tools)} cached tools")
+                
+            except Exception as e:
+                # Log error but continue with other servers
+                logger.error(f"Failed to process server '{server_id}': {e}")
+                # Include server in response but with no tools
                 try:
-                    # Get server configuration
                     server_config = alert_service.mcp_server_registry.get_server_config(server_id)
-                    
-                    # List tools from this server (simple version without database storage)
-                    server_tools_dict = await mcp_client.list_tools_simple(
-                        server_name=server_id
-                    )
-                    
-                    # Extract tools for this server
-                    tools = []
-                    if server_id in server_tools_dict:
-                        for tool in server_tools_dict[server_id]:
-                            tools.append(MCPToolInfo(
-                                name=tool.name,
-                                description=tool.description or "",
-                                input_schema=tool.inputSchema or {}
-                            ))
-                    
-                    total_tools += len(tools)
-                    
                     servers_info.append(MCPServerInfo(
                         server_id=server_config.server_id,
                         server_type=server_config.server_type,
                         enabled=server_config.enabled,
-                        tools=tools
+                        tools=[]
                     ))
-                    
-                    logger.info(f"Server '{server_id}' has {len(tools)} tools")
-                    
-                except Exception as e:
-                    # Log error but continue with other servers
-                    logger.error(f"Failed to query server '{server_id}': {e}")
-                    # Include server in response but with no tools
-                    try:
-                        server_config = alert_service.mcp_server_registry.get_server_config(server_id)
-                        servers_info.append(MCPServerInfo(
-                            server_id=server_config.server_id,
-                            server_type=server_config.server_type,
-                            enabled=server_config.enabled,
-                            tools=[]
-                        ))
-                    except Exception:
-                        # Skip this server entirely if we can't even get config
-                        pass
-            
-            return MCPServersResponse(
-                servers=servers_info,
-                total_servers=len(servers_info),
-                total_tools=total_tools
-            )
-                
-        finally:
-            # Clean up MCP client
-            if mcp_client:
-                logger.info("Cleaning up dedicated MCP client")
-                await mcp_client.close()
+                except Exception:
+                    # Skip this server entirely if we can't even get config
+                    pass
+        
+        return MCPServersResponse(
+            servers=servers_info,
+            total_servers=len(servers_info),
+            total_tools=total_tools
+        )
                 
     except HTTPException:
         # Re-raise HTTP exceptions
@@ -134,3 +126,78 @@ async def get_mcp_servers(request: Request) -> MCPServersResponse:
             status_code=503,
             detail=f"Failed to retrieve MCP servers: {str(e)}"
         )
+
+
+async def _get_mcp_servers_direct(alert_service, server_ids: list[str]) -> MCPServersResponse:
+    """
+    Fallback: Query MCP servers directly when cache is not available.
+    
+    Used during startup period before health monitor has populated the cache.
+    """
+    mcp_client = None
+    try:
+        logger.info("Creating dedicated MCP client for server discovery")
+        mcp_client = await alert_service.mcp_client_factory.create_client()
+        
+        servers_info = []
+        total_tools = 0
+        
+        # Query each server for its tools
+        for server_id in server_ids:
+            try:
+                # Get server configuration
+                server_config = alert_service.mcp_server_registry.get_server_config(server_id)
+                
+                # List tools from this server (simple version without database storage)
+                server_tools_dict = await mcp_client.list_tools_simple(
+                    server_name=server_id
+                )
+                
+                # Extract tools for this server
+                tools = []
+                if server_id in server_tools_dict:
+                    for tool in server_tools_dict[server_id]:
+                        tools.append(MCPToolInfo(
+                            name=tool.name,
+                            description=tool.description or "",
+                            input_schema=tool.inputSchema or {}
+                        ))
+                
+                total_tools += len(tools)
+                
+                servers_info.append(MCPServerInfo(
+                    server_id=server_config.server_id,
+                    server_type=server_config.server_type,
+                    enabled=server_config.enabled,
+                    tools=tools
+                ))
+                
+                logger.info(f"Server '{server_id}' has {len(tools)} tools")
+                
+            except Exception as e:
+                # Log error but continue with other servers
+                logger.error(f"Failed to query server '{server_id}': {e}")
+                # Include server in response but with no tools
+                try:
+                    server_config = alert_service.mcp_server_registry.get_server_config(server_id)
+                    servers_info.append(MCPServerInfo(
+                        server_id=server_config.server_id,
+                        server_type=server_config.server_type,
+                        enabled=server_config.enabled,
+                        tools=[]
+                    ))
+                except Exception:
+                    # Skip this server entirely if we can't even get config
+                    pass
+        
+        return MCPServersResponse(
+            servers=servers_info,
+            total_servers=len(servers_info),
+            total_tools=total_tools
+        )
+            
+    finally:
+        # Clean up MCP client
+        if mcp_client:
+            logger.info("Cleaning up dedicated MCP client")
+            await mcp_client.close()

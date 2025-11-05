@@ -1,9 +1,10 @@
 """Integration tests for MCP health monitoring."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from mcp.types import Tool
 
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.system_models import WarningCategory
@@ -20,6 +21,15 @@ def warnings_service() -> SystemWarningsService:
     return service
 
 
+def _create_mock_tools_result(tools_count: int = 1):
+    """Helper to create a mock list_tools result."""
+    tools = [Tool(name=f"tool-{i}", description=f"Test tool {i}", inputSchema={}) 
+             for i in range(tools_count)]
+    result = MagicMock()
+    result.tools = tools
+    return result
+
+
 @pytest.fixture
 def mock_mcp_client() -> MagicMock:
     """Create a mock MCP client for integration tests."""
@@ -27,7 +37,6 @@ def mock_mcp_client() -> MagicMock:
     client.mcp_registry = MagicMock()
     client.mcp_registry.get_all_server_ids.return_value = ["test-server-1", "test-server-2"]
     client.sessions = {}
-    client.ping = AsyncMock()
     client.try_initialize_server = AsyncMock()
     return client
 
@@ -59,9 +68,11 @@ async def test_health_monitor_detects_unhealthy_server(
     warnings_service: SystemWarningsService,
 ) -> None:
     """Test that health monitor detects and reports unhealthy servers."""
-    # Setup: server exists but ping fails
-    mock_mcp_client.sessions = {"test-server-1": MagicMock()}
-    mock_mcp_client.ping.return_value = False
+    # Setup: server exists but list_tools fails (unhealthy)
+    mock_session = AsyncMock()
+    mock_session.list_tools.side_effect = Exception("Connection failed")
+    mock_mcp_client.sessions = {"test-server-1": mock_session}
+    mock_mcp_client.mcp_registry.get_server_config_safe.return_value = MagicMock(enabled=True)
 
     monitor = MCPHealthMonitor(
         mcp_client=mock_mcp_client,
@@ -89,9 +100,11 @@ async def test_health_monitor_clears_warning_on_recovery(
     warnings_service: SystemWarningsService,
 ) -> None:
     """Test that health monitor clears warnings when server recovers."""
-    # Setup: Start with unhealthy server
-    mock_mcp_client.sessions = {"test-server-1": MagicMock()}
-    mock_mcp_client.ping.return_value = False
+    # Setup: Start with unhealthy server (list_tools fails)
+    mock_session = AsyncMock()
+    mock_session.list_tools.side_effect = Exception("Connection failed")
+    mock_mcp_client.sessions = {"test-server-1": mock_session}
+    mock_mcp_client.mcp_registry.get_server_config_safe.return_value = MagicMock(enabled=True)
 
     monitor = MCPHealthMonitor(
         mcp_client=mock_mcp_client,
@@ -106,8 +119,9 @@ async def test_health_monitor_clears_warning_on_recovery(
     warnings = warnings_service.get_warnings()
     assert len([w for w in warnings if w.category == WarningCategory.MCP_INITIALIZATION]) >= 1
 
-    # Now server recovers
-    mock_mcp_client.ping.return_value = True
+    # Now server recovers (list_tools succeeds)
+    mock_session.list_tools.side_effect = None
+    mock_session.list_tools.return_value = _create_mock_tools_result()
     await asyncio.sleep(0.25)  # Wait for health check to clear warning
     
     await monitor.stop()
@@ -129,6 +143,7 @@ async def test_health_monitor_initializes_failed_startup_server(
     """Test that health monitor attempts to initialize servers that failed at startup."""
     # Setup: server has no session (failed at startup)
     mock_mcp_client.sessions = {}
+    mock_mcp_client.mcp_registry.get_server_config_safe.return_value = MagicMock(enabled=True)
     mock_mcp_client.try_initialize_server.return_value = True
 
     monitor = MCPHealthMonitor(
@@ -153,15 +168,17 @@ async def test_health_monitor_handles_multiple_servers(
 ) -> None:
     """Test health monitor handles multiple servers with different states."""
     # Setup: server-1 healthy, server-2 unhealthy
+    mock_session1 = AsyncMock()
+    mock_session1.list_tools.return_value = _create_mock_tools_result()
+    
+    mock_session2 = AsyncMock()
+    mock_session2.list_tools.side_effect = Exception("Connection failed")
+    
     mock_mcp_client.sessions = {
-        "test-server-1": MagicMock(),
-        "test-server-2": MagicMock(),
+        "test-server-1": mock_session1,
+        "test-server-2": mock_session2,
     }
-    
-    async def ping_side_effect(server_id: str) -> bool:
-        return server_id == "test-server-1"  # Only server-1 is healthy
-    
-    mock_mcp_client.ping.side_effect = ping_side_effect
+    mock_mcp_client.mcp_registry.get_server_config_safe.return_value = MagicMock(enabled=True)
 
     monitor = MCPHealthMonitor(
         mcp_client=mock_mcp_client,
@@ -196,15 +213,17 @@ async def test_health_monitor_continues_after_check_error(
     """Test that health monitor continues running even if individual checks fail."""
     call_count = 0
     
-    async def ping_with_intermittent_error(server_id: str) -> bool:
+    async def list_tools_with_intermittent_error():
         nonlocal call_count
         call_count += 1
         if call_count == 1:
             raise Exception("Simulated check error")
-        return True
+        return _create_mock_tools_result()
     
-    mock_mcp_client.sessions = {"test-server-1": MagicMock()}
-    mock_mcp_client.ping.side_effect = ping_with_intermittent_error
+    mock_session = AsyncMock()
+    mock_session.list_tools.side_effect = list_tools_with_intermittent_error
+    mock_mcp_client.sessions = {"test-server-1": mock_session}
+    mock_mcp_client.mcp_registry.get_server_config_safe.return_value = MagicMock(enabled=True)
 
     monitor = MCPHealthMonitor(
         mcp_client=mock_mcp_client,
@@ -226,9 +245,11 @@ async def test_health_monitor_does_not_duplicate_warnings(
     warnings_service: SystemWarningsService,
 ) -> None:
     """Test that health monitor does not create duplicate warnings."""
-    # Setup: unhealthy server
-    mock_mcp_client.sessions = {"test-server-1": MagicMock()}
-    mock_mcp_client.ping.return_value = False
+    # Setup: unhealthy server (list_tools fails)
+    mock_session = AsyncMock()
+    mock_session.list_tools.side_effect = Exception("Connection failed")
+    mock_mcp_client.sessions = {"test-server-1": mock_session}
+    mock_mcp_client.mcp_registry.get_server_config_safe.return_value = MagicMock(enabled=True)
 
     monitor = MCPHealthMonitor(
         mcp_client=mock_mcp_client,
@@ -247,4 +268,3 @@ async def test_health_monitor_does_not_duplicate_warnings(
         if w.category == WarningCategory.MCP_INITIALIZATION and w.server_id == "test-server-1"
     ]
     assert len(mcp_warnings) == 1
-

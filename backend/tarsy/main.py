@@ -198,6 +198,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             check_interval=15.0  # Check every 15 seconds
         )
         await mcp_health_monitor.start()
+        
+        # Store reference in alert_service for endpoint access
+        alert_service.mcp_health_monitor = mcp_health_monitor
+        
         logger.info("MCP health monitoring started")
     except Exception as e:
         logger.error(f"Failed to start MCP health monitor: {e}", exc_info=True)

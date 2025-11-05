@@ -94,6 +94,9 @@ class AlertService:
         # Initialize agent factory with dependencies (no MCP client - provided per agent)
         self.agent_factory = None  # Will be initialized in initialize()
         
+        # Reference to MCP health monitor (set during startup in main.py)
+        self.mcp_health_monitor = None
+        
         logger.info(f"AlertService initialized with agent delegation support "
                    f"({len(self.parsed_config.agents)} configured agents, "
                    f"{len(self.parsed_config.mcp_servers)} configured MCP servers)")

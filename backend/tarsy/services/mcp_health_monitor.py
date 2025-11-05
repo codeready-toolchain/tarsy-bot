@@ -5,7 +5,9 @@ Independent background service for periodic MCP server health monitoring.
 """
 
 import asyncio
-from typing import Optional, TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING
+
+from mcp.types import Tool
 
 from tarsy.models.system_models import WarningCategory
 from tarsy.utils.logger import get_module_logger
@@ -58,6 +60,10 @@ class MCPHealthMonitor:
         
         self._running = False
         self._monitor_task: Optional[asyncio.Task] = None
+        
+        # Tool cache: server_id -> list of tools from last successful check
+        # Retains last successful tool list even if server becomes unhealthy
+        self._tool_cache: Dict[str, List[Tool]] = {}
     
     async def start(self) -> None:
         """Start health monitoring background task."""
@@ -84,6 +90,18 @@ class MCPHealthMonitor:
                 pass
         
         logger.info("MCP health monitor stopped")
+    
+    def get_cached_tools(self) -> Dict[str, List[Tool]]:
+        """
+        Get cached tool lists from last successful health checks.
+        
+        Returns a copy of the cache to prevent external modifications.
+        Cache retains last successful tool list even if server is currently unhealthy.
+        
+        Returns:
+            Dictionary mapping server IDs to their tool lists
+        """
+        return self._tool_cache.copy()
     
     async def _monitor_loop(self) -> None:
         """Main monitoring loop - checks all servers periodically."""
@@ -140,13 +158,53 @@ class MCPHealthMonitor:
             # On error, ensure warning exists
             self._ensure_warning(server_id)
     
+    async def _ping_and_cache_tools(self, server_id: str) -> bool:
+        """
+        Ping server by loading its tools and cache them if successful.
+        
+        This combines health check and tool caching into a single operation,
+        avoiding duplicate list_tools() calls. Uses 5-second timeout for
+        fast failure detection.
+        
+        Args:
+            server_id: ID of the server to check and cache
+            
+        Returns:
+            True if server is healthy and tools were cached, False otherwise
+        """
+        try:
+            session = self._mcp_client.sessions.get(server_id)
+            if not session:
+                logger.debug(f"Cannot ping {server_id}: no session")
+                return False
+            
+            # Ping by loading tools with timeout (5s for fast failure detection)
+            tools_result = await asyncio.wait_for(
+                session.list_tools(),
+                timeout=5.0
+            )
+            
+            # Update cache with new tool list
+            self._tool_cache[server_id] = tools_result.tools
+            logger.debug(f"Pinged and cached {len(tools_result.tools)} tools for {server_id}")
+            return True
+            
+        except asyncio.TimeoutError:
+            logger.debug(f"Ping timeout for {server_id} (5s)")
+            return False
+        except Exception as e:
+            logger.debug(f"Ping failed for {server_id}: {e}")
+            return False
+    
     async def _check_server(self, server_id: str) -> bool:
         """
-        Check if a single server is healthy.
+        Check if a single server is healthy and cache its tools.
         
         Handles two cases:
         1. Server has session: ping it - if fails, try to recover with new session
         2. Server has no session: try to initialize it (startup failure recovery)
+        
+        On successful health check, loads and caches the server's tool list.
         
         Args:
             server_id: ID of the server to check
@@ -163,10 +221,11 @@ class MCPHealthMonitor:
             self._clear_warning(server_id)
             return False
         
-        # Case 1: Server has a session - ping it
+        # Case 1: Server has a session - ping it (and cache tools if successful)
         has_session = server_id in self._mcp_client.sessions
         if has_session:
-            is_healthy = await self._mcp_client.ping(server_id)
+            # Ping and cache tools in single operation (avoids duplicate list_tools calls)
+            is_healthy = await self._ping_and_cache_tools(server_id)
             if is_healthy:
                 logger.debug(f"✓ Server {server_id}: healthy")
                 return True
@@ -184,9 +243,10 @@ class MCPHealthMonitor:
         success = await self._mcp_client.try_initialize_server(server_id)
         
         if success:
-            # Session created/replaced successfully - verify it works
+            # Session created/replaced successfully - verify it works and cache tools
             logger.debug(f"Session created for {server_id}, verifying with ping...")
-            is_healthy = await self._mcp_client.ping(server_id)
+            # Ping and cache tools in single operation
+            is_healthy = await self._ping_and_cache_tools(server_id)
             if is_healthy:
                 logger.info(f"✓ Successfully recovered {server_id}")
                 return True
