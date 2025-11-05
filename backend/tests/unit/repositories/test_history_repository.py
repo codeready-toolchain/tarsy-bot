@@ -1090,6 +1090,13 @@ class TestHistoryRepository:
         from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
         
         # Create session with MCP selection
+        mcp_config = MCPSelectionConfig(
+            servers=[
+                MCPServerSelection(name="kubectl", tools=["get_pods", "describe_pod"]),
+                MCPServerSelection(name="argocd")
+            ]
+        )
+        
         session_with_mcp = AlertSession(
             session_id="session-with-mcp",
             alert_data={"test": "data"},
@@ -1099,12 +1106,7 @@ class TestHistoryRepository:
             started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
             completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
             chain_id="test-chain-mcp",
-            mcp_selection=MCPSelectionConfig(
-                servers=[
-                    MCPServerSelection(name="kubectl", tools=["get_pods", "describe_pod"]),
-                    MCPServerSelection(name="argocd")
-                ]
-            )
+            mcp_selection=mcp_config.model_dump()
         )
         
         repository.create_alert_session(session_with_mcp)
@@ -1150,6 +1152,10 @@ class TestHistoryRepository:
         from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
         
         # Create sessions with and without MCP selection
+        mcp_config = MCPSelectionConfig(
+            servers=[MCPServerSelection(name="kubectl", tools=["get_pods"])]
+        )
+        
         session_with_mcp = AlertSession(
             session_id="list-with-mcp",
             alert_data={"test": "data"},
@@ -1159,9 +1165,7 @@ class TestHistoryRepository:
             started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
             completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
             chain_id="test-chain-list-1",
-            mcp_selection=MCPSelectionConfig(
-                servers=[MCPServerSelection(name="kubectl", tools=["get_pods"])]
-            )
+            mcp_selection=mcp_config.model_dump()
         )
         
         session_without_mcp = AlertSession(

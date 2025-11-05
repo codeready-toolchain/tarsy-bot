@@ -287,7 +287,8 @@ async def test_get_mcp_servers_empty_registry(client: TestClient) -> None:
     
     # Mock health monitor with cached tools
     mock_health_monitor = Mock()
-    mock_health_monitor.get_cached_tools.return_value = {}
+    # Return non-empty dict to use cached path (even though it has no actual servers)
+    mock_health_monitor.get_cached_tools.return_value = {"__sentinel__": []}
     mock_alert_service.mcp_health_monitor = mock_health_monitor
     
     mock_registry = Mock()
