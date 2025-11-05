@@ -233,13 +233,13 @@ async def submit_alert(request: Request) -> AlertResponse:
                 }
             )
         
-        # Additional business logic validation
-        if not alert_data.alert_type or len(alert_data.alert_type.strip()) == 0:
+        # Additional business logic validation for alert_type (if provided)
+        if alert_data.alert_type is not None and len(alert_data.alert_type.strip()) == 0:
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": "Invalid alert_type",
-                    "message": "alert_type cannot be empty or contain only whitespace",
+                    "message": "alert_type cannot be empty or contain only whitespace (omit field to use default)",
                     "field": "alert_type"
                 }
             )
@@ -274,8 +274,16 @@ async def submit_alert(request: Request) -> AlertResponse:
                     }
                 )
         
+        # Get default alert type from chain registry
+        from tarsy.main import alert_service
+        
+        if alert_service is None:
+            raise HTTPException(status_code=503, detail="Service not initialized")
+        
+        default_alert_type = alert_service.chain_registry.get_default_alert_type()
+        
         # Transform API alert to ProcessingAlert (adds metadata, keeps data pristine)
-        processing_alert = ProcessingAlert.from_api_alert(alert_data)
+        processing_alert = ProcessingAlert.from_api_alert(alert_data, default_alert_type)
         
         # Generate session_id BEFORE starting background processing
         session_id = str(uuid.uuid4())

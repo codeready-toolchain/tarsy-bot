@@ -43,7 +43,7 @@ class TestHistoryServiceOptionalMetadata:
             runbook="https://example.com/runbook.md",
             data={"message": "Test alert"}
         )
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         return ChainContext.from_processing_alert(
             processing_alert=processing_alert,
@@ -86,7 +86,7 @@ class TestHistoryServiceOptionalMetadata:
             runbook=runbook,
             data={"message": "Test alert"}
         )
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
@@ -130,7 +130,7 @@ class TestHistoryServiceOptionalMetadata:
             data={"message": "Test alert"}
             # No runbook provided
         )
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
@@ -170,7 +170,7 @@ class TestHistoryServiceOptionalMetadata:
             runbook="https://example.com/runbook-preserved.md",
             data={"message": "Test alert"}
         )
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
@@ -210,7 +210,7 @@ class TestHistoryServiceOptionalMetadata:
             runbook="https://github.com/company/k8s-runbooks/troubleshooting.md",
             data={"namespace": "test-ns", "message": "Test"}
         )
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
@@ -254,7 +254,7 @@ class TestHistoryServiceOptionalMetadata:
             runbook="https://example.com/runbook.md",
             data={"message": "Test"}
         )
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,

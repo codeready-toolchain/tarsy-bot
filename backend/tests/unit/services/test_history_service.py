@@ -228,7 +228,7 @@ class TestHistoryService:
             mcp=MCPSelectionConfig(**mcp_selection) if mcp_selection else None
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(api_alert)
+        processing_alert = ProcessingAlert.from_api_alert(api_alert, default_alert_type="kubernetes")
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
             session_id="test-session-id",

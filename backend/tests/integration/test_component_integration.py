@@ -29,9 +29,9 @@ class TestChainRegistryIntegration:
         
         # Assert
         supported_types = registry.list_available_alert_types()
-        assert "NamespaceTerminating" in supported_types
+        assert "kubernetes" in supported_types
         
-        chain = registry.get_chain_for_alert_type("NamespaceTerminating")
+        chain = registry.get_chain_for_alert_type("kubernetes")
         assert chain.chain_id == "kubernetes-agent-chain"
 
     def test_chain_registry_unknown_alert_type(self):
@@ -306,7 +306,7 @@ class TestServiceInteractionPatterns:
             mcp_registry=mock_mcp_server_registry
         )
         
-        alert_type = "NamespaceTerminating"
+        alert_type = "kubernetes"
         
         # Act
         chain_config = registry.get_chain_for_alert_type(alert_type)

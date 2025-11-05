@@ -20,11 +20,11 @@ class TestChainRegistryInitialization:
     """Test ChainRegistry initialization and configuration loading."""
     
     @pytest.mark.parametrize("scenario,config_loader_config,expected_builtin,expected_yaml,expected_mappings", [
-        ("default_only", None, 1, 0, {'kubernetes': 'kubernetes-chain', 'NamespaceTerminating': 'kubernetes-chain'}),
+        ("default_only", None, 1, 0, {'kubernetes': 'kubernetes-chain'}),
         ("with_custom_config", {
             'custom-chain': ChainFactory.create_custom_chain()
-        }, 1, 1, {'kubernetes': 'kubernetes-chain', 'NamespaceTerminating': 'kubernetes-chain', 'custom': 'custom-chain'}),
-        ("config_error", Exception("Config error"), 1, 0, {'kubernetes': 'kubernetes-chain', 'NamespaceTerminating': 'kubernetes-chain'}),
+        }, 1, 1, {'kubernetes': 'kubernetes-chain', 'custom': 'custom-chain'}),
+        ("config_error", Exception("Config error"), 1, 0, {'kubernetes': 'kubernetes-chain'}),
     ])
     def test_initialization_scenarios(self, scenario, config_loader_config, expected_builtin, expected_yaml, expected_mappings):
         """Test initialization for various configuration scenarios."""
@@ -138,7 +138,6 @@ class TestChainRegistryLookup:
     
     @pytest.mark.parametrize("alert_type,expected_chain_id,expected_stages,should_raise", [
         ('kubernetes', 'kubernetes-chain', 2, False),
-        ('NamespaceTerminating', 'kubernetes-chain', 2, False),
         ('simple', 'single-stage-chain', 1, False),
         ('unknown', None, None, True),
     ])
@@ -179,8 +178,8 @@ class TestChainRegistryLookup:
         """Test listing available alert types."""
         alert_types = sample_registry.list_available_alert_types()
         
-        assert alert_types == ['NamespaceTerminating', 'kubernetes', 'simple']  # Sorted
-        assert len(alert_types) == 3
+        assert alert_types == ['kubernetes', 'simple']  # Sorted
+        assert len(alert_types) == 2
     
     def test_list_available_chains(self, sample_registry):
         """Test listing available chain IDs."""

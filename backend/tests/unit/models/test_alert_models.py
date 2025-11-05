@@ -34,7 +34,7 @@ class TestProcessingAlertTransformation:
             }
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         # Metadata correctly extracted
         assert processing_alert.alert_type == "kubernetes"
@@ -55,7 +55,7 @@ class TestProcessingAlertTransformation:
             data={"test": "data"}
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         assert processing_alert.severity == "warning"
     
@@ -67,11 +67,34 @@ class TestProcessingAlertTransformation:
         )
         
         before = now_us()
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         after = now_us()
         
         # Timestamp should be generated within test duration
         assert before <= processing_alert.timestamp <= after
+    
+    def test_uses_default_alert_type_when_not_provided(self):
+        """Test transformation uses default alert_type when not provided in alert."""
+        alert = Alert(
+            data={"test": "data"}
+        )
+        
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="PodCrashLoop")
+        
+        # Should use the default alert type
+        assert processing_alert.alert_type == "PodCrashLoop"
+    
+    def test_explicit_alert_type_overrides_default(self):
+        """Test that explicitly provided alert_type takes precedence over default."""
+        alert = Alert(
+            alert_type="custom-alert",
+            data={"test": "data"}
+        )
+        
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
+        
+        # Should use the explicit alert type, not the default
+        assert processing_alert.alert_type == "custom-alert"
     
     def test_extract_environment_from_client_data(self):
         """Test transformation extracts environment from client data (but keeps it there!)."""
@@ -83,7 +106,7 @@ class TestProcessingAlertTransformation:
             }
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         # Environment extracted as metadata
         assert processing_alert.environment == "staging"
@@ -121,7 +144,7 @@ class TestProcessingAlertTransformation:
             }
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         # Complex nested structure preserved exactly
         assert processing_alert.alert_data["receiver"] == "team-X-pager"
@@ -151,7 +174,7 @@ class TestNameCollisionPrevention:
             }
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         # Our metadata has our value
         assert processing_alert.severity == "critical"
@@ -171,7 +194,7 @@ class TestNameCollisionPrevention:
             }
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         # Our metadata has our value (int microseconds)
         assert processing_alert.timestamp == our_timestamp
@@ -198,7 +221,7 @@ class TestDataPreservationAndPurity:
             }
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         # Client data should ONLY contain what they sent
         assert processing_alert.alert_data == {
@@ -231,7 +254,7 @@ class TestDataPreservationAndPurity:
             }
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         # Client data completely pristine - no merging, no overwrites
         assert processing_alert.alert_data == {

@@ -26,14 +26,14 @@ from tarsy.models.processing_context import ChainContext
 from tarsy.utils.timestamp import now_us
 
 
-def alert_to_api_format(alert: Alert) -> ChainContext:
+def alert_to_api_format(alert: Alert, default_alert_type: str = "kubernetes") -> ChainContext:
     """
     Convert an Alert object to the ChainContext format that AlertService expects.
     
     This matches the format created in the alert controller using ProcessingAlert.
     """
     # Transform API alert to ProcessingAlert (adds metadata, keeps data pristine)
-    processing_alert = ProcessingAlert.from_api_alert(alert)
+    processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type=default_alert_type)
     
     # Return ChainContext instance that AlertService expects
     return ChainContext.from_processing_alert(

@@ -1233,7 +1233,7 @@ class TestDuplicatePreventionIntegration:
             }
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         assert processing_alert.runbook_url == runbook_url
         
         from tarsy.models.processing_context import ChainContext
@@ -1273,7 +1273,7 @@ class TestDuplicatePreventionIntegration:
             data={"pod": "test-pod", "namespace": "default"}
         )
         
-        processing_alert_no_metadata = ProcessingAlert.from_api_alert(alert_no_metadata)
+        processing_alert_no_metadata = ProcessingAlert.from_api_alert(alert_no_metadata, default_alert_type="kubernetes")
         assert processing_alert_no_metadata.runbook_url is None
         
         context_no_metadata = ChainContext.from_processing_alert(

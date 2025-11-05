@@ -27,7 +27,7 @@ class TestChainContextAuthorField:
     @pytest.fixture
     def processing_alert(self, sample_alert):
         """Create a ProcessingAlert from sample alert."""
-        return ProcessingAlert.from_api_alert(sample_alert)
+        return ProcessingAlert.from_api_alert(sample_alert, default_alert_type="kubernetes")
 
     @pytest.mark.parametrize(
         "author,expected_author",

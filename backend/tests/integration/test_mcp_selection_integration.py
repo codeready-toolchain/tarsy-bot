@@ -80,7 +80,7 @@ class TestMCPSelectionAlertSubmission:
             )
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(api_alert)
+        processing_alert = ProcessingAlert.from_api_alert(api_alert, default_alert_type="kubernetes")
         
         assert processing_alert.mcp is not None
         assert processing_alert.mcp.servers[0].name == "kubernetes-server"
@@ -100,7 +100,7 @@ class TestMCPSelectionAlertSubmission:
             )
         )
         
-        processing_alert = ProcessingAlert.from_api_alert(api_alert)
+        processing_alert = ProcessingAlert.from_api_alert(api_alert, default_alert_type="kubernetes")
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
             session_id="test-session",
@@ -375,7 +375,7 @@ class TestMCPSelectionEndToEnd:
         )
         
         # Convert to processing alert
-        processing_alert = ProcessingAlert.from_api_alert(alert)
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
         # Create chain context
         chain_context = ChainContext.from_processing_alert(
@@ -616,7 +616,7 @@ class TestMCPSelectionPersistence:
         )
         
         # Flow through ProcessingAlert
-        processing_alert = ProcessingAlert.from_api_alert(api_alert)
+        processing_alert = ProcessingAlert.from_api_alert(api_alert, default_alert_type="kubernetes")
         assert processing_alert.mcp is not None
         assert processing_alert.mcp.servers[0].name == "kubernetes-server"
         assert processing_alert.mcp.servers[0].tools == ["list_pods"]

@@ -7,6 +7,7 @@ when headers are not present.
 """
 
 import pytest
+from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 
 from tarsy.main import app
@@ -20,6 +21,15 @@ class TestAuthorFieldHeaderExtraction:
     def client(self):
         """Create test client."""
         return TestClient(app)
+
+    @pytest.fixture(autouse=True)
+    def mock_alert_service(self):
+        """Mock alert_service with chain_registry for default alert type."""
+        with patch('tarsy.main.alert_service') as mock_service:
+            mock_chain_registry = Mock()
+            mock_chain_registry.get_default_alert_type.return_value = "kubernetes"
+            mock_service.chain_registry = mock_chain_registry
+            yield mock_service
 
     @pytest.fixture
     def valid_alert_data(self):

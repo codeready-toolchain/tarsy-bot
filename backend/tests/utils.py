@@ -567,7 +567,7 @@ class ChainFactory:
         """Create a Kubernetes chain with sensible defaults."""
         base_data = {
             "chain_id": "kubernetes-chain",
-            "alert_types": ["kubernetes", "NamespaceTerminating"],
+            "alert_types": ["kubernetes"],
             "stages": [
                 {
                     "name": "data-collection",

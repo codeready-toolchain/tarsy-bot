@@ -27,9 +27,9 @@ class Alert(BaseModel):
     Client data is preserved exactly as received and passed pristine to processing.
     """
     
-    alert_type: str = Field(
-        ..., 
-        description="Alert type for agent selection"
+    alert_type: Optional[str] = Field(
+        None, 
+        description="Alert type for agent selection (uses default if not specified)"
     )
     runbook: Optional[str] = Field(
         None, 
@@ -119,16 +119,18 @@ class ProcessingAlert(BaseModel):
     )
     
     @classmethod
-    def from_api_alert(cls, alert: Alert) -> ProcessingAlert:
+    def from_api_alert(cls, alert: Alert, default_alert_type: str) -> ProcessingAlert:
         """
         Transform API Alert to ProcessingAlert.
         
         Applies minimal manipulation:
         1. Extract/generate metadata (severity, timestamp, environment)
         2. Keep client's data pristine (no merging, no modifications)
+        3. Use default_alert_type if alert.alert_type is not provided
         
         Args:
             alert: Validated API Alert from client
+            default_alert_type: Default alert type to use if not specified in alert
             
         Returns:
             ProcessingAlert ready for ChainContext
@@ -147,8 +149,11 @@ class ProcessingAlert(BaseModel):
         else:
             timestamp = alert.timestamp
         
+        # Use provided alert_type or fall back to default
+        alert_type = alert.alert_type if alert.alert_type else default_alert_type
+        
         return cls(
-            alert_type=alert.alert_type,
+            alert_type=alert_type,
             severity=alert.severity or 'warning',
             timestamp=timestamp,
             environment=environment,

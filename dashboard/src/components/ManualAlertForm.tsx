@@ -231,6 +231,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
   // Available options
   const [availableAlertTypes, setAvailableAlertTypes] = useState<string[]>([]);
   const [availableRunbooks, setAvailableRunbooks] = useState<string[]>([]);
+  const [defaultAlertType, setDefaultAlertType] = useState<string>('');
   
   // UI state
   const [loading, setLoading] = useState(false);
@@ -299,6 +300,9 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
         const alertTypesResponse = await apiClient.getAlertTypes();
         if (alertTypesResponse && alertTypesResponse.alert_types) {
           const { alert_types, default_alert_type } = alertTypesResponse;
+          
+          // Store the default alert type from backend
+          setDefaultAlertType(default_alert_type);
           
           // Check if we have a default alert type (from resubmit)
           const resubmitDefaultType = defaultAlertTypeRef.current;
@@ -413,9 +417,13 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
 
       // Build alert data
       const alertData: any = {
-        alert_type: alertType.trim(),
         data: processedData
       };
+      
+      // Only include alert_type if it's different from the default
+      if (alertType.trim() !== defaultAlertType) {
+        alertData.alert_type = alertType.trim();
+      }
       
       // Add runbook only if not "Default Runbook"
       if (runbook && runbook !== DEFAULT_RUNBOOK) {
@@ -494,9 +502,13 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
 
       // Build alert data
       const alertData: any = {
-        alert_type: alertType.trim(),
         data: parsed.data
       };
+      
+      // Only include alert_type if it's different from the default
+      if (alertType.trim() !== defaultAlertType) {
+        alertData.alert_type = alertType.trim();
+      }
       
       // Add runbook only if not "Default Runbook"
       if (runbook && runbook !== DEFAULT_RUNBOOK) {
