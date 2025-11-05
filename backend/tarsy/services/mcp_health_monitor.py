@@ -95,13 +95,15 @@ class MCPHealthMonitor:
         """
         Get cached tool lists from last successful health checks.
         
-        Returns a copy of the cache to prevent external modifications.
+        Returns a defensive copy of the cache to prevent external modifications.
+        Both the dict and the lists inside are copied to prevent callers from
+        mutating the internal cache.
         Cache retains last successful tool list even if server is currently unhealthy.
         
         Returns:
             Dictionary mapping server IDs to their tool lists
         """
-        return self._tool_cache.copy()
+        return {k: v.copy() for k, v in self._tool_cache.items()}
     
     async def _monitor_loop(self) -> None:
         """Main monitoring loop - checks all servers periodically."""

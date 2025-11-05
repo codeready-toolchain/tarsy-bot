@@ -30,7 +30,7 @@ async def get_system_warnings() -> List[SystemWarning]:
 
 
 @router.get("/mcp-servers", response_model=MCPServersResponse)
-async def get_mcp_servers(request: Request) -> MCPServersResponse:
+async def get_mcp_servers(_request: Request) -> MCPServersResponse:
     """
     Get available MCP servers and their tools.
     
@@ -125,7 +125,7 @@ async def get_mcp_servers(request: Request) -> MCPServersResponse:
         raise HTTPException(
             status_code=503,
             detail=f"Failed to retrieve MCP servers: {str(e)}"
-        )
+        ) from e
 
 
 async def _get_mcp_servers_direct(alert_service, server_ids: list[str]) -> MCPServersResponse:

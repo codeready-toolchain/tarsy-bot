@@ -413,6 +413,28 @@ class TestMCPHealthMonitor:
         assert "server1" in health_monitor._tool_cache
     
     @pytest.mark.asyncio
+    async def test_get_cached_tools_returns_list_copies(
+        self, health_monitor: MCPHealthMonitor
+    ) -> None:
+        """Test get_cached_tools returns defensive copies - modifying lists doesn't affect cache."""
+        # Add tools to internal cache
+        tool1 = Tool(name="tool-1", description="Tool 1", inputSchema={})
+        tool2 = Tool(name="tool-2", description="Tool 2", inputSchema={})
+        health_monitor._tool_cache["server1"] = [tool1, tool2]
+        
+        # Get cached tools and modify the list
+        cached_tools = health_monitor.get_cached_tools()
+        fake_tool = Tool(name="fake-tool", description="Fake", inputSchema={})
+        cached_tools["server1"].append(fake_tool)
+        
+        # Original cache's list should not be modified
+        assert len(health_monitor._tool_cache["server1"]) == 2
+        assert fake_tool not in health_monitor._tool_cache["server1"]
+        # But the returned copy should have the modification
+        assert len(cached_tools["server1"]) == 3
+        assert fake_tool in cached_tools["server1"]
+    
+    @pytest.mark.asyncio
     async def test_ping_and_cache_tools_success(
         self, health_monitor: MCPHealthMonitor, mock_mcp_client: MagicMock
     ) -> None:

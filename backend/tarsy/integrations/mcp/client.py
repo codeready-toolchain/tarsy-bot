@@ -220,7 +220,7 @@ class MCPClient:
                     all_tools[server_name] = []
         else:
             # List tools from all servers
-            for name in list[str](self.sessions.keys()):
+            for name in list(self.sessions.keys()):
                 try:
                     session = self.sessions.get(name)
                     if not session:
@@ -297,7 +297,7 @@ class MCPClient:
                         all_tools[server_name] = []
             else:
                 # List tools from all servers
-                for name in list[str](self.sessions.keys()):  # Use list() to avoid dict changed during iteration
+                for name in list(self.sessions.keys()):  # Use list() to avoid dict changed during iteration
                     timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
                     try:
                         session = self.sessions.get(name)

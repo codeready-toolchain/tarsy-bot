@@ -357,11 +357,11 @@ class BaseAgent(ABC):
                 # Validate all selected servers exist in registry
                 requested_server_names = [s.name for s in mcp_selection.servers]
                 available_server_ids = self.mcp_registry.get_all_server_ids()
-                missing_servers = set[str](requested_server_names) - set[str](available_server_ids)
+                missing_servers = set(requested_server_names) - set(available_server_ids)
 
                 if missing_servers:
-                    missing_list = sorted(list[str](missing_servers))
-                    available_list = sorted(available_server_ids)
+                    missing_list = sorted(list(missing_servers))
+                    available_list = sorted(list(available_server_ids))
                     error_msg = f"Requested MCP servers not found: {missing_list}. Available servers: {available_list}"
                     logger.error(error_msg)
                     raise MCPServerSelectionError(
@@ -397,11 +397,11 @@ class BaseAgent(ABC):
                     if requested_tool_names is not None and len(requested_tool_names) > 0:
                         # User specified specific tools - validate they exist
                         available_tool_names = {tool.name for tool in available_tools}
-                        missing_tools = set[str](requested_tool_names) - available_tool_names
+                        missing_tools = set(requested_tool_names) - available_tool_names
                         
                         if missing_tools:
-                            missing_list = sorted(list[str](missing_tools))
-                            available_list = sorted(list[str](available_tool_names))
+                            missing_list = sorted(list(missing_tools))
+                            available_list = sorted(list(available_tool_names))
                             error_msg = f"Requested tools not found on server '{server_name}': {missing_list}. Available tools: {available_list}"
                             logger.error(error_msg)
                             raise MCPToolSelectionError(
