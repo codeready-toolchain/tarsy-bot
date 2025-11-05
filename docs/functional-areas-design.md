@@ -88,11 +88,12 @@ sequenceDiagram
 - **Alert model**: Simple, flexible structure (see `backend/tarsy/models/alert.py`)
 ```python
 class Alert(BaseModel):
-    alert_type: str               # Required - determines chain selection
-    runbook: Optional[str]        # Optional - GitHub runbook URL (uses built-in default if not provided)
-    data: Dict[str, Any]          # Flexible JSON payload
-    severity: Optional[str]       # Defaults to "warning"
-    timestamp: Optional[int]      # Defaults to current time (microseconds)
+    alert_type: str                    # Required - determines chain selection
+    runbook: Optional[str]             # Optional - GitHub runbook URL (uses built-in default if not provided)
+    data: Dict[str, Any]               # Flexible JSON payload
+    severity: Optional[str]            # Defaults to "warning"
+    timestamp: Optional[int]           # Defaults to current time (microseconds)
+    mcp: Optional[MCPSelectionConfig]  # Optional - override default agent MCP server configuration
 ```
 
 **📍 Core Service**: `backend/tarsy/services/alert_service.py`
@@ -580,6 +581,84 @@ graph TB
 - **Tool discovery** and execution coordination
 - **Integrated data masking** on all tool responses
 - **Immediate timeout failure** without retries (60s tool call timeout)
+- **Runtime configuration validation** for custom MCP selections
+
+#### Custom MCP Configuration (Per-Alert Override)
+
+**Purpose**: Override default agent MCP server assignments on a per-alert basis for fine-grained control over available tools.
+
+**API Models**: `backend/tarsy/models/mcp_selection_models.py`
+```python
+class MCPServerSelection(BaseModel):
+    """Server selection with optional tool filtering."""
+    name: str                          # MCP server ID (must match configured server)
+    tools: Optional[List[str]] = None  # None = all tools; list = specific tools only
+
+class MCPSelectionConfig(BaseModel):
+    """Per-alert MCP configuration override."""
+    servers: List[MCPServerSelection]  # At least one server required
+```
+
+**Usage in Alert Submission**:
+```json
+POST /api/v1/alerts
+{
+  "alert_type": "NamespaceAlertK8s",
+  "data": { "namespace": "my-app" },
+  "mcp": {
+    "servers": [
+      {
+        "name": "kubernetes-server",
+        "tools": ["kubectl_get_pods", "kubectl_describe_pod"]
+      }
+    ]
+  }
+}
+```
+
+**Configuration Modes**:
+
+1. **No Override** (default):
+   - Agents use their configured MCP servers from `config/agents.yaml` or built-in defaults
+   - Example: K8s agent gets `kubernetes-server` by default
+
+2. **Server Selection**:
+   - Override which MCP servers to use for all agents in the chain
+   - All tools from selected servers are available
+   ```json
+   { "servers": [{ "name": "kubernetes-server", "tools": null }] }
+   ```
+
+3. **Tool Filtering**:
+   - Select specific servers AND filter to specific tools
+   - Only specified tools are available during processing
+   ```json
+   { "servers": [{ "name": "kubernetes-server", "tools": ["kubectl_get_pods"] }] }
+   ```
+
+**Validation & Security**:
+- **Server existence check**: Selected servers must exist in MCP registry
+- **Tool existence check**: Selected tools must exist on the specified server
+- **Runtime enforcement**: Tool calls are validated at execution time
+- **Error handling**: Clear error messages for invalid selections
+- **Audit logging**: All MCP selection validations are logged
+
+**Implementation Points**:
+- `BaseAgent._get_available_tools()` - Applies MCP selection override
+- `MCPClient._validate_tool_call()` - Enforces selection at runtime
+- `ChainContext.processing_alert.mcp` - Carries configuration through pipeline
+
+**Use Cases**:
+- **Testing**: Test with limited toolsets during development
+- **Security**: Restrict access to sensitive operations for specific alerts
+- **Custom workflows**: Create specialized investigation paths
+- **Debugging**: Isolate specific tool combinations for troubleshooting
+
+**API Discovery**:
+```bash
+GET /api/v1/system/mcp-servers
+```
+Returns all configured servers with their available tools for building custom configurations.
 
 #### MCP Client Lifecycle Architecture
 

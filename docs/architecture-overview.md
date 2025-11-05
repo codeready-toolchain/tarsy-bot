@@ -45,6 +45,7 @@ graph LR
 ### 4. AI + Tools Integration
 - **LLM (Large Language Model)**: Provides the "thinking" - analyzes situations and decides what to investigate
 - **Agent-specific MCP Tools**: The "hands" - allows inspection of systems, diagnostic commands, log analysis
+- **Custom MCP Configuration**: Optionally override default agent MCP server assignments per alert request, enabling fine-grained control over which tools are available during processing
 - **Chain context awareness**: Agents access accumulated data from previous stages for comprehensive analysis
 - **Intelligent Content Management**: Dual-layer content truncation system with provider-aware limits prevents context overflow while preserving critical investigation details. Large MCP tool results are automatically summarized using context-aware AI, and hook processing includes content size optimization for database and dashboard performance
 
@@ -148,6 +149,9 @@ The AI combines all four to make intelligent decisions about investigation appro
 - **New MCP Servers**: Integrate additional diagnostic tools for deeper analysis capabilities
   - *Examples: Prometheus metrics server, Grafana dashboards server, cloud provider APIs, log aggregation tools*
   - *Note: Can override built-in MCP servers via `config/agents.yaml` (e.g., customize kubernetes-server with specific kubeconfig)*
+- **Runtime MCP Configuration**: Override default agent MCP server assignments per alert request
+  - *Capability: Specify which MCP servers and tools to use via the `mcp` field in alert payloads*
+  - *Validation: Server and tool selections are validated at runtime to ensure security and prevent unauthorized access*
 - **LLM Provider Configuration**: Built-in support for multiple AI providers with optional custom configurations
   - *Built-in providers: OpenAI, Google Gemini, xAI Grok, Anthropic Claude, Google Vertex AI*
   - *Custom providers: Proxy configurations, model overrides, content truncation controls via `config/llm_providers.yaml`*
