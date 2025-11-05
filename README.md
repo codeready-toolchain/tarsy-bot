@@ -250,8 +250,9 @@ export KUBECONFIG=/path/to/your/kubeconfig
 ### Core API
 - `GET /health` - Comprehensive health check with service status and warnings (HTTP 503 for degraded/unhealthy)
 - `POST /api/v1/alerts` - Submit a new alert for processing (returns `session_id` immediately)
+  - **Optional alert_type**: The `alert_type` field is optional and defaults to the configured default (typically "kubernetes")
   - **Custom MCP Configuration**: Optionally override default agent MCP server configuration via the `mcp` field in the request payload. This allows you to specify which MCP servers and tools to use for processing, providing fine-grained control over available tooling per alert.
-- `GET /api/v1/alert-types` - Get supported alert types
+- `GET /api/v1/alert-types` - Get supported alert types and default alert type
 - `WebSocket /api/v1/ws` - Real-time progress updates via WebSocket with channel subscriptions
 
 ### History API

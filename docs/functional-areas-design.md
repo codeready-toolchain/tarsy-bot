@@ -88,7 +88,7 @@ sequenceDiagram
 - **Alert model**: Simple, flexible structure (see `backend/tarsy/models/alert.py`)
 ```python
 class Alert(BaseModel):
-    alert_type: str                    # Required - determines chain selection
+    alert_type: Optional[str]          # Optional - determines chain selection (uses default if not specified)
     runbook: Optional[str]             # Optional - GitHub runbook URL (uses built-in default if not provided)
     data: Dict[str, Any]               # Flexible JSON payload
     severity: Optional[str]            # Defaults to "warning"
