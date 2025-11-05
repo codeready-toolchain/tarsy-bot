@@ -164,3 +164,16 @@ class AlertResponse(BaseModel):
     session_id: str
     status: str
     message: str
+
+
+class AlertTypesResponse(BaseModel):
+    """Response model for alert types endpoint."""
+    
+    alert_types: List[str] = Field(
+        ...,
+        description="List of all available alert types"
+    )
+    default_alert_type: str = Field(
+        ...,
+        description="Default alert type to use by the clients"
+    )

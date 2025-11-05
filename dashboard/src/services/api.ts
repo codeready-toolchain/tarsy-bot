@@ -345,7 +345,7 @@ class APIClient {
    * can submit any alert type. The system analyzes all alert types using the provided
    * runbook and all available MCP tools.
    */
-  async getAlertTypes(): Promise<string[]> {
+  async getAlertTypes(): Promise<{ alert_types: string[], default_alert_type: string }> {
     try {
       const response = await this.client.get('/api/v1/alert-types');
       return response.data;

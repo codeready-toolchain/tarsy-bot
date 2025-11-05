@@ -313,6 +313,10 @@ class CombinedConfigModel(BaseModel):
         default_factory=dict,
         description="Chain configurations mapped by chain ID"
     )
+    default_alert_type: Optional[str] = Field(
+        default=None,
+        description="Default alert type to use if no alert type is specified in the alert processing request (falls back to DEFAULT_ALERT_TYPE constant if not specified)"
+    )
 
     @model_validator(mode='after')
     def validate_configurable_agent_references(self) -> 'CombinedConfigModel':

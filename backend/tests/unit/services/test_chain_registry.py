@@ -37,9 +37,17 @@ class TestChainRegistryInitialization:
             if config_loader_config is not None and not isinstance(config_loader_config, Exception):
                 config_loader = Mock(spec=ConfigurationLoader)
                 config_loader.get_chain_configs.return_value = config_loader_config
+                # Mock load_and_validate to return config with default_alert_type = None
+                mock_config = Mock()
+                mock_config.default_alert_type = None
+                config_loader.load_and_validate.return_value = mock_config
             elif isinstance(config_loader_config, Exception):
                 config_loader = Mock(spec=ConfigurationLoader)
                 config_loader.get_chain_configs.side_effect = config_loader_config
+                # Mock load_and_validate to return config with default_alert_type = None
+                mock_config = Mock()
+                mock_config.default_alert_type = None
+                config_loader.load_and_validate.return_value = mock_config
             
             if config_loader:
                 registry = ChainRegistry(config_loader)
@@ -60,7 +68,7 @@ class TestChainRegistryValidation:
     
     @pytest.mark.parametrize("scenario,builtin_chains,yaml_chains,should_raise,expected_error", [
         ("valid_unique_ids", {
-            'builtin-chain': ChainFactory.create_custom_chain(chain_id='builtin-chain', alert_types=['builtin-alert'])
+            'builtin-chain': ChainFactory.create_custom_chain(chain_id='builtin-chain', alert_types=['builtin-alert', 'kubernetes'])
         }, {
             'yaml-chain': ChainFactory.create_custom_chain(chain_id='yaml-chain', alert_types=['yaml-alert'])
         }, False, None),
@@ -88,6 +96,10 @@ class TestChainRegistryValidation:
         if yaml_chains:
             mock_config_loader = Mock(spec=ConfigurationLoader)
             mock_config_loader.get_chain_configs.return_value = yaml_chains
+            # Mock load_and_validate to return config with default_alert_type = None
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
         
         with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
             mock_builtin.return_value = builtin_chains
@@ -184,12 +196,12 @@ class TestChainRegistryErrorHandling:
     
     @pytest.mark.parametrize("chain_type,valid_chains,invalid_chains,expected_valid_count", [
         ('builtin', {
-            'valid-chain': ChainFactory.create_custom_chain(chain_id='valid-chain', alert_types=['valid'])
+            'valid-chain': ChainFactory.create_custom_chain(chain_id='valid-chain', alert_types=['valid', 'kubernetes'])
         }, {
             'invalid-chain': ChainFactory.create_invalid_chain(chain_id='invalid-chain')
         }, 1),
         ('yaml', {
-            'valid-yaml-chain': ChainFactory.create_custom_chain(chain_id='valid-yaml-chain', alert_types=['valid-yaml'])
+            'valid-yaml-chain': ChainFactory.create_custom_chain(chain_id='valid-yaml-chain', alert_types=['valid-yaml', 'kubernetes'])
         }, {
             'invalid-yaml-chain': ChainFactory.create_invalid_chain(chain_id='invalid-yaml-chain')
         }, 1),
@@ -200,6 +212,10 @@ class TestChainRegistryErrorHandling:
         if chain_type == 'yaml':
             mock_config_loader = Mock(spec=ConfigurationLoader)
             mock_config_loader.get_chain_configs.return_value = {**valid_chains, **invalid_chains}
+            # Mock load_and_validate to return config with default_alert_type = None
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
         
         with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
             if chain_type == 'builtin':
@@ -257,7 +273,7 @@ class TestChainRegistryIntegration:
         with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
             test_chain = ChainFactory.create_kubernetes_chain(
                 chain_id='test-chain',
-                alert_types=['test1', 'test2'],
+                alert_types=['test1', 'test2', 'kubernetes'],
                 description='Test chain description'
             )
             mock_builtin.return_value = {'test-chain': test_chain}
@@ -268,7 +284,7 @@ class TestChainRegistryIntegration:
             # Verify ChainConfigModel structure
             assert isinstance(chain, ChainConfigModel)
             assert chain.chain_id == 'test-chain'
-            assert chain.alert_types == ['test1', 'test2']
+            assert chain.alert_types == ['test1', 'test2', 'kubernetes']
             assert chain.description == 'Test chain description'
             
             # Verify ChainStageConfigModel structure
@@ -281,3 +297,127 @@ class TestChainRegistryIntegration:
             assert chain.stages[1].name == 'analysis'
             assert chain.stages[1].agent == 'KubernetesAgent'
             assert chain.stages[1].iteration_strategy == 'react'
+
+
+@pytest.mark.unit
+class TestChainRegistryDefaultAlertType:
+    """Test ChainRegistry default alert type functionality."""
+    
+    def test_default_alert_type_from_config(self):
+        """Test that default alert type is loaded from configuration."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'test-chain': ChainFactory.create_custom_chain(
+                    chain_id='test-chain',
+                    alert_types=['custom-alert', 'kubernetes']
+                )
+            }
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {}
+            
+            # Mock load_and_validate to return config with default_alert_type
+            mock_config = Mock()
+            mock_config.default_alert_type = 'custom-alert'
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            
+            assert registry.get_default_alert_type() == 'custom-alert'
+    
+    def test_default_alert_type_fallback_to_constant(self):
+        """Test that default alert type falls back to DEFAULT_ALERT_TYPE constant."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'test-chain': ChainFactory.create_custom_chain(
+                    chain_id='test-chain',
+                    alert_types=['kubernetes', 'other-alert']
+                )
+            }
+            
+            # No config loader provided
+            registry = ChainRegistry()
+            
+            # Should default to 'kubernetes' (DEFAULT_ALERT_TYPE constant)
+            assert registry.get_default_alert_type() == 'kubernetes'
+    
+    def test_default_alert_type_fallback_when_config_empty(self):
+        """Test that default alert type falls back when config doesn't specify one."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'test-chain': ChainFactory.create_custom_chain(
+                    chain_id='test-chain',
+                    alert_types=['kubernetes', 'other-alert']
+                )
+            }
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {}
+            
+            # Mock load_and_validate to return config without default_alert_type
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            
+            # Should default to 'kubernetes' (DEFAULT_ALERT_TYPE constant)
+            assert registry.get_default_alert_type() == 'kubernetes'
+    
+    def test_validation_error_when_default_not_available(self):
+        """Test that validation fails when default alert type is not in any chain."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'test-chain': ChainFactory.create_custom_chain(
+                    chain_id='test-chain',
+                    alert_types=['alert1', 'alert2']
+                )
+            }
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {}
+            
+            # Mock load_and_validate to return config with non-existent default
+            mock_config = Mock()
+            mock_config.default_alert_type = 'non-existent-alert'
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            with pytest.raises(ValueError, match="Default alert type 'non-existent-alert' is not available in any chain definition"):
+                ChainRegistry(mock_config_loader)
+    
+    def test_validation_passes_when_default_exists_in_builtin(self):
+        """Test that validation passes when default alert type exists in built-in chains."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'test-chain': ChainFactory.create_custom_chain(
+                    chain_id='test-chain',
+                    alert_types=['kubernetes', 'alert2']
+                )
+            }
+            
+            # Use default constant (kubernetes) which is in the chain
+            registry = ChainRegistry()
+            
+            assert registry.get_default_alert_type() == 'kubernetes'
+    
+    def test_validation_passes_when_default_exists_in_yaml(self):
+        """Test that validation passes when default alert type exists in YAML chains."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {}
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'yaml-chain': ChainFactory.create_custom_chain(
+                    chain_id='yaml-chain',
+                    alert_types=['yaml-alert', 'other-alert']
+                )
+            }
+            
+            # Mock load_and_validate to return config with yaml-alert as default
+            mock_config = Mock()
+            mock_config.default_alert_type = 'yaml-alert'
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            
+            assert registry.get_default_alert_type() == 'yaml-alert'

@@ -296,26 +296,26 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
     const loadOptions = async () => {
       try {
         // Load alert types from API
-        const alertTypes = await apiClient.getAlertTypes();
-        if (Array.isArray(alertTypes)) {
-          // Check if we have a default alert type (from resubmit)
-          const defaultType = defaultAlertTypeRef.current;
+        const alertTypesResponse = await apiClient.getAlertTypes();
+        if (alertTypesResponse && alertTypesResponse.alert_types) {
+          const { alert_types, default_alert_type } = alertTypesResponse;
           
-          // Ensure default type is in the list
-          let finalAlertTypes = alertTypes;
-          if (defaultType && !alertTypes.includes(defaultType)) {
-            finalAlertTypes = [defaultType, ...alertTypes];
+          // Check if we have a default alert type (from resubmit)
+          const resubmitDefaultType = defaultAlertTypeRef.current;
+          
+          // Ensure resubmit default type is in the list
+          let finalAlertTypes = alert_types;
+          if (resubmitDefaultType && !alert_types.includes(resubmitDefaultType)) {
+            finalAlertTypes = [resubmitDefaultType, ...alert_types];
           }
           
           setAvailableAlertTypes(finalAlertTypes);
           
-          // Set the alert type (use default if available, otherwise use API default)
-          if (defaultType) {
-            setAlertType(defaultType);
-          } else if (alertTypes.includes('kubernetes')) {
-            setAlertType('kubernetes');
-          } else if (alertTypes.length > 0) {
-            setAlertType(alertTypes[0]);
+          // Set the alert type (use resubmit default if available, otherwise use API default)
+          if (resubmitDefaultType) {
+            setAlertType(resubmitDefaultType);
+          } else {
+            setAlertType(default_alert_type);
           }
         }
 

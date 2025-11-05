@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 
-from tarsy.models.alert import Alert, AlertResponse, ProcessingAlert
+from tarsy.models.alert import Alert, AlertResponse, AlertTypesResponse, ProcessingAlert
 from tarsy.utils.logger import get_logger
 
 # Initialize logger
@@ -23,14 +23,12 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["alerts"])
 
 
-@router.get("/alert-types", response_model=list[str])
-async def get_alert_types() -> list[str]:
+@router.get("/alert-types", response_model=AlertTypesResponse)
+async def get_alert_types() -> AlertTypesResponse:
     """Get supported alert types for the development/testing web interface.
     
-    This endpoint returns a list of alert types used only for dropdown selection
-    in the development/testing web interface. In production, external clients
-    (like Alert Manager) can submit any alert type. The system analyzes all
-    alert types using the provided runbook and available agent-specific MCP tools.
+    This endpoint returns alert types available to the clients and the default alert type
+    which will be used if no alert type provided in the alert processing request.
     """
     # Import here to avoid circular imports
     from tarsy.main import alert_service
@@ -38,7 +36,10 @@ async def get_alert_types() -> list[str]:
     if alert_service is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
     
-    return alert_service.chain_registry.list_available_alert_types()
+    return AlertTypesResponse(
+        alert_types=alert_service.chain_registry.list_available_alert_types(),
+        default_alert_type=alert_service.chain_registry.get_default_alert_type()
+    )
 
 
 @router.get("/runbooks", response_model=list[str])

@@ -8,7 +8,7 @@ chain_id uniqueness, and provides chain lookup functionality for alert types.
 
 from typing import Dict, Optional
 from tarsy.config.agent_config import ConfigurationLoader
-from tarsy.config.builtin_config import get_builtin_chain_definitions
+from tarsy.config.builtin_config import get_builtin_chain_definitions, DEFAULT_ALERT_TYPE
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 from tarsy.utils.logger import get_module_logger
 
@@ -33,8 +33,9 @@ class ChainRegistry:
         # Load built-in chains (always available)
         self.builtin_chains = self._load_builtin_chains()
         
-        # Load YAML chains (if configuration provided)
+        # Load YAML chains and default alert type (if configuration provided)
         self.yaml_chains = self._load_yaml_chains(config_loader) if config_loader else {}
+        self.default_alert_type = self._load_default_alert_type(config_loader)
         
         # Validate chain_id uniqueness across built-in and YAML chains
         self._validate_chain_id_uniqueness()
@@ -42,9 +43,12 @@ class ChainRegistry:
         # Build unified alert type mappings (STRICT - no conflicts allowed)
         self.alert_type_mappings = self._build_alert_type_mappings()
         
+        # Validate that default alert type is available
+        self._validate_default_alert_type()
+        
         logger.info(
             f"ChainRegistry initialized with {len(self.builtin_chains)} built-in chains "
-            f"and {len(self.yaml_chains)} YAML chains"
+            f"and {len(self.yaml_chains)} YAML chains, default alert type: '{self.default_alert_type}'"
         )
     
     def _load_builtin_chains(self) -> Dict[str, ChainConfigModel]:
@@ -106,6 +110,28 @@ class ChainRegistry:
             logger.warning(f"Failed to load YAML chains: {e}")
             return {}
     
+    def _load_default_alert_type(self, config_loader: Optional[ConfigurationLoader]) -> str:
+        """
+        Load default alert type from configuration or use built-in default.
+        
+        Args:
+            config_loader: Optional configuration loader
+            
+        Returns:
+            Default alert type (from config or DEFAULT_ALERT_TYPE constant)
+            
+        Raises:
+            Exception: If config file exists but cannot be loaded/validated
+        """
+        if config_loader:
+            config = config_loader.load_and_validate()
+            if config.default_alert_type:
+                logger.info(f"Using configured default alert type: '{config.default_alert_type}'")
+                return config.default_alert_type
+        
+        logger.info(f"Using built-in default alert type: '{DEFAULT_ALERT_TYPE}'")
+        return DEFAULT_ALERT_TYPE
+    
     def _validate_chain_id_uniqueness(self):
         """Ensure chain_ids are unique across built-in and YAML chains."""
         builtin_ids = set(self.builtin_chains.keys())
@@ -151,6 +177,22 @@ class ChainRegistry:
         logger.info(f"Built alert type mappings for {len(mappings)} alert types")
         return mappings
     
+    def _validate_default_alert_type(self) -> None:
+        """
+        Validate that the default alert type exists in available alert types.
+        
+        Raises:
+            ValueError: If default alert type is not available in any chain
+        """
+        if self.default_alert_type not in self.alert_type_mappings:
+            available_types = sorted(self.alert_type_mappings.keys())
+            raise ValueError(
+                f"Default alert type '{self.default_alert_type}' is not available in any chain definition. "
+                f"Available alert types: {', '.join(available_types)}"
+            )
+        
+        logger.debug(f"Default alert type '{self.default_alert_type}' validation passed")
+    
     def get_chain_for_alert_type(self, alert_type: str) -> ChainConfigModel:
         """
         Always returns a chain. Single agents become 1-stage chains.
@@ -182,6 +224,15 @@ class ChainRegistry:
     def list_available_alert_types(self) -> list[str]:
         """Get list of all available alert types."""
         return sorted(self.alert_type_mappings.keys())
+    
+    def get_default_alert_type(self) -> str:
+        """
+        Get the default alert type for clietns.
+        
+        Returns:
+            Default alert type (from config or DEFAULT_ALERT_TYPE constant)
+        """
+        return self.default_alert_type
     
     def list_available_chains(self) -> list[str]:
         """Get list of all available chain IDs."""

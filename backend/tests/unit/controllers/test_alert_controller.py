@@ -75,14 +75,19 @@ class TestAlertTypesEndpoint:
         mock_chain_registry.list_available_alert_types.return_value = [
             "kubernetes", "database", "network"
         ]
+        mock_chain_registry.get_default_alert_type.return_value = "kubernetes"
         mock_alert_service.chain_registry = mock_chain_registry
         
         response = client.get("/api/v1/alert-types")
         assert response.status_code == 200
         data = response.json()
         
-        assert data == ["kubernetes", "database", "network"]
+        assert data == {
+            "alert_types": ["kubernetes", "database", "network"],
+            "default_alert_type": "kubernetes"
+        }
         mock_chain_registry.list_available_alert_types.assert_called_once()
+        mock_chain_registry.get_default_alert_type.assert_called_once()
 
 
 @pytest.mark.unit  

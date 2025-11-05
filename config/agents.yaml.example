@@ -64,6 +64,17 @@
 # - "http": HTTP endpoint MCP servers - requires url field, optional bearer_token, verify_ssl
 # - "sse": Server-Sent Events MCP servers - requires url field, optional bearer_token, sse_read_timeout
 
+# ==============================================================================
+# DEFAULT ALERT TYPE
+# ==============================================================================
+# Optional: Set the default alert type for the UI dropdown
+# If not specified, defaults to "kubernetes" (built-in default)
+# The default alert type must be defined in at least one chain below
+default_alert_type: "PodCrashLoop"
+
+# ==============================================================================
+# MCP SERVERS
+# ==============================================================================
 mcp_servers:
   # OVERRIDE EXAMPLE: Override built-in kubernetes-server with custom kubeconfig path
   # This example shows how to override the built-in kubernetes-server to use a mounted kubeconfig

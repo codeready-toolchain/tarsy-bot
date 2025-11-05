@@ -22,6 +22,14 @@ from tarsy.models.mcp_transport_config import TRANSPORT_HTTP, TRANSPORT_STDIO, T
 
 
 # ==============================================================================
+# DEFAULT ALERT TYPE
+# ==============================================================================
+
+# Default alert type for clients - must match a built-in chain's alert type
+DEFAULT_ALERT_TYPE = "kubernetes"
+
+
+# ==============================================================================
 # BUILT-IN AGENTS (Single source of truth)
 # ==============================================================================
 
@@ -52,7 +60,7 @@ BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
 BUILTIN_CHAIN_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     # Convert existing single-agent mappings to 1-stage chains
     "kubernetes-agent-chain": {
-        "alert_types": ["kubernetes", "NamespaceTerminating"],
+        "alert_types": [DEFAULT_ALERT_TYPE],
         "stages": [
             {"name": "analysis", "agent": "KubernetesAgent"}
         ],
