@@ -294,51 +294,99 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
   };
 
   return (
-    <Box sx={{ px: 4, py: 2, bgcolor: 'rgba(156, 39, 176, 0.04)' }}>
+    <Box sx={{ px: 4, py: 2 }}>
       <Accordion 
         expanded={expanded}
         onChange={(_, isExpanded) => setExpanded(isExpanded)}
         disabled={disabled}
         sx={{
-          boxShadow: 'none',
+          boxShadow: expanded ? '0 1px 4px rgba(0, 0, 0, 0.08)' : 'none',
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'rgba(25, 118, 210, 0.04)',
+          transition: 'all 0.2s ease-in-out',
           '&:before': { display: 'none' },
-          bgcolor: 'transparent',
+          '&:hover': {
+            borderColor: 'primary.light',
+            bgcolor: 'rgba(25, 118, 210, 0.06)',
+          },
         }}
       >
         <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
+          expandIcon={<ExpandMoreIcon sx={{ color: 'primary.main' }} />}
           sx={{
-            px: 0,
-            minHeight: '48px',
+            px: 2,
+            py: 1.5,
+            minHeight: '56px',
+            borderRadius: expanded ? '8px 8px 0 0' : '8px',
+            bgcolor: 'transparent',
+            transition: 'background-color 0.2s ease-in-out',
             '& .MuiAccordionSummary-content': {
               alignItems: 'center',
-              gap: 1,
+              gap: 1.5,
+            },
+            '&:hover': {
+              bgcolor: 'rgba(25, 118, 210, 0.06)',
             },
           }}
         >
-          <SettingsIcon sx={{ color: 'primary.main', fontSize: 22 }} />
-          <Typography 
-            variant="overline" 
-            sx={{ 
-              color: 'text.secondary',
-              fontWeight: 700,
-              letterSpacing: 1.2,
-              fontSize: '0.8rem',
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 36,
+              height: 36,
+              borderRadius: '8px',
+              bgcolor: 'primary.main',
+              color: 'white',
             }}
           >
-            Advanced: MCP Server Selection
-          </Typography>
+            <SettingsIcon sx={{ fontSize: 20 }} />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography 
+              variant="subtitle1" 
+              sx={{ 
+                color: 'primary.main',
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                lineHeight: 1.2,
+              }}
+            >
+              Advanced: MCP Server Selection
+            </Typography>
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                color: 'text.secondary',
+                fontSize: '0.75rem',
+                display: 'block',
+                mt: 0.25,
+              }}
+            >
+              Override default agent MCP server configuration
+            </Typography>
+          </Box>
           {selectedServers.size > 0 && (
             <Chip 
               label={`${selectedServers.size} server${selectedServers.size > 1 ? 's' : ''} selected`}
               size="small"
               color="primary"
-              sx={{ ml: 1, height: 22 }}
+              sx={{ 
+                ml: 1, 
+                height: 24,
+                fontWeight: 600,
+                '& .MuiChip-label': {
+                  px: 1.5,
+                },
+              }}
             />
           )}
         </AccordionSummary>
         
-        <AccordionDetails sx={{ px: 0, pt: 2 }}>
+        <AccordionDetails sx={{ px: 2, pt: 2, pb: 2 }}>
           {/* Info text */}
           <Box sx={{ mb: 3, display: 'flex', gap: 1, alignItems: 'flex-start' }}>
             <InfoIcon sx={{ color: 'info.main', fontSize: 20, mt: 0.25 }} />
