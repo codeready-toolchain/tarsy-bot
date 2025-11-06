@@ -12,7 +12,7 @@ from collections import defaultdict
 from sqlmodel import Session, asc, desc, func, select, and_, or_
 
 from tarsy.models.constants import AlertSessionStatus, StageStatus
-from tarsy.models.db_models import AlertSession, StageExecution
+from tarsy.models.db_models import AlertSession, StageExecution, Chat, ChatUserMessage
 from tarsy.models.history_models import (
     PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo,
     SessionOverview, DetailedStage, LLMTimelineEvent, MCPTimelineEvent, MCPEventDetails
@@ -948,10 +948,9 @@ class HistoryRepository:
     
     # ===== CHAT OPERATIONS =====
     
-    def create_chat(self, chat) -> Optional[Any]:
+    def create_chat(self, chat: Chat) -> Optional[Chat]:
         """Create new chat record."""
         try:
-            from tarsy.models.db_models import Chat
             existing = self.session.exec(
                 select(Chat).where(Chat.session_id == chat.session_id)
             ).first()
@@ -967,21 +966,19 @@ class HistoryRepository:
             self.session.rollback()
             return None
     
-    def get_chat_by_id(self, chat_id: str) -> Optional[Any]:
+    def get_chat_by_id(self, chat_id: str) -> Optional[Chat]:
         """Get chat by ID."""
-        from tarsy.models.db_models import Chat
         return self.session.exec(
             select(Chat).where(Chat.chat_id == chat_id)
         ).first()
     
-    def get_chat_by_session(self, session_id: str) -> Optional[Any]:
+    def get_chat_by_session(self, session_id: str) -> Optional[Chat]:
         """Get chat for a session (if exists)."""
-        from tarsy.models.db_models import Chat
         return self.session.exec(
             select(Chat).where(Chat.session_id == session_id)
         ).first()
     
-    def update_chat(self, chat) -> bool:
+    def update_chat(self, chat: Chat) -> bool:
         """Update existing chat record."""
         try:
             self.session.add(chat)
@@ -993,10 +990,9 @@ class HistoryRepository:
             self.session.rollback()
             return False
     
-    def create_chat_user_message(self, message) -> Optional[Any]:
+    def create_chat_user_message(self, message: ChatUserMessage) -> Optional[ChatUserMessage]:
         """Create new chat user message."""
         try:
-            from tarsy.models.db_models import ChatUserMessage
             self.session.add(message)
             self.session.commit()
             self.session.refresh(message)
@@ -1006,20 +1002,6 @@ class HistoryRepository:
             self.session.rollback()
             return None
     
-    def get_chat_user_messages(
-        self,
-        chat_id: str,
-        limit: Optional[int] = None
-    ) -> List[Any]:
-        """Get user messages for a chat, ordered by timestamp."""
-        from tarsy.models.db_models import ChatUserMessage
-        statement = select(ChatUserMessage).where(
-            ChatUserMessage.chat_id == chat_id
-        ).order_by(asc(ChatUserMessage.created_at_us))
-        if limit:
-            statement = statement.limit(limit)
-        return self.session.exec(statement).all()
-    
     def get_stage_executions_for_chat(self, chat_id: str) -> List[StageExecution]:
         """Get all stage executions for a chat, ordered by timestamp."""
         statement = select(StageExecution).where(
@@ -1027,12 +1009,41 @@ class HistoryRepository:
         ).order_by(asc(StageExecution.started_at_us))
         return self.session.exec(statement).all()
     
+    def get_chat_user_message_count(self, chat_id: str) -> int:
+        """Count user messages in a chat."""
+        try:
+            statement = select(func.count(ChatUserMessage.message_id)).where(
+                ChatUserMessage.chat_id == chat_id
+            )
+            return self.session.exec(statement).one()
+        except Exception as e:
+            logger.error(f"Failed to count messages for chat {chat_id}: {str(e)}")
+            return 0
+    
+    def get_chat_user_messages(
+        self,
+        chat_id: str,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[ChatUserMessage]:
+        """Get user messages for a chat with pagination."""
+        try:
+            statement = select(ChatUserMessage).where(
+                ChatUserMessage.chat_id == chat_id
+            ).order_by(
+                asc(ChatUserMessage.created_at_us)
+            ).offset(offset).limit(limit)
+            
+            return list(self.session.exec(statement).all())
+        except Exception as e:
+            logger.error(f"Failed to get messages for chat {chat_id}: {str(e)}")
+            return []
+    
     # Pod Tracking & Orphan Detection
     
     def update_chat_pod_tracking(self, chat_id: str, pod_id: str) -> bool:
         """Update chat with pod tracking information."""
         try:
-            from tarsy.models.db_models import Chat
             chat = self.get_chat_by_id(chat_id)
             if not chat:
                 return False
@@ -1043,18 +1054,16 @@ class HistoryRepository:
             logger.error(f"Failed to update chat pod tracking: {str(e)}")
             return False
     
-    def find_chats_by_pod(self, pod_id: str) -> List[Any]:
+    def find_chats_by_pod(self, pod_id: str) -> List[Chat]:
         """Find chats being processed by a specific pod."""
-        from tarsy.models.db_models import Chat
         statement = select(Chat).where(
             Chat.pod_id == pod_id,
             Chat.last_interaction_at.isnot(None)
         )
         return self.session.exec(statement).all()
     
-    def find_orphaned_chats(self, timeout_threshold_us: int) -> List[Any]:
+    def find_orphaned_chats(self, timeout_threshold_us: int) -> List[Chat]:
         """Find chats with stale last_interaction_at (orphaned processing)."""
-        from tarsy.models.db_models import Chat
         try:
             statement = select(Chat).where(
                 Chat.last_interaction_at.isnot(None),

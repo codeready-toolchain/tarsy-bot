@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 
 from tarsy.models.alert import Alert, AlertResponse, AlertTypesResponse, ProcessingAlert
+from tarsy.utils.auth_helpers import extract_author_from_request
 from tarsy.utils.logger import get_logger
 
 # Initialize logger
@@ -289,17 +290,7 @@ async def submit_alert(request: Request) -> AlertResponse:
         session_id = str(uuid.uuid4())
         
         # Extract author from oauth2-proxy headers
-        # oauth2-proxy injects X-Forwarded-User and X-Forwarded-Email headers when pass_user_headers=true (OAuth flow)
-        # For JWT-authenticated API clients, oauth2-proxy validates but doesn't inject user headers
-        author = request.headers.get("X-Forwarded-User") or request.headers.get("X-Forwarded-Email")
-        
-        # Strip whitespace and check if empty
-        if author:
-            author = author.strip()
-        
-        # If no user headers present or empty after stripping, this is likely a JWT-authenticated API client
-        if not author:
-            author = "api-client"
+        author = extract_author_from_request(request)
         
         # Create ChainContext for processing  
         from tarsy.models.processing_context import ChainContext

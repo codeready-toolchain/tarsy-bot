@@ -1,0 +1,362 @@
+"""
+Integration tests for chat API endpoints.
+
+Tests the complete chat flow including chat creation, message sending,
+and history retrieval with real database and service interactions.
+"""
+
+import pytest
+from unittest.mock import AsyncMock, Mock, patch
+
+from tarsy.models.db_models import ChatUserMessage, AlertSession
+from tarsy.models.constants import AlertSessionStatus
+from tarsy.services.chat_service import ChatService
+from tarsy.services.history_service import HistoryService
+from tarsy.utils.timestamp import now_us
+
+
+@pytest.mark.integration
+class TestChatAPIIntegration:
+    """Integration tests for chat API flow."""
+
+    @pytest.fixture
+    async def completed_session(self, history_service: HistoryService):
+        """Create a completed session for testing."""
+        session = AlertSession(
+            session_id="test-session-integration",
+            alert_type="kubernetes",
+            chain_id="test-chain",
+            status=AlertSessionStatus.COMPLETED.value,
+            started_at_us=now_us(),
+            completed_at_us=now_us(),
+            author="test-user@example.com",
+        )
+        
+        # Create session using repository directly
+        def _create_session():
+            with history_service.get_repository() as repo:
+                repo.session.add(session)
+                repo.session.commit()
+                repo.session.refresh(session)
+                return session
+        
+        created_session = _create_session()
+        
+        yield created_session
+        
+        # Cleanup
+        def _cleanup():
+            with history_service.get_repository() as repo:
+                # Delete session (cascades to chat and messages)
+                stmt = repo.session.query(AlertSession).filter_by(
+                    session_id="test-session-integration"
+                )
+                stmt.delete()
+                repo.session.commit()
+        
+        try:
+            _cleanup()
+        except Exception:
+            pass  # Cleanup failed, ok for tests
+
+    @pytest.fixture
+    def mock_agent_factory(self):
+        """Mock agent factory for testing."""
+        mock_factory = Mock()
+        mock_agent = AsyncMock()
+        mock_agent.process_alert = AsyncMock(return_value=Mock(
+            status=Mock(value="completed"),
+            final_analysis="Test analysis response",
+            timestamp_us=now_us()
+        ))
+        mock_factory.create_agent.return_value = mock_agent
+        return mock_factory
+
+    @pytest.fixture
+    def mock_mcp_client_factory(self):
+        """Mock MCP client factory for testing."""
+        mock_factory = AsyncMock()
+        mock_client = AsyncMock()
+        mock_client.close = AsyncMock()
+        mock_factory.create_client = AsyncMock(return_value=mock_client)
+        return mock_factory
+
+    @pytest.mark.asyncio
+    async def test_create_chat_for_completed_session(
+        self, history_service, completed_session, mock_agent_factory, mock_mcp_client_factory
+    ):
+        """Test creating a chat for a completed session."""
+        # Create chat service
+        chat_service = ChatService(
+            history_service=history_service,
+            agent_factory=mock_agent_factory,
+            mcp_client_factory=mock_mcp_client_factory,
+        )
+        
+        # Mock LLM interactions for context capture
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage
+        from tarsy.models.llm_models import MessageRole
+        
+        mock_interaction = LLMInteraction(
+            interaction_id="test-interaction",
+            session_id=completed_session.session_id,
+            stage_execution_id="test-stage",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System instructions"),
+                LLMMessage(role=MessageRole.USER, content="Test alert data"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Test analysis"),
+            ]),
+            tokens_used=100,
+            created_at_us=now_us(),
+        )
+        
+        # Store mock interaction
+        with history_service.get_repository() as repo:
+            repo.session.add(mock_interaction)
+            repo.session.commit()
+        
+        # Create chat
+        chat = await chat_service.create_chat(
+            session_id=completed_session.session_id,
+            created_by="test-user@example.com"
+        )
+        
+        # Verify chat was created
+        assert chat is not None
+        assert chat.session_id == completed_session.session_id
+        assert chat.created_by == "test-user@example.com"
+        assert chat.conversation_history is not None
+        assert len(chat.conversation_history) > 0
+        
+        # Verify chat is idempotent
+        chat2 = await chat_service.create_chat(
+            session_id=completed_session.session_id,
+            created_by="another-user@example.com"
+        )
+        assert chat2.chat_id == chat.chat_id
+
+    @pytest.mark.asyncio
+    async def test_send_message_creates_stage_execution(
+        self, history_service, completed_session, mock_agent_factory, mock_mcp_client_factory
+    ):
+        """Test sending a message creates proper stage execution."""
+        # Setup chat
+        chat_service = ChatService(
+            history_service=history_service,
+            agent_factory=mock_agent_factory,
+            mcp_client_factory=mock_mcp_client_factory,
+        )
+        
+        # Create mock LLM interaction for context
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage
+        from tarsy.models.llm_models import MessageRole
+        
+        mock_interaction = LLMInteraction(
+            interaction_id="test-interaction-2",
+            session_id=completed_session.session_id,
+            stage_execution_id="test-stage-2",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Alert data"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Analysis"),
+            ]),
+            tokens_used=100,
+            created_at_us=now_us(),
+        )
+        
+        with history_service.get_repository() as repo:
+            repo.session.add(mock_interaction)
+            repo.session.commit()
+        
+        # Create chat
+        chat = await chat_service.create_chat(
+            session_id=completed_session.session_id,
+            created_by="test-user@example.com"
+        )
+        
+        # Send message
+        with patch("tarsy.services.chat_service.stage_execution_context"):
+            stage_execution_id = await chat_service.send_message(
+                chat_id=chat.chat_id,
+                user_question="What caused the issue?",
+                author="test-user@example.com"
+            )
+        
+        # Verify stage execution was created
+        assert stage_execution_id is not None
+        
+        # Verify user message was created
+        messages = await history_service.get_chat_user_messages(chat.chat_id, limit=10, offset=0)
+        assert len(messages) == 1
+        assert messages[0].content == "What caused the issue?"
+        assert messages[0].author == "test-user@example.com"
+
+    @pytest.mark.asyncio
+    async def test_get_chat_message_history(
+        self, history_service, completed_session, mock_agent_factory, mock_mcp_client_factory
+    ):
+        """Test retrieving chat message history with pagination."""
+        # Setup
+        chat_service = ChatService(
+            history_service=history_service,
+            agent_factory=mock_agent_factory,
+            mcp_client_factory=mock_mcp_client_factory,
+        )
+        
+        # Create mock LLM interaction
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage
+        from tarsy.models.llm_models import MessageRole
+        
+        mock_interaction = LLMInteraction(
+            interaction_id="test-interaction-3",
+            session_id=completed_session.session_id,
+            stage_execution_id="test-stage-3",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Alert"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response"),
+            ]),
+            tokens_used=100,
+            created_at_us=now_us(),
+        )
+        
+        with history_service.get_repository() as repo:
+            repo.session.add(mock_interaction)
+            repo.session.commit()
+        
+        # Create chat
+        chat = await chat_service.create_chat(
+            session_id=completed_session.session_id,
+            created_by="test-user@example.com"
+        )
+        
+        # Create multiple messages directly in database
+        messages_to_create = [
+            ChatUserMessage(
+                chat_id=chat.chat_id,
+                content=f"Question {i}",
+                author="test-user@example.com",
+                created_at_us=now_us() + i,
+            )
+            for i in range(5)
+        ]
+        
+        with history_service.get_repository() as repo:
+            for msg in messages_to_create:
+                repo.session.add(msg)
+            repo.session.commit()
+        
+        # Retrieve messages with pagination
+        page1 = await history_service.get_chat_user_messages(chat.chat_id, limit=3, offset=0)
+        page2 = await history_service.get_chat_user_messages(chat.chat_id, limit=3, offset=3)
+        
+        assert len(page1) == 3
+        assert len(page2) == 2
+        assert page1[0].content == "Question 0"
+        assert page2[0].content == "Question 3"
+        
+        # Check total count
+        count = await history_service.get_chat_user_message_count(chat.chat_id)
+        assert count == 5
+
+    @pytest.mark.asyncio
+    async def test_chat_not_available_for_non_completed_session(
+        self, history_service, mock_agent_factory, mock_mcp_client_factory
+    ):
+        """Test chat cannot be created for non-completed sessions."""
+        # Create in-progress session
+        session = AlertSession(
+            session_id="test-session-in-progress",
+            alert_type="kubernetes",
+            chain_id="test-chain",
+            status=AlertSessionStatus.IN_PROGRESS.value,
+            started_at_us=now_us(),
+            author="test-user@example.com",
+        )
+        
+        with history_service.get_repository() as repo:
+            repo.session.add(session)
+            repo.session.commit()
+        
+        try:
+            chat_service = ChatService(
+                history_service=history_service,
+                agent_factory=mock_agent_factory,
+                mcp_client_factory=mock_mcp_client_factory,
+            )
+            
+            # Attempt to create chat
+            with pytest.raises(ValueError, match="completed"):
+                await chat_service.create_chat(
+                    session_id="test-session-in-progress",
+                    created_by="test-user@example.com"
+                )
+        
+        finally:
+            # Cleanup
+            with history_service.get_repository() as repo:
+                stmt = repo.session.query(AlertSession).filter_by(
+                    session_id="test-session-in-progress"
+                )
+                stmt.delete()
+                repo.session.commit()
+
+    @pytest.mark.asyncio
+    async def test_multi_user_chat_participation(
+        self, history_service, completed_session, mock_agent_factory, mock_mcp_client_factory
+    ):
+        """Test multiple users can participate in same chat."""
+        # Setup
+        chat_service = ChatService(
+            history_service=history_service,
+            agent_factory=mock_agent_factory,
+            mcp_client_factory=mock_mcp_client_factory,
+        )
+        
+        # Create mock LLM interaction
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage
+        from tarsy.models.llm_models import MessageRole
+        
+        mock_interaction = LLMInteraction(
+            interaction_id="test-interaction-4",
+            session_id=completed_session.session_id,
+            stage_execution_id="test-stage-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Alert"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response"),
+            ]),
+            tokens_used=100,
+            created_at_us=now_us(),
+        )
+        
+        with history_service.get_repository() as repo:
+            repo.session.add(mock_interaction)
+            repo.session.commit()
+        
+        # User 1 creates chat
+        chat = await chat_service.create_chat(
+            session_id=completed_session.session_id,
+            created_by="user1@example.com"
+        )
+        
+        # Create messages from different users
+        users = ["user1@example.com", "user2@example.com", "user3@example.com"]
+        for i, user in enumerate(users):
+            msg = ChatUserMessage(
+                chat_id=chat.chat_id,
+                content=f"Question from {user}",
+                author=user,
+                created_at_us=now_us() + i,
+            )
+            with history_service.get_repository() as repo:
+                repo.session.add(msg)
+                repo.session.commit()
+        
+        # Retrieve all messages
+        messages = await history_service.get_chat_user_messages(chat.chat_id, limit=10, offset=0)
+        
+        assert len(messages) == 3
+        assert {msg.author for msg in messages} == set(users)
+        assert all("Question from" in msg.content for msg in messages)
+

@@ -19,7 +19,7 @@ from tarsy.models.history_models import (
     PaginatedSessions, DetailedSession, FilterOptions, SessionStats
 )
 from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.db_models import AlertSession, StageExecution
+from tarsy.models.db_models import AlertSession, StageExecution, Chat, ChatUserMessage
 from tarsy.utils.timestamp import now_us
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.models.processing_context import ChainContext
@@ -964,7 +964,7 @@ class HistoryService:
     
     # ===== CHAT OPERATIONS =====
     
-    async def create_chat(self, chat) -> Any:
+    async def create_chat(self, chat: Chat) -> Chat:
         """Create a new chat record."""
         if not self.is_enabled:
             raise ValueError("History service is disabled")
@@ -977,7 +977,7 @@ class HistoryService:
         
         return self._retry_database_operation("create_chat", _create_operation)
     
-    async def get_chat_by_id(self, chat_id: str) -> Optional[Any]:
+    async def get_chat_by_id(self, chat_id: str) -> Optional[Chat]:
         """Get chat by ID."""
         if not self.is_enabled:
             return None
@@ -990,7 +990,7 @@ class HistoryService:
         
         return self._retry_database_operation("get_chat_by_id", _get_operation)
     
-    async def get_chat_by_session(self, session_id: str) -> Optional[Any]:
+    async def get_chat_by_session(self, session_id: str) -> Optional[Chat]:
         """Get chat for a session (if exists)."""
         if not self.is_enabled:
             return None
@@ -1003,7 +1003,7 @@ class HistoryService:
         
         return self._retry_database_operation("get_chat_by_session", _get_operation)
     
-    async def create_chat_user_message(self, message) -> Any:
+    async def create_chat_user_message(self, message: ChatUserMessage) -> ChatUserMessage:
         """Create a new chat user message."""
         if not self.is_enabled:
             raise ValueError("History service is disabled")
@@ -1029,6 +1029,43 @@ class HistoryService:
         
         return self._retry_database_operation(
             "get_stage_executions_for_chat",
+            _get_operation
+        ) or []
+    
+    async def get_chat_user_message_count(self, chat_id: str) -> int:
+        """Get total user message count for a chat."""
+        if not self.is_enabled:
+            return 0
+        
+        def _count_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return 0
+                return repo.get_chat_user_message_count(chat_id)
+        
+        return self._retry_database_operation(
+            "get_chat_user_message_count",
+            _count_operation
+        ) or 0
+    
+    async def get_chat_user_messages(
+        self,
+        chat_id: str,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[ChatUserMessage]:
+        """Get user messages for a chat with pagination."""
+        if not self.is_enabled:
+            return []
+        
+        def _get_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return []
+                return repo.get_chat_user_messages(chat_id, limit, offset)
+        
+        return self._retry_database_operation(
+            "get_chat_user_messages",
             _get_operation
         ) or []
     

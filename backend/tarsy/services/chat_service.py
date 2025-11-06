@@ -807,3 +807,52 @@ class ChatService:
         except Exception as e:
             logger.warning(f"Failed to update stage execution as failed: {str(e)}")
 
+
+# ===== Service Factory for Dependency Injection =====
+
+# Global chat service instance
+_chat_service: Optional[ChatService] = None
+
+
+def get_chat_service() -> ChatService:
+    """
+    Dependency injection function for FastAPI endpoints.
+    
+    Returns:
+        Initialized ChatService instance
+        
+    Raises:
+        HTTPException: If service not initialized
+    """
+    from fastapi import HTTPException
+    
+    if _chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    return _chat_service
+
+
+def initialize_chat_service(
+    history_service: HistoryService,
+    agent_factory: AgentFactory,
+    mcp_client_factory: MCPClientFactory,
+) -> ChatService:
+    """
+    Initialize global chat service instance.
+    
+    Args:
+        history_service: History service for database operations
+        agent_factory: Agent factory for creating ChatAgent
+        mcp_client_factory: MCP client factory for creating session-scoped MCP clients
+        
+    Returns:
+        Initialized ChatService instance
+    """
+    global _chat_service
+    _chat_service = ChatService(
+        history_service=history_service,
+        agent_factory=agent_factory,
+        mcp_client_factory=mcp_client_factory,
+    )
+    logger.info("Chat service initialized")
+    return _chat_service
+

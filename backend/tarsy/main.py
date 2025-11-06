@@ -21,6 +21,7 @@ from cachetools import TTLCache
 from tarsy.config.settings import get_settings
 from tarsy.controllers.history_controller import router as history_router
 from tarsy.controllers.alert_controller import router as alert_router
+from tarsy.controllers.chat_controller import router as chat_router
 from tarsy.controllers.websocket_controller import websocket_router
 from tarsy.database.init_db import (
     get_database_info,
@@ -297,6 +298,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.info("History service: DISABLED")
     
+    # Initialize ChatService (requires AlertService components)
+    if settings.history_enabled and db_init_success:
+        try:
+            from tarsy.services.chat_service import initialize_chat_service
+            
+            # Initialize chat service (stored in module-level global for dependency injection)
+            _ = initialize_chat_service(
+                history_service=history_service,
+                agent_factory=alert_service.agent_factory,
+                mcp_client_factory=alert_service.mcp_client_factory,
+            )
+            logger.info("Chat service initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize chat service: {e}", exc_info=True)
+            logger.warning("Application will continue without chat service")
+    else:
+        logger.info("Chat service skipped - history service disabled")
+    
     yield
     
     # Shutdown: Wait for active sessions to complete before marking as interrupted
@@ -406,6 +425,9 @@ app.include_router(websocket_router, tags=["websocket"])
 
 from tarsy.controllers.system_controller import router as system_router
 app.include_router(system_router, tags=["system"])
+
+# Chat routes (registered after other routers)
+app.include_router(chat_router, tags=["chat"])
 
 
 @app.get("/health")
