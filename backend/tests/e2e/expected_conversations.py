@@ -1,3 +1,15 @@
+from pathlib import Path
+
+# Helper function to load chat message templates from external files
+def load_chat_message_template(filename: str) -> str:
+    """Load a chat message template from the chat_message_templates directory."""
+    template_dir = Path(__file__).parent / "chat_message_templates"
+    template_path = template_dir / filename
+    with open(template_path, "r") as f:
+        # Strip trailing newline to match actual LLM conversation format
+        return f.read().rstrip('\n')
+
+
 # Expected conversation structures for the data collection stage tool summarization interaction, when the system info is too large to fit in the conversation
 EXPECTED_DATA_COLLECTION_SUMMARIZATION_CONVERSATION = {
     "messages": [
@@ -839,8 +851,9 @@ Do NOT call any tools - use only the provided data."""
     ]
 }
 
-# Expected conversation for chat follow-up
-EXPECTED_CHAT_CONVERSATION = {
+# Expected conversations for chat follow-ups
+# Chat Message 1: "Can you check the pods in the stuck-namespace?"
+EXPECTED_CHAT_MESSAGE_1_CONVERSATION = {
     "messages": [
         {
             "role": "system",
@@ -857,18 +870,7 @@ The user has reviewed the investigation results and has follow-up questions. You
 
 You have access to the same tools and systems that were used in the original investigation.
 
-## Kubernetes Server Instructions
-
-For Kubernetes operations:
-- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
-  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
-  * Use this information to determine which context to target before performing any operations
-  * This prevents working on the wrong cluster and helps you understand the environment
-- Be careful with cluster-scoped resource listings in large clusters
-- Always prefer namespaced queries when possible
-- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
-  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
-  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
+## Agent-Specific Instructions
 
 ## Response Guidelines
 
@@ -878,163 +880,79 @@ For Kubernetes operations:
 4. **Specificity**: Always reference actual data and observations, not assumptions
 5. **Brevity**: Be concise but complete - users have already read the full investigation
 
-Use the ReAct format:
-- Thought: Reason about what information you need
-- Action: Specify which tool to use (if needed)
-- Action Input: Tool parameters  
-- Observation: Tool results (will be provided)
-- ... (repeat as needed)
-- Final Answer: Your complete response to the user"""
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on answering follow-up questions about a completed investigation for human operators to execute."""
         },
         {
             "role": "user",
-            "content": """================================================================================
-ORIGINAL ALERT INVESTIGATION HISTORY
-================================================================================
-
-### Initial Investigation Request
-
-Answer the following question using the available tools.
-
-Available tools:
-
-1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
-    **Parameters**:
-    - resource (optional, string): No description
-    - namespace (optional, string): No description
-    - name (optional, string): No description
-
-2. **kubernetes-server.kubectl_describe**: Describe Kubernetes resources
-    **Parameters**:
-    - resource (optional, string): No description
-    - namespace (optional, string): No description
-    - name (optional, string): No description
-
-3. **test-data-server.collect_system_info**: Collect basic system information like CPU, memory, and disk usage
-    **Parameters**:
-    - detailed (optional, boolean): Whether to return detailed system info
-
-Question: Investigate this test-kubernetes alert and provide stage-specific analysis.
-
-## Alert Details
-
-### Alert Metadata
-**Alert Type:** test-kubernetes
-**Severity:** warning
-**Timestamp:** {TIMESTAMP}
-**Environment:** production
-
-### Alert Data
-```json
-{
-  "namespace": "test-namespace",
-  "description": "Namespace stuck in Terminating state",
-  "cluster": "test-cluster",
-  "contact": "__MASKED_EMAIL__",
-  "labels": {
-    "env": "test",
-    "team": "platform"
-  },
-  "annotations": {
-    "finalizers": "kubernetes.io/pv-protection"
-  }
-}
-```
-
-## Runbook Content
-```markdown
-<!-- RUNBOOK START -->
-# Mock Runbook
-Test runbook content
-<!-- RUNBOOK END -->
-```
-
-## Previous Stage Data
-No previous stage data is available for this alert. This is the first stage of analysis.
-
-## Your Task: DATA-COLLECTION STAGE
-Use available tools to:
-1. Collect additional data relevant to this stage
-2. Analyze findings in the context of this specific stage
-3. Provide stage-specific insights and recommendations
-
-Your Final Answer should include both the data collected and your stage-specific analysis.
-
-Begin!
-
-**Agent Response:**
-
-Thought: I need to get namespace information first.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
-
-**Observation:**
-
-Observation: kubernetes-server.kubectl_get: {
-  "result": "stuck-namespace   Terminating   45m"
-}
-
-**Agent Response:**
-
-Action: kubernetes-server.kubectl_describe
-Action Input: {"resource": "namespace", "name": "stuck-namespace"}
-
-**Observation:**
-
-Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: Type=McpError | Message=tool 'kubectl_describe' not found: tool not found | error=ErrorData(code=-32602, message="tool 'kubectl_describe' not found: tool not found", data=None)
-
-**Agent Response:**
-
-Thought: Let me also collect system information to understand resource constraints.
-Action: test-data-server.collect_system_info
-Action Input: {"detailed": false}
-
-**Observation:**
-
-Observation: test-data-server.collect_system_info: {
-  "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
-}
-
-**Agent Response:**
-
-Thought: Let me gather more information about the current state.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "events", "namespace": "test-namespace"}
-
-**Observation:**
-
-Observation: kubernetes-server.kubectl_get: {
-  "result": "Mock kubectl get events response"
-}
-
-**Agent Response:**
-
-Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
-
-================================================================================
-END OF INVESTIGATION HISTORY
-================================================================================
-
-================================================================================
-FOLLOW-UP CHAT SESSION
-================================================================================
-
-The user has reviewed the investigation above and has a follow-up question.
-
-You have access to the same tools that were used in the original investigation
-(they are listed in the "Initial Investigation Request" section above).
-
-**User's Follow-up Question:**
-
-Can you check the pods in the stuck-namespace?
-
-**Your Task:**
-
-Answer the user's question using the ReAct format shown in your instructions.
-Reference the investigation history when relevant, and use tools to gather 
-fresh data if needed.
-
-Begin your ReAct reasoning:"""
+            # Load investigation history from external file for maintainability
+            "content": load_chat_message_template("chat_msg1_user_history.txt")
         },
         {
             "role": "assistant",
@@ -1053,4 +971,161 @@ Action Input: {"resource": "pods", "namespace": "stuck-namespace"}"""
             "content": """Final Answer: I checked the pods in stuck-namespace and found no pods are currently running. This is consistent with the namespace being stuck in Terminating state - all pods have likely been deleted already, but the namespace can't complete deletion due to the finalizers mentioned in the original investigation."""
         }
     ]
+}
+
+# Chat Message 2: "Does the namespace still exist?" (follow-up on message 1)
+EXPECTED_CHAT_MESSAGE_2_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## Chat Assistant Instructions
+
+You are an expert Site Reliability Engineer (SRE) assistant helping with follow-up questions about a completed alert investigation.
+
+The user has reviewed the investigation results and has follow-up questions. Your role is to:
+- Provide clear, actionable answers based on the investigation history
+- Use available tools to gather fresh, real-time data when needed
+- Reference specific findings from the original investigation when relevant
+- Maintain the same professional SRE communication style
+- Be concise but thorough in your responses
+
+You have access to the same tools and systems that were used in the original investigation.
+
+## Agent-Specific Instructions
+
+## Response Guidelines
+
+1. **Context Awareness**: Reference the investigation history when it provides relevant context
+2. **Fresh Data**: Use tools to gather current system state if the question requires up-to-date information
+3. **Clarity**: If the question is ambiguous or unclear, ask for clarification in your Final Answer
+4. **Specificity**: Always reference actual data and observations, not assumptions
+5. **Brevity**: Be concise but complete - users have already read the full investigation
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on answering follow-up questions about a completed investigation for human operators to execute."""
+        },
+        {
+            "role": "user",
+            # Load investigation history + first chat exchange from external file
+            "content": load_chat_message_template("chat_msg2_user_history.txt")
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: The user wants to know if the namespace still exists. Let me check its current status.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
+        },
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "stuck-namespace   Terminating   45m"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: Yes, the namespace still exists and remains in Terminating state. Based on the investigation history, the namespace is blocked by finalizers (kubernetes.io/pvc-protection). To resolve this, you would need to manually remove the finalizers using kubectl patch or edit the namespace resource directly."""
+        }
+    ]
+}
+
+# Expected interactions structure for chat messages (similar to EXPECTED_STAGES)
+EXPECTED_CHAT_INTERACTIONS = {
+    'message_1': {
+        'llm_count': 2,  # Initial ReAct + Final answer
+        'mcp_count': 3,  # 2 tool_list discoveries + 1 tool_call
+        'interactions': [
+            # MCP 1 - Tool list discovery for kubernetes-server
+            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            # MCP 2 - Tool list discovery for test-data-server
+            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            # LLM 1 - Initial ReAct iteration (kubectl_get for pods)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 150, 'output_tokens': 60, 'total_tokens': 210},
+            # MCP 3 - kubectl_get pods call
+            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            # LLM 2 - Final answer
+            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 90, 'total_tokens': 270}
+        ]
+    },
+    'message_2': {
+        'llm_count': 2,  # Initial ReAct + Final answer
+        'mcp_count': 3,  # 2 tool_list discoveries + 1 tool_call
+        'interactions': [
+            # MCP 1 - Tool list discovery for kubernetes-server
+            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            # MCP 2 - Tool list discovery for test-data-server
+            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            # LLM 1 - Initial ReAct iteration (kubectl_get for namespace)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 200, 'output_tokens': 70, 'total_tokens': 270},
+            # MCP 3 - kubectl_get namespace call
+            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            # LLM 2 - Final answer
+            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 220, 'output_tokens': 95, 'total_tokens': 315}
+        ]
+    }
 }

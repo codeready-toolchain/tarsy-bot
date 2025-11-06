@@ -1,0 +1,114 @@
+================================================================================
+ORIGINAL ALERT INVESTIGATION HISTORY
+================================================================================
+
+### Initial Investigation Request
+
+# Final Analysis Task
+
+
+**Stage:** analysis (Final Analysis Stage)
+
+
+# SRE Alert Analysis Request
+
+You are an expert Site Reliability Engineer (SRE) analyzing a system alert using the ConfigurableAgent.
+This agent specializes in kubernetes-server operations and has access to domain-specific tools and knowledge.
+
+Your task is to provide a comprehensive analysis of the incident based on:
+1. The alert information
+2. The associated runbook
+3. Real-time system data from MCP servers
+
+Please provide detailed, actionable insights about what's happening and potential next steps.
+
+## Alert Details
+
+### Alert Metadata
+**Alert Type:** test-kubernetes
+**Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
+
+### Alert Data
+```json
+{
+  "namespace": "test-namespace",
+  "description": "Namespace stuck in Terminating state",
+  "cluster": "test-cluster",
+  "contact": "__MASKED_EMAIL__",
+  "labels": {
+    "env": "test",
+    "team": "platform"
+  },
+  "annotations": {
+    "finalizers": "kubernetes.io/pv-protection"
+  }
+}
+```
+
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
+# Mock Runbook
+Test runbook content
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+### Results from 'data-collection' stage:
+
+#### Analysis Result
+
+<!-- Analysis Result START -->
+Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
+<!-- Analysis Result END -->
+
+### Results from 'verification' stage:
+
+#### Analysis Result
+
+<!-- Analysis Result START -->
+Final Answer: Verification completed. Root cause identified: namespace stuck due to finalizers preventing deletion.
+<!-- Analysis Result END -->
+
+
+## Instructions
+Provide comprehensive final analysis based on ALL collected data:
+1. Root cause analysis
+2. Impact assessment  
+3. Recommended actions
+4. Prevention strategies
+
+Do NOT call any tools - use only the provided data.
+
+**Agent Response:**
+
+Based on previous stages, the namespace is stuck due to finalizers.
+
+================================================================================
+END OF INVESTIGATION HISTORY
+================================================================================
+
+
+================================================================================
+FOLLOW-UP CHAT SESSION
+================================================================================
+
+The user has reviewed the investigation above and has a follow-up question.
+
+You have access to the same tools that were used in the original investigation
+(they are listed in the "Initial Investigation Request" section above).
+
+**User's Follow-up Question:**
+
+Can you check the pods in the stuck-namespace?
+
+**Your Task:**
+
+Answer the user's question using the ReAct format shown in your instructions.
+Reference the investigation history when relevant, and use tools to gather 
+fresh data if needed.
+
+Begin your ReAct reasoning:
+
