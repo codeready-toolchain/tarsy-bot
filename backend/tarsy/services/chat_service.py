@@ -50,7 +50,7 @@ def format_conversation_history_as_text(conversation: LLMConversation) -> str:
     This shows what tools were available during the investigation. The ChatAgent
     will receive its own current tools list in the system message.
     """
-    from tarsy.models.llm_models import MessageRole
+    from tarsy.models.unified_interactions import MessageRole
     
     sections = []
     sections.append("=" * 80)
@@ -401,8 +401,11 @@ class ChatService:
             chat_agent.set_current_chat_id(chat_id)
             
             # 11. Build ChainContext for chat (minimal, for compatibility)
+            from tarsy.utils.timestamp import now_us
             processing_alert = ProcessingAlert(
                 alert_type="chat",  # Special type for chat
+                severity="info",  # Chat messages are informational
+                timestamp=now_us(),  # Current timestamp
                 alert_data={"chat_id": chat_id, "user_question": user_question},
                 mcp=mcp_selection  # Pass MCP selection
             )
