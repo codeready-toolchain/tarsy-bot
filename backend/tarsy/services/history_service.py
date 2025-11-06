@@ -1158,7 +1158,8 @@ class HistoryService:
                 for chat in orphaned_chats:
                     chat.pod_id = None
                     chat.last_interaction_at = None
-                    repo.update_chat(chat)
+                    repo.session.add(chat)
+                repo.session.commit()
                 
                 return len(orphaned_chats)
         
@@ -1189,7 +1190,8 @@ class HistoryService:
                 for chat in active_chats:
                     chat.pod_id = None
                     chat.last_interaction_at = None
-                    repo.update_chat(chat)
+                    repo.session.add(chat)
+                repo.session.commit()
                 
                 return len(active_chats)
         

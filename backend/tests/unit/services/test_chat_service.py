@@ -1,0 +1,428 @@
+"""
+Unit tests for ChatService.
+
+Tests chat lifecycle management, context building, and message processing
+with mocked dependencies.
+"""
+
+import pytest
+from unittest.mock import AsyncMock, Mock, patch
+from tarsy.models.db_models import Chat, AlertSession
+from tarsy.models.constants import StageStatus, AlertSessionStatus
+from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+from tarsy.models.processing_context import SessionContextData, ChatMessageContext
+from tarsy.models.agent_execution_result import AgentExecutionResult
+from tarsy.services.chat_service import ChatService, format_conversation_history_as_text
+from tarsy.utils.timestamp import now_us
+
+
+@pytest.mark.unit
+class TestFormatConversationHistory:
+    """Test conversation history formatting helper."""
+    
+    def test_format_basic_conversation(self):
+        """Test formatting a basic investigation conversation."""
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="System instructions"),
+            LLMMessage(role=MessageRole.USER, content="Initial investigation: Pod crashed"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Thought: Need to check logs"),
+            LLMMessage(role=MessageRole.USER, content="Observation: No logs found"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Final Answer: Insufficient logs"),
+        ])
+        
+        result = format_conversation_history_as_text(conversation)
+        
+        assert "ORIGINAL ALERT INVESTIGATION HISTORY" in result
+        assert "END OF INVESTIGATION HISTORY" in result
+        assert "Initial Investigation Request" in result
+        assert "Pod crashed" in result
+        assert "Thought: Need to check logs" in result
+        assert "Observation: No logs found" in result
+        assert "System instructions" not in result  # System messages skipped
+    
+    def test_format_skips_system_messages(self):
+        """Test that system messages are excluded from formatted history."""
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are an assistant"),
+            LLMMessage(role=MessageRole.USER, content="User question"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Assistant response"),
+        ])
+        
+        result = format_conversation_history_as_text(conversation)
+        
+        assert "You are an assistant" not in result
+        assert "User question" in result
+        assert "Assistant response" in result
+
+
+@pytest.mark.unit
+class TestChatService:
+    """Test ChatService business logic with mocked dependencies."""
+    
+    @pytest.fixture
+    def mock_history_service(self):
+        """Mock history service for testing."""
+        return Mock()
+    
+    @pytest.fixture
+    def mock_agent_factory(self):
+        """Mock agent factory for testing."""
+        return Mock()
+    
+    @pytest.fixture
+    def mock_mcp_client_factory(self):
+        """Mock MCP client factory for testing."""
+        mock = AsyncMock()
+        mock.create_client = AsyncMock(return_value=AsyncMock())
+        return mock
+    
+    @pytest.fixture
+    def chat_service(self, mock_history_service, mock_agent_factory, mock_mcp_client_factory):
+        """Create ChatService with mocked dependencies."""
+        # Mock agent_configs as dict (not Mock) for iteration
+        mock_agent_factory.agent_configs = {}
+        return ChatService(
+            history_service=mock_history_service,
+            agent_factory=mock_agent_factory,
+            mcp_client_factory=mock_mcp_client_factory
+        )
+    
+    @pytest.fixture
+    def sample_session(self):
+        """Sample completed session for testing."""
+        session = Mock(spec=AlertSession)
+        session.session_id = "test-session-123"
+        session.status = AlertSessionStatus.COMPLETED.value
+        session.chain_id = "kubernetes-investigation"
+        session.mcp_selection = None
+        session.chain_definition = {
+            "stages": [
+                {"agent": "KubernetesAgent"},
+                {"agent": "DeepDiveAgent"}
+            ]
+        }
+        return session
+    
+    @pytest.fixture
+    def sample_llm_interactions(self):
+        """Sample LLM interactions for context capture."""
+        return [
+            LLMInteraction(
+                interaction_id="int-1",
+                session_id="test-session-123",
+                stage_execution_id="stage-1",
+                model_name="gpt-4",
+                conversation=LLMConversation(messages=[
+                    LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                    LLMMessage(role=MessageRole.USER, content="Pod crashed in production"),
+                    LLMMessage(role=MessageRole.ASSISTANT, content="Analyzing pod status..."),
+                ]),
+                tokens_used=100,
+                created_at_us=now_us(),
+            )
+        ]
+    
+    # ===== create_chat() Tests =====
+    
+    @pytest.mark.asyncio
+    async def test_create_chat_success(
+        self, chat_service, mock_history_service, sample_session, sample_llm_interactions
+    ):
+        """Test successful chat creation for completed session."""
+        mock_history_service.get_session.return_value = sample_session
+        mock_history_service.get_chat_by_session = AsyncMock(return_value=None)
+        mock_history_service.get_llm_interactions_for_session = AsyncMock(
+            return_value=sample_llm_interactions
+        )
+        mock_history_service.create_chat = AsyncMock(return_value=Chat(
+            chat_id="new-chat-123",
+            session_id="test-session-123",
+            created_by="user@example.com",
+            conversation_history="Formatted history",
+            chain_id="kubernetes-investigation",
+            context_captured_at_us=now_us(),
+        ))
+        
+        with patch("tarsy.services.events.event_helpers.publish_chat_created", new=AsyncMock()):
+            chat = await chat_service.create_chat(
+                session_id="test-session-123",
+                created_by="user@example.com"
+            )
+        
+        assert chat.chat_id == "new-chat-123"
+        assert chat.session_id == "test-session-123"
+        assert chat.created_by == "user@example.com"
+        mock_history_service.create_chat.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_create_chat_idempotent(
+        self, chat_service, mock_history_service, sample_session
+    ):
+        """Test creating chat twice returns existing chat."""
+        existing_chat = Chat(
+            chat_id="existing-chat",
+            session_id="test-session-123",
+            created_by="first-user@example.com",
+            conversation_history="History",
+            chain_id="test-chain",
+            context_captured_at_us=now_us(),
+        )
+        
+        mock_history_service.get_session.return_value = sample_session
+        mock_history_service.get_chat_by_session = AsyncMock(return_value=existing_chat)
+        
+        chat = await chat_service.create_chat(
+            session_id="test-session-123",
+            created_by="second-user@example.com"
+        )
+        
+        assert chat.chat_id == "existing-chat"
+        assert chat.created_by == "first-user@example.com"  # Original creator preserved
+    
+    @pytest.mark.asyncio
+    async def test_create_chat_session_not_found(
+        self, chat_service, mock_history_service
+    ):
+        """Test create chat fails when session doesn't exist."""
+        mock_history_service.get_session.return_value = None
+        
+        with pytest.raises(ValueError, match="not found"):
+            await chat_service.create_chat(
+                session_id="nonexistent",
+                created_by="user@example.com"
+            )
+    
+    @pytest.mark.asyncio
+    async def test_create_chat_session_not_completed(
+        self, chat_service, mock_history_service, sample_session
+    ):
+        """Test create chat fails when session is not completed."""
+        sample_session.status = AlertSessionStatus.IN_PROGRESS.value
+        mock_history_service.get_session.return_value = sample_session
+        
+        with pytest.raises(ValueError, match="completed"):
+            await chat_service.create_chat(
+                session_id="test-session-123",
+                created_by="user@example.com"
+            )
+    
+    # ===== MCP Selection Tests =====
+    
+    def test_determine_mcp_selection_from_custom(
+        self, chat_service, sample_session
+    ):
+        """Test MCP selection uses custom selection from session."""
+        sample_session.mcp_selection = {
+            "servers": [
+                {"name": "kubectl", "tools": ["logs", "describe"]},
+                {"name": "postgres", "tools": None}
+            ]
+        }
+        
+        result = chat_service._determine_mcp_selection_from_session(sample_session)
+        
+        assert result is not None
+        assert len(result.servers) == 2
+        assert result.servers[0].name == "kubectl"
+        assert result.servers[0].tools == ["logs", "describe"]
+        assert result.servers[1].name == "postgres"
+    
+    def test_determine_mcp_selection_from_agent_defaults(
+        self, chat_service, mock_agent_factory, sample_session
+    ):
+        """Test MCP selection reconstructs from agent defaults."""
+        sample_session.mcp_selection = None
+        sample_session.chain_definition = {
+            "stages": [
+                {"agent": "KubernetesAgent"},
+                {"agent": "DatabaseAgent"}
+            ]
+        }
+        
+        # Mock agent configs
+        mock_agent_factory.agent_configs = {
+            "KubernetesAgent": Mock(mcp_servers=["kubectl", "prometheus"]),
+            "DatabaseAgent": Mock(mcp_servers=["postgres"])
+        }
+        
+        with patch("tarsy.config.builtin_config.get_builtin_agent_config", return_value=None):
+            result = chat_service._determine_mcp_selection_from_session(sample_session)
+        
+        assert result is not None
+        server_names = {s.name for s in result.servers}
+        assert server_names == {"kubectl", "prometheus", "postgres"}
+        # No tool filtering for defaults
+        assert all(s.tools is None for s in result.servers)
+    
+    def test_determine_mcp_selection_no_servers(
+        self, chat_service, sample_session
+    ):
+        """Test MCP selection returns None when no servers found."""
+        sample_session.mcp_selection = None
+        sample_session.chain_definition = {"stages": []}
+        
+        result = chat_service._determine_mcp_selection_from_session(sample_session)
+        
+        assert result is None
+    
+    # ===== Context Building Tests =====
+    
+    @pytest.mark.asyncio
+    async def test_capture_session_context(
+        self, chat_service, mock_history_service, sample_session, sample_llm_interactions
+    ):
+        """Test capturing session context from LLM interactions."""
+        mock_history_service.get_llm_interactions_for_session = AsyncMock(
+            return_value=sample_llm_interactions
+        )
+        mock_history_service.get_session.return_value = sample_session
+        
+        context = await chat_service._capture_session_context("test-session-123")
+        
+        assert isinstance(context, SessionContextData)
+        assert context.chain_id == "kubernetes-investigation"
+        assert "Pod crashed in production" in context.conversation_history
+        assert context.captured_at_us > 0
+    
+    @pytest.mark.asyncio
+    async def test_capture_session_context_no_interactions(
+        self, chat_service, mock_history_service
+    ):
+        """Test context capture fails when no LLM interactions exist."""
+        mock_history_service.get_llm_interactions_for_session = AsyncMock(return_value=[])
+        
+        with pytest.raises(ValueError, match="No LLM interactions"):
+            await chat_service._capture_session_context("test-session-123")
+    
+    @pytest.mark.asyncio
+    async def test_build_message_context_first_message(
+        self, chat_service, mock_history_service
+    ):
+        """Test building context for first chat message uses chat history."""
+        chat = Chat(
+            chat_id="chat-123",
+            session_id="session-123",
+            created_by="user@example.com",
+            conversation_history="Pre-formatted investigation history",
+            chain_id="test-chain",
+            context_captured_at_us=now_us(),
+        )
+        
+        mock_history_service.get_stage_executions_for_chat = AsyncMock(return_value=[])
+        
+        context = await chat_service._build_message_context(chat, "What caused the crash?")
+        
+        assert isinstance(context, ChatMessageContext)
+        assert context.conversation_history == "Pre-formatted investigation history"
+        assert context.user_question == "What caused the crash?"
+        assert context.chat_id == "chat-123"
+    
+    @pytest.mark.asyncio
+    async def test_build_message_context_subsequent_message(
+        self, chat_service, mock_history_service, sample_llm_interactions
+    ):
+        """Test building context for subsequent messages uses last execution history."""
+        chat = Chat(
+            chat_id="chat-123",
+            session_id="session-123",
+            created_by="user@example.com",
+            conversation_history="Original history",
+            chain_id="test-chain",
+            context_captured_at_us=now_us(),
+        )
+        
+        # Mock previous execution
+        prev_execution = Mock()
+        prev_execution.execution_id = "exec-1"
+        mock_history_service.get_stage_executions_for_chat = AsyncMock(
+            return_value=[prev_execution]
+        )
+        mock_history_service.get_llm_interactions_for_stage = AsyncMock(
+            return_value=sample_llm_interactions
+        )
+        
+        context = await chat_service._build_message_context(chat, "Follow-up question")
+        
+        assert isinstance(context, ChatMessageContext)
+        assert "Pod crashed in production" in context.conversation_history
+        assert context.user_question == "Follow-up question"
+
+
+@pytest.mark.unit
+class TestChatServiceStageExecution:
+    """Test ChatService stage execution lifecycle methods."""
+    
+    @pytest.fixture
+    def mock_history_service(self):
+        """Mock history service."""
+        return Mock()
+    
+    @pytest.fixture
+    def chat_service(self, mock_history_service):
+        """Create ChatService with mocked history."""
+        return ChatService(
+            history_service=mock_history_service,
+            agent_factory=Mock(),
+            mcp_client_factory=AsyncMock()
+        )
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started(
+        self, chat_service, mock_history_service
+    ):
+        """Test marking stage execution as started."""
+        mock_stage = Mock()
+        mock_stage.session_id = "session-123"
+        mock_stage.status = StageStatus.PENDING.value
+        mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
+        
+        with patch("tarsy.services.chat_service.stage_execution_context"):
+            await chat_service._update_stage_execution_started("exec-123")
+        
+        assert mock_stage.status == StageStatus.ACTIVE.value
+        assert mock_stage.started_at_us > 0
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_completed(
+        self, chat_service, mock_history_service
+    ):
+        """Test marking stage execution as completed."""
+        start_time = now_us()
+        mock_stage = Mock()
+        mock_stage.session_id = "session-123"
+        mock_stage.started_at_us = start_time
+        mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
+        
+        # Create result with timestamp slightly after start
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="ChatAgent",
+            result_summary="Analysis complete",
+            final_analysis="Analysis complete",
+            timestamp_us=start_time + 100_000  # 100ms later
+        )
+        
+        with patch("tarsy.services.chat_service.stage_execution_context"):
+            await chat_service._update_stage_execution_completed("exec-123", result)
+        
+        assert mock_stage.status == StageStatus.COMPLETED.value
+        assert mock_stage.completed_at_us > 0
+        assert mock_stage.duration_ms == 100  # 100ms duration
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_failed(
+        self, chat_service, mock_history_service
+    ):
+        """Test marking stage execution as failed."""
+        mock_stage = Mock()
+        mock_stage.session_id = "session-123"
+        mock_stage.started_at_us = now_us()
+        mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
+        
+        with patch("tarsy.services.chat_service.stage_execution_context"):
+            await chat_service._update_stage_execution_failed("exec-123", "Test error")
+        
+        assert mock_stage.status == StageStatus.FAILED.value
+        assert mock_stage.error_message == "Test error"
+        assert mock_stage.completed_at_us > 0
+
