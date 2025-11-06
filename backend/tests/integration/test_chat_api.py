@@ -20,11 +20,13 @@ class TestChatAPIIntegration:
     """Integration tests for chat API flow."""
 
     @pytest.fixture
-    async def completed_session(self, history_service: HistoryService):
+    async def completed_session(self, history_service_with_test_db: HistoryService):
         """Create a completed session for testing."""
+        history_service = history_service_with_test_db
         session = AlertSession(
             session_id="test-session-integration",
             alert_type="kubernetes",
+            agent_type="KubernetesAgent",
             chain_id="test-chain",
             status=AlertSessionStatus.COMPLETED.value,
             started_at_us=now_us(),
@@ -83,9 +85,10 @@ class TestChatAPIIntegration:
 
     @pytest.mark.asyncio
     async def test_create_chat_for_completed_session(
-        self, history_service, completed_session, mock_agent_factory, mock_mcp_client_factory
+        self, history_service_with_test_db, completed_session, mock_agent_factory, mock_mcp_client_factory
     ):
         """Test creating a chat for a completed session."""
+        history_service = history_service_with_test_db
         # Create chat service
         chat_service = ChatService(
             history_service=history_service,
@@ -94,13 +97,13 @@ class TestChatAPIIntegration:
         )
         
         # Mock LLM interactions for context capture
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage
-        from tarsy.models.llm_models import MessageRole
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
         
         mock_interaction = LLMInteraction(
             interaction_id="test-interaction",
             session_id=completed_session.session_id,
-            stage_execution_id="test-stage",
+            stage_execution_id=None,
+            model_name="gpt-4",
             conversation=LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="System instructions"),
                 LLMMessage(role=MessageRole.USER, content="Test alert data"),
@@ -137,9 +140,10 @@ class TestChatAPIIntegration:
 
     @pytest.mark.asyncio
     async def test_send_message_creates_stage_execution(
-        self, history_service, completed_session, mock_agent_factory, mock_mcp_client_factory
+        self, history_service_with_test_db, completed_session, mock_agent_factory, mock_mcp_client_factory
     ):
         """Test sending a message creates proper stage execution."""
+        history_service = history_service_with_test_db
         # Setup chat
         chat_service = ChatService(
             history_service=history_service,
@@ -148,13 +152,13 @@ class TestChatAPIIntegration:
         )
         
         # Create mock LLM interaction for context
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage
-        from tarsy.models.llm_models import MessageRole
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
         
         mock_interaction = LLMInteraction(
             interaction_id="test-interaction-2",
             session_id=completed_session.session_id,
-            stage_execution_id="test-stage-2",
+            stage_execution_id=None,
+            model_name="gpt-4",
             conversation=LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="System"),
                 LLMMessage(role=MessageRole.USER, content="Alert data"),
@@ -193,9 +197,10 @@ class TestChatAPIIntegration:
 
     @pytest.mark.asyncio
     async def test_get_chat_message_history(
-        self, history_service, completed_session, mock_agent_factory, mock_mcp_client_factory
+        self, history_service_with_test_db, completed_session, mock_agent_factory, mock_mcp_client_factory
     ):
         """Test retrieving chat message history with pagination."""
+        history_service = history_service_with_test_db
         # Setup
         chat_service = ChatService(
             history_service=history_service,
@@ -204,13 +209,13 @@ class TestChatAPIIntegration:
         )
         
         # Create mock LLM interaction
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage
-        from tarsy.models.llm_models import MessageRole
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
         
         mock_interaction = LLMInteraction(
             interaction_id="test-interaction-3",
             session_id=completed_session.session_id,
-            stage_execution_id="test-stage-3",
+            stage_execution_id=None,
+            model_name="gpt-4",
             conversation=LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="System"),
                 LLMMessage(role=MessageRole.USER, content="Alert"),
@@ -261,13 +266,15 @@ class TestChatAPIIntegration:
 
     @pytest.mark.asyncio
     async def test_chat_not_available_for_non_completed_session(
-        self, history_service, mock_agent_factory, mock_mcp_client_factory
+        self, history_service_with_test_db, mock_agent_factory, mock_mcp_client_factory
     ):
         """Test chat cannot be created for non-completed sessions."""
+        history_service = history_service_with_test_db
         # Create in-progress session
         session = AlertSession(
             session_id="test-session-in-progress",
             alert_type="kubernetes",
+            agent_type="KubernetesAgent",
             chain_id="test-chain",
             status=AlertSessionStatus.IN_PROGRESS.value,
             started_at_us=now_us(),
@@ -303,9 +310,10 @@ class TestChatAPIIntegration:
 
     @pytest.mark.asyncio
     async def test_multi_user_chat_participation(
-        self, history_service, completed_session, mock_agent_factory, mock_mcp_client_factory
+        self, history_service_with_test_db, completed_session, mock_agent_factory, mock_mcp_client_factory
     ):
         """Test multiple users can participate in same chat."""
+        history_service = history_service_with_test_db
         # Setup
         chat_service = ChatService(
             history_service=history_service,
@@ -314,13 +322,13 @@ class TestChatAPIIntegration:
         )
         
         # Create mock LLM interaction
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage
-        from tarsy.models.llm_models import MessageRole
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
         
         mock_interaction = LLMInteraction(
             interaction_id="test-interaction-4",
             session_id=completed_session.session_id,
-            stage_execution_id="test-stage-4",
+            stage_execution_id=None,
+            model_name="gpt-4",
             conversation=LLMConversation(messages=[
                 LLMMessage(role=MessageRole.SYSTEM, content="System"),
                 LLMMessage(role=MessageRole.USER, content="Alert"),

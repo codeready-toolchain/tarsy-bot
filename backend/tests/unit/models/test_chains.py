@@ -182,7 +182,8 @@ class TestChainConfigModel:
                 {'name': 'stage1', 'agent': 'Agent1', 'iteration_strategy': None},
                 {'name': 'stage2', 'agent': 'Agent2', 'iteration_strategy': 'react'}
             ],
-            'description': 'Test serialization'
+            'description': 'Test serialization',
+            'chat_enabled': True
         }
         
         assert result == expected
@@ -203,7 +204,8 @@ class TestChainConfigModel:
             'stages': [
                 {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': None}
             ],
-            'description': None
+            'description': None,
+            'chat_enabled': True
         }
         
         assert result == expected

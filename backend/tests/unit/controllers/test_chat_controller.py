@@ -19,25 +19,27 @@ class TestChatController:
     """Test chat controller REST endpoints."""
 
     @pytest.fixture
-    def client(self):
-        """Create test client."""
-        return TestClient(app)
-
-    @pytest.fixture
     def mock_chat_service(self):
         """Mock chat service for testing."""
-        with patch("tarsy.controllers.chat_controller.get_chat_service") as mock_get:
-            mock_service = AsyncMock()
-            mock_get.return_value = mock_service
-            yield mock_service
+        return AsyncMock()
 
     @pytest.fixture
     def mock_history_service(self):
         """Mock history service for testing."""
-        with patch("tarsy.controllers.chat_controller.get_history_service") as mock_get:
-            mock_service = AsyncMock()
-            mock_get.return_value = mock_service
-            yield mock_service
+        return AsyncMock()
+
+    @pytest.fixture
+    def client(self, mock_chat_service, mock_history_service):
+        """Create test client with dependency overrides."""
+        from tarsy.services.chat_service import get_chat_service
+        from tarsy.services.history_service import get_history_service
+        
+        app.dependency_overrides[get_chat_service] = lambda: mock_chat_service
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        yield TestClient(app)
+        
+        app.dependency_overrides.clear()
 
     @pytest.fixture
     def sample_chat(self):
@@ -142,9 +144,10 @@ class TestChatController:
         response = client.post("/api/v1/sessions/test-session-456/chat")
 
         assert response.status_code == 503
-        detail = response.json()["detail"]
-        assert detail["error"] == "Service shutting down"
-        assert detail["retry_after"] == 30
+        data = response.json()
+        assert "detail" in data
+        assert data["detail"]["error"] == "Service shutting down"
+        assert data["detail"]["retry_after"] == 30
 
     # ===== GET /api/v1/sessions/{session_id}/chat-available =====
 
@@ -256,7 +259,10 @@ class TestChatController:
         )
 
         assert response.status_code == 422
-        assert "validation" in response.json()["detail"][0]["type"]
+        detail = response.json()["detail"]
+        assert isinstance(detail, list)
+        assert len(detail) > 0
+        assert detail[0]["type"] == "string_too_short"
 
     def test_send_message_validation_whitespace_only(self, client):
         """Test message validation rejects whitespace-only content."""
@@ -300,8 +306,9 @@ class TestChatController:
         )
 
         assert response.status_code == 503
-        detail = response.json()["detail"]
-        assert detail["error"] == "Service shutting down"
+        data = response.json()
+        assert "detail" in data
+        assert data["detail"]["error"] == "Service shutting down"
 
     # ===== GET /api/v1/chats/{chat_id}/messages =====
 

@@ -1032,6 +1032,38 @@ class HistoryService:
             _get_operation
         ) or []
     
+    async def get_llm_interactions_for_session(self, session_id: str) -> List['LLMInteraction']:
+        """Get all LLM interactions for a session."""
+        if not self.is_enabled:
+            return []
+        
+        def _get_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return []
+                return repo.get_llm_interactions_for_session(session_id)
+        
+        return self._retry_database_operation(
+            "get_llm_interactions_for_session",
+            _get_operation
+        ) or []
+    
+    async def get_llm_interactions_for_stage(self, stage_execution_id: str) -> List['LLMInteraction']:
+        """Get all LLM interactions for a stage execution."""
+        if not self.is_enabled:
+            return []
+        
+        def _get_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return []
+                return repo.get_llm_interactions_for_stage(stage_execution_id)
+        
+        return self._retry_database_operation(
+            "get_llm_interactions_for_stage",
+            _get_operation
+        ) or []
+    
     async def get_chat_user_message_count(self, chat_id: str) -> int:
         """Get total user message count for a chat."""
         if not self.is_enabled:

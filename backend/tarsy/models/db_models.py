@@ -255,7 +255,7 @@ class Chat(SQLModel, table=True):
     )
     
     session_id: str = Field(
-        sa_column=Column[Any](String, ForeignKey("alert_sessions.session_id"), index=True),
+        sa_column=Column[Any](String, ForeignKey("alert_sessions.session_id")),
         description="Original session this chat extends"
     )
     
@@ -318,7 +318,7 @@ class ChatUserMessage(SQLModel, table=True):
     )
     
     chat_id: str = Field(
-        sa_column=Column[Any](String, ForeignKey("chats.chat_id", ondelete="CASCADE"), index=True),
+        sa_column=Column[Any](String, ForeignKey("chats.chat_id", ondelete="CASCADE")),
         description="Parent chat"
     )
     

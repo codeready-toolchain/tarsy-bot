@@ -183,6 +183,26 @@ class HistoryRepository:
         except Exception as e:
             logger.error(f"Failed to get LLM interactions for session {session_id}: {str(e)}")
             raise
+    
+    def get_llm_interactions_for_stage(self, stage_execution_id: str) -> List[LLMInteraction]:
+        """
+        Get all LLM interactions for a stage execution ordered by timestamp.
+        
+        Args:
+            stage_execution_id: The stage execution identifier
+            
+        Returns:
+            List of LLMInteraction instances ordered by timestamp
+        """
+        try:
+            statement = select(LLMInteraction).where(
+                LLMInteraction.stage_execution_id == stage_execution_id
+            ).order_by(asc(LLMInteraction.timestamp_us))
+            
+            return self.session.exec(statement).all()
+        except Exception as e:
+            logger.error(f"Failed to get LLM interactions for stage {stage_execution_id}: {str(e)}")
+            raise
 
 
     # MCPCommunication operations

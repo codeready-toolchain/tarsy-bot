@@ -157,7 +157,7 @@ class ChatService:
             ValueError: If session not found, not completed, or chat disabled
         """
         # Get session and validate
-        session = await self.history_service.get_alert_session(session_id)
+        session = self.history_service.get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
         
@@ -537,7 +537,7 @@ class ChatService:
         )
         
         # Get session for metadata
-        session = await self.history_service.get_alert_session(session_id)
+        session = self.history_service.get_session(session_id)
         
         # Return typed dataclass
         return SessionContextData(
