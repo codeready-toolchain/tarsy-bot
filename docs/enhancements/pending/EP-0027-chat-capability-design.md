@@ -338,11 +338,11 @@ class ChainContext(BaseModel):
     # ... existing fields ...
     
     # NEW: Chat-specific context (only present for chat executions)
-    chat_context: Optional[dict] = None
-    # Contains: conversation_history, user_question, chat_id
+    chat_context: Optional[ChatMessageContext] = None
+    # Type-safe dataclass containing: conversation_history, user_question, chat_id
 ```
 
-**Note:** Chat uses the same `ChainContext` → `StageContext` flow as regular sessions, ensuring compatibility with existing agent infrastructure.
+**Note:** Chat uses the same `ChainContext` → `StageContext` flow as regular sessions, ensuring compatibility with existing agent infrastructure. The `ChatMessageContext` dataclass provides type safety for chat-specific data.
 
 ---
 
@@ -521,6 +521,14 @@ The code is duplicated rather than abstracted because:
 
 If we see 3+ similar services emerge, we can extract common patterns then.
 
+**Note on Service Layering:**
+- ChatService NEVER accesses repositories directly
+- ALL database operations go through `HistoryService`
+- HistoryService delegates to `HistoryRepository` (extended with chat methods)
+- This maintains proper service → service → repository layering:
+  - `ChatService` → `HistoryService` → `HistoryRepository` → Database
+- Only service classes (like HistoryService) access repositories directly
+
 ```python
 from dataclasses import dataclass
 
@@ -532,8 +540,29 @@ class SessionContextData:
     captured_at_us: int
 
 
+@dataclass
+class ChatMessageContext:
+    """
+    Typed container for chat message context.
+    
+    Passed to ChatReActController via StageContext.chat_context
+    to provide conversation history and user question.
+    """
+    conversation_history: str
+    user_question: str
+    chat_id: str
+
+
 class ChatService:
-    """Service for managing follow-up chat conversations."""
+    """
+    Service for managing follow-up chat conversations.
+    
+    Architecture:
+    - Orchestrates chat lifecycle and message processing
+    - Delegates ALL database operations to HistoryService
+    - Never directly accesses repositories (proper service layering)
+    - Coordinates between HistoryService, AgentFactory, and MCP systems
+    """
     
     def __init__(
         self,
@@ -542,7 +571,7 @@ class ChatService:
         mcp_manager: MCPManager,
         llm_provider_manager: LLMProviderManager
     ):
-        self.history_service = history_service
+        self.history_service = history_service  # ALL DB operations go through here
         self.agent_factory = agent_factory
         self.mcp_manager = mcp_manager
         self.llm_provider_manager = llm_provider_manager
@@ -574,8 +603,8 @@ class ChatService:
         if session.status != "completed":
             raise ValueError("Can only create chat for completed sessions")
         
-        # Check if chat already exists
-        existing_chat = await self.chat_repository.get_chat_by_session(session_id)
+        # Check if chat already exists (via history_service)
+        existing_chat = await self.history_service.get_chat_by_session(session_id)
         if existing_chat:
             return existing_chat
         
@@ -599,7 +628,7 @@ class ChatService:
             context_captured_at_us=context.captured_at_us
         )
         
-        return await self.chat_repository.create_chat(chat)
+        return await self.history_service.create_chat(chat)
     
     async def send_message(
         self,
@@ -630,18 +659,18 @@ class ChatService:
         execution_id = None
         
         try:
-            # 1. Get chat and validate
-            chat = await self.chat_repository.get_chat_by_id(chat_id)
+            # 1. Get chat and validate (via history_service)
+            chat = await self.history_service.get_chat_by_id(chat_id)
             if not chat:
                 raise ValueError(f"Chat {chat_id} not found")
             
-            # 2. Create user message record
+            # 2. Create user message record (via history_service)
             user_msg = ChatUserMessage(
                 chat_id=chat_id,
                 content=user_question,
                 author=author
             )
-            await self.chat_repository.create_user_message(user_msg)
+            await self.history_service.create_chat_user_message(user_msg)
             
             # 3. Build context (initial context OR cumulative from last execution)
             message_context = await self._build_message_context(chat, user_question)
@@ -741,8 +770,8 @@ class ChatService:
                 author=author
             )
             
-            # Add chat-specific context to chain_context
-            chain_context.chat_context = message_context
+            # Add chat-specific context to chain_context (type-safe!)
+            chain_context.chat_context = message_context  # ChatMessageContext dataclass
             
             # 12. Execute ChatAgent with timeout (600s like sessions)
             try:
@@ -949,7 +978,7 @@ class ChatService:
         self,
         chat: Chat,
         user_question: str
-    ) -> dict:
+    ) -> ChatMessageContext:
         """
         Build context for new chat message including conversation history.
         
@@ -962,7 +991,7 @@ class ChatService:
         so we just need the most recent one.
         
         Returns:
-            Dict with 'conversation_history' (formatted text) and user_question
+            ChatMessageContext with conversation_history, user_question, and chat_id
         """
         # Get previous chat executions for this chat
         prev_executions = await self._get_chat_executions(chat.chat_id)
@@ -983,17 +1012,20 @@ class ChatService:
                 llm_interactions
             )
         
-        return {
-            "conversation_history": context_history,
-            "user_question": user_question,
-            "chat_id": chat.chat_id
-        }
+        # Return typed dataclass (type-safe!)
+        return ChatMessageContext(
+            conversation_history=context_history,
+            user_question=user_question,
+            chat_id=chat.chat_id
+        )
     
     async def _get_chat_executions(self, chat_id: str) -> List[StageExecution]:
         """
         Get all stage executions for a chat, ordered by timestamp.
+        
+        Note: Delegates to HistoryService - services never access repositories directly.
         """
-        return await self.chat_repository.get_stage_executions_for_chat(chat_id)
+        return await self.history_service.get_stage_executions_for_chat(chat_id)
     
     # Stage Execution Lifecycle Methods (similar to AlertService)
     
@@ -1222,17 +1254,15 @@ class ChatReActController(ReactController):
     """
     ReAct controller for chat that includes conversation history in user messages.
     
-    Differs from standard ReAct by prepending formatted investigation history
-    and previous chat messages to the initial user message.
+    Differs from standard ReAct by delegating user message construction to
+    PromptBuilder.build_chat_user_message() which handles history formatting.
     """
     
     def build_initial_conversation(self, context: 'StageContext') -> LLMConversation:
         """Build initial conversation for chat with history context."""
         
-        # Get chat context from processing context
-        chat_context = context.chat_context  # Added to StageContext for chat
-        conversation_history = chat_context['conversation_history']
-        user_question = chat_context['user_question']
+        # Get chat context from processing context (type-safe!)
+        chat_context: ChatMessageContext = context.chat_context
         
         # System message with chat instructions (from ChatAgent.custom_instructions)
         system_content = self.prompt_builder.get_enhanced_react_system_message(
@@ -1240,8 +1270,55 @@ class ChatReActController(ReactController):
             "answering follow-up questions about a completed investigation"
         )
         
-        # User message = history + current question + ReAct instructions
-        user_content = f"""{conversation_history}
+        # User message with history + question (delegated to prompt builder)
+        user_content = self.prompt_builder.build_chat_user_message(
+            conversation_history=chat_context.conversation_history,
+            user_question=chat_context.user_question
+        )
+        
+        return LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content=system_content),
+            LLMMessage(role=MessageRole.USER, content=user_content)
+        ])
+    
+    def extract_final_analysis(self, analysis_result: str, context) -> str:
+        """Extract final answer from ReAct conversation."""
+        return self._extract_react_final_analysis(analysis_result)
+```
+
+### 4.1. Prompt Builder Extension
+
+Add chat-specific prompt construction to PromptBuilder:
+
+```python
+class PromptBuilder:
+    """
+    Handles prompt construction for agents.
+    Extended to support chat-specific prompts.
+    """
+    
+    def build_chat_user_message(
+        self,
+        conversation_history: str,
+        user_question: str
+    ) -> str:
+        """
+        Build user message for chat that includes conversation history.
+        
+        This formats the chat prompt by:
+        1. Including the complete investigation history
+        2. Clearly marking the transition to follow-up chat
+        3. Presenting the user's question
+        4. Providing instructions for the ReAct loop
+        
+        Args:
+            conversation_history: Formatted investigation history from session
+            user_question: User's follow-up question
+        
+        Returns:
+            Formatted user message string for LLM
+        """
+        return f"""{conversation_history}
 
 ================================================================================
 FOLLOW-UP CHAT SESSION
@@ -1264,24 +1341,20 @@ fresh data if needed.
 
 Begin your ReAct reasoning:
 """
-        
-        return LLMConversation(messages=[
-            LLMMessage(role=MessageRole.SYSTEM, content=system_content),
-            LLMMessage(role=MessageRole.USER, content=user_content)
-        ])
-    
-    def extract_final_analysis(self, analysis_result: str, context) -> str:
-        """Extract final answer from ReAct conversation."""
-        return self._extract_react_final_analysis(analysis_result)
 ```
 
-### 5. Chat Repository
+### 5. HistoryRepository Extensions (Chat Operations)
 
-Database access layer for chat operations:
+**Architecture Decision:** Chat database operations are added to `HistoryRepository` rather than creating a separate `ChatRepository`. This follows the existing pattern where all history/audit trail operations are centralized.
 
 ```python
-class ChatRepository:
-    """Repository for chat and chat message database operations."""
+class HistoryRepository:
+    """
+    Extended with chat and chat message database operations.
+    
+    All chat-related database access is consolidated here alongside
+    session, stage execution, LLM interaction, and MCP interaction methods.
+    """
     
     def create_chat(self, chat: Chat) -> Chat:
         """Create new chat record."""
@@ -1396,11 +1469,137 @@ class ChatRepository:
 
 ### 6. HistoryService Extensions
 
-Pod tracking and orphan detection for chat messages:
+HistoryService is extended to handle all chat-related database operations, maintaining proper service layer separation.
 
 ```python
 class HistoryService:
-    """Extended with chat pod tracking and orphan detection."""
+    """
+    Extended with chat CRUD operations, pod tracking, and orphan detection.
+    
+    Architecture Note:
+    - ChatService calls HistoryService for all DB operations
+    - HistoryService delegates to HistoryRepository (extended with chat methods)
+    - This maintains proper service → service → repository layering
+    """
+    
+    # Chat CRUD Operations (called by ChatService)
+    
+    async def create_chat(self, chat: Chat) -> Chat:
+        """
+        Create a new chat record.
+        
+        Args:
+            chat: Chat object to create
+        
+        Returns:
+            Created Chat object with database-assigned fields
+        """
+        if not self.is_enabled:
+            raise ValueError("History service is disabled")
+        
+        def _create_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    raise ValueError("Repository unavailable")
+                return repo.create_chat(chat)
+        
+        return self._retry_database_operation("create_chat", _create_operation)
+    
+    async def get_chat_by_id(self, chat_id: str) -> Optional[Chat]:
+        """
+        Get chat by ID.
+        
+        Args:
+            chat_id: Chat identifier
+        
+        Returns:
+            Chat object if found, None otherwise
+        """
+        if not self.is_enabled:
+            return None
+        
+        def _get_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return None
+                return repo.get_chat_by_id(chat_id)
+        
+        return self._retry_database_operation("get_chat_by_id", _get_operation)
+    
+    async def get_chat_by_session(self, session_id: str) -> Optional[Chat]:
+        """
+        Get chat for a session (if exists).
+        
+        Args:
+            session_id: Session identifier
+        
+        Returns:
+            Chat object if exists, None otherwise
+        """
+        if not self.is_enabled:
+            return None
+        
+        def _get_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return None
+                return repo.get_chat_by_session(session_id)
+        
+        return self._retry_database_operation("get_chat_by_session", _get_operation)
+    
+    async def create_chat_user_message(self, message: ChatUserMessage) -> ChatUserMessage:
+        """
+        Create a new chat user message.
+        
+        Args:
+            message: ChatUserMessage object to create
+        
+        Returns:
+            Created message with database-assigned fields
+        """
+        if not self.is_enabled:
+            raise ValueError("History service is disabled")
+        
+        def _create_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    raise ValueError("Repository unavailable")
+                return repo.create_chat_user_message(message)
+        
+        return self._retry_database_operation("create_chat_user_message", _create_operation)
+    
+    async def get_stage_executions_for_chat(
+        self,
+        chat_id: str
+    ) -> List[StageExecution]:
+        """
+        Get all stage executions for a chat, ordered by timestamp.
+        
+        Used to retrieve previous chat message executions for building
+        cumulative conversation context.
+        
+        Args:
+            chat_id: Chat identifier
+        
+        Returns:
+            List of StageExecution records where chat_id matches,
+            ordered by created_at_us ASC
+        """
+        if not self.is_enabled:
+            return []
+        
+        def _get_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return []
+                return repo.get_stage_executions_for_chat(chat_id)
+        
+        return self._retry_database_operation(
+            "get_stage_executions_for_chat",
+            _get_operation
+        ) or []
+    
+    # Pod Tracking & Orphan Detection
     
     async def start_chat_message_processing(
         self,
@@ -1594,95 +1793,263 @@ Chat {
 - `pod_id != NULL` + `last_interaction_at != NULL` = Message processing in progress
 - `pod_id == NULL` + `last_interaction_at == NULL` = No active processing
 
-#### Graceful Shutdown Flow
+#### Graceful Shutdown Integration
 
-**Current (Sessions Only):**
-```
-SIGTERM received
-    ↓
-1. Set shutdown_in_progress = True (rejects new alerts)
-2. Wait for active session tasks (600s timeout)
-3. If timeout/error: Call mark_pod_sessions_interrupted(pod_id)
-   → Sets status=FAILED, error_message="interrupted during shutdown"
-```
+**Existing Implementation (Sessions) - Reference Pattern**
 
-**Extended (Sessions + Chats):**
-```
-SIGTERM received
-    ↓
-1. Set shutdown_in_progress = True (rejects new alerts AND chat messages)
-2. Wait for active session tasks AND active chat tasks (600s timeout)
-3. If timeout/error:
-   a. Call mark_pod_sessions_interrupted(pod_id)
-      → Marks sessions as FAILED
-   b. Call mark_pod_chats_interrupted(pod_id)
-      → Clears chat processing markers (pod_id, last_interaction_at)
-```
+📁 **File:** `backend/tarsy/main.py` (lines ~120-330)
+- Global: `active_tasks: Dict[str, asyncio.Task]` - Tracks session tasks
+- Global: `shutdown_in_progress: bool` - Shutdown flag
+- Function: `mark_active_sessions_as_interrupted()` - Marks sessions as interrupted
+- Lifespan handler: Waits for active tasks, handles timeouts
 
-**Implementation in `main.py`:**
+📁 **File:** `backend/tarsy/services/history_service.py` (lines ~866-903)
+- Method: `mark_pod_sessions_interrupted(pod_id)` - Marks sessions FAILED
+
+**Implementation Tasks**
+
+**Task 1:** Add chat task tracking to `main.py`
+
 ```python
+# File: backend/tarsy/main.py
+# Add near active_tasks definition (around line 68)
+
+# Task tracking for session cancellation
+active_tasks: Dict[str, asyncio.Task] = {}  # Existing - session_id -> task
+active_chat_tasks: Dict[str, asyncio.Task] = {}  # NEW - execution_id -> task
+active_tasks_lock: Optional[asyncio.Lock] = None
+```
+
+**Task 2:** Extend interrupt function in `main.py`
+
+```python
+# File: backend/tarsy/main.py
+# Modify existing mark_active_sessions_as_interrupted() function (around line 120)
+# Rename it to mark_active_tasks_as_interrupted()
+
 async def mark_active_tasks_as_interrupted(reason: str) -> None:
-    """Mark both sessions and chats as interrupted."""
+    """
+    Mark both sessions and chats as interrupted during shutdown.
+    
+    Pattern: Extend existing function to handle chats too.
+    """
     if history_service is None:
         return
     
     pod_id = get_pod_id()
     
-    # Mark sessions as interrupted (existing)
+    # Sessions (existing code - keep as-is)
     session_count = await history_service.mark_pod_sessions_interrupted(pod_id)
     if session_count > 0:
-        logger.info(f"Marked {session_count} session(s) as interrupted {reason} for pod {pod_id}")
+        logger.info(f"Marked {session_count} session(s) as interrupted {reason}")
     
-    # Mark chats as interrupted (new)
+    # Chats (NEW - add this)
     chat_count = await history_service.mark_pod_chats_interrupted(pod_id)
     if chat_count > 0:
-        logger.info(f"Marked {chat_count} chat message(s) as interrupted {reason} for pod {pod_id}")
-
-# During shutdown in lifespan():
-try:
-    # Wait for both session tasks and chat tasks
-    async with active_tasks_lock:
-        all_tasks = list(active_tasks.values()) + list(active_chat_tasks.values())
-    
-    await asyncio.wait_for(
-        asyncio.gather(*all_tasks, return_exceptions=True),
-        timeout=settings.alert_processing_timeout
-    )
-except asyncio.TimeoutError:
-    await mark_active_tasks_as_interrupted("after timeout")
+        logger.info(f"Marked {chat_count} chat(s) as interrupted {reason}")
 ```
+
+**Task 3:** Update lifespan shutdown logic in `main.py`
+
+```python
+# File: backend/tarsy/main.py
+# Modify lifespan() function shutdown section (around line 302)
+
+# Inside lifespan() yield shutdown:
+if active_tasks or active_chat_tasks:  # ADD: or active_chat_tasks
+    # Combine both task dictionaries
+    async with active_tasks_lock:
+        all_tasks = list(active_tasks.values()) + list(active_chat_tasks.values())  # MODIFY
+    
+    logger.info(f"Waiting for {len(all_tasks)} active task(s)...")  # MODIFY: count
+    
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*all_tasks, return_exceptions=True),
+            timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        await mark_active_tasks_as_interrupted("after timeout")  # Call renamed function
+```
+
+**Task 4:** Add `mark_pod_chats_interrupted()` to `HistoryService`
+
+```python
+# File: backend/tarsy/services/history_service.py
+# Add after mark_pod_sessions_interrupted() method (around line 904)
+
+async def mark_pod_chats_interrupted(self, pod_id: str) -> int:
+    """
+    Clear processing markers for chats on shutting-down pod.
+    
+    Pattern: Copy from mark_pod_sessions_interrupted() but adapted for chats.
+    
+    Key Difference: Chats don't get marked FAILED, we just clear
+    their processing markers (pod_id, last_interaction_at).
+    
+    Args:
+        pod_id: Kubernetes pod identifier
+    
+    Returns:
+        Number of chats marked as interrupted
+    """
+    if not self.is_enabled:
+        return 0
+    
+    def _interrupt_operation():
+        with self.get_repository() as repo:
+            if not repo:
+                return 0
+            
+            # Find active chats for this pod
+            active_chats = repo.find_chats_by_pod(pod_id)
+            
+            # Clear processing markers (different from sessions!)
+            for chat in active_chats:
+                chat.pod_id = None
+                chat.last_interaction_at = None
+                repo.update_chat(chat)
+            
+            return len(active_chats)
+    
+    count = self._retry_database_operation(
+        "mark_interrupted_chats",
+        _interrupt_operation
+    )
+    
+    if count and count > 0:
+        logger.info(f"Marked {count} chat(s) as interrupted for pod {pod_id}")
+    
+    return count or 0
+```
+
+**Implementation Notes:**
+- ✅ Follow existing session shutdown patterns
+- ✅ Add chat tasks to global tracking dictionaries
+- ✅ Extend (don't replace) existing shutdown logic
+- ✅ Chats clear markers instead of marking FAILED
 
 #### Orphan Detection
 
-**Session Orphan Detection (Existing):**
-```sql
--- Find sessions with stale last_interaction_at
-SELECT * FROM alert_sessions 
-WHERE status = 'in_progress' 
-  AND last_interaction_at < (NOW() - INTERVAL '30 minutes')
-  AND last_interaction_at IS NOT NULL;
+**Existing Pattern (Sessions) - Reference for Implementation**
 
--- Action: Mark as FAILED with error message
-UPDATE alert_sessions 
-SET status = 'failed',
-    error_message = 'Session became unresponsive',
-    completed_at_us = NOW()
-WHERE ...;
+TARSy already has orphan detection for sessions. **Study these existing implementations** as a pattern for chat implementation:
+
+📁 **File:** `backend/tarsy/repositories/history_repository.py`
+- Method: `find_orphaned_sessions(timeout_threshold_us)` (lines ~830-850)
+- Uses `select(AlertSession).where(...)` with SQLModel
+- Filters by status, last_interaction_at, and threshold
+
+📁 **File:** `backend/tarsy/services/history_service.py`
+- Method: `cleanup_orphaned_sessions(timeout_minutes)` (lines ~820-865)
+- Calls repository method
+- Updates session status to FAILED
+- Sets error_message
+
+**Implementation Task: Add Chat Orphan Detection**
+
+**Step 1:** Add to `HistoryRepository` (follow session pattern):
+
+```python
+# File: backend/tarsy/repositories/history_repository.py
+# Add after find_orphaned_sessions() method
+
+def find_orphaned_chats(
+    self,
+    timeout_threshold_us: int
+) -> List[Chat]:
+    """
+    Find chats with stale last_interaction_at (orphaned processing).
+    
+    Pattern: Copy from find_orphaned_sessions() but adapted for Chat model.
+    
+    Returns chats where:
+    - last_interaction_at IS NOT NULL (processing was started)
+    - last_interaction_at < timeout_threshold_us (processing is stale)
+    
+    Args:
+        timeout_threshold_us: Timestamp threshold in microseconds
+    
+    Returns:
+        List of Chat records with stale processing markers
+    """
+    try:
+        statement = select(Chat).where(
+            Chat.last_interaction_at.isnot(None),
+            Chat.last_interaction_at < timeout_threshold_us
+        )
+        return self.session.exec(statement).all()
+    except Exception as e:
+        logger.error(f"Failed to find orphaned chats: {str(e)}")
+        raise
 ```
 
-**Chat Orphan Detection (New):**
-```sql
--- Find chats with stale last_interaction_at
-SELECT * FROM chats 
-WHERE last_interaction_at < (NOW() - INTERVAL '30 minutes')
-  AND last_interaction_at IS NOT NULL;
+**Step 2:** Add to `HistoryService` (follow session pattern):
 
--- Action: Clear processing markers (no FAILED state for chats)
-UPDATE chats 
-SET pod_id = NULL,
-    last_interaction_at = NULL
-WHERE ...;
+```python
+# File: backend/tarsy/services/history_service.py
+# Add after cleanup_orphaned_sessions() method
+
+def cleanup_orphaned_chats(
+    self,
+    timeout_minutes: int = 30
+) -> int:
+    """
+    Find and clear stale processing markers from orphaned chats.
+    
+    Pattern: Copy from cleanup_orphaned_sessions() but adapted for chats.
+    
+    Key Difference: Chats don't have a FAILED state. We just clear
+    the processing markers (pod_id, last_interaction_at) to indicate
+    no active processing.
+    
+    Args:
+        timeout_minutes: Inactivity threshold (default: 30 minutes)
+    
+    Returns:
+        Number of chats cleaned up
+    """
+    if not self.is_enabled:
+        return 0
+    
+    def _cleanup_operation():
+        with self.get_repository() as repo:
+            if not repo:
+                return 0
+            
+            from tarsy.utils.timestamp import now_us
+            timeout_us = timeout_minutes * 60 * 1_000_000
+            threshold = now_us() - timeout_us
+            
+            # Get orphaned chats (follow session pattern)
+            orphaned_chats = repo.find_orphaned_chats(threshold)
+            
+            # Clear processing markers (different from sessions!)
+            for chat in orphaned_chats:
+                chat.pod_id = None
+                chat.last_interaction_at = None
+                repo.update_chat(chat)  # Will need to add this method too
+            
+            return len(orphaned_chats)
+    
+    count = self._retry_database_operation(
+        "cleanup_orphaned_chats",
+        _cleanup_operation
+    )
+    
+    if count and count > 0:
+        logger.info(
+            f"Cleaned up {count} orphaned chat message processing markers"
+        )
+    
+    return count or 0
 ```
+
+**Implementation Notes:**
+- ✅ Use existing session methods as templates
+- ✅ Copy the SQLModel query patterns
+- ✅ Adapt field names (AlertSession → Chat)
+- ✅ Key difference: Clear markers instead of marking as FAILED
 
 **Cleanup Integration:**
 
@@ -1979,12 +2346,12 @@ Add indicator when session has active chat:
 **Backend:**
 1. Add database migrations for `chats` (with pod tracking fields) and `chat_messages` tables
 2. Add `chat_id` and `chat_user_message_id` fields to `StageExecution` table
-3. Implement `ChatRepository` for database operations (including pod tracking methods)
-4. Extend `HistoryRepository` with chat pod tracking methods:
-   - `update_chat_pod_tracking()`
-   - `find_chats_by_pod()`
-   - `find_orphaned_chats()`
-5. Extend `HistoryService` with chat tracking methods:
+3. **Extend `HistoryRepository`** with chat database operations:
+   - CRUD: `create_chat()`, `get_chat_by_id()`, `get_chat_by_session()`
+   - Messages: `create_chat_user_message()`, `get_chat_user_messages()`
+   - Executions: `get_stage_executions_for_chat()`
+   - Pod tracking: `update_chat_pod_tracking()`, `find_chats_by_pod()`, `find_orphaned_chats()`
+4. **Extend `HistoryService`** with chat operations (delegates to HistoryRepository):
    - `start_chat_message_processing()`
    - `record_chat_interaction()`
    - `cleanup_orphaned_chats()`
@@ -2003,14 +2370,20 @@ Add indicator when session has active chat:
 **Backend:**
 1. Implement session context capture logic (`format_conversation_history_as_text`)
 2. Implement MCP server determination logic (chain + session)
-3. Create `ChatReActController` (prepends conversation history)
-4. Wire up `ChatAgent` with `ChatReActController`
-5. **Extend hook system** to call `record_chat_interaction()` during LLM/MCP operations:
+3. **Extend `PromptBuilder`** with `build_chat_user_message()` method:
+   - Formats conversation history + user question
+   - Adds chat session markers and instructions
+   - Keeps prompt logic separate from controller
+4. Create `ChatReActController`:
+   - Delegates user message construction to PromptBuilder
+   - Handles system message via existing methods
+5. Wire up `ChatAgent` with `ChatReActController`
+6. **Extend hook system** to call `record_chat_interaction()` during LLM/MCP operations:
    - Update `BaseAgent` hooks (`on_llm_new_token`, `on_tool_start`, etc.)
    - Add chat_id detection from StageExecution or context
    - Ensure both session and chat timestamps get updated
-6. Implement tool execution tracking (StageExecution with chat tags)
-7. Add WebSocket events for chat (ChatCreatedEvent, ChatUserMessageEvent)
+7. Implement tool execution tracking (StageExecution with chat tags)
+8. Add WebSocket events for chat (ChatCreatedEvent, ChatUserMessageEvent)
 
 ### Phase 3: API Endpoints
 
@@ -2031,561 +2404,3 @@ Add indicator when session has active chat:
 5. Implement real-time streaming of assistant responses
 6. Add chat indicator to sessions list
 7. Handle multi-user message attribution
-
----
-
-## Appendix
-
-### Chat Context Architecture
-
-#### Design Decision: Text-Based Context from LLM Interactions
-
-The chat feature uses a **text-based context extraction** approach that leverages existing `LLMInteraction` records rather than building structured JSON contexts. This decision provides several benefits:
-
-**Key Insights:**
-1. `LLMInteraction.conversation` already contains the complete investigation history
-2. Each LLM interaction includes all previous context (cumulative)
-3. The last LLM interaction of a session = complete investigation record
-4. Simple text formatting is more robust than complex JSON parsing
-5. Tools list preservation provides valuable historical context
-
-**Context Flow:**
-
-```
-Session Investigation
-  └─> Multiple LLM Interactions (ordered by timestamp)
-      └─> Last interaction has full conversation:
-          - System: Instructions + MCP tools
-          - User: Alert data + runbook + available tools + task
-          - Assistant: Thought + Action
-          - User: Observation (tool result)
-          - Assistant: Thought + Action
-          - User: Observation
-          - Assistant: Final Answer
-
-Chat Creation
-  └─> Extract last LLM interaction
-      └─> Format as text with section markers
-          └─> Store in Chat.initial_context['conversation_history']
-
-First Chat Message
-  └─> Prepend conversation_history to user question
-      └─> ChatAgent processes with ReAct
-          └─> Creates new LLMInteraction (includes history + chat Q&A)
-
-Subsequent Chat Messages
-  └─> Get last chat execution's LLM interaction
-      └─> Format that conversation (now includes previous chat)
-          └─> Prepend to new user question
-              └─> ChatAgent processes
-                  └─> Creates new LLMInteraction (cumulative)
-```
-
-**Benefits:**
-- ✅ Simple: Just string formatting
-- ✅ Complete: All investigation details preserved
-- ✅ Robust: No complex parsing of structured data
-- ✅ Cumulative: Each interaction builds on previous
-- ✅ Reuses infrastructure: Existing LLMInteraction queries
-
-**Known Limitations:**
-- Tools list reflects investigation time (may differ from current)
-- Very old sessions may reference removed/changed tools
-- Large investigations create large context (token usage consideration)
-
-### Example Initial Context Structure
-
-**Example Chat Record:**
-
-```python
-Chat(
-    chat_id="chat-abc-123",
-    session_id="session-123",
-    created_by="alice@example.com",
-    created_at_us=1730908800000000,
-    
-    # Context snapshot fields
-    conversation_history="================================================================================\n"
-                         "ORIGINAL ALERT INVESTIGATION HISTORY\n"
-                         "================================================================================\n\n"
-                         "### Initial Investigation Request\n\n"
-                         "Answer the following question using the available tools.\n\n"
-                         "Available tools:\n"
-                         "1. **kubernetes-server.get_pods**: List pods in namespace\n"
-                         "2. **kubernetes-server.get_pod_logs**: Get pod logs\n"
-                         "...\n\n"
-                         "Question: Analyze this PodCrashLoop alert...\n\n"
-                         "[... full investigation history ...]\n\n"
-                         "================================================================================\n"
-                         "END OF INVESTIGATION HISTORY\n"
-                         "================================================================================\n",
-    
-    chain_id="kubernetes-triage",
-    
-    mcp_selection={
-        "servers": [
-            {"name": "kubernetes-server", "tools": None},
-            {"name": "prometheus-server", "tools": ["query", "query_range"]}
-        ]
-    },
-    
-    context_captured_at_us=1730908800000000
-)
-```
-
-**Notes about the typed fields:**
-
-1. **`conversation_history`** (TEXT):
-   - Large text field containing formatted investigation history
-   - Directly accessible without JSON parsing
-
-2. **`chain_id`** (STRING):
-   - Denormalized from session for convenience
-   - Useful for filtering/grouping chats by chain type
-
-3. **`mcp_selection`** (JSON):
-   - Structured data that naturally fits JSON format
-   - Preserves MCPSelectionConfig structure
-
-4. **Benefits of typed fields:**
-   - Type-safe schema enforced by database
-   - No JSON parsing overhead for text fields
-   - Queryable by individual fields
-   - Clear, maintainable schema
-
-**Notes about `mcp_selection`:**
-
-1. **Structure:** Uses `MCPSelectionConfig` format from alert processing:
-   - Each server can optionally specify a list of tools
-   - `tools: null` means all tools from that server are available
-   - `tools: ["query", "query_range"]` means only those specific tools
-
-2. **Source:** Captured from the original session's actual configuration:
-   - If alert request included custom `mcp` field → use that (with tool filtering)
-   - If alert used default agent servers → extract from agents.yaml (no filtering)
-
-3. **Purpose:** Ensures chat has the SAME tool access as the original investigation
-
-### Complete Example: First Chat Message
-
-This example shows what the ChatAgent receives when processing the first user question.
-
-**User sends:** `"Can you check if there were any warnings in the logs before the crash?"`
-
-**ChatReActController builds this user message:**
-
-```
-================================================================================
-ORIGINAL ALERT INVESTIGATION HISTORY
-================================================================================
-
-### Initial Investigation Request
-
-Answer the following question using the available tools.
-
-Available tools:
-1. **kubernetes-server.get_pods**: List pods in namespace with status
-   Parameters: namespace (required)
-2. **kubernetes-server.get_pod_logs**: Get logs from a pod
-   Parameters: namespace, pod_name, container, since, tail
-
-Question: Analyze this PodCrashLoop alert and provide actionable recommendations.
-
-## Alert Details
-**Alert Type:** PodCrashLoop
-**Severity:** critical
-**Namespace:** production
-**Pod:** my-app-5d4c8f9b-xyz
-
-[... full alert data ...]
-
-## Runbook Content
-[... full runbook if available ...]
-
-**Agent Response:**
-
-Thought: I need to check the pod status first to understand the crash pattern
-Action: kubernetes-server.get_pods
-Action Input: {"namespace": "production"}
-
-**Observation:**
-
-NAME                STATUS             RESTARTS   AGE
-my-app-5d4c8f9b-xyz CrashLoopBackOff   12         2h
-
-**Agent Response:**
-
-Thought: The pod has restarted 12 times. I need to check the logs to find the cause
-Action: kubernetes-server.get_pod_logs
-Action Input: {"namespace": "production", "pod_name": "my-app-5d4c8f9b-xyz", "tail": "100"}
-
-**Observation:**
-
-[2024-11-06 14:32:10] Starting application...
-[2024-11-06 14:32:12] Loading configuration...
-[2024-11-06 14:32:13] Error: Out of memory
-[2024-11-06 14:32:13] Fatal error, exiting
-
-**Agent Response:**
-
-Thought: I have enough information to provide a complete analysis
-Final Answer: The pod is experiencing an Out of Memory (OOM) condition...
-
-[... complete final analysis ...]
-
-================================================================================
-END OF INVESTIGATION HISTORY
-================================================================================
-
-================================================================================
-FOLLOW-UP CHAT SESSION
-================================================================================
-
-The user has reviewed the investigation above and has a follow-up question.
-
-You have access to the same tools that were used in the original investigation
-(they are listed in the "Initial Investigation Request" section above).
-
-**User's Follow-up Question:**
-
-Can you check if there were any warnings in the logs before the crash?
-
-**Your Task:**
-
-Answer the user's question using the ReAct format shown in your instructions.
-Reference the investigation history when relevant, and use tools to gather 
-fresh data if needed.
-
-Begin your ReAct reasoning:
-```
-
-**ChatAgent ReAct Loop:**
-
-```
-Thought: The user wants warnings before the crash. The previous investigation showed the crash at 14:32:13. I should get more logs with timestamps before that to look for warnings.
-
-Action: kubernetes-server.get_pod_logs
-Action Input: {"namespace": "production", "pod_name": "my-app-5d4c8f9b-xyz", "tail": "200"}
-
-Observation: [Extended log output with 200 lines]
-
-Thought: Now I can analyze the logs for warnings before the crash
-
-Final Answer: Yes, there were several warnings before the crash:
-1. [14:32:08] WARNING: Memory usage at 85%
-2. [14:32:09] WARNING: Memory usage at 92%  
-3. [14:32:10] WARNING: GC pressure increasing
-4. [14:32:12] WARNING: Memory usage at 98%
-
-These warnings appeared in the 5 seconds before the OOM crash, showing a rapid memory increase.
-```
-
-### Example: Subsequent Chat Message
-
-**User sends:** `"What was the memory limit set for this pod?"`
-
-**Context building:**
-1. Get last chat execution's LLM interaction
-2. That interaction now contains: original investigation history + first chat Q&A
-3. Format it as text and prepend to new question
-
-**ChatReActController builds:**
-
-```
-[... Original Investigation History (same as before) ...]
-
-================================================================================
-CHAT CONVERSATION HISTORY  
-================================================================================
-
-**User Question (alice@example.com, 2024-11-06 14:35:00):**
-Can you check if there were any warnings in the logs before the crash?
-
-**Agent Response:**
-[Full ReAct reasoning and answer from previous chat message]
-
-================================================================================
-NEW USER MESSAGE
-================================================================================
-
-What was the memory limit set for this pod?
-
-Begin your ReAct reasoning:
-```
-
-**ChatAgent processes:** References investigation history, may use tools to check current pod spec, provides answer.
-
----
-
-### Pod Tracking & Graceful Shutdown: Complete Design
-
-This section provides a comprehensive overview of how chat messages integrate with TARSy's multi-replica pod tracking and graceful shutdown mechanisms.
-
-#### Overview
-
-Chat extends the existing session-level pod tracking to ensure chat message processing is resilient to pod crashes, restarts, and graceful shutdowns in multi-replica Kubernetes deployments.
-
-#### Data Model Extensions
-
-**Chat Table - New Fields:**
-```python
-class Chat(SQLModel, table=True):
-    # ... existing fields ...
-    
-    # Pod tracking for multi-replica support
-    pod_id: Optional[str] = Field(
-        default=None,
-        description="Kubernetes pod identifier for multi-replica chat message tracking"
-    )
-    
-    last_interaction_at: Optional[int] = Field(
-        default=None,
-        sa_column=Column(BIGINT),
-        description="Last interaction timestamp (microseconds) for orphan detection"
-    )
-```
-
-**Index for Efficient Queries:**
-```sql
-CREATE INDEX ix_chats_pod_last_interaction ON chats (pod_id, last_interaction_at);
-```
-
-#### Processing State Machine
-
-**Chat Message Processing States:**
-
-1. **Idle** (No Active Processing):
-   - `pod_id = NULL`
-   - `last_interaction_at = NULL`
-   - Chat can accept new messages
-
-2. **Processing** (Message Being Handled):
-   - `pod_id = "tarsy-deployment-abc123"`
-   - `last_interaction_at = 1234567890000000` (updated periodically)
-   - Chat locked to specific pod
-
-3. **Completed** (Message Finished):
-   - Returns to Idle state (pod_id and last_interaction_at cleared)
-   - Chat ready for next message
-
-4. **Orphaned** (Processing Stalled):
-   - `pod_id != NULL`
-   - `last_interaction_at < (NOW - 30 minutes)`
-   - Detected by cleanup service, markers cleared
-
-#### Lifecycle Methods
-
-**HistoryRepository Extensions:**
-```python
-# Set processing state (called at message start)
-def update_chat_pod_tracking(chat_id: str, pod_id: str) -> bool:
-    chat.pod_id = pod_id
-    chat.last_interaction_at = now_us()
-    return update_chat(chat)
-
-# Find chats owned by pod (for graceful shutdown)
-def find_chats_by_pod(pod_id: str) -> List[Chat]:
-    return SELECT * FROM chats 
-           WHERE pod_id = pod_id 
-           AND last_interaction_at IS NOT NULL
-
-# Find stale processing (for orphan cleanup)
-def find_orphaned_chats(timeout_threshold_us: int) -> List[Chat]:
-    return SELECT * FROM chats
-           WHERE last_interaction_at < timeout_threshold_us
-           AND last_interaction_at IS NOT NULL
-```
-
-**HistoryService Extensions:**
-```python
-# Start tracking (called by ChatService.send_message)
-async def start_chat_message_processing(chat_id: str, pod_id: str) -> bool:
-    """Mark chat as processing on this pod."""
-    return repo.update_chat_pod_tracking(chat_id, pod_id)
-
-# Update activity (called periodically during long processing)
-def record_chat_interaction(chat_id: str) -> bool:
-    """Update last_interaction_at to keep chat marked as active."""
-    chat.last_interaction_at = now_us()
-    return repo.update_chat(chat)
-
-# Cleanup stale markers (called by HistoryCleanupService)
-def cleanup_orphaned_chats(timeout_minutes: int = 30) -> int:
-    """Clear processing markers from abandoned messages."""
-    orphaned = repo.find_orphaned_chats(threshold)
-    for chat in orphaned:
-        chat.pod_id = None
-        chat.last_interaction_at = None
-        repo.update_chat(chat)
-    return len(orphaned)
-
-# Handle graceful shutdown (called during pod termination)
-async def mark_pod_chats_interrupted(pod_id: str) -> int:
-    """Clear processing markers for shutting-down pod."""
-    active_chats = repo.find_chats_by_pod(pod_id)
-    for chat in active_chats:
-        chat.pod_id = None
-        chat.last_interaction_at = None
-        repo.update_chat(chat)
-    return len(active_chats)
-```
-
-#### Graceful Shutdown Integration
-
-**main.py Extensions:**
-
-```python
-# Global state
-active_tasks: Dict[str, asyncio.Task] = {}        # session_id -> task
-active_chat_tasks: Dict[str, asyncio.Task] = {}   # execution_id -> task
-shutdown_in_progress: bool = False
-
-async def mark_active_tasks_as_interrupted(reason: str) -> None:
-    """Mark both sessions and chats as interrupted."""
-    if history_service is None:
-        return
-    
-    pod_id = get_pod_id()
-    
-    # Sessions (existing)
-    session_count = await history_service.mark_pod_sessions_interrupted(pod_id)
-    if session_count > 0:
-        logger.info(f"Marked {session_count} session(s) as interrupted {reason}")
-    
-    # Chats (new)
-    chat_count = await history_service.mark_pod_chats_interrupted(pod_id)
-    if chat_count > 0:
-        logger.info(f"Marked {chat_count} chat(s) as interrupted {reason}")
-
-# Lifespan shutdown handler
-async def lifespan(app: FastAPI):
-    # ... startup ...
-    yield
-    
-    # Shutdown sequence
-    logger.info("Tarsy shutting down...")
-    
-    # 1. Reject new work
-    shutdown_in_progress = True
-    logger.info("Marked service as shutting down - rejecting new alerts/messages")
-    
-    # 2. Wait for active work (sessions + chats)
-    async with active_tasks_lock:
-        all_tasks = list(active_tasks.values()) + list(active_chat_tasks.values())
-    
-    if all_tasks:
-        logger.info(f"Waiting for {len(all_tasks)} active task(s) to complete...")
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(*all_tasks, return_exceptions=True),
-                timeout=600.0
-            )
-            logger.info("All tasks completed gracefully")
-        except asyncio.TimeoutError:
-            logger.warning(f"Graceful shutdown timeout - {len(all_tasks)} task(s) still active")
-            await mark_active_tasks_as_interrupted("after timeout")
-        except Exception as e:
-            logger.error(f"Error during graceful shutdown: {e}")
-            await mark_active_tasks_as_interrupted("after error")
-    
-    # ... cleanup MCP, event system, etc ...
-```
-
-**ChatController Shutdown Check:**
-
-```python
-@router.post("/api/v1/chats/{chat_id}/messages")
-async def send_chat_message(chat_id: str, message: ChatMessageRequest):
-    """Send a message to the chat."""
-    from tarsy.main import shutdown_in_progress
-    
-    if shutdown_in_progress:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "error": "Service shutting down",
-                "message": "Service is shutting down gracefully. Please retry.",
-                "retry_after": 30
-            }
-        )
-    
-    # ... process message ...
-```
-
-#### Orphan Detection & Cleanup
-
-**HistoryCleanupService Integration:**
-
-```python
-class HistoryCleanupService:
-    async def _cleanup_loop(self):
-        """Periodic cleanup of orphaned sessions and chats."""
-        while self.running:
-            try:
-                # Sessions (existing)
-                await self._cleanup_orphaned_sessions()
-                
-                # Chats (new)
-                await self._cleanup_orphaned_chats()
-                
-                # Retention (existing, runs less frequently)
-                if self._should_run_retention_cleanup():
-                    await self._cleanup_old_history()
-                    self._update_last_retention_cleanup()
-                
-                await asyncio.sleep(self.orphaned_cleanup_interval)  # Default: 60s
-            except Exception as e:
-                logger.error(f"Cleanup loop error: {e}")
-    
-    async def _cleanup_orphaned_chats(self) -> None:
-        """Clean up stale chat message processing markers."""
-        try:
-            history_service = get_history_service()
-            count = history_service.cleanup_orphaned_chats(
-                self.orphaned_timeout_minutes  # Default: 30 minutes
-            )
-            if count > 0:
-                logger.info(f"Cleaned up {count} orphaned chat processing markers")
-        except Exception as e:
-            logger.error(f"Failed to cleanup orphaned chats: {e}")
-```
-
-**Cleanup Cadence:**
-- **Orphan Cleanup:** Every 60 seconds (checks both sessions and chats)
-- **Timeout Threshold:** 30 minutes of inactivity
-- **Retention Cleanup:** Every 24 hours (deletes old history, sessions only)
-
-#### Design Rationale
-
-**Why Different From Sessions?**
-
-| Aspect | Sessions | Chats |
-|--------|----------|-------|
-| **Lifecycle** | PENDING → IN_PROGRESS → COMPLETED/FAILED | Persistent entity, no status |
-| **Failure Handling** | Mark as FAILED with error message | Clear processing markers |
-| **State Transitions** | Terminal states (COMPLETED, FAILED) | Returns to idle state |
-| **Orphan Action** | Set status=FAILED, error_message | Set pod_id=NULL, last_interaction_at=NULL |
-| **Retry** | Cannot retry failed session | Can send new message after cleanup |
-
-**Benefits:**
-- ✅ Chats remain available even after interrupted processing
-- ✅ New messages can be sent after orphan cleanup
-- ✅ Simpler state machine (idle vs processing)
-- ✅ No terminal failure states to manage
-
-**Trade-offs:**
-- ⚠️ Individual message failures not tracked at chat level
-- ⚠️ Must query StageExecution to see message processing history
-- ✅ This is acceptable: StageExecution provides full audit trail per message
-
-#### Summary
-
-Chat pod tracking extends TARSy's robust multi-replica architecture to handle follow-up conversations:
-
-1. **Pod Ownership:** Each chat message processing is owned by a specific pod
-2. **Activity Tracking:** `last_interaction_at` updated during processing
-3. **Graceful Shutdown:** Pods wait for active chat messages before terminating
-4. **Orphan Detection:** Periodic cleanup recovers from pod crashes
-5. **Resilient Design:** Chats continue accepting messages after interruptions
-
-This design ensures reliable chat operation in Kubernetes deployments with rolling updates, autoscaling, and pod disruptions.
