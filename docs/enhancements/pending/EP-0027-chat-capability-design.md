@@ -2344,63 +2344,261 @@ Add indicator when session has active chat:
 ### Phase 1: Core Infrastructure
 
 **Backend:**
-1. Add database migrations for `chats` (with pod tracking fields) and `chat_messages` tables
-2. Add `chat_id` and `chat_user_message_id` fields to `StageExecution` table
+
+1. **Database Migrations:**
+   - Create `chats` table with all fields including pod tracking (`pod_id`, `last_interaction_at`)
+   - Create `chat_user_messages` table with cascade delete on chat_id
+   - Add composite index on Chat: `ix_chats_pod_last_interaction` (pod_id, last_interaction_at)
+   - Add standard indexes: `ix_chats_session_id`, `ix_chats_created_at`
+   - Add indexes on ChatUserMessage: `ix_chat_user_messages_chat_id`, `ix_chat_user_messages_created_at`
+   - Migration for adding `chat_id` and `chat_user_message_id` fields to `StageExecution` table
+
+2. **Data Model Classes:**
+   - Create `Chat` SQLModel (already defined in document)
+   - Create `ChatUserMessage` SQLModel (already defined in document)
+   - Create `ChatMessageContext` dataclass (for StageContext.chat_context)
+   - Create `SessionContextData` dataclass (for context capture return type)
+   - Modify `ChainContext` to add optional `chat_context: Optional[ChatMessageContext]` field
+   - Modify `StageExecution` to add `chat_id` and `chat_user_message_id` fields
+
 3. **Extend `HistoryRepository`** with chat database operations:
    - CRUD: `create_chat()`, `get_chat_by_id()`, `get_chat_by_session()`
+   - **Update**: `update_chat()` - Required for orphan cleanup and pod tracking
    - Messages: `create_chat_user_message()`, `get_chat_user_messages()`
    - Executions: `get_stage_executions_for_chat()`
    - Pod tracking: `update_chat_pod_tracking()`, `find_chats_by_pod()`, `find_orphaned_chats()`
+
 4. **Extend `HistoryService`** with chat operations (delegates to HistoryRepository):
-   - `start_chat_message_processing()`
-   - `record_chat_interaction()`
-   - `cleanup_orphaned_chats()`
-   - `mark_pod_chats_interrupted()`
-6. Extend `HistoryCleanupService` to include chat orphan cleanup
-7. Update `main.py` graceful shutdown to handle chat tasks:
-   - Add `active_chat_tasks` dictionary
-   - Extend `mark_active_tasks_as_interrupted()` to include chats
-   - Update shutdown logic to wait for chat tasks
-8. Add `chat_enabled` field to `ChainConfigModel`
-9. Create `ChatAgent` built-in agent
-10. Implement `ChatService` (create chat, send message with full lifecycle management)
+   - Chat CRUD: `create_chat()`, `get_chat_by_id()`, `get_chat_by_session()`
+   - Message operations: `create_chat_user_message()`
+   - Execution queries: `get_stage_executions_for_chat()`
+   - Pod tracking: `start_chat_message_processing()`, `record_chat_interaction()`
+   - Cleanup: `cleanup_orphaned_chats()`, `mark_pod_chats_interrupted()`
+
+5. **Extend `HistoryCleanupService`:**
+   - Add `_cleanup_orphaned_chats()` method to cleanup loop
+   - Call `history_service.cleanup_orphaned_chats()` with same timeout as sessions
+
+6. **Update `main.py` graceful shutdown:**
+   - Add `active_chat_tasks: Dict[str, asyncio.Task]` global dictionary
+   - Rename `mark_active_sessions_as_interrupted()` to `mark_active_tasks_as_interrupted()`
+   - Extend interrupt function to call `history_service.mark_pod_chats_interrupted()`
+   - Update lifespan shutdown to combine `active_tasks` and `active_chat_tasks` when waiting
+
+7. **Configuration:**
+   - Add `chat_enabled: bool = True` field to `ChainConfigModel` in agent_config.py
+
+8. **Agent Factory:**
+   - Register `ChatAgent` as a built-in agent in `AgentFactory`
+   - Ensure `create_agent()` can instantiate ChatAgent with proper dependencies (llm_client, mcp_client, mcp_registry)
+
+9. **Create `ChatAgent` built-in agent:**
+   - Implement in `backend/tarsy/agents/builtin/chat_agent.py`
+   - Set `iteration_strategy=IterationStrategy.REACT`
+   - Return empty list from `mcp_servers()` (uses dynamic MCP from context)
+   - Implement `custom_instructions()` with ReAct-style chat instructions
+
+10. **Implement `ChatService`:**
+    - Create `backend/tarsy/services/chat_service.py`
+    - Implement `create_chat()` with session validation and context capture
+    - Implement `send_message()` with full lifecycle management (pod tracking, timeouts, MCP cleanup)
+    - Implement context helpers: `_capture_session_context()`, `_build_message_context()`, `_get_formatted_conversation_from_llm_interactions()`
+    - Implement stage execution lifecycle: `_update_stage_execution_started()`, `_update_stage_execution_completed()`, `_update_stage_execution_failed()`
 
 ### Phase 2: Chat Agent & Tool Execution
 
 **Backend:**
-1. Implement session context capture logic (`format_conversation_history_as_text`)
-2. Implement MCP server determination logic (chain + session)
-3. **Extend `PromptBuilder`** with `build_chat_user_message()` method:
-   - Formats conversation history + user question
-   - Adds chat session markers and instructions
-   - Keeps prompt logic separate from controller
-4. Create `ChatReActController`:
-   - Delegates user message construction to PromptBuilder
-   - Handles system message via existing methods
-5. Wire up `ChatAgent` with `ChatReActController`
-6. **Extend hook system** to call `record_chat_interaction()` during LLM/MCP operations:
-   - Update `BaseAgent` hooks (`on_llm_new_token`, `on_tool_start`, etc.)
-   - Add chat_id detection from StageExecution or context
-   - Ensure both session and chat timestamps get updated
-7. Implement tool execution tracking (StageExecution with chat tags)
-8. Add WebSocket events for chat (ChatCreatedEvent, ChatUserMessageEvent)
+
+1. **Context Helper Functions:**
+   - Implement `format_conversation_history_as_text(conversation: LLMConversation) -> str`
+   - Location: `backend/tarsy/services/chat_service.py` or `backend/tarsy/utils/chat_utils.py`
+   - Extracts user/assistant messages, skips system messages, formats with clear section markers
+
+2. **MCP Selection Logic:**
+   - Implement `_determine_mcp_selection_from_session()` in ChatService
+   - Handle custom MCP selection (from session.mcp_selection)
+   - Handle default MCP servers (extract from chain_definition.stages)
+   - Return `MCPSelectionConfig` object
+
+3. **Extend `PromptBuilder`** (backend/tarsy/services/prompt_builder.py):
+   - Add `build_chat_user_message(conversation_history: str, user_question: str) -> str` method
+   - Formats conversation history + user question with clear markers
+   - Adds ReAct instructions for follow-up context
+
+4. **Create `ChatReActController`:**
+   - Location: `backend/tarsy/agents/iteration_controllers/chat_react_controller.py`
+   - Extend `ReactController` class
+   - Override `build_initial_conversation()` to use `ChatMessageContext` from context
+   - Delegate user message construction to `PromptBuilder.build_chat_user_message()`
+   - Use `get_enhanced_react_system_message()` for system message
+
+5. **Register `ChatReActController`:**
+   - Ensure it's available when ChatAgent requests `IterationStrategy.REACT`
+   - May need to modify iteration strategy selection logic if ChatAgent needs special handling
+
+6. **Wire up `ChatAgent` with `ChatReActController`:**
+   - ChatAgent constructor sets `iteration_strategy=IterationStrategy.REACT`
+   - Controller factory creates ChatReActController (or modify ChatAgent to use it explicitly)
+
+7. **Extend hook system** for chat interaction recording:
+   - Update `BaseAgent` hooks: `on_llm_new_token()`, `on_llm_end()`, `on_tool_start()`, `on_tool_end()`
+   - Add chat_id detection (either from StageExecution query or from context)
+   - Call both `record_session_interaction(session_id)` (existing) and `record_chat_interaction(chat_id)` (new)
+   - Handle graceful degradation if record_chat_interaction not available
+
+8. **WebSocket Event Types:**
+   - Create `ChatCreatedEvent` class in `backend/tarsy/models/events.py`
+   - Create `ChatUserMessageEvent` class
+   - Register event types in event system
+   - Ensure serialization/deserialization works
+   - Note: AI responses use existing `LLMStreamChunkEvent` (no changes needed)
+
+9. **Event Publishing:**
+   - Publish `ChatCreatedEvent` in `ChatService.create_chat()`
+   - Publish `ChatUserMessageEvent` in `ChatService.send_message()`
+   - Use existing `session:{session_id}` channel (no new channels needed)
 
 ### Phase 3: API Endpoints
 
 **Backend:**
-1. Implement REST endpoints for chat operations
-2. Add authorization checks (reuse session auth logic)
-3. Add request validation
-4. Implement WebSocket streaming for chat responses
-5. Add error handling and timeouts
+
+1. **Create Chat Controller** (`backend/tarsy/controllers/chat_controller.py`):
+   - Implement all REST endpoints
+   - Inject ChatService, HistoryService dependencies
+
+2. **Implement REST Endpoints:**
+   - `POST /api/v1/sessions/{session_id}/chat`
+     - Create new chat for completed session
+     - Returns: Chat object with chat_id
+     - Validates session exists and is completed
+     - Checks chain has chat_enabled=true
+   
+   - `GET /api/v1/chats/{chat_id}`
+     - Get chat details
+     - Returns: Chat object
+   
+   - `POST /api/v1/chats/{chat_id}/messages`
+     - Send message to chat
+     - Body: `{ "content": "user question", "author": "user@example.com" }`
+     - Returns: Created ChatUserMessage (assistant response via WebSocket)
+     - Rejects with 503 if `shutdown_in_progress=True` (like alert submission)
+   
+   - `GET /api/v1/chats/{chat_id}/messages`
+     - Get chat message history
+     - Query params: `?limit=50&offset=0`
+     - Returns: List of ChatUserMessage objects (user messages only)
+   
+   - `GET /api/v1/sessions/{session_id}/chat-available`
+     - Check if chat available for session
+     - Returns: `{ "available": bool, "reason": "optional message" }`
+     - Validates session status and chain configuration
+
+3. **Authorization:**
+   - Reuse existing session authorization patterns
+   - Verify user has access to parent session before allowing chat operations
+   - Apply same RBAC rules as session access
+
+4. **Request Validation:**
+   - Add Pydantic models for request bodies (ChatCreateRequest, ChatMessageRequest)
+   - Validate message content (max length, required fields)
+   - Validate chat exists and is accessible
+
+5. **WebSocket Streaming:**
+   - No changes needed - reuse existing `session:{session_id}` channel
+   - Chat responses stream via existing LLM streaming events
+   - Dashboard already subscribed to session channel
+
+6. **Error Handling:**
+   - Handle chat not found (404)
+   - Handle session not completed (400)
+   - Handle chat disabled for chain (400)
+   - Handle timeout errors (timeout during message processing)
+   - Handle shutdown in progress (503)
+
+7. **Register Routes:**
+   - Add chat routes to FastAPI app in `backend/tarsy/main.py`
+   - Mount chat controller
 
 ### Phase 4: UI Implementation
 
 **Frontend:**
-1. Add "Start Follow-up Chat" button to session detail page
-2. Implement chat message list component
-3. Implement message input component
-4. Add WebSocket subscription for chat updates
-5. Implement real-time streaming of assistant responses
-6. Add chat indicator to sessions list
-7. Handle multi-user message attribution
+
+1. **TypeScript Types** (`dashboard/src/types/chat.ts`):
+   - Define `Chat` interface (matches backend model)
+   - Define `ChatUserMessage` interface
+   - Define `ChatCreatedEvent` interface
+   - Define `ChatUserMessageEvent` interface
+   - Define API request/response types
+
+2. **API Client** (`dashboard/src/services/chatApi.ts`):
+   - `createChat(sessionId: string): Promise<Chat>`
+   - `getChat(chatId: string): Promise<Chat>`
+   - `sendMessage(chatId: string, content: string): Promise<ChatUserMessage>`
+   - `getChatMessages(chatId: string, limit?: number, offset?: number): Promise<ChatUserMessage[]>`
+   - `checkChatAvailable(sessionId: string): Promise<{ available: boolean, reason?: string }>`
+
+3. **State Management:**
+   - Create `useChatState` hook for managing chat state
+   - Store active chat, messages, loading states
+   - Handle optimistic updates for user messages
+   - Handle error states and retries
+
+4. **WebSocket Integration:**
+   - Extend existing session WebSocket subscription to handle chat events
+   - Add handlers for `chat.created`, `chat.user_message` events
+   - Reuse existing LLM streaming handlers (already works via stage_execution_id)
+   - Handle reconnection scenarios (fetch missed messages)
+
+5. **Chat Components:**
+
+   **a. ChatPanel Component** (`dashboard/src/components/chat/ChatPanel.tsx`):
+   - Main container for chat interface
+   - Shows "Start Follow-up Chat" button when no chat exists
+   - Shows message list + input when chat active
+   - Collapsible/closable panel
+   
+   **b. ChatMessageList Component** (`dashboard/src/components/chat/ChatMessageList.tsx`):
+   - Renders list of messages (user + assistant)
+   - Auto-scrolls to bottom on new messages
+   - Shows typing indicator during streaming
+   
+   **c. ChatUserMessage Component** (`dashboard/src/components/chat/ChatUserMessage.tsx`):
+   - Displays user message with author and timestamp
+   - Avatar/icon for user
+   
+   **d. ChatAssistantMessage Component** (`dashboard/src/components/chat/ChatAssistantMessage.tsx`):
+   - Displays assistant response with timestamp
+   - Renders markdown formatting
+   - Shows tool calls (expandable/collapsible)
+   - Integrates with existing ReAct response rendering components
+   
+   **e. ChatInput Component** (`dashboard/src/components/chat/ChatInput.tsx`):
+   - Text input with send button
+   - Shift+Enter for new line, Enter to send
+   - Disabled during streaming
+   - Character count/limit
+
+6. **Session Detail Page Integration:**
+   - Add ChatPanel at bottom of session detail page
+   - Add collapsible controls for session sections (header, alert, timeline, analysis)
+   - Show chat indicator badge in header when chat exists
+   - Check chat availability on session load
+
+7. **Sessions List Integration:**
+   - Add chat indicator badge to session cards (💬 with message count)
+   - Fetch chat metadata for sessions in list (batch query)
+   - Update badge in real-time when chat events received
+
+8. **UI Polish:**
+   - Implement typing indicator (animated dots during assistant streaming)
+   - Implement collapsible session sections for focus mode
+   - Implement expandable/collapsible tool call results
+   - Handle markdown rendering in assistant messages
+   - Handle multi-user message attribution (different colors/styles per user)
+   - Handle long message scrolling
+   - Handle error states (failed messages, retry UI)
+
+9. **Responsive Design:**
+   - Ensure chat panel works on mobile/tablet
+   - Consider drawer/modal for mobile chat view
+   - Adjust layout for smaller screens
