@@ -63,4 +63,35 @@ class TestChatAgent:
         controller = chat_agent._create_iteration_controller(IterationStrategy.REACT)
         
         assert isinstance(controller, ChatReActController)
+    
+    def test_always_uses_react_strategy_regardless_of_parameter(
+        self, mock_llm_client, mock_mcp_client, mock_mcp_registry
+    ):
+        """Test ChatAgent always uses REACT strategy even if different strategy is passed."""
+        # Try to create ChatAgent with REACT_STAGE strategy (should be ignored)
+        agent_with_react_stage = ChatAgent(
+            llm_client=mock_llm_client,
+            mcp_client=mock_mcp_client,
+            mcp_registry=mock_mcp_registry,
+            iteration_strategy=IterationStrategy.REACT_STAGE
+        )
+        
+        # Should still use REACT strategy
+        assert agent_with_react_stage.iteration_strategy == IterationStrategy.REACT
+    
+    def test_provides_chat_specific_general_instructions(self, chat_agent):
+        """Test ChatAgent provides chat-specific general instructions, not alert analysis instructions."""
+        general_instructions = chat_agent._get_general_instructions()
+        
+        assert general_instructions is not None
+        assert len(general_instructions) > 0
+        
+        # Should mention chat/follow-up context
+        assert "follow-up" in general_instructions.lower() or "chat" in general_instructions.lower()
+        
+        # Should NOT mention alert analysis as primary focus
+        assert "Analyze alerts thoroughly" not in general_instructions
+        
+        # Should mention the investigation context
+        assert "investigation" in general_instructions.lower()
 

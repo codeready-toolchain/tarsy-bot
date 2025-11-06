@@ -212,6 +212,10 @@ class DetailedStage(BaseModel):
     stage_output: Optional[dict] = None  # Structured results produced by this stage (e.g. analysis findings, collected data) - used by subsequent stages in chain. None if stage failed/incomplete.
     error_message: Optional[str] = None
     
+    # Chat context (if this stage is a chat response)
+    chat_id: Optional[str] = None
+    chat_user_message_id: Optional[str] = None
+    
     # ALL interactions that happened during this stage (FULL objects with complete details)
     llm_interactions: List[LLMTimelineEvent] = Field(default_factory=list)  # Complete LLM interactions with full details
     mcp_communications: List[MCPTimelineEvent] = Field(default_factory=list)  # Complete MCP interactions with full details

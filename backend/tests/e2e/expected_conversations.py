@@ -838,3 +838,219 @@ Do NOT call any tools - use only the provided data."""
         }
     ]
 }
+
+# Expected conversation for chat follow-up
+EXPECTED_CHAT_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## Chat Assistant Instructions
+
+You are an expert Site Reliability Engineer (SRE) assistant helping with follow-up questions about a completed alert investigation.
+
+The user has reviewed the investigation results and has follow-up questions. Your role is to:
+- Provide clear, actionable answers based on the investigation history
+- Use available tools to gather fresh, real-time data when needed
+- Reference specific findings from the original investigation when relevant
+- Maintain the same professional SRE communication style
+- Be concise but thorough in your responses
+
+You have access to the same tools and systems that were used in the original investigation.
+
+## Kubernetes Server Instructions
+
+For Kubernetes operations:
+- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
+  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
+  * Use this information to determine which context to target before performing any operations
+  * This prevents working on the wrong cluster and helps you understand the environment
+- Be careful with cluster-scoped resource listings in large clusters
+- Always prefer namespaced queries when possible
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
+
+## Response Guidelines
+
+1. **Context Awareness**: Reference the investigation history when it provides relevant context
+2. **Fresh Data**: Use tools to gather current system state if the question requires up-to-date information
+3. **Clarity**: If the question is ambiguous or unclear, ask for clarification in your Final Answer
+4. **Specificity**: Always reference actual data and observations, not assumptions
+5. **Brevity**: Be concise but complete - users have already read the full investigation
+
+Use the ReAct format:
+- Thought: Reason about what information you need
+- Action: Specify which tool to use (if needed)
+- Action Input: Tool parameters  
+- Observation: Tool results (will be provided)
+- ... (repeat as needed)
+- Final Answer: Your complete response to the user"""
+        },
+        {
+            "role": "user",
+            "content": """================================================================================
+ORIGINAL ALERT INVESTIGATION HISTORY
+================================================================================
+
+### Initial Investigation Request
+
+Answer the following question using the available tools.
+
+Available tools:
+
+1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
+    **Parameters**:
+    - resource (optional, string): No description
+    - namespace (optional, string): No description
+    - name (optional, string): No description
+
+2. **kubernetes-server.kubectl_describe**: Describe Kubernetes resources
+    **Parameters**:
+    - resource (optional, string): No description
+    - namespace (optional, string): No description
+    - name (optional, string): No description
+
+3. **test-data-server.collect_system_info**: Collect basic system information like CPU, memory, and disk usage
+    **Parameters**:
+    - detailed (optional, boolean): Whether to return detailed system info
+
+Question: Investigate this test-kubernetes alert and provide stage-specific analysis.
+
+## Alert Details
+
+### Alert Metadata
+**Alert Type:** test-kubernetes
+**Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
+
+### Alert Data
+```json
+{
+  "namespace": "test-namespace",
+  "description": "Namespace stuck in Terminating state",
+  "cluster": "test-cluster",
+  "contact": "__MASKED_EMAIL__",
+  "labels": {
+    "env": "test",
+    "team": "platform"
+  },
+  "annotations": {
+    "finalizers": "kubernetes.io/pv-protection"
+  }
+}
+```
+
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
+# Mock Runbook
+Test runbook content
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+No previous stage data is available for this alert. This is the first stage of analysis.
+
+## Your Task: DATA-COLLECTION STAGE
+Use available tools to:
+1. Collect additional data relevant to this stage
+2. Analyze findings in the context of this specific stage
+3. Provide stage-specific insights and recommendations
+
+Your Final Answer should include both the data collected and your stage-specific analysis.
+
+Begin!
+
+**Agent Response:**
+
+Thought: I need to get namespace information first.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "namespaces", "name": "stuck-namespace"}
+
+**Observation:**
+
+Observation: kubernetes-server.kubectl_get: {
+  "result": "stuck-namespace   Terminating   45m"
+}
+
+**Agent Response:**
+
+Action: kubernetes-server.kubectl_describe
+Action Input: {"resource": "namespace", "name": "stuck-namespace"}
+
+**Observation:**
+
+Observation: kubernetes-server.kubectl_describe error: Tool execution failed: Failed to call tool kubectl_describe on kubernetes-server: Type=McpError | Message=tool 'kubectl_describe' not found: tool not found | error=ErrorData(code=-32602, message="tool 'kubectl_describe' not found: tool not found", data=None)
+
+**Agent Response:**
+
+Thought: Let me also collect system information to understand resource constraints.
+Action: test-data-server.collect_system_info
+Action Input: {"detailed": false}
+
+**Observation:**
+
+Observation: test-data-server.collect_system_info: {
+  "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
+}
+
+**Agent Response:**
+
+Thought: Let me gather more information about the current state.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "events", "namespace": "test-namespace"}
+
+**Observation:**
+
+Observation: kubernetes-server.kubectl_get: {
+  "result": "Mock kubectl get events response"
+}
+
+**Agent Response:**
+
+Final Answer: Data collection completed. Found namespace 'stuck-namespace' in Terminating state with finalizers blocking deletion.
+
+================================================================================
+END OF INVESTIGATION HISTORY
+================================================================================
+
+================================================================================
+FOLLOW-UP CHAT SESSION
+================================================================================
+
+The user has reviewed the investigation above and has a follow-up question.
+
+You have access to the same tools that were used in the original investigation
+(they are listed in the "Initial Investigation Request" section above).
+
+**User's Follow-up Question:**
+
+Can you check the pods in the stuck-namespace?
+
+**Your Task:**
+
+Answer the user's question using the ReAct format shown in your instructions.
+Reference the investigation history when relevant, and use tools to gather 
+fresh data if needed.
+
+Begin your ReAct reasoning:"""
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: The user wants to see the pods in stuck-namespace. I'll use kubectl_get to list them.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "pods", "namespace": "stuck-namespace"}"""
+        },
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "No pods found in namespace stuck-namespace"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: I checked the pods in stuck-namespace and found no pods are currently running. This is consistent with the namespace being stuck in Terminating state - all pods have likely been deleted already, but the namespace can't complete deletion due to the finalizers mentioned in the original investigation."""
+        }
+    ]
+}

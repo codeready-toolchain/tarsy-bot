@@ -1202,6 +1202,65 @@ class TestHistoryRepository:
         assert session_without_mcp_result.mcp_selection is None
     
     @pytest.mark.unit
+    def test_get_session_details_with_chat_fields(self, repository, sample_alert_session):
+        """Test that get_session_details includes chat_id and chat_user_message_id for chat stages."""
+        from tarsy.models.db_models import StageExecution
+        from tarsy.utils.timestamp import now_us
+        
+        # Create session
+        repository.create_alert_session(sample_alert_session)
+        
+        # Create a regular stage execution (no chat fields)
+        regular_stage = StageExecution(
+            session_id=sample_alert_session.session_id,
+            stage_id="analysis",
+            stage_index=0,
+            stage_name="Analysis",
+            agent="AnalysisAgent",
+            status="completed",
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 1000000,
+            duration_ms=1000
+        )
+        regular_stage_id = repository.create_stage_execution(regular_stage)
+        
+        # Create a chat response stage execution (with chat fields)
+        chat_stage = StageExecution(
+            session_id=sample_alert_session.session_id,
+            stage_id="chat-response-msg123",
+            stage_index=1,
+            stage_name="Chat Response",
+            agent="ChatAgent",
+            status="completed",
+            started_at_us=now_us() + 2000000,
+            completed_at_us=now_us() + 3000000,
+            duration_ms=1000,
+            chat_id="chat-abc-123",
+            chat_user_message_id="msg-xyz-456"
+        )
+        chat_stage_id = repository.create_stage_execution(chat_stage)
+        
+        # Get session details
+        result = repository.get_session_details(sample_alert_session.session_id)
+        
+        assert result is not None
+        assert len(result.stages) == 2
+        
+        # Verify regular stage has no chat fields (None)
+        regular_stage_result = result.stages[0]
+        assert regular_stage_result.stage_id == "analysis"
+        assert regular_stage_result.agent == "AnalysisAgent"
+        assert regular_stage_result.chat_id is None
+        assert regular_stage_result.chat_user_message_id is None
+        
+        # Verify chat stage has chat fields populated
+        chat_stage_result = result.stages[1]
+        assert chat_stage_result.stage_id == "chat-response-msg123"
+        assert chat_stage_result.agent == "ChatAgent"
+        assert chat_stage_result.chat_id == "chat-abc-123"
+        assert chat_stage_result.chat_user_message_id == "msg-xyz-456"
+    
+    @pytest.mark.unit
     def test_get_session_details_empty_session(self, repository):
         """Test getting timeline for non-existent session."""
         result = repository.get_session_details("non-existent-session")

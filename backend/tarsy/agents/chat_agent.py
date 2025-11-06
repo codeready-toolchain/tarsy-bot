@@ -33,16 +33,22 @@ class ChatAgent(BaseAgent):
         self,
         llm_client: LLMClient,
         mcp_client: MCPClient,
-        mcp_registry: MCPServerRegistry
+        mcp_registry: MCPServerRegistry,
+        iteration_strategy: IterationStrategy = IterationStrategy.REACT
     ):
         """
         Initialize ChatAgent with ReAct iteration strategy.
+        
+        Note: The iteration_strategy parameter is accepted for compatibility
+        with AgentFactory, but ChatAgent always uses REACT strategy.
         
         Args:
             llm_client: Client for LLM interactions
             mcp_client: MCP client for tool access
             mcp_registry: Registry of available MCP servers
+            iteration_strategy: Ignored - ChatAgent always uses REACT
         """
+        # Always use REACT strategy regardless of parameter value
         super().__init__(
             llm_client,
             mcp_client,
@@ -50,6 +56,19 @@ class ChatAgent(BaseAgent):
             iteration_strategy=IterationStrategy.REACT
         )
         self.prompt_builder = PromptBuilder()
+    
+    def _get_general_instructions(self) -> str:
+        """
+        Override to provide chat-specific general instructions.
+        
+        Unlike regular agents (which focus on alert analysis), ChatAgent
+        provides instructions focused on handling follow-up conversations
+        about completed investigations.
+        
+        Returns:
+            Chat-specific general instruction text
+        """
+        return self.prompt_builder.get_chat_general_instructions()
     
     def _create_iteration_controller(self, strategy: IterationStrategy) -> IterationController:
         """

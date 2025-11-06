@@ -631,6 +631,8 @@ class HistoryRepository:
                     duration_ms=stage_db.duration_ms,
                     stage_output=stage_db.stage_output,
                     error_message=stage_db.error_message,
+                    chat_id=stage_db.chat_id,
+                    chat_user_message_id=stage_db.chat_user_message_id,
                     llm_interactions=llm_stage_interactions,
                     mcp_communications=mcp_stage_interactions,
                     llm_interaction_count=len(llm_stage_interactions),

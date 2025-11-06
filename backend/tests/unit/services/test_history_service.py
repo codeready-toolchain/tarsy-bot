@@ -515,6 +515,105 @@ class TestHistoryService:
             assert result.mcp_selection.servers[1].name == "argocd"
             assert result.mcp_selection.servers[1].tools is None
     
+    @pytest.mark.unit
+    def test_get_session_details_with_chat_fields(self, history_service):
+        """Test session details retrieval includes chat_id and chat_user_message_id for chat stages."""
+        from tarsy.models.constants import AlertSessionStatus, StageStatus
+        from tarsy.models.history_models import DetailedSession, DetailedStage
+        
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        
+        # Create mock stages - one regular, one chat
+        regular_stage = DetailedStage(
+            execution_id="exec-regular",
+            session_id="test-session-chat",
+            stage_id="analysis",
+            stage_index=0,
+            stage_name="Analysis",
+            agent="AnalysisAgent",
+            status=StageStatus.COMPLETED,
+            started_at_us=1000000,
+            completed_at_us=2000000,
+            duration_ms=1000,
+            stage_output={"result": "analysis complete"},
+            error_message=None,
+            chat_id=None,  # Regular stage has no chat context
+            chat_user_message_id=None,
+            llm_interactions=[],
+            mcp_communications=[],
+            llm_interaction_count=0,
+            mcp_communication_count=0,
+            total_interactions=0
+        )
+        
+        chat_stage = DetailedStage(
+            execution_id="exec-chat",
+            session_id="test-session-chat",
+            stage_id="chat-response-msg123",
+            stage_index=1,
+            stage_name="Chat Response",
+            agent="ChatAgent",
+            status=StageStatus.COMPLETED,
+            started_at_us=3000000,
+            completed_at_us=4000000,
+            duration_ms=1000,
+            stage_output={"result": "chat response"},
+            error_message=None,
+            chat_id="chat-abc-123",  # Chat stage has chat context
+            chat_user_message_id="msg-xyz-456",
+            llm_interactions=[],
+            mcp_communications=[],
+            llm_interaction_count=0,
+            mcp_communication_count=0,
+            total_interactions=0
+        )
+        
+        # Create DetailedSession with both stages
+        mock_detailed_session = DetailedSession(
+            session_id="test-session-chat",
+            alert_type="kubernetes",
+            agent_type="chain:k8s-analysis",
+            status=AlertSessionStatus.COMPLETED,
+            started_at_us=1000000,
+            completed_at_us=4000000,
+            error_message=None,
+            alert_data={"namespace": "test"},
+            final_analysis="Analysis complete",
+            session_metadata={},
+            chain_id="test-chain",
+            chain_definition={},
+            current_stage_index=None,
+            current_stage_id=None,
+            total_interactions=0,
+            llm_interaction_count=0,
+            mcp_communication_count=0,
+            stages=[regular_stage, chat_stage]
+        )
+        
+        dependencies['repository'].get_session_details.return_value = mock_detailed_session
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            result = history_service.get_session_details("test-session-chat")
+            
+            assert result is not None
+            assert isinstance(result, DetailedSession)
+            assert len(result.stages) == 2
+            
+            # Verify regular stage has no chat fields
+            regular_stage_result = result.stages[0]
+            assert regular_stage_result.agent == "AnalysisAgent"
+            assert regular_stage_result.chat_id is None
+            assert regular_stage_result.chat_user_message_id is None
+            
+            # Verify chat stage has chat fields populated
+            chat_stage_result = result.stages[1]
+            assert chat_stage_result.agent == "ChatAgent"
+            assert chat_stage_result.chat_id == "chat-abc-123"
+            assert chat_stage_result.chat_user_message_id == "msg-xyz-456"
+    
     @pytest.mark.parametrize("connection_success,expected_result", [
         (True, True),  # Connection successful
         (False, False),  # Connection failed

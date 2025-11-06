@@ -23,6 +23,7 @@ from .e2e_utils import E2ETestUtils
 
 from .expected_conversations import (
     EXPECTED_ANALYSIS_CONVERSATION,
+    EXPECTED_CHAT_CONVERSATION,
     EXPECTED_DATA_COLLECTION_CONVERSATION,
     EXPECTED_STAGES,
     EXPECTED_VERIFICATION_CONVERSATION,
@@ -220,6 +221,16 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                 "response_content": """Based on previous stages, the namespace is stuck due to finalizers.""",
                 "input_tokens": 420, "output_tokens": 180, "total_tokens": 600
                },
+            10: { # Chat - First ReAct iteration
+                "response_content": """Thought: The user wants to see the pods in stuck-namespace. I'll use kubectl_get to list them.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "pods", "namespace": "stuck-namespace"}""",
+                "input_tokens": 150, "output_tokens": 60, "total_tokens": 210
+               },
+            11: { # Chat - Final answer
+                "response_content": """Final Answer: I checked the pods in stuck-namespace and found no pods are currently running. This is consistent with the namespace being stuck in Terminating state - all pods have likely been deleted already, but the namespace can't complete deletion due to the finalizers mentioned in the original investigation.""",
+                "input_tokens": 180, "output_tokens": 90, "total_tokens": 270
+               },
         }
         
         # Create streaming mock for LLM client
@@ -282,10 +293,16 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                 if tool_name == "kubectl_get":
                     resource = _parameters.get("resource", "pods")
                     name = _parameters.get("name", "")
+                    namespace = _parameters.get("namespace", "")
 
                     if resource == "namespaces" and name == "stuck-namespace":
                         mock_content = Mock()
                         mock_content.text = "stuck-namespace   Terminating   45m"
+                        mock_result.content = [mock_content]
+                    elif resource == "pods" and namespace == "stuck-namespace":
+                        # Chat query for pods in stuck-namespace
+                        mock_content = Mock()
+                        mock_content.text = "No pods found in namespace stuck-namespace"
                         mock_result.content = [mock_content]
                     else:
                         mock_content = Mock()
@@ -517,6 +534,11 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                     await self._verify_complete_interaction_flow(stages)
 
                     print("✅ COMPREHENSIVE VERIFICATION PASSED!")
+
+                    print("🔍 Step 5: Testing chat functionality...")
+                    await self._test_chat_functionality(e2e_test_client, session_id)
+
+                    print("✅ CHAT FUNCTIONALITY TEST PASSED!")
 
                     return
 
@@ -789,4 +811,151 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
 
         print(
             f"    ✅ Stage '{stage_name}': Complete interaction flow verified ({len(llm_interactions)} LLM, {len(mcp_interactions)} MCP)"
+        )
+
+    async def _test_chat_functionality(self, test_client, session_id: str):
+        """Test chat functionality by creating a chat and sending a message."""
+        print("  💬 Testing chat creation...")
+        
+        # Step 1: Create chat for the session
+        create_chat_response = test_client.post(
+            f"/api/v1/sessions/{session_id}/chat",
+            json={"created_by": "test-user@example.com"}
+        )
+        
+        assert create_chat_response.status_code == 200, (
+            f"Chat creation failed with status {create_chat_response.status_code}: "
+            f"{create_chat_response.text}"
+        )
+        
+        chat_data = create_chat_response.json()
+        chat_id = chat_data.get("chat_id")
+        
+        assert chat_id is not None, "Chat ID missing from creation response"
+        assert chat_data.get("session_id") == session_id, "Chat session_id mismatch"
+        
+        print(f"    ✅ Chat created successfully: {chat_id}")
+        
+        # Step 2: Send a message to the chat
+        print("  💬 Sending chat message...")
+        
+        send_message_response = test_client.post(
+            f"/api/v1/chats/{chat_id}/messages",
+            json={
+                "content": "Can you check the pods in the stuck-namespace?",
+                "author": "test-user@example.com"
+            }
+        )
+        
+        assert send_message_response.status_code == 200, (
+            f"Chat message failed with status {send_message_response.status_code}: "
+            f"{send_message_response.text}"
+        )
+        
+        message_data = send_message_response.json()
+        message_id = message_data.get("message_id")
+        
+        assert message_id is not None, "Message ID missing from message response"
+        
+        print(f"    ✅ Chat message sent: {message_id}")
+        
+        # Step 3: Wait for chat response to complete
+        print("  ⏳ Waiting for chat response to complete...")
+        
+        max_wait = 10  # seconds
+        poll_interval = 0.5  # seconds
+        
+        chat_stage = None
+        for i in range(int(max_wait / poll_interval)):
+            # Get session details to check chat execution
+            detail_data = E2ETestUtils.get_session_details(test_client, session_id)
+            
+            # Check if we have chat stages in the session
+            # Chat responses are tracked as stage executions with chat_id set
+            stages = detail_data.get("stages", [])
+            
+            # Look for the chat execution stage
+            for stage in stages:
+                if stage.get("stage_id", "").startswith("chat-response"):
+                    chat_stage = stage
+                    break
+            
+            if chat_stage and chat_stage.get("status") == "completed":
+                print(f"    ✅ Chat response completed in {(i+1) * poll_interval}s")
+                break
+            
+            await asyncio.sleep(poll_interval)
+        else:
+            raise AssertionError(f"Chat response did not complete within {max_wait}s")
+        
+        # Step 4: Verify chat response structure
+        print("  🔍 Verifying chat response structure...")
+        
+        await self._verify_chat_response(chat_stage)
+        
+        print("  ✅ Chat response structure verified")
+
+    async def _verify_chat_response(self, chat_stage):
+        """Verify the structure of a chat response."""
+        
+        # Verify basic stage structure
+        assert chat_stage is not None, "Chat stage not found"
+        assert chat_stage.get("agent") == "ChatAgent", (
+            f"Expected ChatAgent, got {chat_stage.get('agent')}"
+        )
+        assert chat_stage.get("status") == "completed", (
+            f"Chat stage not completed: {chat_stage.get('status')}"
+        )
+        
+        # Verify chat-specific fields
+        assert chat_stage.get("chat_id") is not None, "Chat ID missing from stage"
+        assert chat_stage.get("chat_user_message_id") is not None, (
+            "Chat user message ID missing from stage"
+        )
+        
+        # Verify LLM and MCP interactions
+        llm_interactions = chat_stage.get("llm_interactions", [])
+        mcp_interactions = chat_stage.get("mcp_communications", [])
+        
+        # Chat should have 2 LLM interactions (initial + final answer)
+        # and 3 MCP interactions (2 tool discovery + 1 tool call)
+        # Note: ChatAgent discovers tools from both kubernetes-server AND test-data-server
+        # because it has access to all servers from the original session
+        assert len(llm_interactions) == 2, (
+            f"Expected 2 LLM interactions for chat, got {len(llm_interactions)}"
+        )
+        assert len(mcp_interactions) == 3, (
+            f"Expected 3 MCP interactions for chat, got {len(mcp_interactions)}"
+        )
+        
+        # Verify conversation structure matches expected
+        last_interaction = llm_interactions[-1]
+        interaction_details = last_interaction.get("details", {})
+        actual_conversation = interaction_details.get("conversation", {})
+        actual_messages = actual_conversation.get("messages", [])
+        
+        expected_messages = EXPECTED_CHAT_CONVERSATION["messages"]
+        
+        # Verify message count matches
+        assert len(actual_messages) == len(expected_messages), (
+            f"Chat conversation message count mismatch: expected {len(expected_messages)}, "
+            f"got {len(actual_messages)}"
+        )
+        
+        # Verify each message role matches (content will vary due to dynamic context)
+        for i, (expected_msg, actual_msg) in enumerate(zip(expected_messages, actual_messages)):
+            assert actual_msg.get("role") == expected_msg.get("role"), (
+                f"Message {i+1} role mismatch: expected {expected_msg.get('role')}, "
+                f"got {actual_msg.get('role')}"
+            )
+        
+        # Verify token usage is tracked
+        # Verify exact token counts from mock response #11 (chat final answer)
+        assert interaction_details.get("input_tokens") == 180, f"Expected 180 input tokens, got {interaction_details.get('input_tokens')}"
+        assert interaction_details.get("output_tokens") == 90, f"Expected 90 output tokens, got {interaction_details.get('output_tokens')}"
+        assert interaction_details.get("total_tokens") == 270, f"Expected 270 total tokens, got {interaction_details.get('total_tokens')}"
+        
+        print(
+            f"    ✅ Chat response validated: {len(llm_interactions)} LLM, "
+            f"{len(mcp_interactions)} MCP interactions (2 tool discovery + 1 tool call)"
         )
