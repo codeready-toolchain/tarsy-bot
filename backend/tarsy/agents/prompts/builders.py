@@ -205,6 +205,51 @@ Guidelines:
             result_text=result_text
         )
     
+    def build_chat_user_message(
+        self,
+        conversation_history: str,
+        user_question: str
+    ) -> str:
+        """
+        Build user message for chat that includes conversation history.
+        
+        This formats the chat prompt by:
+        1. Including the complete investigation history
+        2. Clearly marking the transition to follow-up chat
+        3. Presenting the user's question
+        4. Providing instructions for the ReAct loop
+        
+        Args:
+            conversation_history: Formatted investigation history from session
+            user_question: User's follow-up question
+        
+        Returns:
+            Formatted user message string for LLM
+        """
+        return f"""{conversation_history}
+
+================================================================================
+FOLLOW-UP CHAT SESSION
+================================================================================
+
+The user has reviewed the investigation above and has a follow-up question.
+
+You have access to the same tools that were used in the original investigation
+(they are listed in the "Initial Investigation Request" section above).
+
+**User's Follow-up Question:**
+
+{user_question}
+
+**Your Task:**
+
+Answer the user's question using the ReAct format shown in your instructions.
+Reference the investigation history when relevant, and use tools to gather 
+fresh data if needed.
+
+Begin your ReAct reasoning:
+"""
+    
     # ============ Helper Methods ============
     
     def _build_context_section(self, context: 'StageContext') -> str:

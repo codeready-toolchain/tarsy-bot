@@ -18,6 +18,8 @@ from tarsy.models.event_models import (
     MCPToolListEvent,
     StageStartedEvent,
     StageCompletedEvent,
+    ChatCreatedEvent,
+    ChatUserMessageEvent,
 )
 from tarsy.services.events.channels import EventChannel
 from tarsy.services.events.publisher import publish_event
@@ -332,4 +334,66 @@ async def publish_session_cancelled(session_id: str) -> None:
             logger.info("[EVENT] Published session.cancelled to channels")
     except Exception as e:
         logger.warning(f"Failed to publish session.cancelled event: {e}")
+
+
+async def publish_chat_created(
+    session_id: str,
+    chat_id: str,
+    created_by: str
+) -> None:
+    """
+    Publish chat.created event to session-specific channel.
+    
+    Args:
+        session_id: Session identifier
+        chat_id: Chat identifier
+        created_by: User who created the chat
+    """
+    try:
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = ChatCreatedEvent(
+                session_id=session_id,
+                chat_id=chat_id,
+                created_by=created_by
+            )
+            # Publish to session-specific channel (reuse existing subscription)
+            await publish_event(session, EventChannel.session_details(session_id), event)
+            logger.info(f"[EVENT] Published chat.created for chat {chat_id} to session:{session_id}")
+    except Exception as e:
+        logger.warning(f"Failed to publish chat.created event: {e}")
+
+
+async def publish_chat_user_message(
+    session_id: str,
+    chat_id: str,
+    message_id: str,
+    content: str,
+    author: str
+) -> None:
+    """
+    Publish chat.user_message event to session-specific channel.
+    
+    Args:
+        session_id: Session identifier
+        chat_id: Chat identifier
+        message_id: Message identifier
+        content: Message content
+        author: Message author
+    """
+    try:
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = ChatUserMessageEvent(
+                session_id=session_id,
+                chat_id=chat_id,
+                message_id=message_id,
+                content=content,
+                author=author
+            )
+            # Publish to session-specific channel (reuse existing subscription)
+            await publish_event(session, EventChannel.session_details(session_id), event)
+            logger.debug(f"Published chat.user_message for message {message_id}")
+    except Exception as e:
+        logger.warning(f"Failed to publish chat.user_message event: {e}")
 

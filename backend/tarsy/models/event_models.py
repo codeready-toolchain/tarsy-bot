@@ -163,3 +163,26 @@ class LLMStreamChunkEvent(BaseEvent):
     mcp_event_id: Optional[str] = Field(
         default=None, description="MCP event ID if summarizing a tool result"
     )
+
+
+# ===== Chat Events (channel: 'session:{session_id}') =====
+
+
+class ChatCreatedEvent(BaseEvent):
+    """Chat created for a session."""
+    
+    type: Literal["chat.created"] = "chat.created"
+    session_id: str = Field(description="Session identifier")
+    chat_id: str = Field(description="Chat identifier")
+    created_by: str = Field(description="User who created the chat")
+
+
+class ChatUserMessageEvent(BaseEvent):
+    """User sent a message to the chat."""
+    
+    type: Literal["chat.user_message"] = "chat.user_message"
+    session_id: str = Field(description="Session identifier")
+    chat_id: str = Field(description="Chat identifier")
+    message_id: str = Field(description="Message identifier")
+    content: str = Field(description="Message content")
+    author: str = Field(description="Message author")

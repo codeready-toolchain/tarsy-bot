@@ -9,11 +9,13 @@ from .base_controller import IterationController, ReactController
 from .react_controller import SimpleReActController
 from .react_stage_controller import ReactStageController
 from .react_final_analysis_controller import ReactFinalAnalysisController
+from .chat_react_controller import ChatReActController
 
 __all__ = [
     'IterationController',
     'ReactController',
     'SimpleReActController',
     'ReactStageController',
-    'ReactFinalAnalysisController'
+    'ReactFinalAnalysisController',
+    'ChatReActController'
 ]

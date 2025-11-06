@@ -193,7 +193,62 @@ class ChatService:
         created_chat = await self.history_service.create_chat(chat)
         logger.info(f"Created chat {created_chat.chat_id} for session {session_id}")
         
+        # Publish chat created event
+        from tarsy.services.events.event_helpers import publish_chat_created
+        await publish_chat_created(
+            session_id=session_id,
+            chat_id=created_chat.chat_id,
+            created_by=created_by
+        )
+        
         return created_chat
+    
+    async def _start_interaction_recording_task(
+        self,
+        chat_id: str,
+        session_id: str
+    ) -> asyncio.Task:
+        """
+        Start background task to record interactions during processing.
+        
+        This task periodically updates both session and chat last_interaction_at
+        timestamps to keep them marked as active for orphan detection.
+        
+        Args:
+            chat_id: Chat identifier
+            session_id: Parent session identifier
+            
+        Returns:
+            Async task that can be cancelled
+        """
+        async def record_interactions():
+            while True:
+                try:
+                    await asyncio.sleep(5)  # Record every 5 seconds
+                    # Record both session and chat interactions
+                    if self.history_service:
+                        # Update parent session timestamp (existing behavior)
+                        if hasattr(self.history_service, "record_session_interaction"):
+                            rec = self.history_service.record_session_interaction
+                            if asyncio.iscoroutinefunction(rec):
+                                await rec(session_id)
+                            else:
+                                await asyncio.to_thread(rec, session_id)
+                        
+                        # Update chat timestamp (keeps processing marker fresh)
+                        if hasattr(self.history_service, "record_chat_interaction"):
+                            rec_chat = self.history_service.record_chat_interaction
+                            if asyncio.iscoroutinefunction(rec_chat):
+                                await rec_chat(chat_id)
+                            else:
+                                await asyncio.to_thread(rec_chat, chat_id)
+                except asyncio.CancelledError:
+                    logger.debug(f"Interaction recording task cancelled for chat {chat_id}")
+                    break
+                except Exception as e:
+                    logger.debug(f"Error recording interactions for chat {chat_id}: {e}")
+        
+        return asyncio.create_task(record_interactions())
     
     async def send_message(
         self,
@@ -228,6 +283,7 @@ class ChatService:
         """
         chat_mcp_client = None
         execution_id = None
+        interaction_recording_task = None
         
         try:
             # 1. Get chat and validate (via history_service)
@@ -243,6 +299,16 @@ class ChatService:
             )
             await self.history_service.create_chat_user_message(user_msg)
             logger.info(f"Created chat message {user_msg.message_id} for chat {chat_id}")
+            
+            # Publish user message event
+            from tarsy.services.events.event_helpers import publish_chat_user_message
+            await publish_chat_user_message(
+                session_id=chat.session_id,
+                chat_id=chat_id,
+                message_id=user_msg.message_id,
+                content=user_question,
+                author=author
+            )
             
             # 3. Build context (initial context OR cumulative from last execution)
             message_context = await self._build_message_context(chat, user_question)
@@ -301,6 +367,13 @@ class ChatService:
                     else:
                         await asyncio.to_thread(rec_chat, chat_id)
             
+            # Start background task to keep interaction timestamps fresh during processing
+            interaction_recording_task = await self._start_interaction_recording_task(
+                chat_id=chat_id,
+                session_id=chat.session_id
+            )
+            logger.debug(f"Started interaction recording task for chat {chat_id}")
+            
             # 7. Update stage execution to started
             await self._update_stage_execution_started(execution_id)
             
@@ -323,6 +396,9 @@ class ChatService:
             
             # Set stage execution ID for interaction tagging
             chat_agent.set_current_stage_execution_id(execution_id)
+            
+            # Set chat ID for interaction recording in hooks
+            chat_agent.set_current_chat_id(chat_id)
             
             # 11. Build ChainContext for chat (minimal, for compatibility)
             processing_alert = ProcessingAlert(
@@ -371,6 +447,15 @@ class ChatService:
             raise
         
         finally:
+            # Cancel interaction recording task
+            if interaction_recording_task and not interaction_recording_task.done():
+                interaction_recording_task.cancel()
+                try:
+                    await interaction_recording_task
+                except asyncio.CancelledError:
+                    pass  # Expected
+                logger.debug(f"Cancelled interaction recording task for chat {chat_id}")
+            
             # CRITICAL: Always cleanup MCP client (like AlertService)
             if chat_mcp_client:
                 try:

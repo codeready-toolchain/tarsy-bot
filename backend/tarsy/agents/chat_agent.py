@@ -9,6 +9,7 @@ strategy and receives MCP server configuration dynamically from the chat context
 from typing import List
 
 from tarsy.agents.base_agent import BaseAgent
+from tarsy.agents.iteration_controllers.base_controller import IterationController
 from tarsy.agents.prompts.builders import PromptBuilder
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
@@ -49,6 +50,22 @@ class ChatAgent(BaseAgent):
             iteration_strategy=IterationStrategy.REACT
         )
         self.prompt_builder = PromptBuilder()
+    
+    def _create_iteration_controller(self, strategy: IterationStrategy) -> IterationController:
+        """
+        Override to always use ChatReActController for chat.
+        
+        Unlike regular agents, ChatAgent always uses the chat-specific ReAct controller
+        which builds initial conversation with investigation history context.
+        
+        Args:
+            strategy: Iteration strategy (ignored - always uses chat ReAct)
+            
+        Returns:
+            ChatReActController instance
+        """
+        from tarsy.agents.iteration_controllers.chat_react_controller import ChatReActController
+        return ChatReActController(self.llm_client, self._prompt_builder)
     
     def agent_name(self) -> str:
         """

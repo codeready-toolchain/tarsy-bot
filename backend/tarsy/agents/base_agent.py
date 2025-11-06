@@ -88,6 +88,9 @@ class BaseAgent(ABC):
         # Stage execution tracking for chain processing
         self._current_stage_execution_id: Optional[str] = None
         
+        # Chat tracking for interaction recording
+        self._current_chat_id: Optional[str] = None
+        
         # Create appropriate iteration controller based on configuration
         self._iteration_controller: IterationController = self._create_iteration_controller(iteration_strategy)
         # Cache the iteration strategy to avoid redundant imports in property getter
@@ -286,6 +289,14 @@ class BaseAgent(ABC):
     def get_current_stage_execution_id(self) -> Optional[str]:
         """Get the current stage execution ID."""
         return self._current_stage_execution_id
+    
+    def set_current_chat_id(self, chat_id: Optional[str]):
+        """Set the current chat ID for interaction recording."""
+        self._current_chat_id = chat_id
+    
+    def get_current_chat_id(self) -> Optional[str]:
+        """Get the current chat ID."""
+        return self._current_chat_id
     
     async def _configure_mcp_client(self):
         """Configure MCP client with agent-specific server subset and summarizer."""
