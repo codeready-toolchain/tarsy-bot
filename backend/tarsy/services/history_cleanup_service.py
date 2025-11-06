@@ -93,12 +93,16 @@ class HistoryCleanupService:
         Background task that runs cleanup periodically.
         
         Checks for orphaned sessions every N minutes.
+        Checks for orphaned chats every N minutes.
         Checks for old history retention every M hours.
         """
         while self.running:
             try:
                 # Always check for orphaned sessions
                 await self._cleanup_orphaned_sessions()
+                
+                # NEW: Cleanup orphaned chats
+                await self._cleanup_orphaned_chats()
                 
                 # Only cleanup old history when interval has elapsed
                 if self._should_run_retention_cleanup():
@@ -200,6 +204,46 @@ class HistoryCleanupService:
         
         # Call the existing cleanup_orphaned_sessions method
         return history_service.cleanup_orphaned_sessions(self.orphaned_timeout_minutes)
+    
+    async def _cleanup_orphaned_chats(self) -> int:
+        """
+        Check for and clear stale chat processing markers.
+        
+        Returns:
+            Number of chats cleaned up
+        """
+        try:
+            # Run synchronous database operation in thread pool to avoid blocking event loop
+            cleaned_count = await asyncio.to_thread(self._cleanup_orphaned_chats_sync)
+
+            if cleaned_count > 0:
+                logger.info(
+                    f"Cleaned up {cleaned_count} orphaned chat message processing marker(s) "
+                    f"(inactive for {self.orphaned_timeout_minutes}+ minutes)"
+                )
+            else:
+                logger.debug("No orphaned chats to clean up")
+            
+            return cleaned_count
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup orphaned chats: {e}", exc_info=True)
+            raise
+    
+    def _cleanup_orphaned_chats_sync(self) -> int:
+        """
+        Clean up orphaned chats synchronously (called from thread pool).
+        
+        Returns:
+            Number of chats cleaned up
+        """
+        from tarsy.services.history_service import get_history_service
+        
+        # Get history service instance
+        history_service = get_history_service()
+        
+        # Call the cleanup_orphaned_chats method
+        return history_service.cleanup_orphaned_chats(self.orphaned_timeout_minutes)
     
     def _should_run_retention_cleanup(self) -> bool:
         """

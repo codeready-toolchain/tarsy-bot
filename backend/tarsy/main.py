@@ -66,6 +66,7 @@ db_manager: Optional["DatabaseManager"] = None  # DatabaseManager for history cl
 
 # Task tracking for session cancellation
 active_tasks: Dict[str, asyncio.Task] = {}  # Maps session_id to asyncio Task
+active_chat_tasks: Dict[str, asyncio.Task] = {}  # Maps chat execution_id to asyncio Task
 active_tasks_lock: Optional[asyncio.Lock] = None  # Initialized in lifespan()
 
 # Graceful shutdown flag
@@ -103,16 +104,16 @@ async def handle_cancel_request(event: dict) -> None:
         logger.debug(f"Session {session_id} not found on this pod (owned by another pod)")
 
 
-async def mark_active_sessions_as_interrupted(reason: str) -> None:
+async def mark_active_tasks_as_interrupted(reason: str) -> None:
     """
-    Helper function to mark active sessions as interrupted during shutdown.
+    Mark active sessions and chats as interrupted during shutdown.
     
     Args:
-        reason: Reason for marking sessions as interrupted (e.g., "after timeout", "after error")
+        reason: Reason for marking tasks as interrupted (e.g., "after timeout", "after error")
     """
     settings = get_settings()
     
-    # Only mark sessions if history is enabled
+    # Only mark tasks if history is enabled
     if not settings.history_enabled:
         return
     
@@ -125,12 +126,18 @@ async def mark_active_sessions_as_interrupted(reason: str) -> None:
             return
         
         pod_id = get_pod_id()
-        interrupted_count = await history_service.mark_pod_sessions_interrupted(pod_id)
         
+        # Sessions
+        interrupted_count = await history_service.mark_pod_sessions_interrupted(pod_id)
         if interrupted_count > 0:
             logger.info(f"Marked {interrupted_count} session(s) as interrupted {reason} for pod {pod_id}")
+        
+        # Chats
+        chat_count = await history_service.mark_pod_chats_interrupted(pod_id)
+        if chat_count > 0:
+            logger.info(f"Marked {chat_count} chat(s) as interrupted {reason} for pod {pod_id}")
     except Exception as e:
-        logger.error(f"Failed to mark sessions as interrupted {reason}: {str(e)}")
+        logger.error(f"Failed to mark tasks as interrupted {reason}: {str(e)}")
 
 
 @asynccontextmanager
@@ -300,34 +307,39 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Marked service as shutting down - will reject new alert submissions")
     
     # Wait for active sessions to complete gracefully
-    if active_tasks:
-        session_count = len(active_tasks)
+    # Combine both session and chat tasks
+    if active_tasks or active_chat_tasks:
+        async with active_tasks_lock:
+            all_tasks = list(active_tasks.values()) + list(active_chat_tasks.values())
+        
+        total_count = len(all_tasks)
         timeout = settings.alert_processing_timeout
-        logger.info(f"Waiting for {session_count} active session(s) to complete (timeout: {timeout}s)...")
+        logger.info(f"Waiting for {total_count} active task(s) to complete (timeout: {timeout}s)...")
         
         try:
-            async with active_tasks_lock:
-                tasks_to_wait = list(active_tasks.values())
-            
             # Wait for all active tasks with timeout (same as session processing timeout)
             await asyncio.wait_for(
-                asyncio.gather(*tasks_to_wait, return_exceptions=True),
+                asyncio.gather(*all_tasks, return_exceptions=True),
                 timeout=timeout
             )
-            logger.info(f"All {session_count} active session(s) completed gracefully")
+            logger.info(f"All {total_count} active task(s) completed gracefully")
             
         except asyncio.TimeoutError:
-            remaining = len(active_tasks)
-            logger.warning(f"Graceful shutdown timeout after {timeout}s - {remaining} session(s) still active")
+            remaining_sessions = len(active_tasks)
+            remaining_chats = len(active_chat_tasks)
+            logger.warning(
+                f"Graceful shutdown timeout after {timeout}s - "
+                f"{remaining_sessions} session(s) and {remaining_chats} chat(s) still active"
+            )
             
-            # Mark remaining sessions as interrupted after timeout
-            await mark_active_sessions_as_interrupted("after timeout")
+            # Mark remaining sessions and chats as interrupted after timeout
+            await mark_active_tasks_as_interrupted("after timeout")
         
         except Exception as e:
             logger.error(f"Error during graceful shutdown wait: {e}", exc_info=True)
             
-            # Still try to mark sessions as interrupted on error
-            await mark_active_sessions_as_interrupted("after error")
+            # Still try to mark sessions and chats as interrupted on error
+            await mark_active_tasks_as_interrupted("after error")
     else:
         logger.info("No active sessions during shutdown")
     

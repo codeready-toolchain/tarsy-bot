@@ -290,6 +290,10 @@ class ChainConfigModel(BaseModel):
         None,
         description="Optional description of the chain"
     )
+    chat_enabled: bool = Field(
+        default=True,
+        description="Enable follow-up chat for sessions using this chain"
+    )
 
 
 class CombinedConfigModel(BaseModel):

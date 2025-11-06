@@ -181,6 +181,16 @@ class StageExecution(SQLModel, table=True):
         description="Error message if stage failed (mutually exclusive with stage_output)"
     )
     
+    # Chat context tracking
+    chat_id: Optional[str] = Field(
+        default=None,
+        description="Chat ID if this execution is a chat response"
+    )
+    chat_user_message_id: Optional[str] = Field(
+        default=None,
+        description="User message ID this execution is responding to"
+    )
+    
     # Note: Relationship to AlertSession would be: session: AlertSession = Relationship(back_populates="stage_executions")
     # Omitted to avoid circular imports - use session_id for queries instead
 
@@ -224,6 +234,106 @@ class Event(SQLModel, table=True):
         default=None,
         sa_column=Column[Any](DateTime, nullable=False, server_default=func.now()),
         description="Event creation timestamp (for cleanup and ordering)",
+    )
+
+
+class Chat(SQLModel, table=True):
+    """Chat metadata and context snapshot from completed session."""
+    
+    __tablename__ = "chats"
+    
+    __table_args__ = (
+        Index('ix_chats_session_id', 'session_id'),
+        Index('ix_chats_created_at', 'created_at_us'),
+        Index('ix_chats_pod_last_interaction', 'pod_id', 'last_interaction_at'),
+    )
+    
+    chat_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        primary_key=True,
+        description="Unique chat identifier"
+    )
+    
+    session_id: str = Field(
+        sa_column=Column[Any](String, ForeignKey("alert_sessions.session_id"), index=True),
+        description="Original session this chat extends"
+    )
+    
+    created_at_us: int = Field(
+        default_factory=now_us,
+        sa_column=Column[Any](BIGINT),
+        description="Chat creation timestamp"
+    )
+    
+    created_by: Optional[str] = Field(
+        default=None,
+        description="User who initiated the chat"
+    )
+    
+    conversation_history: str = Field(
+        description="Formatted session investigation text"
+    )
+    
+    chain_id: str = Field(
+        description="Chain ID from original session"
+    )
+    
+    mcp_selection: Optional[dict] = Field(
+        default=None,
+        sa_column=Column[Any](JSON),
+        description="MCP server/tool selection used in original session"
+    )
+    
+    context_captured_at_us: int = Field(
+        sa_column=Column[Any](BIGINT),
+        description="Timestamp when context was captured from session"
+    )
+    
+    pod_id: Optional[str] = Field(
+        default=None,
+        description="Kubernetes pod identifier for multi-replica chat message tracking"
+    )
+    
+    last_interaction_at: Optional[int] = Field(
+        default=None,
+        sa_column=Column[Any](BIGINT),
+        description="Last interaction timestamp for orphan detection during chat message processing"
+    )
+
+
+class ChatUserMessage(SQLModel, table=True):
+    """User questions in a chat conversation."""
+    
+    __tablename__ = "chat_user_messages"
+    
+    __table_args__ = (
+        Index('ix_chat_user_messages_chat_id', 'chat_id'),
+        Index('ix_chat_user_messages_created_at', 'created_at_us'),
+    )
+    
+    message_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        primary_key=True,
+        description="Unique message identifier"
+    )
+    
+    chat_id: str = Field(
+        sa_column=Column[Any](String, ForeignKey("chats.chat_id", ondelete="CASCADE"), index=True),
+        description="Parent chat"
+    )
+    
+    content: str = Field(
+        description="User's question text"
+    )
+    
+    author: str = Field(
+        description="User email/ID who sent the message"
+    )
+    
+    created_at_us: int = Field(
+        default_factory=now_us,
+        sa_column=Column[Any](BIGINT),
+        description="Message creation timestamp"
     )
 
 

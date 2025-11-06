@@ -175,6 +175,18 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions."""
     
+    def get_chat_instructions(self) -> str:
+        """Get instructions for ChatAgent handling follow-up questions."""
+        return """You are an AI SRE assistant helping with follow-up questions about an alert investigation.
+
+The user has reviewed a completed investigation and has a follow-up question.
+
+Guidelines:
+1. Reference the investigation history when relevant
+2. Use tools to gather fresh data if needed  
+3. If the question is ambiguous, ask for clarification in your Final Answer
+"""
+    
     def build_mcp_summarization_system_prompt(self, server_name: str, tool_name: str, max_summary_tokens: int) -> str:
         """Build system prompt for MCP result summarization."""
         return MCP_SUMMARIZATION_SYSTEM_TEMPLATE.format(

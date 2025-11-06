@@ -17,6 +17,22 @@ if TYPE_CHECKING:
     from ..agents.base_agent import BaseAgent
 
 
+@dataclass
+class ChatMessageContext:
+    """Typed container for chat message context passed to ChatReActController."""
+    conversation_history: str
+    user_question: str
+    chat_id: str
+
+
+@dataclass
+class SessionContextData:
+    """Typed container for captured session context."""
+    conversation_history: str
+    chain_id: str
+    captured_at_us: int
+
+
 class ToolWithServer(BaseModel):
     """Official MCP Tool with server context for action naming."""
     model_config: ConfigDict = ConfigDict(extra="forbid")
@@ -80,6 +96,12 @@ class ChainContext(BaseModel):
     # === Processing support ===
     runbook_content: Optional[str] = Field(None, description="Downloaded runbook content")
     chain_id: Optional[str] = Field(None, description="Chain identifier")
+    
+    # === Chat-specific context ===
+    chat_context: Optional[ChatMessageContext] = Field(
+        None,
+        description="Chat-specific context (only present for chat executions)"
+    )
     
     @classmethod
     def from_processing_alert(

@@ -42,6 +42,11 @@ BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
         "iteration_strategy": "react",  # ReAct strategy for complex k8s troubleshooting
         "description": "Kubernetes-specialized agent using ReAct pattern for systematic analysis",
     },
+    "ChatAgent": {
+        "import": "tarsy.agents.chat_agent.ChatAgent",
+        "iteration_strategy": "react",
+        "description": "Built-in agent for handling follow-up chat conversations",
+    },
     # Future agents will be added here:
     # "ArgoCDAgent": {
     #     "import": "tarsy.agents.argocd_agent.ArgoCDAgent",
