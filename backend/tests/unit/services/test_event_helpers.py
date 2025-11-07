@@ -18,6 +18,7 @@ from tarsy.services.events.event_helpers import (
     publish_mcp_tool_list,
     publish_stage_started,
     publish_stage_completed,
+    publish_chat_cancel_request,
 )
 from tarsy.services.events.channels import EventChannel
 
@@ -620,4 +621,42 @@ class TestPublishStageCompleted:
             await publish_stage_completed(
                 "test-session-123", "stage-456", "Investigation", "completed"
             )
+
+
+@pytest.mark.unit
+class TestPublishChatCancelRequest:
+    """Test publish_chat_cancel_request helper."""
+
+    @pytest.mark.asyncio
+    async def test_publishes_chat_cancel_request_event(self):
+        """Test that it publishes chat.cancel_requested event to CANCELLATIONS channel."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
+            await publish_chat_cancel_request("exec-123-456")
+
+            mock_publish.assert_called_once()
+            call_args = mock_publish.call_args
+            assert call_args[0][0] is mock_session
+            assert call_args[0][1] == EventChannel.CANCELLATIONS
+            event = call_args[0][2]
+            assert event.type == "chat.cancel_requested"
+            assert event.stage_execution_id == "exec-123-456"
+
+    @pytest.mark.asyncio
+    async def test_handles_publish_error(self):
+        """Test that it handles publish errors gracefully."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", side_effect=Exception("DB error")):
+            # Should not raise
+            await publish_chat_cancel_request("exec-123-456")
 

@@ -7,7 +7,9 @@ and history retrieval with real database and service interactions.
 
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
+from fastapi.testclient import TestClient
 
+from tarsy.main import app
 from tarsy.models.db_models import ChatUserMessage, AlertSession
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.services.chat_service import ChatService
@@ -371,4 +373,59 @@ class TestChatAPIIntegration:
         assert len(messages) == 3
         assert {msg.author for msg in messages} == set(users)
         assert all("Question from" in msg.content for msg in messages)
+
+
+@pytest.mark.integration
+class TestChatCancellationEndpoint:
+    """Integration tests for chat cancellation endpoint."""
+
+    @pytest.fixture
+    def client(self) -> TestClient:
+        """Create test client for FastAPI app."""
+        return TestClient(app)
+
+    @pytest.mark.integration
+    def test_cancel_chat_execution_returns_success(self, client: TestClient) -> None:
+        """Test that cancellation endpoint returns success response."""
+        with patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock):
+            response = client.post("/api/v1/chats/executions/test-exec-123/cancel")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "message" in data
+
+    @pytest.mark.integration
+    def test_cancel_chat_execution_publishes_event(self, client: TestClient) -> None:
+        """Test that cancellation endpoint publishes cancellation event."""
+        with patch("tarsy.services.events.event_helpers.publish_chat_cancel_request", new_callable=AsyncMock) as mock_publish:
+            response = client.post("/api/v1/chats/executions/exec-456/cancel")
+
+        assert response.status_code == 200
+        
+        # Verify cancellation request was published
+        mock_publish.assert_called_once_with("exec-456")
+
+    @pytest.mark.integration
+    def test_cancel_nonexistent_execution_succeeds(self, client: TestClient) -> None:
+        """Test that cancelling non-existent execution still succeeds."""
+        with patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock):
+            response = client.post("/api/v1/chats/executions/nonexistent-id/cancel")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+    @pytest.mark.integration
+    def test_cancel_endpoint_handles_publish_error(self, client: TestClient) -> None:
+        """Test that endpoint handles event publishing errors gracefully."""
+        with patch(
+            "tarsy.services.events.event_helpers.publish_chat_cancel_request",
+            side_effect=Exception("Event system error")
+        ):
+            response = client.post("/api/v1/chats/executions/test-exec/cancel")
+
+        assert response.status_code == 500
+        data = response.json()
+        assert "detail" in data
 
