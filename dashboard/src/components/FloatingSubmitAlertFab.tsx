@@ -1,5 +1,5 @@
 import { Fab, Tooltip } from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
+import { NotificationAdd } from '@mui/icons-material';
 
 /**
  * Reusable floating action button for quick alert submission access.
@@ -28,7 +28,7 @@ function FloatingSubmitAlertFab() {
           transition: 'all 0.2s ease-in-out',
         }}
       >
-        <SendIcon />
+        <NotificationAdd />
       </Fab>
     </Tooltip>
   );
