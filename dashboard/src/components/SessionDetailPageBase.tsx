@@ -221,14 +221,19 @@ function SessionDetailPageBase({
   }, [viewType]);
 
 
-  // Ref to hold latest session to avoid stale closures in WebSocket handlers
+  // Refs to hold latest values to avoid stale closures in WebSocket handlers
   const sessionRef = useRef<DetailedSession | null>(null);
+  const chatRef = useRef<any>(null);
   const lastUpdateRef = useRef<number>(0);
   const updateThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+  
+  useEffect(() => {
+    chatRef.current = chat;
+  }, [chat]);
 
   // Throttled update function to prevent UI overload
   const throttledUpdate = (updateFn: () => void, delay: number = 500) => {
@@ -320,8 +325,11 @@ function SessionDetailPageBase({
       }
       else if (eventType.startsWith('llm.') || eventType.startsWith('mcp.')) {
         // LLM/MCP interaction events (llm.interaction, mcp.tool_call, mcp.list_tools)
-        // Only update if session is active (in progress, pending, or canceling)
-        if (sessionRef.current?.status && isActiveSessionStatus(sessionRef.current.status)) {
+        // Update if session is active OR if there's an active chat on a terminal session
+        const hasActiveChat = chatRef.current !== null;
+        const isActive = sessionRef.current?.status && isActiveSessionStatus(sessionRef.current.status);
+        
+        if (isActive || hasActiveChat) {
           console.log('🔄 Activity update, using partial refresh');
           
           // Always update summary for real-time statistics (lightweight)
