@@ -7,7 +7,7 @@ import type { Chat } from '../../types';
 interface ChatPanelProps {
   chat: Chat | null;
   isAvailable: boolean;
-  onCreateChat: () => Promise<void>;
+  onCreateChat: () => Promise<Chat>;
   onSendMessage: (content: string) => Promise<void>;
   onCancelExecution?: () => Promise<void>;
   loading?: boolean;

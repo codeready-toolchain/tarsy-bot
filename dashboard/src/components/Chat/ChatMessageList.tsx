@@ -4,6 +4,7 @@ import ChatUserMessageCard from './ChatUserMessageCard';
 import ChatAssistantMessageCard from './ChatAssistantMessageCard';
 import TypingIndicator from '../TypingIndicator';
 import { websocketService } from '../../services/websocketService';
+import { apiClient } from '../../services/api';
 
 interface ChatMessageListProps {
   sessionId: string;
@@ -12,7 +13,7 @@ interface ChatMessageListProps {
 
 export default function ChatMessageList({ sessionId, chatId }: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const [messages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -21,9 +22,47 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
     const fetchMessages = async () => {
       try {
         setLoading(true);
-        // TODO: Fetch user messages and stage executions for this chat
-        // When backend API is ready, fetch and merge messages here
-        console.log('Chat messages will be fetched for:', { sessionId, chatId });
+        
+        // Fetch user messages and stage executions in parallel
+        const [userMessagesResponse, sessionDetail] = await Promise.all([
+          apiClient.getChatMessages(chatId),
+          apiClient.getSessionDetail(sessionId)
+        ]);
+        
+        // Extract user messages (type: 'user')
+        const userMessages = userMessagesResponse.messages.map((msg: any) => ({
+          type: 'user',
+          message_id: msg.message_id,
+          content: msg.content,
+          author: msg.author,
+          created_at_us: msg.created_at_us
+        }));
+        
+        // Extract stage executions for this chat (type: 'assistant')
+        const chatStageExecutions = sessionDetail.stages
+          .filter((stage: any) => stage.chat_id === chatId)
+          .map((stage: any) => ({
+            type: 'assistant',
+            execution_id: stage.execution_id,
+            stage_name: stage.stage_name,
+            status: stage.status,
+            started_at_us: stage.started_at_us,
+            completed_at_us: stage.completed_at_us,
+            stage_output: stage.stage_output,
+            error_message: stage.error_message,
+            llm_interactions: stage.llm_interactions || [],
+            mcp_communications: stage.mcp_communications || [],
+            chat_user_message: stage.chat_user_message || null
+          }));
+        
+        // Merge and sort by timestamp
+        const allMessages = [...userMessages, ...chatStageExecutions].sort((a, b) => {
+          const aTime = (a as any).created_at_us || (a as any).started_at_us || 0;
+          const bTime = (b as any).created_at_us || (b as any).started_at_us || 0;
+          return aTime - bTime;
+        });
+        
+        setMessages(allMessages);
       } catch (error) {
         console.error('Failed to fetch chat messages:', error);
       } finally {
@@ -34,7 +73,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
     fetchMessages();
   }, [sessionId, chatId]);
 
-  // Subscribe to stage events to show typing indicator during chat processing
+  // Subscribe to stage events and chat messages for real-time updates
   useEffect(() => {
     if (!sessionId || !chatId) return;
 
@@ -45,16 +84,87 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
       if (event.type === 'stage.started') {
         console.log('💬 Chat response started, showing typing indicator');
         setIsTyping(true);
+        
+        // If this stage has a user message, add it to messages immediately
+        if (event.chat_user_message_content) {
+          const userMessage = {
+            type: 'user',
+            message_id: event.chat_user_message_id || `temp-${Date.now()}`,
+            content: event.chat_user_message_content,
+            author: event.chat_user_message_author || 'Unknown',
+            created_at_us: event.timestamp_us || Date.now() * 1000
+          };
+          setMessages(prev => {
+            // Check if message already exists
+            const exists = prev.some(m => m.message_id === userMessage.message_id);
+            if (exists) return prev;
+            return [...prev, userMessage];
+          });
+        }
       } else if (event.type === 'stage.completed' || event.type === 'stage.failed') {
         console.log('💬 Chat response completed, hiding typing indicator');
         setIsTyping(false);
+        
+        // Add or update the assistant's response
+        const assistantMessage = {
+          type: 'assistant',
+          execution_id: event.stage_execution_id,
+          stage_name: event.stage_name,
+          status: event.status,
+          started_at_us: event.started_at_us,
+          completed_at_us: event.completed_at_us,
+          duration_ms: event.duration_ms,
+          error_message: event.error_message,
+          llm_interactions: [],
+          mcp_communications: [],
+          chat_user_message: event.chat_user_message_content ? {
+            message_id: event.chat_user_message_id,
+            content: event.chat_user_message_content,
+            author: event.chat_user_message_author,
+            created_at_us: event.timestamp_us
+          } : null
+        };
+        
+        setMessages(prev => {
+          const existingIndex = prev.findIndex(m => m.execution_id === assistantMessage.execution_id);
+          if (existingIndex >= 0) {
+            // Update existing message
+            const updated = [...prev];
+            updated[existingIndex] = assistantMessage;
+            return updated;
+          }
+          // Add new message
+          return [...prev, assistantMessage];
+        });
       }
     };
 
-    // Subscribe to session channel for stage events
+    const handleChatMessage = (event: any) => {
+      // Handle chat.user_message events
+      if (event.type === 'chat.user_message' && event.chat_id === chatId) {
+        const userMessage = {
+          type: 'user',
+          message_id: event.message_id,
+          content: event.content,
+          author: event.author,
+          created_at_us: event.timestamp_us
+        };
+        setMessages(prev => {
+          // Check if message already exists
+          const exists = prev.some(m => m.message_id === userMessage.message_id);
+          if (exists) return prev;
+          return [...prev, userMessage];
+        });
+      }
+    };
+
+    // Subscribe to session channel for stage and chat events
     const unsubscribe = websocketService.subscribeToChannel(
       `session:${sessionId}`,
-      handleStageEvent
+      (event: any) => {
+        handleStageEvent(event);
+        handleChatMessage(event);
+      }
     );
 
     return () => unsubscribe();

@@ -1233,7 +1233,7 @@ class TestHistoryRepository:
             completed_at_us=now_us() + 1000000,
             duration_ms=1000
         )
-        regular_stage_id = repository.create_stage_execution(regular_stage)
+        repository.create_stage_execution(regular_stage)
         
         # Create a chat response stage execution (with chat fields)
         chat_stage = StageExecution(
@@ -1249,7 +1249,7 @@ class TestHistoryRepository:
             chat_id="chat-abc-123",
             chat_user_message_id="msg-xyz-456"
         )
-        chat_stage_id = repository.create_stage_execution(chat_stage)
+        repository.create_stage_execution(chat_stage)
         
         # Get session details
         result = repository.get_session_details(sample_alert_session.session_id)
@@ -2201,3 +2201,320 @@ class TestFlexibleAlertDataPerformance:
         
         # Verify we covered all sessions across all pages
         assert len(total_sessions_seen) == 100, f"Should have seen all 100 unique sessions, but saw {len(total_sessions_seen)}"
+
+
+class TestHistoryRepositoryChatMessageCount:
+    """Test chat_message_count field in session responses."""
+
+    @pytest.fixture
+    def db_session(self, test_database_engine):
+        """Create a clean database session for each test."""
+        with Session(test_database_engine) as session:
+            yield session
+
+    @pytest.fixture
+    def repository(self, db_session):
+        """Create HistoryRepository instance with test database session."""
+        return HistoryRepository(db_session)
+
+    @pytest.mark.unit
+    def test_get_alert_sessions_includes_chat_message_count(self, repository):
+        """Test that get_alert_sessions includes chat_message_count for sessions with chats."""
+        from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.utils.timestamp import now_us
+        
+        # Create session
+        session = AlertSession(
+            session_id="session-with-chat",
+            alert_type="kubernetes",
+            agent_type="chain",
+            chain_id="k8s-chain",
+            status=AlertSessionStatus.COMPLETED.value,
+            alert_data={"test": "data"},
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 1000000
+        )
+        repository.create_alert_session(session)
+        
+        # Create chat for the session
+        chat = Chat(
+            chat_id="chat-123",
+            session_id="session-with-chat",
+            created_at_us=now_us(),
+            created_by="test-user",
+            conversation_history="[]",
+            chain_id="k8s-chain",
+            context_captured_at_us=now_us()
+        )
+        repository.session.add(chat)
+        repository.session.commit()
+        
+        # Create chat messages
+        for i in range(3):
+            msg = ChatUserMessage(
+                message_id=f"msg-{i}",
+                chat_id="chat-123",
+                content=f"Test message {i}",
+                author="test-user",
+                created_at_us=now_us() + (i * 1000)
+            )
+            repository.session.add(msg)
+        repository.session.commit()
+        
+        # Test get_alert_sessions
+        result = repository.get_alert_sessions(page=1, page_size=10)
+        
+        assert result is not None
+        assert len(result.sessions) == 1
+        session_overview = result.sessions[0]
+        assert session_overview.chat_message_count == 3
+
+    @pytest.mark.unit
+    def test_get_alert_sessions_none_for_sessions_without_chats(self, repository):
+        """Test that get_alert_sessions returns None chat_message_count for sessions without chats."""
+        from tarsy.models.db_models import AlertSession
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.utils.timestamp import now_us
+        
+        # Create session without chat
+        session = AlertSession(
+            session_id="session-no-chat",
+            alert_type="kubernetes",
+            agent_type="chain",
+            chain_id="k8s-chain",
+            status=AlertSessionStatus.COMPLETED.value,
+            alert_data={"test": "data"},
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 1000000
+        )
+        repository.create_alert_session(session)
+        
+        # Test get_alert_sessions
+        result = repository.get_alert_sessions(page=1, page_size=10)
+        
+        assert result is not None
+        assert len(result.sessions) == 1
+        session_overview = result.sessions[0]
+        assert session_overview.chat_message_count is None
+
+    @pytest.mark.unit
+    def test_get_alert_sessions_mixed_sessions_with_and_without_chats(self, repository):
+        """Test get_alert_sessions with multiple sessions, some with chats and some without."""
+        from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.utils.timestamp import now_us
+        
+        # Create first session with chat (5 messages)
+        session1 = AlertSession(
+            session_id="session-1",
+            alert_type="kubernetes",
+            agent_type="chain",
+            chain_id="k8s-chain",
+            status=AlertSessionStatus.COMPLETED.value,
+            alert_data={"test": "data1"},
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 1000000
+        )
+        repository.create_alert_session(session1)
+        
+        chat1 = Chat(
+            chat_id="chat-1",
+            session_id="session-1",
+            created_at_us=now_us(),
+            created_by="user1",
+            conversation_history="[]",
+            chain_id="k8s-chain",
+            context_captured_at_us=now_us()
+        )
+        repository.session.add(chat1)
+        
+        for i in range(5):
+            msg = ChatUserMessage(
+                message_id=f"msg-1-{i}",
+                chat_id="chat-1",
+                content=f"Message {i}",
+                author="user1",
+                created_at_us=now_us() + (i * 1000)
+            )
+            repository.session.add(msg)
+        
+        # Create second session without chat
+        session2 = AlertSession(
+            session_id="session-2",
+            alert_type="kubernetes",
+            agent_type="chain",
+            chain_id="k8s-chain",
+            status=AlertSessionStatus.COMPLETED.value,
+            alert_data={"test": "data2"},
+            started_at_us=now_us() + 2000000,
+            completed_at_us=now_us() + 3000000
+        )
+        repository.create_alert_session(session2)
+        
+        # Create third session with chat (2 messages)
+        session3 = AlertSession(
+            session_id="session-3",
+            alert_type="database",
+            agent_type="chain",
+            chain_id="db-chain",
+            status=AlertSessionStatus.COMPLETED.value,
+            alert_data={"test": "data3"},
+            started_at_us=now_us() + 4000000,
+            completed_at_us=now_us() + 5000000
+        )
+        repository.create_alert_session(session3)
+        
+        chat3 = Chat(
+            chat_id="chat-3",
+            session_id="session-3",
+            created_at_us=now_us(),
+            created_by="user2",
+            conversation_history="[]",
+            chain_id="db-chain",
+            context_captured_at_us=now_us()
+        )
+        repository.session.add(chat3)
+        
+        for i in range(2):
+            msg = ChatUserMessage(
+                message_id=f"msg-3-{i}",
+                chat_id="chat-3",
+                content=f"Message {i}",
+                author="user2",
+                created_at_us=now_us() + (i * 1000)
+            )
+            repository.session.add(msg)
+        
+        repository.session.commit()
+        
+        # Test get_alert_sessions
+        result = repository.get_alert_sessions(page=1, page_size=10)
+        
+        assert result is not None
+        assert len(result.sessions) == 3
+        
+        # Find each session and verify chat_message_count
+        sessions_by_id = {s.session_id: s for s in result.sessions}
+        
+        assert sessions_by_id["session-1"].chat_message_count == 5
+        assert sessions_by_id["session-2"].chat_message_count is None
+        assert sessions_by_id["session-3"].chat_message_count == 2
+
+    @pytest.mark.unit
+    def test_get_alert_sessions_chat_with_zero_messages(self, repository):
+        """Test that sessions with chats but no messages return 0 for chat_message_count."""
+        from tarsy.models.db_models import AlertSession, Chat
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.utils.timestamp import now_us
+        
+        # Create session
+        session = AlertSession(
+            session_id="session-empty-chat",
+            alert_type="kubernetes",
+            agent_type="chain",
+            chain_id="k8s-chain",
+            status=AlertSessionStatus.COMPLETED.value,
+            alert_data={"test": "data"},
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 1000000
+        )
+        repository.create_alert_session(session)
+        
+        # Create chat without messages
+        chat = Chat(
+            chat_id="chat-empty",
+            session_id="session-empty-chat",
+            created_at_us=now_us(),
+            created_by="test-user",
+            conversation_history="[]",
+            chain_id="k8s-chain",
+            context_captured_at_us=now_us()
+        )
+        repository.session.add(chat)
+        repository.session.commit()
+        
+        # Test get_alert_sessions
+        result = repository.get_alert_sessions(page=1, page_size=10)
+        
+        assert result is not None
+        assert len(result.sessions) == 1
+        # Chat exists but has 0 messages - should not be included in count
+        # (implementation only includes sessions with count > 0)
+        assert result.sessions[0].chat_message_count is None
+
+    @pytest.mark.unit
+    def test_get_session_overview_includes_chat_message_count(self, repository):
+        """Test that get_session_overview includes chat_message_count for sessions with chats."""
+        from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.utils.timestamp import now_us
+        
+        # Create session
+        session = AlertSession(
+            session_id="session-overview-test",
+            alert_type="kubernetes",
+            agent_type="chain",
+            chain_id="k8s-chain",
+            status=AlertSessionStatus.COMPLETED.value,
+            alert_data={"test": "data"},
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 1000000
+        )
+        repository.create_alert_session(session)
+        
+        # Create chat
+        chat = Chat(
+            chat_id="chat-overview",
+            session_id="session-overview-test",
+            created_at_us=now_us(),
+            created_by="test-user",
+            conversation_history="[]",
+            chain_id="k8s-chain",
+            context_captured_at_us=now_us()
+        )
+        repository.session.add(chat)
+        
+        # Create chat messages
+        for i in range(7):
+            msg = ChatUserMessage(
+                message_id=f"msg-overview-{i}",
+                chat_id="chat-overview",
+                content=f"Test message {i}",
+                author="test-user",
+                created_at_us=now_us() + (i * 1000)
+            )
+            repository.session.add(msg)
+        repository.session.commit()
+        
+        # Test get_session_overview
+        overview = repository.get_session_overview("session-overview-test")
+        
+        assert overview is not None
+        assert overview.chat_message_count == 7
+
+    @pytest.mark.unit
+    def test_get_session_overview_none_for_session_without_chat(self, repository):
+        """Test that get_session_overview returns None chat_message_count for sessions without chats."""
+        from tarsy.models.db_models import AlertSession
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.utils.timestamp import now_us
+        
+        # Create session without chat
+        session = AlertSession(
+            session_id="session-no-chat-overview",
+            alert_type="kubernetes",
+            agent_type="chain",
+            chain_id="k8s-chain",
+            status=AlertSessionStatus.COMPLETED.value,
+            alert_data={"test": "data"},
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 1000000
+        )
+        repository.create_alert_session(session)
+        
+        # Test get_session_overview
+        overview = repository.get_session_overview("session-no-chat-overview")
+        
+        assert overview is not None
+        assert overview.chat_message_count is None

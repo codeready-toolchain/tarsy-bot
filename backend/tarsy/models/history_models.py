@@ -196,6 +196,8 @@ class SessionOverview(BaseModel):
     # MCP configuration override
     mcp_selection: Optional[MCPSelectionConfig] = None
     
+    chat_message_count: Optional[int] = None  # Number of user messages in follow-up chat (if chat exists)
+    
     # Calculated properties
     @computed_field
     @property

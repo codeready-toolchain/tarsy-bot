@@ -906,31 +906,13 @@ async def process_chat_message_background(
         # User-requested chat cancellation
         logger.info(f"Chat execution {stage_execution_id} cancelled by user")
         
-        # Update stage execution status to cancelled
-        from tarsy.services.history_service import get_history_service
-        from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
-        from tarsy.hooks.hook_context import stage_execution_context
-        
-        history_service = get_history_service()
-        if history_service:
-            try:
-                stage_exec = await history_service.get_stage_execution(stage_execution_id)
-                if stage_exec:
-                    logger.info(f"Retrieved stage execution for cancellation: {stage_execution_id}, chat_id={stage_exec.chat_id}, session_id={stage_exec.session_id}")
-                    stage_exec.status = StageStatus.FAILED.value
-                    stage_exec.error_message = "Cancelled by user"
-                    stage_exec.completed_at_us = now_us()
-                    
-                    # Trigger stage execution hooks to update DB and publish events
-                    logger.info(f"Triggering stage_execution_context for cancelled execution {stage_execution_id}")
-                    async with stage_execution_context(stage_exec.session_id, stage_exec):
-                        pass
-                    logger.info(f"Updated stage execution {stage_execution_id} as cancelled (status={stage_exec.status}, chat_id={stage_exec.chat_id})")
-                else:
-                    logger.warning(f"Stage execution {stage_execution_id} not found in database for cancellation")
-            except Exception as e:
-                logger.warning(f"Failed to update cancelled chat execution: {e}", exc_info=True)
+        # Update stage execution status to cancelled using service-layer updater
+        # This properly persists the cancelled state and publishes events
+        try:
+            await chat_service._update_stage_execution_failed(stage_execution_id, "Cancelled by user")
+            logger.info(f"Updated stage execution {stage_execution_id} as cancelled")
+        except Exception as e:
+            logger.warning(f"Failed to update cancelled chat execution: {e}", exc_info=True)
         
         # Clean up from active_chat_tasks
         assert active_tasks_lock is not None, "active_tasks_lock not initialized"

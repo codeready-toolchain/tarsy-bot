@@ -27,6 +27,8 @@ export interface Session {
   session_input_tokens: number | null;
   session_output_tokens: number | null;  
   session_total_tokens: number | null;
+  
+  chat_message_count?: number; // Number of user messages in follow-up chat (if chat exists)
 }
 
 // Phase 5: Interaction summary for stages

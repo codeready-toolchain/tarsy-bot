@@ -9,7 +9,7 @@ import asyncio
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request, Depends
+from fastapi import APIRouter, Body, HTTPException, Path, Query, Request, Depends
 
 from tarsy.models.api_models import (
     ChatAvailabilityResponse,
@@ -263,7 +263,7 @@ async def get_chat(
 async def send_message(
     request: Request,
     chat_id: str = Path(..., description="Chat identifier"),
-    message_request: ChatMessageRequest = None,
+    message_request: ChatMessageRequest = Body(...),
     chat_service: Annotated[ChatService, Depends(get_chat_service)] = None,
 ) -> ChatMessageResponse:
     """Send message to chat - returns immediately, processing in background."""

@@ -1039,6 +1039,34 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         
         print(f"    ✅ Chat message history retrieved (2 messages)")
         
+        # Step 5: Verify chat_message_count appears in sessions list
+        print("  💬 Testing chat_message_count in sessions list...")
+        
+        sessions_response = test_client.get("/api/v1/history/sessions?page=1&page_size=50")
+        
+        assert sessions_response.status_code == 200, (
+            f"Get sessions failed with status {sessions_response.status_code}: "
+            f"{sessions_response.text}"
+        )
+        
+        sessions_data = sessions_response.json()
+        sessions = sessions_data.get("sessions", [])
+        
+        # Find our session in the list
+        our_session = None
+        for session in sessions:
+            if session.get("session_id") == session_id:
+                our_session = session
+                break
+        
+        assert our_session is not None, f"Session {session_id} not found in sessions list"
+        assert our_session.get("chat_message_count") == 2, (
+            f"Expected chat_message_count=2 for session with 2 messages, "
+            f"got {our_session.get('chat_message_count')}"
+        )
+        
+        print(f"    ✅ Sessions list includes chat_message_count=2")
+        
         print("  ✅ Chat functionality test completed (2 messages, all endpoints tested)")
     
     async def _send_and_wait_for_chat_message(

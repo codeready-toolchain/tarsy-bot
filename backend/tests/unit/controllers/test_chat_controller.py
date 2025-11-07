@@ -274,6 +274,18 @@ class TestChatController:
         assert len(detail) > 0
         assert detail[0]["type"] == "string_too_short"
 
+    def test_send_message_validation_missing_body(self, client):
+        """Test message validation rejects missing request body."""
+        response = client.post(
+            "/api/v1/chats/test-chat-123/messages",
+            json=None,  # No JSON body
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert isinstance(detail, list)
+        # FastAPI should return a validation error for missing required body
+
     def test_send_message_validation_whitespace_only(self, client):
         """Test message validation rejects whitespace-only content."""
         response = client.post(

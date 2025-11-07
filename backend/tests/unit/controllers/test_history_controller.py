@@ -1335,7 +1335,8 @@ class TestHistoryControllerResponseFormat:
             # Author field for user tracking
             "author",
             # MCP selection field for re-submit functionality
-            "mcp_selection"
+            "mcp_selection",
+            "chat_message_count"
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)

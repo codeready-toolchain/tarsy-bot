@@ -458,6 +458,14 @@ function ConversationTimeline({
                    dbItem.content.trim() === streamItem.content.trim();
           }
           
+          if (streamItem.type === 'user_message') {
+            return (
+              !!dbItem.messageId &&
+              !!streamItem.messageId &&
+              dbItem.messageId === streamItem.messageId
+            );
+          }
+          
           // Match by mcp_event_id for tool_call/summarization
           return dbItem.mcp_event_id === streamItem.mcp_event_id;
         });

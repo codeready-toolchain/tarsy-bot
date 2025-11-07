@@ -447,6 +447,38 @@ class HistoryRepository:
                     } for result in token_results
                 }
                 
+                # Count chat user messages for sessions with chats
+                chat_message_counts = {}
+                try:
+                    from tarsy.models.db_models import Chat, ChatUserMessage
+                    
+                    # First get chat IDs for these sessions
+                    chat_query = select(Chat.session_id, Chat.chat_id).where(
+                        Chat.session_id.in_(session_ids)
+                    )
+                    chat_results = self.session.exec(chat_query).all()
+                    chat_ids_by_session = {result.session_id: result.chat_id for result in chat_results}
+                    
+                    if chat_ids_by_session:
+                        # Count messages for each chat
+                        message_count_query = select(
+                            ChatUserMessage.chat_id,
+                            func.count(ChatUserMessage.message_id).label('count')
+                        ).where(
+                            ChatUserMessage.chat_id.in_(list(chat_ids_by_session.values()))
+                        ).group_by(ChatUserMessage.chat_id)
+                        message_results = self.session.exec(message_count_query).all()
+                        message_counts_by_chat = {result.chat_id: result.count for result in message_results}
+                        
+                        # Map back to session IDs
+                        for session_id, chat_id in chat_ids_by_session.items():
+                            count = message_counts_by_chat.get(chat_id, 0)
+                            if count > 0:
+                                chat_message_counts[session_id] = count
+                except Exception as e:
+                    # Don't fail entire query if chat counting fails
+                    logger.warning(f"Failed to count chat messages for sessions: {e}")
+                
                 # Combine counts for each session
                 for session_id in session_ids:
                     tokens = token_sums.get(session_id, {})
@@ -455,7 +487,8 @@ class HistoryRepository:
                         'mcp_communications': mcp_counts.get(session_id, 0),
                         'input_tokens': tokens.get('input_tokens'),
                         'output_tokens': tokens.get('output_tokens'),
-                        'total_tokens': tokens.get('total_tokens')
+                        'total_tokens': tokens.get('total_tokens'),
+                        'chat_message_count': chat_message_counts.get(session_id)
                     }
             
             session_overviews = []
@@ -495,6 +528,8 @@ class HistoryRepository:
                     
                     # MCP configuration override
                     mcp_selection=alert_session.mcp_selection,
+                    
+                    chat_message_count=session_counts.get('chat_message_count'),
                     
                     # Optional fields that may need calculation elsewhere (defaults from SessionOverview)
                     total_stages=None,
@@ -831,6 +866,18 @@ class HistoryRepository:
             completed_stages = len([stage for stage in stage_executions_db if stage.status == StageStatus.COMPLETED.value])
             failed_stages = len([stage for stage in stage_executions_db if stage.status == StageStatus.FAILED.value])
             
+            # Get chat message count if a chat exists
+            chat_message_count = None
+            try:
+                from tarsy.models.db_models import Chat
+                chat_stmt = select(Chat).where(Chat.session_id == session_id)
+                chat = self.session.exec(chat_stmt).first()
+                if chat:
+                    chat_message_count = self.get_chat_user_message_count(chat.chat_id)
+            except Exception as e:
+                # Don't fail the query if chat counting fails
+                logger.warning(f"Failed to get chat message count for session {session_id}: {e}")
+            
             # Create SessionOverview (lighter weight model for summaries)
             return SessionOverview(
                 # Core identification
@@ -865,7 +912,9 @@ class HistoryRepository:
                 current_stage_index=session.current_stage_index,
                 
                 # MCP configuration override
-                mcp_selection=session.mcp_selection
+                mcp_selection=session.mcp_selection,
+                
+                chat_message_count=chat_message_count
             )
             
         except Exception as e:
@@ -1066,7 +1115,13 @@ class HistoryRepository:
             statement = select(func.count(ChatUserMessage.message_id)).where(
                 ChatUserMessage.chat_id == chat_id
             )
-            return self.session.exec(statement).one()
+            result = self.session.exec(statement).one()
+            # When selecting a single scalar value like func.count(), .one() returns a tuple
+            # Extract the first element and cast to int
+            if isinstance(result, tuple):
+                return int(result[0])
+            # In some cases, the result is already a scalar
+            return int(result)
         except Exception as e:
             logger.error(f"Failed to count messages for chat {chat_id}: {str(e)}")
             return 0

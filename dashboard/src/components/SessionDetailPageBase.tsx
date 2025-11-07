@@ -658,9 +658,7 @@ function SessionDetailPageBase({
                 <ChatPanel
                   chat={chat}
                   isAvailable={chatAvailable}
-                  onCreateChat={async () => {
-                    await createChat();
-                  }}
+                  onCreateChat={createChat}
                   onSendMessage={async (content) => {
                     await sendMessage(content, user?.email || 'anonymous');
                   }}

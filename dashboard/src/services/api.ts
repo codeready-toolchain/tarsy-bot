@@ -619,13 +619,13 @@ class APIClient {
     chatId: string,
     limit?: number,
     offset?: number
-  ): Promise<ChatUserMessage[]> {
+  ): Promise<{ messages: any[]; total_count: number; chat_id: string }> {
     try {
       const params = new URLSearchParams();
       if (limit) params.append('limit', limit.toString());
       if (offset) params.append('offset', offset.toString());
       
-      const response = await this.client.get<ChatUserMessage[]>(
+      const response = await this.client.get<{ messages: any[]; total_count: number; chat_id: string }>(
         `/api/v1/chats/${chatId}/messages?${params.toString()}`
       );
       return response.data;
