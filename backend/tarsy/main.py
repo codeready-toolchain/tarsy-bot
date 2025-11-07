@@ -842,7 +842,8 @@ async def process_chat_message_background(
     chat_id: str,
     user_question: str,
     author: str,
-    stage_execution_id: str
+    stage_execution_id: str,
+    message_id: str
 ) -> None:
     """
     Background task wrapper for chat message processing.
@@ -855,13 +856,13 @@ async def process_chat_message_background(
         from tarsy.services.chat_service import get_chat_service
         chat_service = get_chat_service()
         
-        logger.info(f"Starting background processing for chat message {stage_execution_id}")
+        logger.info(f"Starting background processing for chat message {message_id} (execution: {stage_execution_id})")
         
         # Process with timeout to prevent hanging (matches alert pattern)
         try:
             # Use same timeout as alert processing
             timeout_seconds = settings.alert_processing_timeout
-            logger.info(f"Processing chat message {stage_execution_id} with {timeout_seconds}s timeout")
+            logger.info(f"Processing chat message {message_id} with {timeout_seconds}s timeout")
             
             # Create the actual processing task
             task = asyncio.create_task(
@@ -869,7 +870,8 @@ async def process_chat_message_background(
                     chat_id=chat_id,
                     user_question=user_question,
                     author=author,
-                    stage_execution_id=stage_execution_id  # Pass the ID for consistent tracking
+                    stage_execution_id=stage_execution_id,  # Pass the ID for consistent tracking
+                    message_id=message_id  # Pass the database message ID
                 )
             )
             

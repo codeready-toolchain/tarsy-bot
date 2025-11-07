@@ -192,12 +192,66 @@ class ChatService:
         
         return asyncio.create_task(record_interactions())
     
-    async def process_chat_message(
+    async def create_user_message_and_start_processing(
         self,
         chat_id: str,
         user_question: str,
         author: str,
         stage_execution_id: str
+    ) -> tuple[str, str]:
+        """
+        Create user message record and return IDs for immediate response.
+        
+        This method creates the ChatUserMessage synchronously and returns both
+        the database message_id and stage_execution_id for the controller to
+        include in the immediate response. The actual processing is then started
+        as a background task.
+        
+        Args:
+            chat_id: Chat identifier
+            user_question: User's follow-up question
+            author: User sending the message
+            stage_execution_id: Pre-generated stage execution ID (for consistent tracking)
+            
+        Returns:
+            Tuple of (message_id, stage_execution_id) for immediate response
+            
+        Raises:
+            ValueError: If chat not found or validation fails
+        """
+        # 1. Get chat and validate (via history_service)
+        chat = await self.history_service.get_chat_by_id(chat_id)
+        if not chat:
+            raise ValueError(f"Chat {chat_id} not found")
+        
+        # 2. Create user message record (via history_service)
+        user_msg = ChatUserMessage(
+            chat_id=chat_id,
+            content=user_question,
+            author=author
+        )
+        await self.history_service.create_chat_user_message(user_msg)
+        logger.info(f"Created chat message {user_msg.message_id} for chat {chat_id}")
+        
+        # Publish user message event
+        from tarsy.services.events.event_helpers import publish_chat_user_message
+        await publish_chat_user_message(
+            session_id=chat.session_id,
+            chat_id=chat_id,
+            message_id=user_msg.message_id,
+            content=user_question,
+            author=author
+        )
+        
+        return (user_msg.message_id, stage_execution_id)
+    
+    async def process_chat_message(
+        self,
+        chat_id: str,
+        user_question: str,
+        author: str,
+        stage_execution_id: str,
+        message_id: str
     ) -> str:
         """
         Process a user chat message and generate assistant response.
@@ -219,6 +273,7 @@ class ChatService:
             user_question: User's follow-up question
             author: User sending the message
             stage_execution_id: Pre-generated stage execution ID (for consistent tracking)
+            message_id: Database message ID from ChatUserMessage record
             
         Returns:
             Stage execution ID for this chat response
@@ -233,29 +288,13 @@ class ChatService:
         interaction_recording_task = None
         
         try:
-            # 1. Get chat and validate (via history_service)
+            # 1. Get chat (already validated in create_user_message_and_start_processing)
             chat = await self.history_service.get_chat_by_id(chat_id)
             if not chat:
                 raise ValueError(f"Chat {chat_id} not found")
             
-            # 2. Create user message record (via history_service)
-            user_msg = ChatUserMessage(
-                chat_id=chat_id,
-                content=user_question,
-                author=author
-            )
-            await self.history_service.create_chat_user_message(user_msg)
-            logger.info(f"Created chat message {user_msg.message_id} for chat {chat_id}")
-            
-            # Publish user message event
-            from tarsy.services.events.event_helpers import publish_chat_user_message
-            await publish_chat_user_message(
-                session_id=chat.session_id,
-                chat_id=chat_id,
-                message_id=user_msg.message_id,
-                content=user_question,
-                author=author
-            )
+            # 2. User message already created in create_user_message_and_start_processing
+            # Just use the provided message_id
             
             # 3. Build context (initial context OR cumulative from last execution)
             message_context = await self._build_message_context(chat, user_question)
@@ -266,13 +305,13 @@ class ChatService:
             stage_execution = StageExecution(
                 execution_id=execution_id,  # Use pre-generated ID from controller
                 session_id=chat.session_id,
-                stage_id=f"chat-response-{user_msg.message_id}",
+                stage_id=f"chat-response-{message_id}",
                 stage_index=0,  # Chat messages don't have meaningful stage index
                 stage_name="Chat Response",
                 agent="ChatAgent",
                 status=StageStatus.PENDING.value,
                 chat_id=chat_id,
-                chat_user_message_id=user_msg.message_id
+                chat_user_message_id=message_id
             )
             
             # Trigger stage execution hooks (creates DB record, publishes events)

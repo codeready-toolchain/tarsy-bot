@@ -240,7 +240,11 @@ class TestChatController:
     def test_send_message_success(self, mock_get_chat, client, mock_chat_service, sample_chat):
         """Test successful message send."""
         mock_get_chat.return_value = sample_chat
-        mock_chat_service.send_message = AsyncMock(return_value="stage-exec-789")
+        # Mock the new create_user_message_and_start_processing method
+        # Returns tuple of (message_id, stage_execution_id)
+        mock_chat_service.create_user_message_and_start_processing = AsyncMock(
+            return_value=("msg-abc-123", "stage-exec-789")
+        )
 
         # Patch the lock and tasks dict
         with patch("tarsy.main.active_tasks_lock", asyncio.Lock()):
@@ -256,9 +260,10 @@ class TestChatController:
         assert data["chat_id"] == "test-chat-123"
         assert data["content"] == "Test question about the alert"
         assert data["author"] == "test-user"
-        # Stage execution ID is generated dynamically (UUID), so just check it exists
-        assert "stage_execution_id" in data
-        assert data["stage_execution_id"] is not None
+        # Verify the response contains the real database message_id
+        assert data["message_id"] == "msg-abc-123"
+        # Stage execution ID should also be present for async tracking
+        assert data["stage_execution_id"] == "stage-exec-789"
         mock_get_chat.assert_awaited_once_with("test-chat-123")
 
     def test_send_message_validation_empty_content(self, client):
@@ -305,10 +310,12 @@ class TestChatController:
 
         assert response.status_code == 422
 
-    @patch("tarsy.services.history_service.HistoryService.get_chat_by_id", new_callable=AsyncMock)
-    def test_send_message_chat_not_found(self, mock_get_chat, client):
+    def test_send_message_chat_not_found(self, client, mock_chat_service):
         """Test send message when chat doesn't exist."""
-        mock_get_chat.return_value = None
+        # Mock create_user_message_and_start_processing to raise ValueError for chat not found
+        mock_chat_service.create_user_message_and_start_processing = AsyncMock(
+            side_effect=ValueError("Chat test-chat-123 not found")
+        )
 
         response = client.post(
             "/api/v1/chats/test-chat-123/messages",
@@ -317,7 +324,6 @@ class TestChatController:
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
-        mock_get_chat.assert_awaited_once_with("test-chat-123")
 
     @patch("tarsy.main.shutdown_in_progress", True)
     def test_send_message_during_shutdown(self, client):

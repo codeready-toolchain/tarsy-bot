@@ -180,24 +180,37 @@ class TestChatAPIIntegration:
             created_by="test-user@example.com"
         )
         
-        # Send message
+        # Create user message and get IDs
         import uuid
         stage_execution_id = str(uuid.uuid4())
+        message_id, returned_stage_id = await chat_service.create_user_message_and_start_processing(
+            chat_id=chat.chat_id,
+            user_question="What caused the issue?",
+            author="test-user@example.com",
+            stage_execution_id=stage_execution_id
+        )
+        
+        # Verify IDs returned
+        assert message_id is not None
+        assert returned_stage_id == stage_execution_id
+        
+        # Send message for processing
         with patch("tarsy.services.chat_service.stage_execution_context"):
             returned_id = await chat_service.process_chat_message(
                 chat_id=chat.chat_id,
                 user_question="What caused the issue?",
                 author="test-user@example.com",
-                stage_execution_id=stage_execution_id
+                stage_execution_id=stage_execution_id,
+                message_id=message_id
             )
         
         # Verify stage execution was created
-        assert stage_execution_id is not None
         assert returned_id == stage_execution_id
         
-        # Verify user message was created
+        # Verify user message was created with the correct message_id
         messages = await history_service.get_chat_user_messages(chat.chat_id, limit=10, offset=0)
         assert len(messages) == 1
+        assert messages[0].message_id == message_id
         assert messages[0].content == "What caused the issue?"
         assert messages[0].author == "test-user@example.com"
 

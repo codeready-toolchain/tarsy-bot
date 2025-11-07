@@ -289,7 +289,16 @@ async def send_message(
         import uuid
         stage_execution_id = str(uuid.uuid4())
 
-        # Get chat and session_id for response
+        # Create user message synchronously and get the real message_id
+        # This ensures the POST response contains the actual database ID
+        message_id, stage_execution_id = await chat_service.create_user_message_and_start_processing(
+            chat_id=chat_id,
+            user_question=message_request.content,
+            author=author,
+            stage_execution_id=stage_execution_id
+        )
+
+        # Get chat for session_id (needed for response metadata)
         from tarsy.services.history_service import get_history_service
         history_service = get_history_service()
         chat = await history_service.get_chat_by_id(chat_id)
@@ -299,9 +308,9 @@ async def send_message(
         # Start background processing (matches alert pattern exactly)
         process_callback = request.app.state.process_chat_message_callback
 
-        # Create background task
+        # Create background task with both message_id and stage_execution_id
         task = asyncio.create_task(
-            process_callback(chat_id, message_request.content, author, stage_execution_id)
+            process_callback(chat_id, message_request.content, author, stage_execution_id, message_id)
         )
 
         # Track task for graceful shutdown (matches alert pattern)
@@ -309,16 +318,16 @@ async def send_message(
         async with active_tasks_lock:
             active_chat_tasks[stage_execution_id] = task
 
-        logger.info(f"Chat message submitted with stage_execution_id: {stage_execution_id}")
+        logger.info(f"Chat message {message_id} submitted with stage_execution_id: {stage_execution_id}")
 
-        # Return immediately (don't await processing)
+        # Return immediately with the REAL database message_id
         return ChatMessageResponse(
-            message_id=stage_execution_id,  # Use execution_id as message tracking ID
+            message_id=message_id,  # Real database ID from ChatUserMessage
             chat_id=chat_id,
             content=message_request.content,
             author=author,
             created_at_us=int(time.time() * 1_000_000),
-            stage_execution_id=stage_execution_id,
+            stage_execution_id=stage_execution_id,  # For async tracking
         )
 
     except HTTPException:

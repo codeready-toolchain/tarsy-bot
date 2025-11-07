@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
 import ChatUserMessageCard from './ChatUserMessageCard';
 import ChatAssistantMessageCard from './ChatAssistantMessageCard';
@@ -17,12 +17,14 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
   const [isTyping, setIsTyping] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Fetch chat messages on mount
-  useEffect(() => {
-    const fetchMessages = async () => {
-      try {
+  // Fetch chat messages - memoized so it can be called programmatically
+  const fetchMessages = useCallback(
+    async (showSpinner = true) => {
+      if (showSpinner) {
         setLoading(true);
-        
+      }
+
+      try {
         // Fetch user messages and stage executions in parallel
         const [userMessagesResponse, sessionDetail] = await Promise.all([
           apiClient.getChatMessages(chatId),
@@ -66,12 +68,18 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
       } catch (error) {
         console.error('Failed to fetch chat messages:', error);
       } finally {
-        setLoading(false);
+        if (showSpinner) {
+          setLoading(false);
+        }
       }
-    };
+    },
+    [chatId, sessionId]
+  );
 
-    fetchMessages();
-  }, [sessionId, chatId]);
+  // Fetch chat messages on mount
+  useEffect(() => {
+    void fetchMessages();
+  }, [fetchMessages]);
 
   // Subscribe to stage events and chat messages for real-time updates
   useEffect(() => {
@@ -136,6 +144,9 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
           // Add new message
           return [...prev, assistantMessage];
         });
+
+        // Hydrate the assistant response with persisted interaction data.
+        void fetchMessages(false);
       }
     };
 
@@ -168,7 +179,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
     );
 
     return () => unsubscribe();
-  }, [sessionId, chatId]);
+  }, [sessionId, chatId, fetchMessages]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {

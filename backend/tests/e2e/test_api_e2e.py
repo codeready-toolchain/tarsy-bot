@@ -10,6 +10,7 @@ Architecture:
 """
 
 import asyncio
+import logging
 import os
 import re
 from unittest.mock import AsyncMock, Mock, patch
@@ -32,6 +33,8 @@ from .expected_conversations import (
 )
 
 from .conftest import create_mock_stream
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_content(content: str) -> str:
@@ -97,50 +100,6 @@ def assert_conversation_messages(
         assert (
             expected_content == actual_content
         ), f"Content mismatch in message {i}: expected length {len(expected_content)}, got {len(actual_content)}"
-
-
-def assert_chat_conversation_messages(
-    expected_conversation: dict, actual_messages: list, n: int
-):
-    """
-    Validate chat conversation messages.
-    
-    Args:
-        expected_conversation: Dictionary with 'messages' key containing expected message list
-        actual_messages: List of actual messages from the LLM interaction
-        n: Number of messages to compare (a count)
-    """
-    expected_messages = expected_conversation.get("messages", [])
-    assert (
-        len(actual_messages) == n
-    ), f"Actual messages count mismatch: expected {n}, got {len(actual_messages)}"
-
-    # Extract first N messages
-    first_n_expected = expected_messages[:n]
-
-    # Compare each message
-    for i in range(len(first_n_expected)):
-        assert (
-            i < len(actual_messages)
-        ), f"Missing actual message: Expected {len(first_n_expected)} messages, got {len(actual_messages)}"
-
-        expected_msg = first_n_expected[i]
-        actual_msg = actual_messages[i]
-
-        # Compare role
-        expected_role = expected_msg.get("role", "")
-        actual_role = actual_msg.get("role", "")
-        assert (
-            expected_role == actual_role
-        ), f"Message {i} role mismatch: expected {expected_role}, got {actual_role}"
-
-        # Normalize content for comparison
-        expected_content = normalize_content(expected_msg.get("content", ""))
-        actual_content = normalize_content(actual_msg.get("content", ""))
-        
-        assert (
-            expected_content == actual_content
-        ), f"Message {i} content mismatch: expected length {len(expected_content)}, got {len(actual_content)}"
 
 
 @pytest.mark.asyncio
@@ -866,15 +825,16 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             actual_stage_total_tokens == expected_total_tokens
         ), f"Stage '{stage_name}' total_tokens total mismatch: expected {expected_total_tokens}, got {actual_stage_total_tokens}"
 
-        print(
-            f"    ✅ Stage '{stage_name}': Complete interaction flow verified ({len(llm_interactions)} LLM, {len(mcp_interactions)} MCP)"
+        logger.info(
+            "Stage '%s': Complete interaction flow verified (%d LLM, %d MCP)",
+            stage_name, len(llm_interactions), len(mcp_interactions)
         )
 
     async def _test_chat_functionality(self, test_client, session_id: str):
         """Test chat functionality by creating a chat and sending multiple messages."""
-        
+
         # Step 0: Check chat availability endpoint
-        print("  💬 Testing chat availability check...")
+        logger.info("Testing chat availability check...")
         
         availability_response = test_client.get(
             f"/api/v1/sessions/{session_id}/chat-available"
@@ -892,11 +852,11 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         assert availability_data.get("chat_id") is None, (
             "Chat ID should be None before chat is created"
         )
-        
-        print("    ✅ Chat availability verified (available=True, no existing chat)")
-        
+
+        logger.info("Chat availability verified (available=True, no existing chat)")
+
         # Step 1: Create chat for the session
-        print("  💬 Testing chat creation...")
+        logger.info("Testing chat creation...")
         
         create_chat_response = test_client.post(
             f"/api/v1/sessions/{session_id}/chat",
@@ -918,10 +878,10 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             f"got '{chat_data.get('created_by')}'"
         )
         
-        print(f"    ✅ Chat created successfully: {chat_id}")
-        
+        logger.info("Chat created successfully: %s", chat_id)
+
         # Step 1b: Verify chat availability now returns existing chat_id
-        print("  💬 Re-checking chat availability after creation...")
+        logger.info("Re-checking chat availability after creation...")
         
         availability_response2 = test_client.get(
             f"/api/v1/sessions/{session_id}/chat-available"
@@ -940,10 +900,10 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             f"got {availability_data2.get('chat_id')}"
         )
         
-        print(f"    ✅ Chat availability updated (available=True, chat_id={chat_id})")
-        
+        logger.info("Chat availability updated (available=True, chat_id=%s)", chat_id)
+
         # Step 1c: Test GET /api/v1/chats/{chat_id} endpoint
-        print("  💬 Testing get chat details endpoint...")
+        logger.info("Testing get chat details endpoint...")
         
         get_chat_response = test_client.get(f"/api/v1/chats/{chat_id}")
         
@@ -956,14 +916,14 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         assert get_chat_data.get("chat_id") == chat_id, "Chat ID mismatch"
         assert get_chat_data.get("session_id") == session_id, "Session ID mismatch"
         assert get_chat_data.get("message_count") == 0, "Initial message count should be 0"
-        
-        print(f"    ✅ Chat details retrieved (message_count=0)")
-        
+
+        logger.info("Chat details retrieved (message_count=0)")
+
         # Track verified chat stages to avoid re-checking them
         verified_chat_stage_ids = set()
-        
+
         # Step 2: Send first chat message and verify response
-        print("  💬 Sending first chat message...")
+        logger.info("Sending first chat message...")
         
         message_1_stage = await self._send_and_wait_for_chat_message(
             test_client=test_client,
@@ -974,17 +934,17 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             verified_stage_ids=verified_chat_stage_ids
         )
         
-        print("  🔍 Verifying first chat response...")
+        logger.info("Verifying first chat response...")
         await self._verify_chat_response(
             chat_stage=message_1_stage,
             message_key='message_1',
             expected_conversation=EXPECTED_CHAT_MESSAGE_1_CONVERSATION
         )
         verified_chat_stage_ids.add(message_1_stage.get("stage_id"))
-        print("  ✅ First chat response verified")
-        
+        logger.info("First chat response verified")
+
         # Step 3: Send second chat message (follow-up) and verify response
-        print("  💬 Sending second chat message (follow-up)...")
+        logger.info("Sending second chat message (follow-up)...")
         
         message_2_stage = await self._send_and_wait_for_chat_message(
             test_client=test_client,
@@ -995,17 +955,17 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             verified_stage_ids=verified_chat_stage_ids
         )
         
-        print("  🔍 Verifying second chat response...")
+        logger.info("Verifying second chat response...")
         await self._verify_chat_response(
             chat_stage=message_2_stage,
             message_key='message_2',
             expected_conversation=EXPECTED_CHAT_MESSAGE_2_CONVERSATION
         )
         verified_chat_stage_ids.add(message_2_stage.get("stage_id"))
-        print("  ✅ Second chat response verified")
-        
+        logger.info("Second chat response verified")
+
         # Step 4: Test GET /api/v1/chats/{chat_id}/messages endpoint
-        print("  💬 Testing get chat message history endpoint...")
+        logger.info("Testing get chat message history endpoint...")
         
         messages_response = test_client.get(
             f"/api/v1/chats/{chat_id}/messages?limit=10&offset=0"
@@ -1036,11 +996,11 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             "Second message content mismatch"
         )
         assert messages[1].get("author") == "test-user@example.com", "Second message author mismatch"
-        
-        print(f"    ✅ Chat message history retrieved (2 messages)")
-        
+
+        logger.info("Chat message history retrieved (2 messages)")
+
         # Step 5: Verify chat_message_count appears in sessions list
-        print("  💬 Testing chat_message_count in sessions list...")
+        logger.info("Testing chat_message_count in sessions list...")
         
         sessions_response = test_client.get("/api/v1/history/sessions?page=1&page_size=50")
         
@@ -1064,10 +1024,10 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             f"Expected chat_message_count=2 for session with 2 messages, "
             f"got {our_session.get('chat_message_count')}"
         )
-        
-        print(f"    ✅ Sessions list includes chat_message_count=2")
-        
-        print("  ✅ Chat functionality test completed (2 messages, all endpoints tested)")
+
+        logger.info("Sessions list includes chat_message_count=2")
+
+        logger.info("Chat functionality test completed (2 messages, all endpoints tested)")
     
     async def _send_and_wait_for_chat_message(
         self,
@@ -1113,11 +1073,11 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         message_id = message_data.get("message_id")
         
         assert message_id is not None, f"{message_label} ID missing from response"
-        
-        print(f"    ✅ {message_label} sent: {message_id}")
-        
+
+        logger.info("%s sent: %s", message_label, message_id)
+
         # Wait for a NEW chat stage to appear and complete
-        print(f"  ⏳ Waiting for {message_label.lower()} response...")
+        logger.info("Waiting for %s response...", message_label.lower())
         
         max_wait = 15  # seconds (increased for chat processing)
         poll_interval = 0.5  # seconds
@@ -1140,7 +1100,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             
             if chat_stage:
                 if chat_stage.get("status") == "completed":
-                    print(f"    ✅ {message_label} response completed in {(i+1) * poll_interval}s")
+                    logger.info("%s response completed in %.1fs", message_label, (i+1) * poll_interval)
                     break
                 # If found but not completed, continue waiting
             
@@ -1270,15 +1230,14 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                 if "conversation_index" in expected_interaction:
                     # Use conversation_index to slice from the expected conversation
                     expected_conversation_index = expected_interaction["conversation_index"]
-                    # Use chat-specific assertion
-                    assert_chat_conversation_messages(
+                    assert_conversation_messages(
                         expected_conversation, actual_messages, expected_conversation_index
                     )
                 elif "conversation" in expected_interaction:
                     # Use the provided conversation directly
                     expected_conversation_for_interaction = expected_interaction["conversation"]
                     expected_message_count = len(expected_conversation_for_interaction["messages"])
-                    assert_chat_conversation_messages(
+                    assert_conversation_messages(
                         expected_conversation_for_interaction, actual_messages, expected_message_count
                     )
                 else:
