@@ -9,10 +9,13 @@ interface ChatPanelProps {
   isAvailable: boolean;
   onCreateChat: () => Promise<void>;
   onSendMessage: (content: string) => Promise<void>;
+  onCancelExecution?: () => Promise<void>;
   loading?: boolean;
   error?: string | null;
   sendingMessage?: boolean; // Track when a message is actively being sent
   chatStageInProgress?: boolean; // Track when AI is actively processing the chat
+  canCancel?: boolean;
+  canceling?: boolean;
   forceExpand?: boolean; // External trigger to expand the chat panel
   onCollapseAnalysis?: () => void; // Callback to collapse Final Analysis when chat is expanded
 }
@@ -22,10 +25,13 @@ export default function ChatPanel({
   isAvailable,
   onCreateChat,
   onSendMessage,
+  onCancelExecution,
   loading,
   error,
   sendingMessage = false,
   chatStageInProgress = false,
+  canCancel = false,
+  canceling = false,
   forceExpand = false,
   onCollapseAnalysis
 }: ChatPanelProps) {
@@ -234,9 +240,12 @@ export default function ChatPanel({
           
           {chat && (
             <ChatInput 
-              onSendMessage={handleSendMessage} 
+              onSendMessage={handleSendMessage}
+              onCancelExecution={onCancelExecution}
               disabled={loading || sendingMessage || chatStageInProgress}
               sendingMessage={sendingMessage || chatStageInProgress}
+              canCancel={canCancel}
+              canceling={canceling}
             />
           )}
         </Box>

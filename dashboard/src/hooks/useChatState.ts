@@ -12,6 +12,8 @@ interface ChatState {
   isAvailable: boolean;
   availabilityReason?: string;
   sendingMessage: boolean; // Track when a message is being sent
+  activeExecutionId: string | null; // Track active execution for cancellation
+  canceling: boolean; // Track if cancellation is in progress
 }
 
 export function useChatState(sessionId: string, sessionStatus?: string) {
@@ -23,6 +25,8 @@ export function useChatState(sessionId: string, sessionStatus?: string) {
     error: null,
     isAvailable: false,
     sendingMessage: false,
+    activeExecutionId: null,
+    canceling: false,
   });
 
   // Track the message ID we're waiting for processing to start
@@ -125,6 +129,23 @@ export function useChatState(sessionId: string, sessionStatus?: string) {
     }
   }, [state.chat]);
 
+  // Cancel active chat execution
+  const cancelExecution = useCallback(async () => {
+    if (!state.activeExecutionId) {
+      throw new Error('No active execution to cancel');
+    }
+
+    setState(prev => ({ ...prev, canceling: true }));
+
+    try {
+      await apiClient.cancelChatExecution(state.activeExecutionId);
+      // Success - state will be cleared by stage.completed/failed event
+    } catch (error: any) {
+      setState(prev => ({ ...prev, canceling: false }));
+      throw error;
+    }
+  }, [state.activeExecutionId]);
+
   // Add assistant response (from WebSocket stage execution)
   const addAssistantResponse = useCallback((messageId: string, execution: StageExecution) => {
     setState(prev => {
@@ -144,15 +165,18 @@ export function useChatState(sessionId: string, sessionStatus?: string) {
     if (!sessionId || !state.chat) return;
 
     const handleStageEvent = (event: any) => {
-      // When stage processing starts for our chat, clear the sending state
-      // We match on chat_id since stage events include chat_id but not chat_user_message_id
+      // Capture stage_id (execution ID) when stage starts
       if (
         event.type === 'stage.started' && 
         event.chat_id === state.chat?.chat_id &&
         pendingMessageIdRef.current // We're waiting for a response
       ) {
-        console.log('💬 Chat processing started, clearing sending indicator');
-        setState(prev => ({ ...prev, sendingMessage: false }));
+        console.log('💬 Chat processing started, tracking execution ID:', event.stage_id);
+        setState(prev => ({ 
+          ...prev, 
+          sendingMessage: false,
+          activeExecutionId: event.stage_id // Track stage_id for cancellation
+        }));
         pendingMessageIdRef.current = null;
         // Clear the safety timeout
         if (sendingTimeoutRef.current) {
@@ -161,14 +185,18 @@ export function useChatState(sessionId: string, sessionStatus?: string) {
         }
       }
 
-      // Also clear on stage.completed or stage.failed as a safety net
+      // Clear execution ID and canceling state when stage completes/fails
       if (
         (event.type === 'stage.completed' || event.type === 'stage.failed') &&
-        event.chat_id === state.chat?.chat_id &&
-        pendingMessageIdRef.current
+        event.chat_id === state.chat?.chat_id
       ) {
-        console.log('💬 Chat stage ended, clearing sending indicator (safety net)');
-        setState(prev => ({ ...prev, sendingMessage: false }));
+        console.log('💬 Chat stage ended, clearing execution tracking');
+        setState(prev => ({ 
+          ...prev, 
+          sendingMessage: false,
+          activeExecutionId: null, // Clear tracked execution
+          canceling: false // Clear canceling state
+        }));
         pendingMessageIdRef.current = null;
         // Clear the safety timeout
         if (sendingTimeoutRef.current) {
@@ -199,6 +227,7 @@ export function useChatState(sessionId: string, sessionStatus?: string) {
     ...state,
     createChat,
     sendMessage,
+    cancelExecution,
     addAssistantResponse,
     checkAvailability,
   };

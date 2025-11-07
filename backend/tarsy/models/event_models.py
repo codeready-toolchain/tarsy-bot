@@ -63,6 +63,13 @@ class SessionCancelRequestedEvent(BaseEvent):
     session_id: str = Field(description="Session identifier")
 
 
+class ChatCancelRequestedEvent(BaseEvent):
+    """Chat execution cancellation requested (backend-to-backend communication)."""
+
+    type: Literal["chat.cancel_requested"] = "chat.cancel_requested"
+    stage_execution_id: str = Field(description="Stage execution identifier for the chat response")
+
+
 class SessionCancelledEvent(BaseEvent):
     """Session cancelled successfully."""
 

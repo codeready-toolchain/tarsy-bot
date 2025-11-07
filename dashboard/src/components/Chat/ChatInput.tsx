@@ -1,16 +1,27 @@
 import { useState } from 'react';
-import { Box, TextField, IconButton, CircularProgress, Tooltip, Typography, alpha } from '@mui/material';
-import { Send } from '@mui/icons-material';
+import { Box, TextField, IconButton, CircularProgress, Tooltip, Typography, alpha, Snackbar, Alert } from '@mui/material';
+import { Send, Stop } from '@mui/icons-material';
 
 interface ChatInputProps {
   onSendMessage: (content: string) => Promise<void>;
+  onCancelExecution?: () => Promise<void>;
   disabled?: boolean;
   sendingMessage?: boolean;
+  canCancel?: boolean;
+  canceling?: boolean;
 }
 
-export default function ChatInput({ onSendMessage, disabled, sendingMessage = false }: ChatInputProps) {
+export default function ChatInput({ 
+  onSendMessage, 
+  onCancelExecution,
+  disabled, 
+  sendingMessage = false,
+  canCancel = false,
+  canceling = false
+}: ChatInputProps) {
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const handleSend = async () => {
     if (!content.trim() || sending) return;
@@ -24,6 +35,17 @@ export default function ChatInput({ onSendMessage, disabled, sendingMessage = fa
       // Error is handled by parent component
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!onCancelExecution) return;
+    
+    try {
+      await onCancelExecution();
+    } catch (error: any) {
+      const errorMessage = error.message || 'Failed to cancel execution';
+      setCancelError(errorMessage);
     }
   };
 
@@ -61,23 +83,51 @@ export default function ChatInput({ onSendMessage, disabled, sendingMessage = fa
             }
           }}
         />
-        <Tooltip title={sending || sendingMessage ? 'Sending...' : 'Send message'}>
-          <span>
-            <IconButton
-              color="primary"
-              onClick={handleSend}
-              disabled={!canSend}
-              sx={{
-                transition: 'all 0.2s',
-                '&:hover': {
-                  transform: 'scale(1.1)',
-                }
-              }}
-            >
-              {(sending || sendingMessage) ? <CircularProgress size={24} /> : <Send />}
-            </IconButton>
-          </span>
-        </Tooltip>
+          {/* Show Stop button when processing and can cancel, otherwise Send button */}
+          {canCancel && (sendingMessage || canceling) ? (
+            <Tooltip title={canceling ? 'Stopping...' : 'Stop processing'}>
+              <span>
+                <IconButton
+                  onClick={handleCancel}
+                  disabled={canceling}
+                  sx={{
+                    backgroundColor: 'error.main',
+                    color: 'error.contrastText',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      backgroundColor: 'error.dark',
+                      transform: 'scale(1.05)',
+                    },
+                    '&:disabled': {
+                      backgroundColor: 'error.light',
+                      color: 'error.contrastText',
+                      opacity: 0.6,
+                    }
+                  }}
+                >
+                  {canceling ? <CircularProgress size={24} color="inherit" /> : <Stop />}
+                </IconButton>
+              </span>
+            </Tooltip>
+          ) : (
+          <Tooltip title={sending || sendingMessage ? 'Sending...' : 'Send message'}>
+            <span>
+              <IconButton
+                color="primary"
+                onClick={handleSend}
+                disabled={!canSend}
+                sx={{
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    transform: 'scale(1.1)',
+                  }
+                }}
+              >
+                {(sending || sendingMessage) ? <CircularProgress size={24} /> : <Send />}
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
       </Box>
       
       {/* Subtle status message when processing */}
@@ -98,6 +148,22 @@ export default function ChatInput({ onSendMessage, disabled, sendingMessage = fa
           </Typography>
         </Box>
       )}
+
+      {/* Error notification for cancel failures */}
+      <Snackbar
+        open={!!cancelError}
+        autoHideDuration={6000}
+        onClose={() => setCancelError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setCancelError(null)} 
+          severity="error"
+          sx={{ width: '100%' }}
+        >
+          {cancelError}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

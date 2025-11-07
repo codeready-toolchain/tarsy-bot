@@ -331,6 +331,32 @@ async def publish_cancel_request(session_id: str) -> None:
         logger.warning(f"Failed to publish cancel request: {e}")
 
 
+async def publish_chat_cancel_request(stage_execution_id: str) -> None:
+    """
+    Publish chat execution cancellation request to backend pods.
+    
+    Similar to publish_cancel_request but for chat executions.
+    Uses stage_execution_id instead of session_id.
+    
+    This is published to the 'cancellations' channel which all pods subscribe to.
+    The pod owning the chat task will cancel it.
+    
+    Args:
+        stage_execution_id: Stage execution identifier for the chat response
+    """
+    try:
+        from tarsy.models.event_models import ChatCancelRequestedEvent
+        
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = ChatCancelRequestedEvent(stage_execution_id=stage_execution_id)
+            # Publish to cancellations channel (backend-only)
+            await publish_event(session, EventChannel.CANCELLATIONS, event)
+            logger.info(f"[EVENT] Published chat.cancel_requested for {stage_execution_id}")
+    except Exception as e:
+        logger.warning(f"Failed to publish chat cancel request: {e}")
+
+
 async def publish_session_cancelled(session_id: str) -> None:
     """
     Publish cancellation confirmation to clients.

@@ -600,6 +600,19 @@ class APIClient {
   }
 
   /**
+   * Cancel an active chat execution
+   */
+  async cancelChatExecution(stageExecutionId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await this.client.post(`/api/v1/chats/executions/${stageExecutionId}/cancel`);
+      return response.data;
+    } catch (error) {
+      console.error('Error cancelling chat execution:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get chat message history
    */
   async getChatMessages(

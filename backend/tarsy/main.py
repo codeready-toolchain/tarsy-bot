@@ -76,33 +76,48 @@ shutdown_in_progress: bool = False
 
 async def handle_cancel_request(event: dict) -> None:
     """
-    Handle cross-pod cancellation requests.
+    Handle cross-pod cancellation requests for both sessions and chat executions.
     
     This handler is called when a cancellation request is received on the
-    'cancellations' channel. If this pod owns the session task, it will
-    cancel it.
+    'cancellations' channel. If this pod owns the task, it will cancel it.
     
     Args:
-        event: Event dict containing session_id
+        event: Event dict containing session_id or stage_execution_id
     """
     session_id = event.get("session_id")
-    if not session_id:
-        logger.warning("Received cancel request without session_id")
+    stage_execution_id = event.get("stage_execution_id")
+    
+    if not session_id and not stage_execution_id:
+        logger.warning("Received cancel request without session_id or stage_execution_id")
         return
     
     assert active_tasks_lock is not None, "active_tasks_lock not initialized"
     async with active_tasks_lock:
-        task = active_tasks.get(session_id)
-    
-    if task:
-        logger.info(f"Cancelling session {session_id} on this pod")
-        task.cancel()
-        # The task cleanup in process_alert_background will handle:
-        # - Removing from active_tasks
-        # - Updating status to CANCELLED
-        # - Publishing session.cancelled event
-    else:
-        logger.debug(f"Session {session_id} not found on this pod (owned by another pod)")
+        # Handle session cancellation
+        if session_id:
+            task = active_tasks.get(session_id)
+            if task:
+                logger.info(f"Cancelling session {session_id} on this pod")
+                task.cancel()
+                # The task cleanup in process_alert_background will handle:
+                # - Removing from active_tasks
+                # - Updating status to CANCELLED
+                # - Publishing session.cancelled event
+            else:
+                logger.debug(f"Session {session_id} not found on this pod (owned by another pod)")
+        
+        # Handle chat execution cancellation
+        if stage_execution_id:
+            task = active_chat_tasks.get(stage_execution_id)
+            if task:
+                logger.info(f"Cancelling chat execution {stage_execution_id} on this pod")
+                task.cancel()
+                # The task cleanup in process_chat_message_background will handle:
+                # - Removing from active_chat_tasks
+                # - Updating stage execution status to failed
+                # - Publishing stage.failed event
+            else:
+                logger.debug(f"Chat execution {stage_execution_id} not found on this pod")
 
 
 async def mark_active_tasks_as_interrupted(reason: str) -> None:
@@ -887,8 +902,38 @@ async def process_chat_message_background(
         logger.info(f"Chat message {stage_execution_id} processing completed successfully in {duration:.2f}s")
         
     except asyncio.CancelledError:
-        logger.info(f"Chat message processing cancelled: {stage_execution_id}")
-        raise
+        # User-requested chat cancellation
+        logger.info(f"Chat execution {stage_execution_id} cancelled by user")
+        
+        # Update stage execution status to cancelled
+        from tarsy.services.history_service import get_history_service
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        from tarsy.hooks.hook_context import stage_execution_context
+        
+        history_service = get_history_service()
+        if history_service:
+            try:
+                stage_exec = await history_service.get_stage_execution(stage_execution_id)
+                if stage_exec:
+                    stage_exec.status = StageStatus.FAILED.value
+                    stage_exec.error_message = "Cancelled by user"
+                    stage_exec.completed_at_us = now_us()
+                    
+                    # Trigger stage execution hooks to update DB and publish events
+                    async with stage_execution_context(stage_exec.session_id, stage_exec):
+                        pass
+                    logger.info(f"Updated stage execution {stage_execution_id} as cancelled")
+            except Exception as e:
+                logger.warning(f"Failed to update cancelled chat execution: {e}")
+        
+        # Clean up from active_chat_tasks
+        assert active_tasks_lock is not None, "active_tasks_lock not initialized"
+        async with active_tasks_lock:
+            active_chat_tasks.pop(stage_execution_id, None)
+        
+        return  # Exit gracefully without marking as error
+        
     except TimeoutError as e:
         # Processing timeout
         duration = (datetime.now() - start_time).total_seconds()

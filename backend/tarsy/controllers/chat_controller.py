@@ -345,6 +345,68 @@ async def send_message(
         )
 
 
+@router.post(
+    "/chats/executions/{stage_execution_id}/cancel",
+    responses={
+        200: {"description": "Chat execution cancellation requested"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+    summary="Cancel Chat Execution",
+    description="""
+    Cancel an active chat message processing.
+    
+    Unlike session cancellation, this only stops the current chat response
+    without changing session state. The chat remains available for new messages.
+    
+    **Behavior:**
+    - Publishes cancellation request to all backend pods
+    - Pod owning the task will cancel it gracefully
+    - Stage execution status updated to failed with "Cancelled by user" message
+    - No effect if execution already completed
+    """,
+)
+async def cancel_chat_execution(
+    stage_execution_id: str = Path(..., description="Stage execution ID to cancel"),
+) -> dict:
+    """
+    Cancel an active chat execution.
+    
+    This endpoint provides a way to stop a chat response that's currently processing,
+    similar to session cancellation but scoped only to the chat execution.
+    
+    Args:
+        stage_execution_id: Stage execution identifier for the chat response
+        
+    Returns:
+        Success response with cancellation status
+    """
+    from tarsy.services.events.event_helpers import publish_chat_cancel_request
+    
+    try:
+        # Publish cancellation request to all pods
+        await publish_chat_cancel_request(stage_execution_id)
+        logger.info(f"Published chat cancellation request for execution {stage_execution_id}")
+        
+        return {
+            "success": True,
+            "message": "Chat cancellation request sent",
+        }
+    
+    except Exception as e:
+        logger.error(
+            f"Failed to cancel chat execution {stage_execution_id}: {str(e)}", 
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Internal server error",
+                "message": "Failed to cancel chat execution",
+                "support_info": "Check server logs or contact support",
+            },
+        )
+
+
 @router.get(
     "/chats/{chat_id}/messages",
     response_model=ChatUserMessageListResponse,

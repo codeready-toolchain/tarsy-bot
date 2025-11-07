@@ -119,9 +119,12 @@ function SessionDetailPageBase({
     isAvailable: chatAvailable,
     createChat,
     sendMessage,
+    cancelExecution,
     loading: chatLoading,
     error: chatError,
     sendingMessage,
+    activeExecutionId,
+    canceling,
   } = useChatState(sessionId || '', session?.status);
 
   // Auto-scroll settings - only enable by default for active sessions
@@ -639,10 +642,13 @@ function SessionDetailPageBase({
                   onSendMessage={async (content) => {
                     await sendMessage(content, user?.email || 'anonymous');
                   }}
+                  onCancelExecution={cancelExecution}
                   loading={chatLoading}
                   error={chatError}
                   sendingMessage={sendingMessage}
                   chatStageInProgress={chatStageInProgress}
+                  canCancel={!!activeExecutionId && !canceling}
+                  canceling={canceling}
                   forceExpand={shouldExpandChat}
                   onCollapseAnalysis={() => setCollapseCounter(prev => prev + 1)}
                 />
