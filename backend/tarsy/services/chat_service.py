@@ -667,6 +667,11 @@ class ChatService:
             # Get the last interaction which has the complete conversation
             last_interaction = llm_interactions[-1]
             
+            # Skip if conversation is None (e.g., cancelled execution with no data)
+            if last_interaction.conversation is None:
+                logger.warning(f"Skipping chat exchange for message {msg.message_id} - conversation is None")
+                continue
+            
             # Build ChatExchange object
             exchanges.append(ChatExchange(
                 user_question=msg.content,

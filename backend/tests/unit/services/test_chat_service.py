@@ -320,6 +320,183 @@ class TestChatService:
         # Should contain original history
         assert "Original history" in context.conversation_history
         assert context.user_question == "Follow-up question"
+    
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "conversation_value,should_skip",
+        [
+            (None, True),
+            (LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System prompt"),
+                LLMMessage(role=MessageRole.USER, content="test")
+            ]), False),
+        ],
+    )
+    async def test_build_chat_exchanges_handles_none_conversation(
+        self, chat_service, mock_history_service, conversation_value, should_skip
+    ):
+        """Test that chat exchanges with None conversation are skipped."""
+        chat_user_message = Mock()
+        chat_user_message.content = "Test question"
+        chat_user_message.message_id = "msg-1"
+        
+        execution = Mock()
+        execution.execution_id = "exec-1"
+        execution.chat_user_message_id = "msg-1"
+        
+        llm_interaction = LLMInteraction(
+            interaction_id="int-1",
+            session_id="session-123",
+            stage_execution_id="exec-1",
+            model_name="gpt-4",
+            conversation=conversation_value,
+            tokens_used=100,
+            created_at_us=now_us(),
+        )
+        
+        mock_history_service.get_chat_user_messages = AsyncMock(
+            return_value=[chat_user_message]
+        )
+        mock_history_service.get_stage_executions_for_chat = AsyncMock(
+            return_value=[execution]
+        )
+        mock_history_service.get_llm_interactions_for_stage = AsyncMock(
+            return_value=[llm_interaction]
+        )
+        
+        exchanges = await chat_service._build_chat_exchanges("chat-123")
+        
+        if should_skip:
+            assert len(exchanges) == 0
+        else:
+            assert len(exchanges) == 1
+            assert exchanges[0].user_question == "Test question"
+    
+    @pytest.mark.asyncio
+    async def test_build_chat_exchanges_skips_cancelled_includes_successful(
+        self, chat_service, mock_history_service
+    ):
+        """Test that cancelled messages are skipped while successful ones are included."""
+        # Create two messages: one cancelled (None conversation), one successful
+        msg1 = Mock()
+        msg1.content = "First question (cancelled)"
+        msg1.message_id = "msg-1"
+        
+        msg2 = Mock()
+        msg2.content = "Second question (successful)"
+        msg2.message_id = "msg-2"
+        
+        exec1 = Mock()
+        exec1.execution_id = "exec-1"
+        exec1.chat_user_message_id = "msg-1"
+        
+        exec2 = Mock()
+        exec2.execution_id = "exec-2"
+        exec2.chat_user_message_id = "msg-2"
+        
+        # First interaction has None conversation (cancelled)
+        interaction1 = LLMInteraction(
+            interaction_id="int-1",
+            session_id="session-123",
+            stage_execution_id="exec-1",
+            model_name="gpt-4",
+            conversation=None,
+            tokens_used=0,
+            created_at_us=now_us(),
+        )
+        
+        # Second interaction has valid conversation
+        interaction2 = LLMInteraction(
+            interaction_id="int-2",
+            session_id="session-123",
+            stage_execution_id="exec-2",
+            model_name="gpt-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System prompt"),
+                LLMMessage(role=MessageRole.USER, content="Second question (successful)"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response"),
+            ]),
+            tokens_used=100,
+            created_at_us=now_us(),
+        )
+        
+        mock_history_service.get_chat_user_messages = AsyncMock(
+            return_value=[msg1, msg2]
+        )
+        mock_history_service.get_stage_executions_for_chat = AsyncMock(
+            return_value=[exec1, exec2]
+        )
+        
+        # Mock to return different interactions based on execution_id
+        async def get_interactions_by_stage(execution_id):
+            if execution_id == "exec-1":
+                return [interaction1]
+            elif execution_id == "exec-2":
+                return [interaction2]
+            return []
+        
+        mock_history_service.get_llm_interactions_for_stage = AsyncMock(
+            side_effect=get_interactions_by_stage
+        )
+        
+        exchanges = await chat_service._build_chat_exchanges("chat-123")
+        
+        # Should only include the successful message
+        assert len(exchanges) == 1
+        assert exchanges[0].user_question == "Second question (successful)"
+        assert exchanges[0].conversation is not None
+    
+    @pytest.mark.asyncio
+    async def test_build_message_context_after_cancelled_message(
+        self, chat_service, mock_history_service
+    ):
+        """Test that building context works correctly when previous message was cancelled."""
+        chat = Chat(
+            chat_id="chat-123",
+            session_id="session-123",
+            created_by="user@example.com",
+            conversation_history="Original investigation history",
+            chain_id="test-chain",
+            context_captured_at_us=now_us(),
+        )
+        
+        # Mock one cancelled execution (no conversation data)
+        cancelled_msg = Mock()
+        cancelled_msg.content = "Cancelled question"
+        cancelled_msg.message_id = "msg-cancelled"
+        
+        cancelled_exec = Mock()
+        cancelled_exec.execution_id = "exec-cancelled"
+        cancelled_exec.chat_user_message_id = "msg-cancelled"
+        
+        cancelled_interaction = LLMInteraction(
+            interaction_id="int-cancelled",
+            session_id="session-123",
+            stage_execution_id="exec-cancelled",
+            model_name="gpt-4",
+            conversation=None,
+            tokens_used=0,
+            created_at_us=now_us(),
+        )
+        
+        mock_history_service.get_stage_executions_for_chat = AsyncMock(
+            return_value=[cancelled_exec]
+        )
+        mock_history_service.get_chat_user_messages = AsyncMock(
+            return_value=[cancelled_msg]
+        )
+        mock_history_service.get_llm_interactions_for_stage = AsyncMock(
+            return_value=[cancelled_interaction]
+        )
+        
+        # Should not raise an error and should build context successfully
+        context = await chat_service._build_message_context(chat, "New question after cancellation")
+        
+        assert isinstance(context, ChatMessageContext)
+        assert context.user_question == "New question after cancellation"
+        # Should only have original history since cancelled message was skipped
+        assert "Original investigation history" in context.conversation_history
+        assert context.chat_id == "chat-123"
 
 
 @pytest.mark.unit
