@@ -872,12 +872,35 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
 
     async def _test_chat_functionality(self, test_client, session_id: str):
         """Test chat functionality by creating a chat and sending multiple messages."""
-        print("  💬 Testing chat creation...")
+        
+        # Step 0: Check chat availability endpoint
+        print("  💬 Testing chat availability check...")
+        
+        availability_response = test_client.get(
+            f"/api/v1/sessions/{session_id}/chat-available"
+        )
+        
+        assert availability_response.status_code == 200, (
+            f"Chat availability check failed with status {availability_response.status_code}: "
+            f"{availability_response.text}"
+        )
+        
+        availability_data = availability_response.json()
+        assert availability_data.get("available") is True, (
+            f"Chat should be available for completed session, but got: {availability_data}"
+        )
+        assert availability_data.get("chat_id") is None, (
+            "Chat ID should be None before chat is created"
+        )
+        
+        print("    ✅ Chat availability verified (available=True, no existing chat)")
         
         # Step 1: Create chat for the session
+        print("  💬 Testing chat creation...")
+        
         create_chat_response = test_client.post(
             f"/api/v1/sessions/{session_id}/chat",
-            json={"created_by": "test-user@example.com"}
+            headers={"X-Forwarded-User": "test-user@example.com"}
         )
         
         assert create_chat_response.status_code == 200, (
@@ -890,8 +913,51 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         
         assert chat_id is not None, "Chat ID missing from creation response"
         assert chat_data.get("session_id") == session_id, "Chat session_id mismatch"
+        assert chat_data.get("created_by") == "test-user@example.com", (
+            f"Chat created_by mismatch: expected 'test-user@example.com', "
+            f"got '{chat_data.get('created_by')}'"
+        )
         
         print(f"    ✅ Chat created successfully: {chat_id}")
+        
+        # Step 1b: Verify chat availability now returns existing chat_id
+        print("  💬 Re-checking chat availability after creation...")
+        
+        availability_response2 = test_client.get(
+            f"/api/v1/sessions/{session_id}/chat-available"
+        )
+        
+        assert availability_response2.status_code == 200, (
+            f"Chat availability check failed after creation: {availability_response2.text}"
+        )
+        
+        availability_data2 = availability_response2.json()
+        assert availability_data2.get("available") is True, (
+            "Chat should still be available after creation"
+        )
+        assert availability_data2.get("chat_id") == chat_id, (
+            f"Chat availability should return existing chat_id={chat_id}, "
+            f"got {availability_data2.get('chat_id')}"
+        )
+        
+        print(f"    ✅ Chat availability updated (available=True, chat_id={chat_id})")
+        
+        # Step 1c: Test GET /api/v1/chats/{chat_id} endpoint
+        print("  💬 Testing get chat details endpoint...")
+        
+        get_chat_response = test_client.get(f"/api/v1/chats/{chat_id}")
+        
+        assert get_chat_response.status_code == 200, (
+            f"Get chat details failed with status {get_chat_response.status_code}: "
+            f"{get_chat_response.text}"
+        )
+        
+        get_chat_data = get_chat_response.json()
+        assert get_chat_data.get("chat_id") == chat_id, "Chat ID mismatch"
+        assert get_chat_data.get("session_id") == session_id, "Session ID mismatch"
+        assert get_chat_data.get("message_count") == 0, "Initial message count should be 0"
+        
+        print(f"    ✅ Chat details retrieved (message_count=0)")
         
         # Track verified chat stages to avoid re-checking them
         verified_chat_stage_ids = set()
@@ -938,7 +1004,42 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         verified_chat_stage_ids.add(message_2_stage.get("stage_id"))
         print("  ✅ Second chat response verified")
         
-        print("  ✅ Chat functionality test completed (2 messages)")
+        # Step 4: Test GET /api/v1/chats/{chat_id}/messages endpoint
+        print("  💬 Testing get chat message history endpoint...")
+        
+        messages_response = test_client.get(
+            f"/api/v1/chats/{chat_id}/messages?limit=10&offset=0"
+        )
+        
+        assert messages_response.status_code == 200, (
+            f"Get chat messages failed with status {messages_response.status_code}: "
+            f"{messages_response.text}"
+        )
+        
+        messages_data = messages_response.json()
+        assert messages_data.get("chat_id") == chat_id, "Chat ID mismatch in messages response"
+        assert messages_data.get("total_count") == 2, (
+            f"Expected 2 messages in history, got {messages_data.get('total_count')}"
+        )
+        
+        messages = messages_data.get("messages", [])
+        assert len(messages) == 2, f"Expected 2 messages in response, got {len(messages)}"
+        
+        # Verify first message content
+        assert messages[0].get("content") == "Can you check the pods in the stuck-namespace?", (
+            "First message content mismatch"
+        )
+        assert messages[0].get("author") == "test-user@example.com", "First message author mismatch"
+        
+        # Verify second message content
+        assert messages[1].get("content") == "Does the namespace still exist?", (
+            "Second message content mismatch"
+        )
+        assert messages[1].get("author") == "test-user@example.com", "Second message author mismatch"
+        
+        print(f"    ✅ Chat message history retrieved (2 messages)")
+        
+        print("  ✅ Chat functionality test completed (2 messages, all endpoints tested)")
     
     async def _send_and_wait_for_chat_message(
         self,
@@ -968,13 +1069,11 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                         if s.get("stage_id", "").startswith("chat-response")]
         num_stages_before = len(stages_before)
         
-        # Send the message
+        # Send the message (author comes from auth header, not JSON body)
         send_message_response = test_client.post(
             f"/api/v1/chats/{chat_id}/messages",
-            json={
-                "content": content,
-                "author": "test-user@example.com"
-            }
+            json={"content": content},
+            headers={"X-Forwarded-User": "test-user@example.com"}
         )
         
         assert send_message_response.status_code == 200, (

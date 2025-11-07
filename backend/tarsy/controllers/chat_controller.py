@@ -149,8 +149,8 @@ async def check_chat_availability(
     """Check if chat is available for session."""
 
     try:
-        # Check if session exists
-        session = await history_service.get_alert_session(session_id)
+        # Check if session exists (get_session is synchronous, wrap in to_thread)
+        session = await asyncio.to_thread(history_service.get_session, session_id)
         if not session:
             raise HTTPException(
                 status_code=404, detail=f"Session {session_id} not found"

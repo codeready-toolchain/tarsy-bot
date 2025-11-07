@@ -155,7 +155,7 @@ class TestChatController:
         self, client, mock_history_service, sample_session
     ):
         """Test chat availability when session is completed."""
-        mock_history_service.get_alert_session = AsyncMock(return_value=sample_session)
+        mock_history_service.get_session = Mock(return_value=sample_session)
         mock_history_service.get_chat_by_session = AsyncMock(return_value=None)
 
         response = client.get("/api/v1/sessions/test-session-456/chat-available")
@@ -169,7 +169,7 @@ class TestChatController:
         self, client, mock_history_service, sample_session, sample_chat
     ):
         """Test chat availability when chat already exists."""
-        mock_history_service.get_alert_session = AsyncMock(return_value=sample_session)
+        mock_history_service.get_session = Mock(return_value=sample_session)
         mock_history_service.get_chat_by_session = AsyncMock(return_value=sample_chat)
 
         response = client.get("/api/v1/sessions/test-session-456/chat-available")
@@ -184,7 +184,7 @@ class TestChatController:
     ):
         """Test chat availability when session is not completed."""
         sample_session.status = "in_progress"
-        mock_history_service.get_alert_session = AsyncMock(return_value=sample_session)
+        mock_history_service.get_session = Mock(return_value=sample_session)
         mock_history_service.get_chat_by_session = AsyncMock(return_value=None)
 
         response = client.get("/api/v1/sessions/test-session-456/chat-available")
@@ -192,11 +192,11 @@ class TestChatController:
         assert response.status_code == 200
         data = response.json()
         assert data["available"] is False
-        assert "completed" in data["reason"].lower()
+        assert "terminal state" in data["reason"].lower()
 
     def test_check_chat_availability_session_not_found(self, client, mock_history_service):
         """Test chat availability when session doesn't exist."""
-        mock_history_service.get_alert_session = AsyncMock(return_value=None)
+        mock_history_service.get_session = Mock(return_value=None)
 
         response = client.get("/api/v1/sessions/test-session-456/chat-available")
 

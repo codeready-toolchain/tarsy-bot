@@ -8,7 +8,7 @@
 
 ## Overview
 
-Add chat-like follow-up conversation capability to TARSy, allowing users to continue investigating after a session completes. Users can ask clarifying questions, request deeper analysis, or explore different aspects of the original alert - all while preserving full context and tool execution capabilities.
+Add chat-like follow-up conversation capability to TARSy, allowing users to continue investigating after a session terminates (completed, failed, or cancelled). Users can ask clarifying questions, request deeper analysis, or explore different aspects of the original alert - all while preserving full context and tool execution capabilities.
 
 ## Key Architectural Decisions
 
@@ -175,7 +175,7 @@ Add chat-like follow-up conversation capability to TARSy, allowing users to cont
 
 ```python
 class Chat(SQLModel, table=True):
-    """Chat metadata and context snapshot from completed session."""
+    """Chat metadata and context snapshot from terminated session."""
     
     __tablename__ = "chats"
     
@@ -582,10 +582,10 @@ class ChatService:
         created_by: str
     ) -> Chat:
         """
-        Create a new chat for a completed session.
+        Create a new chat for a terminated session.
         
         Steps:
-        1. Validate session exists and is completed
+        1. Validate session exists and is in a terminal state (completed, failed, or cancelled)
         2. Check if chat already exists
         3. Validate chain has chat_enabled=true
         4. Capture session context (using _capture_session_context)
@@ -600,8 +600,15 @@ class ChatService:
         if not session:
             raise ValueError(f"Session {session_id} not found")
         
-        if session.status != "completed":
-            raise ValueError("Can only create chat for completed sessions")
+        # Check if session is in a terminal state (completed, failed, or cancelled)
+        from tarsy.models.constants import AlertSessionStatus
+        
+        terminal_statuses = AlertSessionStatus.terminal_values()
+        if session.status not in terminal_statuses:
+            raise ValueError(
+                f"Can only create chat for terminated sessions. "
+                f"Current status: {session.status}, terminal statuses: {', '.join(terminal_statuses)}"
+            )
         
         # Check if chat already exists (via history_service)
         existing_chat = await self.history_service.get_chat_by_session(session_id)
@@ -2170,7 +2177,7 @@ New REST endpoints for chat operations:
 
 ```python
 # POST /api/v1/sessions/{session_id}/chat
-# Create a new chat for a completed session
+# Create a new chat for a terminated session
 # Returns: Chat object
 
 # GET /api/v1/chats/{chat_id}
@@ -2191,6 +2198,7 @@ New REST endpoints for chat operations:
 # GET /api/v1/sessions/{session_id}/chat-available
 # Check if chat is available for a session
 # Returns: { "available": bool, "reason": "optional message" }
+# Available when session is in a terminal state (completed, failed, or cancelled)
 ```
 
 ---
@@ -2241,7 +2249,7 @@ ALERT_PROCESSING_TIMEOUT=600    # Overall timeout per chat response (default: 60
 
 ```
 ┌───────────────────────────────────────────────────────┐
-│ Session Detail - COMPLETED                            │
+│ Session Detail - COMPLETED/FAILED/CANCELLED           │
 │                                                       │
 │ [Session Header with status badge]                    │
 │ [Original Alert Card]                                 │
@@ -2262,7 +2270,7 @@ ALERT_PROCESSING_TIMEOUT=600    # Overall timeout per chat response (default: 60
 
 ```
 ┌───────────────────────────────────────────────────────┐
-│ Session Detail - COMPLETED                            │
+│ Session Detail - COMPLETED/FAILED/CANCELLED           │
 │                                                       │
 │ [Session Header - can collapse]                       │
 │ [Original Alert - can collapse]                       │
@@ -2324,7 +2332,7 @@ ALERT_PROCESSING_TIMEOUT=600    # Overall timeout per chat response (default: 60
 
 ### Dashboard Sessions List - Chat Indicator
 
-Add indicator when session has active chat:
+Add indicator when session has active chat (works for any terminal status):
 
 ```
 ┌──────────────────────────────────────────────────┐
@@ -2468,9 +2476,9 @@ Add indicator when session has active chat:
 
 2. **Implement REST Endpoints:**
    - `POST /api/v1/sessions/{session_id}/chat`
-     - Create new chat for completed session
+     - Create new chat for terminated session
      - Returns: Chat object with chat_id
-     - Validates session exists and is completed
+     - Validates session exists and is in a terminal state (completed, failed, or cancelled)
      - Checks chain has chat_enabled=true
    
    - `GET /api/v1/chats/{chat_id}`
@@ -2579,7 +2587,8 @@ Add indicator when session has active chat:
    - Character count/limit
 
 6. **Session Detail Page Integration:**
-   - Add ChatPanel at bottom of session detail page
+   - Add ChatPanel at bottom of session detail page (shown for any terminal session status)
+   - Use `isTerminalSessionStatus()` helper to check if chat should be shown
    - Add collapsible controls for session sections (header, alert, timeline, analysis)
    - Show chat indicator badge in header when chat exists
    - Check chat availability on session load
