@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { Box, Paper, IconButton, Collapse, Typography, Alert, CircularProgress, alpha } from '@mui/material';
 import { Chat as ChatIcon, Close, ExpandMore } from '@mui/icons-material';
-import ChatMessageList from './ChatMessageList';
 import ChatInput from './ChatInput';
 import type { Chat } from '../../types';
 
 interface ChatPanelProps {
-  sessionId: string;
   chat: Chat | null;
   isAvailable: boolean;
   onCreateChat: () => Promise<void>;
@@ -17,7 +15,6 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({
-  sessionId,
   chat,
   isAvailable,
   onCreateChat,
@@ -199,10 +196,10 @@ export default function ChatPanel({
         </Alert>
       )}
       
-      {/* Chat Content - Only shown when chat exists and is expanded */}
+      {/* Chat Input - Only shown when chat exists and is expanded */}
+      {/* Note: Chat messages are rendered in ConversationTimeline above, not here */}
       <Collapse in={expanded && chat !== null} timeout={400}>
         <Box sx={{ 
-          maxHeight: { xs: '400px', sm: '500px', md: '600px' }, 
           display: 'flex', 
           flexDirection: 'column' 
         }}>
@@ -216,10 +213,7 @@ export default function ChatPanel({
             </Alert>
           )}
           {chat && (
-            <>
-              <ChatMessageList sessionId={sessionId} chatId={chat.chat_id} />
-              <ChatInput onSendMessage={handleSendMessage} disabled={loading} />
-            </>
+            <ChatInput onSendMessage={handleSendMessage} disabled={loading} />
           )}
         </Box>
       </Collapse>

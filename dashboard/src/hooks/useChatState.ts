@@ -12,7 +12,7 @@ interface ChatState {
   availabilityReason?: string;
 }
 
-export function useChatState(sessionId: string) {
+export function useChatState(sessionId: string, sessionStatus?: string) {
   const [state, setState] = useState<ChatState>({
     chat: null,
     userMessages: [],
@@ -102,9 +102,10 @@ export function useChatState(sessionId: string) {
     });
   }, []);
 
+  // Check availability on mount and when session status changes (e.g., in_progress -> completed)
   useEffect(() => {
     checkAvailability();
-  }, [checkAvailability]);
+  }, [checkAvailability, sessionStatus]);
 
   return {
     ...state,

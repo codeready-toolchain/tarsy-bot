@@ -121,7 +121,7 @@ function SessionDetailPageBase({
     sendMessage,
     loading: chatLoading,
     error: chatError,
-  } = useChatState(sessionId || '');
+  } = useChatState(sessionId || '', session?.status);
 
   // Auto-scroll settings - only enable by default for active sessions
   const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(() => {
@@ -591,7 +591,6 @@ function SessionDetailPageBase({
             {isTerminalSessionStatus(session.status) && (
               <Box id="chat-panel">
                 <ChatPanel
-                  sessionId={session.session_id}
                   chat={chat}
                   isAvailable={chatAvailable}
                   onCreateChat={async () => {

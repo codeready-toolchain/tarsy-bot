@@ -134,6 +134,7 @@ class StageStartedEvent(BaseEvent):
     session_id: str = Field(description="Session identifier")
     stage_id: str = Field(description="Stage execution identifier")
     stage_name: str = Field(description="Human-readable stage name")
+    chat_id: Optional[str] = Field(default=None, description="Chat ID if this is a chat response stage")
 
 
 class StageCompletedEvent(BaseEvent):
@@ -144,6 +145,7 @@ class StageCompletedEvent(BaseEvent):
     stage_id: str = Field(description="Stage execution identifier")
     stage_name: str = Field(description="Human-readable stage name")
     status: str = Field(description="Stage status (completed/failed)")
+    chat_id: Optional[str] = Field(default=None, description="Chat ID if this is a chat response stage")
 
 
 # ===== Transient Streaming Events (not persisted to DB) =====

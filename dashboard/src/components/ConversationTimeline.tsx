@@ -793,8 +793,8 @@ function ConversationTimeline({
               <StreamingItemRenderer key={entryKey} item={entryValue} />
             ))}
 
-            {/* Processing indicator at bottom when session is still in progress */}
-            {session.status === 'in_progress' && <ProcessingIndicator />}
+            {/* Processing indicator at bottom when session is in progress OR when there are streaming items (chat in progress) */}
+            {(session.status === 'in_progress' || streamingItems.size > 0) && <ProcessingIndicator />}
           </>
         )}
       </Box>

@@ -119,12 +119,14 @@ class StageExecutionEventHook(BaseHook[StageExecution]):
             await publish_stage_started(
                 session_id=stage_execution.session_id,
                 stage_id=stage_execution.execution_id,
-                stage_name=stage_execution.stage_name
+                stage_name=stage_execution.stage_name,
+                chat_id=stage_execution.chat_id
             )
         elif stage_execution.status in [StageStatus.COMPLETED.value, StageStatus.FAILED.value, StageStatus.PARTIAL.value]:
             await publish_stage_completed(
                 session_id=stage_execution.session_id,
                 stage_id=stage_execution.execution_id,
                 stage_name=stage_execution.stage_name,
-                status=stage_execution.status
+                status=stage_execution.status,
+                chat_id=stage_execution.chat_id
             )
