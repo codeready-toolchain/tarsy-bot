@@ -12,6 +12,7 @@ interface ChatPanelProps {
   loading?: boolean;
   error?: string | null;
   sendingMessage?: boolean; // Track when a message is actively being sent
+  chatStageInProgress?: boolean; // Track when AI is actively processing the chat
   onExpandChange?: (expanded: boolean) => void; // Notify parent when expanded state changes
 }
 
@@ -23,6 +24,7 @@ export default function ChatPanel({
   loading,
   error,
   sendingMessage = false,
+  chatStageInProgress = false,
   onExpandChange
 }: ChatPanelProps) {
   const [expanded, setExpanded] = useState(false); // Start collapsed
@@ -215,8 +217,8 @@ export default function ChatPanel({
             </Alert>
           )}
           
-          {/* Subtle progress bar when message is being sent */}
-          {sendingMessage && (
+          {/* Subtle progress bar when message is being sent or AI is processing */}
+          {(sendingMessage || chatStageInProgress) && (
             <Box 
               sx={{ 
                 height: 2,
@@ -244,8 +246,8 @@ export default function ChatPanel({
           {chat && (
             <ChatInput 
               onSendMessage={handleSendMessage} 
-              disabled={loading || sendingMessage}
-              sendingMessage={sendingMessage}
+              disabled={loading || sendingMessage || chatStageInProgress}
+              sendingMessage={sendingMessage || chatStageInProgress}
             />
           )}
         </Box>

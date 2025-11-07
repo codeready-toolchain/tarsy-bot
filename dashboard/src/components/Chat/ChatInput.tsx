@@ -92,10 +92,14 @@ export default function ChatInput({ onSendMessage, disabled, sendingMessage = fa
               color: 'primary.main',
               fontSize: '0.75rem',
               fontStyle: 'italic',
-              opacity: 0.7
+              opacity: 0.7,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5
             }}
           >
-            Starting AI processing...
+            <CircularProgress size={10} sx={{ opacity: 0.7 }} />
+            AI is analyzing your question...
           </Typography>
         </Box>
       )}

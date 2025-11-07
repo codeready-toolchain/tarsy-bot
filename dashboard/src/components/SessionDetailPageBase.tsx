@@ -133,6 +133,9 @@ function SessionDetailPageBase({
   // Chat expansion state - to control Final Analysis collapse
   const [chatExpanded, setChatExpanded] = useState(false);
   
+  // Track if there's an active chat stage in progress (for disabling chat input)
+  const [chatStageInProgress, setChatStageInProgress] = useState<boolean>(false);
+  
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
   const disableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -258,6 +261,31 @@ function SessionDetailPageBase({
       }, remainingDelay);
     }
   };
+
+  // Track chat stage progress for disabling chat input
+  useEffect(() => {
+    if (!sessionId) return;
+    
+    const handleStageEvent = (event: any) => {
+      // Only track chat stages (those with chat_id)
+      if (!event.chat_id) return;
+      
+      if (event.type === 'stage.started') {
+        console.log('💬 Chat stage started - disabling chat input');
+        setChatStageInProgress(true);
+      } else if (event.type === 'stage.completed' || event.type === 'stage.failed') {
+        console.log('💬 Chat stage ended - enabling chat input');
+        setChatStageInProgress(false);
+      }
+    };
+    
+    const unsubscribe = websocketService.subscribeToChannel(
+      `session:${sessionId}`,
+      handleStageEvent
+    );
+    
+    return () => unsubscribe();
+  }, [sessionId]);
 
   // WebSocket setup for real-time updates (catchup events handle race conditions)
   useEffect(() => {
@@ -611,6 +639,7 @@ function SessionDetailPageBase({
                   loading={chatLoading}
                   error={chatError}
                   sendingMessage={sendingMessage}
+                  chatStageInProgress={chatStageInProgress}
                   onExpandChange={(expanded) => setChatExpanded(expanded)}
                 />
               </Box>
