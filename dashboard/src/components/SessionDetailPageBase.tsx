@@ -184,6 +184,28 @@ function SessionDetailPageBase({
     }
   }, [session?.status]);
   
+  // Enable auto-scroll when chat becomes active (even in terminal sessions)
+  useEffect(() => {
+    const isChatActive = sendingMessage || chatStageInProgress || activeExecutionId !== null;
+    
+    if (isChatActive && !autoScrollEnabled) {
+      // Chat activity detected - enable auto-scroll
+      if (disableTimeoutRef.current) {
+        clearTimeout(disableTimeoutRef.current);
+        disableTimeoutRef.current = null;
+      }
+      setAutoScrollEnabled(true);
+      
+      // Scroll to bottom immediately so useAdvancedAutoScroll can track properly
+      setTimeout(() => {
+        window.scrollTo({ 
+          top: document.documentElement.scrollHeight, 
+          behavior: 'smooth' 
+        });
+      }, 300);
+    }
+  }, [sendingMessage, chatStageInProgress, activeExecutionId, autoScrollEnabled]);
+  
   // Perform initial scroll to bottom for active sessions
   useEffect(() => {
     if (
