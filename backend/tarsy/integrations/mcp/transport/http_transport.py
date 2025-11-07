@@ -1,7 +1,7 @@
 """HTTP transport implementation using official MCP SDK."""
 
 import asyncio
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from typing import Optional, Dict
 import httpx
 from mcp import ClientSession
@@ -112,19 +112,15 @@ class HTTPTransport(MCPTransport):
             # Extract error messages from all sub-exceptions
             errors = [f"{type(e).__name__}: {e}" for e in eg.exceptions]
             logger.error(f"HTTP transport creation failed for {self.server_id} with grouped errors: {errors}")
-            try:
+            with suppress(Exception):
                 await self.exit_stack.aclose()
-            except:
-                pass  # Suppress cleanup errors
             raise Exception(f"Failed to create HTTP session - {'; '.join(errors)}") from None
         except Exception as e:
             # Catch all other errors (connection failures, timeouts, etc.)
             # Clean up any partial state before propagating
             logger.error(f"HTTP transport creation failed for {self.server_id}: {type(e).__name__}: {e}")
-            try:
+            with suppress(Exception):
                 await self.exit_stack.aclose()
-            except:
-                pass  # Suppress cleanup errors
             raise Exception(f"Failed to create HTTP session: {type(e).__name__}: {e}") from e
     
     async def close(self):
