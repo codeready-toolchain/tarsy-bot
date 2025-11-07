@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Box, Typography, Divider, Chip } from '@mui/material';
+import { Box, Typography, Divider, Chip, alpha } from '@mui/material';
 import { Flag } from '@mui/icons-material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import ToolCallBox from './ToolCallBox';
@@ -150,6 +150,65 @@ function ChatFlowItem({ item }: ChatFlowItemProps) {
         errorMessage={item.errorMessage}
         duration_ms={item.duration_ms}
       />
+    );
+  }
+
+  // Render user message - distinct style to show it's user input
+  if (item.type === 'user_message') {
+    return (
+      <Box sx={{ mb: 2 }}>
+        <Box 
+          sx={(theme) => ({ 
+            display: 'flex',
+            gap: 1.5,
+            p: 2,
+            borderRadius: 2,
+            bgcolor: alpha(theme.palette.primary.main, 0.08),
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+          })}
+        >
+          <Typography
+            variant="body2"
+            sx={{
+              fontSize: '1.1rem',
+              lineHeight: 1,
+              flexShrink: 0,
+              mt: 0.25
+            }}
+          >
+            👤
+          </Typography>
+          <Box sx={{ flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                  fontSize: '0.7rem',
+                  color: 'primary.main'
+                }}
+              >
+                {item.author}
+              </Typography>
+            </Box>
+            <Typography
+              variant="body1"
+              sx={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                lineHeight: 1.7,
+                fontSize: '1rem',
+                color: 'text.primary',
+                fontWeight: 500
+              }}
+            >
+              {item.content}
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
     );
   }
 

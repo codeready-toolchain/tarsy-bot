@@ -51,6 +51,16 @@ export interface StageExecution {
   stage_output: any | null;
   error_message: string | null;
   
+  // Chat context (if this stage is a chat response)
+  chat_id?: string | null;
+  chat_user_message_id?: string | null;
+  chat_user_message?: {
+    message_id: string;
+    content: string;
+    author: string;
+    created_at_us: number;
+  } | null;
+  
   // Direct interaction arrays
   llm_interactions: LLMInteractionDetail[];
   mcp_communications: MCPInteractionDetail[];

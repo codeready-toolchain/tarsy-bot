@@ -1203,12 +1203,23 @@ class TestHistoryRepository:
     
     @pytest.mark.unit
     def test_get_session_details_with_chat_fields(self, repository, sample_alert_session):
-        """Test that get_session_details includes chat_id and chat_user_message_id for chat stages."""
-        from tarsy.models.db_models import StageExecution
+        """Test that get_session_details includes chat_id, chat_user_message_id, and full user message data for chat stages."""
+        from tarsy.models.db_models import StageExecution, ChatUserMessage
         from tarsy.utils.timestamp import now_us
         
         # Create session
         repository.create_alert_session(sample_alert_session)
+        
+        # Create a user message in the chat
+        user_message = ChatUserMessage(
+            message_id="msg-xyz-456",
+            chat_id="chat-abc-123",
+            content="What's wrong with the pod in namespace prod?",
+            author="john.doe",
+            created_at_us=now_us() + 1500000
+        )
+        repository.session.add(user_message)
+        repository.session.commit()
         
         # Create a regular stage execution (no chat fields)
         regular_stage = StageExecution(
@@ -1252,13 +1263,21 @@ class TestHistoryRepository:
         assert regular_stage_result.agent == "AnalysisAgent"
         assert regular_stage_result.chat_id is None
         assert regular_stage_result.chat_user_message_id is None
+        assert regular_stage_result.chat_user_message is None
         
-        # Verify chat stage has chat fields populated
+        # Verify chat stage has chat fields populated including full user message data
         chat_stage_result = result.stages[1]
         assert chat_stage_result.stage_id == "chat-response-msg123"
         assert chat_stage_result.agent == "ChatAgent"
         assert chat_stage_result.chat_id == "chat-abc-123"
         assert chat_stage_result.chat_user_message_id == "msg-xyz-456"
+        
+        # Verify embedded user message data
+        assert chat_stage_result.chat_user_message is not None
+        assert chat_stage_result.chat_user_message.message_id == "msg-xyz-456"
+        assert chat_stage_result.chat_user_message.content == "What's wrong with the pod in namespace prod?"
+        assert chat_stage_result.chat_user_message.author == "john.doe"
+        assert chat_stage_result.chat_user_message.created_at_us == user_message.created_at_us
     
     @pytest.mark.unit
     def test_get_session_details_empty_session(self, repository):

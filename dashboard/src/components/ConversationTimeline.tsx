@@ -89,8 +89,8 @@ interface ConversationTimelineProps {
 }
 
 interface StreamingItem {
-  type: 'thought' | 'final_answer' | 'summarization' | 'tool_call';
-  content?: string; // For thought/final_answer/summarization
+  type: 'thought' | 'final_answer' | 'summarization' | 'tool_call' | 'user_message';
+  content?: string; // For thought/final_answer/summarization/user_message
   stage_execution_id?: string;
   mcp_event_id?: string; // For tool_call and summarization
   waitingForDb?: boolean; // True when stream completed, waiting for DB confirmation
@@ -98,6 +98,9 @@ interface StreamingItem {
   toolName?: string;
   toolArguments?: any;
   serverName?: string;
+  // User message specific fields
+  author?: string;
+  messageId?: string;
 }
 
 /**
@@ -217,6 +220,65 @@ const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
               {item.content}
             </Typography>
           )}
+        </Box>
+      </Box>
+    );
+  }
+  
+  if (item.type === 'user_message') {
+    // Render user message (for real-time streaming)
+    return (
+      <Box sx={{ mb: 2 }}>
+        <Box 
+          sx={(theme) => ({ 
+            display: 'flex',
+            gap: 1.5,
+            p: 2,
+            borderRadius: 2,
+            bgcolor: alpha(theme.palette.primary.main, 0.08),
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+          })}
+        >
+          <Typography
+            variant="body2"
+            sx={{
+              fontSize: '1.1rem',
+              lineHeight: 1,
+              flexShrink: 0,
+              mt: 0.25
+            }}
+          >
+            👤
+          </Typography>
+          <Box sx={{ flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                  fontSize: '0.7rem',
+                  color: 'primary.main'
+                }}
+              >
+                {item.author}
+              </Typography>
+            </Box>
+            <Typography
+              variant="body1"
+              sx={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                lineHeight: 1.7,
+                fontSize: '1rem',
+                color: 'text.primary',
+                fontWeight: 500
+              }}
+            >
+              {item.content}
+            </Typography>
+          </Box>
         </Box>
       </Box>
     );
@@ -505,7 +567,24 @@ function ConversationTimeline({
         return;
       }
       
-      if (event.type === 'mcp.tool_call.started') {
+      if (event.type === 'stage.started' && event.chat_user_message_content) {
+        // Handle stage.started events with user message data
+        console.log('💬 Stage started with user message:', event.chat_user_message_content.substring(0, 50));
+        setStreamingItems(prev => {
+          const updated = new Map(prev);
+          const key = `user-message-${event.chat_user_message_id}`;
+          
+          updated.set(key, {
+            type: 'user_message' as const,
+            content: event.chat_user_message_content,
+            author: event.chat_user_message_author || 'Unknown',
+            messageId: event.chat_user_message_id,
+            waitingForDb: false
+          });
+          
+          return updated;
+        });
+      } else if (event.type === 'mcp.tool_call.started') {
         setStreamingItems(prev => {
           const updated = new Map(prev);
           // Use communication_id as key for deduplication with DB
@@ -622,6 +701,10 @@ function ConversationTimeline({
             // Summarizations match by type and mcp_event_id
             shouldMatch = dbItem.type === 'summarization' && 
                          dbItem.mcp_event_id === streamingItem.mcp_event_id;
+          } else if (streamingItem.type === 'user_message') {
+            // User messages match by type and message_id
+            shouldMatch = dbItem.type === 'user_message' && 
+                         dbItem.messageId === streamingItem.messageId;
           } else {
             // Thoughts and final_answer match by type and content
             shouldMatch = dbItem.type === streamingItem.type && 

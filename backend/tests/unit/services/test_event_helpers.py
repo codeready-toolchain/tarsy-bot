@@ -488,7 +488,7 @@ class TestPublishStageStarted:
 
     @pytest.mark.asyncio
     async def test_publishes_stage_started_event(self):
-        """Test that it publishes stage.started event."""
+        """Test that it publishes stage.started event with optional chat user message data."""
         mock_session = AsyncMock()
         mock_session_factory = Mock(return_value=mock_session)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -496,6 +496,7 @@ class TestPublishStageStarted:
 
         with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
              patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
+            # Test without user message data
             await publish_stage_started("test-session-123", "stage-456", "Investigation")
 
             mock_publish.assert_called_once()
@@ -505,6 +506,30 @@ class TestPublishStageStarted:
             assert event.session_id == "test-session-123"
             assert event.stage_id == "stage-456"
             assert event.stage_name == "Investigation"
+            assert event.chat_id is None
+            assert event.chat_user_message_id is None
+            assert event.chat_user_message_content is None
+            assert event.chat_user_message_author is None
+            
+            # Test with user message data
+            mock_publish.reset_mock()
+            await publish_stage_started(
+                "test-session-123", 
+                "stage-789", 
+                "Chat Response",
+                chat_id="chat-abc",
+                chat_user_message_id="msg-123",
+                chat_user_message_content="What's wrong with the pod?",
+                chat_user_message_author="john.doe"
+            )
+            
+            mock_publish.assert_called_once()
+            call_args = mock_publish.call_args
+            event = call_args[0][2]
+            assert event.chat_id == "chat-abc"
+            assert event.chat_user_message_id == "msg-123"
+            assert event.chat_user_message_content == "What's wrong with the pod?"
+            assert event.chat_user_message_author == "john.doe"
 
     @pytest.mark.asyncio
     async def test_handles_publish_error(self):

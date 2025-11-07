@@ -9,7 +9,7 @@ for real-time dashboard updates via WebSocket.
 import logging
 from tarsy.hooks.hook_context import BaseHook
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.models.db_models import StageExecution
+from tarsy.models.db_models import StageExecution, ChatUserMessage
 
 logger = logging.getLogger(__name__)
 
@@ -114,13 +114,40 @@ class StageExecutionEventHook(BaseHook[StageExecution]):
             publish_stage_started,
             publish_stage_completed
         )
+        from tarsy.database.init_db import get_async_session_factory
+        from sqlmodel import select
         
         if stage_execution.status == StageStatus.ACTIVE.value:
+            # Fetch user message if this is a chat stage
+            chat_user_message_id = None
+            chat_user_message_content = None
+            chat_user_message_author = None
+            
+            if stage_execution.chat_user_message_id:
+                try:
+                    async_session_factory = get_async_session_factory()
+                    async with async_session_factory() as session:
+                        stmt = select(ChatUserMessage).where(
+                            ChatUserMessage.message_id == stage_execution.chat_user_message_id
+                        )
+                        result = await session.exec(stmt)
+                        user_message = result.first()
+                        
+                        if user_message:
+                            chat_user_message_id = user_message.message_id
+                            chat_user_message_content = user_message.content
+                            chat_user_message_author = user_message.author
+                except Exception as e:
+                    logger.warning(f"Failed to fetch user message for stage event: {e}")
+            
             await publish_stage_started(
                 session_id=stage_execution.session_id,
                 stage_id=stage_execution.execution_id,
                 stage_name=stage_execution.stage_name,
-                chat_id=stage_execution.chat_id
+                chat_id=stage_execution.chat_id,
+                chat_user_message_id=chat_user_message_id,
+                chat_user_message_content=chat_user_message_content,
+                chat_user_message_author=chat_user_message_author
             )
         elif stage_execution.status in [StageStatus.COMPLETED.value, StageStatus.FAILED.value, StageStatus.PARTIAL.value]:
             await publish_stage_completed(

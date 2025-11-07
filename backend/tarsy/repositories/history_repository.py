@@ -15,7 +15,8 @@ from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.db_models import AlertSession, StageExecution, Chat, ChatUserMessage
 from tarsy.models.history_models import (
     PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo,
-    SessionOverview, DetailedStage, LLMTimelineEvent, MCPTimelineEvent, MCPEventDetails
+    SessionOverview, DetailedStage, LLMTimelineEvent, MCPTimelineEvent, MCPEventDetails,
+    ChatUserMessageData
 )
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import BaseRepository
@@ -558,6 +559,22 @@ class HistoryRepository:
             )
             stage_executions_db = self.session.exec(stages_stmt).all()
             
+            # Collect all chat user message IDs from stages
+            message_ids = [
+                stage.chat_user_message_id 
+                for stage in stage_executions_db 
+                if stage.chat_user_message_id
+            ]
+            
+            # Fetch all user messages in bulk if there are any
+            user_messages_map: Dict[str, ChatUserMessage] = {}
+            if message_ids:
+                messages_stmt = select(ChatUserMessage).where(
+                    ChatUserMessage.message_id.in_(message_ids)
+                )
+                user_messages = self.session.exec(messages_stmt).all()
+                user_messages_map = {msg.message_id: msg for msg in user_messages}
+            
             # Group interactions by stage_execution_id
             interactions_by_stage = defaultdict(list)
             
@@ -618,6 +635,17 @@ class HistoryRepository:
                     key=lambda x: x.timestamp_us
                 )
                 
+                # Get user message data if this stage has a chat message
+                chat_user_message_data = None
+                if stage_db.chat_user_message_id and stage_db.chat_user_message_id in user_messages_map:
+                    user_msg = user_messages_map[stage_db.chat_user_message_id]
+                    chat_user_message_data = ChatUserMessageData(
+                        message_id=user_msg.message_id,
+                        content=user_msg.content,
+                        author=user_msg.author,
+                        created_at_us=user_msg.created_at_us
+                    )
+                
                 detailed_stage = DetailedStage(
                     execution_id=stage_db.execution_id,
                     session_id=stage_db.session_id,
@@ -633,6 +661,7 @@ class HistoryRepository:
                     error_message=stage_db.error_message,
                     chat_id=stage_db.chat_id,
                     chat_user_message_id=stage_db.chat_user_message_id,
+                    chat_user_message=chat_user_message_data,
                     llm_interactions=llm_stage_interactions,
                     mcp_communications=mcp_stage_interactions,
                     llm_interaction_count=len(llm_stage_interactions),

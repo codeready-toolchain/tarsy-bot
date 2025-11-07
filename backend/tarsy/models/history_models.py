@@ -145,6 +145,18 @@ class ChainStatistics(BaseModel):
 
 
 # =============================================================================
+# CHAT MESSAGE MODELS
+# =============================================================================
+
+class ChatUserMessageData(BaseModel):
+    """User message data embedded in stage execution responses"""
+    message_id: str
+    content: str
+    author: str
+    created_at_us: int
+
+
+# =============================================================================
 # MAIN RESPONSE MODELS
 # =============================================================================
 
@@ -215,6 +227,7 @@ class DetailedStage(BaseModel):
     # Chat context (if this stage is a chat response)
     chat_id: Optional[str] = None
     chat_user_message_id: Optional[str] = None
+    chat_user_message: Optional[ChatUserMessageData] = None  # Full user message data (populated when chat_user_message_id exists)
     
     # ALL interactions that happened during this stage (FULL objects with complete details)
     llm_interactions: List[LLMTimelineEvent] = Field(default_factory=list)  # Complete LLM interactions with full details

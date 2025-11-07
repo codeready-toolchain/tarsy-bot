@@ -1167,6 +1167,31 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             "Chat user message ID missing from stage"
         )
         
+        # Verify embedded user message data (added in user message display feature)
+        chat_user_message = chat_stage.get("chat_user_message")
+        assert chat_user_message is not None, (
+            "Chat user message data missing from stage - should be embedded"
+        )
+        assert chat_user_message.get("message_id") is not None, "User message ID missing"
+        assert chat_user_message.get("content") is not None, "User message content missing"
+        assert chat_user_message.get("author") == "test-user@example.com", (
+            f"User message author mismatch: expected 'test-user@example.com', "
+            f"got '{chat_user_message.get('author')}'"
+        )
+        assert chat_user_message.get("created_at_us") > 0, "User message timestamp invalid"
+        
+        # Verify the content matches what we expect for each message
+        expected_content_map = {
+            'message_1': "Can you check the pods in the stuck-namespace?",
+            'message_2': "Does the namespace still exist?"
+        }
+        expected_content = expected_content_map.get(message_key)
+        if expected_content:
+            assert chat_user_message.get("content") == expected_content, (
+                f"User message content mismatch for {message_key}: "
+                f"expected '{expected_content}', got '{chat_user_message.get('content')}'"
+            )
+        
         # Get expected interactions for this message
         expected_chat = EXPECTED_CHAT_INTERACTIONS[message_key]
         llm_interactions = chat_stage.get("llm_interactions", [])

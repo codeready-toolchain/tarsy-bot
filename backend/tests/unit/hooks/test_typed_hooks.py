@@ -341,7 +341,7 @@ class TestStageExecutionEventHook:
     
     @pytest.mark.asyncio
     async def test_execute_active_status_publishes_started(self, event_hook, active_stage_execution):
-        """Test that ACTIVE status publishes stage.started event."""
+        """Test that ACTIVE status publishes stage.started event without user message."""
         with patch("tarsy.services.events.event_helpers.publish_stage_started", new_callable=AsyncMock) as mock_started:
             with patch("tarsy.services.events.event_helpers.publish_stage_completed", new_callable=AsyncMock) as mock_completed:
                 await event_hook.execute(active_stage_execution)
@@ -350,9 +350,67 @@ class TestStageExecutionEventHook:
                     session_id="test-session",
                     stage_id="test-stage-execution-0",
                     stage_name="Test Stage",
-                    chat_id=None
+                    chat_id=None,
+                    chat_user_message_id=None,
+                    chat_user_message_content=None,
+                    chat_user_message_author=None
                 )
                 mock_completed.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_execute_active_status_with_chat_user_message(self, event_hook):
+        """Test that ACTIVE status publishes stage.started event with user message data when present."""
+        from tarsy.models.db_models import StageExecution, ChatUserMessage
+        from tarsy.models.constants import StageStatus
+        from unittest.mock import AsyncMock, MagicMock
+        
+        # Create stage execution with chat user message
+        chat_stage = StageExecution(
+            session_id="test-session",
+            execution_id="test-stage-execution-1",
+            stage_id="chat-response",
+            stage_index=0,
+            stage_name="Chat Response",
+            agent="ChatAgent",
+            status=StageStatus.ACTIVE.value,
+            chat_id="chat-123",
+            chat_user_message_id="msg-456"
+        )
+        
+        # Mock the database session and query
+        mock_user_message = ChatUserMessage(
+            message_id="msg-456",
+            chat_id="chat-123",
+            content="What's causing the pod crash?",
+            author="alice",
+            created_at_us=1234567890
+        )
+        
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_user_message
+        
+        mock_async_session = AsyncMock()
+        mock_async_session.exec = AsyncMock(return_value=mock_result)
+        mock_async_session.__aenter__ = AsyncMock(return_value=mock_async_session)
+        mock_async_session.__aexit__ = AsyncMock()
+        
+        mock_session_factory = MagicMock(return_value=mock_async_session)
+        
+        with patch("tarsy.database.init_db.get_async_session_factory", return_value=mock_session_factory):
+            with patch("tarsy.services.events.event_helpers.publish_stage_started", new_callable=AsyncMock) as mock_started:
+                with patch("tarsy.services.events.event_helpers.publish_stage_completed", new_callable=AsyncMock) as mock_completed:
+                    await event_hook.execute(chat_stage)
+                    
+                    mock_started.assert_called_once_with(
+                        session_id="test-session",
+                        stage_id="test-stage-execution-1",
+                        stage_name="Chat Response",
+                        chat_id="chat-123",
+                        chat_user_message_id="msg-456",
+                        chat_user_message_content="What's causing the pod crash?",
+                        chat_user_message_author="alice"
+                    )
+                    mock_completed.assert_not_called()
     
     @pytest.mark.asyncio
     async def test_execute_completed_status_publishes_completed_with_string_value(self, event_hook, completed_stage_execution):

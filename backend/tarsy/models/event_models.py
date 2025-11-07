@@ -135,6 +135,10 @@ class StageStartedEvent(BaseEvent):
     stage_id: str = Field(description="Stage execution identifier")
     stage_name: str = Field(description="Human-readable stage name")
     chat_id: Optional[str] = Field(default=None, description="Chat ID if this is a chat response stage")
+    # User message data (for chat stages)
+    chat_user_message_id: Optional[str] = Field(default=None, description="User message ID if this is a chat response")
+    chat_user_message_content: Optional[str] = Field(default=None, description="User message content")
+    chat_user_message_author: Optional[str] = Field(default=None, description="User message author")
 
 
 class StageCompletedEvent(BaseEvent):

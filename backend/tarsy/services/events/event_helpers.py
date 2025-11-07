@@ -239,7 +239,13 @@ async def publish_mcp_tool_list(
 
 
 async def publish_stage_started(
-    session_id: str, stage_id: str, stage_name: str, chat_id: Optional[str] = None
+    session_id: str, 
+    stage_id: str, 
+    stage_name: str, 
+    chat_id: Optional[str] = None,
+    chat_user_message_id: Optional[str] = None,
+    chat_user_message_content: Optional[str] = None,
+    chat_user_message_author: Optional[str] = None
 ) -> None:
     """
     Publish stage.started event.
@@ -249,12 +255,21 @@ async def publish_stage_started(
         stage_id: Stage execution identifier
         stage_name: Human-readable stage name
         chat_id: Optional chat ID if this is a chat response stage
+        chat_user_message_id: Optional user message ID
+        chat_user_message_content: Optional user message content
+        chat_user_message_author: Optional user message author
     """
     try:
         async_session_factory = get_async_session_factory()
         async with async_session_factory() as session:
             event = StageStartedEvent(
-                session_id=session_id, stage_id=stage_id, stage_name=stage_name, chat_id=chat_id
+                session_id=session_id, 
+                stage_id=stage_id, 
+                stage_name=stage_name, 
+                chat_id=chat_id,
+                chat_user_message_id=chat_user_message_id,
+                chat_user_message_content=chat_user_message_content,
+                chat_user_message_author=chat_user_message_author
             )
             await publish_event(
                 session, EventChannel.session_details(session_id), event
