@@ -38,29 +38,35 @@ export default function ChatPanel({
   // Handle expansion with chat creation
   const handleExpand = async () => {
     if (expanded) {
-      // Just collapse
+      // Just collapse chat and re-expand Final Analysis
       setExpanded(false);
       onExpandChange?.(false);
       return;
     }
 
-    // Expanding - create chat if needed
+    // Expanding - first collapse Final Analysis to prevent jerky behavior
+    // Then expand chat after a brief delay
+    onExpandChange?.(true); // This collapses Final Analysis first
+    
+    // Wait a bit for Final Analysis to start collapsing
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    // Now expand chat (create if needed)
     if (!chat && isAvailable && !isCreatingChat) {
       setIsCreatingChat(true);
       try {
         await onCreateChat();
         setExpanded(true);
-        onExpandChange?.(true);
       } catch (err) {
         // Error handled below, don't expand
         setSendError('Failed to create chat');
+        onExpandChange?.(false); // Re-expand Final Analysis on error
       } finally {
         setIsCreatingChat(false);
       }
     } else if (chat) {
       // Chat already exists, just expand
       setExpanded(true);
-      onExpandChange?.(true);
     }
   };
 

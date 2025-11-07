@@ -625,14 +625,20 @@ function SessionDetailPageBase({
                   variant="outlined"
                   size="large"
                   onClick={() => {
-                    const chatPanel = document.getElementById('chat-panel');
-                    if (chatPanel) {
-                      chatPanel.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                      // Scroll down a bit more after the animation
-                      setTimeout(() => {
-                        window.scrollBy({ top: 100, behavior: 'smooth' });
-                      }, 500);
-                    }
+                    // First, collapse Final Analysis to prevent layout jump
+                    setChatExpanded(true);
+                    
+                    // Then scroll after a brief delay for smooth transition
+                    setTimeout(() => {
+                      const chatPanel = document.getElementById('chat-panel');
+                      if (chatPanel) {
+                        chatPanel.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                        // Scroll down a bit more after the animation
+                        setTimeout(() => {
+                          window.scrollBy({ top: 100, behavior: 'smooth' });
+                        }, 500);
+                      }
+                    }, 200);
                   }}
                   sx={{
                     textTransform: 'none',
