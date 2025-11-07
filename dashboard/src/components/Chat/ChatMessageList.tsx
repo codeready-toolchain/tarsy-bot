@@ -129,7 +129,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
             message_id: event.chat_user_message_id,
             content: event.chat_user_message_content,
             author: event.chat_user_message_author,
-            created_at_us: event.timestamp_us
+            created_at_us: event.timestamp_us || Date.now() * 1000
           } : null
         };
         
@@ -158,7 +158,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
           message_id: event.message_id,
           content: event.content,
           author: event.author,
-          created_at_us: event.timestamp_us
+          created_at_us: event.timestamp_us || Date.now() * 1000
         };
         setMessages(prev => {
           // Check if message already exists

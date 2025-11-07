@@ -101,9 +101,9 @@ async def create_chat(
         # ChatService raises ValueError for validation failures
         error_msg = str(e)
         if "not found" in error_msg.lower():
-            raise HTTPException(status_code=404, detail=error_msg)
+            raise HTTPException(status_code=404, detail=error_msg) from e
         else:
-            raise HTTPException(status_code=400, detail=error_msg)
+            raise HTTPException(status_code=400, detail=error_msg) from e
 
     except Exception as e:
         logger.error(
@@ -116,7 +116,7 @@ async def create_chat(
                 "message": "Failed to create chat",
                 "support_info": "Check server logs or contact support",
             },
-        )
+        ) from e
 
 
 @router.get(
@@ -135,18 +135,25 @@ async def create_chat(
     - `available: false` with reason if unavailable
     - `chat_id` if chat already exists
     
-    **Availability Criteria:**
+    **Availability Criteria (lightweight pre-check):**
     - Session must exist
     - Session must be in a terminal state (COMPLETED, FAILED, or CANCELLED)
-    - Chain must have chat_enabled=true
+    - Chat already exists for the session (if so, returns existing chat_id)
+    
+    **Note:** Full validation (including chain chat_enabled configuration) occurs 
+    when creating the chat via POST /sessions/{session_id}/chat.
     """,
 )
 async def check_chat_availability(
     session_id: str = Path(..., description="Session identifier"),
-    chat_service: Annotated[ChatService, Depends(get_chat_service)] = None,
     history_service: Annotated[HistoryService, Depends(get_history_service)] = None,
 ) -> ChatAvailabilityResponse:
-    """Check if chat is available for session."""
+    """
+    Check if chat is available for session (lightweight pre-check).
+    
+    Validates basic requirements: session exists, is terminated, and checks for existing chat.
+    Full validation including chain configuration happens during chat creation.
+    """
 
     try:
         # Check if session exists (get_session is synchronous, wrap in to_thread)
@@ -173,8 +180,8 @@ async def check_chat_availability(
                 reason=f"Session must be in a terminal state (current status: {session.status})",
             )
 
-        # Check if chain has chat enabled (delegate to chat_service internal validation)
-        # For now, return available=True (chat_service.create_chat will validate chain config)
+        # Session is terminated and no chat exists yet - available for creation
+        # Note: Full validation (e.g., chain chat_enabled) happens during POST /sessions/{session_id}/chat
         return ChatAvailabilityResponse(available=True)
 
     except HTTPException:
@@ -187,7 +194,7 @@ async def check_chat_availability(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to check chat availability: {str(e)}",
-        )
+        ) from e
 
 
 @router.get(
@@ -228,7 +235,7 @@ async def get_chat(
         logger.error(f"Failed to get chat {chat_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve chat: {str(e)}"
-        )
+        ) from e
 
 
 @router.post(
@@ -336,9 +343,9 @@ async def send_message(
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg.lower():
-            raise HTTPException(status_code=404, detail=error_msg)
+            raise HTTPException(status_code=404, detail=error_msg) from e
         else:
-            raise HTTPException(status_code=400, detail=error_msg)
+            raise HTTPException(status_code=400, detail=error_msg) from e
 
     except Exception as e:
         logger.error(
@@ -351,7 +358,7 @@ async def send_message(
                 "message": "Failed to process chat message",
                 "support_info": "Check server logs or contact support",
             },
-        )
+        ) from e
 
 
 @router.post(
@@ -413,7 +420,7 @@ async def cancel_chat_execution(
                 "message": "Failed to cancel chat execution",
                 "support_info": "Check server logs or contact support",
             },
-        )
+        ) from e
 
 
 @router.get(
@@ -482,5 +489,5 @@ async def get_chat_messages(
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve messages: {str(e)}"
-        )
+        ) from e
 

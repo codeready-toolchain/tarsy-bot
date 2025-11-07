@@ -296,6 +296,7 @@ class TestChatService:
         prev_execution = Mock()
         prev_execution.execution_id = "exec-1"
         prev_execution.started_at_us = now_us()
+        prev_execution.chat_user_message_id = "msg-1"  # Link to the user message
         
         # Mock chat user message
         chat_user_message = Mock()

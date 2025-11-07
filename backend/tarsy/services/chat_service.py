@@ -637,24 +637,19 @@ class ChatService:
             offset=0
         )
         
+        # Query stage executions once and map by chat_user_message_id
+        # This avoids repeated DB calls and fixes issues with None started_at_us timestamps
+        chat_executions = await self.history_service.get_stage_executions_for_chat(chat_id)
+        execution_map = {
+            exec.chat_user_message_id: exec 
+            for exec in chat_executions 
+            if exec.chat_user_message_id
+        }
+        
         exchanges = []
         for msg in user_messages:
-            # Get the stage execution that processed this message
-            # The stage_execution_id is stored when we create the user message
-            # We need to find the stage execution for this chat message
-            
-            # Get all chat executions and find the one that corresponds to this message
-            chat_executions = await self.history_service.get_stage_executions_for_chat(chat_id)
-            
-            # Find the execution that matches this message timestamp
-            # Executions are ordered by timestamp, and each user message corresponds
-            # to a stage execution that was created when processing that message
-            matching_execution = None
-            for execution in chat_executions:
-                # Match by timestamp proximity (execution should be after message)
-                if execution.started_at_us and execution.started_at_us >= msg.created_at_us:
-                    matching_execution = execution
-                    break
+            # Look up the stage execution using the message ID
+            matching_execution = execution_map.get(msg.message_id)
             
             if not matching_execution:
                 logger.warning(f"No matching execution found for chat message {msg.message_id}")
