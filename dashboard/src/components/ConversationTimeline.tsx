@@ -328,6 +328,8 @@ function ConversationTimeline({
   const [streamingItems, setStreamingItems] = useState<Map<string, StreamingItem>>(new Map());
   // Track which chatFlow items have been "claimed" by deduplication (prevents double-matching)
   const [claimedChatFlowItems, setClaimedChatFlowItems] = useState<Set<string>>(new Set());
+  // Track if there's an active chat stage in progress (for showing processing indicator on completed sessions)
+  const [activeChatStageInProgress, setActiveChatStageInProgress] = useState<boolean>(false);
   
   // Memoize chat flow stats to prevent recalculation on every render
   const chatStats = useMemo(() => {
@@ -629,6 +631,31 @@ function ConversationTimeline({
     setClaimedChatFlowItems(new Set());
   }, [session.session_id]);
 
+  // Track chat stage progress for processing indicator
+  useEffect(() => {
+    if (!session.session_id) return;
+    
+    const handleStageEvent = (event: any) => {
+      // Only track chat stages (those with chat_id)
+      if (!event.chat_id) return;
+      
+      if (event.type === 'stage.started') {
+        console.log('💬 Chat stage started, showing processing indicator');
+        setActiveChatStageInProgress(true);
+      } else if (event.type === 'stage.completed' || event.type === 'stage.failed') {
+        console.log('💬 Chat stage ended, hiding processing indicator');
+        setActiveChatStageInProgress(false);
+      }
+    };
+    
+    const unsubscribe = websocketService.subscribeToChannel(
+      `session:${session.session_id}`,
+      handleStageEvent
+    );
+    
+    return () => unsubscribe();
+  }, [session.session_id]);
+
   // Calculate stage stats
   const stageCount = session.stages?.length || 0;
   const completedStages = session.stages?.filter(s => s.status === 'completed').length || 0;
@@ -793,8 +820,8 @@ function ConversationTimeline({
               <StreamingItemRenderer key={entryKey} item={entryValue} />
             ))}
 
-            {/* Processing indicator at bottom when session is in progress OR when there are streaming items (chat in progress) */}
-            {(session.status === 'in_progress' || streamingItems.size > 0) && <ProcessingIndicator />}
+            {/* Processing indicator at bottom when session/chat is in progress OR when there are streaming items */}
+            {(session.status === 'in_progress' || streamingItems.size > 0 || activeChatStageInProgress) && <ProcessingIndicator />}
           </>
         )}
       </Box>
