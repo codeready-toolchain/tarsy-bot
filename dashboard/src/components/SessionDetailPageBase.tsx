@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
+import {
   Container, 
   Typography, 
   Box, 
@@ -13,7 +13,8 @@ import {
   FormControlLabel,
   ToggleButton,
   ToggleButtonGroup,
-  IconButton
+  IconButton,
+  Button
 } from '@mui/material';
 import { Psychology, BugReport } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
@@ -127,6 +128,9 @@ function SessionDetailPageBase({
     // Initialize based on session status if available
     return session ? isActiveSessionStatus(session.status) : false;
   });
+
+  // Chat expansion state - to control Final Analysis collapse
+  const [chatExpanded, setChatExpanded] = useState(false);
   
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
@@ -582,30 +586,65 @@ function SessionDetailPageBase({
               </Alert>
             )}
 
+            {/* Chat Panel - Only shown for terminated sessions (completed, failed, cancelled) */}
+            {/* Positioned here (after timeline, before final analysis) for better UX */}
+            {isTerminalSessionStatus(session.status) && (
+              <Box id="chat-panel">
+                <ChatPanel
+                  sessionId={session.session_id}
+                  chat={chat}
+                  isAvailable={chatAvailable}
+                  onCreateChat={async () => {
+                    await createChat();
+                  }}
+                  onSendMessage={async (content) => {
+                    await sendMessage(content, user?.email || 'anonymous');
+                  }}
+                  loading={chatLoading}
+                  error={chatError}
+                  onExpandChange={(expanded) => setChatExpanded(expanded)}
+                />
+              </Box>
+            )}
+
             {/* Final AI Analysis - Lazy loaded */}
+            {/* Auto-collapses when chat is expanded to prevent scrolling issues */}
             <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
               <FinalAnalysisCard 
                 analysis={session.final_analysis}
                 sessionStatus={session.status}
                 errorMessage={session.error_message}
+                defaultCollapsed={chatExpanded}
               />
             </Suspense>
 
-            {/* Chat Panel - Only shown for terminated sessions (completed, failed, cancelled) */}
-            {isTerminalSessionStatus(session.status) && (
-              <ChatPanel
-                sessionId={session.session_id}
-                chat={chat}
-                isAvailable={chatAvailable}
-                onCreateChat={async () => {
-                  await createChat();
-                }}
-                onSendMessage={async (content) => {
-                  await sendMessage(content, user?.email || 'anonymous');
-                }}
-                loading={chatLoading}
-                error={chatError}
-              />
+            {/* Jump to Chat button - shown after Final Analysis when chat is available */}
+            {isTerminalSessionStatus(session.status) && (chat || chatAvailable) && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={() => {
+                    const chatPanel = document.getElementById('chat-panel');
+                    if (chatPanel) {
+                      chatPanel.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                      // Scroll down a bit more after the animation
+                      setTimeout(() => {
+                        window.scrollBy({ top: 100, behavior: 'smooth' });
+                      }, 500);
+                    }
+                  }}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    fontSize: '1rem',
+                    py: 1.5,
+                    px: 4,
+                  }}
+                >
+                  💬 Jump to Follow-up Chat
+                </Button>
+              </Box>
             )}
           </Box>
         )}

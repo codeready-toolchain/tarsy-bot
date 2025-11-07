@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useState } from 'react';
 import { Box, TextField, IconButton, CircularProgress, Tooltip } from '@mui/material';
 import { Send } from '@mui/icons-material';
 
@@ -26,13 +26,6 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
     }
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
   const isDisabled = disabled || sending;
   const canSend = content.trim() && !isDisabled;
 
@@ -47,11 +40,11 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
       <TextField
         fullWidth
         multiline
-        maxRows={4}
-        placeholder="Type your question... (Shift+Enter for new line)"
+        minRows={2}
+        maxRows={8}
+        placeholder="Type your question... (press Enter for new line)"
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        onKeyDown={handleKeyDown}
         disabled={isDisabled}
         size="small"
         sx={{
@@ -60,7 +53,7 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
           }
         }}
       />
-      <Tooltip title={sending ? 'Sending...' : 'Send message (Enter)'}>
+      <Tooltip title={sending ? 'Sending...' : 'Send message'}>
         <span>
           <IconButton
             color="primary"
