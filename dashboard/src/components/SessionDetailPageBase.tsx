@@ -121,6 +121,7 @@ function SessionDetailPageBase({
     sendMessage,
     loading: chatLoading,
     error: chatError,
+    sendingMessage,
   } = useChatState(sessionId || '', session?.status);
 
   // Auto-scroll settings - only enable by default for active sessions
@@ -601,6 +602,7 @@ function SessionDetailPageBase({
                   }}
                   loading={chatLoading}
                   error={chatError}
+                  sendingMessage={sendingMessage}
                   onExpandChange={(expanded) => setChatExpanded(expanded)}
                 />
               </Box>

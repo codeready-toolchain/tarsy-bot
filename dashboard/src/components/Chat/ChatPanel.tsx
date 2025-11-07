@@ -11,6 +11,7 @@ interface ChatPanelProps {
   onSendMessage: (content: string) => Promise<void>;
   loading?: boolean;
   error?: string | null;
+  sendingMessage?: boolean; // Track when a message is actively being sent
   onExpandChange?: (expanded: boolean) => void; // Notify parent when expanded state changes
 }
 
@@ -21,6 +22,7 @@ export default function ChatPanel({
   onSendMessage,
   loading,
   error,
+  sendingMessage = false,
   onExpandChange
 }: ChatPanelProps) {
   const [expanded, setExpanded] = useState(false); // Start collapsed
@@ -212,8 +214,39 @@ export default function ChatPanel({
               <Typography variant="body2">{sendError}</Typography>
             </Alert>
           )}
+          
+          {/* Subtle progress bar when message is being sent */}
+          {sendingMessage && (
+            <Box 
+              sx={{ 
+                height: 2,
+                width: '100%',
+                bgcolor: 'primary.main',
+                opacity: 0.6,
+                animation: 'shimmer 1.5s ease-in-out infinite',
+                '@keyframes shimmer': {
+                  '0%': { 
+                    transform: 'translateX(-100%)',
+                    opacity: 0.3
+                  },
+                  '50%': { 
+                    opacity: 0.8
+                  },
+                  '100%': { 
+                    transform: 'translateX(100%)',
+                    opacity: 0.3
+                  }
+                }
+              }}
+            />
+          )}
+          
           {chat && (
-            <ChatInput onSendMessage={handleSendMessage} disabled={loading} />
+            <ChatInput 
+              onSendMessage={handleSendMessage} 
+              disabled={loading || sendingMessage}
+              sendingMessage={sendingMessage}
+            />
           )}
         </Box>
       </Collapse>
