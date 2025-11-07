@@ -35,7 +35,7 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Bad request - session not completed or chat disabled",
+            "description": "Bad request - session not terminated or chat disabled",
         },
         404: {"model": ErrorResponse, "description": "Session not found"},
         503: {
@@ -46,10 +46,10 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
     },
     summary="Create Chat for Session",
     description="""
-    Create a new follow-up chat conversation for a completed alert processing session.
+    Create a new follow-up chat conversation for a terminated alert processing session.
     
     **Requirements:**
-    - Session must exist and be in COMPLETED status
+    - Session must exist and be in a terminal state (COMPLETED, FAILED, or CANCELLED)
     - Chain must have chat_enabled=true configuration
     - Only one chat allowed per session (idempotent - returns existing chat if already created)
     
@@ -64,7 +64,7 @@ async def create_chat(
     chat_service: Annotated[ChatService, Depends(get_chat_service)] = None,
     history_service: Annotated[HistoryService, Depends(get_history_service)] = None,
 ) -> ChatResponse:
-    """Create new chat for completed session."""
+    """Create new chat for terminated session."""
 
     # Check shutdown status (reuse pattern from alert_controller.py)
     from tarsy.main import shutdown_in_progress
@@ -137,7 +137,7 @@ async def create_chat(
     
     **Availability Criteria:**
     - Session must exist
-    - Session must be COMPLETED
+    - Session must be in a terminal state (COMPLETED, FAILED, or CANCELLED)
     - Chain must have chat_enabled=true
     """,
 )
@@ -163,11 +163,14 @@ async def check_chat_availability(
                 available=True, chat_id=existing_chat.chat_id
             )
 
-        # Check if session is completed
-        if session.status != "completed":
+        # Check if session is in a terminal state (completed, failed, or cancelled)
+        from tarsy.models.constants import AlertSessionStatus
+        
+        terminal_statuses = AlertSessionStatus.terminal_values()
+        if session.status not in terminal_statuses:
             return ChatAvailabilityResponse(
                 available=False,
-                reason=f"Session must be completed (current status: {session.status})",
+                reason=f"Session must be in a terminal state (current status: {session.status})",
             )
 
         # Check if chain has chat enabled (delegate to chat_service internal validation)

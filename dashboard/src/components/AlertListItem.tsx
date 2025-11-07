@@ -1,6 +1,6 @@
 import React from 'react';
-import { TableRow, TableCell, Typography, IconButton, Tooltip } from '@mui/material';
-import { OpenInNew } from '@mui/icons-material';
+import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip } from '@mui/material';
+import { OpenInNew, Chat as ChatIcon } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { highlightSearchTermNodes } from '../utils/search';
@@ -96,6 +96,21 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
           />
         ) : (
           <Typography variant="body2" color="text.secondary">-</Typography>
+        )}
+      </TableCell>
+      {/* EP-0027: Chat indicator badge */}
+      <TableCell sx={{ width: 80, textAlign: 'center' }}>
+        {(session as any).chat_message_count > 0 && (
+          <Tooltip title="Follow-up chat active">
+            <Chip
+              icon={<ChatIcon />}
+              label={(session as any).chat_message_count}
+              size="small"
+              color="primary"
+              variant="outlined"
+              sx={{ height: 24, fontSize: '0.75rem' }}
+            />
+          </Tooltip>
         )}
       </TableCell>
       <TableCell sx={{ width: 60, textAlign: 'center' }}>

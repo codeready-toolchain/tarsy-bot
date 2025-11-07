@@ -206,9 +206,9 @@ export interface SessionsResponse {
   filters_applied: FiltersApplied;
 }
 
-// WebSocket message types (Phase 2 + Phase 5)
+// WebSocket message types (Phase 2 + Phase 5 + EP-0027 Chat)
 export interface WebSocketMessage {
-  type: 'session_update' | 'session_completed' | 'session_failed' | 'ping' | 'pong' | 'connection_established' | 'subscription_response' | 'dashboard_update' | 'message_batch' | 'session_status_change' | 'batched_session_updates' | 'chain_progress' | 'stage_progress';
+  type: 'session_update' | 'session_completed' | 'session_failed' | 'ping' | 'pong' | 'connection_established' | 'subscription_response' | 'dashboard_update' | 'message_batch' | 'session_status_change' | 'batched_session_updates' | 'chain_progress' | 'stage_progress' | 'chat.created' | 'chat.user_message';
   data?: SessionUpdate | ChainProgressUpdate | StageProgressUpdate | any; // Allow any data type for dashboard_update messages
   timestamp_us?: number; // Unix timestamp (microseconds since epoch)
   channel?: string; // Dashboard updates include channel info
@@ -628,4 +628,49 @@ export interface MCPServersResponse {
   servers: MCPServerInfo[];
   total_servers: number;
   total_tools: number;
+}
+
+// Chat types (EP-0027)
+export interface Chat {
+  chat_id: string;
+  session_id: string;
+  created_at_us: number;
+  created_by: string | null;
+  conversation_history: string;
+  chain_id: string;
+  mcp_selection: MCPSelectionConfig | null;
+  context_captured_at_us: number;
+  pod_id: string | null;
+  last_interaction_at: number | null;
+}
+
+export interface ChatUserMessage {
+  message_id: string;
+  chat_id: string;
+  content: string;
+  author: string;
+  created_at_us: number;
+}
+
+export interface ChatAvailabilityResponse {
+  available: boolean;
+  reason?: string;
+}
+
+// Chat WebSocket event types
+export interface ChatCreatedEvent {
+  type: 'chat.created';
+  chat_id: string;
+  session_id: string;
+  created_by: string;
+  timestamp_us: number;
+}
+
+export interface ChatUserMessageEvent {
+  type: 'chat.user_message';
+  chat_id: string;
+  message_id: string;
+  content: string;
+  author: string;
+  timestamp_us: number;
 }

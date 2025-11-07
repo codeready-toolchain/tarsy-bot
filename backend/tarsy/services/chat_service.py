@@ -70,10 +70,10 @@ class ChatService:
         created_by: str
     ) -> Chat:
         """
-        Create a new chat for a completed session.
+        Create a new chat for a terminated session.
         
         Steps:
-        1. Validate session exists and is completed
+        1. Validate session exists and is in terminal state (completed, failed, or cancelled)
         2. Check if chat already exists
         3. Validate chain has chat_enabled=true
         4. Capture session context (using _capture_session_context)
@@ -88,15 +88,23 @@ class ChatService:
             Created Chat object
             
         Raises:
-            ValueError: If session not found, not completed, or chat disabled
+            ValueError: If session not found, not in terminal state, or chat disabled
         """
         # Get session and validate
         session = self.history_service.get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
         
-        if session.status != "completed":
-            raise ValueError("Can only create chat for completed sessions")
+        # Import terminal statuses from constants
+        from tarsy.models.constants import AlertSessionStatus
+        
+        # Check if session is in a terminal state (completed, failed, or cancelled)
+        terminal_statuses = AlertSessionStatus.terminal_values()
+        if session.status not in terminal_statuses:
+            raise ValueError(
+                f"Can only create chat for terminated sessions. "
+                f"Current status: {session.status}, terminal statuses: {', '.join(terminal_statuses)}"
+            )
         
         # Check if chat already exists (via history_service)
         existing_chat = await self.history_service.get_chat_by_session(session_id)

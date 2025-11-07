@@ -20,7 +20,7 @@ import ProgressIndicator from './ProgressIndicator';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { formatTimestamp } from '../utils/timestamp';
 import { apiClient, handleAPIError } from '../services/api';
-import { SESSION_STATUS } from '../utils/statusConstants';
+import { isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
 import type { SessionHeaderProps } from '../types';
 
 // Animation styles for processing sessions
@@ -413,10 +413,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     session.status === SESSION_STATUS.CANCELING;
   const sessionIsCanceling = session.status === SESSION_STATUS.CANCELING;
   const canCancel = isInProgress || sessionIsCanceling;
-  const isTerminalStatus = 
-    session.status === SESSION_STATUS.COMPLETED ||
-    session.status === SESSION_STATUS.FAILED ||
-    session.status === SESSION_STATUS.CANCELLED;
+  const isTerminalStatus = isTerminalSessionStatus(session.status);
   const previousStatusRef = useRef<string>(session.status);
   
   // Cancel dialog state

@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
-import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult, SystemWarning, MCPServersResponse } from '../types';
+import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult, SystemWarning, MCPServersResponse, Chat, ChatUserMessage, ChatAvailabilityResponse } from '../types';
 import { authService } from './auth';
 import { TERMINAL_SESSION_STATUSES } from '../utils/statusConstants';
 
@@ -545,6 +545,94 @@ class APIClient {
       }
     } catch (error) {
       console.error('Failed to fetch filtered sessions:', error);
+      throw error;
+    }
+  }
+
+  // EP-0027: Chat capability methods
+
+  /**
+   * Create a new chat for a completed session
+   */
+  async createChat(sessionId: string): Promise<Chat> {
+    try {
+      const response = await this.client.post<Chat>(
+        `/api/v1/sessions/${sessionId}/chat`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error creating chat:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get chat details by ID
+   */
+  async getChat(chatId: string): Promise<Chat> {
+    try {
+      const response = await this.client.get<Chat>(`/api/v1/chats/${chatId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching chat:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send a message to the chat
+   */
+  async sendChatMessage(
+    chatId: string, 
+    content: string, 
+    author: string
+  ): Promise<ChatUserMessage> {
+    try {
+      const response = await this.client.post<ChatUserMessage>(
+        `/api/v1/chats/${chatId}/messages`,
+        { content, author }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error sending chat message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get chat message history
+   */
+  async getChatMessages(
+    chatId: string,
+    limit?: number,
+    offset?: number
+  ): Promise<ChatUserMessage[]> {
+    try {
+      const params = new URLSearchParams();
+      if (limit) params.append('limit', limit.toString());
+      if (offset) params.append('offset', offset.toString());
+      
+      const response = await this.client.get<ChatUserMessage[]>(
+        `/api/v1/chats/${chatId}/messages?${params.toString()}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching chat messages:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if chat is available for a session
+   */
+  async checkChatAvailable(sessionId: string): Promise<ChatAvailabilityResponse> {
+    try {
+      const response = await this.client.get<ChatAvailabilityResponse>(
+        `/api/v1/sessions/${sessionId}/chat-available`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error checking chat availability:', error);
       throw error;
     }
   }

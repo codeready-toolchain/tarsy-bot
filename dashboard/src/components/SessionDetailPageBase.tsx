@@ -19,12 +19,15 @@ import { Psychology, BugReport } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
 import VersionFooter from './VersionFooter';
 import FloatingSubmitAlertFab from './FloatingSubmitAlertFab';
+import ChatPanel from './Chat/ChatPanel';
 import { websocketService } from '../services/websocketService';
 import { useSession } from '../contexts/SessionContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useChatState } from '../hooks/useChatState';
 import type { DetailedSession } from '../types';
 import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
 import { isTerminalSessionEvent } from '../utils/eventTypes';
-import { isActiveSessionStatus } from '../utils/statusConstants';
+import { isActiveSessionStatus, isTerminalSessionStatus } from '../utils/statusConstants';
 
 // Lazy load shared components
 const SessionHeader = lazy(() => import('./SessionHeader'));
@@ -105,6 +108,19 @@ function SessionDetailPageBase({
     refreshSessionSummary,
     refreshSessionStages
   } = useSession(sessionId);
+
+  // Auth context for user information
+  const { user } = useAuth();
+
+  // Chat state management (EP-0027)
+  const {
+    chat,
+    isAvailable: chatAvailable,
+    createChat,
+    sendMessage,
+    loading: chatLoading,
+    error: chatError,
+  } = useChatState(sessionId || '');
 
   // Auto-scroll settings - only enable by default for active sessions
   const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(() => {
@@ -252,6 +268,14 @@ function SessionDetailPageBase({
       console.log(`📡 ${viewType} view received update:`, update.type);
       
       const eventType = update.type || '';
+      
+      // Handle chat events (EP-0027)
+      if (eventType === 'chat.created' || eventType === 'chat.user_message') {
+        console.log('💬 Chat event received:', eventType);
+        // Chat state will be updated through the API response
+        // No need to refresh session data for chat events
+        return;
+      }
       
       // Use pattern matching for robust event handling
       if (eventType.startsWith('session.')) {
@@ -566,6 +590,23 @@ function SessionDetailPageBase({
                 errorMessage={session.error_message}
               />
             </Suspense>
+
+            {/* Chat Panel - Only shown for terminated sessions (completed, failed, cancelled) */}
+            {isTerminalSessionStatus(session.status) && (
+              <ChatPanel
+                sessionId={session.session_id}
+                chat={chat}
+                isAvailable={chatAvailable}
+                onCreateChat={async () => {
+                  await createChat();
+                }}
+                onSendMessage={async (content) => {
+                  await sendMessage(content, user?.email || 'anonymous');
+                }}
+                loading={chatLoading}
+                error={chatError}
+              />
+            )}
           </Box>
         )}
 

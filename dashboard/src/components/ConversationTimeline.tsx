@@ -15,6 +15,7 @@ import type { DetailedSession } from '../types';
 import ChatFlowItem from './ChatFlowItem';
 import CopyButton from './CopyButton';
 import { websocketService } from '../services/websocketService';
+import { isTerminalSessionStatus } from '../utils/statusConstants';
 import { 
   hasMarkdownSyntax, 
   finalAnswerMarkdownComponents, 
@@ -450,19 +451,19 @@ function ConversationTimeline({
 
   // Clear streaming items when session completes, fails, or is cancelled (with logging)
   useEffect(() => {
-    if (session.status === 'completed' || session.status === 'failed' || session.status === 'cancelled') {
+    if (isTerminalSessionStatus(session.status)) {
       console.log('✅ Session ended, clearing all streaming items');
       setStreamingItems(new Map());
     }
   }, [session.status]);
 
   // Subscribe to streaming events
-  // Don't subscribe if session is already completed/failed/cancelled
+  // Don't subscribe if session is already in a terminal state
   useEffect(() => {
     if (!session.session_id) return;
     
-    // Don't subscribe to streaming events for completed/failed/cancelled sessions
-    if (session.status === 'completed' || session.status === 'failed' || session.status === 'cancelled') {
+    // Don't subscribe to streaming events for terminal sessions (completed/failed/cancelled)
+    if (isTerminalSessionStatus(session.status)) {
       console.log('⏭️ Skipping streaming subscription for terminal session');
       return;
     }

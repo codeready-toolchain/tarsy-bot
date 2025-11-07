@@ -238,7 +238,7 @@ class Event(SQLModel, table=True):
 
 
 class Chat(SQLModel, table=True):
-    """Chat metadata and context snapshot from completed session."""
+    """Chat metadata and context snapshot from terminated session."""
     
     __tablename__ = "chats"
     
