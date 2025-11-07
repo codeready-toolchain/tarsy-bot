@@ -192,14 +192,17 @@ class ChatService:
         
         return asyncio.create_task(record_interactions())
     
-    async def send_message(
+    async def process_chat_message(
         self,
         chat_id: str,
         user_question: str,
         author: str
     ) -> str:
         """
-        Process a user message and generate assistant response.
+        Process a user chat message and generate assistant response.
+        
+        This is the main processing method called from background tasks.
+        Matches AlertService.process_alert() pattern.
         
         Follows the same patterns as AlertService.process_alert() for consistency:
         - Pod ownership tracking (graceful shutdown support)

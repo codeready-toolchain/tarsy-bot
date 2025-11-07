@@ -266,7 +266,7 @@ async def send_message(
     message_request: ChatMessageRequest = None,
     chat_service: Annotated[ChatService, Depends(get_chat_service)] = None,
 ) -> ChatMessageResponse:
-    """Send message to chat."""
+    """Send message to chat - returns immediately, processing in background."""
 
     # Check shutdown status
     from tarsy.main import shutdown_in_progress
@@ -285,15 +285,35 @@ async def send_message(
         # Extract author from oauth2-proxy headers
         author = extract_author_from_request(request)
 
-        # Send message via ChatService (returns stage_execution_id)
-        stage_execution_id = await chat_service.send_message(
-            chat_id=chat_id, user_question=message_request.content, author=author
+        # Generate stage_execution_id upfront (like alert submission generates session_id)
+        import uuid
+        stage_execution_id = str(uuid.uuid4())
+
+        # Get chat and session_id for response
+        from tarsy.services.history_service import get_history_service
+        history_service = get_history_service()
+        chat = await history_service.get_chat_by_id(chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        # Start background processing (matches alert pattern exactly)
+        process_callback = request.app.state.process_chat_message_callback
+
+        # Create background task
+        task = asyncio.create_task(
+            process_callback(chat_id, message_request.content, author, stage_execution_id)
         )
 
-        # Return created message metadata
-        # Note: Full message details are already created by ChatService
+        # Track task for graceful shutdown (matches alert pattern)
+        from tarsy.main import active_chat_tasks, active_tasks_lock
+        async with active_tasks_lock:
+            active_chat_tasks[stage_execution_id] = task
+
+        logger.info(f"Chat message submitted with stage_execution_id: {stage_execution_id}")
+
+        # Return immediately (don't await processing)
         return ChatMessageResponse(
-            message_id=f"temp-{stage_execution_id}",  # Temporary ID
+            message_id=stage_execution_id,  # Use execution_id as message tracking ID
             chat_id=chat_id,
             content=message_request.content,
             author=author,
@@ -307,15 +327,6 @@ async def send_message(
             raise HTTPException(status_code=404, detail=error_msg)
         else:
             raise HTTPException(status_code=400, detail=error_msg)
-
-    except asyncio.TimeoutError:
-        raise HTTPException(
-            status_code=504,
-            detail={
-                "error": "Request timeout",
-                "message": "Chat message processing exceeded timeout limit",
-            },
-        )
 
     except Exception as e:
         logger.error(

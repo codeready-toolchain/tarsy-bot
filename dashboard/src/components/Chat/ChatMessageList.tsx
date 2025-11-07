@@ -3,6 +3,7 @@ import { Box, Typography } from '@mui/material';
 import ChatUserMessageCard from './ChatUserMessageCard';
 import ChatAssistantMessageCard from './ChatAssistantMessageCard';
 import TypingIndicator from '../TypingIndicator';
+import { websocketService } from '../../services/websocketService';
 
 interface ChatMessageListProps {
   sessionId: string;
@@ -12,7 +13,7 @@ interface ChatMessageListProps {
 export default function ChatMessageList({ sessionId, chatId }: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [messages] = useState<any[]>([]);
-  const [isTyping] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Fetch chat messages on mount
@@ -31,6 +32,32 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
     };
 
     fetchMessages();
+  }, [sessionId, chatId]);
+
+  // Subscribe to stage events to show typing indicator during chat processing
+  useEffect(() => {
+    if (!sessionId || !chatId) return;
+
+    const handleStageEvent = (event: any) => {
+      // Only track stages for this specific chat
+      if (event.chat_id !== chatId) return;
+
+      if (event.type === 'stage.started') {
+        console.log('💬 Chat response started, showing typing indicator');
+        setIsTyping(true);
+      } else if (event.type === 'stage.completed' || event.type === 'stage.failed') {
+        console.log('💬 Chat response completed, hiding typing indicator');
+        setIsTyping(false);
+      }
+    };
+
+    // Subscribe to session channel for stage events
+    const unsubscribe = websocketService.subscribeToChannel(
+      `session:${sessionId}`,
+      handleStageEvent
+    );
+
+    return () => unsubscribe();
   }, [sessionId, chatId]);
 
   // Auto-scroll to bottom on new messages

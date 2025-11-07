@@ -285,9 +285,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             import sys
             sys.exit(1)
     
-    # Set up app state with callback to avoid circular imports
-    # The controller will access this callback instead of importing process_alert_background directly
+    # Set up app state with callbacks to avoid circular imports
+    # The controllers will access these callbacks instead of importing the functions directly
     app.state.process_alert_callback = process_alert_background
+    app.state.process_chat_message_callback = process_chat_message_background
     
     logger.info("Tarsy started successfully!")
     
@@ -820,6 +821,94 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
             async with active_tasks_lock:
                 active_tasks.pop(session_id, None)
             logger.debug(f"Removed session {session_id} from active tasks")
+
+
+async def process_chat_message_background(
+    chat_id: str,
+    user_question: str,
+    author: str,
+    stage_execution_id: str
+) -> None:
+    """
+    Background task wrapper for chat message processing.
+    Matches process_alert_background() pattern with timeout handling.
+    """
+    start_time = datetime.now()
+    settings = get_settings()
+    
+    try:
+        from tarsy.services.chat_service import get_chat_service
+        chat_service = get_chat_service()
+        
+        logger.info(f"Starting background processing for chat message {stage_execution_id}")
+        
+        # Process with timeout to prevent hanging (matches alert pattern)
+        try:
+            # Use same timeout as alert processing
+            timeout_seconds = settings.alert_processing_timeout
+            logger.info(f"Processing chat message {stage_execution_id} with {timeout_seconds}s timeout")
+            
+            # Create the actual processing task
+            task = asyncio.create_task(
+                chat_service.process_chat_message(
+                    chat_id=chat_id,
+                    user_question=user_question,
+                    author=author
+                )
+            )
+            
+            # Update active_chat_tasks to track the inner processing task
+            # This allows cancellation to properly stop the actual processing work
+            assert active_tasks_lock is not None, "active_tasks_lock not initialized"
+            async with active_tasks_lock:
+                active_chat_tasks[stage_execution_id] = task
+            
+            try:
+                await asyncio.wait_for(task, timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                # Timeout occurred - try to cancel the task
+                logger.warning(f"Chat message {stage_execution_id} exceeded {timeout_seconds}s timeout, attempting to cancel task")
+                task.cancel()
+                try:
+                    await task  # Wait for cancellation to complete
+                except asyncio.CancelledError:
+                    logger.info(f"Chat message {stage_execution_id} task cancelled successfully")
+                except Exception as e:
+                    logger.error(f"Error while cancelling chat message {stage_execution_id}: {e}")
+                raise TimeoutError(f"Chat message processing exceeded timeout limit of {timeout_seconds}s") from None
+        
+        except asyncio.CancelledError:
+            # Task was cancelled
+            logger.info(f"Chat message {stage_execution_id} task was cancelled")
+            raise  # Re-raise to preserve the original CancelledError
+        
+        # Calculate processing duration
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Chat message {stage_execution_id} processing completed successfully in {duration:.2f}s")
+        
+    except asyncio.CancelledError:
+        logger.info(f"Chat message processing cancelled: {stage_execution_id}")
+        raise
+    except TimeoutError as e:
+        # Processing timeout
+        duration = (datetime.now() - start_time).total_seconds()
+        error_msg = str(e)
+        logger.error(f"Chat message {stage_execution_id} timeout after {duration:.2f}s: {error_msg}")
+        # Note: Stage execution status will be updated by ChatService's error handling
+    except Exception as e:
+        # Catch-all for unexpected errors
+        duration = (datetime.now() - start_time).total_seconds()
+        error_msg = f"Unexpected processing error: {str(e)}"
+        logger.exception(
+            f"Chat message {stage_execution_id} unexpected error after {duration:.2f}s: {error_msg}"
+        )
+    finally:
+        # Always cleanup task from tracking dict
+        assert active_tasks_lock is not None, "active_tasks_lock not initialized"
+        async with active_tasks_lock:
+            active_chat_tasks.pop(stage_execution_id, None)
+        logger.debug(f"Removed chat message {stage_execution_id} from active tasks")
+
 
 if __name__ == "__main__":
     import uvicorn

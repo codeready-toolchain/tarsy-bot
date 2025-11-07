@@ -458,14 +458,20 @@ function ConversationTimeline({
   }, [session.status]);
 
   // Subscribe to streaming events
-  // Don't subscribe if session is already in a terminal state
+  // For terminal sessions, only subscribe if there's an active chat
   useEffect(() => {
     if (!session.session_id) return;
     
-    // Don't subscribe to streaming events for terminal sessions (completed/failed/cancelled)
-    if (isTerminalSessionStatus(session.status)) {
-      console.log('⏭️ Skipping streaming subscription for terminal session');
+    // For terminal sessions, only subscribe if there's an active chat
+    const hasActiveChat = chatFlow && chatFlow.length > 0;
+    
+    if (isTerminalSessionStatus(session.status) && !hasActiveChat) {
+      console.log('⏭️ Skipping streaming subscription for terminal session (no active chat)');
       return;
+    }
+    
+    if (isTerminalSessionStatus(session.status) && hasActiveChat) {
+      console.log('✅ Enabling streaming subscription for terminal session with active chat');
     }
     
     const handleStreamEvent = (event: any) => {
@@ -542,7 +548,7 @@ function ConversationTimeline({
     );
     
     return () => unsubscribe();
-  }, [session.session_id]);
+  }, [session.session_id, session.status, chatFlow]);
 
   // Clear streaming items when their content appears in DB data (smart deduplication with claimed-item tracking)
   // ONLY runs when chatFlow changes (DB update), NOT when streaming chunks arrive
