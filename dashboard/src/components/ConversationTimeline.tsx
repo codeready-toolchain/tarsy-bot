@@ -459,24 +459,52 @@ function ConversationTimeline({
     }
   }, [session.status]);
 
-  // Subscribe to streaming events
-  // For terminal sessions, only subscribe if there's an active chat
+  // Clear streaming items on WebSocket reconnection for terminal sessions without active chat stage
+  // This prevents "zombie" executions from catchup events after backend restart
   useEffect(() => {
     if (!session.session_id) return;
     
-    // For terminal sessions, only subscribe if there's an active chat
-    const hasActiveChat = chatFlow && chatFlow.length > 0;
-    
-    if (isTerminalSessionStatus(session.status) && !hasActiveChat) {
-      console.log('⏭️ Skipping streaming subscription for terminal session (no active chat)');
+    // Only setup reconnection handler for terminal sessions without active chat stage
+    if (!isTerminalSessionStatus(session.status) || activeChatStageInProgress) {
       return;
     }
     
-    if (isTerminalSessionStatus(session.status) && hasActiveChat) {
-      console.log('✅ Enabling streaming subscription for terminal session with active chat');
+    const handleReconnection = (connected: boolean) => {
+      if (connected && isTerminalSessionStatus(session.status) && !activeChatStageInProgress) {
+        console.log('🧹 WebSocket reconnected for terminal session - clearing stale streaming items');
+        setStreamingItems(new Map());
+      }
+    };
+    
+    const unsubscribe = websocketService.onConnectionChange(handleReconnection);
+    
+    return () => unsubscribe();
+  }, [session.session_id, session.status, activeChatStageInProgress]);
+
+  // Subscribe to streaming events
+  // For terminal sessions, only subscribe if there's an active chat stage in progress
+  useEffect(() => {
+    if (!session.session_id) return;
+    
+    // For terminal sessions, only subscribe if there's an ACTIVE chat stage processing (not completed)
+    if (isTerminalSessionStatus(session.status) && !activeChatStageInProgress) {
+      console.log('⏭️ Skipping streaming subscription for terminal session (no active chat stage)');
+      return;
+    }
+    
+    if (isTerminalSessionStatus(session.status) && activeChatStageInProgress) {
+      console.log('✅ Enabling streaming subscription for terminal session with active chat stage');
     }
     
     const handleStreamEvent = (event: any) => {
+      // Ignore ALL streaming events for terminal sessions without active chat stage processing
+      // This prevents "zombie" executions from WebSocket catchup events after backend restart
+      // Note: We DO show streaming events from ANY user when there's an active chat stage (collaborative viewing)
+      if (isTerminalSessionStatus(session.status) && !activeChatStageInProgress) {
+        console.log('⏭️ Ignoring zombie streaming event for completed work:', event.type);
+        return;
+      }
+      
       if (event.type === 'mcp.tool_call.started') {
         setStreamingItems(prev => {
           const updated = new Map(prev);
@@ -550,7 +578,7 @@ function ConversationTimeline({
     );
     
     return () => unsubscribe();
-  }, [session.session_id, session.status, chatFlow]);
+  }, [session.session_id, session.status, activeChatStageInProgress]);
 
   // Clear streaming items when their content appears in DB data (smart deduplication with claimed-item tracking)
   // ONLY runs when chatFlow changes (DB update), NOT when streaming chunks arrive
@@ -631,7 +659,7 @@ function ConversationTimeline({
     setClaimedChatFlowItems(new Set());
   }, [session.session_id]);
 
-  // Track chat stage progress for processing indicator
+  // Track chat stage progress for processing indicator (any chat, not just ours)
   useEffect(() => {
     if (!session.session_id) return;
     
@@ -640,7 +668,7 @@ function ConversationTimeline({
       if (!event.chat_id) return;
       
       if (event.type === 'stage.started') {
-        console.log('💬 Chat stage started, showing processing indicator');
+        console.log('💬 Chat stage started (any user), showing processing indicator');
         setActiveChatStageInProgress(true);
       } else if (event.type === 'stage.completed' || event.type === 'stage.failed') {
         console.log('💬 Chat stage ended, hiding processing indicator');

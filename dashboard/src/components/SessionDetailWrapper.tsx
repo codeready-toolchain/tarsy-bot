@@ -35,14 +35,14 @@ function SessionDetailWrapper() {
   };
 
   // Timeline component factory based on current view
-  const renderTimeline = (session: DetailedSession, autoScroll?: boolean) => {
+  const renderTimeline = (session: DetailedSession, autoScroll?: boolean, activeChat?: any) => {
     // Use provided autoScroll preference, or default to enabled for live sessions
     const shouldAutoScroll = autoScroll !== undefined ? autoScroll : (session.status === 'in_progress' || session.status === 'pending');
     
     if (currentView === 'technical') {
       return <TechnicalTimeline session={session} autoScroll={shouldAutoScroll} />;
     } else {
-      return <ConversationTimeline session={session} autoScroll={shouldAutoScroll} />;
+      return <ConversationTimeline session={session} autoScroll={shouldAutoScroll} activeChat={activeChat} />;
     }
   };
 
