@@ -137,5 +137,5 @@ class SQLiteEventListener(EventListener):
                         self.last_event_id[channel] = event.id
 
                 except Exception as e:
-                    logger.error(f"Error polling events on '{channel}': {e}")
+                    logger.error(f"Error polling events on '{channel}': {e}", exc_info=True)
 

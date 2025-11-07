@@ -38,8 +38,13 @@ export default function ChatInput({
     }
   };
 
-  const handleCancel = async () => {
-    if (!onCancelExecution) return;
+  const handleCancel = async (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    if (!onCancelExecution) {
+      return;
+    }
     
     try {
       await onCancelExecution();

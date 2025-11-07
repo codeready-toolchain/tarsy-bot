@@ -112,7 +112,13 @@ class EventListener(ABC):
         # Update activity time on event dispatch
         self.last_activity[channel] = time.time()
         
-        for callback in self.callbacks.get(channel, []):
+        callbacks = self.callbacks.get(channel, [])
+        if channel == "cancellations":
+            logger.info(f"🔍 Dispatching to {len(callbacks)} callback(s) for cancellations channel")
+        
+        for callback in callbacks:
+            if channel == "cancellations":
+                logger.info(f"🔍 Creating task for cancellation callback: {callback}")
             asyncio.create_task(self._safe_callback(callback, event))
 
     async def _safe_callback(self, callback: AsyncCallback, event: dict) -> None:

@@ -144,7 +144,7 @@ export function useChatState(sessionId: string, sessionStatus?: string) {
       setState(prev => ({ ...prev, canceling: false }));
       throw error;
     }
-  }, [state.activeExecutionId]);
+  }, [state.activeExecutionId, state.canceling]);
 
   // Add assistant response (from WebSocket stage execution)
   const addAssistantResponse = useCallback((messageId: string, execution: StageExecution) => {
@@ -171,7 +171,6 @@ export function useChatState(sessionId: string, sessionStatus?: string) {
         event.chat_id === state.chat?.chat_id &&
         pendingMessageIdRef.current // We're waiting for a response
       ) {
-        console.log('💬 Chat processing started, tracking execution ID:', event.stage_id);
         setState(prev => ({ 
           ...prev, 
           sendingMessage: false,
@@ -190,7 +189,6 @@ export function useChatState(sessionId: string, sessionStatus?: string) {
         (event.type === 'stage.completed' || event.type === 'stage.failed') &&
         event.chat_id === state.chat?.chat_id
       ) {
-        console.log('💬 Chat stage ended, clearing execution tracking');
         setState(prev => ({ 
           ...prev, 
           sendingMessage: false,

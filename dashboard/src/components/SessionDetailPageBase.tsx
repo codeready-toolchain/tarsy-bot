@@ -647,7 +647,7 @@ function SessionDetailPageBase({
                   error={chatError}
                   sendingMessage={sendingMessage}
                   chatStageInProgress={chatStageInProgress}
-                  canCancel={!!activeExecutionId && !canceling}
+                  canCancel={!!activeExecutionId}
                   canceling={canceling}
                   forceExpand={shouldExpandChat}
                   onCollapseAnalysis={() => setCollapseCounter(prev => prev + 1)}

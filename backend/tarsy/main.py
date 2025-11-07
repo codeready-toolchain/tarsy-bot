@@ -104,7 +104,7 @@ async def handle_cancel_request(event: dict) -> None:
                 # - Updating status to CANCELLED
                 # - Publishing session.cancelled event
             else:
-                logger.debug(f"Session {session_id} not found on this pod (owned by another pod)")
+                logger.debug(f"Session {session_id} not found on this pod")
         
         # Handle chat execution cancellation
         if stage_execution_id:
@@ -868,7 +868,8 @@ async def process_chat_message_background(
                 chat_service.process_chat_message(
                     chat_id=chat_id,
                     user_question=user_question,
-                    author=author
+                    author=author,
+                    stage_execution_id=stage_execution_id  # Pass the ID for consistent tracking
                 )
             )
             
@@ -916,16 +917,20 @@ async def process_chat_message_background(
             try:
                 stage_exec = await history_service.get_stage_execution(stage_execution_id)
                 if stage_exec:
+                    logger.info(f"Retrieved stage execution for cancellation: {stage_execution_id}, chat_id={stage_exec.chat_id}, session_id={stage_exec.session_id}")
                     stage_exec.status = StageStatus.FAILED.value
                     stage_exec.error_message = "Cancelled by user"
                     stage_exec.completed_at_us = now_us()
                     
                     # Trigger stage execution hooks to update DB and publish events
+                    logger.info(f"Triggering stage_execution_context for cancelled execution {stage_execution_id}")
                     async with stage_execution_context(stage_exec.session_id, stage_exec):
                         pass
-                    logger.info(f"Updated stage execution {stage_execution_id} as cancelled")
+                    logger.info(f"Updated stage execution {stage_execution_id} as cancelled (status={stage_exec.status}, chat_id={stage_exec.chat_id})")
+                else:
+                    logger.warning(f"Stage execution {stage_execution_id} not found in database for cancellation")
             except Exception as e:
-                logger.warning(f"Failed to update cancelled chat execution: {e}")
+                logger.warning(f"Failed to update cancelled chat execution: {e}", exc_info=True)
         
         # Clean up from active_chat_tasks
         assert active_tasks_lock is not None, "active_tasks_lock not initialized"

@@ -196,7 +196,8 @@ class ChatService:
         self,
         chat_id: str,
         user_question: str,
-        author: str
+        author: str,
+        stage_execution_id: str
     ) -> str:
         """
         Process a user chat message and generate assistant response.
@@ -217,6 +218,7 @@ class ChatService:
             chat_id: Chat identifier
             user_question: User's follow-up question
             author: User sending the message
+            stage_execution_id: Pre-generated stage execution ID (for consistent tracking)
             
         Returns:
             Stage execution ID for this chat response
@@ -227,7 +229,7 @@ class ChatService:
             Exception: Other processing errors
         """
         chat_mcp_client = None
-        execution_id = None
+        execution_id = stage_execution_id  # Use provided ID instead of generating
         interaction_recording_task = None
         
         try:
@@ -260,7 +262,9 @@ class ChatService:
             
             # 4. Create stage execution for this response
             # Uses stage execution context manager (like AlertService)
+            # Use the provided execution_id for consistent tracking
             stage_execution = StageExecution(
+                execution_id=execution_id,  # Use pre-generated ID from controller
                 session_id=chat.session_id,
                 stage_id=f"chat-response-{user_msg.message_id}",
                 stage_index=0,  # Chat messages don't have meaningful stage index
@@ -275,7 +279,6 @@ class ChatService:
             async with stage_execution_context(chat.session_id, stage_execution) as ctx:
                 pass
             
-            execution_id = stage_execution.execution_id
             logger.info(f"Created chat message execution {execution_id} for chat {chat_id}")
             
             # 5. Track pod ownership for graceful shutdown (mirrors AlertService)
