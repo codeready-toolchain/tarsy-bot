@@ -361,7 +361,7 @@ export interface FinalAnalysisCardProps {
   analysis: string | null;
   sessionStatus: Session['status'];
   errorMessage?: string | null;
-  defaultCollapsed?: boolean; // Auto-collapse when chat is expanded
+  collapseCounter?: number; // Counter to force collapse (increments trigger collapse)
 }
 
 // Phase 3: Timeline props

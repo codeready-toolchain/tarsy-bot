@@ -66,19 +66,19 @@ Please review the session details or contact support if this is unexpected.`;
  * Renders AI analysis markdown content with expand/collapse functionality and copy-to-clipboard feature
  * Optimized for live updates
  */
-function FinalAnalysisCard({ analysis, sessionStatus, errorMessage, defaultCollapsed = false }: FinalAnalysisCardProps) {
+function FinalAnalysisCard({ analysis, sessionStatus, errorMessage, collapseCounter = 0 }: FinalAnalysisCardProps) {
   const [analysisExpanded, setAnalysisExpanded] = useState<boolean>(false);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
   const [prevAnalysis, setPrevAnalysis] = useState<string | null>(null);
   const [isNewlyUpdated, setIsNewlyUpdated] = useState<boolean>(false);
 
-  // Auto-collapse when defaultCollapsed prop becomes true (e.g., when chat is expanded)
+  // Auto-collapse when collapseCounter changes (e.g., when Jump to Chat is clicked)
   useEffect(() => {
-    if (defaultCollapsed) {
-      console.log('📦 Auto-collapsing Final Analysis (chat expanded)');
+    if (collapseCounter > 0) {
+      console.log('📦 Auto-collapsing Final Analysis (Jump to Chat clicked)');
       setAnalysisExpanded(false);
     }
-  }, [defaultCollapsed]);
+  }, [collapseCounter]);
 
   // Auto-expand when analysis first becomes available or changes significantly
   // Only show "Updated" indicator during active processing, not for historical sessions

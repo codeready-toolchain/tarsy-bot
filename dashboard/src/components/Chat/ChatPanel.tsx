@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Box, Paper, IconButton, Collapse, Typography, Alert, CircularProgress, alpha } from '@mui/material';
-import { Chat as ChatIcon, Close, ExpandMore } from '@mui/icons-material';
+import { Chat as ChatIcon, ExpandMore } from '@mui/icons-material';
 import ChatInput from './ChatInput';
 import type { Chat } from '../../types';
 
@@ -13,7 +13,8 @@ interface ChatPanelProps {
   error?: string | null;
   sendingMessage?: boolean; // Track when a message is actively being sent
   chatStageInProgress?: boolean; // Track when AI is actively processing the chat
-  onExpandChange?: (expanded: boolean) => void; // Notify parent when expanded state changes
+  forceExpand?: boolean; // External trigger to expand the chat panel
+  onCollapseAnalysis?: () => void; // Callback to collapse Final Analysis when chat is expanded
 }
 
 export default function ChatPanel({
@@ -25,31 +26,33 @@ export default function ChatPanel({
   error,
   sendingMessage = false,
   chatStageInProgress = false,
-  onExpandChange
+  forceExpand = false,
+  onCollapseAnalysis
 }: ChatPanelProps) {
   const [expanded, setExpanded] = useState(false); // Start collapsed
-  const [closed, setClosed] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
 
-  if (closed) {
-    return null;
-  }
+  // Handle external expansion trigger (e.g., from "Jump to Chat" button)
+  useEffect(() => {
+    if (forceExpand && !expanded) {
+      void handleExpand();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceExpand]);
 
   // Handle expansion with chat creation
   const handleExpand = async () => {
     if (expanded) {
-      // Just collapse chat and re-expand Final Analysis
+      // Just collapse chat
       setExpanded(false);
-      onExpandChange?.(false);
       return;
     }
 
-    // Expanding - first collapse Final Analysis to prevent jerky behavior
-    // Then expand chat after a brief delay
-    onExpandChange?.(true); // This collapses Final Analysis first
-    
-    // Wait a bit for Final Analysis to start collapsing
+    // Collapse Final Analysis when expanding chat
+    onCollapseAnalysis?.();
+
+    // Expanding chat - wait a bit for Final Analysis to start collapsing
     await new Promise(resolve => setTimeout(resolve, 150));
 
     // Now expand chat (create if needed)
@@ -58,16 +61,29 @@ export default function ChatPanel({
       try {
         await onCreateChat();
         setExpanded(true);
+        // Scroll to bottom after expansion
+        setTimeout(() => {
+          window.scrollTo({ 
+            top: document.documentElement.scrollHeight, 
+            behavior: 'smooth' 
+          });
+        }, 500);
       } catch (err) {
         // Error handled below, don't expand
         setSendError('Failed to create chat');
-        onExpandChange?.(false); // Re-expand Final Analysis on error
       } finally {
         setIsCreatingChat(false);
       }
     } else if (chat) {
       // Chat already exists, just expand
       setExpanded(true);
+      // Scroll to bottom after expansion
+      setTimeout(() => {
+        window.scrollTo({ 
+          top: document.documentElement.scrollHeight, 
+          behavior: 'smooth' 
+        });
+      }, 500);
     }
   };
 
@@ -172,22 +188,10 @@ export default function ChatPanel({
           disabled={isCreatingChat}
           sx={{ 
             transition: 'transform 0.3s ease-in-out',
-            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-            mr: 1
+            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)'
           }}
         >
           <ExpandMore />
-        </IconButton>
-        
-        {/* Close Button */}
-        <IconButton 
-          size="small"
-          onClick={(e) => {
-            e.stopPropagation();
-            setClosed(true);
-          }}
-        >
-          <Close />
         </IconButton>
       </Box>
 

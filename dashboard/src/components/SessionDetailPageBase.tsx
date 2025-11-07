@@ -130,11 +130,14 @@ function SessionDetailPageBase({
     return session ? isActiveSessionStatus(session.status) : false;
   });
 
-  // Chat expansion state - to control Final Analysis collapse
-  const [chatExpanded, setChatExpanded] = useState(false);
+  // Chat expansion state - use counter to force collapse every time (not boolean)
+  const [collapseCounter, setCollapseCounter] = useState(0);
   
   // Track if there's an active chat stage in progress (for disabling chat input)
   const [chatStageInProgress, setChatStageInProgress] = useState<boolean>(false);
+  
+  // Trigger to force chat panel expansion (e.g., from "Jump to Chat" button)
+  const [shouldExpandChat, setShouldExpandChat] = useState(false);
   
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
@@ -640,19 +643,20 @@ function SessionDetailPageBase({
                   error={chatError}
                   sendingMessage={sendingMessage}
                   chatStageInProgress={chatStageInProgress}
-                  onExpandChange={(expanded) => setChatExpanded(expanded)}
+                  forceExpand={shouldExpandChat}
+                  onCollapseAnalysis={() => setCollapseCounter(prev => prev + 1)}
                 />
               </Box>
             )}
 
             {/* Final AI Analysis - Lazy loaded */}
-            {/* Auto-collapses when chat is expanded to prevent scrolling issues */}
+            {/* Auto-collapses when Jump to Chat is clicked (via collapseCounter) */}
             <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
               <FinalAnalysisCard 
                 analysis={session.final_analysis}
                 sessionStatus={session.status}
                 errorMessage={session.error_message}
-                defaultCollapsed={chatExpanded}
+                collapseCounter={collapseCounter}
               />
             </Suspense>
 
@@ -663,20 +667,21 @@ function SessionDetailPageBase({
                   variant="outlined"
                   size="large"
                   onClick={() => {
-                    // First, collapse Final Analysis to prevent layout jump
-                    setChatExpanded(true);
+                    // Increment counter to force Final Analysis collapse every time
+                    setCollapseCounter(prev => prev + 1);
                     
-                    // Then scroll after a brief delay for smooth transition
+                    // Trigger chat expansion (will only expand if not already expanded)
+                    setShouldExpandChat(true);
+                    setTimeout(() => setShouldExpandChat(false), 500);
+                    
+                    // Always scroll to the very bottom of the page
+                    // Wait for Final Analysis collapse animation (400ms) + buffer
                     setTimeout(() => {
-                      const chatPanel = document.getElementById('chat-panel');
-                      if (chatPanel) {
-                        chatPanel.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                        // Scroll down a bit more after the animation
-                        setTimeout(() => {
-                          window.scrollBy({ top: 100, behavior: 'smooth' });
-                        }, 500);
-                      }
-                    }, 200);
+                      window.scrollTo({ 
+                        top: document.documentElement.scrollHeight, 
+                        behavior: 'smooth' 
+                      });
+                    }, 500);
                   }}
                   sx={{
                     textTransform: 'none',
