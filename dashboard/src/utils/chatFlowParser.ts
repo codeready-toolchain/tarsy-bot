@@ -33,19 +33,27 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
 
   // Process each stage in order
   for (const stage of session.stages || []) {
+    const stageStartTimestamp = stage.started_at_us || Date.now() * 1000;
+    
     // Add stage start marker
     chatItems.push({
       type: 'stage_start',
-      timestamp_us: stage.started_at_us || Date.now() * 1000,
+      timestamp_us: stageStartTimestamp,
       stageName: stage.stage_name,
       stageAgent: stage.agent
     });
 
-    // Add user message if this is a chat stage
+    // Add user message if this is a chat stage (Option 4: separate item with badge)
+    // Ensure user message timestamp is at least equal to stage_start to keep it within the stage
     if (stage.chat_user_message) {
+      const userMessageTimestamp = Math.max(
+        stage.chat_user_message.created_at_us,
+        stageStartTimestamp + 1 // +1 to ensure it appears after stage_start marker
+      );
+      
       chatItems.push({
         type: 'user_message',
-        timestamp_us: stage.chat_user_message.created_at_us,
+        timestamp_us: userMessageTimestamp,
         content: stage.chat_user_message.content,
         author: stage.chat_user_message.author,
         messageId: stage.chat_user_message.message_id

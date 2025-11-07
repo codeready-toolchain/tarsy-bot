@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Box, Typography, Divider, Chip, alpha } from '@mui/material';
-import { Flag } from '@mui/icons-material';
+import { Flag, AccountCircle } from '@mui/icons-material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import ToolCallBox from './ToolCallBox';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
@@ -153,60 +153,69 @@ function ChatFlowItem({ item }: ChatFlowItemProps) {
     );
   }
 
-  // Render user message - distinct style to show it's user input
   if (item.type === 'user_message') {
     return (
-      <Box sx={{ mb: 2 }}>
-        <Box 
-          sx={(theme) => ({ 
+      <Box sx={{ mb: 1.5, position: 'relative' }}>
+        {/* User avatar icon - positioned absolutely */}
+        <Box
+          sx={{
+            position: 'absolute',
+            left: 0,
+            top: 8,
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            bgcolor: 'primary.main',
             display: 'flex',
-            gap: 1.5,
-            p: 2,
-            borderRadius: 2,
-            bgcolor: alpha(theme.palette.primary.main, 0.08),
-            border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1
+          }}
+        >
+          <AccountCircle sx={{ fontSize: 28, color: 'white' }} />
+        </Box>
+
+        {/* Message content box - aligned with tool call boxes */}
+        <Box
+          sx={(theme) => ({
+            ml: 4,
+            my: 1,
+            mr: 1,
+            p: 1.5,
+            borderRadius: 1.5,
+            bgcolor: 'grey.50',
+            border: '1px solid',
+            borderColor: alpha(theme.palette.grey[300], 0.4),
           })}
         >
+          {/* Author name inside the box */}
           <Typography
-            variant="body2"
+            variant="caption"
             sx={{
-              fontSize: '1.1rem',
-              lineHeight: 1,
-              flexShrink: 0,
-              mt: 0.25
+              fontWeight: 600,
+              fontSize: '0.7rem',
+              color: 'primary.main',
+              mb: 0.75,
+              display: 'block',
+              textTransform: 'uppercase',
+              letterSpacing: 0.3
             }}
           >
-            👤
+            {item.author}
           </Typography>
-          <Box sx={{ flex: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-              <Typography
-                variant="caption"
-                sx={{
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                  fontSize: '0.7rem',
-                  color: 'primary.main'
-                }}
-              >
-                {item.author}
-              </Typography>
-            </Box>
-            <Typography
-              variant="body1"
-              sx={{
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                lineHeight: 1.7,
-                fontSize: '1rem',
-                color: 'text.primary',
-                fontWeight: 500
-              }}
-            >
-              {item.content}
-            </Typography>
-          </Box>
+
+          <Typography
+            variant="body1"
+            sx={{
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              lineHeight: 1.6,
+              fontSize: '0.95rem',
+              color: 'text.primary'
+            }}
+          >
+            {item.content}
+          </Typography>
         </Box>
       </Box>
     );

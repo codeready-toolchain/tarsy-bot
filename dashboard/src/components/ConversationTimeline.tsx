@@ -226,54 +226,59 @@ const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
   }
   
   if (item.type === 'user_message') {
-    // Render user message (for real-time streaming)
     return (
-      <Box sx={{ mb: 2 }}>
-        <Box 
-          sx={(theme) => ({ 
+      <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
+        {/* Circular question mark avatar */}
+        <Box
+          sx={{
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            bgcolor: 'primary.main',
             display: 'flex',
-            gap: 1.5,
-            p: 2,
-            borderRadius: 2,
-            bgcolor: alpha(theme.palette.primary.main, 0.08),
-            border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
-          })}
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            mt: 0.25
+          }}
         >
+          <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'white', fontWeight: 600 }}>
+            ?
+          </Typography>
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0, ml: 4, my: 1, mr: 1 }}>
+          {/* Author name - subtle and lowercase */}
           <Typography
-            variant="body2"
+            variant="caption"
             sx={{
-              fontSize: '1.1rem',
-              lineHeight: 1,
-              flexShrink: 0,
-              mt: 0.25
+              fontWeight: 500,
+              fontSize: '0.75rem',
+              color: 'text.secondary',
+              mb: 0.5,
+              display: 'block'
             }}
           >
-            👤
+            {item.author} asked:
           </Typography>
-          <Box sx={{ flex: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-              <Typography
-                variant="caption"
-                sx={{
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                  fontSize: '0.7rem',
-                  color: 'primary.main'
-                }}
-              >
-                {item.author}
-              </Typography>
-            </Box>
+
+          {/* Message content - conversational styling */}
+          <Box
+            sx={{
+              p: 1.5,
+              borderRadius: 1.5,
+              bgcolor: 'grey.50',
+              border: '1px solid',
+              borderColor: 'grey.200',
+            }}
+          >
             <Typography
               variant="body1"
               sx={{
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
-                lineHeight: 1.7,
-                fontSize: '1rem',
-                color: 'text.primary',
-                fontWeight: 500
+                lineHeight: 1.6,
+                fontSize: '0.95rem',
+                color: 'text.primary'
               }}
             >
               {item.content}

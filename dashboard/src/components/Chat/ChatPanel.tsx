@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Box, Paper, IconButton, Collapse, Typography, Alert, CircularProgress, alpha } from '@mui/material';
-import { Chat as ChatIcon, ExpandMore } from '@mui/icons-material';
+import { AccountCircle, ExpandMore } from '@mui/icons-material';
 import ChatInput from './ChatInput';
 import type { Chat } from '../../types';
 
@@ -119,35 +119,34 @@ export default function ChatPanel({
           display: 'flex',
           alignItems: 'center',
           cursor: 'pointer',
-          background: expanded 
-            ? `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)} 0%, ${alpha(theme.palette.primary.light, 0.12)} 100%)`
-            : `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.03)} 0%, ${alpha(theme.palette.primary.light, 0.06)} 100%)`,
+          bgcolor: expanded 
+            ? alpha(theme.palette.primary.main, 0.06) 
+            : alpha(theme.palette.primary.main, 0.03),
           transition: 'all 0.3s ease-in-out',
           borderBottom: expanded ? `1px solid ${theme.palette.divider}` : 'none',
           '&:hover': {
-            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.12)} 0%, ${alpha(theme.palette.primary.light, 0.16)} 100%)`,
+            bgcolor: alpha(theme.palette.primary.main, 0.08),
           }
         })}
       >
-        {/* Chat Icon */}
+        {/* Chat Icon - Simple circle like user messages */}
         <Box
-          sx={(theme) => ({
+          sx={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            bgcolor: 'primary.main',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 48,
-            height: 48,
-            borderRadius: '12px',
-            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
             mr: 2,
-            transition: 'transform 0.3s ease-in-out',
-            transform: expanded ? 'scale(1.05)' : 'scale(1)',
-          })}
+            flexShrink: 0,
+          }}
         >
           {isCreatingChat ? (
             <CircularProgress size={24} sx={{ color: 'white' }} />
           ) : (
-            <ChatIcon sx={{ fontSize: 28, color: 'white' }} />
+            <AccountCircle sx={{ fontSize: 40, color: 'white' }} />
           )}
         </Box>
         
@@ -157,8 +156,9 @@ export default function ChatPanel({
             variant="h6" 
             sx={{ 
               fontWeight: 600,
-              mb: 0.5,
-              color: 'text.primary'
+              mb: 0.3,
+              color: 'text.primary',
+              fontSize: '1rem'
             }}
           >
             {chat ? 'Follow-up Chat' : 'Have follow-up questions?'}
@@ -167,14 +167,14 @@ export default function ChatPanel({
             variant="body2" 
             sx={{ 
               color: 'text.secondary',
-              fontSize: '0.9rem'
+              fontSize: '0.85rem'
             }}
           >
             {isCreatingChat 
               ? 'Creating chat...'
               : expanded 
                 ? 'Ask questions about this analysis' 
-                : 'Click to expand and continue the investigation'}
+                : 'Click to expand and continue the conversation'}
           </Typography>
         </Box>
         
