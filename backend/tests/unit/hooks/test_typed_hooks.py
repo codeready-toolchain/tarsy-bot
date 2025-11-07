@@ -349,7 +349,8 @@ class TestStageExecutionEventHook:
                 mock_started.assert_called_once_with(
                     session_id="test-session",
                     stage_id="test-stage-execution-0",
-                    stage_name="Test Stage"
+                    stage_name="Test Stage",
+                    chat_id=None
                 )
                 mock_completed.assert_not_called()
     
@@ -365,7 +366,8 @@ class TestStageExecutionEventHook:
                     session_id="test-session",
                     stage_id="test-stage-execution-0",
                     stage_name="Test Stage",
-                    status="completed"  # Verify it's a string, not enum
+                    status="completed",  # Verify it's a string, not enum
+                    chat_id=None
                 )
     
     @pytest.mark.asyncio
@@ -380,7 +382,8 @@ class TestStageExecutionEventHook:
                     session_id="test-session",
                     stage_id="test-stage-execution-0",
                     stage_name="Test Stage",
-                    status="failed"  # Verify it's a string, not enum
+                    status="failed",  # Verify it's a string, not enum
+                    chat_id=None
                 )
     
     @pytest.mark.asyncio
@@ -395,5 +398,6 @@ class TestStageExecutionEventHook:
                     session_id="test-session",
                     stage_id="test-stage-execution-0",
                     stage_name="Test Stage",
-                    status="partial"  # Verify it's a string, not enum
+                    status="partial",  # Verify it's a string, not enum
+                    chat_id=None
                 )

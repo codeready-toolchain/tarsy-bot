@@ -180,7 +180,7 @@ class TestChatAPIIntegration:
         
         # Send message
         with patch("tarsy.services.chat_service.stage_execution_context"):
-            stage_execution_id = await chat_service.send_message(
+            stage_execution_id = await chat_service.process_chat_message(
                 chat_id=chat.chat_id,
                 user_question="What caused the issue?",
                 author="test-user@example.com"

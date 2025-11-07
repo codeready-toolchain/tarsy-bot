@@ -5,6 +5,7 @@ Tests all chat REST API endpoints including request validation, error handling,
 authorization header extraction, and response model serialization.
 """
 
+import asyncio
 import pytest
 import time
 from unittest.mock import AsyncMock, Mock, patch
@@ -37,9 +38,15 @@ class TestChatController:
         app.dependency_overrides[get_chat_service] = lambda: mock_chat_service
         app.dependency_overrides[get_history_service] = lambda: mock_history_service
         
+        # Mock the process_chat_message_callback
+        app.state.process_chat_message_callback = AsyncMock()
+        
         yield TestClient(app)
         
         app.dependency_overrides.clear()
+        # Clean up state
+        if hasattr(app.state, 'process_chat_message_callback'):
+            delattr(app.state, 'process_chat_message_callback')
 
     @pytest.fixture
     def sample_chat(self):
@@ -229,27 +236,30 @@ class TestChatController:
 
     # ===== POST /api/v1/chats/{chat_id}/messages =====
 
-    def test_send_message_success(self, client, mock_chat_service):
+    @patch("tarsy.services.history_service.HistoryService.get_chat_by_id", new_callable=AsyncMock)
+    def test_send_message_success(self, mock_get_chat, client, mock_chat_service, sample_chat):
         """Test successful message send."""
+        mock_get_chat.return_value = sample_chat
         mock_chat_service.send_message = AsyncMock(return_value="stage-exec-789")
 
-        response = client.post(
-            "/api/v1/chats/test-chat-123/messages",
-            json={"content": "Test question about the alert"},
-            headers={"X-Forwarded-User": "test-user"},
-        )
+        # Patch the lock and tasks dict
+        with patch("tarsy.main.active_tasks_lock", asyncio.Lock()):
+            with patch("tarsy.main.active_chat_tasks", {}):
+                response = client.post(
+                    "/api/v1/chats/test-chat-123/messages",
+                    json={"content": "Test question about the alert"},
+                    headers={"X-Forwarded-User": "test-user"},
+                )
 
         assert response.status_code == 200
         data = response.json()
         assert data["chat_id"] == "test-chat-123"
         assert data["content"] == "Test question about the alert"
         assert data["author"] == "test-user"
-        assert data["stage_execution_id"] == "stage-exec-789"
-        mock_chat_service.send_message.assert_called_once_with(
-            chat_id="test-chat-123",
-            user_question="Test question about the alert",
-            author="test-user",
-        )
+        # Stage execution ID is generated dynamically (UUID), so just check it exists
+        assert "stage_execution_id" in data
+        assert data["stage_execution_id"] is not None
+        mock_get_chat.assert_awaited_once_with("test-chat-123")
 
     def test_send_message_validation_empty_content(self, client):
         """Test message validation rejects empty content."""
@@ -283,11 +293,10 @@ class TestChatController:
 
         assert response.status_code == 422
 
-    def test_send_message_chat_not_found(self, client, mock_chat_service):
+    @patch("tarsy.services.history_service.HistoryService.get_chat_by_id", new_callable=AsyncMock)
+    def test_send_message_chat_not_found(self, mock_get_chat, client):
         """Test send message when chat doesn't exist."""
-        mock_chat_service.send_message = AsyncMock(
-            side_effect=ValueError("Chat test-chat-123 not found")
-        )
+        mock_get_chat.return_value = None
 
         response = client.post(
             "/api/v1/chats/test-chat-123/messages",
@@ -296,6 +305,7 @@ class TestChatController:
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
+        mock_get_chat.assert_awaited_once_with("test-chat-123")
 
     @patch("tarsy.main.shutdown_in_progress", True)
     def test_send_message_during_shutdown(self, client):

@@ -321,6 +321,9 @@ async def send_message(
             stage_execution_id=stage_execution_id,
         )
 
+    except HTTPException:
+        raise
+    
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg.lower():
