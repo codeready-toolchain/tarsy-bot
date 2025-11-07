@@ -6,6 +6,8 @@
 
 Tarsy is an **AI-powered incident analysis system** that processes alerts through sequential chains of specialized agents. When an alert comes in, Tarsy automatically selects the appropriate chain, executes multiple stages where agents build upon each other's work, and provides comprehensive analysis and recommendations for engineers to act upon. This chain-based approach enables complex multi-stage workflows for thorough incident investigation and analysis.
 
+After an investigation completes, engineers can continue the conversation through **follow-up chat** - asking clarifying questions, requesting deeper analysis, or exploring different aspects of the incident. The chat agent maintains full access to the investigation context and tools, enabling continued exploration without restarting the analysis pipeline.
+
 ## Core Concept
 
 ```mermaid
@@ -56,6 +58,14 @@ graph LR
 - Stage execution tracking with detailed performance metrics
 - **MCP Health Monitoring** - background service monitors MCP server health, automatically attempts recovery, and displays warnings for unavailable servers
 - SREs can observe and learn from multi-stage decision processes
+
+### 6. Follow-up Chat Capability
+- **Interactive Investigation**: Continue exploring after sessions complete (or fail/are cancelled)
+- **Context Preservation**: Chat agent maintains full investigation context and tool access
+- **Multi-user Collaboration**: Multiple engineers can participate in the same conversation
+- **Unified Timeline**: Chat messages appear inline with investigation stages in the reasoning view
+- **Real-time Streaming**: Follow-up questions trigger the same ReAct reasoning visible during initial investigation
+- **Per-chain Configuration**: Chat capability can be enabled/disabled per agent chain
 
 ## How It Works
 
@@ -119,6 +129,10 @@ sequenceDiagram
     
     A->>A: Process final analysis for return
 ```
+
+### Follow-up Chat
+
+After a session completes (or fails/is cancelled), engineers can start a chat conversation to ask follow-up questions. The chat agent uses the same ReAct processing shown above, with full investigation context and access to the same MCP tools used during the original session. Responses stream in real-time and appear inline in the conversation timeline.
 
 ## Authentication & Access Control
 

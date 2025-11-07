@@ -42,12 +42,13 @@ TARSy is an AI-powered incident analysis system that processes alerts through se
 ### Event Capture & Observability
 - [7. Hook System & Event-Driven Architecture](#7-hook-system--event-driven-architecture)
 - [8. History & Audit Trail](#8-history--audit-trail)
-- [9. Dashboard & Real-time Monitoring](#9-dashboard--real-time-monitoring)
+- [9. Follow-up Chat Capability](#9-follow-up-chat-capability)
+- [10. Dashboard & Real-time Monitoring](#10-dashboard--real-time-monitoring)
   - [WebSocket & Real-time Communication Architecture](#websocket--real-time-communication-architecture)
 
 ### Cross-Cutting Concerns
-- [10. Security & Data Protection](#10-security--data-protection)
-- [11. Authentication & Access Control](#11-authentication--access-control)
+- [11. Security & Data Protection](#11-security--data-protection)
+- [12. Authentication & Access Control](#12-authentication--access-control)
 
 ---
 
@@ -1284,6 +1285,8 @@ GET /api/v1/history/sessions?start_date_us=1734476400000000&end_date_us=17345627
 
 **📍 Dashboard Integration**: History API powers both the SRE dashboard timeline view and provides data for real-time progress updates.
 
+**📍 Chat Integration**: History database stores chat conversations and user messages, linking them to stage executions for complete audit trails of follow-up investigations.
+
 #### System Health & Warnings API
 
 **📍 REST API**: `backend/tarsy/controllers/system_controller.py`
@@ -1305,7 +1308,111 @@ The system warnings API surfaces critical but non-fatal initialization errors (M
 - Event system health includes PostgreSQL LISTEN connection status
 - Pod-specific issues (like event listener failures) properly trigger readiness probe failures
 
-### 9. Dashboard & Real-time Monitoring
+### 9. Follow-up Chat Capability
+**Purpose**: Interactive investigation continuation after session completion  
+**Key Responsibility**: Enabling engineers to ask follow-up questions with full context and tool access
+
+After an investigation completes (successfully, fails, or is cancelled), engineers can start follow-up chat conversations to ask clarifying questions, request deeper analysis, or explore different aspects of the incident. The chat agent maintains full access to the investigation context and the same MCP tools used during the original session.
+
+#### Chat Architecture
+
+```mermaid
+graph TB
+    subgraph "Chat Components"
+        ChatSvc[ChatService]
+        ChatAgent[ChatAgent]
+        ChatController[ChatReActController]
+    end
+    
+    subgraph "Infrastructure Reuse"
+        StageExec[Stage Execution]
+        Hooks[Hook System]
+        Events[Event System]
+        DB[History Database]
+    end
+    
+    Session[Terminated Session] --> ChatSvc
+    ChatSvc --> ChatAgent
+    ChatAgent --> ChatController
+    
+    ChatAgent --> StageExec
+    StageExec --> Hooks
+    StageExec --> Events
+    StageExec --> DB
+    
+    style ChatAgent fill:#e8f5e8
+    style StageExec fill:#fff3e0
+```
+
+#### Key Components
+
+**📍 Chat Service**: `backend/tarsy/services/chat_service.py`
+- **Context capture** - Extracts investigation history from LLM interactions
+- **MCP configuration preservation** - Captures which servers/tools were used
+- **Message processing** - Coordinates ChatAgent execution and stage lifecycle
+- **Pod tracking & graceful shutdown** - Multi-replica support (mirrors AlertService patterns)
+
+**📍 Chat Agent**: `backend/tarsy/agents/chat_agent.py`
+- **Built-in agent** for follow-up conversations using ReAct strategy
+- **Dynamic MCP configuration** - Uses servers from original session
+- **Context-aware processing** - Receives complete investigation history
+
+**📍 Chat Controller**: `backend/tarsy/agents/iteration_controllers/chat_react_controller.py`
+- **Extends ReactController** with conversation history
+- **Formats prompts** with investigation context prepended to user questions
+
+#### Database Schema
+
+**New Tables** (migration `20251105_2122_11b500f06df2`):
+- **`chats`** - Chat metadata, context snapshot, pod tracking fields
+- **`chat_user_messages`** - User questions with author and timestamp
+
+**Extended Tables**:
+- **`stage_executions`** - Added `chat_id` and `chat_user_message_id` fields
+
+**Key Design**: AI responses tracked via `StageExecution` → `LLMInteraction`/`MCPInteraction`, reusing existing audit trail infrastructure.
+
+#### Configuration & API
+
+**Per-Chain Configuration**:
+```yaml
+# In config/agents.yaml
+agent_chains:
+  kubernetes-agent-chain:
+    chat_enabled: true  # Default: true
+```
+
+**REST Endpoints**: `backend/tarsy/controllers/chat_controller.py`
+- `POST /api/v1/sessions/{session_id}/chat` - Create chat for terminated session
+- `GET /api/v1/sessions/{session_id}/chat-available` - Check availability
+- `POST /api/v1/chats/{chat_id}/messages` - Send message (response via WebSocket)
+- `GET /api/v1/chats/{chat_id}` - Get chat metadata
+
+**WebSocket Integration**: Reuses existing `session:{session_id}` channel for chat events and AI response streaming.
+
+#### UI Integration
+
+**Unified Timeline Approach**: Chat messages rendered inline in existing `ConversationTimeline` component:
+- User messages appear as flow items alongside investigation stages
+- AI responses appear as standard stages (thoughts, tool calls, final answers)
+- `ChatPanel` provides input interface only
+- Maintains consistent UX with investigation rendering
+
+**📍 Key Components**: 
+- `dashboard/src/components/ConversationTimeline.tsx` - Timeline rendering
+- `dashboard/src/components/ChatPanel.tsx` - Chat input interface
+- `dashboard/src/hooks/useChatState.ts` - State management
+- `dashboard/src/utils/chatFlowParser.ts` - Message parsing
+
+#### Benefits
+
+- **Seamless continuation** - No pipeline restart, preserves full context
+- **Same tool access** - Uses original investigation's MCP configuration
+- **Complete audit trail** - Reuses existing observability infrastructure
+- **Multi-user collaboration** - Multiple engineers can participate
+- **Consistent UX** - Integrated timeline view with investigation stages
+
+### 10. Dashboard & Real-time Monitoring
 **Purpose**: User interface and live system monitoring  
 **Key Responsibility**: Providing real-time visibility and historical analysis
 
@@ -1516,7 +1623,9 @@ Hook Event → Event Publisher → Database (INSERT + NOTIFY) →
 - **Channel-based subscriptions** - subscribe to specific event streams as needed
 - **Message routing** - events routed to appropriate UI components based on type
 
-### 10. Security & Data Protection
+**Chat Integration**: Chat messages (user questions and AI responses) are streamed through the same WebSocket infrastructure, appearing in real-time in the unified conversation timeline.
+
+### 11. Security & Data Protection
 **Purpose**: Sensitive data protection and secure operations  
 **Key Responsibility**: Preventing sensitive data exposure
 
@@ -1639,9 +1748,11 @@ mcp_servers:
 - **Server reference validation** ensures masking configs reference valid servers
 - **Graceful degradation** if masking service unavailable
 
+**Chat Integration**: All MCP tool calls from ChatAgent go through the same data masking pipeline, ensuring sensitive data protection in follow-up conversations.
+
 ---
 
-### 11. Authentication & Access Control
+### 12. Authentication & Access Control
 **Purpose**: Optional OAuth2-based authentication for enhanced security  
 **Key Responsibility**: Protecting dashboard and API access in development and production environments
 

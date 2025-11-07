@@ -114,6 +114,7 @@ This deployment is designed for development and testing environments, serving as
 - **🧠 Chain-Based Agent Architecture**: Specialized agents with domain-specific tools and AI reasoning working in coordinated stages
 - **📊 Comprehensive Audit Trail**: Complete visibility into chain processing workflows with stage-level timeline reconstruction
 - **🖥️ SRE Dashboard**: Real-time monitoring with live LLM streaming and interactive chain timeline visualization
+- **💬 Follow-up Chat**: Continue investigating after sessions complete - ask clarifying questions, request deeper analysis, or explore different aspects with full context and tool access
 - **🔒 Data Masking**: Automatic protection of sensitive data in logs and responses
 
 ## Architecture
@@ -129,7 +130,8 @@ Tarsy uses an AI-powered chain-based architecture where alerts flow through sequ
 3. **Runbook downloaded** automatically from GitHub for chain guidance
 4. **Sequential stages execute** where each agent builds upon previous stage data using AI to select and execute domain-specific tools
 5. **Comprehensive multi-stage analysis** provided to engineers with actionable recommendations
-6. **Full audit trail** captured with stage-level detail for monitoring and continuous improvement
+6. **Follow-up chat available** after investigation completes - engineers can ask questions, request deeper analysis, or explore different aspects
+7. **Full audit trail** captured with stage-level detail for monitoring and continuous improvement
 
 ```mermaid
 sequenceDiagram
@@ -258,6 +260,12 @@ export KUBECONFIG=/path/to/your/kubeconfig
 ### History API
 - `GET /api/v1/history/sessions` - List alert processing sessions with filtering and pagination
 - `GET /api/v1/history/sessions/{session_id}` - Get detailed session with chronological timeline
+
+### Chat API
+- `POST /api/v1/sessions/{session_id}/chat` - Create follow-up chat for a completed session
+- `GET /api/v1/sessions/{session_id}/chat-available` - Check if chat is available for a session
+- `POST /api/v1/chats/{chat_id}/messages` - Send message to chat (AI response streams via WebSocket)
+- `GET /api/v1/chats/{chat_id}` - Get chat details
 
 ### System API
 - `GET /api/v1/system/warnings` - Active system warnings (MCP/LLM init failures, etc.)
