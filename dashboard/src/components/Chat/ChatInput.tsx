@@ -96,17 +96,21 @@ export default function ChatInput({
                   onClick={handleCancel}
                   disabled={canceling}
                   sx={{
-                    backgroundColor: 'error.main',
-                    color: 'error.contrastText',
+                    color: 'error.main',
+                    border: '1px solid',
+                    borderColor: 'error.main',
+                    backgroundColor: 'transparent',
                     transition: 'all 0.2s',
                     '&:hover': {
-                      backgroundColor: 'error.dark',
+                      backgroundColor: 'error.main',
+                      borderColor: 'error.main',
+                      color: 'white',
                       transform: 'scale(1.05)',
                     },
                     '&:disabled': {
-                      backgroundColor: 'error.light',
-                      color: 'error.contrastText',
-                      opacity: 0.6,
+                      borderColor: 'action.disabled',
+                      color: 'action.disabled',
+                      opacity: 0.5,
                     }
                   }}
                 >

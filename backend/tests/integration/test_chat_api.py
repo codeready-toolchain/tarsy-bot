@@ -179,15 +179,19 @@ class TestChatAPIIntegration:
         )
         
         # Send message
+        import uuid
+        stage_execution_id = str(uuid.uuid4())
         with patch("tarsy.services.chat_service.stage_execution_context"):
-            stage_execution_id = await chat_service.process_chat_message(
+            returned_id = await chat_service.process_chat_message(
                 chat_id=chat.chat_id,
                 user_question="What caused the issue?",
-                author="test-user@example.com"
+                author="test-user@example.com",
+                stage_execution_id=stage_execution_id
             )
         
         # Verify stage execution was created
         assert stage_execution_id is not None
+        assert returned_id == stage_execution_id
         
         # Verify user message was created
         messages = await history_service.get_chat_user_messages(chat.chat_id, limit=10, offset=0)
