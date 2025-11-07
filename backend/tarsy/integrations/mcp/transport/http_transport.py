@@ -1,5 +1,6 @@
 """HTTP transport implementation using official MCP SDK."""
 
+import asyncio
 from contextlib import AsyncExitStack
 from typing import Optional, Dict
 import httpx
@@ -31,68 +32,100 @@ class HTTPTransport(MCPTransport):
         self._connected = False
     
     async def create_session(self) -> ClientSession:
-        """Create HTTP session using MCP SDK."""
+        """Create HTTP session using MCP SDK.
+        
+        Raises:
+            Exception: If session creation fails (connection errors, timeouts, etc.)
+        """
         if self.session:
             return self.session
         
         logger.info(f"Creating HTTP session for server: {self.server_id}")
         
-        # Prepare headers with bearer token if configured
-        request_headers = dict(self.config.headers or {})
-        if self.config.bearer_token:
-            request_headers["Authorization"] = f"Bearer {self.config.bearer_token}"
-        
-        if not self.config.verify_ssl:
-            logger.warning(
-                f"SSL verification disabled for server: {self.server_id}. "
-                "This is insecure and should only be used in development."
+        # Wrap in a new task to isolate anyio cancel scopes from parent context
+        # This prevents "Attempted to exit cancel scope in a different task" errors
+        # when MCP SDK cleanup runs after connection failures
+        return await asyncio.create_task(self._create_session_impl())
+    
+    async def _create_session_impl(self) -> ClientSession:
+        """Internal implementation of session creation, isolated in its own task."""
+        try:
+            # Prepare headers with bearer token if configured
+            request_headers = dict(self.config.headers or {})
+            if self.config.bearer_token:
+                request_headers["Authorization"] = f"Bearer {self.config.bearer_token}"
+            
+            if not self.config.verify_ssl:
+                logger.warning(
+                    f"SSL verification disabled for server: {self.server_id}. "
+                    "This is insecure and should only be used in development."
+                )
+            
+            # Create custom httpx client factory that respects verify_ssl setting
+            # Note: streamablehttp_client uses this factory with async with, expecting a context manager
+            from contextlib import asynccontextmanager
+            from collections.abc import AsyncGenerator
+            
+            @asynccontextmanager
+            async def custom_client_factory(
+                headers: Optional[Dict[str, str]] = None,
+                timeout: Optional[httpx.Timeout] = None,
+                auth: Optional[httpx.Auth] = None
+            ) -> AsyncGenerator[httpx.AsyncClient, None]:
+                """Custom httpx client factory with configurable SSL verification."""
+                async with httpx.AsyncClient(
+                    headers=headers,
+                    timeout=timeout,
+                    auth=auth,
+                    verify=self.config.verify_ssl,  # Use configured SSL verification setting
+                ) as client:
+                    yield client
+            
+            # Create HTTP client context using MCP SDK
+            http_context = streamablehttp_client(
+                url=str(self.config.url),
+                headers=request_headers if request_headers else None,
+                timeout=self.config.timeout,
+                httpx_client_factory=custom_client_factory,
             )
-        
-        # Create custom httpx client factory that respects verify_ssl setting
-        # Note: streamablehttp_client uses this factory with async with, expecting a context manager
-        from contextlib import asynccontextmanager
-        from collections.abc import AsyncGenerator
-        
-        @asynccontextmanager
-        async def custom_client_factory(
-            headers: Optional[Dict[str, str]] = None,
-            timeout: Optional[httpx.Timeout] = None,
-            auth: Optional[httpx.Auth] = None
-        ) -> AsyncGenerator[httpx.AsyncClient, None]:
-            """Custom httpx client factory with configurable SSL verification."""
-            async with httpx.AsyncClient(
-                headers=headers,
-                timeout=timeout,
-                auth=auth,
-                verify=self.config.verify_ssl,  # Use configured SSL verification setting
-            ) as client:
-                yield client
-        
-        # Create HTTP client context using MCP SDK
-        http_context = streamablehttp_client(
-            url=str(self.config.url),
-            headers=request_headers if request_headers else None,
-            timeout=self.config.timeout,
-            httpx_client_factory=custom_client_factory,
-        )
-        
-        # Enter the context to get the streams and session ID callback
-        streams = await self.exit_stack.enter_async_context(http_context)
-        read_stream, write_stream, get_session_id_callback = streams
-        
-        # Create ClientSession as async context manager
-        session_context = ClientSession(read_stream, write_stream)
-        session = await self.exit_stack.enter_async_context(session_context)
-        
-        # Initialize the connection
-        logger.info(f"Initializing session for server: {self.server_id}")
-        await session.initialize()
-        logger.info(f"Session initialization completed for server: {self.server_id}")
-        
-        self.session = session
-        self._connected = True
-        logger.info(f"HTTP session created and initialized for server: {self.server_id}")
-        return self.session
+            
+            # Enter the context to get the streams and session ID callback
+            streams = await self.exit_stack.enter_async_context(http_context)
+            read_stream, write_stream, get_session_id_callback = streams
+            
+            # Create ClientSession as async context manager
+            session_context = ClientSession(read_stream, write_stream)
+            session = await self.exit_stack.enter_async_context(session_context)
+            
+            # Initialize the connection
+            logger.info(f"Initializing session for server: {self.server_id}")
+            await session.initialize()
+            logger.info(f"Session initialization completed for server: {self.server_id}")
+            
+            self.session = session
+            self._connected = True
+            logger.info(f"HTTP session created and initialized for server: {self.server_id}")
+            return self.session
+            
+        except BaseExceptionGroup as eg:
+            # Handle anyio/MCP SDK exception groups (connection failures wrapped in task groups)
+            # Extract error messages from all sub-exceptions
+            errors = [f"{type(e).__name__}: {e}" for e in eg.exceptions]
+            logger.error(f"HTTP transport creation failed for {self.server_id} with grouped errors: {errors}")
+            try:
+                await self.exit_stack.aclose()
+            except:
+                pass  # Suppress cleanup errors
+            raise Exception(f"Failed to create HTTP session - {'; '.join(errors)}") from None
+        except Exception as e:
+            # Catch all other errors (connection failures, timeouts, etc.)
+            # Clean up any partial state before propagating
+            logger.error(f"HTTP transport creation failed for {self.server_id}: {type(e).__name__}: {e}")
+            try:
+                await self.exit_stack.aclose()
+            except:
+                pass  # Suppress cleanup errors
+            raise Exception(f"Failed to create HTTP session: {type(e).__name__}: {e}") from e
     
     async def close(self):
         """Close HTTP transport (handled automatically by exit_stack).
