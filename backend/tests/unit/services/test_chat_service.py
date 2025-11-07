@@ -161,7 +161,7 @@ class TestChatService:
         sample_session.status = AlertSessionStatus.IN_PROGRESS.value
         mock_history_service.get_session.return_value = sample_session
         
-        with pytest.raises(ValueError, match="completed"):
+        with pytest.raises(ValueError, match="terminated"):
             await chat_service.create_chat(
                 session_id="test-session-123",
                 created_by="user@example.com"

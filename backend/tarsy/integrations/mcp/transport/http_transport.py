@@ -112,14 +112,14 @@ class HTTPTransport(MCPTransport):
             # Extract error messages from all sub-exceptions
             errors = [f"{type(e).__name__}: {e}" for e in eg.exceptions]
             logger.error(f"HTTP transport creation failed for {self.server_id} with grouped errors: {errors}")
-            with suppress(Exception):
+            with suppress(BaseException):
                 await self.exit_stack.aclose()
             raise Exception(f"Failed to create HTTP session - {'; '.join(errors)}") from None
         except Exception as e:
             # Catch all other errors (connection failures, timeouts, etc.)
             # Clean up any partial state before propagating
             logger.error(f"HTTP transport creation failed for {self.server_id}: {type(e).__name__}: {e}")
-            with suppress(Exception):
+            with suppress(BaseException):
                 await self.exit_stack.aclose()
             raise Exception(f"Failed to create HTTP session: {type(e).__name__}: {e}") from e
     
