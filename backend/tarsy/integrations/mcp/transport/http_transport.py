@@ -1,7 +1,8 @@
 """HTTP transport implementation using official MCP SDK."""
 
 import asyncio
-from contextlib import AsyncExitStack, suppress
+from collections.abc import AsyncGenerator
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from typing import Optional, Dict
 import httpx
 from mcp import ClientSession
@@ -63,9 +64,6 @@ class HTTPTransport(MCPTransport):
             
             # Create custom httpx client factory that respects verify_ssl setting
             # Note: streamablehttp_client uses this factory with async with, expecting a context manager
-            from contextlib import asynccontextmanager
-            from collections.abc import AsyncGenerator
-            
             @asynccontextmanager
             async def custom_client_factory(
                 headers: Optional[Dict[str, str]] = None,

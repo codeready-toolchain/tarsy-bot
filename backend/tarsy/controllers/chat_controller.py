@@ -180,8 +180,15 @@ async def check_chat_availability(
                 reason=f"Session must be in a terminal state (current status: {session.status})",
             )
 
-        # Session is terminated and no chat exists yet - available for creation
-        # Note: Full validation (e.g., chain chat_enabled) happens during POST /sessions/{session_id}/chat
+        # Check if chat is enabled for the chain
+        chain_config = session.chain_config
+        if chain_config and not chain_config.chat_enabled:
+            return ChatAvailabilityResponse(
+                available=False,
+                reason=f"Chat is disabled for chain '{chain_config.chain_id}'",
+            )
+
+        # Session is terminated, chat is enabled, and no chat exists yet - available for creation
         return ChatAvailabilityResponse(available=True)
 
     except HTTPException:

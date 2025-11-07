@@ -112,8 +112,13 @@ class ChatService:
             logger.info(f"Chat already exists for session {session_id}")
             return existing_chat
         
-        # TODO: Validate chain has chat enabled (implementation detail)
-        # This would check chain_definition for chat_enabled=true
+        # Validate chain has chat enabled
+        chain_config = session.chain_config
+        if chain_config and not chain_config.chat_enabled:
+            raise ValueError(
+                f"Chat is disabled for chain '{chain_config.chain_id}'. "
+                f"Set chat_enabled=true in agents.yaml to enable chat for this chain."
+            )
         
         # Capture session context from LLM interactions (returns typed dataclass)
         context = await self._capture_session_context(session_id)
@@ -573,16 +578,16 @@ class ChatService:
             return MCPSelectionConfig(**session.mcp_selection)
         
         # Case 2: Session used default agent servers - reconstruct them
-        if not session.chain_definition:
+        chain_config = session.chain_config
+        if not chain_config:
             logger.warning(f"No chain definition in session {session.session_id}")
             return None
         
         # Extract unique server names from all stages' default configurations
         server_names = set()
-        chain_def = session.chain_definition
         
-        for stage in chain_def.get("stages", []):
-            agent_name = stage.get("agent")
+        for stage in chain_config.stages:
+            agent_name = stage.agent
             if not agent_name:
                 continue
             

@@ -57,11 +57,16 @@ class TestChatService:
         session.chain_id = "kubernetes-investigation"
         session.mcp_selection = None
         session.chain_definition = {
+            "chain_id": "kubernetes-investigation",
+            "alert_types": ["PodCrashLoop"],
             "stages": [
-                {"agent": "KubernetesAgent"},
-                {"agent": "DeepDiveAgent"}
+                {"agent": "KubernetesAgent", "name": "Initial Analysis"},
+                {"agent": "DeepDiveAgent", "name": "Deep Dive"}
             ]
         }
+        # Mock the chain_config property
+        from tarsy.models.agent_config import ChainConfigModel
+        session.chain_config = ChainConfigModel(**session.chain_definition)
         return session
     
     @pytest.fixture
@@ -167,6 +172,30 @@ class TestChatService:
                 created_by="user@example.com"
             )
     
+    @pytest.mark.asyncio
+    async def test_create_chat_disabled_for_chain(
+        self, chat_service, mock_history_service, sample_session
+    ):
+        """Test create chat fails when chat is disabled for the chain."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [{"agent": "TestAgent", "name": "Test"}],
+            "chat_enabled": False
+        }
+        # Update the mock chain_config property
+        from tarsy.models.agent_config import ChainConfigModel
+        sample_session.chain_config = ChainConfigModel(**sample_session.chain_definition)
+        
+        mock_history_service.get_session.return_value = sample_session
+        mock_history_service.get_chat_by_session = AsyncMock(return_value=None)
+        
+        with pytest.raises(ValueError, match="Chat is disabled for chain"):
+            await chat_service.create_chat(
+                session_id="test-session-123",
+                created_by="user@example.com"
+            )
+    
     # ===== MCP Selection Tests =====
     
     def test_determine_mcp_selection_from_custom(
@@ -194,11 +223,16 @@ class TestChatService:
         """Test MCP selection reconstructs from agent defaults."""
         sample_session.mcp_selection = None
         sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
             "stages": [
-                {"agent": "KubernetesAgent"},
-                {"agent": "DatabaseAgent"}
+                {"agent": "KubernetesAgent", "name": "Stage 1"},
+                {"agent": "DatabaseAgent", "name": "Stage 2"}
             ]
         }
+        # Update the mock chain_config property
+        from tarsy.models.agent_config import ChainConfigModel
+        sample_session.chain_config = ChainConfigModel(**sample_session.chain_definition)
         
         # Mock agent configs
         mock_agent_factory.agent_configs = {
@@ -218,9 +252,10 @@ class TestChatService:
     def test_determine_mcp_selection_no_servers(
         self, chat_service, sample_session
     ):
-        """Test MCP selection returns None when no servers found."""
+        """Test MCP selection returns None when no servers found (chain_definition is None)."""
         sample_session.mcp_selection = None
-        sample_session.chain_definition = {"stages": []}
+        sample_session.chain_definition = None
+        sample_session.chain_config = None
         
         result = chat_service._determine_mcp_selection_from_session(sample_session)
         
@@ -527,7 +562,9 @@ class TestChatServiceStageExecution:
         mock_stage.status = StageStatus.PENDING.value
         mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
         
-        with patch("tarsy.services.chat_service.stage_execution_context"):
+        with patch("tarsy.services.chat_service.stage_execution_context") as stage_ctx:
+            stage_ctx.return_value.__aenter__ = AsyncMock(return_value=None)
+            stage_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
             await chat_service._update_stage_execution_started("exec-123")
         
         assert mock_stage.status == StageStatus.ACTIVE.value
@@ -553,7 +590,9 @@ class TestChatServiceStageExecution:
             timestamp_us=start_time + 100_000  # 100ms later
         )
         
-        with patch("tarsy.services.chat_service.stage_execution_context"):
+        with patch("tarsy.services.chat_service.stage_execution_context") as stage_ctx:
+            stage_ctx.return_value.__aenter__ = AsyncMock(return_value=None)
+            stage_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
             await chat_service._update_stage_execution_completed("exec-123", result)
         
         assert mock_stage.status == StageStatus.COMPLETED.value
@@ -570,7 +609,9 @@ class TestChatServiceStageExecution:
         mock_stage.started_at_us = now_us()
         mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
         
-        with patch("tarsy.services.chat_service.stage_execution_context"):
+        with patch("tarsy.services.chat_service.stage_execution_context") as stage_ctx:
+            stage_ctx.return_value.__aenter__ = AsyncMock(return_value=None)
+            stage_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
             await chat_service._update_stage_execution_failed("exec-123", "Test error")
         
         assert mock_stage.status == StageStatus.FAILED.value

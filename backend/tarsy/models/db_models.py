@@ -8,7 +8,7 @@ performance and consistency.
 
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from sqlmodel import Column, Field, SQLModel, Index
 from sqlalchemy import JSON, Integer, DateTime, ForeignKey, String, func
@@ -16,6 +16,9 @@ from sqlalchemy.dialects.postgresql import BIGINT
 
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.utils.timestamp import now_us
+
+if TYPE_CHECKING:
+    from tarsy.models.agent_config import ChainConfigModel
 
 class AlertSession(SQLModel, table=True):
     """
@@ -137,6 +140,22 @@ class AlertSession(SQLModel, table=True):
     
     # Note: Relationships removed to avoid circular import issues with unified models
     # Use queries with session_id foreign key for data access instead
+    
+    @property
+    def chain_config(self) -> Optional['ChainConfigModel']:
+        """
+        Parse chain_definition dict to typed ChainConfigModel.
+        
+        Provides type-safe access to chain configuration with IDE autocomplete
+        and Pydantic validation. Returns None if chain_definition is not set.
+        
+        Returns:
+            ChainConfigModel instance or None
+        """
+        if not self.chain_definition:
+            return None
+        from tarsy.models.agent_config import ChainConfigModel
+        return ChainConfigModel(**self.chain_definition)
 
 
 class StageExecution(SQLModel, table=True):
