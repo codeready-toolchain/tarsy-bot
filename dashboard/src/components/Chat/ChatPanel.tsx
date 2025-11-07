@@ -221,29 +221,14 @@ export default function ChatPanel({
             </Alert>
           )}
           
-          {/* Subtle progress bar when message is being sent or AI is processing */}
+          {/* Simple static indicator when processing - no animation */}
           {(sendingMessage || chatStageInProgress) && (
             <Box 
-              sx={{ 
-                height: 2,
+              sx={(theme) => ({ 
+                height: 3,
                 width: '100%',
-                bgcolor: 'primary.main',
-                opacity: 0.6,
-                animation: 'shimmer 1.5s ease-in-out infinite',
-                '@keyframes shimmer': {
-                  '0%': { 
-                    transform: 'translateX(-100%)',
-                    opacity: 0.3
-                  },
-                  '50%': { 
-                    opacity: 0.8
-                  },
-                  '100%': { 
-                    transform: 'translateX(100%)',
-                    opacity: 0.3
-                  }
-                }
-              }}
+                bgcolor: alpha(theme.palette.primary.main, 0.15),
+              })}
             />
           )}
           

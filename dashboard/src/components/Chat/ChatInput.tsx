@@ -44,7 +44,7 @@ export default function ChatInput({ onSendMessage, disabled, sendingMessage = fa
           multiline
           minRows={2}
           maxRows={8}
-          placeholder="Type your question... (press Enter for new line)"
+          placeholder={sendingMessage ? "AI is processing..." : "Type your question... (press Enter for new line)"}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           disabled={isDisabled}
@@ -54,8 +54,9 @@ export default function ChatInput({ onSendMessage, disabled, sendingMessage = fa
               fontSize: { xs: '0.875rem', sm: '1rem' },
               transition: 'all 0.3s ease',
               ...(sendingMessage && {
-                opacity: 0.7,
-                backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.02),
+                opacity: 0.6,
+                backgroundColor: (theme) => alpha(theme.palette.grey[300], 0.2),
+                pointerEvents: 'none',
               })
             }
           }}
@@ -84,22 +85,16 @@ export default function ChatInput({ onSendMessage, disabled, sendingMessage = fa
         <Box sx={{ 
           px: { xs: 1, sm: 2 }, 
           pb: 1,
-          pt: 0
+          pt: 0.5
         }}>
           <Typography 
             variant="caption" 
             sx={{ 
-              color: 'primary.main',
+              color: 'text.secondary',
               fontSize: '0.75rem',
-              fontStyle: 'italic',
-              opacity: 0.7,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5
             }}
           >
-            <CircularProgress size={10} sx={{ opacity: 0.7 }} />
-            AI is analyzing your question...
+            Processing your question...
           </Typography>
         </Box>
       )}
