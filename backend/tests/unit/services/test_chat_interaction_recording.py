@@ -7,7 +7,7 @@ fresh during long-running chat message processing.
 
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from tarsy.services.chat_service import ChatService
 
@@ -38,30 +38,38 @@ class TestChatInteractionRecording:
         self, chat_service, mock_history_service
     ):
         """Test interaction recording updates both session and chat timestamps."""
-        task = await chat_service._start_interaction_recording_task(
-            chat_id="chat-123",
-            session_id="session-456"
-        )
+        # Mock asyncio.sleep in the chat_service module to make it instant
+        original_sleep = asyncio.sleep
         
-        try:
-            # Wait for at least one recording cycle (5 seconds)
-            await asyncio.sleep(5.5)
-            
-            # Verify both recording methods were called
-            assert mock_history_service.record_session_interaction.call_count >= 1
-            assert mock_history_service.record_chat_interaction.call_count >= 1
-            
-            # Verify correct IDs were used
-            mock_history_service.record_session_interaction.assert_called_with("session-456")
-            mock_history_service.record_chat_interaction.assert_called_with("chat-123")
+        async def instant_sleep(delay):
+            """Sleep instantly instead of the requested delay."""
+            await original_sleep(0.01)  # Very short delay to yield control
         
-        finally:
-            # Clean up task
-            task.cancel()
+        with patch("tarsy.services.chat_service.asyncio.sleep", side_effect=instant_sleep):
+            task = await chat_service._start_interaction_recording_task(
+                chat_id="chat-123",
+                session_id="session-456"
+            )
+            
             try:
-                await task
-            except asyncio.CancelledError:
-                pass
+                # Give task a moment to execute several cycles
+                await original_sleep(0.1)
+                
+                # Verify both recording methods were called
+                assert mock_history_service.record_session_interaction.call_count >= 1
+                assert mock_history_service.record_chat_interaction.call_count >= 1
+                
+                # Verify correct IDs were used
+                mock_history_service.record_session_interaction.assert_called_with("session-456")
+                mock_history_service.record_chat_interaction.assert_called_with("chat-123")
+            
+            finally:
+                # Clean up task
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
     
     @pytest.mark.asyncio
     async def test_interaction_recording_task_handles_errors(
@@ -75,24 +83,32 @@ class TestChatInteractionRecording:
             None
         ]
         
-        task = await chat_service._start_interaction_recording_task(
-            chat_id="chat-123",
-            session_id="session-456"
-        )
+        # Mock asyncio.sleep in the chat_service module to make it instant
+        original_sleep = asyncio.sleep
         
-        try:
-            # Wait for multiple cycles
-            await asyncio.sleep(11)
+        async def instant_sleep(delay):
+            """Sleep instantly instead of the requested delay."""
+            await original_sleep(0.01)  # Very short delay to yield control
+        
+        with patch("tarsy.services.chat_service.asyncio.sleep", side_effect=instant_sleep):
+            task = await chat_service._start_interaction_recording_task(
+                chat_id="chat-123",
+                session_id="session-456"
+            )
             
-            # Task should continue despite error
-            assert mock_history_service.record_chat_interaction.call_count >= 2
-        
-        finally:
-            task.cancel()
             try:
-                await task
-            except asyncio.CancelledError:
-                pass
+                # Wait for multiple cycles
+                await original_sleep(0.1)
+                
+                # Task should continue despite error
+                assert mock_history_service.record_chat_interaction.call_count >= 2
+            
+            finally:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
     
     @pytest.mark.asyncio
     async def test_interaction_recording_task_cancellation(
