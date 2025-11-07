@@ -60,8 +60,9 @@ class ChatReActController(ReactController):
         )
         
         # User message with history + question (delegated to prompt builder)
+        # conversation_history already contains formatted investigation + optional chat history
         user_content = self.prompt_builder.build_chat_user_message(
-            conversation_history=chat_context.conversation_history,
+            investigation_context=chat_context.conversation_history,
             user_question=chat_context.user_question
         )
         

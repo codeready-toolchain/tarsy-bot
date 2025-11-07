@@ -6,7 +6,10 @@ patterns as AlertService for consistency and reliability.
 """
 
 import asyncio
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
+
+if TYPE_CHECKING:
+    from tarsy.agents.prompts.builders import ChatExchange
 
 from tarsy.config.settings import get_settings
 from tarsy.hooks.hook_context import stage_execution_context
@@ -16,7 +19,7 @@ from tarsy.models.constants import StageStatus
 from tarsy.models.db_models import Chat, ChatUserMessage, StageExecution
 from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
 from tarsy.models.processing_context import ChainContext, ChatMessageContext, SessionContextData
-from tarsy.models.unified_interactions import LLMConversation, LLMInteraction
+from tarsy.models.unified_interactions import LLMInteraction
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.history_service import HistoryService
 from tarsy.services.mcp_client_factory import MCPClientFactory
@@ -24,75 +27,6 @@ from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
 logger = get_module_logger(__name__)
-
-
-def format_conversation_history_as_text(conversation: LLMConversation) -> str:
-    """
-    Format LLM conversation as readable investigation history.
-    
-    Extracts user/assistant messages (skips system instructions) and formats
-    with clear section markers to distinguish historical context from current
-    chat instructions.
-    
-    The formatted history includes:
-    - Initial investigation request (alert data, runbook, available tools)
-    - All ReAct reasoning (Thought/Action cycles)
-    - Tool observations (results)
-    - Final analysis
-    
-    Args:
-        conversation: LLMConversation from LLMInteraction.conversation field
-        
-    Returns:
-        Formatted string with clear section markers
-        
-    Note: The tools list from the original investigation is preserved as context.
-    This shows what tools were available during the investigation. The ChatAgent
-    will receive its own current tools list in the system message.
-    """
-    from tarsy.models.unified_interactions import MessageRole
-    
-    sections = []
-    sections.append("=" * 80)
-    sections.append("ORIGINAL ALERT INVESTIGATION HISTORY")
-    sections.append("=" * 80)
-    sections.append("")
-    
-    for i, msg in enumerate(conversation.messages):
-        # Skip system messages - those are instructions we'll re-add for chat
-        if msg.role == MessageRole.SYSTEM:
-            continue
-        
-        # Format each message with clear headers
-        if msg.role == MessageRole.USER:
-            # User messages in investigation are either:
-            # - Initial prompt (tools + alert + runbook + task)
-            # - Observations (tool results)
-            if i == 1:  # First user message after system
-                sections.append("### Initial Investigation Request")
-                sections.append("")
-                sections.append(msg.content)
-                sections.append("")
-            else:
-                # Tool result observation
-                sections.append("**Observation:**")
-                sections.append("")
-                sections.append(msg.content)
-                sections.append("")
-        
-        elif msg.role == MessageRole.ASSISTANT:
-            # Assistant messages contain Thought/Action/Final Answer
-            sections.append("**Agent Response:**")
-            sections.append("")
-            sections.append(msg.content)
-            sections.append("")
-    
-    sections.append("=" * 80)
-    sections.append("END OF INVESTIGATION HISTORY")
-    sections.append("=" * 80)
-    sections.append("")
-    
-    return "\n".join(sections)
 
 
 class ChatService:
@@ -492,7 +426,7 @@ class ChatService:
         Extract and format conversation history from LLM interactions.
         
         Takes the LAST interaction (which contains complete cumulative history)
-        and formats it as readable text for the chat agent.
+        and formats it as readable text for the chat agent using PromptBuilder.
         
         This is the core helper used by both:
         - create_chat(): Gets conversation from session's LLM interactions
@@ -510,8 +444,11 @@ class ChatService:
         # Get last interaction - has complete cumulative conversation
         last_interaction = llm_interactions[-1]
         
-        # Format as readable text
-        return format_conversation_history_as_text(last_interaction.conversation)
+        # Use PromptBuilder to format investigation context
+        from tarsy.agents.prompts.builders import PromptBuilder
+        prompt_builder = PromptBuilder()
+        
+        return prompt_builder.format_investigation_context(last_interaction.conversation)
     
     async def _capture_session_context(self, session_id: str) -> SessionContextData:
         """
@@ -622,6 +559,74 @@ class ChatService:
             ]
         )
     
+    async def _build_chat_exchanges(
+        self,
+        chat_id: str
+    ) -> List['ChatExchange']:
+        """
+        Build structured chat exchange data from DB records.
+        
+        Queries ChatUserMessage and corresponding LLMInteractions,
+        returns structured data for PromptBuilder to format.
+        
+        Args:
+            chat_id: Chat identifier
+            
+        Returns:
+            List of ChatExchange objects (ordered chronologically)
+        """
+        from tarsy.agents.prompts.builders import ChatExchange
+        
+        # Query ChatUserMessage records for chat_id (ordered by created_at_us)
+        user_messages = await self.history_service.get_chat_user_messages(
+            chat_id=chat_id, 
+            limit=100,  # Reasonable limit
+            offset=0
+        )
+        
+        exchanges = []
+        for msg in user_messages:
+            # Get the stage execution that processed this message
+            # The stage_execution_id is stored when we create the user message
+            # We need to find the stage execution for this chat message
+            
+            # Get all chat executions and find the one that corresponds to this message
+            chat_executions = await self.history_service.get_stage_executions_for_chat(chat_id)
+            
+            # Find the execution that matches this message timestamp
+            # Executions are ordered by timestamp, and each user message corresponds
+            # to a stage execution that was created when processing that message
+            matching_execution = None
+            for execution in chat_executions:
+                # Match by timestamp proximity (execution should be after message)
+                if execution.started_at_us and execution.started_at_us >= msg.created_at_us:
+                    matching_execution = execution
+                    break
+            
+            if not matching_execution:
+                logger.warning(f"No matching execution found for chat message {msg.message_id}")
+                continue
+            
+            # Get LLM interactions for this execution
+            llm_interactions = await self.history_service.get_llm_interactions_for_stage(
+                matching_execution.execution_id
+            )
+            
+            if not llm_interactions:
+                logger.warning(f"No LLM interactions found for execution {matching_execution.execution_id}")
+                continue
+            
+            # Get the last interaction which has the complete conversation
+            last_interaction = llm_interactions[-1]
+            
+            # Build ChatExchange object
+            exchanges.append(ChatExchange(
+                user_question=msg.content,
+                conversation=last_interaction.conversation
+            ))
+        
+        return exchanges
+    
     async def _build_message_context(
         self,
         chat: Chat,
@@ -631,12 +636,12 @@ class ChatService:
         Build context for new chat message including conversation history.
         
         Strategy for context accumulation:
-        - First chat message: Use chat.conversation_history (captured from session)
-        - Subsequent messages: Get last chat execution's LLM interactions
-          (which naturally includes all previous context + chat Q&A)
+        - First chat message: Use chat.conversation_history (original investigation only)
+        - Subsequent messages: Combine chat.conversation_history (original investigation)
+          with formatted chat history (all previous Q&A exchanges)
         
-        This is cumulative - each LLM interaction contains the full history,
-        so we just need the most recent one.
+        This approach keeps the original investigation clean and separate from chat history,
+        avoiding nested formatting issues.
         
         Args:
             chat: Chat object
@@ -650,24 +655,20 @@ class ChatService:
         
         if not prev_executions:
             # First chat message - use pre-formatted context from session
-            # (Already formatted during create_chat())
+            # (Already formatted during create_chat() with investigation only)
             context_history = chat.conversation_history
         else:
-            # Subsequent message - get last chat execution's LLM interactions
-            last_exec = prev_executions[-1]
-            llm_interactions = await self.history_service.get_llm_interactions_for_stage(
-                last_exec.execution_id
-            )
+            # Subsequent message - build structured exchanges from DB
+            exchanges = await self._build_chat_exchanges(chat.chat_id)
             
-            if not llm_interactions:
-                # Fallback to chat.conversation_history if no interactions found
-                logger.warning(f"No LLM interactions found for execution {last_exec.execution_id}, using chat history")
-                context_history = chat.conversation_history
-            else:
-                # Format conversation using common helper (includes previous chat Q&A)
-                context_history = await self._get_formatted_conversation_from_llm_interactions(
-                    llm_interactions
-                )
+            # Format chat history using PromptBuilder
+            from tarsy.agents.prompts.builders import PromptBuilder
+            prompt_builder = PromptBuilder()
+            
+            chat_history_formatted = prompt_builder.format_chat_history(exchanges)
+            
+            # Combine original investigation with chat history
+            context_history = chat.conversation_history + chat_history_formatted
         
         # Return typed dataclass (type-safe!)
         return ChatMessageContext(
@@ -858,4 +859,3 @@ def initialize_chat_service(
     )
     logger.info("Chat service initialized")
     return _chat_service
-

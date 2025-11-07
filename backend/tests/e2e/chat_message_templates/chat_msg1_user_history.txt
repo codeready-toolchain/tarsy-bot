@@ -1,6 +1,8 @@
-================================================================================
-ORIGINAL ALERT INVESTIGATION HISTORY
-================================================================================
+═══════════════════════════════════════════════════════════════════════════════
+📋 INVESTIGATION CONTEXT
+═══════════════════════════════════════════════════════════════════════════════
+
+# Original Investigation
 
 ### Initial Investigation Request
 
@@ -86,29 +88,15 @@ Do NOT call any tools - use only the provided data.
 
 Based on previous stages, the namespace is stuck due to finalizers.
 
-================================================================================
-END OF INVESTIGATION HISTORY
-================================================================================
+═══════════════════════════════════════════════════════════════════════════════
+🎯 CURRENT TASK
+═══════════════════════════════════════════════════════════════════════════════
 
-
-================================================================================
-FOLLOW-UP CHAT SESSION
-================================================================================
-
-The user has reviewed the investigation above and has a follow-up question.
-
-You have access to the same tools that were used in the original investigation
-(they are listed in the "Initial Investigation Request" section above).
-
-**User's Follow-up Question:**
-
-Can you check the pods in the stuck-namespace?
+**Question:** Can you check the pods in the stuck-namespace?
 
 **Your Task:**
-
-Answer the user's question using the ReAct format shown in your instructions.
-Reference the investigation history when relevant, and use tools to gather 
-fresh data if needed.
+Answer using the ReAct format from your system instructions.
+- Reference investigation history when relevant
+- Use tools to get fresh data if needed
 
 Begin your ReAct reasoning:
-

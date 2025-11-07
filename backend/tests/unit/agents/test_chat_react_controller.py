@@ -69,19 +69,19 @@ class TestPromptBuilderChatExtensions:
     
     def test_build_chat_user_message_includes_history_and_question(self, prompt_builder):
         """Test chat user message properly combines investigation history with user question."""
-        conversation_history = "=== INVESTIGATION ===\nAlert: Pod crashed"
+        investigation_context = "=== INVESTIGATION ===\nAlert: Pod crashed"
         user_question = "Can you check the logs?"
         
         result = prompt_builder.build_chat_user_message(
-            conversation_history=conversation_history,
+            investigation_context=investigation_context,
             user_question=user_question
         )
         
         # Both history and question should be present
-        assert conversation_history in result
+        assert investigation_context in result
         assert user_question in result
-        # Should have clear section markers
-        assert "FOLLOW-UP CHAT" in result or "Follow-up Question" in result
+        # Should have clear section markers with new emoji format
+        assert "🎯 CURRENT TASK" in result
         # Should mention investigation context
         assert "investigation" in result.lower() or "tools" in result.lower()
     

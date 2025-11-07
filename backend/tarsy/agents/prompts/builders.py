@@ -5,9 +5,11 @@ This module implements the PromptBuilder using LangChain templates
 for clean, composable prompt generation.
 """
 
+from dataclasses import dataclass
 from typing import List, Optional, TYPE_CHECKING
 from tarsy.utils.logger import get_module_logger
 from tarsy.models.processing_context import ToolWithServer
+from tarsy.models.unified_interactions import LLMConversation, MessageRole
 
 if TYPE_CHECKING:
     from tarsy.models.processing_context import StageContext
@@ -28,6 +30,13 @@ from .templates import (
 )
 
 logger = get_module_logger(__name__)
+
+
+@dataclass
+class ChatExchange:
+    """Structured data for a single chat exchange."""
+    user_question: str
+    conversation: LLMConversation  # Full ReAct conversation for this exchange
 
 
 class PromptBuilder:
@@ -218,50 +227,169 @@ You have access to the same tools and systems that were used in the original inv
             result_text=result_text
         )
     
-    def build_chat_user_message(
-        self,
-        conversation_history: str,
-        user_question: str
-    ) -> str:
+    # ============ Chat Formatting Methods ============
+    
+    def format_investigation_context(self, conversation: LLMConversation) -> str:
         """
-        Build user message for chat that includes conversation history.
+        Format investigation conversation as clean historical context.
         
-        This formats the chat prompt by:
-        1. Including the complete investigation history
-        2. Clearly marking the transition to follow-up chat
-        3. Presenting the user's question
-        4. Providing instructions for the ReAct loop
+        Extracts user/assistant messages (skips system instructions) and formats
+        with clear emoji-based section markers for LLM consumption.
+        
+        The formatted history includes:
+        - Initial investigation request (alert data, runbook, available tools)
+        - All ReAct reasoning (Thought/Action cycles)
+        - Tool observations (results)
+        - Final analysis
         
         Args:
-            conversation_history: Formatted investigation history from session
-            user_question: User's follow-up question
-        
+            conversation: LLMConversation from LLMInteraction.conversation field
+            
         Returns:
-            Formatted user message string for LLM
+            Formatted string with investigation context section
         """
-        return f"""{conversation_history}
+        sections = []
+        sections.append("═" * 79)
+        sections.append("📋 INVESTIGATION CONTEXT")
+        sections.append("═" * 79)
+        sections.append("")
+        sections.append("# Original Investigation")
+        sections.append("")
+        
+        for i, msg in enumerate(conversation.messages):
+            # Skip system messages - those are instructions we'll re-add for chat
+            if msg.role == MessageRole.SYSTEM:
+                continue
+            
+            # Format each message with clear headers
+            if msg.role == MessageRole.USER:
+                # User messages in investigation are either:
+                # - Initial prompt (tools + alert + runbook + task)
+                # - Observations (tool results)
+                if i == 1:  # First user message after system
+                    sections.append("### Initial Investigation Request")
+                    sections.append("")
+                    sections.append(msg.content)
+                    sections.append("")
+                else:
+                    # Tool result observation
+                    sections.append("**Observation:**")
+                    sections.append("")
+                    sections.append(msg.content)
+                    sections.append("")
+            
+            elif msg.role == MessageRole.ASSISTANT:
+                # Assistant messages contain Thought/Action/Final Answer
+                sections.append("**Agent Response:**")
+                sections.append("")
+                sections.append(msg.content)
+                sections.append("")
+        
+        return "\n".join(sections)
+    
+    def format_chat_history(self, exchanges: List[ChatExchange]) -> str:
+        """
+        Format previous chat exchanges with full ReAct flows.
+        
+        Each exchange includes:
+        - User's question (clean, from ChatUserMessage)
+        - Complete ReAct conversation (Thought/Action/Observation/Final Answer)
+        
+        Args:
+            exchanges: List of previous chat exchanges (ordered chronologically)
+            
+        Returns:
+            Formatted string with chat history section, or empty string if no exchanges
+        """
+        if not exchanges:
+            return ""
+        
+        sections = []
+        sections.append("")
+        sections.append("═" * 79)
+        sections.append(f"💬 CHAT HISTORY ({len(exchanges)} previous exchange{'s' if len(exchanges) != 1 else ''})")
+        sections.append("═" * 79)
+        sections.append("")
+        
+        for i, exchange in enumerate(exchanges, 1):
+            sections.append(f"## Exchange {i}")
+            sections.append("")
+            sections.append("**USER:**")
+            sections.append(exchange.user_question)
+            sections.append("")
+            
+            # Format the full ReAct conversation
+            # Skip first USER message (contains nested investigation context)
+            # Include all ASSISTANT and subsequent USER (observations) messages
+            first_user_found = False
+            for msg in exchange.conversation.messages:
+                if msg.role == MessageRole.SYSTEM:
+                    continue
+                
+                if msg.role == MessageRole.USER:
+                    if not first_user_found:
+                        # Skip first USER message (has nested context)
+                        first_user_found = True
+                        continue
+                    else:
+                        # Observation message
+                        sections.append("**Observation:**")
+                        sections.append("")
+                        sections.append(msg.content)
+                        sections.append("")
+                
+                elif msg.role == MessageRole.ASSISTANT:
+                    # Assistant response with ReAct reasoning
+                    sections.append("**ASSISTANT:**")
+                    sections.append(msg.content)
+                    sections.append("")
+        
+        return "\n".join(sections)
+    
+    def build_chat_user_message(
+        self,
+        investigation_context: str,
+        user_question: str,
+        chat_history: str = ""
+    ) -> str:
+        """
+        Build complete user message for chat with all sections.
+        
+        Combines sections:
+        1. Investigation context (pre-formatted, may already include chat history)
+        2. Optional chat history (formatted previous exchanges, if provided separately)
+        3. Current task (user's question with instructions)
+        
+        Note: investigation_context may be either:
+        - Just the investigation (when called with separate chat_history), OR
+        - Complete context with investigation + chat history (when called from controller)
+        
+        Args:
+            investigation_context: Formatted investigation context (may include chat history)
+            user_question: Current user question
+            chat_history: Optional formatted previous exchanges (default: empty)
+            
+        Returns:
+            Complete formatted user message for LLM
+        """
+        result = investigation_context
+        result += chat_history  # Already includes separators if non-empty
+        
+        result += f"""
+{"═" * 79}
+🎯 CURRENT TASK
+{"═" * 79}
 
-================================================================================
-FOLLOW-UP CHAT SESSION
-================================================================================
-
-The user has reviewed the investigation above and has a follow-up question.
-
-You have access to the same tools that were used in the original investigation
-(they are listed in the "Initial Investigation Request" section above).
-
-**User's Follow-up Question:**
-
-{user_question}
+**Question:** {user_question}
 
 **Your Task:**
-
-Answer the user's question using the ReAct format shown in your instructions.
-Reference the investigation history when relevant, and use tools to gather 
-fresh data if needed.
+Answer using the ReAct format from your system instructions.
+- Reference investigation history when relevant
+- Use tools to get fresh data if needed
 
 Begin your ReAct reasoning:
 """
+        return result
     
     # ============ Helper Methods ============
     

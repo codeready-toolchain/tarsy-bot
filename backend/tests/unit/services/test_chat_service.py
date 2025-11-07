@@ -12,47 +12,8 @@ from tarsy.models.constants import StageStatus, AlertSessionStatus
 from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
 from tarsy.models.processing_context import SessionContextData, ChatMessageContext
 from tarsy.models.agent_execution_result import AgentExecutionResult
-from tarsy.services.chat_service import ChatService, format_conversation_history_as_text
+from tarsy.services.chat_service import ChatService
 from tarsy.utils.timestamp import now_us
-
-
-@pytest.mark.unit
-class TestFormatConversationHistory:
-    """Test conversation history formatting helper."""
-    
-    def test_format_basic_conversation(self):
-        """Test formatting a basic investigation conversation."""
-        conversation = LLMConversation(messages=[
-            LLMMessage(role=MessageRole.SYSTEM, content="System instructions"),
-            LLMMessage(role=MessageRole.USER, content="Initial investigation: Pod crashed"),
-            LLMMessage(role=MessageRole.ASSISTANT, content="Thought: Need to check logs"),
-            LLMMessage(role=MessageRole.USER, content="Observation: No logs found"),
-            LLMMessage(role=MessageRole.ASSISTANT, content="Final Answer: Insufficient logs"),
-        ])
-        
-        result = format_conversation_history_as_text(conversation)
-        
-        assert "ORIGINAL ALERT INVESTIGATION HISTORY" in result
-        assert "END OF INVESTIGATION HISTORY" in result
-        assert "Initial Investigation Request" in result
-        assert "Pod crashed" in result
-        assert "Thought: Need to check logs" in result
-        assert "Observation: No logs found" in result
-        assert "System instructions" not in result  # System messages skipped
-    
-    def test_format_skips_system_messages(self):
-        """Test that system messages are excluded from formatted history."""
-        conversation = LLMConversation(messages=[
-            LLMMessage(role=MessageRole.SYSTEM, content="You are an assistant"),
-            LLMMessage(role=MessageRole.USER, content="User question"),
-            LLMMessage(role=MessageRole.ASSISTANT, content="Assistant response"),
-        ])
-        
-        result = format_conversation_history_as_text(conversation)
-        
-        assert "You are an assistant" not in result
-        assert "User question" in result
-        assert "Assistant response" in result
 
 
 @pytest.mark.unit
@@ -321,7 +282,7 @@ class TestChatService:
     async def test_build_message_context_subsequent_message(
         self, chat_service, mock_history_service, sample_llm_interactions
     ):
-        """Test building context for subsequent messages uses last execution history."""
+        """Test building context for subsequent messages combines original history with chat exchanges."""
         chat = Chat(
             chat_id="chat-123",
             session_id="session-123",
@@ -334,8 +295,19 @@ class TestChatService:
         # Mock previous execution
         prev_execution = Mock()
         prev_execution.execution_id = "exec-1"
+        prev_execution.started_at_us = now_us()
+        
+        # Mock chat user message
+        chat_user_message = Mock()
+        chat_user_message.content = "Previous question"
+        chat_user_message.created_at_us = now_us() - 1000
+        chat_user_message.message_id = "msg-1"
+        
         mock_history_service.get_stage_executions_for_chat = AsyncMock(
             return_value=[prev_execution]
+        )
+        mock_history_service.get_chat_user_messages = AsyncMock(
+            return_value=[chat_user_message]
         )
         mock_history_service.get_llm_interactions_for_stage = AsyncMock(
             return_value=sample_llm_interactions
@@ -344,7 +316,8 @@ class TestChatService:
         context = await chat_service._build_message_context(chat, "Follow-up question")
         
         assert isinstance(context, ChatMessageContext)
-        assert "Pod crashed in production" in context.conversation_history
+        # Should contain original history
+        assert "Original history" in context.conversation_history
         assert context.user_question == "Follow-up question"
 
 
