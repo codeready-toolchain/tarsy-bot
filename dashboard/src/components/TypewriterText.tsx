@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 
 interface TypewriterTextProps {
   text: string;
   speed?: number; // ms per character (default: 15)
   onComplete?: () => void;
-  children?: (displayText: string, isAnimating: boolean) => React.ReactNode;
+  children?: (displayText: string, isAnimating: boolean) => ReactNode;
 }
 
 /**
@@ -35,7 +36,7 @@ export default function TypewriterText({
   const [isAnimating, setIsAnimating] = useState(false);
   
   // Refs for animation state (avoids stale closures)
-  const targetTextRef = useRef(text);
+  const targetTextRef = useRef('');
   const displayedLengthRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
   const lastUpdateTimeRef = useRef<number>(0);
@@ -43,7 +44,21 @@ export default function TypewriterText({
   const completedRef = useRef(false);
   
   useEffect(() => {
-    // Update target text when prop changes
+    // Handle empty text - clear state and cancel RAF
+    if (!text) {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      setDisplayedText('');
+      setIsAnimating(false);
+      displayedLengthRef.current = 0;
+      completedRef.current = true;
+      targetTextRef.current = text;
+      return;
+    }
+    
+    // Get previous target and update ref
     const previousTarget = targetTextRef.current;
     targetTextRef.current = text;
     
@@ -52,70 +67,61 @@ export default function TypewriterText({
       return;
     }
     
-    // Handle empty text
-    if (!text) {
-      setDisplayedText('');
-      setIsAnimating(false);
-      displayedLengthRef.current = 0;
-      completedRef.current = true;
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      return;
+    // Cancel any existing RAF before starting new animation
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
     
     // Check if text is growing (new content) or completely different (reset)
     const isGrowing = text.startsWith(previousTarget);
     
     if (!isGrowing) {
-      // Completely new text - reset animation
+      // Completely new text - reset animation state
       displayedLengthRef.current = 0;
       completedRef.current = false;
       queueRef.current = [];
     }
     
-    // Start animation if not already running
-    if (!animationFrameRef.current) {
-      setIsAnimating(true);
-      completedRef.current = false;
-      lastUpdateTimeRef.current = performance.now();
+    // Always start animation (including on initial mount)
+    setIsAnimating(true);
+    completedRef.current = false;
+    lastUpdateTimeRef.current = performance.now();
+    
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - lastUpdateTimeRef.current;
+      const target = targetTextRef.current;
       
-      const animate = (currentTime: number) => {
-        const elapsed = currentTime - lastUpdateTimeRef.current;
-        const target = targetTextRef.current;
+      // Calculate how many characters to add based on elapsed time
+      const charsToAdd = Math.floor(elapsed / speed);
+      
+      if (charsToAdd > 0) {
+        const currentLength = displayedLengthRef.current;
+        const newLength = Math.min(currentLength + charsToAdd, target.length);
         
-        // Calculate how many characters to add based on elapsed time
-        const charsToAdd = Math.floor(elapsed / speed);
+        displayedLengthRef.current = newLength;
+        setDisplayedText(target.slice(0, newLength));
+        lastUpdateTimeRef.current = currentTime;
         
-        if (charsToAdd > 0) {
-          const currentLength = displayedLengthRef.current;
-          const newLength = Math.min(currentLength + charsToAdd, target.length);
+        // Check if animation is complete
+        if (newLength >= target.length) {
+          setIsAnimating(false);
+          completedRef.current = true;
+          animationFrameRef.current = null;
           
-          displayedLengthRef.current = newLength;
-          setDisplayedText(target.slice(0, newLength));
-          lastUpdateTimeRef.current = currentTime;
-          
-          // Check if animation is complete
-          if (newLength >= target.length) {
-            setIsAnimating(false);
-            completedRef.current = true;
-            animationFrameRef.current = null;
-            
-            // Call onComplete callback
-            if (onComplete) {
-              onComplete();
-            }
-            return;
+          // Call onComplete callback
+          if (onComplete) {
+            onComplete();
           }
+          return;
         }
-        
-        // Continue animation
-        animationFrameRef.current = requestAnimationFrame(animate);
-      };
+      }
       
+      // Continue animation
       animationFrameRef.current = requestAnimationFrame(animate);
-    }
+    };
+    
+    animationFrameRef.current = requestAnimationFrame(animate);
   }, [text, speed, onComplete]);
   
   // Cleanup animation on unmount
