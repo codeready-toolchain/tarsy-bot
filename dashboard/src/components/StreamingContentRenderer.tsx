@@ -146,9 +146,9 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
                 fontSize: '1rem',
                 color: 'text.disabled',
                 fontStyle: 'italic',
-                animation: 'pulse 2s ease-in-out infinite',
+                animation: 'pulse 1.5s ease-in-out infinite',
                 '@keyframes pulse': {
-                  '0%, 100%': { opacity: 0.6 },
+                  '0%, 100%': { opacity: 0.3 },
                   '50%': { opacity: 1 }
                 }
               }}
