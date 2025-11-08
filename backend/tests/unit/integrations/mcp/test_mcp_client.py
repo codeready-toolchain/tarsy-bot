@@ -14,6 +14,7 @@ import pytest
 from tarsy.config.settings import Settings
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.integrations.mcp.summarizer import MCPResultSummarizer
+from tarsy.models.constants import StreamingEventType
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.data_masking_service import DataMaskingService
 from tarsy.services.mcp_server_registry import MCPServerRegistry
@@ -1009,3 +1010,172 @@ class TestMCPClientSummarization:
             mock_summarizer.summarize_result.assert_not_called()
             assert result["result"] == "x" * 300
             assert "_summarized" not in result
+
+
+@pytest.mark.unit
+class TestMCPClientSummarizationPlaceholder:
+    """Test MCP client summarization placeholder functionality."""
+    
+    @pytest.mark.asyncio
+    async def test_publish_summarization_placeholder_success(self):
+        """Test successful publishing of summarization placeholder event."""
+        client = MCPClient(Mock(), Mock())
+        
+        with patch('tarsy.database.init_db.get_async_session_factory') as mock_factory, \
+             patch('tarsy.services.events.publisher.publish_transient_event') as mock_publish:
+            
+            # Setup mock session
+            mock_session = AsyncMock()
+            mock_session_context = AsyncMock()
+            mock_session_context.__aenter__.return_value = mock_session
+            mock_factory.return_value.return_value = mock_session_context
+            
+            # Act
+            await client._publish_summarization_placeholder(
+                session_id="test-session",
+                stage_execution_id="stage-123",
+                mcp_event_id="mcp-event-456"
+            )
+            
+            # Assert - Verify event was published
+            mock_publish.assert_called_once()
+            call_args = mock_publish.call_args
+            
+            # Verify channel and session
+            assert call_args[0][0] == mock_session
+            assert call_args[0][1] == "session:test-session"
+            
+            # Verify event structure
+            event = call_args[0][2]
+            assert event.session_id == "test-session"
+            assert event.stage_execution_id == "stage-123"
+            assert event.mcp_event_id == "mcp-event-456"
+            assert event.chunk == "Summarizing tool results..."
+            assert event.stream_type == StreamingEventType.SUMMARIZATION.value
+            assert event.is_complete is False
+    
+    @pytest.mark.asyncio
+    async def test_publish_summarization_placeholder_without_stage_id(self):
+        """Test publishing placeholder without stage execution ID."""
+        client = MCPClient(Mock(), Mock())
+        
+        with patch('tarsy.database.init_db.get_async_session_factory') as mock_factory, \
+             patch('tarsy.services.events.publisher.publish_transient_event') as mock_publish:
+            
+            mock_session = AsyncMock()
+            mock_session_context = AsyncMock()
+            mock_session_context.__aenter__.return_value = mock_session
+            mock_factory.return_value.return_value = mock_session_context
+            
+            # Act
+            await client._publish_summarization_placeholder(
+                session_id="test-session",
+                stage_execution_id=None,
+                mcp_event_id=None
+            )
+            
+            # Assert
+            mock_publish.assert_called_once()
+            event = mock_publish.call_args[0][2]
+            assert event.stage_execution_id is None
+            assert event.mcp_event_id is None
+            assert event.session_id == "test-session"
+    
+    @pytest.mark.asyncio
+    async def test_publish_summarization_placeholder_handles_errors_gracefully(self):
+        """Test placeholder publishing handles errors without failing."""
+        client = MCPClient(Mock(), Mock())
+        
+        with patch('tarsy.database.init_db.get_async_session_factory') as mock_factory:
+            mock_factory.side_effect = Exception("Event system error")
+            
+            # Should not raise exception (non-critical operation)
+            await client._publish_summarization_placeholder(
+                session_id="test-session",
+                stage_execution_id="stage-123",
+                mcp_event_id="mcp-event-456"
+            )
+    
+    @pytest.mark.asyncio
+    async def test_summarization_triggers_placeholder_before_summarizing(self, ):
+        """Test that placeholder is published before actual summarization."""
+        from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
+        
+        # Setup registry with summarization enabled
+        registry = Mock(spec=MCPServerRegistry)
+        registry.get_all_server_ids.return_value = ["test-server"]
+        
+        server_config = Mock()
+        server_config.enabled = True
+        
+        mock_transport = Mock()
+        mock_transport.type = TRANSPORT_STDIO
+        mock_transport.command = "test"
+        mock_transport.args = []
+        mock_transport.env = {}
+        server_config.transport = mock_transport
+        
+        summarization_config = Mock()
+        summarization_config.enabled = True
+        summarization_config.size_threshold_tokens = 100
+        summarization_config.summary_max_token_limit = 50
+        server_config.summarization = summarization_config
+        
+        registry.get_server_config_safe.return_value = server_config
+        
+        # Setup summarizer
+        mock_summarizer = Mock(spec=MCPResultSummarizer)
+        mock_summarizer.summarize_result = AsyncMock(return_value={"result": "Summarized"})
+        
+        client = MCPClient(Mock(), registry, mock_summarizer)
+        
+        # Mock data masking
+        mock_masking = Mock()
+        mock_masking.mask_response.return_value = {"result": "x" * 1000}
+        client.data_masking_service = mock_masking
+        
+        large_result = {"result": "x" * 1000}
+        
+        # Create sample conversation
+        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are an SRE investigating alerts"),
+            LLMMessage(role=MessageRole.USER, content="Test")
+        ])
+        
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory, \
+             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context, \
+             patch.object(client, '_publish_summarization_placeholder') as mock_placeholder:
+            
+            # Setup transport and session
+            mock_transport_instance = AsyncMock()
+            mock_session = AsyncMock()
+            mock_session.call_tool.return_value = Mock(content=large_result["result"])
+            mock_transport_instance.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport_instance
+            
+            mock_ctx = AsyncMock()
+            mock_ctx.interaction.communication_id = "mcp-event-123"
+            mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
+            
+            await client.initialize()
+            
+            # Act - Call tool with large result
+            await client.call_tool(
+                "test-server",
+                "test-tool",
+                {"param": "value"},
+                "test-session",
+                "stage-123",
+                conversation,
+                mcp_selection=None,
+                configured_servers=None
+            )
+            
+            # Assert - Placeholder was published before summarization
+            mock_placeholder.assert_called_once_with(
+                "test-session",
+                "stage-123",
+                "mcp-event-123"
+            )
+            mock_summarizer.summarize_result.assert_called_once()
