@@ -9,13 +9,18 @@ interface TypewriterTextProps {
 }
 
 /**
- * Typewriter effect component with smooth queued updates
+ * Typewriter effect component for streaming content
  * 
  * Features:
- * - Queues text updates during animation for smooth transitions
+ * - Updates target text immediately when new content arrives (no queuing)
+ * - Continues animation smoothly from current position to new target
  * - Fast speed (~15ms per char) for ChatGPT-like feel
  * - Handles markdown content without flickering (passes full text to renderer)
  * - Efficient: only animates visible text, full content passed to ReactMarkdown
+ * 
+ * Behavior:
+ * - Growing text (e.g., "Hello" → "Hello World"): continues from current position
+ * - Non-growing text (e.g., "Hello" → "Goodbye"): resets and starts fresh animation
  * 
  * Usage:
  * ```tsx
@@ -40,7 +45,6 @@ export default function TypewriterText({
   const displayedLengthRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
   const lastUpdateTimeRef = useRef<number>(0);
-  const queueRef = useRef<string[]>([]);
   const completedRef = useRef(false);
   
   useEffect(() => {
@@ -80,7 +84,6 @@ export default function TypewriterText({
       // Completely new text - reset animation state
       displayedLengthRef.current = 0;
       completedRef.current = false;
-      queueRef.current = [];
     }
     
     // Always start animation (including on initial mount)
@@ -129,6 +132,7 @@ export default function TypewriterText({
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
     };
   }, []);
