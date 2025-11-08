@@ -9,6 +9,7 @@ import { websocketService } from '../../services/websocketService';
 import { apiClient } from '../../services/api';
 import type { ChatUserMessage, StageExecution, DetailedSession } from '../../types';
 import { STAGE_STATUS, isValidStageStatus, type StageStatus } from '../../utils/statusConstants';
+import { useAdvancedAutoScroll } from '../../hooks/useAdvancedAutoScroll';
 
 interface ChatMessageListProps {
   sessionId: string;
@@ -84,11 +85,21 @@ function mapEventStatusToStageStatus(status: string): StageStatus {
 }
 
 export default function ChatMessageList({ sessionId, chatId }: ChatMessageListProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [loading, setLoading] = useState(true);
   const [streamingItems, setStreamingItems] = useState<Map<string, StreamingItem>>(new Map());
+
+  // Advanced auto-scroll with user interaction detection
+  useAdvancedAutoScroll({
+    enabled: true,
+    scrollMode: 'container',
+    containerRef: scrollContainerRef,
+    threshold: 10,
+    scrollDelay: 100, // Faster response for chat
+    debug: false
+  });
 
   // Fetch chat messages - memoized so it can be called programmatically
   const fetchMessages = useCallback(
@@ -330,13 +341,12 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
     return () => unsubscribe();
   }, [sessionId, chatId, fetchMessages]);
 
-  // Auto-scroll to bottom on new messages or streaming updates
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingItems]);
-
   return (
-    <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
+    <Box 
+      ref={scrollContainerRef}
+      data-autoscroll-container
+      sx={{ flex: 1, overflowY: 'auto', p: 2 }}
+    >
       {loading ? (
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
           Loading messages...
@@ -371,7 +381,6 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
       )}
       
       {isTyping && streamingItems.size === 0 && <TypingIndicator />}
-      <div ref={bottomRef} />
     </Box>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, type RefObject } from 'react';
 
 export interface AdvancedAutoScrollOptions {
   /** Whether auto-scroll is enabled */
@@ -11,6 +11,10 @@ export interface AdvancedAutoScrollOptions {
   observeSelector?: string;
   /** Whether to enable debug logging */
   debug?: boolean;
+  /** Scroll mode: 'window' for page scrolling, 'container' for element scrolling */
+  scrollMode?: 'window' | 'container';
+  /** Ref to scrollable container (required when scrollMode is 'container') */
+  containerRef?: RefObject<HTMLElement | null>;
 }
 
 export interface AdvancedAutoScrollState {
@@ -38,7 +42,9 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
     threshold = 10,
     scrollDelay = 300,
     observeSelector = '[data-autoscroll-container]',
-    debug = false
+    debug = false,
+    scrollMode = 'window',
+    containerRef
   } = options;
 
   // State tracking
@@ -57,15 +63,55 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
   const autoScrollStartTimeRef = useRef<number | null>(null);
   const userInteractionRef = useRef<boolean>(false);
   const clearUserInteractionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const characterDataThrottleRef = useRef<number>(0); // Timestamp of last characterData scroll
 
-  // Check if user is at bottom of page
+  // Check if user is at bottom of page or container
   const isAtBottom = useCallback((): boolean => {
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const windowHeight = window.innerHeight;
-    const documentHeight = document.documentElement.scrollHeight;
-    
-    return documentHeight - scrollTop - windowHeight <= threshold;
-  }, [threshold]);
+    if (scrollMode === 'container') {
+      const container = containerRef?.current;
+      if (!container) {
+        if (debug) {
+          console.warn('⚠️ Container ref is null, cannot check if at bottom');
+        }
+        return false;
+      }
+      
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+      
+      if (debug) {
+        console.log('📏 isAtBottom check (container):', {
+          scrollTop,
+          clientHeight,
+          scrollHeight,
+          distanceFromBottom,
+          threshold,
+          atBottom: distanceFromBottom <= threshold
+        });
+      }
+      
+      return distanceFromBottom <= threshold;
+    } else {
+      // Window mode
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      const distanceFromBottom = documentHeight - scrollTop - windowHeight;
+      
+      if (debug) {
+        console.log('📏 isAtBottom check (window):', {
+          scrollTop,
+          windowHeight,
+          documentHeight,
+          distanceFromBottom,
+          threshold,
+          atBottom: distanceFromBottom <= threshold
+        });
+      }
+      
+      return distanceFromBottom <= threshold;
+    }
+  }, [scrollMode, containerRef, threshold, debug]);
 
   // Scroll to bottom smoothly
   const scrollToBottom = useCallback((smooth: boolean = true): void => {
@@ -82,37 +128,79 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
       stateRef.current.isAutoScrolling = true;
       autoScrollStartTimeRef.current = performance.now();
 
-      const targetTop = document.documentElement.scrollHeight;
-      if (smooth) {
-        window.scrollTo({ top: targetTop, behavior: 'smooth' });
-      } else {
-        window.scrollTo(0, targetTop);
-      }
-
-      // Monitor until we actually reach (and remain at) the bottom
-      const monitor = () => {
-        const now = performance.now();
-        const reachedBottom = (document.documentElement.scrollHeight - (window.pageYOffset || document.documentElement.scrollTop) - window.innerHeight) <= threshold;
-
-        if (reachedBottom) {
+      if (scrollMode === 'container') {
+        const container = containerRef?.current;
+        if (!container) {
+          if (debug) {
+            console.warn('⚠️ Container ref is null, cannot scroll');
+          }
           stateRef.current.isAutoScrolling = false;
-          autoScrollMonitorRafRef.current = null;
           return;
         }
-
-        // Safety timeout (2s) to avoid getting stuck in auto-scrolling state
-        if (autoScrollStartTimeRef.current !== null && now - autoScrollStartTimeRef.current > 2000) {
-          stateRef.current.isAutoScrolling = false;
-          autoScrollMonitorRafRef.current = null;
-          return;
+        
+        const targetTop = container.scrollHeight;
+        if (smooth) {
+          container.scrollTo({ top: targetTop, behavior: 'smooth' });
+        } else {
+          container.scrollTop = targetTop;
         }
+
+        // Monitor until we actually reach (and remain at) the bottom
+        const monitor = () => {
+          const now = performance.now();
+          const reachedBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) <= threshold;
+
+          if (reachedBottom) {
+            stateRef.current.isAutoScrolling = false;
+            autoScrollMonitorRafRef.current = null;
+            return;
+          }
+
+          // Safety timeout (2s) to avoid getting stuck in auto-scrolling state
+          if (autoScrollStartTimeRef.current !== null && now - autoScrollStartTimeRef.current > 2000) {
+            stateRef.current.isAutoScrolling = false;
+            autoScrollMonitorRafRef.current = null;
+            return;
+          }
+
+          autoScrollMonitorRafRef.current = requestAnimationFrame(monitor);
+        };
 
         autoScrollMonitorRafRef.current = requestAnimationFrame(monitor);
-      };
+      } else {
+        // Window mode
+        const targetTop = document.documentElement.scrollHeight;
+        if (smooth) {
+          window.scrollTo({ top: targetTop, behavior: 'smooth' });
+        } else {
+          window.scrollTo(0, targetTop);
+        }
 
-      autoScrollMonitorRafRef.current = requestAnimationFrame(monitor);
+        // Monitor until we actually reach (and remain at) the bottom
+        const monitor = () => {
+          const now = performance.now();
+          const reachedBottom = (document.documentElement.scrollHeight - (window.pageYOffset || document.documentElement.scrollTop) - window.innerHeight) <= threshold;
+
+          if (reachedBottom) {
+            stateRef.current.isAutoScrolling = false;
+            autoScrollMonitorRafRef.current = null;
+            return;
+          }
+
+          // Safety timeout (2s) to avoid getting stuck in auto-scrolling state
+          if (autoScrollStartTimeRef.current !== null && now - autoScrollStartTimeRef.current > 2000) {
+            stateRef.current.isAutoScrolling = false;
+            autoScrollMonitorRafRef.current = null;
+            return;
+          }
+
+          autoScrollMonitorRafRef.current = requestAnimationFrame(monitor);
+        };
+
+        autoScrollMonitorRafRef.current = requestAnimationFrame(monitor);
+      }
     });
-  }, [threshold]);
+  }, [scrollMode, containerRef, threshold, debug]);
 
   // Handle user scroll events
   const handleScroll = useCallback(() => {
@@ -261,28 +349,41 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
 
     // Create new observer
     mutationObserverRef.current = new MutationObserver((mutations) => {
-      let hasContentChanges = false;
+      let hasChildListChanges = false;
+      let hasCharacterDataChanges = false;
 
       mutations.forEach((mutation) => {
         if (mutation.type === 'childList') {
-          // New nodes added
+          // New nodes added - always trigger immediately
           if (mutation.addedNodes.length > 0) {
-            hasContentChanges = true;
+            hasChildListChanges = true;
             if (debug) {
               console.log('📄 AdvancedAutoScroll: Content added', mutation.addedNodes.length, 'nodes');
             }
           }
         } else if (mutation.type === 'characterData' || mutation.type === 'attributes') {
-          // Content or attributes changed
-          hasContentChanges = true;
+          // Content or attributes changed - throttle to avoid typewriter spam
+          hasCharacterDataChanges = true;
           if (debug) {
             console.log('📝 AdvancedAutoScroll: Content modified');
           }
         }
       });
 
-      if (hasContentChanges) {
+      // Immediate scroll for new nodes (important content)
+      if (hasChildListChanges) {
         tryAutoScroll();
+      }
+      // Throttled scroll for character changes (typewriter animation)
+      else if (hasCharacterDataChanges) {
+        const now = Date.now();
+        const timeSinceLastScroll = now - characterDataThrottleRef.current;
+        
+        // Only scroll every 500ms for characterData changes
+        if (timeSinceLastScroll >= 500) {
+          characterDataThrottleRef.current = now;
+          tryAutoScroll();
+        }
       }
     });
 
@@ -303,35 +404,55 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
   useEffect(() => {
     if (!enabled) return;
 
+    // Validate container ref for container mode
+    if (scrollMode === 'container' && !containerRef?.current) {
+      if (debug) {
+        console.warn('⚠️ AdvancedAutoScroll: Container mode requires a valid containerRef');
+      }
+      return;
+    }
+
     // Set initial state
     stateRef.current.isUserAtBottom = isAtBottom();
     stateRef.current.userScrolledAway = !stateRef.current.isUserAtBottom;
 
     if (debug) {
       console.log('🚀 AdvancedAutoScroll: Initialized', {
+        scrollMode,
         isUserAtBottom: stateRef.current.isUserAtBottom,
         userScrolledAway: stateRef.current.userScrolledAway
       });
     }
 
+    // Setup scroll and interaction listeners based on mode
+    const scrollTarget = scrollMode === 'container' ? containerRef?.current : window;
+    if (!scrollTarget) return;
+
+    // Cast handlers to EventListener once for consistent add/remove
+    const scrollListener = handleScroll as EventListener;
+    const wheelListener = markUserInteraction as EventListener;
+    const pointerDownListener = handlePointerDown as EventListener;
+    const pointerUpListener = handlePointerUp as EventListener;
+    const keydownListener = handleKeydown as EventListener;
+
     // Setup scroll listener
-    window.addEventListener('scroll', handleScroll, { passive: true });
+    scrollTarget.addEventListener('scroll', scrollListener, { passive: true });
     // Setup user interaction listeners
-    window.addEventListener('wheel', markUserInteraction, { passive: true });
-    window.addEventListener('pointerdown', handlePointerDown, { passive: true });
-    window.addEventListener('pointerup', handlePointerUp, { passive: true });
-    window.addEventListener('keydown', handleKeydown);
+    scrollTarget.addEventListener('wheel', wheelListener, { passive: true });
+    scrollTarget.addEventListener('pointerdown', pointerDownListener, { passive: true });
+    scrollTarget.addEventListener('pointerup', pointerUpListener, { passive: true });
+    scrollTarget.addEventListener('keydown', keydownListener);
 
     // Setup mutation observer
     setupMutationObserver();
 
     // Cleanup
     return () => {
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('wheel', markUserInteraction as any);
-      window.removeEventListener('pointerdown', handlePointerDown);
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('keydown', handleKeydown);
+      scrollTarget.removeEventListener('scroll', scrollListener);
+      scrollTarget.removeEventListener('wheel', wheelListener);
+      scrollTarget.removeEventListener('pointerdown', pointerDownListener);
+      scrollTarget.removeEventListener('pointerup', pointerUpListener);
+      scrollTarget.removeEventListener('keydown', keydownListener);
       
       if (mutationObserverRef.current) {
         mutationObserverRef.current.disconnect();
@@ -362,7 +483,7 @@ export function useAdvancedAutoScroll(options: AdvancedAutoScrollOptions = {}) {
         console.log('🧹 AdvancedAutoScroll: Cleaned up');
       }
     };
-  }, [enabled, handleScroll, handlePointerDown, handlePointerUp, setupMutationObserver, isAtBottom, debug]);
+  }, [enabled, scrollMode, containerRef, handleScroll, markUserInteraction, handlePointerDown, handlePointerUp, handleKeydown, setupMutationObserver, isAtBottom, debug]);
 
   // Re-setup observer when selector changes
   useEffect(() => {

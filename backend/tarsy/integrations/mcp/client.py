@@ -451,6 +451,12 @@ class MCPClient:
             max_summary_tokens = getattr(summarization_config, 'summary_max_token_limit', 1000)
             
             logger.info(f"Summarizing large MCP result: {server_name}.{tool_name} ({estimated_tokens} tokens)")
+            
+            # Publish immediate placeholder to frontend for instant feedback
+            await self._publish_summarization_placeholder(
+                session_id, stage_execution_id, mcp_event_id
+            )
+            
             summarized = await self.summarizer.summarize_result(
                 server_name, tool_name, result, investigation_conversation, 
                 session_id, stage_execution_id, max_summary_tokens, mcp_event_id
@@ -466,6 +472,37 @@ class MCPClient:
             return {
                 "result": f"Error: Failed to summarize large result ({estimated_tokens} tokens). Summarization error: {str(e)}"
             }
+
+    async def _publish_summarization_placeholder(
+        self,
+        session_id: str,
+        stage_execution_id: Optional[str],
+        mcp_event_id: Optional[str]
+    ) -> None:
+        """Publish immediate placeholder for summarization to reduce perceived latency."""
+        try:
+            from tarsy.database.init_db import get_async_session_factory
+            from tarsy.models.event_models import LLMStreamChunkEvent
+            from tarsy.models.constants import StreamingEventType
+            from tarsy.services.events.publisher import publish_transient_event
+            from tarsy.utils.timestamp import now_us
+            
+            async_session_factory = get_async_session_factory()
+            async with async_session_factory() as session:
+                event = LLMStreamChunkEvent(
+                    session_id=session_id,
+                    stage_execution_id=stage_execution_id,
+                    chunk="Summarizing tool results...",
+                    stream_type=StreamingEventType.SUMMARIZATION.value,
+                    is_complete=False,
+                    mcp_event_id=mcp_event_id,
+                    timestamp_us=now_us()
+                )
+                await publish_transient_event(session, f"session:{session_id}", event)
+                
+        except Exception as e:
+            # Non-critical - log but don't fail summarization
+            logger.debug(f"Failed to publish summarization placeholder: {e}")
 
     async def call_tool(
         self, 

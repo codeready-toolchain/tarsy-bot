@@ -94,7 +94,11 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
   
   // Render summarization
   if (item.type === 'summarization') {
-    const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    // Check if this is the placeholder text
+    const isPlaceholder = item.content === 'Summarizing tool results...';
+    
+    // Check if content has markdown syntax (skip check for placeholder)
+    const hasMarkdown = !isPlaceholder && hasMarkdownSyntax(item.content || '');
     
     return (
       <Box sx={{ mb: 1.5 }}>
@@ -131,36 +135,58 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
             borderLeft: '2px solid rgba(237, 108, 2, 0.2)'
           }}
         >
-          <TypewriterText text={item.content || ''} speed={15}>
-            {(displayText) => (
-              hasMarkdown ? (
-                <Box sx={{ 
-                  '& p': { color: 'text.secondary' },
-                  '& li': { color: 'text.secondary' }
-                }}>
-                  <ReactMarkdown
-                    components={thoughtMarkdownComponents}
-                    skipHtml
+          {isPlaceholder ? (
+            // For placeholder, render immediately without typewriter effect
+            <Typography
+              variant="body1"
+              sx={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                lineHeight: 1.7,
+                fontSize: '1rem',
+                color: 'text.disabled',
+                fontStyle: 'italic',
+                animation: 'pulse 2s ease-in-out infinite',
+                '@keyframes pulse': {
+                  '0%, 100%': { opacity: 0.6 },
+                  '50%': { opacity: 1 }
+                }
+              }}
+            >
+              {item.content}
+            </Typography>
+          ) : (
+            <TypewriterText text={item.content || ''} speed={15}>
+              {(displayText) => (
+                hasMarkdown ? (
+                  <Box sx={{ 
+                    '& p': { color: 'text.secondary' },
+                    '& li': { color: 'text.secondary' }
+                  }}>
+                    <ReactMarkdown
+                      components={thoughtMarkdownComponents}
+                      skipHtml
+                    >
+                      {displayText}
+                    </ReactMarkdown>
+                  </Box>
+                ) : (
+                  <Typography
+                    variant="body1"
+                    sx={{
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      lineHeight: 1.7,
+                      fontSize: '1rem',
+                      color: 'text.secondary'
+                    }}
                   >
                     {displayText}
-                  </ReactMarkdown>
-                </Box>
-              ) : (
-                <Typography
-                  variant="body1"
-                  sx={{
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    lineHeight: 1.7,
-                    fontSize: '1rem',
-                    color: 'text.secondary'
-                  }}
-                >
-                  {displayText}
-                </Typography>
-              )
-            )}
-          </TypewriterText>
+                  </Typography>
+                )
+              )}
+            </TypewriterText>
+          )}
         </Box>
       </Box>
     );
