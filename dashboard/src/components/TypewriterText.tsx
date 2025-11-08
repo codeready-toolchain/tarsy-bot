@@ -1,0 +1,138 @@
+import { useEffect, useRef, useState } from 'react';
+
+interface TypewriterTextProps {
+  text: string;
+  speed?: number; // ms per character (default: 15)
+  onComplete?: () => void;
+  children?: (displayText: string, isAnimating: boolean) => React.ReactNode;
+}
+
+/**
+ * Typewriter effect component with smooth queued updates
+ * 
+ * Features:
+ * - Queues text updates during animation for smooth transitions
+ * - Fast speed (~15ms per char) for ChatGPT-like feel
+ * - Handles markdown content without flickering (passes full text to renderer)
+ * - Efficient: only animates visible text, full content passed to ReactMarkdown
+ * 
+ * Usage:
+ * ```tsx
+ * <TypewriterText text={content} speed={15}>
+ *   {(displayText, isAnimating) => (
+ *     <Typography>{displayText}</Typography>
+ *   )}
+ * </TypewriterText>
+ * ```
+ */
+export default function TypewriterText({ 
+  text, 
+  speed = 15, 
+  onComplete,
+  children 
+}: TypewriterTextProps) {
+  const [displayedText, setDisplayedText] = useState('');
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Refs for animation state (avoids stale closures)
+  const targetTextRef = useRef(text);
+  const displayedLengthRef = useRef(0);
+  const animationFrameRef = useRef<number | null>(null);
+  const lastUpdateTimeRef = useRef<number>(0);
+  const queueRef = useRef<string[]>([]);
+  const completedRef = useRef(false);
+  
+  useEffect(() => {
+    // Update target text when prop changes
+    const previousTarget = targetTextRef.current;
+    targetTextRef.current = text;
+    
+    // If text hasn't changed, do nothing
+    if (previousTarget === text) {
+      return;
+    }
+    
+    // Handle empty text
+    if (!text) {
+      setDisplayedText('');
+      setIsAnimating(false);
+      displayedLengthRef.current = 0;
+      completedRef.current = true;
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      return;
+    }
+    
+    // Check if text is growing (new content) or completely different (reset)
+    const isGrowing = text.startsWith(previousTarget);
+    
+    if (!isGrowing) {
+      // Completely new text - reset animation
+      displayedLengthRef.current = 0;
+      completedRef.current = false;
+      queueRef.current = [];
+    }
+    
+    // Start animation if not already running
+    if (!animationFrameRef.current) {
+      setIsAnimating(true);
+      completedRef.current = false;
+      lastUpdateTimeRef.current = performance.now();
+      
+      const animate = (currentTime: number) => {
+        const elapsed = currentTime - lastUpdateTimeRef.current;
+        const target = targetTextRef.current;
+        
+        // Calculate how many characters to add based on elapsed time
+        const charsToAdd = Math.floor(elapsed / speed);
+        
+        if (charsToAdd > 0) {
+          const currentLength = displayedLengthRef.current;
+          const newLength = Math.min(currentLength + charsToAdd, target.length);
+          
+          displayedLengthRef.current = newLength;
+          setDisplayedText(target.slice(0, newLength));
+          lastUpdateTimeRef.current = currentTime;
+          
+          // Check if animation is complete
+          if (newLength >= target.length) {
+            setIsAnimating(false);
+            completedRef.current = true;
+            animationFrameRef.current = null;
+            
+            // Call onComplete callback
+            if (onComplete) {
+              onComplete();
+            }
+            return;
+          }
+        }
+        
+        // Continue animation
+        animationFrameRef.current = requestAnimationFrame(animate);
+      };
+      
+      animationFrameRef.current = requestAnimationFrame(animate);
+    }
+  }, [text, speed, onComplete]);
+  
+  // Cleanup animation on unmount
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+  
+  // Render using children render prop
+  if (children) {
+    return <>{children(displayedText, isAnimating)}</>;
+  }
+  
+  // Default rendering
+  return <>{displayedText}</>;
+}
+

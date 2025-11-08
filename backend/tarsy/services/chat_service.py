@@ -6,6 +6,7 @@ patterns as AlertService for consistency and reliability.
 """
 
 import asyncio
+from contextlib import suppress
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
@@ -320,7 +321,7 @@ class ChatService:
             )
             
             # Trigger stage execution hooks (creates DB record, publishes events)
-            async with stage_execution_context(chat.session_id, stage_execution) as ctx:
+            async with stage_execution_context(chat.session_id, stage_execution):
                 pass
             
             logger.info(f"Created chat message execution {execution_id} for chat {chat_id}")
@@ -445,10 +446,8 @@ class ChatService:
             # Cancel interaction recording task
             if interaction_recording_task and not interaction_recording_task.done():
                 interaction_recording_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await interaction_recording_task
-                except asyncio.CancelledError:
-                    pass  # Expected
                 logger.debug(f"Cancelled interaction recording task for chat {chat_id}")
             
             # CRITICAL: Always cleanup MCP client (like AlertService)
@@ -775,7 +774,7 @@ class ChatService:
             existing_stage.started_at_us = now_us()
             
             # Trigger stage execution hooks (updates DB + broadcasts to dashboard)
-            async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+            async with stage_execution_context(existing_stage.session_id, existing_stage):
                 pass
             
             logger.debug(f"Chat execution {stage_execution_id} marked as started")
@@ -820,7 +819,7 @@ class ChatService:
                 )
             
             # Trigger stage execution hooks (updates DB + broadcasts to dashboard)
-            async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+            async with stage_execution_context(existing_stage.session_id, existing_stage):
                 pass
             
             logger.debug(f"Chat execution {stage_execution_id} marked as completed")
@@ -861,7 +860,7 @@ class ChatService:
                 )
             
             # Trigger stage execution hooks (updates DB + broadcasts to dashboard)
-            async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+            async with stage_execution_context(existing_stage.session_id, existing_stage):
                 pass
             
             logger.debug(f"Chat execution {stage_execution_id} marked as failed")

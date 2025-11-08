@@ -8,19 +8,14 @@ import {
   Alert,
   alpha
 } from '@mui/material';
-import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { parseSessionChatFlow, getChatFlowStats } from '../utils/chatFlowParser';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { DetailedSession } from '../types';
 import ChatFlowItem from './ChatFlowItem';
 import CopyButton from './CopyButton';
+import StreamingContentRenderer, { type StreamingItem } from './StreamingContentRenderer';
 import { websocketService } from '../services/websocketService';
 import { isTerminalSessionStatus } from '../utils/statusConstants';
-import { 
-  hasMarkdownSyntax, 
-  finalAnswerMarkdownComponents, 
-  thoughtMarkdownComponents 
-} from '../utils/markdownComponents';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface ProcessingIndicatorProps {
@@ -88,141 +83,26 @@ interface ConversationTimelineProps {
   autoScroll?: boolean;
 }
 
-interface StreamingItem {
-  type: 'thought' | 'final_answer' | 'summarization' | 'tool_call' | 'user_message';
-  content?: string; // For thought/final_answer/summarization/user_message
-  stage_execution_id?: string;
-  mcp_event_id?: string; // For tool_call and summarization
-  waitingForDb?: boolean; // True when stream completed, waiting for DB confirmation
+// Extended streaming item for ConversationTimeline
+// Includes additional fields for tool_call and user_message types
+interface ConversationStreamingItem extends StreamingItem {
   // Tool call specific fields
-  toolName?: string;
   toolArguments?: any;
   serverName?: string;
   // User message specific fields
   author?: string;
-  messageId?: string;
 }
 
 /**
  * StreamingItemRenderer Component
- * Renders streaming items with proper formatting (Markdown for final answers, hybrid for thoughts/summarizations)
- * Memoized to prevent unnecessary re-renders during rapid streaming updates
+ * Renders streaming items with proper formatting
+ * Delegates common types (thought, final_answer, summarization) to shared StreamingContentRenderer
+ * Handles ConversationTimeline-specific types (tool_call, user_message) locally
  */
-const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
-  if (item.type === 'thought') {
-    // Render thought with hybrid markdown support (matching DB rendering)
-    const hasMarkdown = hasMarkdownSyntax(item.content || '');
-    
-    return (
-      <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
-        <Typography 
-          variant="body2" 
-          sx={{ 
-            fontSize: '1.1rem', 
-            lineHeight: 1,
-            flexShrink: 0,
-            mt: 0.25
-          }}
-        >
-          💭
-        </Typography>
-        {hasMarkdown ? (
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <ReactMarkdown
-              components={thoughtMarkdownComponents}
-              skipHtml
-            >
-              {item.content}
-            </ReactMarkdown>
-          </Box>
-        ) : (
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              whiteSpace: 'pre-wrap', 
-              wordBreak: 'break-word',
-              lineHeight: 1.7,
-              fontSize: '1rem',
-              color: 'text.primary'
-            }}
-          >
-            {item.content}
-          </Typography>
-        )}
-      </Box>
-    );
-  }
-  
-  if (item.type === 'summarization') {
-    // Render summarization with hybrid markdown support (maintains amber styling)
-    const hasMarkdown = hasMarkdownSyntax(item.content || '');
-    
-    return (
-      <Box sx={{ mb: 1.5 }}>
-        {/* Header with amber styling */}
-        <Box sx={{ display: 'flex', gap: 1.5, mb: 0.5 }}>
-          <Typography
-            variant="body2"
-            sx={{
-              fontSize: '1.1rem',
-              lineHeight: 1,
-              flexShrink: 0
-            }}
-          >
-            📋
-          </Typography>
-          <Typography
-            variant="caption"
-            sx={{
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: 0.5,
-              fontSize: '0.75rem',
-              color: 'rgba(237, 108, 2, 0.9)',
-              mt: 0.25
-            }}
-          >
-            Tool Result Summary
-          </Typography>
-        </Box>
-        {/* Content with subtle left border and dimmed text */}
-        <Box 
-          sx={{ 
-            pl: 3.5,
-            ml: 3.5,
-            py: 0.5,
-            borderLeft: '2px solid rgba(237, 108, 2, 0.2)' // Subtle amber left border
-          }}
-        >
-          {hasMarkdown ? (
-            <Box sx={{ 
-              '& p': { color: 'text.secondary' }, // Apply dimmed color to markdown paragraphs
-              '& li': { color: 'text.secondary' }  // Apply dimmed color to list items
-            }}>
-              <ReactMarkdown
-                components={thoughtMarkdownComponents}
-                skipHtml
-              >
-                {item.content}
-              </ReactMarkdown>
-            </Box>
-          ) : (
-            <Typography
-              variant="body1"
-              sx={{
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                lineHeight: 1.7,
-                fontSize: '1rem',
-                color: 'text.secondary' // Slightly dimmed to differentiate from thoughts
-              }}
-            >
-              {item.content}
-            </Typography>
-          )}
-        </Box>
-      </Box>
-    );
+const StreamingItemRenderer = memo(({ item }: { item: ConversationStreamingItem }) => {
+  // Handle common streaming types with shared component
+  if (item.type === 'thought' || item.type === 'final_answer' || item.type === 'summarization') {
+    return <StreamingContentRenderer item={item} />;
   }
   
   if (item.type === 'user_message') {
@@ -341,44 +221,8 @@ const StreamingItemRenderer = memo(({ item }: { item: StreamingItem }) => {
     );
   }
   
-  // Render final answer with Markdown (matching DB rendering)
-  return (
-    <Box sx={{ mb: 2, mt: 3 }}>
-      <Box sx={{ display: 'flex', gap: 1.5, mb: 1 }}>
-        <Typography
-          variant="body2"
-          sx={{
-            fontSize: '1.1rem',
-            lineHeight: 1,
-            flexShrink: 0
-          }}
-        >
-          🎯
-        </Typography>
-        <Typography
-          variant="caption"
-          sx={{
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-            fontSize: '0.75rem',
-            color: '#2e7d32',
-            mt: 0.25
-          }}
-        >
-          Final Answer
-        </Typography>
-      </Box>
-      <Box sx={{ pl: 3.5 }}>
-        <ReactMarkdown
-          urlTransform={defaultUrlTransform}
-          components={finalAnswerMarkdownComponents}
-        >
-          {item.content}
-        </ReactMarkdown>
-      </Box>
-    </Box>
-  );
+  // Unsupported type
+  return null;
 });
 
 /**
@@ -392,7 +236,7 @@ function ConversationTimeline({
 }: ConversationTimelineProps) {
   const [chatFlow, setChatFlow] = useState<ChatFlowItemData[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [streamingItems, setStreamingItems] = useState<Map<string, StreamingItem>>(new Map());
+  const [streamingItems, setStreamingItems] = useState<Map<string, ConversationStreamingItem>>(new Map());
   // Track which chatFlow items have been "claimed" by deduplication (prevents double-matching)
   const [claimedChatFlowItems, setClaimedChatFlowItems] = useState<Set<string>>(new Set());
   // Track if there's an active chat stage in progress (for showing processing indicator on completed sessions)

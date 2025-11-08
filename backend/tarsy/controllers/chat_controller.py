@@ -276,8 +276,8 @@ async def get_chat(
 )
 async def send_message(
     request: Request,
-    chat_id: str = Path(..., description="Chat identifier"),
-    message_request: ChatMessageRequest = Body(...),
+    chat_id: Annotated[str, Path(..., description="Chat identifier")],
+    message_request: Annotated[ChatMessageRequest, Body(...)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)] = None,
 ) -> ChatMessageResponse:
     """Send message to chat - returns immediately, processing in background."""

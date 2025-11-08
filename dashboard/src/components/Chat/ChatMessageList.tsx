@@ -1,8 +1,10 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, Paper } from '@mui/material';
+import { Psychology } from '@mui/icons-material';
 import ChatUserMessageCard from './ChatUserMessageCard';
 import ChatAssistantMessageCard from './ChatAssistantMessageCard';
 import TypingIndicator from '../TypingIndicator';
+import StreamingContentRenderer, { type StreamingItem } from '../StreamingContentRenderer';
 import { websocketService } from '../../services/websocketService';
 import { apiClient } from '../../services/api';
 import type { ChatUserMessage, StageExecution, DetailedSession } from '../../types';
@@ -86,6 +88,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [streamingItems, setStreamingItems] = useState<Map<string, StreamingItem>>(new Map());
 
   // Fetch chat messages - memoized so it can be called programmatically
   const fetchMessages = useCallback(
@@ -200,6 +203,9 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
         console.log('💬 Chat response completed, hiding typing indicator');
         setIsTyping(false);
         
+        // Clear streaming items for this stage
+        setStreamingItems(new Map());
+        
         // Map event status to StageExecution status type using constants
         const stageStatus = mapEventStatusToStageStatus(event.status);
         
@@ -260,13 +266,63 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
       }
     };
 
-    // Subscribe to session channel for stage and chat events
+    // Handle streaming events
+    const handleStreamEvent = (event: any) => {
+      if (event.type === 'llm.stream.chunk') {
+        console.log('🌊 Chat received streaming chunk:', event.stream_type, event.is_complete);
+        
+        setStreamingItems(prev => {
+          const updated = new Map(prev);
+          // Use composite key based on stream type
+          const key = event.stream_type === 'summarization' && event.mcp_event_id
+            ? `${event.mcp_event_id}-summarization`
+            : `${event.stage_execution_id || 'default'}-${event.stream_type}`;
+          
+          if (event.is_complete) {
+            // Stream completed - mark as waiting for DB update
+            const existing = prev.get(key);
+            if (existing) {
+              updated.set(key, {
+                ...existing,
+                content: event.chunk,
+                waitingForDb: true
+              });
+            } else {
+              updated.set(key, {
+                type: event.stream_type as 'thought' | 'final_answer' | 'summarization',
+                content: event.chunk,
+                stage_execution_id: event.stage_execution_id,
+                mcp_event_id: event.mcp_event_id,
+                waitingForDb: true
+              });
+            }
+          } else {
+            // Still streaming - update content
+            updated.set(key, {
+              type: event.stream_type as 'thought' | 'final_answer' | 'summarization',
+              content: event.chunk,
+              stage_execution_id: event.stage_execution_id,
+              mcp_event_id: event.mcp_event_id,
+              waitingForDb: false
+            });
+          }
+          
+          return updated;
+        });
+      }
+    };
+
+    // Subscribe to session channel for stage, chat, and streaming events
     const unsubscribe = websocketService.subscribeToChannel(
       `session:${sessionId}`,
-      (event: StageEvent) => {
-        handleStageEvent(event);
-        if (event.type === 'chat.user_message') {
-          handleChatMessage(event);
+      (event: any) => {
+        if (event.type === 'llm.stream.chunk') {
+          handleStreamEvent(event);
+        } else {
+          handleStageEvent(event);
+          if (event.type === 'chat.user_message') {
+            handleChatMessage(event);
+          }
         }
       }
     );
@@ -274,10 +330,10 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
     return () => unsubscribe();
   }, [sessionId, chatId, fetchMessages]);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages or streaming updates
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingItems]);
 
   return (
     <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
@@ -298,7 +354,23 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
           }
         })
       )}
-      {isTyping && <TypingIndicator />}
+      
+      {/* Show streaming items in real-time */}
+      {streamingItems.size > 0 && (
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <Psychology sx={{ fontSize: 20, mr: 0.5, color: 'primary.main' }} />
+            <Typography variant="caption" color="text.secondary">
+              TARSy is thinking...
+            </Typography>
+          </Box>
+          {Array.from(streamingItems.values()).map((item, index) => (
+            <StreamingContentRenderer key={`stream-${index}`} item={item} />
+          ))}
+        </Paper>
+      )}
+      
+      {isTyping && streamingItems.size === 0 && <TypingIndicator />}
       <div ref={bottomRef} />
     </Box>
   );
