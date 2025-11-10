@@ -99,7 +99,7 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
         )}
       </TableCell>
       {/* Chat indicator badge */}
-      <TableCell sx={{ width: 80, textAlign: 'center' }}>
+      <TableCell sx={{ width: 60, textAlign: 'center' }}>
         {session.chat_message_count && session.chat_message_count > 0 && (
           <Tooltip title="Follow-up chat active">
             <Chip

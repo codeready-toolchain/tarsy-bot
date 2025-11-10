@@ -150,7 +150,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
                       )}
                     </TableCell>
                   ))}
-                  <TableCell sx={{ fontWeight: 600, width: 80, textAlign: 'center' }}>Chats</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: 60, textAlign: 'center' }}>Chats</TableCell>
                   <TableCell sx={{ fontWeight: 600, width: 60, textAlign: 'center' }}></TableCell>
                 </TableRow>
               </TableHead>
