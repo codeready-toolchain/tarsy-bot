@@ -150,13 +150,14 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
                       )}
                     </TableCell>
                   ))}
+                  <TableCell sx={{ fontWeight: 600, width: 80, textAlign: 'center' }}>Chats</TableCell>
                   <TableCell sx={{ fontWeight: 600, width: 60, textAlign: 'center' }}></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {sessions.length === 0 ? (
                   <TableRow key="empty-state">
-                    <TableCell colSpan={8} align="center">
+                    <TableCell colSpan={9} align="center">
                       <Box sx={{ py: 6, textAlign: 'center' }}>
                         {/* Phase 4: Different empty states for filtered vs unfiltered */}
                         {filters && hasActiveFilters(filters) ? (
