@@ -254,7 +254,7 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage, collapseCoun
                 setAnalysisExpanded(!analysisExpanded);
               }}
               sx={{ 
-                transition: 'transform 0.3s',
+                transition: 'transform 0.4s',
                 transform: analysisExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
               }}
             >

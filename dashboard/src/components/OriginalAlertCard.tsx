@@ -252,7 +252,7 @@ function OriginalAlertCard({ alertData }: OriginalAlertCardProps) {
             onClick={() => setIsExpanded(!isExpanded)}
             aria-label={isExpanded ? 'Collapse alert data' : 'Expand alert data'}
             sx={{ 
-              transition: 'transform 0.3s',
+              transition: 'transform 0.4s',
               transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
             }}
           >
