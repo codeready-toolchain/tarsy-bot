@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
-import { CssBaseline } from '@mui/material';
+import { CssBaseline, Box } from '@mui/material';
 import { theme } from './theme';
 import { AuthProvider } from './contexts/AuthContext';
 import { VersionProvider, useVersion } from './contexts/VersionContext';
@@ -9,6 +9,7 @@ import SessionDetailWrapper from './components/SessionDetailWrapper';
 import ManualAlertSubmission from './components/ManualAlertSubmission';
 import NotFoundPage from './components/NotFoundPage';
 import VersionUpdateBanner from './components/VersionUpdateBanner';
+import { SystemWarningBanner } from './components/SystemWarningBanner';
 
 /**
  * AppContent component - Contains routes and version-aware components
@@ -20,6 +21,10 @@ function AppContent() {
   return (
     <>
       <VersionUpdateBanner show={dashboardVersionChanged} />
+      {/* System Warning Banner - displays non-fatal system errors on all pages */}
+      <Box sx={{ position: 'relative', zIndex: 1100 }}>
+        <SystemWarningBanner />
+      </Box>
       <AuthProvider>
         <Router>
           <Routes>
