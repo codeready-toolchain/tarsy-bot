@@ -136,6 +136,9 @@ function SessionDetailPageBase({
   // Chat expansion state - use counter to force collapse every time (not boolean)
   const [collapseCounter, setCollapseCounter] = useState(0);
   
+  // Final Analysis expansion state - use counter to force expand every time (not boolean)
+  const [expandCounter, setExpandCounter] = useState(0);
+  
   // Track if there's an active chat stage in progress (for disabling chat input)
   const [chatStageInProgress, setChatStageInProgress] = useState<boolean>(false);
   
@@ -627,6 +630,41 @@ function SessionDetailPageBase({
               <OriginalAlertCard alertData={session.alert_data} />
             </Suspense>
 
+            {/* Jump to Final Analysis button - shown at top for quick navigation to conclusion */}
+            {session.final_analysis && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={() => {
+                    // Increment counter to force Final Analysis expansion
+                    setExpandCounter(prev => prev + 1);
+                    
+                    // Scroll to Final Analysis with offset for header
+                    // Wait for expansion animation (400ms) + buffer
+                    setTimeout(() => {
+                      const element = document.getElementById('final-analysis-card');
+                      if (element) {
+                        const yOffset = -20; // Offset for better visual positioning
+                        const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                        window.scrollTo({ top: y, behavior: 'smooth' });
+                      }
+                    }, 450);
+                  }}
+                  startIcon={<Psychology />}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    fontSize: '1rem',
+                    py: 1.5,
+                    px: 4,
+                  }}
+                >
+                  Jump to Final Analysis
+                </Button>
+              </Box>
+            )}
+
             {/* Timeline Content - Conditional based on view type */}
             {session.stages && session.stages.length > 0 ? (
               <Suspense fallback={timelineSkeleton}>
@@ -677,12 +715,14 @@ function SessionDetailPageBase({
 
             {/* Final AI Analysis - Lazy loaded */}
             {/* Auto-collapses when Jump to Chat is clicked (via collapseCounter) */}
+            {/* Auto-expands when Jump to Final Analysis is clicked (via expandCounter) */}
             <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
               <FinalAnalysisCard 
                 analysis={session.final_analysis}
                 sessionStatus={session.status}
                 errorMessage={session.error_message}
                 collapseCounter={collapseCounter}
+                expandCounter={expandCounter}
               />
             </Suspense>
 

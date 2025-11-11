@@ -193,7 +193,7 @@ export default function ChatPanel({
           }}
           disabled={isCreatingChat}
           sx={{ 
-            transition: 'transform 0.3s ease-in-out',
+            transition: 'transform 0.3s',
             transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)'
           }}
         >

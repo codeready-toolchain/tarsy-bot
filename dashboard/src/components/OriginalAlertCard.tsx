@@ -252,7 +252,7 @@ function OriginalAlertCard({ alertData }: OriginalAlertCardProps) {
             onClick={() => setIsExpanded(!isExpanded)}
             aria-label={isExpanded ? 'Collapse alert data' : 'Expand alert data'}
             sx={{ 
-              transition: 'transform 0.2s',
+              transition: 'transform 0.3s',
               transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
             }}
           >
@@ -261,7 +261,7 @@ function OriginalAlertCard({ alertData }: OriginalAlertCardProps) {
         </Box>
       </Box>
       
-      <Collapse in={isExpanded}>
+      <Collapse in={isExpanded} timeout={400}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {/* Alert Header - Show special fields if they exist */}
           <ErrorBoundary 

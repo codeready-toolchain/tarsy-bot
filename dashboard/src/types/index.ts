@@ -374,6 +374,7 @@ export interface FinalAnalysisCardProps {
   sessionStatus: Session['status'];
   errorMessage?: string | null;
   collapseCounter?: number; // Counter to force collapse (increments trigger collapse)
+  expandCounter?: number; // Counter to force expand (increments trigger expand)
 }
 
 // Phase 3: Timeline props
