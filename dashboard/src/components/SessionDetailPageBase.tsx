@@ -644,14 +644,14 @@ function SessionDetailPageBase({
                     setExpandCounter(prev => prev + 1);
                     
                     // Scroll to Final Analysis with offset for header
-                    // Wait for expansion animation (400ms) + buffer
+                    // Wait for expansion animation (400ms) + buffer (100ms)
                     setTimeout(() => {
                       if (finalAnalysisRef.current) {
                         const yOffset = -20; // Offset for better visual positioning
                         const y = finalAnalysisRef.current.getBoundingClientRect().top + window.pageYOffset + yOffset;
                         window.scrollTo({ top: y, behavior: 'smooth' });
                       }
-                    }, 450);
+                    }, 500);
                   }}
                   startIcon={<KeyboardDoubleArrowDown />}
                   endIcon={<KeyboardDoubleArrowDown />}
