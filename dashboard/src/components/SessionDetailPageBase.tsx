@@ -147,6 +147,9 @@ function SessionDetailPageBase({
   
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
+  
+  // Ref for Final Analysis Card (for scrolling)
+  const finalAnalysisRef = useRef<HTMLDivElement>(null);
   const disableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasPerformedInitialScrollRef = useRef<boolean>(false);
   
@@ -643,10 +646,9 @@ function SessionDetailPageBase({
                     // Scroll to Final Analysis with offset for header
                     // Wait for expansion animation (400ms) + buffer
                     setTimeout(() => {
-                      const element = document.getElementById('final-analysis-card');
-                      if (element) {
+                      if (finalAnalysisRef.current) {
                         const yOffset = -20; // Offset for better visual positioning
-                        const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                        const y = finalAnalysisRef.current.getBoundingClientRect().top + window.pageYOffset + yOffset;
                         window.scrollTo({ top: y, behavior: 'smooth' });
                       }
                     }, 450);
@@ -723,6 +725,7 @@ function SessionDetailPageBase({
             {/* Auto-expands when Jump to Final Analysis is clicked (via expandCounter) */}
             <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
               <FinalAnalysisCard 
+                ref={finalAnalysisRef}
                 analysis={session.final_analysis}
                 sessionStatus={session.status}
                 errorMessage={session.error_message}

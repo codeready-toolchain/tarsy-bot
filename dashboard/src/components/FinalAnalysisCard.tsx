@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef } from 'react';
 import { 
   Paper, 
   Typography, 
@@ -67,7 +67,7 @@ Please review the session details or contact support if this is unexpected.`;
  * Renders AI analysis markdown content with expand/collapse functionality and copy-to-clipboard feature
  * Optimized for live updates
  */
-function FinalAnalysisCard({ analysis, sessionStatus, errorMessage, collapseCounter = 0, expandCounter = 0 }: FinalAnalysisCardProps) {
+const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ analysis, sessionStatus, errorMessage, collapseCounter = 0, expandCounter = 0 }, ref) => {
   const [analysisExpanded, setAnalysisExpanded] = useState<boolean>(false);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
   const [prevAnalysis, setPrevAnalysis] = useState<string | null>(null);
@@ -76,7 +76,6 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage, collapseCoun
   // Auto-collapse when collapseCounter changes (e.g., when Jump to Chat is clicked)
   useEffect(() => {
     if (collapseCounter > 0) {
-      console.log('📦 Auto-collapsing Final Analysis (Jump to Chat clicked)');
       setAnalysisExpanded(false);
     }
   }, [collapseCounter]);
@@ -84,7 +83,6 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage, collapseCoun
   // Auto-expand when expandCounter changes (e.g., when Jump to Final Analysis is clicked)
   useEffect(() => {
     if (expandCounter > 0) {
-      console.log('📂 Auto-expanding Final Analysis (Jump to Final Analysis clicked)');
       setAnalysisExpanded(true);
     }
   }, [expandCounter]);
@@ -102,14 +100,12 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage, collapseCoun
         Math.abs(analysis.length - prevAnalysis.length) > 100;
       
       if (isFirstTime) {
-        console.log('🎯 Final analysis first received, auto-expanding');
         setAnalysisExpanded(true);
         // Only show "Updated" indicator if session is actively processing
         if (isActiveSession) {
           setIsNewlyUpdated(true);
         }
       } else if (isSignificantChange) {
-        console.log('🎯 Final analysis significantly updated');
         // Only show "Updated" indicator if session is actively processing
         if (isActiveSession) {
           setIsNewlyUpdated(true);
@@ -169,7 +165,7 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage, collapseCoun
 
   return (
     <>
-      <Paper id="final-analysis-card" sx={{ p: 3 }}>
+      <Paper ref={ref} sx={{ p: 3 }}>
         {/* Collapsible Header */}
         <Box 
           sx={{ 
@@ -507,6 +503,8 @@ function FinalAnalysisCard({ analysis, sessionStatus, errorMessage, collapseCoun
       />
     </>
   );
-}
+});
+
+FinalAnalysisCard.displayName = 'FinalAnalysisCard';
 
 export default FinalAnalysisCard; 
