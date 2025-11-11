@@ -16,7 +16,7 @@ import {
   IconButton,
   Button
 } from '@mui/material';
-import { Psychology, BugReport } from '@mui/icons-material';
+import { Psychology, BugReport, KeyboardDoubleArrowDown, KeyboardDoubleArrowUp } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
 import VersionFooter from './VersionFooter';
 import FloatingSubmitAlertFab from './FloatingSubmitAlertFab';
@@ -632,10 +632,10 @@ function SessionDetailPageBase({
 
             {/* Jump to Final Analysis button - shown at top for quick navigation to conclusion */}
             {session.final_analysis && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', my: 1.5 }}>
                 <Button
-                  variant="outlined"
-                  size="large"
+                  variant="text"
+                  size="medium"
                   onClick={() => {
                     // Increment counter to force Final Analysis expansion
                     setExpandCounter(prev => prev + 1);
@@ -651,13 +651,18 @@ function SessionDetailPageBase({
                       }
                     }, 450);
                   }}
-                  startIcon={<Psychology />}
+                  startIcon={<KeyboardDoubleArrowDown />}
+                  endIcon={<KeyboardDoubleArrowDown />}
                   sx={{
                     textTransform: 'none',
                     fontWeight: 600,
-                    fontSize: '1rem',
-                    py: 1.5,
-                    px: 4,
+                    fontSize: '0.95rem',
+                    py: 1,
+                    px: 3,
+                    color: 'primary.main',
+                    '&:hover': {
+                      backgroundColor: 'action.hover',
+                    },
                   }}
                 >
                   Jump to Final Analysis
@@ -728,10 +733,10 @@ function SessionDetailPageBase({
 
             {/* Jump to Chat button - shown after Final Analysis when chat is available */}
             {isTerminalSessionStatus(session.status) && (chat || chatAvailable) && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
                 <Button
-                  variant="outlined"
-                  size="large"
+                  variant="text"
+                  size="medium"
                   onClick={() => {
                     // Increment counter to force Final Analysis collapse every time
                     setCollapseCounter(prev => prev + 1);
@@ -749,15 +754,21 @@ function SessionDetailPageBase({
                       });
                     }, 500);
                   }}
+                  startIcon={<KeyboardDoubleArrowUp />}
+                  endIcon={<KeyboardDoubleArrowUp />}
                   sx={{
                     textTransform: 'none',
                     fontWeight: 600,
-                    fontSize: '1rem',
-                    py: 1.5,
-                    px: 4,
+                    fontSize: '0.95rem',
+                    py: 1,
+                    px: 3,
+                    color: 'primary.main',
+                    '&:hover': {
+                      backgroundColor: 'action.hover',
+                    },
                   }}
                 >
-                  💬 Jump to Follow-up Chat
+                  Jump to Follow-up Chat
                 </Button>
               </Box>
             )}
