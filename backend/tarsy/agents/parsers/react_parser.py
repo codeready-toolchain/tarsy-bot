@@ -11,6 +11,7 @@ import re
 from enum import Enum
 from typing import Any, Dict, Optional
 
+import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
@@ -526,6 +527,7 @@ class ReActParser:
         
         Supports:
         - JSON format: {"key": "value", "key2": "value2"}
+        - YAML format: key: value\nlist:\n- item1\n- item2
         - Comma-separated: key: value, key2: value2
         - Newline-separated: key: value\nkey2: value2
         - Key=value format: key=value, key2=value2
@@ -548,7 +550,30 @@ class ReActParser:
             else:
                 parameters = {'input': parsed_json}
         except json.JSONDecodeError:
-            # Fallback: Handle multiple formats
+            # Try YAML parsing - handles arrays, nested structures, and simple key-value
+            try:
+                # Check if input looks like YAML with arrays (contains '- ' pattern after newline)
+                # or nested structures (contains ': ' with newlines)
+                # or JSON-style arrays/objects (contains '[' or '{')
+                has_yaml_list = '\n-' in action_input or '\n -' in action_input
+                has_yaml_nested = '\n  ' in action_input and ':' in action_input
+                has_json_style_array = ': [' in action_input or ':[' in action_input
+                
+                # If it looks like YAML with arrays or nested structures, try YAML parsing
+                if has_yaml_list or has_yaml_nested or has_json_style_array:
+                    parsed_yaml = yaml.safe_load(action_input)
+                    if isinstance(parsed_yaml, dict):
+                        parameters = parsed_yaml
+                        return parameters
+                    else:
+                        # If YAML returns non-dict, wrap it
+                        parameters = {'input': parsed_yaml}
+                        return parameters
+            except yaml.YAMLError:
+                # YAML parsing failed, continue to simple parsing
+                pass
+            
+            # Fallback: Handle simple formats
             # Split on both commas AND newlines to handle both separators
             # Replace newlines with commas first for unified processing
             normalized_input = action_input.replace('\n', ',')

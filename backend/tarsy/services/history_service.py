@@ -355,7 +355,11 @@ class HistoryService:
                     return None
                 return repo.get_alert_session(session_id)
         
-        return self._retry_database_operation("get_session", _get_operation)
+        return self._retry_database_operation(
+            "get_session",
+            _get_operation,
+            treat_none_as_success=True
+        )
     
     def update_session_to_canceling(self, session_id: str) -> tuple[bool, str]:
         """
@@ -988,7 +992,11 @@ class HistoryService:
                     return None
                 return repo.get_chat_by_id(chat_id)
         
-        return self._retry_database_operation("get_chat_by_id", _get_operation)
+        return self._retry_database_operation(
+            "get_chat_by_id",
+            _get_operation,
+            treat_none_as_success=True
+        )
     
     async def get_chat_by_session(self, session_id: str) -> Optional[Chat]:
         """Get chat for a session (if exists)."""
@@ -1001,7 +1009,11 @@ class HistoryService:
                     return None
                 return repo.get_chat_by_session(session_id)
         
-        return self._retry_database_operation("get_chat_by_session", _get_operation)
+        return self._retry_database_operation(
+            "get_chat_by_session",
+            _get_operation,
+            treat_none_as_success=True
+        )
     
     async def create_chat_user_message(self, message: ChatUserMessage) -> ChatUserMessage:
         """Create a new chat user message."""

@@ -1371,7 +1371,55 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
         # Should log the final error
         error_logs = [record for record in caplog.records if record.levelno == logging.ERROR]
         assert len(error_logs) >= 1
-        assert "Final error message" in error_logs[-1].message 
+        assert "Final error message" in error_logs[-1].message
+    
+    def test_retry_operation_treat_none_as_success(self, history_service, caplog):
+        """Test that treat_none_as_success flag prevents retries when operation returns None."""
+        import logging
+        caplog.set_level(logging.WARNING)
+        
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            return None  # Entity not found
+        
+        result = history_service._retry_database_operation(
+            "get_chat_by_session",
+            operation,
+            treat_none_as_success=True
+        )
+        
+        assert result is None
+        assert call_count == 1  # Should NOT retry
+        
+        # Should NOT log warnings about None results
+        warning_logs = [record for record in caplog.records if record.levelno == logging.WARNING]
+        none_warnings = [log for log in warning_logs if "returned None" in log.message]
+        assert len(none_warnings) == 0, "Should not log warnings when treat_none_as_success=True"
+    
+    def test_retry_operation_none_triggers_retries_by_default(self, history_service, caplog):
+        """Test that returning None triggers retries when treat_none_as_success is False (default)."""
+        import logging
+        caplog.set_level(logging.WARNING)
+        
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            return None  # Failed operation
+        
+        result = history_service._retry_database_operation("test_operation", operation)
+        
+        assert result is None
+        assert call_count == 4  # Initial + 3 retries
+        
+        # Should log warnings about None results
+        warning_logs = [record for record in caplog.records if record.levelno == logging.WARNING]
+        none_warnings = [log for log in warning_logs if "returned None" in log.message]
+        assert len(none_warnings) >= 3, "Should log warnings for each retry when None is treated as failure" 
 
 
 @pytest.mark.asyncio
