@@ -147,7 +147,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "pong"})
 
     except WebSocketDisconnect:
-        logger.info(f"Client {connection_id} disconnected normally")
+        logger.debug(f"Client {connection_id} disconnected normally")
     except Exception as e:
         logger.error(f"WebSocket error for {connection_id}: {e}", exc_info=True)
     finally:

@@ -76,12 +76,16 @@ class TestSetupLogging:
             mock_tarsy_logger = MagicMock()
             mock_uvicorn_logger = MagicMock()
             mock_httpx_logger = MagicMock()
+            mock_sqlalchemy_logger = MagicMock()
             mock_uvicorn_access_logger = MagicMock()
+            mock_uvicorn_error_logger = MagicMock()
             mock_get_logger.side_effect = [
                 mock_tarsy_logger, 
                 mock_uvicorn_logger,
                 mock_httpx_logger,
-                mock_uvicorn_access_logger
+                mock_sqlalchemy_logger,
+                mock_uvicorn_access_logger,
+                mock_uvicorn_error_logger
             ]
 
             setup_logging("ERROR")
@@ -90,6 +94,8 @@ class TestSetupLogging:
             mock_tarsy_logger.setLevel.assert_called_once_with(logging.ERROR)
             # Verify uvicorn logger is set to INFO level
             mock_uvicorn_logger.setLevel.assert_called_once_with(logging.INFO)
+            # Verify SQLAlchemy logger is set to WARNING level
+            mock_sqlalchemy_logger.setLevel.assert_called_once_with(logging.WARNING)
 
     def test_setup_logging_default_level(self) -> None:
         """Test setup_logging uses INFO as default level."""

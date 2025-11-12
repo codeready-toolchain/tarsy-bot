@@ -66,14 +66,14 @@ class PostgreSQLEventListener(EventListener):
             raise RuntimeError("Listener not initialized")
 
         await self.listener_conn.add_listener(channel, self._handle_notification)
-        logger.info(f"Subscribed to PostgreSQL channel: {channel}")
+        logger.debug(f"Subscribed to PostgreSQL channel: {channel}")
     
     async def _cleanup_channel(self, channel: str) -> None:
         """Remove PostgreSQL listener for channel."""
         if self.listener_conn:
             try:
                 await self.listener_conn.remove_listener(channel, self._handle_notification)
-                logger.info(f"Unsubscribed from PostgreSQL channel: {channel}")
+                logger.debug(f"Unsubscribed from PostgreSQL channel: {channel}")
             except Exception as e:
                 logger.warning(f"Failed to remove PostgreSQL listener for {channel}: {e}")
 

@@ -92,7 +92,7 @@ class EventListener(ABC):
                 if channel in self.last_activity:
                     del self.last_activity[channel]
                 await self._cleanup_channel(channel)
-                logger.info(f"Removed empty channel '{channel}' from polling")
+                logger.debug(f"Removed empty channel '{channel}' from polling")
     
     @abstractmethod
     async def _cleanup_channel(self, channel: str) -> None:

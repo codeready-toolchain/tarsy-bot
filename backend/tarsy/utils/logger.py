@@ -51,6 +51,31 @@ class HealthEndpointFilter(logging.Filter):
         return True  # Allow all other logs
 
 
+class ConnectionClosedFilter(logging.Filter):
+    """
+    Filter to suppress routine WebSocket connection closed messages.
+    
+    This filter prevents normal WebSocket disconnections from cluttering logs
+    since we already log disconnections at DEBUG level in our own code.
+    """
+    
+    def filter(self, record: logging.LogRecord) -> bool:
+        """
+        Filter out routine "connection closed" messages.
+        
+        Args:
+            record: Log record to filter
+            
+        Returns:
+            False to suppress the log record, True to allow it through
+        """
+        # Suppress "connection closed" info messages (routine disconnections)
+        if record.levelno == logging.INFO and record.getMessage() == "connection closed":
+            return False
+        
+        return True
+
+
 def setup_logging(log_level: str = "INFO") -> None:
     """
     Configure logging to stdout/stderr only.
@@ -87,10 +112,19 @@ def setup_logging(log_level: str = "INFO") -> None:
     # httpx logs every HTTP request at INFO level by default, which clutters logs
     logging.getLogger('httpx').setLevel(logging.WARNING)
     
+    # Suppress SQLAlchemy engine logging (only show warnings and errors)
+    # This prevents SQL statements (especially NOTIFY with large payloads) from cluttering logs
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+    
     # Add filter to uvicorn.access logger to suppress monitoring endpoint noise
     # This prevents frequently-polled endpoints (health checks, warnings) from cluttering logs
     uvicorn_access_logger = logging.getLogger('uvicorn.access')
     uvicorn_access_logger.addFilter(HealthEndpointFilter())
+    
+    # Add filter to uvicorn.error logger to suppress routine WebSocket disconnections
+    # This prevents "connection closed" messages from cluttering logs
+    uvicorn_error_logger = logging.getLogger('uvicorn.error')
+    uvicorn_error_logger.addFilter(ConnectionClosedFilter())
     
     # Remove any file handlers if present (cleanup from previous configuration)
     for handler in logging.root.handlers[:]:

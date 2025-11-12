@@ -33,7 +33,7 @@ class WebSocketConnectionManager:
         await websocket.accept()
         self.connections[connection_id] = websocket
         self.subscriptions[connection_id] = set()
-        logger.info(f"WebSocket connected: {connection_id}")
+        logger.debug(f"WebSocket connected: {connection_id}")
 
     def disconnect(self, connection_id: str) -> None:
         """
@@ -55,7 +55,7 @@ class WebSocketConnectionManager:
         if connection_id in self.connections:
             del self.connections[connection_id]
 
-        logger.info(f"WebSocket disconnected: {connection_id}")
+        logger.debug(f"WebSocket disconnected: {connection_id}")
 
     def subscribe(self, connection_id: str, channel: str) -> None:
         """
