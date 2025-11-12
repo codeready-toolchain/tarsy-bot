@@ -10,6 +10,7 @@ from unittest.mock import Mock
 
 from tarsy.agents.prompts.builders import PromptBuilder
 from tarsy.models.processing_context import ToolWithServer
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from mcp.types import Tool
 
 
@@ -538,3 +539,63 @@ Stage 2 (Initial): Found resource constraints and recent deployment
         assert "Final Analysis Stage" in result
         assert "Pod CrashLoopBackOff" in result
         assert "Pod CrashLoop Investigation Runbook" in result
+
+
+@pytest.mark.unit
+class TestInvestigationContextFormatting:
+    """Test investigation context formatting for chat."""
+    
+    @pytest.fixture
+    def builder(self):
+        """Create PromptBuilder instance."""
+        return PromptBuilder()
+    
+    def test_format_investigation_context_with_conversation(self, builder):
+        """Test formatting investigation context with valid conversation."""
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are an SRE agent"),
+            LLMMessage(role=MessageRole.USER, content="Investigate pod crash in production"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Thought: I need to check the pod logs\nAction: kubectl.get_logs\nAction Input: namespace=production, pod=app-123"),
+            LLMMessage(role=MessageRole.USER, content="Observation: Error: OOMKilled"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Final Answer: The pod was killed due to out-of-memory error.")
+        ])
+        
+        result = builder.format_investigation_context(conversation)
+        
+        # Should contain investigation context markers
+        assert "INVESTIGATION CONTEXT" in result
+        assert "Original Investigation" in result
+        
+        # Should contain user and assistant messages (but not system)
+        assert "Investigate pod crash" in result
+        assert "I need to check the pod logs" in result
+        assert "OOMKilled" in result
+        assert "Final Answer" in result
+        
+        # Should NOT contain system message
+        assert "You are an SRE agent" not in result
+    
+    def test_format_investigation_context_none_conversation(self, builder):
+        """Test formatting investigation context with None conversation (cancelled session)."""
+        result = builder.format_investigation_context(None)
+        
+        # Should contain investigation context markers
+        assert "INVESTIGATION CONTEXT" in result
+        assert "Original Investigation" in result
+        
+        # Should contain cancellation message
+        assert "cancelled before completion" in result
+        
+        # Should be properly formatted
+        assert "═" in result  # Contains separator lines
+    
+    def test_format_investigation_context_none_returns_valid_string(self, builder):
+        """Test that None conversation returns valid non-empty string."""
+        result = builder.format_investigation_context(None)
+        
+        # Should not be empty
+        assert result
+        assert len(result) > 0
+        
+        # Should be multi-line formatted text
+        assert "\n" in result

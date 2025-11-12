@@ -229,7 +229,7 @@ You have access to the same tools and systems that were used in the original inv
     
     # ============ Chat Formatting Methods ============
     
-    def format_investigation_context(self, conversation: LLMConversation) -> str:
+    def format_investigation_context(self, conversation: Optional[LLMConversation]) -> str:
         """
         Format investigation conversation as clean historical context.
         
@@ -243,11 +243,25 @@ You have access to the same tools and systems that were used in the original inv
         - Final analysis
         
         Args:
-            conversation: LLMConversation from LLMInteraction.conversation field
+            conversation: LLMConversation from LLMInteraction.conversation field (can be None for cancelled sessions)
             
         Returns:
             Formatted string with investigation context section
         """
+        # Handle None conversation (e.g., from cancelled sessions)
+        if conversation is None:
+            sections = []
+            sections.append("═" * 79)
+            sections.append("📋 INVESTIGATION CONTEXT")
+            sections.append("═" * 79)
+            sections.append("")
+            sections.append("# Original Investigation")
+            sections.append("")
+            sections.append("⚠️  This investigation was cancelled before completion.")
+            sections.append("")
+            sections.append("═" * 79)
+            return "\n".join(sections)
+        
         sections = []
         sections.append("═" * 79)
         sections.append("📋 INVESTIGATION CONTEXT")

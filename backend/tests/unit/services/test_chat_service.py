@@ -291,6 +291,324 @@ class TestChatService:
             await chat_service._capture_session_context("test-session-123")
     
     @pytest.mark.asyncio
+    async def test_capture_session_context_cancelled_session_all_failed(
+        self, chat_service, mock_history_service, sample_session
+    ):
+        """Test context capture when all interactions have None conversation (early cancellation)."""
+        # Create an interaction with None conversation (like a cancelled session)
+        cancelled_interaction = LLMInteraction(
+            interaction_id="int-cancelled",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=None,  # This happens when session is cancelled
+            tokens_used=0,
+            created_at_us=now_us(),
+        )
+        
+        mock_history_service.get_llm_interactions_for_session = AsyncMock(
+            return_value=[cancelled_interaction]
+        )
+        mock_history_service.get_session.return_value = sample_session
+        
+        # Should not raise AttributeError and should return context with cancellation message
+        context = await chat_service._capture_session_context("test-session-123")
+        
+        assert isinstance(context, SessionContextData)
+        assert context.chain_id == "kubernetes-investigation"
+        assert "[Investigation was cancelled before completion]" in context.conversation_history
+        assert context.captured_at_us > 0
+    
+    @pytest.mark.asyncio
+    async def test_capture_session_context_cancelled_mid_interaction(
+        self, chat_service, mock_history_service, sample_session
+    ):
+        """Test context capture when last interaction failed but previous ones succeeded."""
+        # Create multiple interactions - first two succeed, last one cancelled
+        successful_interaction_1 = LLMInteraction(
+            interaction_id="int-success-1",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Check pod status"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Analyzing pods..."),
+            ]),
+            tokens_used=100,
+            created_at_us=now_us() - 2000,
+        )
+        
+        successful_interaction_2 = LLMInteraction(
+            interaction_id="int-success-2",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Check pod status"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Analyzing pods..."),
+                LLMMessage(role=MessageRole.USER, content="Observation: Found crash"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="The pod crashed due to OOM"),
+            ]),
+            tokens_used=200,
+            created_at_us=now_us() - 1000,
+        )
+        
+        cancelled_interaction = LLMInteraction(
+            interaction_id="int-cancelled",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=None,  # Cancelled before LLM response
+            tokens_used=0,
+            created_at_us=now_us(),
+            success=False,
+        )
+        
+        mock_history_service.get_llm_interactions_for_session = AsyncMock(
+            return_value=[successful_interaction_1, successful_interaction_2, cancelled_interaction]
+        )
+        mock_history_service.get_session.return_value = sample_session
+        
+        # Should use the last successful interaction (interaction_2)
+        context = await chat_service._capture_session_context("test-session-123")
+        
+        assert isinstance(context, SessionContextData)
+        assert context.chain_id == "kubernetes-investigation"
+        # Should contain data from the last successful interaction
+        assert "The pod crashed due to OOM" in context.conversation_history
+        assert "[Investigation was cancelled before completion]" not in context.conversation_history
+        assert context.captured_at_us > 0
+    
+    @pytest.mark.asyncio
+    async def test_capture_session_context_skips_summarization_interactions(
+        self, chat_service, mock_history_service, sample_session
+    ):
+        """Test that summarization interactions are skipped when finding last valid interaction."""
+        from tarsy.models.constants import LLMInteractionType
+        
+        # Create investigation interaction
+        investigation_interaction = LLMInteraction(
+            interaction_id="int-investigation",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Check logs"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Analyzing logs..."),
+            ]),
+            interaction_type=LLMInteractionType.INVESTIGATION.value,
+            tokens_used=100,
+            created_at_us=now_us() - 2000,
+        )
+        
+        # Create summarization interaction (should be skipped)
+        summarization_interaction = LLMInteraction(
+            interaction_id="int-summarization",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="Summarize this"),
+                LLMMessage(role=MessageRole.USER, content="Tool output: ..."),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Summary: ..."),
+            ]),
+            interaction_type=LLMInteractionType.SUMMARIZATION.value,
+            mcp_event_id="mcp-123",
+            tokens_used=50,
+            created_at_us=now_us() - 1000,
+        )
+        
+        # Create another investigation interaction after summarization
+        investigation_interaction_2 = LLMInteraction(
+            interaction_id="int-investigation-2",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Check logs"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Analyzing logs..."),
+                LLMMessage(role=MessageRole.USER, content="Observation: Found error"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Root cause: Memory leak"),
+            ]),
+            interaction_type=LLMInteractionType.INVESTIGATION.value,
+            tokens_used=200,
+            created_at_us=now_us(),
+        )
+        
+        mock_history_service.get_llm_interactions_for_session = AsyncMock(
+            return_value=[investigation_interaction, summarization_interaction, investigation_interaction_2]
+        )
+        mock_history_service.get_session.return_value = sample_session
+        
+        # Should use the last investigation interaction, skipping summarization
+        context = await chat_service._capture_session_context("test-session-123")
+        
+        assert isinstance(context, SessionContextData)
+        assert "Root cause: Memory leak" in context.conversation_history
+        # Should not contain summarization content
+        assert "Summary: ..." not in context.conversation_history
+    
+    @pytest.mark.asyncio
+    async def test_capture_session_context_skips_summarization_and_cancelled(
+        self, chat_service, mock_history_service, sample_session
+    ):
+        """Test skipping both summarization and cancelled interactions to find valid one."""
+        from tarsy.models.constants import LLMInteractionType
+        
+        # Create successful investigation interaction
+        investigation_interaction = LLMInteraction(
+            interaction_id="int-investigation",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Investigate issue"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Found the problem"),
+            ]),
+            interaction_type=LLMInteractionType.INVESTIGATION.value,
+            tokens_used=100,
+            created_at_us=now_us() - 3000,
+        )
+        
+        # Create summarization (should skip)
+        summarization_interaction = LLMInteraction(
+            interaction_id="int-summarization",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="Summarize"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Brief summary"),
+            ]),
+            interaction_type=LLMInteractionType.SUMMARIZATION.value,
+            tokens_used=30,
+            created_at_us=now_us() - 2000,
+        )
+        
+        # Create cancelled interaction (should skip)
+        cancelled_interaction = LLMInteraction(
+            interaction_id="int-cancelled",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=None,
+            interaction_type=LLMInteractionType.INVESTIGATION.value,
+            tokens_used=0,
+            created_at_us=now_us(),
+            success=False,
+        )
+        
+        mock_history_service.get_llm_interactions_for_session = AsyncMock(
+            return_value=[investigation_interaction, summarization_interaction, cancelled_interaction]
+        )
+        mock_history_service.get_session.return_value = sample_session
+        
+        # Should use the investigation interaction, skipping both summarization and cancelled
+        context = await chat_service._capture_session_context("test-session-123")
+        
+        assert isinstance(context, SessionContextData)
+        assert "Found the problem" in context.conversation_history
+        assert "Brief summary" not in context.conversation_history
+    
+    @pytest.mark.asyncio
+    async def test_create_chat_cancelled_session_with_prior_success(
+        self, chat_service, mock_history_service, sample_session
+    ):
+        """Test creating chat for cancelled session uses last successful interaction."""
+        # Set session as cancelled
+        sample_session.status = AlertSessionStatus.CANCELLED.value
+        
+        # Create interactions - some successful, last one cancelled
+        successful_interaction = LLMInteraction(
+            interaction_id="int-success",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Investigate alert"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Found the issue"),
+            ]),
+            tokens_used=150,
+            created_at_us=now_us() - 1000,
+        )
+        
+        cancelled_interaction = LLMInteraction(
+            interaction_id="int-cancelled",
+            session_id="test-session-123",
+            stage_execution_id="stage-1",
+            model_name="gpt-4",
+            conversation=None,
+            tokens_used=0,
+            created_at_us=now_us(),
+            success=False,
+        )
+        
+        mock_history_service.get_session.return_value = sample_session
+        mock_history_service.get_chat_by_session = AsyncMock(return_value=None)
+        mock_history_service.get_llm_interactions_for_session = AsyncMock(
+            return_value=[successful_interaction, cancelled_interaction]
+        )
+        
+        # Mock create_chat to capture what would be saved
+        captured_chat = None
+        async def capture_create_chat(chat: Chat):
+            nonlocal captured_chat
+            captured_chat = chat
+            # Return a chat with an ID
+            return Chat(
+                chat_id="new-chat-123",
+                session_id=chat.session_id,
+                created_by=chat.created_by,
+                conversation_history=chat.conversation_history,
+                chain_id=chat.chain_id,
+                context_captured_at_us=chat.context_captured_at_us,
+            )
+        
+        mock_history_service.create_chat = AsyncMock(side_effect=capture_create_chat)
+        
+        with patch("tarsy.services.events.event_helpers.publish_chat_created", new=AsyncMock()):
+            chat = await chat_service.create_chat(
+                session_id="test-session-123",
+                created_by="user@example.com"
+            )
+        
+        assert chat.chat_id == "new-chat-123"
+        assert chat.session_id == "test-session-123"
+        # Should use successful interaction, not show cancellation message
+        assert captured_chat is not None
+        assert "Found the issue" in captured_chat.conversation_history
+        assert "[Investigation was cancelled before completion]" not in captured_chat.conversation_history
+        mock_history_service.create_chat.assert_called_once()
+    
+    def test_chat_context_interaction_types_is_defined(self):
+        """Test that CHAT_CONTEXT_INTERACTION_TYPES is properly defined and documented."""
+        from tarsy.models.constants import CHAT_CONTEXT_INTERACTION_TYPES, LLMInteractionType
+        
+        # Should be a frozenset
+        assert isinstance(CHAT_CONTEXT_INTERACTION_TYPES, frozenset)
+        
+        # Should not be empty
+        assert len(CHAT_CONTEXT_INTERACTION_TYPES) > 0
+        
+        # All values should be valid LLMInteractionType values
+        all_valid_types = {t.value for t in LLMInteractionType}
+        for interaction_type in CHAT_CONTEXT_INTERACTION_TYPES:
+            assert interaction_type in all_valid_types, f"Invalid interaction type: {interaction_type}"
+        
+        # SUMMARIZATION should NOT be in chat context types
+        assert LLMInteractionType.SUMMARIZATION.value not in CHAT_CONTEXT_INTERACTION_TYPES
+        
+        # INVESTIGATION and FINAL_ANALYSIS should be included (current expectations)
+        assert LLMInteractionType.INVESTIGATION.value in CHAT_CONTEXT_INTERACTION_TYPES
+        assert LLMInteractionType.FINAL_ANALYSIS.value in CHAT_CONTEXT_INTERACTION_TYPES
+    
+    @pytest.mark.asyncio
     async def test_build_message_context_first_message(
         self, chat_service, mock_history_service
     ):

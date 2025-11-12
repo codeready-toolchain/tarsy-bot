@@ -106,6 +106,16 @@ class LLMInteractionType(str, Enum):
     FINAL_ANALYSIS = "final_analysis"
 
 
+# Interaction types that should be included in chat context
+# When adding a new LLMInteractionType, decide if it represents meaningful investigation
+# context that should be shown to users in follow-up chats
+CHAT_CONTEXT_INTERACTION_TYPES: frozenset[str] = frozenset({
+    LLMInteractionType.INVESTIGATION.value,
+    LLMInteractionType.FINAL_ANALYSIS.value,
+    # SUMMARIZATION is excluded - it's internal tool result processing, not investigation context
+})
+
+
 class StreamingEventType(str, Enum):
     """
     Types of LLM streaming events for real-time WebSocket delivery.

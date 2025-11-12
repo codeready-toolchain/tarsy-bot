@@ -498,14 +498,27 @@ class ChatService:
         if not llm_interactions:
             raise ValueError("No LLM interactions provided for formatting")
         
-        # Get last interaction - has complete cumulative conversation
-        last_interaction = llm_interactions[-1]
+        # Find the last interaction with a valid conversation suitable for chat context
+        # - Exclude interactions with None conversation (cancelled/failed)
+        # - Only include interaction types suitable for chat context (see CHAT_CONTEXT_INTERACTION_TYPES)
+        from tarsy.models.constants import CHAT_CONTEXT_INTERACTION_TYPES
+        
+        last_valid_interaction = None
+        for interaction in reversed(llm_interactions):
+            if (interaction.conversation is not None and 
+                interaction.interaction_type in CHAT_CONTEXT_INTERACTION_TYPES):
+                last_valid_interaction = interaction
+                break
+        
+        # If no valid interaction found, return cancellation message
+        if last_valid_interaction is None:
+            return "[Investigation was cancelled before completion]"
         
         # Use PromptBuilder to format investigation context
         from tarsy.agents.prompts.builders import PromptBuilder
         prompt_builder = PromptBuilder()
         
-        return prompt_builder.format_investigation_context(last_interaction.conversation)
+        return prompt_builder.format_investigation_context(last_valid_interaction.conversation)
     
     async def _capture_session_context(self, session_id: str) -> SessionContextData:
         """
