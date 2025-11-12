@@ -8,6 +8,7 @@ import { parseReActMessage } from './reactParser';
 export interface ChatFlowItemData {
   type: 'thought' | 'tool_call' | 'final_answer' | 'stage_start' | 'summarization' | 'user_message';
   timestamp_us: number;
+  stageId?: string; // Stage execution_id - used for grouping and collapse functionality
   content?: string; // For thought/final_answer/summarization/user_message
   stageName?: string; // For stage_start
   stageAgent?: string; // For stage_start
@@ -34,11 +35,13 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
   // Process each stage in order
   for (const stage of session.stages || []) {
     const stageStartTimestamp = stage.started_at_us || Date.now() * 1000;
+    const stageId = stage.execution_id;
     
     // Add stage start marker
     chatItems.push({
       type: 'stage_start',
       timestamp_us: stageStartTimestamp,
+      stageId,
       stageName: stage.stage_name,
       stageAgent: stage.agent
     });
@@ -54,6 +57,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       chatItems.push({
         type: 'user_message',
         timestamp_us: userMessageTimestamp,
+        stageId,
         content: stage.chat_user_message.content,
         author: stage.chat_user_message.author,
         messageId: stage.chat_user_message.message_id
@@ -81,6 +85,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
         chatItems.push({
           type: 'thought',
           timestamp_us: interaction.timestamp_us,
+          stageId,
           content: parsed.thought
         });
       } else if (interactionType === 'final_analysis') {
@@ -89,6 +94,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           chatItems.push({
             type: 'thought',
             timestamp_us: interaction.timestamp_us,
+            stageId,
             content: parsed.thought
           });
         }
@@ -96,6 +102,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           chatItems.push({
             type: 'final_answer',
             timestamp_us: interaction.timestamp_us + 1, // +1 to ensure it comes after thought
+            stageId,
             content: parsed.finalAnswer
           });
         }
@@ -106,6 +113,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           chatItems.push({
             type: 'summarization',
             timestamp_us: interaction.timestamp_us,
+            stageId,
             content: lastAssistantMessage.content,
             mcp_event_id: (interaction.details as any).mcp_event_id // Link to the tool call being summarized
           });
@@ -125,6 +133,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       chatItems.push({
         type: 'tool_call',
         timestamp_us: mcp.timestamp_us,
+        stageId,
         toolName: mcp.details.tool_name || 'unknown',
         toolArguments: mcp.details.tool_arguments || {},
         toolResult: mcp.details.tool_result || null,

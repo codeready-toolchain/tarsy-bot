@@ -241,11 +241,40 @@ function ConversationTimeline({
   const [claimedChatFlowItems, setClaimedChatFlowItems] = useState<Set<string>>(new Set());
   // Track if there's an active chat stage in progress (for showing processing indicator on completed sessions)
   const [activeChatStageInProgress, setActiveChatStageInProgress] = useState<boolean>(false);
+  // Track collapsed stages by execution_id (default: all expanded)
+  const [collapsedStages, setCollapsedStages] = useState<Map<string, boolean>>(new Map());
+  
+  // Handler to toggle stage collapse/expand
+  const handleToggleStage = (stageId: string) => {
+    setCollapsedStages(prev => {
+      const updated = new Map(prev);
+      updated.set(stageId, !prev.get(stageId));
+      return updated;
+    });
+  };
   
   // Memoize chat flow stats to prevent recalculation on every render
   const chatStats = useMemo(() => {
     return getChatFlowStats(chatFlow);
   }, [chatFlow]);
+  
+  // Filter chat flow items based on collapse state
+  // Always show stage_start items; hide content for collapsed stages
+  const filteredChatFlow = useMemo(() => {
+    return chatFlow.filter(item => {
+      // Always show stage_start items (they contain the collapse/expand control)
+      if (item.type === 'stage_start') {
+        return true;
+      }
+      
+      // For other items, hide if their stage is collapsed
+      if (item.stageId && collapsedStages.get(item.stageId)) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [chatFlow, collapsedStages]);
   
   // Memoize formatSessionForCopy to prevent recalculation on every render
   const formatSessionForCopy = useMemo((): string => {
@@ -779,8 +808,13 @@ function ConversationTimeline({
         ) : (
           // Chat flow has items - render them
           <>
-            {chatFlow.map((item) => (
-              <ChatFlowItem key={`${item.type}-${item.timestamp_us}`} item={item} />
+            {filteredChatFlow.map((item) => (
+              <ChatFlowItem 
+                key={`${item.type}-${item.timestamp_us}`} 
+                item={item}
+                isCollapsed={item.stageId ? collapsedStages.get(item.stageId) || false : false}
+                onToggleCollapse={item.stageId ? () => handleToggleStage(item.stageId!) : undefined}
+              />
             ))}
             
             {/* Show streaming items at the end (will be cleared by deduplication when DB data arrives) */}

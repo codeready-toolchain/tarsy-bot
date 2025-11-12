@@ -1,6 +1,6 @@
 import { memo } from 'react';
-import { Box, Typography, Divider, Chip, alpha } from '@mui/material';
-import { Flag, AccountCircle } from '@mui/icons-material';
+import { Box, Typography, Divider, Chip, alpha, IconButton } from '@mui/material';
+import { Flag, AccountCircle, ExpandMore, ExpandLess } from '@mui/icons-material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import ToolCallBox from './ToolCallBox';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
@@ -12,6 +12,8 @@ import {
 
 interface ChatFlowItemProps {
   item: ChatFlowItemData;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 /**
@@ -19,23 +21,80 @@ interface ChatFlowItemProps {
  * Renders different types of chat flow items in a compact transcript style
  * Memoized to prevent unnecessary re-renders
  */
-function ChatFlowItem({ item }: ChatFlowItemProps) {
-  // Render stage start separator
+function ChatFlowItem({ item, isCollapsed = false, onToggleCollapse }: ChatFlowItemProps) {
+  // Render stage start separator with collapse/expand control
   if (item.type === 'stage_start') {
     return (
       <Box sx={{ my: 2.5 }}>
-        <Divider sx={{ mb: 1 }}>
-          <Chip
-            icon={<Flag />}
-            label={`Stage: ${item.stageName}`}
-            color="primary"
-            variant="outlined"
-            size="small"
+        <Divider sx={{ mb: 1, opacity: isCollapsed ? 0.6 : 1, transition: 'opacity 0.2s ease-in-out' }}>
+          <Box
             sx={{
-              fontSize: '0.8rem',
-              fontWeight: 600
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              cursor: onToggleCollapse ? 'pointer' : 'default',
+              borderRadius: 1,
+              px: 1,
+              py: 0.5,
+              transition: 'all 0.2s ease-in-out',
+              '&:hover': onToggleCollapse ? {
+                backgroundColor: alpha('#1976d2', 0.08),
+                '& .MuiChip-root': {
+                  backgroundColor: alpha('#1976d2', 0.12),
+                  borderColor: '#1976d2',
+                }
+              } : {}
             }}
-          />
+            onClick={onToggleCollapse}
+            role={onToggleCollapse ? 'button' : undefined}
+            tabIndex={onToggleCollapse ? 0 : undefined}
+            onKeyDown={onToggleCollapse ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onToggleCollapse();
+              }
+            } : undefined}
+            aria-label={onToggleCollapse ? (isCollapsed ? 'Expand stage' : 'Collapse stage') : undefined}
+          >
+            <Chip
+              icon={<Flag />}
+              label={`Stage: ${item.stageName}`}
+              color="primary"
+              variant="outlined"
+              size="small"
+              sx={{
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                transition: 'all 0.2s ease-in-out',
+                opacity: isCollapsed ? 0.8 : 1
+              }}
+            />
+            {onToggleCollapse && (
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent double-triggering
+                  onToggleCollapse();
+                }}
+                sx={{
+                  padding: 0.75,
+                  backgroundColor: isCollapsed ? alpha('#666', 0.1) : alpha('#1976d2', 0.1),
+                  border: '1px solid',
+                  borderColor: isCollapsed ? alpha('#666', 0.2) : alpha('#1976d2', 0.2),
+                  color: isCollapsed ? '#666' : 'inherit',
+                  '&:hover': {
+                    backgroundColor: isCollapsed ? '#666' : '#1976d2',
+                    color: 'white',
+                    transform: 'scale(1.1)'
+                  },
+                  transition: 'all 0.2s ease-in-out'
+                }}
+                aria-label={isCollapsed ? 'Expand stage' : 'Collapse stage'}
+              >
+                {isCollapsed ? <ExpandMore fontSize="small" /> : <ExpandLess fontSize="small" />}
+              </IconButton>
+            )}
+          </Box>
         </Divider>
         <Typography
           variant="caption"
@@ -44,7 +103,9 @@ function ChatFlowItem({ item }: ChatFlowItemProps) {
             display: 'block',
             textAlign: 'center',
             fontStyle: 'italic',
-            fontSize: '0.75rem'
+            fontSize: '0.75rem',
+            opacity: isCollapsed ? 0.7 : 1,
+            transition: 'opacity 0.2s ease-in-out'
           }}
         >
           Agent: {item.stageAgent}
