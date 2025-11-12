@@ -144,3 +144,19 @@ timeout: 30"""
         assert result['namespace'] == 'default'
         assert result['podName'] == 'nginx-pod'
         assert result['timeout'] == 30
+    
+    def test_parse_malformed_yaml_falls_back(self):
+        """Test that malformed YAML gracefully falls back to simple parsing."""
+        # Invalid YAML: list item without proper parent key
+        action_input = """namespace: production
+- invalid yaml syntax
+podName: web-server"""
+        
+        result = ReActParser._parse_action_parameters(action_input)
+        
+        # Should fall back to simple parsing
+        assert result is not None
+        assert isinstance(result, dict)
+        # Simple parser should extract the valid key-value pairs
+        assert result['namespace'] == 'production'
+        assert result['podName'] == 'web-server'
