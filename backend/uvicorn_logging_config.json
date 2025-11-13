@@ -12,11 +12,6 @@
       "formatter": "default",
       "class": "logging.StreamHandler",
       "stream": "ext://sys.stdout"
-    },
-    "access": {
-      "formatter": "default",
-      "class": "logging.StreamHandler",
-      "stream": "ext://sys.stdout"
     }
   },
   "loggers": {
@@ -31,10 +26,9 @@
       "propagate": false
     },
     "uvicorn.access": {
-      "handlers": ["access"],
+      "handlers": ["default"],
       "level": "INFO",
       "propagate": false
     }
   }
 }
-

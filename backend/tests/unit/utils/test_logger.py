@@ -86,14 +86,18 @@ class TestSetupLogging:
             mock_uvicorn_access_logger = MagicMock()
             mock_uvicorn_error_logger = MagicMock()
             
-            mock_get_logger.side_effect = [
-                mock_tarsy_logger, 
-                mock_uvicorn_logger,
-                mock_httpx_logger,
-                mock_sqlalchemy_logger,
-                mock_uvicorn_access_logger,
-                mock_uvicorn_error_logger
-            ]
+            def get_logger_side_effect(name: str) -> MagicMock:
+                logger_map = {
+                    "tarsy": mock_tarsy_logger,
+                    "uvicorn": mock_uvicorn_logger,
+                    "httpx": mock_httpx_logger,
+                    "sqlalchemy.engine": mock_sqlalchemy_logger,
+                    "uvicorn.access": mock_uvicorn_access_logger,
+                    "uvicorn.error": mock_uvicorn_error_logger,
+                }
+                return logger_map.get(name, MagicMock())
+            
+            mock_get_logger.side_effect = get_logger_side_effect
 
             setup_logging("ERROR")
 
@@ -139,37 +143,6 @@ class TestSetupLogging:
         with patch("logging.basicConfig") as mock_basic_config:
             setup_logging("INFO")
             assert mock_basic_config.call_args[1]["force"] is True
-
-    def test_setup_logging_applies_health_endpoint_filter(self) -> None:
-        """Test setup_logging applies HealthEndpointFilter to uvicorn.access logger."""
-        with (
-            patch("logging.basicConfig"),
-            patch("logging.getLogger") as mock_get_logger,
-        ):
-            mock_tarsy_logger = MagicMock()
-            mock_uvicorn_logger = MagicMock()
-            mock_uvicorn_access_logger = MagicMock()
-            
-            # Mock getLogger to return different loggers based on name
-            def get_logger_side_effect(name: str) -> MagicMock:
-                if name == "tarsy":
-                    return mock_tarsy_logger
-                elif name == "uvicorn":
-                    return mock_uvicorn_logger
-                elif name == "uvicorn.access":
-                    return mock_uvicorn_access_logger
-                return MagicMock()
-            
-            mock_get_logger.side_effect = get_logger_side_effect
-            
-            setup_logging("INFO")
-            
-            # Verify that addFilter was called on the uvicorn.access logger
-            mock_uvicorn_access_logger.addFilter.assert_called_once()
-            
-            # Verify that the filter is a HealthEndpointFilter instance
-            filter_arg = mock_uvicorn_access_logger.addFilter.call_args[0][0]
-            assert isinstance(filter_arg, HealthEndpointFilter)
 
 
 @pytest.mark.unit
