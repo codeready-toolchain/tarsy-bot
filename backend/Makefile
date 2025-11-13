@@ -133,22 +133,22 @@ check-test-deps: check-venv ## Ensure test dependencies are installed
 .PHONY: dev
 dev: check-venv ## Start development server with auto-reload
 	@echo "$(GREEN)Starting development server...$(NC)"
-	.venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-level info
+	.venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-config uvicorn_logging_config.json --log-level info
 
 .PHONY: dev-debug
 dev-debug: check-venv ## Start development server with debug logging
 	@echo "$(GREEN)Starting development server (debug mode)...$(NC)"
-	.venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-level debug
+	.venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-config uvicorn_logging_config.json --log-level debug
 
 .PHONY: run
 run: check-venv ## Start development server with manual venv activation
 	@echo "$(GREEN)Starting development server (manual venv)...$(NC)"
-	.venv/bin/uvicorn tarsy.main:app --reload --host 0.0.0.0 --port 8000
+	.venv/bin/uvicorn tarsy.main:app --reload --host 0.0.0.0 --port 8000 --log-config uvicorn_logging_config.json
 
 .PHONY: run-prod
 run-prod: check-venv ## Start production server (no reload, optimized for production)
 	@echo "$(GREEN)Starting production server...$(NC)"
-	.venv/bin/uvicorn tarsy.main:app --host 0.0.0.0 --port 8000
+	.venv/bin/uvicorn tarsy.main:app --host 0.0.0.0 --port 8000 --log-config uvicorn_logging_config.json
 
 .PHONY: stop
 stop: ## Stop backend server running on port 8000

@@ -108,6 +108,22 @@ def setup_logging(log_level: str = "INFO") -> None:
     logging.getLogger('tarsy').setLevel(numeric_level)
     logging.getLogger('uvicorn').setLevel(logging.INFO)
     
+    # Configure Uvicorn loggers to use the same format as root logger
+    # This ensures all Uvicorn logs (including startup and access logs) have timestamps
+    formatter = logging.Formatter(
+        fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Apply the formatter to all Uvicorn-related loggers
+    for logger_name in ['uvicorn', 'uvicorn.error', 'uvicorn.access']:
+        logger = logging.getLogger(logger_name)
+        logger.handlers.clear()  # Remove Uvicorn's default handlers
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.propagate = False  # Don't propagate to root to avoid duplicate logs
+    
     # Suppress verbose httpx logging (only show warnings and errors)
     # httpx logs every HTTP request at INFO level by default, which clutters logs
     logging.getLogger('httpx').setLevel(logging.WARNING)
