@@ -106,23 +106,11 @@ def setup_logging(log_level: str = "INFO") -> None:
     
     # Set levels for specific loggers to match root level
     logging.getLogger('tarsy').setLevel(numeric_level)
+    
+    # Note: Uvicorn logger configuration (handlers, formatters) is managed by
+    # uvicorn_logging_config.json when uvicorn starts with --log-config flag.
+    # We only set the log level here for the main uvicorn logger.
     logging.getLogger('uvicorn').setLevel(logging.INFO)
-    
-    # Configure Uvicorn loggers to use the same format as root logger
-    # This ensures all Uvicorn logs (including startup and access logs) have timestamps
-    formatter = logging.Formatter(
-        fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    
-    # Apply the formatter to all Uvicorn-related loggers
-    for logger_name in ['uvicorn', 'uvicorn.error', 'uvicorn.access']:
-        logger = logging.getLogger(logger_name)
-        logger.handlers.clear()  # Remove Uvicorn's default handlers
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.propagate = False  # Don't propagate to root to avoid duplicate logs
     
     # Suppress verbose httpx logging (only show warnings and errors)
     # httpx logs every HTTP request at INFO level by default, which clutters logs
@@ -132,12 +120,15 @@ def setup_logging(log_level: str = "INFO") -> None:
     # This prevents SQL statements (especially NOTIFY with large payloads) from cluttering logs
     logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
     
-    # Add filter to uvicorn.access logger to suppress monitoring endpoint noise
+    # Add custom filters to uvicorn loggers (configured by uvicorn_logging_config.json)
+    # These filters are applied to existing handlers without modifying the handler configuration
+    
+    # Filter for uvicorn.access: suppress monitoring endpoint noise
     # This prevents frequently-polled endpoints (health checks, warnings) from cluttering logs
     uvicorn_access_logger = logging.getLogger('uvicorn.access')
     uvicorn_access_logger.addFilter(HealthEndpointFilter())
     
-    # Add filter to uvicorn.error logger to suppress routine WebSocket disconnections
+    # Filter for uvicorn.error: suppress routine WebSocket disconnections
     # This prevents "connection closed" messages from cluttering logs
     uvicorn_error_logger = logging.getLogger('uvicorn.error')
     uvicorn_error_logger.addFilter(ConnectionClosedFilter())

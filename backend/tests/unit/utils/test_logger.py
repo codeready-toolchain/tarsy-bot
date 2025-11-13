@@ -76,41 +76,40 @@ class TestSetupLogging:
         with pytest.raises(ValueError, match="Invalid log level: "):
             setup_logging("")
 
-    def test_setup_logging_sets_tarsy_logger_level(self) -> None:
-        """Test setup_logging sets the tarsy logger level to match."""
+    def test_setup_logging_sets_logger_levels_and_filters(self) -> None:
+        """Test setup_logging sets logger levels and adds custom filters."""
         with patch("logging.basicConfig"), patch("logging.getLogger") as mock_get_logger:
             mock_tarsy_logger = MagicMock()
             mock_uvicorn_logger = MagicMock()
-            mock_uvicorn_logger_2 = MagicMock()  # Second call in the loop
-            mock_uvicorn_error_logger = MagicMock()
-            mock_uvicorn_access_logger = MagicMock()
             mock_httpx_logger = MagicMock()
             mock_sqlalchemy_logger = MagicMock()
-            mock_uvicorn_access_logger_2 = MagicMock()  # For the filter
-            mock_uvicorn_error_logger_2 = MagicMock()  # For the filter
+            mock_uvicorn_access_logger = MagicMock()
+            mock_uvicorn_error_logger = MagicMock()
+            
             mock_get_logger.side_effect = [
                 mock_tarsy_logger, 
                 mock_uvicorn_logger,
-                mock_uvicorn_logger_2,  # 'uvicorn' in the formatter loop
-                mock_uvicorn_error_logger,  # 'uvicorn.error' in the formatter loop
-                mock_uvicorn_access_logger,  # 'uvicorn.access' in the formatter loop
                 mock_httpx_logger,
                 mock_sqlalchemy_logger,
-                mock_uvicorn_access_logger_2,  # For addFilter
-                mock_uvicorn_error_logger_2  # For addFilter
+                mock_uvicorn_access_logger,
+                mock_uvicorn_error_logger
             ]
 
             setup_logging("ERROR")
 
-            # Verify tarsy logger is set to ERROR level
+            # Verify logger levels are set correctly
             mock_tarsy_logger.setLevel.assert_called_once_with(logging.ERROR)
-            # Verify uvicorn logger is set to INFO level
             mock_uvicorn_logger.setLevel.assert_called_once_with(logging.INFO)
-            # Verify SQLAlchemy logger is set to WARNING level
+            mock_httpx_logger.setLevel.assert_called_once_with(logging.WARNING)
             mock_sqlalchemy_logger.setLevel.assert_called_once_with(logging.WARNING)
-            # Verify uvicorn.error has the ConnectionClosedFilter
-            mock_uvicorn_error_logger_2.addFilter.assert_called_once()
-            error_filter = mock_uvicorn_error_logger_2.addFilter.call_args[0][0]
+            
+            # Verify filters are added to uvicorn loggers
+            mock_uvicorn_access_logger.addFilter.assert_called_once()
+            access_filter = mock_uvicorn_access_logger.addFilter.call_args[0][0]
+            assert isinstance(access_filter, HealthEndpointFilter)
+            
+            mock_uvicorn_error_logger.addFilter.assert_called_once()
+            error_filter = mock_uvicorn_error_logger.addFilter.call_args[0][0]
             assert isinstance(error_filter, ConnectionClosedFilter)
 
     def test_setup_logging_default_level(self) -> None:
