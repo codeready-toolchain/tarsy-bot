@@ -162,8 +162,8 @@ class KubernetesSecretMasker(BaseMasker):
                 # Skip all indented lines (the actual data)
                 while i < len(lines):
                     next_line = lines[i]
-                    # Check if line is indented (part of data section)
-                    if next_line and len(next_line) > 0 and (next_line[0] == ' ' or next_line[0] == '\t'):
+                    # Indented or blank line → still part of the data section
+                    if next_line and next_line[:1] in (" ", "\t"):
                         i += 1
                     elif not next_line.strip():  # Empty line
                         i += 1
@@ -188,7 +188,7 @@ class KubernetesSecretMasker(BaseMasker):
             # Mask if it's a Secret
             if isinstance(obj, dict):
                 masked_obj = self._mask_secret_object(obj)
-                return json.dumps(masked_obj, indent=2)
+                return json.dumps(masked_obj, separators=(',', ':'))
             
             return data
             

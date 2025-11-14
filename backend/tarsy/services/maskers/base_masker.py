@@ -20,9 +20,6 @@ class BaseMasker(ABC):
             def name(self) -> str:
                 return "my_masker"
             
-            def description(self) -> str:
-                return "Masks sensitive data in custom format"
-            
             def applies_to(self, data: str) -> bool:
                 return "custom_marker" in data
             

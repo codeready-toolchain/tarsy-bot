@@ -126,7 +126,7 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
   * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter""",
         "data_masking": {
             "enabled": True,
-            "pattern_groups": ["kubernetes"],  # Expands to kubernetes_secret, api_key, password
+            "pattern_groups": ["kubernetes"],  # Expands to kubernetes_secret, api_key, password, certificate_authority_data
             "patterns": ["certificate", "token", "email"]  # Add individual patterns for comprehensive coverage
         }
     },

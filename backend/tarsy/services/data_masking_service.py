@@ -92,20 +92,20 @@ class DataMaskingService:
                 # Get the class
                 masker_class = getattr(module, class_name)
                 
+                # Verify it's a BaseMasker subclass before instantiation
+                if not issubclass(masker_class, BaseMasker):
+                    logger.error(f"Masker '{masker_name}' from '{import_path}' is not a BaseMasker subclass")
+                    continue
+                
                 # Instantiate the masker
                 masker_instance = masker_class()
-                
-                # Verify it's a BaseMasker
-                if not isinstance(masker_instance, BaseMasker):
-                    logger.error(f"Masker '{masker_name}' from '{import_path}' is not a BaseMasker instance")
-                    continue
                 
                 # Register the masker
                 self.code_based_maskers[masker_name] = masker_instance
                 logger.debug(f"Loaded code-based masker: {masker_name}")
                 
             except (ImportError, AttributeError, Exception) as e:
-                logger.error(f"Failed to load built-in masker '{masker_name}' from '{import_path}': {e}")
+                logger.error(f"Failed to load built-in masker '{masker_name}' from '{import_path}': {type(e).__name__}: {e}")
         
         logger.info(f"Loaded {len(self.code_based_maskers)} built-in code-based maskers")
     
@@ -358,13 +358,12 @@ class DataMaskingService:
                 masker = self.code_based_maskers[pattern_name]
                 try:
                     if masker.applies_to(masked_text):
-                        original_length = len(masked_text)
+                        previous_text = masked_text
                         masked_text = masker.mask(masked_text)
-                        new_length = len(masked_text)
                         
-                        if new_length != original_length:
+                        if masked_text != previous_text:
                             patterns_applied += 1
-                            logger.debug(f"Code-based masker '{pattern_name}' applied - text length changed from {original_length} to {new_length}")
+                            logger.debug(f"Code-based masker '{pattern_name}' applied - masking performed")
                         else:
                             logger.debug(f"Code-based masker '{pattern_name}' applied - no changes made")
                 except Exception as e:
@@ -374,6 +373,10 @@ class DataMaskingService:
         
         # Phase 2: Apply regex patterns (more general)
         for pattern_name in patterns:
+            # Skip patterns that are code-based only (not regex patterns)
+            if pattern_name in self.code_based_maskers and pattern_name not in self.compiled_patterns:
+                continue
+            
             if pattern_name not in self.compiled_patterns:
                 logger.warning(f"Pattern '{pattern_name}' not found in compiled patterns - skipping")
                 continue
@@ -396,13 +399,12 @@ class DataMaskingService:
                 compiled_pattern = self.compiled_patterns[pattern_name]
                 
                 # Apply the pattern with error handling
-                original_length = len(masked_text)
+                previous_text = masked_text
                 masked_text = compiled_pattern.sub(replacement, masked_text)
-                new_length = len(masked_text)
                 
-                if new_length != original_length:
+                if masked_text != previous_text:
                     patterns_applied += 1
-                    logger.debug(f"Pattern '{pattern_name}' applied - text length changed from {original_length} to {new_length}")
+                    logger.debug(f"Pattern '{pattern_name}' applied - masking performed")
                 else:
                     logger.debug(f"Pattern '{pattern_name}' applied - no matches found")
                     

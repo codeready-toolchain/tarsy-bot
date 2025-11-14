@@ -332,3 +332,39 @@ class TestKubernetesSecretMaskerMatrix:
         """Test applies_to with various inputs."""
         result = self.masker.applies_to(input_data)
         assert result == should_apply, f"applies_to({input_data!r}) should be {should_apply}, got {result}"
+    
+    def test_mask_json_format_produces_compact_output(self):
+        """Test that _mask_json_format produces compact single-line JSON, not pretty-printed.
+        
+        This ensures consistency with _mask_json_in_text and prevents formatting changes
+        that could break tests or cause semantic diffs.
+        """
+        # Input: compact JSON Secret
+        input_json = '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"test"},"data":{"password":"c3VwZXJzZWNyZXRwYXNzd29yZDEyMw=="},"type":"Opaque"}'
+        expected = '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"test"},"data":"__MASKED_SECRET_DATA__","type":"Opaque"}'
+        
+        # Call _mask_json_format directly to test this specific code path
+        result = self.masker._mask_json_format(input_json)
+        
+        # Verify it returns compact JSON (no newlines, no extra spaces)
+        assert result == expected, f"\nExpected compact JSON:\n{expected}\n\nGot:\n{result}"
+        assert '\n' not in result, "Result should be single-line JSON without newlines"
+        assert result == expected, "Result should exactly match expected compact format"
+    
+    def test_mask_json_format_consistency_with_mask_json_in_text(self):
+        """Test that _mask_json_format and _mask_json_in_text use the same formatting.
+        
+        Both functions should produce identical output format (compact JSON) to maintain
+        consistency across the codebase.
+        """
+        input_json = '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"test"},"stringData":{"key":"value"},"type":"Opaque"}'
+        
+        # Get results from both methods
+        result_from_json_format = self.masker._mask_json_format(input_json)
+        result_from_json_in_text = self.masker._mask_json_in_text(input_json)
+        
+        # Both should produce the same compact format
+        assert result_from_json_format == result_from_json_in_text, \
+            f"Both methods should produce identical formatting:\n" \
+            f"_mask_json_format: {result_from_json_format}\n" \
+            f"_mask_json_in_text: {result_from_json_in_text}"
