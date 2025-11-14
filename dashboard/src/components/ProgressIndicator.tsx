@@ -3,7 +3,7 @@ import { Box, LinearProgress, CircularProgress, Typography } from '@mui/material
 import { formatDurationMs } from '../utils/timestamp';
 
 interface ProgressIndicatorProps {
-  status: 'completed' | 'failed' | 'in_progress' | 'pending' | 'canceling' | 'cancelled';
+  status: 'completed' | 'failed' | 'in_progress' | 'pending' | 'paused' | 'canceling' | 'cancelled';
   startedAt?: number; // Unix timestamp in microseconds
   duration?: number | null; // Duration in milliseconds
   variant?: 'linear' | 'circular';

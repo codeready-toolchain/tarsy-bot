@@ -38,9 +38,6 @@ class AgentError(Exception):
         }
 
 
-
-
-
 class ToolSelectionError(AgentError):
     """
     Error during MCP tool selection.
@@ -160,6 +157,23 @@ class MaxIterationsFailureError(AgentError):
         result["max_iterations"] = self.max_iterations
         return result
 
+
+class SessionPaused(AgentError):
+    """
+    Control flow signal when session is paused at max iterations.
+    
+    Not an error condition, but a normal pause state that requires user action to resume.
+    Recoverable as processing can continue after resume.
+    """
+    
+    def __init__(self, message: str, iteration: int, context: Optional[Dict[str, Any]] = None):
+        super().__init__(message, context, recoverable=True)
+        self.iteration = iteration
+        
+    def to_dict(self) -> Dict[str, Any]:
+        result = super().to_dict()
+        result["iteration"] = self.iteration
+        return result
 
 
 # Recovery strategies

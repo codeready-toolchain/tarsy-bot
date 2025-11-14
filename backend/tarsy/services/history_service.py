@@ -568,6 +568,21 @@ class HistoryService:
         )
         return result
     
+    async def get_stage_executions(self, session_id: str) -> List[StageExecution]:
+        """Get all stage executions for a session."""
+        def _get_stage_executions_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    raise RuntimeError("History repository unavailable - cannot retrieve stage executions")
+                return repo.get_stage_executions_for_session(session_id)
+        
+        result = await self._retry_database_operation_async(
+            "get_stage_executions",
+            _get_stage_executions_operation,
+            treat_none_as_success=True,
+        )
+        return result or []
+    
     # LLM Interaction Logging
     def store_llm_interaction(self, interaction: LLMInteraction) -> bool:
         """

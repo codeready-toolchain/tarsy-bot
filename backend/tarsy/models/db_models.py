@@ -199,6 +199,10 @@ class StageExecution(SQLModel, table=True):
         default=None, 
         description="Error message if stage failed (mutually exclusive with stage_output)"
     )
+    current_iteration: Optional[int] = Field(
+        default=None,
+        description="Current iteration number when paused (for pause/resume)"
+    )
     
     # Chat context tracking
     chat_id: Optional[str] = Field(

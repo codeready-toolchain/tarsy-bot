@@ -10,6 +10,8 @@ from tarsy.models.event_models import (
     SessionStartedEvent,
     SessionCompletedEvent,
     SessionFailedEvent,
+    SessionPausedEvent,
+    SessionResumedEvent,
     SessionCancelRequestedEvent,
     SessionCancelledEvent,
     LLMInteractionEvent,
@@ -107,6 +109,46 @@ async def publish_session_failed(session_id: str) -> None:
             logger.info(f"[EVENT] Published session.failed to channels: 'sessions' and 'session:{session_id}'")
     except Exception as e:
         logger.warning(f"Failed to publish session.failed event: {e}")
+
+
+async def publish_session_paused(session_id: str) -> None:
+    """
+    Publish session.paused event to both global and session-specific channels.
+
+    Args:
+        session_id: Session identifier
+    """
+    try:
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = SessionPausedEvent(session_id=session_id, status=AlertSessionStatus.PAUSED.value)
+            # Publish to global 'sessions' channel for dashboard
+            await publish_event(session, EventChannel.SESSIONS, event)
+            # Also publish to session-specific channel for detail views
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published session.paused to channels: 'sessions' and 'session:{session_id}'")
+    except Exception as e:
+        logger.warning(f"Failed to publish session.paused event: {e}")
+
+
+async def publish_session_resumed(session_id: str) -> None:
+    """
+    Publish session.resumed event to both global and session-specific channels.
+
+    Args:
+        session_id: Session identifier
+    """
+    try:
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = SessionResumedEvent(session_id=session_id, status=AlertSessionStatus.IN_PROGRESS.value)
+            # Publish to global 'sessions' channel for dashboard
+            await publish_event(session, EventChannel.SESSIONS, event)
+            # Also publish to session-specific channel for detail views
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published session.resumed to channels: 'sessions' and 'session:{session_id}'")
+    except Exception as e:
+        logger.warning(f"Failed to publish session.resumed event: {e}")
 
 
 async def publish_llm_interaction(

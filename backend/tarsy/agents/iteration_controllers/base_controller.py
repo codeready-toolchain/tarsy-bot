@@ -306,7 +306,7 @@ class ReactController(IterationController):
                 conversation.append_observation(format_reminder)
                 continue
                 
-        # 8. Timeout handling - check if stage should be marked as failed
+        # 8. Max iterations reached - pause for user action or fail
         if last_interaction_failed:
             # Stage failure: reached max iterations with failed last interaction
             from ..exceptions import MaxIterationsFailureError
@@ -321,9 +321,18 @@ class ReactController(IterationController):
                 }
             )
         else:
-            # Max iterations reached but last interaction was successful - return incomplete result
-            self.logger.warning("ReAct analysis reached maximum iterations without final answer")
-            return f"Analysis incomplete: reached maximum iterations ({max_iterations}) without final answer"
+            # Max iterations reached but last interaction was successful - pause session
+            from ..exceptions import SessionPaused
+            self.logger.warning(f"Session paused: reached maximum iterations ({max_iterations}) without final answer")
+            raise SessionPaused(
+                f"Session paused at maximum iterations ({max_iterations})",
+                iteration=max_iterations,
+                context={
+                    "session_id": context.session_id,
+                    "stage_execution_id": context.agent.get_current_stage_execution_id(),
+                    "stage_name": context.stage_name
+                }
+            )
 
     @abstractmethod
     def build_initial_conversation(self, context: 'StageContext') -> 'LLMConversation':

@@ -323,6 +323,20 @@ class HistoryRepository:
         except Exception as e:
             logger.error(f"Failed to get stage execution {execution_id}: {str(e)}")
             raise
+    
+    def get_stage_executions_for_session(self, session_id: str) -> List['StageExecution']:
+        """Get all stage executions for a session, ordered by stage_index."""
+        try:
+            stmt = (
+                select(StageExecution)
+                .where(StageExecution.session_id == session_id)
+                .order_by(StageExecution.stage_index)
+            )
+            stage_executions = self.session.exec(stmt).all()
+            return list(stage_executions)
+        except Exception as e:
+            logger.error(f"Failed to get stage executions for session {session_id}: {str(e)}")
+            raise
 
     def get_alert_sessions(
         self,

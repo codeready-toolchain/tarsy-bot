@@ -6,7 +6,8 @@ import {
   Schedule, 
   Refresh,
   HourglassEmpty,
-  Cancel
+  Cancel,
+  PauseCircle
 } from '@mui/icons-material';
 import type { StatusBadgeProps } from '../types';
 
@@ -28,6 +29,12 @@ const getStatusConfig = (status: string): {
         color: 'info', 
         icon: <Refresh sx={{ fontSize: 16 }} />, 
         label: 'In Progress' 
+      };
+    case 'paused':
+      return { 
+        color: 'warning', 
+        icon: <PauseCircle sx={{ fontSize: 16 }} />, 
+        label: 'Paused' 
       };
     case 'canceling':
       return { 

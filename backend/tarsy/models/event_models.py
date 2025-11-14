@@ -56,6 +56,22 @@ class SessionFailedEvent(BaseEvent):
     status: Literal["failed"] = "failed"  # For instant client update
 
 
+class SessionPausedEvent(BaseEvent):
+    """Session paused at max iterations."""
+
+    type: Literal["session.paused"] = "session.paused"
+    session_id: str = Field(description="Session identifier")
+    status: Literal["paused"] = "paused"  # For instant client update
+
+
+class SessionResumedEvent(BaseEvent):
+    """Session resumed from paused state."""
+
+    type: Literal["session.resumed"] = "session.resumed"
+    session_id: str = Field(description="Session identifier")
+    status: Literal["in_progress"] = "in_progress"  # For instant client update
+
+
 class SessionCancelRequestedEvent(BaseEvent):
     """Session cancellation requested (backend-to-backend communication)."""
 

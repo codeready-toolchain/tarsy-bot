@@ -2,7 +2,7 @@ export interface Session {
   session_id: string;
   alert_type: string | null;
   agent_type: string;
-  status: 'pending' | 'in_progress' | 'canceling' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'in_progress' | 'paused' | 'canceling' | 'completed' | 'failed' | 'cancelled';
   author: string | null;
   runbook_url: string | null;
   mcp_selection: MCPSelectionConfig | null;

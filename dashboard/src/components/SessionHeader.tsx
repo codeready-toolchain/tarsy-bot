@@ -14,7 +14,7 @@ import {
   Tooltip,
   alpha,
 } from '@mui/material';
-import { CancelOutlined, Replay as ReplayIcon } from '@mui/icons-material';
+import { CancelOutlined, Replay as ReplayIcon, PlayArrow } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import ProgressIndicator from './ProgressIndicator';
 import TokenUsageDisplay from './TokenUsageDisplay';
@@ -412,7 +412,8 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     session.status === SESSION_STATUS.PENDING ||
     session.status === SESSION_STATUS.CANCELING;
   const sessionIsCanceling = session.status === SESSION_STATUS.CANCELING;
-  const canCancel = isInProgress || sessionIsCanceling;
+  const sessionIsPaused = session.status === 'paused';
+  const canCancel = isInProgress || sessionIsCanceling || sessionIsPaused;
   const isTerminalStatus = isTerminalSessionStatus(session.status);
   const previousStatusRef = useRef<string>(session.status);
   
@@ -420,6 +421,10 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  
+  // Resume state
+  const [isResuming, setIsResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
   
   // Detect status changes from in_progress to completed and trigger refresh
   useEffect(() => {
@@ -486,6 +491,31 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
       setIsCanceling(false);
     }
   };
+  
+  // Handle resume button click
+  const handleResumeClick = async () => {
+    setIsResuming(true);
+    setResumeError(null);
+    
+    try {
+      await apiClient.resumeSession(session.session_id);
+      // Resume initiated successfully
+      // WebSocket will update status to 'in_progress'
+    } catch (error) {
+      // Show error
+      const errorMessage = handleAPIError(error);
+      setResumeError(errorMessage);
+      setIsResuming(false);
+    }
+  };
+  
+  // Clear resuming state when session status changes away from paused
+  useEffect(() => {
+    if (session.status !== 'paused' && isResuming) {
+      setIsResuming(false);
+      setResumeError(null);
+    }
+  }, [session.status, isResuming]);
   
   // Handle re-submit button click
   const handleResubmit = () => {
@@ -666,6 +696,59 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               width: '100%',
               mt: 1
             }}>
+              {/* Resume Button - Only for paused sessions */}
+              {sessionIsPaused && (
+                <>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    onClick={handleResumeClick}
+                    disabled={isResuming}
+                    sx={{
+                      minWidth: 180,
+                      textTransform: 'none',
+                      fontWeight: 600,
+                      fontSize: '0.95rem',
+                      py: 1,
+                      px: 2.5,
+                      backgroundColor: 'success.main',
+                      color: 'white',
+                      '&:hover': {
+                        backgroundColor: 'success.dark',
+                      },
+                      transition: 'all 0.2s ease-in-out',
+                    }}
+                  >
+                    {isResuming ? (
+                      <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />
+                    ) : (
+                      <PlayArrow 
+                        sx={{ 
+                          mr: 1,
+                          fontSize: '1.2rem',
+                        }} 
+                      />
+                    )}
+                    {isResuming ? 'RESUMING...' : 'RESUME SESSION'}
+                  </Button>
+                  
+                  {/* Resume Error Display */}
+                  {resumeError && (
+                    <Box sx={(theme) => ({ 
+                      p: 1.5, 
+                      bgcolor: alpha(theme.palette.error.main, 0.05), 
+                      borderRadius: 1, 
+                      border: '1px solid', 
+                      borderColor: 'error.main' 
+                    })}>
+                      <Typography variant="body2" color="error.main">
+                        {resumeError}
+                      </Typography>
+                    </Box>
+                  )}
+                </>
+              )}
+              
               {/* Cancel Button - Only for active sessions */}
               {canCancel && (
                 <Button
