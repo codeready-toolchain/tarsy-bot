@@ -152,15 +152,15 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
 # Central registry of all built-in masking patterns for MCP server responses
 # Format: "pattern_name" -> {"pattern": regex, "replacement": text, "description": text}
 BUILTIN_MASKING_PATTERNS: Dict[str, Dict[str, str]] = {
-    "kubernetes_data_section": {
-        "pattern": r'^(data:)(\s*\n(?:\s+[^:\n]+:[^\n]*\n?)*)',
+    "kubernetes_secret_data": {
+        "pattern": r'(?=[\s\S]*kind:\s*Secret)^(data:)(\s*\n(?:\s+[^:\n]+:[^\n]*\n?)*)',
         "replacement": r'\1 __MASKED_SECRET_DATA__\n',
-        "description": "Masks entire Kubernetes data: section in YAML (line-start only, not metadata:)"
+        "description": "Masks data: section only in Kubernetes Secrets (requires kind: Secret in document)"
     },
-    "kubernetes_stringdata_json": {
-        "pattern": r'("stringData":)(\{[^}]*\})',
+    "kubernetes_secret_stringdata": {
+        "pattern": r'(?=[\s\S]*kind:\s*Secret)("stringData":)(\{[^}]*\})',
         "replacement": r'\1__MASKED_SECRET_DATA__',
-        "description": "Masks stringData objects in JSON (quoted context only)"
+        "description": "Masks stringData objects only in Kubernetes Secrets (requires kind: Secret in document)"
     },
     "base64_secret": {
         "pattern": r'\b([A-Za-z0-9+/]{20,}={0,2})\b',
@@ -215,7 +215,7 @@ BUILTIN_PATTERN_GROUPS: Dict[str, list[str]] = {
     "basic": ["api_key", "password"],                          # Most common secrets
     "secrets": ["api_key", "password", "token"],               # Basic + tokens  
     "security": ["api_key", "password", "token", "certificate", "certificate_authority_data", "email", "ssh_key"], # Full security focus
-    "kubernetes": ["kubernetes_data_section", "kubernetes_stringdata_json", "api_key", "password", "certificate_authority_data"], # Kubernetes-specific - masks data sections and stringData
+    "kubernetes": ["kubernetes_secret_data", "kubernetes_secret_stringdata", "api_key", "password", "certificate_authority_data"], # Kubernetes-specific - masks Secret data sections only (not ConfigMaps)
     "all": ["base64_secret", "base64_short", "api_key", "password", "certificate", "certificate_authority_data", "email", "token", "ssh_key"]  # All patterns
 }
 

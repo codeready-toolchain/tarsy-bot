@@ -1493,7 +1493,7 @@ metadata:
         return {
             "basic": ["api_key", "password"],
             "security": ["token", "certificate"],
-            "kubernetes": ["kubernetes_data_section", "kubernetes_stringdata_json"],
+            "kubernetes": ["kubernetes_secret_data", "kubernetes_secret_stringdata"],
             "unknown_group": ["unknown_pattern"]
         }
 
