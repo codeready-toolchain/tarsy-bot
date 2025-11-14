@@ -100,6 +100,16 @@ class DataMaskingService:
                 # Instantiate the masker
                 masker_instance = masker_class()
                 
+                # Validate that the masker's name() matches the registry key
+                actual_name = masker_instance.name()
+                if actual_name != masker_name:
+                    logger.warning(
+                        f"Masker name mismatch: registry key is '{masker_name}' but "
+                        f"masker.name() returns '{actual_name}'. This could indicate "
+                        f"configuration drift. Skipping this masker."
+                    )
+                    continue
+                
                 # Register the masker
                 self.code_based_maskers[masker_name] = masker_instance
                 logger.debug(f"Loaded code-based masker: {masker_name}")
@@ -160,7 +170,7 @@ class DataMaskingService:
         at the API entry point.
         
         Uses the same core masking mechanism as mask_response() to apply
-        regex patterns to data structures.
+        both code-based maskers and regex patterns to data structures.
         
         Args:
             alert_data: The alert data dictionary to mask

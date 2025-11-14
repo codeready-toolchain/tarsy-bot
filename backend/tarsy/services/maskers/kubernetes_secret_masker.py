@@ -159,13 +159,12 @@ class KubernetesSecretMasker(BaseMasker):
                 result_lines.append(line.rstrip())
                 i += 1
                 
-                # Skip all indented lines (the actual data)
+                # Skip all indented or blank lines (the actual data)
                 while i < len(lines):
                     next_line = lines[i]
                     # Indented or blank line → still part of the data section
-                    if next_line and next_line[:1] in (" ", "\t"):
-                        i += 1
-                    elif not next_line.strip():  # Empty line
+                    if ((next_line and next_line[:1] in (" ", "\t"))
+                            or not next_line.strip()):
                         i += 1
                     else:
                         # Non-indented line, data section ended
