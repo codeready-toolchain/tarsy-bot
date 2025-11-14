@@ -322,7 +322,7 @@ class ReactController(IterationController):
             )
         else:
             # Max iterations reached but last interaction was successful - pause session
-            from ..exceptions import SessionPaused
+            from tarsy.agents.exceptions import SessionPaused
             self.logger.warning(f"Session paused: reached maximum iterations ({max_iterations}) without final answer")
             raise SessionPaused(
                 f"Session paused at maximum iterations ({max_iterations})",

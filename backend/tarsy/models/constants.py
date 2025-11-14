@@ -68,9 +68,9 @@ class ChainStatus(Enum):
     
     PENDING = "pending"        # All stages pending
     PROCESSING = "processing"  # At least one stage active
+    PAUSED = "paused"          # Execution paused, waiting for user action to resume
     COMPLETED = "completed"    # All stages completed successfully  
     FAILED = "failed"          # One or more stages failed, no active stages
-    PARTIAL = "partial"        # Mix of completed and failed, no active stages
 
 
 class SystemHealthStatus(Enum):

@@ -53,9 +53,9 @@ export type AlertProcessingStatus = typeof ALERT_PROCESSING_STATUS[keyof typeof 
 export const CHAIN_OVERALL_STATUS = {
   PENDING: 'pending',
   PROCESSING: 'processing',
+  PAUSED: 'paused',
   COMPLETED: 'completed',
   FAILED: 'failed',
-  PARTIAL: 'partial',
 } as const;
 
 export type ChainOverallStatus = typeof CHAIN_OVERALL_STATUS[keyof typeof CHAIN_OVERALL_STATUS];
@@ -390,7 +390,7 @@ export function getChainOverallStatusChipColor(
       return 'success';
     case CHAIN_OVERALL_STATUS.FAILED:
       return 'error';
-    case CHAIN_OVERALL_STATUS.PARTIAL:
+    case CHAIN_OVERALL_STATUS.PAUSED:
       return 'warning';
     case CHAIN_OVERALL_STATUS.PROCESSING:
       return 'info';

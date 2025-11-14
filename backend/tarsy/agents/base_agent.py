@@ -28,6 +28,7 @@ from .iteration_controllers import (
     IterationController, SimpleReActController, ReactStageController
 )
 from .exceptions import (
+    SessionPaused,
     AgentError, 
     ToolExecutionError, ToolSelectionError, ConfigurationError,
     ErrorRecoveryHandler
@@ -213,7 +214,12 @@ class BaseAgent(ABC):
             )
             
         except AgentError as e:
-            # Handle structured agent errors with recovery information
+            # Special handling for SessionPaused - let it propagate up
+            if isinstance(e, SessionPaused):
+                logger.error(f"Agent processing failed with structured error: {e.to_dict()}", exc_info=True)
+                raise  # Re-raise SessionPaused to be handled by alert_service
+            
+            # Handle other structured agent errors with recovery information
             logger.error(f"Agent processing failed with structured error: {e.to_dict()}", exc_info=True)
             
             return AgentExecutionResult(

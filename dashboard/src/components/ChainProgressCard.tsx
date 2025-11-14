@@ -68,12 +68,6 @@ const getStatusChipConfig = (status: string) => {
         icon: <Warning sx={{ fontSize: 16 }} />,
         label: getSessionStatusDisplayName(SESSION_STATUS.CANCELLED),
       };
-    case CHAIN_OVERALL_STATUS.PARTIAL:
-      return {
-        color: 'warning' as const,
-        icon: <Warning sx={{ fontSize: 16 }} />,
-        label: 'Partial',
-      };
     default:
       return {
         color: 'default' as const,

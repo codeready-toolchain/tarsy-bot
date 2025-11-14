@@ -30,6 +30,7 @@ from tarsy.services.history_service import get_history_service
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.runbook_service import RunbookService
 from tarsy.utils.logger import get_module_logger
+from tarsy.agents.exceptions import SessionPaused
 
 logger = get_module_logger(__name__)
 
@@ -372,6 +373,18 @@ class AlertService:
                 await publish_session_completed(chain_context.session_id)
                 
                 return final_result
+            elif chain_result.status == ChainStatus.PAUSED:
+                # Session was paused - this is not an error condition
+                # Status was already updated to PAUSED and pause event was already published in _execute_chain_stages
+                logger.info(f"Session {chain_context.session_id} paused successfully")
+                
+                # Return a response indicating pause (not an error)
+                return self._format_chain_success_response(
+                    chain_context,
+                    chain_definition,
+                    chain_result.final_analysis,
+                    chain_result.timestamp_us
+                )
             else:
                 # Handle chain processing error
                 error_msg = chain_result.error or 'Chain processing failed'
@@ -458,7 +471,17 @@ class AlertService:
             
             # Step 3: Reconstruct ChainContext from session data
             from tarsy.models.alert import ProcessingAlert
-            processing_alert = ProcessingAlert.model_validate(session.alert_data)
+            
+            # Reconstruct ProcessingAlert from session fields
+            # Note: session.alert_data only contains the nested alert dict, not the full ProcessingAlert
+            processing_alert = ProcessingAlert(
+                alert_type=session.alert_type or "unknown",
+                severity=session.alert_data.get("severity", "warning"),  # Extract from alert_data or use default
+                timestamp=session.started_at_us,
+                environment=session.alert_data.get("environment", "production"),
+                runbook_url=session.runbook_url,
+                alert_data=session.alert_data
+            )
             
             chain_context = ChainContext.from_processing_alert(
                 processing_alert=processing_alert,
@@ -466,6 +489,11 @@ class AlertService:
                 current_stage_name=paused_stage.stage_name,
                 author=session.author
             )
+            
+            # Restore MCP selection if it was present
+            if session.mcp_selection:
+                from tarsy.models.mcp_selection_models import MCPSelectionConfig
+                chain_context.mcp = MCPSelectionConfig.model_validate(session.mcp_selection)
             
             # Reconstruct stage outputs from completed stages
             for stage_exec in stage_executions:
@@ -522,6 +550,11 @@ class AlertService:
                 from tarsy.services.events.event_helpers import publish_session_completed
                 await publish_session_completed(session_id)
                 return result.final_analysis or "Analysis completed"
+            elif result.status == ChainStatus.PAUSED:
+                # Session paused again - this is normal, not an error
+                # Status already updated to PAUSED and pause event already published in _execute_chain_stages
+                logger.info(f"Resumed session {session_id} paused again (hit max iterations)")
+                return result.final_analysis or "Session paused again - waiting for user to resume"
             else:
                 error_msg = result.error or "Chain execution failed"
                 self._update_session_completed(session_id, AlertSessionStatus.FAILED.value)
@@ -635,7 +668,6 @@ class AlertService:
                     
                 except Exception as e:
                     # Check if this is a pause signal (SessionPaused)
-                    from tarsy.agents.exceptions import SessionPaused
                     if isinstance(e, SessionPaused):
                         # Session paused at max iterations - update status and exit gracefully
                         logger.info(f"Stage '{stage.name}' paused at iteration {e.iteration}")
@@ -653,7 +685,7 @@ class AlertService:
                         
                         # Return paused result (not failed)
                         return ChainExecutionResult(
-                            status=ChainStatus.PARTIAL,  # Use PARTIAL to indicate incomplete but not failed
+                            status=ChainStatus.PAUSED,
                             final_analysis="Session paused - waiting for user to resume",
                             error=None,
                             timestamp_us=now_us()
@@ -1274,3 +1306,14 @@ class AlertService:
             logger.info("AlertService resources cleaned up")
         except Exception as e:
             logger.error(f"Error during cleanup: {str(e)}")
+
+
+def get_alert_service() -> Optional[AlertService]:
+    """
+    Get the global alert service instance.
+    
+    Returns:
+        AlertService instance or None if not initialized
+    """
+    from tarsy.main import alert_service
+    return alert_service
