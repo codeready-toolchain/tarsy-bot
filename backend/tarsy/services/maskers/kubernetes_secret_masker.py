@@ -113,6 +113,25 @@ class KubernetesSecretMasker(BaseMasker):
             # Split by document separator to process each YAML doc
             doc_texts = data.split('\n---\n')
             
+            # Safety check: ensure parsed docs count matches split docs count
+            if len(doc_texts) != len(docs):
+                logger.warning(
+                    f"KubernetesSecretMasker: Document count mismatch - "
+                    f"parsed {len(docs)} YAML docs but split into {len(doc_texts)} text segments. "
+                    f"Applying conservative fallback masking to avoid silent skips."
+                )
+                # Conservative fallback: mask all splits at secret indices
+                masked_docs = []
+                for i, doc_text in enumerate(doc_texts):
+                    if i in secret_indices:
+                        # This index corresponds to a Secret, mask it
+                        doc_text = self._mask_yaml_secret_data_sections(doc_text)
+                    masked_docs.append(doc_text)
+                
+                masked_data = '\n---\n'.join(masked_docs)
+                masked_data = self._mask_json_in_text(masked_data)
+                return masked_data
+            
             masked_docs = []
             for i, doc_text in enumerate(doc_texts):
                 # Check if this document index corresponds to a Secret
@@ -159,7 +178,26 @@ class KubernetesSecretMasker(BaseMasker):
                 result_lines.append(line.rstrip())
                 i += 1
                 
-                # Skip all indented or blank lines (the actual data)
+                # Determine indent level from first non-blank line in the data section
+                indent = " "  # Default to single space (standard kubectl output)
+                start_i = i
+                while i < len(lines):
+                    next_line = lines[i]
+                    # Look for first indented line to capture indent
+                    if next_line and next_line[:1] in (" ", "\t"):
+                        # Calculate indent from this line
+                        indent_len = len(next_line) - len(next_line.lstrip())
+                        indent = next_line[:indent_len]
+                        break
+                    elif not next_line.strip():
+                        # Blank line, continue searching
+                        i += 1
+                    else:
+                        # Non-indented line, data section ended (empty data section)
+                        break
+                
+                # Reset to start and skip all indented or blank lines
+                i = start_i
                 while i < len(lines):
                     next_line = lines[i]
                     # Indented or blank line → still part of the data section
@@ -170,8 +208,8 @@ class KubernetesSecretMasker(BaseMasker):
                         # Non-indented line, data section ended
                         break
                 
-                # Add masked value
-                result_lines.append(f" {self.MASKED_VALUE}")
+                # Add masked value with preserved indentation
+                result_lines.append(f"{indent}{self.MASKED_VALUE}")
             else:
                 result_lines.append(line)
                 i += 1

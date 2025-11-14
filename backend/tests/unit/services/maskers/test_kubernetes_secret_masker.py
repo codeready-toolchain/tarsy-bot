@@ -27,7 +27,7 @@ kind: Secret
 metadata:
   name: test-secret
 data:
- __MASKED_SECRET_DATA__
+  __MASKED_SECRET_DATA__
 type: Opaque""",
         "Simple YAML Secret with data section"
     ),
@@ -45,7 +45,7 @@ kind: Secret
 metadata:
   name: test-secret
 stringData:
- __MASKED_SECRET_DATA__
+  __MASKED_SECRET_DATA__
 type: Opaque""",
         "YAML Secret with stringData section"
     ),
@@ -58,7 +58,7 @@ metadata:
   name: test-secret""",
         """apiVersion: v1
 data:
- __MASKED_SECRET_DATA__
+  __MASKED_SECRET_DATA__
 kind: Secret
 metadata:
   name: test-secret""",
@@ -76,7 +76,7 @@ metadata:
   name: test-secret""",
         """apiVersion: v1
 data:
- __MASKED_SECRET_DATA__
+  __MASKED_SECRET_DATA__
 kind: Secret
 metadata:
   annotations:
@@ -154,7 +154,7 @@ kind: Secret
 metadata:
   name: secret1
 data:
- __MASKED_SECRET_DATA__
+  __MASKED_SECRET_DATA__
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -183,14 +183,14 @@ kind: Secret
 metadata:
   name: secret1
 data:
- __MASKED_SECRET_DATA__
+  __MASKED_SECRET_DATA__
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: secret2
 data:
- __MASKED_SECRET_DATA__""",
+  __MASKED_SECRET_DATA__""",
         "Multi-doc YAML with multiple Secrets"
     ),
     
@@ -227,6 +227,103 @@ ConfigMaps are for non-sensitive configuration.""",
 Secrets are used to store sensitive data.
 ConfigMaps are for non-sensitive configuration.""",
         "Markdown documentation"
+    ),
+    
+    # ============================================================================
+    # INDENTATION PRESERVATION
+    # ============================================================================
+    (
+        """apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+data:
+  password: c3VwZXJzZWNyZXQ=
+  username: YWRtaW4=
+type: Opaque""",
+        """apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+data:
+  __MASKED_SECRET_DATA__
+type: Opaque""",
+        "Secret with 2-space indentation (standard kubectl)"
+    ),
+    (
+        """apiVersion: v1
+kind: Secret
+metadata:
+    name: test-secret
+data:
+    password: c3VwZXJzZWNyZXQ=
+    username: YWRtaW4=
+type: Opaque""",
+        """apiVersion: v1
+kind: Secret
+metadata:
+    name: test-secret
+data:
+    __MASKED_SECRET_DATA__
+type: Opaque""",
+        "Secret with 4-space indentation"
+    ),
+    (
+        """apiVersion: v1
+kind: Secret
+metadata:
+	name: test-secret
+data:
+	password: c3VwZXJzZWNyZXQ=
+	username: YWRtaW4=
+type: Opaque""",
+        """apiVersion: v1
+kind: Secret
+metadata:
+	name: test-secret
+data:
+	password: c3VwZXJzZWNyZXQ=
+	username: YWRtaW4=
+type: Opaque""",
+        "Secret with tab indentation (tabs not valid in YAML, returns unchanged)"
+    ),
+    (
+        """apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+data:
+      password: c3VwZXJzZWNyZXQ=
+      username: YWRtaW4=
+      nested:
+        value: dmFsdWU=
+type: Opaque""",
+        """apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+data:
+      __MASKED_SECRET_DATA__
+type: Opaque""",
+        "Secret with 6-space indentation (nested level)"
+    ),
+    (
+        """apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+stringData:
+    username: admin
+    password: supersecret
+type: Opaque""",
+        """apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+stringData:
+    __MASKED_SECRET_DATA__
+type: Opaque""",
+        "Secret with stringData and 4-space indentation"
     ),
     
     # ============================================================================
@@ -270,6 +367,38 @@ data:
  __MASKED_SECRET_DATA__
 type: Opaque""",
         "Secret with empty data section"
+    ),
+    (
+        """apiVersion: v1
+kind: Secret
+metadata:
+  name: secret1
+data:
+  password: c3VwZXJzZWNyZXQ=
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config1
+data:
+  key: value""",
+        """apiVersion: v1
+kind: Secret
+metadata:
+  name: secret1
+data:
+  __MASKED_SECRET_DATA__
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config1
+data:
+  key: value""",
+        "Multi-doc with unusual separator spacing (normalizes separator)"
     ),
     
     # ============================================================================
@@ -368,3 +497,51 @@ class TestKubernetesSecretMaskerMatrix:
             f"Both methods should produce identical formatting:\n" \
             f"_mask_json_format: {result_from_json_format}\n" \
             f"_mask_json_in_text: {result_from_json_in_text}"
+    
+    def test_document_count_mismatch_triggers_fallback(self, caplog):
+        """Test that document count mismatch triggers fallback masking with warning.
+        
+        When the number of parsed YAML docs differs from the number of text splits,
+        a warning should be logged and fallback masking should be applied.
+        """
+        # Create input with tricky separator that causes split/parse mismatch
+        # This has a --- inside a string literal which YAML parser ignores but text split doesn't
+        input_data = """apiVersion: v1
+kind: Secret
+metadata:
+  name: secret1
+  annotations:
+    note: "Contains --- in text"
+data:
+  password: c3VwZXJzZWNyZXQ="""
+        
+        # For this test, we'll mock the scenario by directly testing _mask_yaml_format
+        # The input above is a single document, but if we had a different split pattern
+        # it could cause mismatch. Let's use a simpler approach and patch yaml.safe_load_all
+       
+        # Input that will split into 3 parts but parse as 2 docs
+        input_with_extra_separator = """apiVersion: v1
+kind: Secret
+metadata:
+  name: secret1
+data:
+  password: c3VwZXJzZWNyZXQ=
+---
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config1
+data:
+  key: value"""
+        
+        # This input splits by '\n---\n' into 3 parts but YAML parses as 2 docs (empty doc is skipped)
+        result = self.masker.mask(input_with_extra_separator)
+        
+        # Verify warning was logged
+        assert any("Document count mismatch" in record.message for record in caplog.records), \
+            "Expected warning about document count mismatch to be logged"
+        
+        # Verify data was still masked (fallback worked)
+        assert "__MASKED_SECRET_DATA__" in result, \
+            "Secret data should still be masked via fallback path"

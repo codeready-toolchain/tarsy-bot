@@ -741,7 +741,7 @@ type: Opaque"""
             {
                 "result": """apiVersion: v1
 data:
- __MASKED_SECRET_DATA__
+  __MASKED_SECRET_DATA__
 kind: Secret
 metadata:
   annotations:
@@ -796,7 +796,7 @@ metadata:
             {
                 "result": """apiVersion: v1
 data:
- __MASKED_SECRET_DATA__
+  __MASKED_SECRET_DATA__
 kind: Secret
 metadata:
   name: simple-secret"""
