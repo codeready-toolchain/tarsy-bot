@@ -947,7 +947,7 @@ kind: Secret
 metadata:
   annotations:
     kubectl.kubernetes.io/last-applied-configuration: |
-      {"apiVersion":"v1","kind":"Secret","metadata":{"annotations":{},"name":"my-secret","namespace":"superman-dev"},"stringData":{""password": "__MASKED_PASSWORD__","username":"admin","api-key":"abcdefghijk12345"},"type":"Opaque"}
+      {"apiVersion":"v1","kind":"Secret","metadata":{"annotations":{},"name":"my-secret","namespace":"superman-dev"},"stringData":__MASKED_SECRET_DATA__,"type":"Opaque"}
   name: my-secret
   namespace: superman-dev
 type: Opaque"""
