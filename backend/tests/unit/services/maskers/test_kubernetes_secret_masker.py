@@ -478,7 +478,6 @@ class TestKubernetesSecretMaskerMatrix:
         # Verify it returns compact JSON (no newlines, no extra spaces)
         assert result == expected, f"\nExpected compact JSON:\n{expected}\n\nGot:\n{result}"
         assert '\n' not in result, "Result should be single-line JSON without newlines"
-        assert result == expected, "Result should exactly match expected compact format"
     
     def test_mask_json_format_consistency_with_mask_json_in_text(self):
         """Test that _mask_json_format and _mask_json_in_text use the same formatting.
