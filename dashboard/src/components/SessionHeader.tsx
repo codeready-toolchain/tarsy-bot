@@ -431,10 +431,11 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     const previousStatus = previousStatusRef.current;
     const currentStatus = session.status;
     
-    // Check if status changed from in_progress/pending to completed/failed/cancelled
+    // Check if status changed from in_progress/pending/paused to completed/failed/cancelled
     const wasInProgress =
       previousStatus === SESSION_STATUS.IN_PROGRESS ||
       previousStatus === SESSION_STATUS.PENDING ||
+      previousStatus === SESSION_STATUS.PAUSED ||
       previousStatus === SESSION_STATUS.CANCELING;
     const nowCompleted =
       currentStatus === SESSION_STATUS.COMPLETED ||

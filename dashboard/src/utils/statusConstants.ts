@@ -10,6 +10,7 @@
 export const SESSION_STATUS = {
   PENDING: 'pending',
   IN_PROGRESS: 'in_progress',
+  PAUSED: 'paused',
   CANCELING: 'canceling',
   COMPLETED: 'completed',
   FAILED: 'failed',
@@ -84,6 +85,7 @@ export const TERMINAL_SESSION_STATUSES: SessionStatus[] = [
 export const ACTIVE_SESSION_STATUSES: SessionStatus[] = [
   SESSION_STATUS.IN_PROGRESS,
   SESSION_STATUS.PENDING,
+  SESSION_STATUS.PAUSED,
   SESSION_STATUS.CANCELING,
 ];
 
@@ -190,6 +192,8 @@ export function getSessionStatusDisplayName(status: string): string {
       return 'In Progress';
     case SESSION_STATUS.PENDING:
       return 'Pending';
+    case SESSION_STATUS.PAUSED:
+      return 'Paused';
     case SESSION_STATUS.CANCELING:
       return 'Canceling';
     default:
@@ -257,6 +261,8 @@ export function getSessionStatusChipColor(
       return 'info';
     case SESSION_STATUS.PENDING:
       return 'warning';
+    case SESSION_STATUS.PAUSED:
+      return 'warning';
     case SESSION_STATUS.CANCELING:
       return 'warning';
     default:
@@ -281,6 +287,8 @@ export function getSessionStatusProgressColor(
     case SESSION_STATUS.IN_PROGRESS:
       return 'info';
     case SESSION_STATUS.PENDING:
+      return 'warning';
+    case SESSION_STATUS.PAUSED:
       return 'warning';
     case SESSION_STATUS.CANCELING:
       return 'warning';
