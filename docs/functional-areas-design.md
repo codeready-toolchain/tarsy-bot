@@ -1629,7 +1629,7 @@ Hook Event → Event Publisher → Database (INSERT + NOTIFY) →
 **Purpose**: Sensitive data protection and secure operations  
 **Key Responsibility**: Preventing sensitive data exposure
 
-TARSy implements comprehensive data masking to prevent sensitive information (API keys, passwords, certificates, Kubernetes secrets) from reaching LLM providers, logs, or persistent storage. The system follows a fail-safe approach: better to over-mask than expose sensitive data.
+TARSy implements comprehensive data masking using a **hybrid approach** combining code-based structural analysis with regex patterns to prevent sensitive information (API keys, passwords, certificates, Kubernetes secrets) from reaching LLM providers, logs, or persistent storage. The system follows a fail-safe approach: better to over-mask than expose sensitive data.
 
 #### Security Architecture
 
@@ -1640,9 +1640,10 @@ graph TB
         Client[MCP Client]
     end
     
-    subgraph "Data Masking Layer"
+    subgraph "Hybrid Masking Layer"
         Masker[DataMaskingService]
-        Patterns[Pattern Library]
+        CodeMaskers[Code-Based Maskers<br/>Structural Analysis]
+        RegexPatterns[Regex Patterns<br/>Pattern Matching]
         Config[Server-Specific Config]
     end
     
@@ -1654,7 +1655,8 @@ graph TB
     
     MCP --> Client
     Client --> Masker
-    Masker --> Patterns
+    Masker --> CodeMaskers
+    Masker --> RegexPatterns
     Masker --> Config
     
     Masker --> LLM
@@ -1662,15 +1664,17 @@ graph TB
     Masker --> DB
     
     style Masker fill:#fff0f5
-    style Patterns fill:#f0f8ff
-    style Config fill:#e8f5e8
+    style CodeMaskers fill:#e8f5e8
+    style RegexPatterns fill:#f0f8ff
+    style Config fill:#fff3e0
 ```
 
 #### Data Masking Service
 
 **📍 Core Service**: `backend/tarsy/services/data_masking_service.py`
 - **Automatic integration** with MCP client - all tool responses are masked
-- **Pattern-based detection** using configurable regex patterns
+- **Hybrid masking approach** using code-based structural analysis + regex patterns
+- **Two-phase masking**: Code-based maskers applied first (more specific), regex patterns second (more general)
 - **Server-specific configuration** allowing granular control per MCP server
 - **Fail-safe operation** - continues processing even if masking fails
 
@@ -1683,28 +1687,54 @@ async with mcp_interaction_context(...) as ctx:
     return masked_response  # Only masked data reaches LLM/logs/storage
 ```
 
+#### Hybrid Masking Architecture
+
+**Two-Phase Masking Process**:
+
+1. **Code-Based Maskers** (applied first) - Structural awareness for complex data formats
+   - Parses YAML/JSON to understand data structure
+   - Context-sensitive masking based on resource type
+   - Example: `KubernetesSecretMasker` masks Secret resources but preserves ConfigMaps
+
+2. **Regex Patterns** (applied second) - General pattern matching for common secrets
+   - Fast matching for straightforward cases
+   - Handles API keys, passwords, certificates, SSH keys, emails
+
+**📍 Code-Based Maskers**: `backend/tarsy/services/maskers/`
+- **BaseMasker interface**: Abstract class defining `name()`, `applies_to()`, and `mask()` methods
+- **KubernetesSecretMasker**: Parses YAML/JSON to mask Kubernetes Secret `data:` and `stringData:` fields, including nested JSON in annotations (e.g., `last-applied-configuration`), while preserving ConfigMap data
+
 #### Built-in Masking Patterns
 
 **📍 Pattern Library**: `backend/tarsy/config/builtin_config.py`
 
-**Pattern Categories**:
+**Pattern Groups** (combining code-based maskers + regex patterns):
 ```python
 BUILTIN_PATTERN_GROUPS = {
     "basic": ["api_key", "password"],
     "secrets": ["api_key", "password", "token"], 
-    "security": ["api_key", "password", "token", "certificate"],
-    "kubernetes": ["kubernetes_data_section", "kubernetes_stringdata_json", 
-                  "api_key", "password"],
+    "security": ["api_key", "password", "token", "certificate", 
+                 "certificate_authority_data", "email", "ssh_key"],
+    "kubernetes": ["kubernetes_secret",  # ← Code-based masker
+                   "api_key", "password", "certificate_authority_data"],
     "all": ["base64_secret", "base64_short", "api_key", "password", 
-           "certificate", "token"]
+           "certificate", "certificate_authority_data", "email", 
+           "token", "ssh_key"]
+}
+
+# Code-based maskers registry
+BUILTIN_CODE_MASKERS = {
+    "kubernetes_secret": "tarsy.services.maskers.kubernetes_secret_masker.KubernetesSecretMasker"
 }
 ```
 
-**Example Patterns**:
-- **Kubernetes Secrets**: Masks entire `data:` sections in YAML
+**Regex Pattern Examples**:
 - **API Keys**: `api_key: sk-abc123...` → `api_key: "__MASKED_API_KEY__"`
+- **Passwords**: `password: secret123` → `password: "__MASKED_PASSWORD__"`
 - **Certificates**: `-----BEGIN CERTIFICATE-----...` → `__MASKED_CERTIFICATE__`
-- **Base64 Values**: Long base64 strings → `__MASKED_BASE64_VALUE__`
+- **CA Certificates**: `certificate-authority-data: LS0t...` → `certificate-authority-data: __MASKED_CA_CERTIFICATE__`
+- **Email Addresses**: `admin@example.com` → `__MASKED_EMAIL__` (excludes decorators like `@base.Method`)
+- **SSH Keys**: `ssh-rsa AAAAB3...` → `__MASKED_SSH_KEY__` (RSA, DSS, Ed25519, ECDSA)
 
 #### Server-Specific Configuration
 

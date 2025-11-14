@@ -115,7 +115,7 @@ This deployment is designed for development and testing environments, serving as
 - **📊 Comprehensive Audit Trail**: Complete visibility into chain processing workflows with stage-level timeline reconstruction
 - **🖥️ SRE Dashboard**: Real-time monitoring with live LLM streaming and interactive chain timeline visualization
 - **💬 Follow-up Chat**: Continue investigating after sessions complete - ask clarifying questions, request deeper analysis, or explore different aspects with full context and tool access
-- **🔒 Data Masking**: Automatic protection of sensitive data in logs and responses
+- **🔒 Data Masking**: Hybrid masking system combining code-based structural analysis (Kubernetes Secrets) with regex patterns (API keys, passwords, certificates, emails, SSH keys) to automatically protect sensitive data in MCP responses and alert payloads
 
 ## Architecture
 
