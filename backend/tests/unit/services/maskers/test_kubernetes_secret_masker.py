@@ -504,21 +504,6 @@ class TestKubernetesSecretMaskerMatrix:
         When the number of parsed YAML docs differs from the number of text splits,
         a warning should be logged and fallback masking should be applied.
         """
-        # Create input with tricky separator that causes split/parse mismatch
-        # This has a --- inside a string literal which YAML parser ignores but text split doesn't
-        input_data = """apiVersion: v1
-kind: Secret
-metadata:
-  name: secret1
-  annotations:
-    note: "Contains --- in text"
-data:
-  password: c3VwZXJzZWNyZXQ="""
-        
-        # For this test, we'll mock the scenario by directly testing _mask_yaml_format
-        # The input above is a single document, but if we had a different split pattern
-        # it could cause mismatch. Let's use a simpler approach and patch yaml.safe_load_all
-       
         # Input that will split into 3 parts but parse as 2 docs
         input_with_extra_separator = """apiVersion: v1
 kind: Secret
