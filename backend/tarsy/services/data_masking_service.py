@@ -7,9 +7,11 @@ sensitive data from reaching the LLM, logging, and storage systems.
 import re
 from typing import Any, Dict, List, Optional, Pattern
 import json
+import importlib
 
 from tarsy.models.agent_config import MaskingConfig, MaskingPattern
 from tarsy.config.builtin_config import BUILTIN_MASKING_PATTERNS, BUILTIN_PATTERN_GROUPS
+from tarsy.services.maskers.base_masker import BaseMasker
 from tarsy.utils.logger import get_logger
 
 # Import will be available when MCPServerRegistry is implemented
@@ -24,8 +26,11 @@ logger = get_logger(__name__)
 class DataMaskingService:
     """Service for masking sensitive data in MCP server responses.
     
-    This service applies configurable regex patterns to mask sensitive
-    information before it reaches the LLM, logging, or storage systems.
+    This service applies both regex patterns and code-based maskers to mask
+    sensitive information before it reaches the LLM, logging, or storage systems.
+    
+    Code-based maskers are applied first (more specific), followed by regex
+    patterns (more general).
     """
     
     def __init__(self, mcp_registry: Optional["MCPServerRegistry"] = None):
@@ -38,7 +43,9 @@ class DataMaskingService:
         self.mcp_registry = mcp_registry
         self.compiled_patterns: Dict[str, Pattern[str]] = {}
         self.custom_pattern_metadata: Dict[str, Dict[str, str]] = {}
+        self.code_based_maskers: Dict[str, BaseMasker] = {}
         self._load_builtin_patterns()
+        self._load_builtin_maskers()
         
         logger.info("DataMaskingService initialized")
     
@@ -62,6 +69,45 @@ class DataMaskingService:
                 logger.error(f"Failed to compile built-in pattern '{pattern_name}': {e}")
         
         logger.info(f"Loaded {len(self.compiled_patterns)} built-in patterns")
+    
+    def _load_builtin_maskers(self) -> None:
+        """Load and instantiate built-in code-based maskers.
+        
+        This method dynamically imports and instantiates code-based maskers
+        registered in BUILTIN_CODE_MASKERS. Maskers that fail to load will
+        be logged and skipped.
+        """
+        from tarsy.config.builtin_config import BUILTIN_CODE_MASKERS
+        
+        logger.debug("Loading built-in code-based maskers")
+        
+        for masker_name, import_path in BUILTIN_CODE_MASKERS.items():
+            try:
+                # Parse import path: "module.path.ClassName"
+                module_path, class_name = import_path.rsplit('.', 1)
+                
+                # Dynamically import the module
+                module = importlib.import_module(module_path)
+                
+                # Get the class
+                masker_class = getattr(module, class_name)
+                
+                # Instantiate the masker
+                masker_instance = masker_class()
+                
+                # Verify it's a BaseMasker
+                if not isinstance(masker_instance, BaseMasker):
+                    logger.error(f"Masker '{masker_name}' from '{import_path}' is not a BaseMasker instance")
+                    continue
+                
+                # Register the masker
+                self.code_based_maskers[masker_name] = masker_instance
+                logger.debug(f"Loaded code-based masker: {masker_name}")
+                
+            except (ImportError, AttributeError, Exception) as e:
+                logger.error(f"Failed to load built-in masker '{masker_name}' from '{import_path}': {e}")
+        
+        logger.info(f"Loaded {len(self.code_based_maskers)} built-in code-based maskers")
     
     def _compile_and_add_custom_patterns(self, custom_patterns: List[MaskingPattern]) -> List[str]:
         """Compile custom patterns and add them to the compiled patterns dictionary.
@@ -285,10 +331,11 @@ class DataMaskingService:
             return {"result": "__MASKED_ERROR__"}
     
     def _apply_patterns(self, text: str, patterns: List[str]) -> str:
-        """Apply a list of compiled regex patterns to mask text content.
+        """Apply code-based maskers and regex patterns to mask text content.
         
-        This method applies patterns sequentially and handles errors gracefully
-        with fail-safe behavior.
+        This method applies masking in two phases:
+        1. Code-based maskers (more specific, structural awareness)
+        2. Regex patterns (more general, pattern matching)
         
         Args:
             text: The text content to mask
@@ -305,6 +352,27 @@ class DataMaskingService:
         masked_text = text
         patterns_applied = 0
         
+        # Phase 1: Apply code-based maskers (more specific)
+        for pattern_name in patterns:
+            if pattern_name in self.code_based_maskers:
+                masker = self.code_based_maskers[pattern_name]
+                try:
+                    if masker.applies_to(masked_text):
+                        original_length = len(masked_text)
+                        masked_text = masker.mask(masked_text)
+                        new_length = len(masked_text)
+                        
+                        if new_length != original_length:
+                            patterns_applied += 1
+                            logger.debug(f"Code-based masker '{pattern_name}' applied - text length changed from {original_length} to {new_length}")
+                        else:
+                            logger.debug(f"Code-based masker '{pattern_name}' applied - no changes made")
+                except Exception as e:
+                    logger.error(f"Error in code-based masker '{pattern_name}': {e}", exc_info=True)
+                    # Continue with other patterns rather than failing completely
+                    continue
+        
+        # Phase 2: Apply regex patterns (more general)
         for pattern_name in patterns:
             if pattern_name not in self.compiled_patterns:
                 logger.warning(f"Pattern '{pattern_name}' not found in compiled patterns - skipping")

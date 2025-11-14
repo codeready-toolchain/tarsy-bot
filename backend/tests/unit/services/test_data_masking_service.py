@@ -92,208 +92,6 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890
         if not expected_masked:
             assert result == test_data
 
-    @pytest.mark.parametrize("input_resource,expected_output,patterns", [
-        # Test Case 1: Kubernetes Secret - data section should be masked
-        (
-            """apiVersion: v1
-data:
-  username: YWRtaW4=
-  password: c3VwZXJzZWNyZXRwYXNzd29yZDEyMw==
-  somekey: xyz
-kind: Secret
-metadata:
-  name: my-secret
-  namespace: superman-dev""",
-            """apiVersion: v1
-data: __MASKED_SECRET_DATA__
-kind: Secret
-metadata:
-  name: my-secret
-  namespace: superman-dev""",
-            ["kubernetes_secret_data"]
-        ),
-        # Test Case 2: ConfigMap - data section should NOT be masked
-        (
-            """apiVersion: v1
-data:
-  config.yaml: |
-    setting1: value1
-    setting2: value2
-  database.conf: |
-    host: db.example.com
-    port: 5432
-kind: ConfigMap
-metadata:
-  name: my-config
-  namespace: default""",
-            """apiVersion: v1
-data:
-  config.yaml: |
-    setting1: value1
-    setting2: value2
-  database.conf: |
-    host: db.example.com
-    port: 5432
-kind: ConfigMap
-metadata:
-  name: my-config
-  namespace: default""",
-            ["kubernetes_secret_data"]
-        ),
-        # Test Case 3: Another ConfigMap - different data, should NOT be masked
-        (
-            """apiVersion: v1
-data:
-  app.properties: |
-    server.port=8080
-    db.host=localhost
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: production""",
-            """apiVersion: v1
-data:
-  app.properties: |
-    server.port=8080
-    db.host=localhost
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: production""",
-            ["kubernetes_secret_data"]
-        ),
-        # Test Case 4: Secret with different structure - should be masked
-        (
-            """apiVersion: v1
-data:
-  password: c3VwZXJzZWNyZXRwYXNzd29yZDEyMw==
-  api-key: YWJjZGVmZ2hpams12345
-kind: Secret
-metadata:
-  name: app-secret
-  namespace: production""",
-            """apiVersion: v1
-data: __MASKED_SECRET_DATA__
-kind: Secret
-metadata:
-  name: app-secret
-  namespace: production""",
-            ["kubernetes_secret_data"]
-        ),
-        # Test Case 5: Data section appearing before kind: ConfigMap - should NOT be masked
-        (
-            """apiVersion: v1
-data:
-  key1: value1
-  key2: value2
-kind: ConfigMap
-metadata:
-  name: test-config""",
-            """apiVersion: v1
-data:
-  key1: value1
-  key2: value2
-kind: ConfigMap
-metadata:
-  name: test-config""",
-            ["kubernetes_secret_data"]
-        ),
-        # Test Case 6: Data section appearing before kind: Secret - SHOULD be masked
-        (
-            """apiVersion: v1
-data:
-  token: dG9rZW4xMjM0NTY=
-  key: a2V5Nzg5MA==
-kind: Secret
-metadata:
-  name: test-secret""",
-            """apiVersion: v1
-data: __MASKED_SECRET_DATA__
-kind: Secret
-metadata:
-  name: test-secret""",
-            ["kubernetes_secret_data"]
-        ),
-    ])
-    def test_kubernetes_resource_masking_matrix(self, input_resource, expected_output, patterns):
-        """Test Kubernetes resource masking using matrix approach with exact expected outputs."""
-        result = self.service._apply_patterns(input_resource, patterns)
-        assert result == expected_output, f"\nExpected:\n{expected_output}\n\nGot:\n{result}"
-    
-    def test_kubernetes_pattern_group_matrix(self):
-        """Test full kubernetes pattern group masking with comprehensive Secret and ConfigMap examples."""
-        # Expand kubernetes pattern group once
-        kubernetes_patterns = self.service._expand_pattern_groups(["kubernetes"])
-        
-        # Matrix of test cases: (input, expected_output)
-        test_matrix = [
-            # ConfigMap with various data - should NOT be masked
-            (
-                """apiVersion: v1
-data:
-  app.properties: |
-    server.port=8080
-    db.host=localhost
-  config.yaml: content
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: production""",
-                """apiVersion: v1
-data:
-  app.properties: |
-    server.port=8080
-    db.host=localhost
-  config.yaml: content
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: production"""
-            ),
-            # Secret with data - SHOULD be masked
-            (
-                """apiVersion: v1
-data:
-  password: c3VwZXJzZWNyZXRwYXNzd29yZDEyMw==
-  api-key: YWJjZGVmZ2hpams12345
-kind: Secret
-metadata:
-  name: app-secret
-  namespace: production""",
-                """apiVersion: v1
-data: __MASKED_SECRET_DATA__
-kind: Secret
-metadata:
-  name: app-secret
-  namespace: production"""
-            ),
-            # ConfigMap with multiline data - should NOT be masked
-            (
-                """apiVersion: v1
-data:
-  script.sh: |
-    #!/bin/bash
-    echo "Hello World"
-    exit 0
-kind: ConfigMap
-metadata:
-  name: scripts""",
-                """apiVersion: v1
-data:
-  script.sh: |
-    #!/bin/bash
-    echo "Hello World"
-    exit 0
-kind: ConfigMap
-metadata:
-  name: scripts"""
-            ),
-        ]
-        
-        for input_resource, expected_output in test_matrix:
-            result = self.service._apply_patterns(input_resource, kubernetes_patterns)
-            assert result == expected_output, f"\nInput:\n{input_resource}\n\nExpected:\n{expected_output}\n\nGot:\n{result}"
-
     def test_certificate_authority_data_masking_kubernetes_config(self):
         """Test certificate-authority-data masking in Kubernetes config context."""
         kubeconfig_data = """apiVersion: v1
@@ -767,7 +565,7 @@ class TestPatternGroupExpansion:
         (["basic", "security"], PATTERN_GROUPS["basic"] + PATTERN_GROUPS["security"], 7),
         (["unknown_group", "basic"], PATTERN_GROUPS["basic"], 2),  # Skip unknown group
         ([], [], 0),  # Empty groups
-        (["kubernetes"], PATTERN_GROUPS["kubernetes"] + PATTERN_GROUPS["basic"], 5),
+        (["kubernetes"], PATTERN_GROUPS["kubernetes"], 4),  # kubernetes has 4 patterns (not including basic)
     ])
     def test_pattern_group_expansion_scenarios(self, groups, expected_patterns, expected_count):
         """Test pattern group expansion for various scenarios."""
@@ -942,12 +740,13 @@ type: Opaque"""
             },
             {
                 "result": """apiVersion: v1
-data: __MASKED_SECRET_DATA__
+data:
+ __MASKED_SECRET_DATA__
 kind: Secret
 metadata:
   annotations:
     kubectl.kubernetes.io/last-applied-configuration: |
-      {"apiVersion":"v1","kind":"Secret","metadata":{"annotations":{},"name":"my-secret","namespace":"superman-dev"},"stringData":__MASKED_SECRET_DATA__,"type":"Opaque"}
+      {"apiVersion":"v1","kind":"Secret","metadata":{"annotations":{},"name":"my-secret","namespace":"superman-dev"},"stringData":"__MASKED_SECRET_DATA__","type":"Opaque"}
   name: my-secret
   namespace: superman-dev
 type: Opaque"""
@@ -996,7 +795,8 @@ metadata:
             },
             {
                 "result": """apiVersion: v1
-data: __MASKED_SECRET_DATA__
+data:
+ __MASKED_SECRET_DATA__
 kind: Secret
 metadata:
   name: simple-secret"""
@@ -1113,3 +913,85 @@ class TestMaskAlertData:
         # Token and email should NOT be masked (not in basic group)
         assert "should_not_mask_in_basic" in str(result)
         assert "user@example.com" in str(result)
+
+
+@pytest.mark.unit
+class TestCodeBasedMaskers:
+    """Test code-based masker integration with DataMaskingService."""
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.service = DataMaskingService()
+    
+    def test_code_based_maskers_loaded(self):
+        """Test that code-based maskers are loaded on service initialization."""
+        # Check that kubernetes_secret masker is loaded
+        assert "kubernetes_secret" in self.service.code_based_maskers
+        assert len(self.service.code_based_maskers) > 0
+    
+    def test_code_based_masker_properties(self):
+        """Test that loaded maskers have correct properties."""
+        masker = self.service.code_based_maskers.get("kubernetes_secret")
+        assert masker is not None
+        assert masker.name() == "kubernetes_secret"
+    
+    def test_execution_order_code_before_regex(self):
+        """Test that code-based maskers execute before regex patterns in the service."""
+        # This tests the service's orchestration logic, not the masker itself
+        test_data = """apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+data:
+  password: c3VwZXJzZWNyZXRwYXNzd29yZDEyMw=="""
+        
+        # Apply both code-based masker and regex patterns
+        result = self.service._apply_patterns(test_data, ["kubernetes_secret", "password"])
+        
+        # Code-based masker should have masked the data section first
+        assert "__MASKED_SECRET_DATA__" in result
+        # Secret value should not be visible
+        assert "c3VwZXJzZWNyZXRwYXNzd29yZDEyMw==" not in result
+    
+    def test_kubernetes_pattern_group_uses_code_masker(self):
+        """Test that kubernetes pattern group includes code-based masker."""
+        patterns = self.service._expand_pattern_groups(["kubernetes"])
+        
+        # Should include kubernetes_secret code masker
+        assert "kubernetes_secret" in patterns
+        # Should also include related regex patterns
+        assert "api_key" in patterns
+        assert "password" in patterns
+    
+    def test_integration_with_mask_response(self):
+        """Test code-based masker integration with full mask_response flow."""
+        from unittest.mock import Mock
+        from tarsy.models.agent_config import MaskingConfig
+        
+        # Setup mock registry
+        mock_registry = Mock()
+        service = DataMaskingService(mock_registry)
+        
+        # Mock server config with kubernetes masking
+        mock_server_config = Mock()
+        mock_server_config.data_masking = MaskingConfig(
+            enabled=True,
+            pattern_groups=["kubernetes"]
+        )
+        mock_registry.get_server_config_safe.return_value = mock_server_config
+        
+        # Test response with Secret
+        response = {
+            "result": """apiVersion: v1
+data:
+  password: c3VwZXJzZWNyZXRwYXNzd29yZDEyMw==
+kind: Secret
+metadata:
+  name: test-secret"""
+        }
+        
+        result = service.mask_response(response, "kubernetes-server")
+        
+        # Secret should be masked
+        assert "__MASKED_SECRET_DATA__" in str(result)
+        assert "c3VwZXJzZWNyZXRwYXNzd29yZDEyMw==" not in str(result)

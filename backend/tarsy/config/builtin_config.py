@@ -151,17 +151,8 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
 
 # Central registry of all built-in masking patterns for MCP server responses
 # Format: "pattern_name" -> {"pattern": regex, "replacement": text, "description": text}
+# Note: Kubernetes Secret masking is handled by code-based masker (see BUILTIN_CODE_MASKERS)
 BUILTIN_MASKING_PATTERNS: Dict[str, Dict[str, str]] = {
-    "kubernetes_secret_data": {
-        "pattern": r'(?=[\s\S]*["\']?kind["\']?\s*:\s*["\']?Secret["\']?)^(data:)(\s*\n(?:\s+[^:\n]+:[^\n]*\n?)*)',
-        "replacement": r'\1 __MASKED_SECRET_DATA__\n',
-        "description": "Masks data: section only in Kubernetes Secrets (YAML format, works with JSON context)"
-    },
-    "kubernetes_stringdata": {
-        "pattern": r'("stringData"\s*:\s*)(\{[^}]*\})',
-        "replacement": r'\1__MASKED_SECRET_DATA__',
-        "description": "Masks stringData objects (Secret-specific field, safe to mask without context check)"
-    },
     "base64_secret": {
         "pattern": r'\b([A-Za-z0-9+/]{20,}={0,2})\b',
         "replacement": "__MASKED_BASE64_VALUE__",
@@ -211,12 +202,27 @@ BUILTIN_MASKING_PATTERNS: Dict[str, Dict[str, str]] = {
 
 # Central registry of built-in pattern groups for convenient configuration
 # Format: "group_name" -> [list_of_pattern_names]
+# Groups can reference both regex patterns and code-based maskers
 BUILTIN_PATTERN_GROUPS: Dict[str, list[str]] = {
     "basic": ["api_key", "password"],                          # Most common secrets
     "secrets": ["api_key", "password", "token"],               # Basic + tokens  
     "security": ["api_key", "password", "token", "certificate", "certificate_authority_data", "email", "ssh_key"], # Full security focus
-    "kubernetes": ["kubernetes_secret_data", "kubernetes_stringdata", "api_key", "password", "certificate_authority_data"], # Kubernetes-specific - masks Secret data sections only (not ConfigMaps)
+    "kubernetes": ["kubernetes_secret", "api_key", "password", "certificate_authority_data"], # Kubernetes-specific - uses code-based masker for Secrets (not ConfigMaps)
     "all": ["base64_secret", "base64_short", "api_key", "password", "certificate", "certificate_authority_data", "email", "token", "ssh_key"]  # All patterns
+}
+
+
+# ==============================================================================
+# BUILT-IN CODE-BASED MASKERS
+# ==============================================================================
+
+# Central registry of built-in code-based maskers
+# Format: "masker_name" -> "import.path.ClassName"
+# Code-based maskers provide structural awareness for complex masking scenarios
+# where simple regex patterns are insufficient (e.g., parsing YAML/JSON structures)
+BUILTIN_CODE_MASKERS: Dict[str, str] = {
+    "kubernetes_secret": "tarsy.services.maskers.kubernetes_secret_masker.KubernetesSecretMasker",
+    # Future maskers will be added here as needed
 }
 
 
@@ -319,6 +325,11 @@ DEFAULT_RUNBOOK_CONTENT = """# Generic Troubleshooting Guide
 # ==============================================================================
 # CONVENIENCE ACCESSORS
 # ==============================================================================
+
+
+def get_builtin_code_maskers() -> Dict[str, str]:
+    """Get all built-in code-based masker import paths."""
+    return copy.deepcopy(BUILTIN_CODE_MASKERS)
 
 
 def get_builtin_llm_providers() -> Dict[str, LLMProviderConfig]:
