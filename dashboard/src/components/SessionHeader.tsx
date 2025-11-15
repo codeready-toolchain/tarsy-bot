@@ -702,8 +702,8 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               {/* Resume Button - Only for paused sessions */}
               {sessionIsPaused && (
                 <>
-                  {/* Pause Alert - Only show when both status is PAUSED and metadata exists */}
-                  {session.status === SESSION_STATUS.PAUSED && session.pause_metadata && (
+                  {/* Pause Alert - Show with metadata message or fallback */}
+                  {session.pause_metadata ? (
                     <Alert 
                       severity="warning" 
                       icon={<PauseCircle />}
@@ -711,6 +711,15 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                     >
                       <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
                       {session.pause_metadata.message || 'Session is paused and awaiting action.'}
+                    </Alert>
+                  ) : (
+                    <Alert 
+                      severity="warning" 
+                      icon={<PauseCircle />}
+                      sx={{ mb: 1.5, width: '100%' }}
+                    >
+                      <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
+                      Session is paused and awaiting action.
                     </Alert>
                   )}
                   

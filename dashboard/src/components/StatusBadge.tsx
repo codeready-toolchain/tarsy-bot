@@ -1,5 +1,5 @@
 import React from 'react';
-import { Chip, type ChipProps, type SxProps, type Theme } from '@mui/material';
+import { Chip, type ChipProps, type SxProps, type Theme, alpha } from '@mui/material';
 import { 
   CheckCircle, 
   Error as ErrorIcon, 
@@ -128,7 +128,7 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => 
     customSx = {
       ...commonSx,
       fontWeight: 600,
-      backgroundColor: '#e65100',
+      backgroundColor: 'warning.dark',
       color: 'white',
       '& .MuiChip-icon': {
         marginLeft: '4px',
@@ -138,16 +138,16 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => 
       transition: 'none',
       transform: 'none',
       '&:focus-visible': {
-        outline: '2px solid #ffffff',
+        outline: '2px solid white',
         outlineOffset: '2px',
-        boxShadow: '0 0 0 4px rgba(255, 152, 0, 0.4)',
+        boxShadow: (theme) => `0 0 0 4px ${alpha(theme.palette.warning.main, 0.4)}`,
       },
       '@keyframes pulse': {
         '0%, 100%': {
-          backgroundColor: '#e65100',
+          backgroundColor: 'warning.dark',
         },
         '50%': {
-          backgroundColor: '#ff9800',
+          backgroundColor: 'warning.main',
         },
       },
     };
