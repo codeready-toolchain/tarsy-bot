@@ -2,15 +2,19 @@
 E2E Test for Pause/Resume Functionality.
 
 This test verifies the complete pause/resume workflow:
-1. Submit alert with low max_iterations
-2. Wait for session to pause (max iterations reached)
-3. Resume the paused session
-4. Wait for session to complete (or pause again)
+1. Submit alert with max_iterations=2
+2. Wait for session to pause (max iterations reached after 2 iterations)
+3. Verify pause metadata and paused state
+4. Increase max_iterations to 4 to allow completion after resume
+5. Resume the paused session
+6. Wait for session to complete (deterministic - iteration 3 has Final Answer)
+7. Verify final state and audit trail
 
 Architecture:
 - REAL: FastAPI app, AlertService, HistoryService, hook system, database
 - MOCKED: HTTP requests to LLM APIs, MCP servers, GitHub runbooks
-- CONFIGURED: max_llm_mcp_iterations set to 2 for quick pause
+- CONFIGURED: max_llm_mcp_iterations dynamically changed during test (2→4)
+- DETERMINISTIC: Iteration 3 provides Final Answer → guaranteed completion
 """
 
 import asyncio
@@ -53,11 +57,12 @@ class TestPauseResumeE2E:
 
         Flow:
         1. POST alert with max_iterations=2
-        2. Wait for session to pause (max iterations reached)
+        2. Wait for session to pause (max iterations reached after 2 iterations)
         3. Verify pause metadata and state
-        4. POST to resume endpoint
-        5. Wait for session to complete or pause again
-        6. Verify final state and audit trail
+        4. Increase max_iterations to 4 to allow completion
+        5. POST to resume endpoint
+        6. Wait for session to complete (deterministic - iteration 3 has Final Answer)
+        7. Verify final state and audit trail
         """
 
         # Wrap entire test in timeout to prevent hanging
@@ -100,12 +105,9 @@ class TestPauseResumeE2E:
 
         # Define mock response map for LLM interactions
         # Each interaction gets a mock response to simulate ReAct pattern
-        # We'll set max_iterations=2, so we expect:
-        # - Interaction 1: Initial thought + action (will succeed)
-        # - Interaction 2: After tool result, should trigger pause
-        # - After resume:
-        # - Interaction 3: Continue analysis
-        # - Interaction 4: Final answer
+        # DETERMINISTIC TEST FLOW:
+        # Phase 1 (max_iterations=2): Interactions 1-2, then PAUSE
+        # Phase 2 (max_iterations=4): Resume + Interaction 3 with Final Answer → COMPLETE
         mock_response_map = {
             1: {  # First iteration - initial analysis
                 "response_content": """Thought: I need to get namespace information to understand the issue.
@@ -123,19 +125,53 @@ Action Input: {"resource": "namespace", "name": "stuck-namespace"}""",
                 "output_tokens": 90,
                 "total_tokens": 310,
             },
-            3: {  # Third iteration - after resume
-                "response_content": """Thought: Continuing my analysis after pause. The namespace is stuck due to finalizers.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "events", "namespace": "stuck-namespace"}""",
+            3: {  # Third iteration - after resume, completes data-collection stage
+                "response_content": """Thought: I've gathered enough information from the namespace describe showing finalizers. I can now provide the data collection summary.
+
+Final Answer: **Data Collection Complete**
+
+Collected the following information:
+- Namespace: stuck-namespace is in Terminating state (45m)
+- Finalizers: kubernetes.io/pvc-protection is blocking deletion
+- Status: Namespace is stuck and cannot complete termination
+
+Data collection stage is now complete. The gathered information shows finalizers are preventing namespace deletion.""",
                 "input_tokens": 240,
-                "output_tokens": 85,
-                "total_tokens": 325,
+                "output_tokens": 120,
+                "total_tokens": 360,
             },
-            4: {  # Fourth iteration - final answer
-                "response_content": """Final Answer: Analysis completed after resume. The namespace 'stuck-namespace' is stuck in Terminating state due to finalizers (kubernetes.io/pvc-protection) blocking deletion. To resolve: manually remove finalizers using kubectl patch.""",
-                "input_tokens": 260,
-                "output_tokens": 110,
-                "total_tokens": 370,
+            4: {  # Verification stage - iteration 1, immediate Final Answer
+                "response_content": """Thought: Based on the data collection results, I can verify the findings.
+
+Final Answer: **Verification Complete**
+
+Verified the root cause:
+- Namespace stuck in Terminating state is confirmed
+- Finalizers (kubernetes.io/pvc-protection) are preventing deletion
+- This is a common issue when PVCs are not properly cleaned up
+
+Verification confirms the data collection findings are accurate.""",
+                "input_tokens": 200,
+                "output_tokens": 100,
+                "total_tokens": 300,
+            },
+            5: {  # Analysis stage - iteration 1, immediate Final Answer
+                "response_content": """Thought: I can now provide the final analysis based on previous stages.
+
+Final Answer: **Final Analysis**
+
+**Root Cause:** Namespace 'stuck-namespace' cannot complete termination due to the kubernetes.io/pvc-protection finalizer remaining after resource cleanup.
+
+**Resolution Steps:**
+1. Remove the finalizer manually: `kubectl patch namespace stuck-namespace -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace stuck-namespace`
+
+**Prevention:** Ensure PVCs are deleted before namespace deletion to allow proper finalizer cleanup.
+
+Analysis complete after successful resume from pause.""",
+                "input_tokens": 250,
+                "output_tokens": 140,
+                "total_tokens": 390,
             },
         }
 
@@ -337,7 +373,13 @@ Finalizers:   [kubernetes.io/pvc-protection]
                         # The iteration information is available in pause_metadata at session level
                         print(f"✅ Paused stage verified: {paused_stage.get('stage_name')}")
 
-                        print("⏳ Step 4: Resuming paused session...")
+                        print("⏳ Step 4: Increasing max_iterations to allow completion after resume...")
+                        # Increase max_iterations to 4 so the session can complete after resume
+                        # Mock responses 3 and 4 will execute, with 4 providing the Final Answer
+                        settings.max_llm_mcp_iterations = 4
+                        print(f"🔧 Increased max_llm_mcp_iterations to 4")
+
+                        print("⏳ Step 5: Resuming paused session...")
                         resume_response = e2e_test_client.post(
                             f"/api/v1/history/sessions/{session_id}/resume"
                         )
@@ -350,18 +392,18 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             f"Expected status 'resuming', got '{resume_data.get('status')}'"
                         print(f"✅ Resume initiated: {resume_data}")
 
-                        print("⏳ Step 5: Waiting for resumed session to complete or pause again...")
-                        # After resume, the session will continue and might pause again (since we still have max_iterations=2)
-                        # or complete if we have enough iterations configured
+                        print("⏳ Step 6: Waiting for resumed session to complete...")
+                        # With max_iterations=4 and mock response 4 providing Final Answer,
+                        # the session MUST complete (not pause again)
                         final_session_id, final_status = await E2ETestUtils.wait_for_session_completion(
                             e2e_test_client, max_wait_seconds=15, debug_logging=True
                         )
 
-                        print("🔍 Step 6: Verifying final state...")
+                        print("🔍 Step 7: Verifying final state...")
                         assert final_session_id == session_id, "Session ID mismatch after resume"
-                        # Session might complete or pause again depending on the analysis
-                        assert final_status in ["completed", "paused"], \
-                            f"Expected final status 'completed' or 'paused', got '{final_status}'"
+                        # With our mock setup, session MUST complete (not pause again)
+                        assert final_status == "completed", \
+                            f"Expected status 'completed' after resume, got '{final_status}'"
                         print(f"✅ Final status: {final_status}")
 
                         # Verify audit trail
