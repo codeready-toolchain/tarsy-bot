@@ -168,7 +168,7 @@ EXPECTED_PAUSE_RESUME_STAGES = {
         'mcp_count': 4,  # 2 tool_list (k8s + test-data) + 2 tool_call (only k8s provides tools)
         'expected_status': 'active',  # Paused stage shows as "active" in DB
         'interactions': [
-            # Both servers are discovered (tool_list), but only kubernetes-server provides tools (we don't mock the second MCP server for simplisity)
+            # Both servers are discovered (tool_list), but only kubernetes-server provides tools (we don't mock the second MCP server for simplicity)
             {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 80, 'total_tokens': 280},
