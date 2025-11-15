@@ -212,7 +212,7 @@ class TestPauseResumeE2E:
         5. Wait for session to pause again (second pause at iteration 1 of resumed session)
         6. Verify second pause metadata (overwrites first, shows iteration 1)
         7. Increase max_iterations to 4 and resume (second resume)
-        8. Wait for session to complete (deterministic - interaction 4 has Final Answer)
+        8. Wait for session to complete (deterministic - interaction 5 has Final Answer)
         9. Verify final state has no pause_metadata (cleared on completion)
         """
 
