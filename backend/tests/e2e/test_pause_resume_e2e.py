@@ -5,19 +5,19 @@ This test verifies the complete pause/resume workflow including multiple pause/r
 1. Submit alert with max_iterations=2
 2. Wait for session to pause (first pause at iteration 2)
 3. Verify pause metadata and paused state
-4. Set max_iterations to 1 and resume (iteration counter resets)
+4. Set max_iterations to 1 and resume (iteration counter resets, pause_metadata cleared)
 5. Wait for session to pause again (second pause at iteration 1 of resumed session)
-6. Verify second pause metadata (overwrites first, shows iteration 1)
-7. Increase max_iterations to 4 and resume again
+6. Verify second pause metadata (new pause metadata, shows iteration 1)
+7. Increase max_iterations to 4 and resume again (pause_metadata cleared)
 8. Wait for session to complete (deterministic - interaction 5 has Final Answer)
-9. Verify final state shows LAST pause metadata (iteration 1) and audit trail
+9. Verify final state has no pause_metadata (cleared on completion)
 
 Architecture:
 - REAL: FastAPI app, AlertService, HistoryService, hook system, database
 - MOCKED: HTTP requests to LLM APIs, MCP servers, GitHub runbooks
 - CONFIGURED: max_llm_mcp_iterations dynamically changed during test (2→1→4)
 - DETERMINISTIC: Interaction 5 provides Final Answer → guaranteed completion
-- AUDIT TRAIL: pause_metadata preserved with last pause information
+- CLEAN STATE: pause_metadata cleared when not paused (simpler model)
 """
 
 import asyncio
@@ -213,7 +213,7 @@ class TestPauseResumeE2E:
         6. Verify second pause metadata (overwrites first, shows iteration 1)
         7. Increase max_iterations to 4 and resume (second resume)
         8. Wait for session to complete (deterministic - interaction 4 has Final Answer)
-        9. Verify final state shows LAST pause metadata (iteration 1 from second pause) for audit trail
+        9. Verify final state has no pause_metadata (cleared on completion)
         """
 
         # Wrap entire test in timeout to prevent hanging
@@ -567,7 +567,7 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             print(f"✅ Resume initiated: {resume_data}")
 
                             print("⏳ Step 6: Waiting for resumed session to pause again (second pause)...")
-                            # With max_iterations=3, session will pause again after interaction 3
+                            # With max_iterations=1, session will pause again after interaction 1
                             second_paused_session_id, second_paused_status = await E2ETestUtils.wait_for_session_completion(
                                 e2e_test_client, max_wait_seconds=15, debug_logging=True
                             )
@@ -596,10 +596,10 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             )
                             assert second_resume_response.status_code == 200, \
                                 f"Second resume failed with status {second_resume_response.status_code}: {second_resume_response.text}"
-                            print(f"✅ Second resume initiated")
+                            print("✅ Second resume initiated")
 
                             print("⏳ Step 10: Waiting for resumed session to complete...")
-                            # With max_iterations=4 and mock response 4 providing Final Answer,
+                            # With max_iterations=4 and mock response 5 providing Final Answer,
                             # the session MUST complete (not pause again)
                             final_session_id, final_status = await E2ETestUtils.wait_for_session_completion(
                                 e2e_test_client, max_wait_seconds=15, debug_logging=True
@@ -611,21 +611,14 @@ Finalizers:   [kubernetes.io/pvc-protection]
                                 f"Expected status 'completed' after second resume, got '{final_status}'"
                             print(f"✅ Final status: {final_status}")
 
-                            # Verify audit trail
+                            # Verify clean state
                             final_detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
                             
-                            # Verify pause_metadata persists after completion (audit trail)
-                            # Should contain LAST pause metadata (second pause at iteration 3)
+                            # Verify pause_metadata is cleared after completion (keep it clean)
                             final_pause_metadata = final_detail_data.get("pause_metadata")
-                            assert final_pause_metadata is not None, \
-                                "pause_metadata should remain available after resume/completion for audit trail"
-                            assert final_pause_metadata.get("reason") == "max_iterations_reached", \
-                                f"Expected pause reason 'max_iterations_reached' in final state, got '{final_pause_metadata.get('reason')}'"
-                            assert final_pause_metadata.get("current_iteration") == 1, \
-                                f"Expected current_iteration=1 (last pause, resets on resume) in final state, got {final_pause_metadata.get('current_iteration')}"
-                            assert "paused_at_us" in final_pause_metadata, \
-                                "pause_metadata should retain 'paused_at_us' timestamp for audit trail"
-                            print(f"✅ Pause metadata persisted after completion (shows LAST pause iteration=1): {final_pause_metadata}")
+                            assert final_pause_metadata is None, \
+                                "pause_metadata should be cleared after completion (not paused = no pause_metadata)"
+                            print("✅ Pause metadata cleared after completion (clean state)")
                             
                             # Verify session-level timestamps
                             assert final_detail_data.get("started_at_us") > 0, "started_at_us missing"
@@ -662,7 +655,7 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             print("✅ All 3 stage executions verified: data-collection (reused), verification, analysis")
 
                             # Verify LLM interactions match our mock setup
-                            # Mock interactions: 1,2 (pause #1) → 3 (pause #2) → 4,5 (data-collection complete) → 6 (verification) → 7 (analysis)
+                            # Mock interactions: 1,2 (pause #1 at iteration 2) → 3 (pause #2 at iteration 1 after resume/reset) → 4,5 (data-collection complete) → 6 (verification) → 7 (analysis)
                             # Total: 7 interactions
                             total_llm_interactions = sum(
                                 len(stage.get("llm_interactions", [])) for stage in final_stages
@@ -692,7 +685,7 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             print("     * PROVES: Agent can do full ReAct loops after second resume (interaction 4: tool call)")
                             print("   - Single stage execution was reused (no duplicate stage created)")
                             print("   - Token counts match expected (proving no extra work)")
-                            print("   - pause_metadata preserved with LAST pause info (iteration 1 from second pause)")
+                            print("   - pause_metadata cleared after completion (clean state)")
                             print("   - Timeline is correct (data-collection → verification → analysis)")
 
                             print("\n✅ MULTIPLE PAUSE/RESUME E2E TEST PASSED!")

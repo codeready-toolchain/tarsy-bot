@@ -702,8 +702,8 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               {/* Resume Button - Only for paused sessions */}
               {sessionIsPaused && (
                 <>
-                  {/* Pause Alert */}
-                  {session.pause_metadata && (
+                  {/* Pause Alert - Only show when both status is PAUSED and metadata exists */}
+                  {session.status === SESSION_STATUS.PAUSED && session.pause_metadata && (
                     <Alert 
                       severity="warning" 
                       icon={<PauseCircle />}

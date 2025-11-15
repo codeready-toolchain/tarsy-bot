@@ -326,15 +326,12 @@ class HistoryService:
                     session.error_message = error_message
                 if final_analysis:
                     session.final_analysis = final_analysis
-                # Set pause_metadata when transitioning to PAUSED
-                # PRESERVE pause_metadata for audit trail when transitioning away from PAUSED
-                # Only clear it if explicitly set to None
+                # Set pause_metadata when transitioning to PAUSED, clear it otherwise
                 if status == AlertSessionStatus.PAUSED.value:
                     session.pause_metadata = pause_metadata
-                elif pause_metadata is not None:
-                    # Explicitly clearing pause_metadata if provided
-                    session.pause_metadata = pause_metadata
-                # Otherwise preserve existing pause_metadata for audit trail
+                else:
+                    # Clear pause_metadata when not paused (keep it clean)
+                    session.pause_metadata = None
                 if status in AlertSessionStatus.terminal_values():
                     session.completed_at_us = now_us()
                 

@@ -77,14 +77,11 @@ const getStatusConfig = (status: string): {
 const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => {
   const { color, icon, label } = getStatusConfig(status);
   
-  // Base styling for all status badges (non-interactive/static)
-  const baseSx: SxProps<Theme> = {
+  const isPaused = status === SESSION_STATUS.PAUSED;
+  
+  // Base styling shared by all status badges
+  const commonSx: SxProps<Theme> = {
     fontWeight: 500,
-    transition: 'none', // Disable all transitions for static badges
-    transform: 'none',  // Disable all transforms for static badges
-    '&.MuiChip-root': {
-      animation: 'none', // Disable default animations
-    },
     // Consistent focus indicator for keyboard navigation (accessibility)
     '&:focus-visible': {
       outline: '2px solid',
@@ -101,12 +98,22 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => 
     },
   };
 
+  // For non-animated badges, disable all transitions and animations
+  const staticSx: SxProps<Theme> = {
+    ...commonSx,
+    transition: 'none',
+    transform: 'none',
+    '&.MuiChip-root': {
+      animation: 'none',
+    },
+  };
+
   // Custom styling for special statuses
-  let customSx: SxProps<Theme> = { ...baseSx };
+  let customSx: SxProps<Theme> = { ...staticSx };
 
   if (status === SESSION_STATUS.CANCELLED) {
     customSx = {
-      ...baseSx,
+      ...staticSx,
       fontWeight: 600,
       backgroundColor: 'rgba(0, 0, 0, 0.7)',
       color: 'white',
@@ -116,9 +123,10 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => 
         color: 'white',
       },
     };
-  } else if (status === SESSION_STATUS.PAUSED) {
+  } else if (isPaused) {
+    // PAUSED status uses commonSx (no animation restrictions) plus pulse animation
     customSx = {
-      ...baseSx,
+      ...commonSx,
       fontWeight: 600,
       backgroundColor: '#e65100',
       color: 'white',
@@ -126,9 +134,9 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => 
         marginLeft: '4px',
         color: 'white',
       },
-      animation: 'pulse 2s ease-in-out infinite !important', // Force our custom animation (override baseSx)
-      transition: 'none !important',
-      transform: 'none !important',
+      animation: 'pulse 2s ease-in-out infinite',
+      transition: 'none',
+      transform: 'none',
       '&:focus-visible': {
         outline: '2px solid #ffffff',
         outlineOffset: '2px',

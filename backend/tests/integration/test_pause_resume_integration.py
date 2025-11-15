@@ -514,11 +514,11 @@ class TestPauseResumeIntegration:
             assert alert_session.pause_metadata is None
     
     @pytest.mark.asyncio
-    async def test_pause_metadata_preserved_on_resume(
+    async def test_pause_metadata_cleared_on_resume(
         self, async_test_session_factory
     ) -> None:
-        """Test that pause_metadata is preserved when session transitions from PAUSED to IN_PROGRESS (audit trail)."""
-        session_id = "preserved-metadata-test"
+        """Test that pause_metadata is cleared when session transitions from PAUSED to IN_PROGRESS."""
+        session_id = "cleared-metadata-test"
         
         from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         from sqlmodel import select
@@ -553,35 +553,34 @@ class TestPauseResumeIntegration:
             assert alert_session.pause_metadata is not None
             assert alert_session.pause_metadata["reason"] == "max_iterations_reached"
         
-        # Step 2: Update status to IN_PROGRESS (simulating resume) - pause_metadata should be preserved
+        # Step 2: Update status to IN_PROGRESS (simulating resume) - pause_metadata should be cleared
         async with async_test_session_factory() as session:
             result = await session.execute(
                 select(AlertSession).where(AlertSession.session_id == session_id)
             )
             alert_session = result.scalar_one()
             alert_session.status = AlertSessionStatus.IN_PROGRESS.value
-            # PRESERVE pause_metadata for audit trail (don't set to None)
-            # The history_service.update_session_status logic preserves pause_metadata for audit trail
+            # Clear pause_metadata when not paused (keep it clean)
+            alert_session.pause_metadata = None
             session.add(alert_session)
             await session.commit()
         
-        # Step 3: Verify pause_metadata is preserved for audit trail
+        # Step 3: Verify pause_metadata is cleared
         async with async_test_session_factory() as session:
             result = await session.execute(
                 select(AlertSession).where(AlertSession.session_id == session_id)
             )
             alert_session = result.scalar_one()
             assert alert_session.status == AlertSessionStatus.IN_PROGRESS.value
-            assert alert_session.pause_metadata is not None, \
-                "pause_metadata should be preserved when transitioning from PAUSED to IN_PROGRESS for audit trail"
-            assert alert_session.pause_metadata["reason"] == "max_iterations_reached"
+            assert alert_session.pause_metadata is None, \
+                "pause_metadata should be cleared when transitioning from PAUSED to IN_PROGRESS"
     
     @pytest.mark.asyncio
-    async def test_pause_metadata_preserved_on_completion(
+    async def test_pause_metadata_cleared_on_completion(
         self, async_test_session_factory
     ) -> None:
-        """Test that pause_metadata is preserved when session completes after being paused (audit trail)."""
-        session_id = "preserved-on-complete-test"
+        """Test that pause_metadata is cleared when session completes after being paused."""
+        session_id = "cleared-on-complete-test"
         
         from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         from sqlmodel import select
@@ -607,7 +606,7 @@ class TestPauseResumeIntegration:
             session.add(test_session)
             await session.commit()
         
-        # Update status to COMPLETED - pause_metadata should be preserved for audit trail
+        # Update status to COMPLETED - pause_metadata should be cleared
         async with async_test_session_factory() as session:
             result = await session.execute(
                 select(AlertSession).where(AlertSession.session_id == session_id)
@@ -615,32 +614,31 @@ class TestPauseResumeIntegration:
             alert_session = result.scalar_one()
             alert_session.status = AlertSessionStatus.COMPLETED.value
             alert_session.final_analysis = "Analysis completed successfully"
-            # PRESERVE pause_metadata for audit trail (don't set to None)
-            # The history_service.update_session_status logic preserves pause_metadata for audit trail
+            # Clear pause_metadata when not paused (keep it clean)
+            alert_session.pause_metadata = None
             alert_session.completed_at_us = now_us()
             session.add(alert_session)
             await session.commit()
         
-        # Verify pause_metadata is preserved for audit trail
+        # Verify pause_metadata is cleared
         async with async_test_session_factory() as session:
             result = await session.execute(
                 select(AlertSession).where(AlertSession.session_id == session_id)
             )
             alert_session = result.scalar_one()
             assert alert_session.status == AlertSessionStatus.COMPLETED.value
-            assert alert_session.pause_metadata is not None, \
-                "pause_metadata should be preserved when transitioning from PAUSED to COMPLETED for audit trail"
-            assert alert_session.pause_metadata["reason"] == "max_iterations_reached"
+            assert alert_session.pause_metadata is None, \
+                "pause_metadata should be cleared when transitioning from PAUSED to COMPLETED"
             assert alert_session.final_analysis == "Analysis completed successfully"
     
     @pytest.mark.integration
-    def test_history_service_preserves_pause_metadata_on_resume(
+    def test_history_service_clears_pause_metadata_on_resume(
         self, history_service_with_test_db
     ) -> None:
-        """Test that history_service.update_session_status preserves pause_metadata on resume (audit trail).
+        """Test that history_service.update_session_status clears pause_metadata on resume.
         
         This test exercises the actual service layer logic (not just ORM) to ensure
-        the production code path for preserving pause_metadata works correctly.
+        the production code path for clearing pause_metadata works correctly.
         """
         from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         from tarsy.models.constants import AlertSessionStatus
@@ -681,22 +679,21 @@ class TestPauseResumeIntegration:
         )
         assert success is True
         
-        # Verify pause_metadata was preserved by the service for audit trail
+        # Verify pause_metadata was cleared by the service
         retrieved_session = history_service.get_session(session_id)
         assert retrieved_session is not None
         assert retrieved_session.status == AlertSessionStatus.IN_PROGRESS.value
-        assert retrieved_session.pause_metadata is not None, \
-            "history_service.update_session_status should preserve pause_metadata on resume for audit trail"
-        assert retrieved_session.pause_metadata["reason"] == "max_iterations_reached"
+        assert retrieved_session.pause_metadata is None, \
+            "history_service.update_session_status should clear pause_metadata on resume"
     
     @pytest.mark.integration
-    def test_history_service_preserves_pause_metadata_on_completion(
+    def test_history_service_clears_pause_metadata_on_completion(
         self, history_service_with_test_db
     ) -> None:
-        """Test that history_service.update_session_status preserves pause_metadata on completion (audit trail).
+        """Test that history_service.update_session_status clears pause_metadata on completion.
         
         This test exercises the actual service layer logic (not just ORM) to ensure
-        the production code path for preserving pause_metadata works correctly.
+        the production code path for clearing pause_metadata works correctly.
         """
         from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         from tarsy.models.constants import AlertSessionStatus
@@ -737,13 +734,12 @@ class TestPauseResumeIntegration:
         )
         assert success is True
         
-        # Verify pause_metadata was preserved by the service for audit trail
+        # Verify pause_metadata was cleared by the service
         retrieved_session = history_service.get_session(session_id)
         assert retrieved_session is not None
         assert retrieved_session.status == AlertSessionStatus.COMPLETED.value
-        assert retrieved_session.pause_metadata is not None, \
-            "history_service.update_session_status should preserve pause_metadata on completion for audit trail"
-        assert retrieved_session.pause_metadata["reason"] == "max_iterations_reached"
+        assert retrieved_session.pause_metadata is None, \
+            "history_service.update_session_status should clear pause_metadata on completion"
         assert retrieved_session.final_analysis == "Test completed successfully"
         assert retrieved_session.completed_at_us is not None
     
@@ -807,32 +803,30 @@ class TestPauseResumeIntegration:
         )
         assert success is True
         
-        # Verify pause_metadata was preserved on resume for audit trail
+        # Verify pause_metadata was cleared on resume
         retrieved_session = history_service.get_session(session_id)
         assert retrieved_session is not None
         assert retrieved_session.status == AlertSessionStatus.IN_PROGRESS.value
-        assert retrieved_session.pause_metadata is not None, \
-            "pause_metadata should be preserved when resuming through service for audit trail"
-        assert retrieved_session.pause_metadata["reason"] == "max_iterations_reached"
-        assert retrieved_session.pause_metadata["current_iteration"] == 30
+        assert retrieved_session.pause_metadata is None, \
+            "pause_metadata should be cleared when resuming through service"
     
     @pytest.mark.integration
     def test_multiple_pause_resume_cycles(
         self, history_service_with_test_db
     ) -> None:
-        """Test that multiple pause/resume cycles work correctly and preserve last pause metadata.
+        """Test that multiple pause/resume cycles work correctly and clear pause metadata.
         
         Scenario:
         1. Session starts in progress
         2. Pause at iteration 5
-        3. Resume to in progress
+        3. Resume to in progress (pause_metadata cleared)
         4. Pause again at iteration 10
-        5. Resume to in progress
+        5. Resume to in progress (pause_metadata cleared)
         6. Complete
         
         Verifies:
         - All state transitions work correctly
-        - pause_metadata shows LAST pause (iteration 10)
+        - pause_metadata is cleared when not paused
         - Session completes successfully after multiple cycles
         """
         from tarsy.models.pause_metadata import PauseMetadata, PauseReason
@@ -887,13 +881,12 @@ class TestPauseResumeIntegration:
         )
         assert success is True
         
-        # Verify first resume - pause_metadata preserved
+        # Verify first resume - pause_metadata cleared
         retrieved_session = history_service.get_session(session_id)
         assert retrieved_session is not None
         assert retrieved_session.status == AlertSessionStatus.IN_PROGRESS.value
-        assert retrieved_session.pause_metadata is not None, \
-            "pause_metadata should be preserved after resume for audit trail"
-        assert retrieved_session.pause_metadata["current_iteration"] == 5
+        assert retrieved_session.pause_metadata is None, \
+            "pause_metadata should be cleared after resume"
         
         # Step 4: Second pause at iteration 10 (overwrites first pause metadata)
         second_pause_meta = PauseMetadata(
@@ -909,13 +902,13 @@ class TestPauseResumeIntegration:
         )
         assert success is True
         
-        # Verify second pause - metadata updated to iteration 10
+        # Verify second pause - metadata set to iteration 10
         retrieved_session = history_service.get_session(session_id)
         assert retrieved_session is not None
         assert retrieved_session.status == AlertSessionStatus.PAUSED.value
         assert retrieved_session.pause_metadata is not None
         assert retrieved_session.pause_metadata["current_iteration"] == 10, \
-            "Second pause should overwrite first pause metadata"
+            "Second pause should set new pause metadata"
         assert retrieved_session.pause_metadata["message"] == "Second pause at iteration 10"
         
         # Step 5: Second resume
@@ -925,13 +918,12 @@ class TestPauseResumeIntegration:
         )
         assert success is True
         
-        # Verify second resume - still has pause_metadata from second pause
+        # Verify second resume - pause_metadata cleared
         retrieved_session = history_service.get_session(session_id)
         assert retrieved_session is not None
         assert retrieved_session.status == AlertSessionStatus.IN_PROGRESS.value
-        assert retrieved_session.pause_metadata is not None
-        assert retrieved_session.pause_metadata["current_iteration"] == 10, \
-            "pause_metadata should show last pause (iteration 10)"
+        assert retrieved_session.pause_metadata is None, \
+            "pause_metadata should be cleared after second resume"
         
         # Step 6: Complete
         success = history_service.update_session_status(
@@ -941,15 +933,12 @@ class TestPauseResumeIntegration:
         )
         assert success is True
         
-        # Verify completion - pause_metadata still preserved with LAST pause info
+        # Verify completion - pause_metadata cleared
         retrieved_session = history_service.get_session(session_id)
         assert retrieved_session is not None
         assert retrieved_session.status == AlertSessionStatus.COMPLETED.value
-        assert retrieved_session.pause_metadata is not None, \
-            "pause_metadata should be preserved after completion for audit trail"
-        assert retrieved_session.pause_metadata["current_iteration"] == 10, \
-            "Final pause_metadata should show last pause (iteration 10), not first (iteration 5)"
-        assert retrieved_session.pause_metadata["reason"] == "max_iterations_reached"
+        assert retrieved_session.pause_metadata is None, \
+            "pause_metadata should be cleared after completion"
         assert retrieved_session.final_analysis == "Analysis completed after multiple pause/resume cycles"
         assert retrieved_session.completed_at_us is not None
 
