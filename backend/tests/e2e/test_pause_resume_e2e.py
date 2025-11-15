@@ -411,29 +411,51 @@ Finalizers:   [kubernetes.io/pvc-protection]
                         
                         # Verify session-level timestamps
                         assert final_detail_data.get("started_at_us") > 0, "started_at_us missing"
-                        if final_status == "completed":
-                            assert final_detail_data.get("completed_at_us") > 0, "completed_at_us missing"
-                            assert final_detail_data.get("completed_at_us") > final_detail_data.get("started_at_us"), \
-                                "completed_at_us should be after started_at_us"
+                        assert final_detail_data.get("completed_at_us") > 0, "completed_at_us missing"
+                        assert final_detail_data.get("completed_at_us") > final_detail_data.get("started_at_us"), \
+                            "completed_at_us should be after started_at_us"
                         
                         # Verify stages structure after resume
+                        # After pause/resume, we have 4 stage executions:
+                        # 1. data-collection (active/paused - the initial execution that paused)
+                        # 2. data-collection (completed - the resumed execution)
+                        # 3. verification (completed)
+                        # 4. analysis (completed)
                         final_stages = final_detail_data.get("stages", [])
-                        assert len(final_stages) > 0, "No stages found after resume"
                         
-                        # Count how many times the stage was paused (should be at least 1)
-                        # We should see evidence of pause in the stage history
-                        print(f"✅ Session has {len(final_stages)} stage(s) after resume")
+                        # Extract stage info for verification
+                        stage_info = [(s.get("stage_name"), s.get("status")) for s in final_stages]
+                        print(f"📊 Actual stages found: {stage_info}")
+                        
+                        # We expect exactly 4 stage executions
+                        assert len(final_stages) == 4, \
+                            f"Expected 4 stage executions (paused data-collection + completed data-collection + verification + analysis), got {len(final_stages)}"
+                        
+                        # Verify stage order and statuses
+                        assert final_stages[0].get("stage_name") == "data-collection", "First stage should be data-collection"
+                        assert final_stages[0].get("status") in ["active", "paused"], \
+                            f"First data-collection should be active/paused, got {final_stages[0].get('status')}"
+                        
+                        assert final_stages[1].get("stage_name") == "data-collection", "Second stage should be data-collection"
+                        assert final_stages[1].get("status") == "completed", "Second data-collection should be completed"
+                        
+                        assert final_stages[2].get("stage_name") == "verification", "Third stage should be verification"
+                        assert final_stages[2].get("status") == "completed", "Verification should be completed"
+                        
+                        assert final_stages[3].get("stage_name") == "analysis", "Fourth stage should be analysis"
+                        assert final_stages[3].get("status") == "completed", "Analysis should be completed"
+                        
+                        print(f"✅ All 4 stage executions verified: paused data-collection, completed data-collection, verification, analysis")
 
-                        # Verify LLM interactions increased after resume
-                        # Initially we had 2 interactions (before pause), after resume we should have more
+                        # Verify LLM interactions match our mock setup
+                        # Mock interactions: 1,2 (pause) → 3 (data-collection) → 4 (verification) → 5 (analysis)
+                        # Total: 5 interactions
                         total_llm_interactions = sum(
                             len(stage.get("llm_interactions", [])) for stage in final_stages
                         )
                         print(f"✅ Total LLM interactions: {total_llm_interactions}")
-                        # We should have had at least 2 interactions before pause
-                        # After resume, we might have 1-2 more interactions
-                        assert total_llm_interactions >= 2, \
-                            f"Expected at least 2 LLM interactions, got {total_llm_interactions}"
+                        assert total_llm_interactions == 5, \
+                            f"Expected exactly 5 LLM interactions (2 before pause + 3 after resume), got {total_llm_interactions}"
 
                         print("✅ PAUSE/RESUME E2E TEST PASSED!")
                         
