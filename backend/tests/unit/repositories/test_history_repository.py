@@ -1919,8 +1919,8 @@ class TestHistoryRepositoryPerformance:
         assert result.agent_types == []
         assert result.alert_types == []
         # Status options should always return all possible statuses (not dynamic from database)
-        assert len(result.status_options) == 6
-        assert result.status_options == ["pending", "in_progress", "canceling", "completed", "failed", "cancelled"]
+        assert len(result.status_options) == 7
+        assert result.status_options == ["pending", "in_progress", "paused", "canceling", "completed", "failed", "cancelled"]
         
         # Time ranges should still be present (static)
         assert len(result.time_ranges) == 5
@@ -1947,7 +1947,7 @@ class TestHistoryRepositoryPerformance:
         assert result.agent_types == sorted(result.agent_types)
         assert result.alert_types == sorted(result.alert_types)
         # Status options are returned in constant definition order (not sorted)
-        assert result.status_options == ["pending", "in_progress", "canceling", "completed", "failed", "cancelled"]
+        assert result.status_options == ["pending", "in_progress", "paused", "canceling", "completed", "failed", "cancelled"]
 
 @pytest.mark.unit  
 class TestHistoryRepositoryDuplicatePrevention:

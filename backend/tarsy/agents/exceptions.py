@@ -166,13 +166,21 @@ class SessionPaused(AgentError):
     Recoverable as processing can continue after resume.
     """
     
-    def __init__(self, message: str, iteration: int, context: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, 
+        message: str, 
+        iteration: int, 
+        conversation: Optional[Any] = None,
+        context: Optional[Dict[str, Any]] = None
+    ):
         super().__init__(message, context, recoverable=True)
         self.iteration = iteration
+        self.conversation = conversation  # LLMConversation object with full history
         
     def to_dict(self) -> Dict[str, Any]:
         result = super().to_dict()
         result["iteration"] = self.iteration
+        # Don't include conversation in to_dict - it's for internal use only
         return result
 
 

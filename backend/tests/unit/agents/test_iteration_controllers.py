@@ -185,7 +185,9 @@ class TestSimpleReActController:
     async def test_execute_analysis_loop_max_iterations_with_successful_last_interaction(
         self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
     ):
-        """Test ReAct loop that reaches maximum iterations with successful last interaction."""
+        """Test ReAct loop that reaches maximum iterations with successful last interaction - should pause."""
+        from tarsy.agents.exceptions import SessionPaused
+        
         mock_agent.max_iterations = 1  # Force max iterations quickly
         
         # Mock LLM to return incomplete responses (no Final Answer) to force max iterations
@@ -196,10 +198,13 @@ class TestSimpleReActController:
         
         mock_llm_client.generate_response.side_effect = mock_generate_response_incomplete
         
-        result = await controller.execute_analysis_loop(sample_context)
+        # Should raise SessionPaused when reaching max iterations with successful last interaction
+        with pytest.raises(SessionPaused) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
         
-        # Should return timeout message (last interaction was successful)
-        assert "Analysis incomplete: reached maximum iterations (1) without final answer" in result
+        # Verify the exception details
+        assert exc_info.value.iteration == 1
+        assert exc_info.value.conversation is not None
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_max_iterations_with_failed_last_interaction(
@@ -610,39 +615,38 @@ class TestReactStageController:
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_max_iterations_with_fallback(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
-        """Test partial analysis loop that reaches maximum iterations and generates fallback."""
+        """Test partial analysis loop that reaches maximum iterations - should pause."""
+        from tarsy.agents.exceptions import SessionPaused
+        
         mock_agent.max_iterations = 1  # Force quick max iterations
         
         # Mock responses that return LLMConversation objects
-        fallback_response_text = "Partial analysis summary based on available data"
-        
         call_count = 0
-        async def mock_generate_response_with_fallback(conversation, session_id, stage_execution_id=None, **kwargs):
+        async def mock_generate_response_incomplete(conversation, session_id, stage_execution_id=None, **kwargs):
             nonlocal call_count
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
-            
-            if call_count == 0:
-                # First call: incomplete ReAct response (no Final Answer)
-                updated_conversation.append_assistant_message("Thought: Still analyzing...")
-            else:
-                # Fallback call: return fallback response
-                updated_conversation.append_assistant_message(fallback_response_text)
-            
+            updated_conversation.append_assistant_message("Thought: Still analyzing...")  # No Final Answer
             call_count += 1
             return updated_conversation
         
-        mock_llm_client.generate_response.side_effect = mock_generate_response_with_fallback
+        mock_llm_client.generate_response.side_effect = mock_generate_response_incomplete
         
-        result = await controller.execute_analysis_loop(sample_context)
+        # Should raise SessionPaused when reaching max iterations
+        with pytest.raises(SessionPaused) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
         
-        assert "Analysis incomplete: reached maximum iterations (1) without final answer" in result
+        # Verify the exception details
+        assert exc_info.value.iteration == 1
+        assert exc_info.value.conversation is not None
         
         # Should have attempted the ReAct analysis 
         assert mock_llm_client.generate_response.call_count >= 1
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_fallback_failure(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
-        """Test partial analysis loop with fallback generation failure."""
+        """Test partial analysis loop that reaches max iterations - should pause."""
+        from tarsy.agents.exceptions import SessionPaused
+        
         mock_agent.max_iterations = 1
         
         # Mock LLM to return incomplete responses (no Final Answer) to force max iterations
@@ -653,9 +657,13 @@ class TestReactStageController:
         
         mock_llm_client.generate_response.side_effect = mock_generate_response_incomplete
         
-        result = await controller.execute_analysis_loop(sample_context)
+        # Should raise SessionPaused when reaching max iterations
+        with pytest.raises(SessionPaused) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
         
-        assert "Analysis incomplete: reached maximum iterations (1) without final answer" in result
+        # Verify the exception details
+        assert exc_info.value.iteration == 1
+        assert exc_info.value.conversation is not None
 
 @pytest.mark.unit
 class TestIterationControllerFactory:
