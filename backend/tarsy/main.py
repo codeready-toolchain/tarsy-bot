@@ -113,7 +113,7 @@ async def handle_cancel_request(event: dict) -> None:
                 
                 history_service = get_history_service()
                 if history_service:
-                    session = await history_service.get_session(session_id)
+                    session = history_service.get_session(session_id)
                     # If session is CANCELING but has no active task, it was likely PAUSED
                     # Complete the cancellation immediately
                     if session and session.status == AlertSessionStatus.CANCELING.value:
