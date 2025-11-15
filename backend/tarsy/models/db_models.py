@@ -103,6 +103,12 @@ class AlertSession(SQLModel, table=True):
         description="Additional context and metadata for the session"
     )
     
+    pause_metadata: Optional[dict] = Field(
+        default=None,
+        sa_column=Column[Any](JSON),
+        description="Metadata about why session paused (iteration count, reason, message)"
+    )
+    
     author: Optional[str] = Field(
         default=None,
         max_length=255,

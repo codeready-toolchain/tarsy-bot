@@ -10,6 +10,12 @@ export interface Session {
   completed_at_us: number | null; // Unix timestamp (microseconds since epoch)
   duration_ms: number | null; // Computed property from backend
   error_message: string | null;
+  pause_metadata: {
+    reason: string;
+    current_iteration?: number;
+    message: string;
+    paused_at_us: number;
+  } | null;
   
   // Interaction counts (now always present)
   llm_interaction_count: number;

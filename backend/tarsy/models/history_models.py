@@ -321,6 +321,7 @@ class DetailedSession(BaseModel):
     alert_data: dict  # Complete alert information
     final_analysis: Optional[str] = None
     session_metadata: Optional[dict] = None
+    pause_metadata: Optional[Dict[str, Any]] = None
     
     # Chain execution details
     chain_id: str

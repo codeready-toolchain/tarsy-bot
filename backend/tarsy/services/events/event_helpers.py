@@ -111,17 +111,22 @@ async def publish_session_failed(session_id: str) -> None:
         logger.warning(f"Failed to publish session.failed event: {e}")
 
 
-async def publish_session_paused(session_id: str) -> None:
+async def publish_session_paused(session_id: str, pause_metadata: Optional[dict] = None) -> None:
     """
     Publish session.paused event to both global and session-specific channels.
 
     Args:
         session_id: Session identifier
+        pause_metadata: Optional metadata about why session paused
     """
     try:
         async_session_factory = get_async_session_factory()
         async with async_session_factory() as session:
-            event = SessionPausedEvent(session_id=session_id, status=AlertSessionStatus.PAUSED.value)
+            event = SessionPausedEvent(
+                session_id=session_id, 
+                status=AlertSessionStatus.PAUSED.value,
+                pause_metadata=pause_metadata
+            )
             # Publish to global 'sessions' channel for dashboard
             await publish_event(session, EventChannel.SESSIONS, event)
             # Also publish to session-specific channel for detail views

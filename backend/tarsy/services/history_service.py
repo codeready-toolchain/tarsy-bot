@@ -292,16 +292,18 @@ class HistoryService:
         session_id: str,
         status: str,
         error_message: Optional[str] = None,
-        final_analysis: Optional[str] = None
+        final_analysis: Optional[str] = None,
+        pause_metadata: Optional[dict] = None
     ) -> bool:
         """
         Update session processing status with retry logic.
         
         Args:
             session_id: The session identifier
-            status: New status (pending, in_progress, completed, failed)
+            status: New status (pending, in_progress, completed, failed, paused)
             error_message: Error message if status is failed
             final_analysis: Final formatted analysis if status is completed
+            pause_metadata: Pause metadata if status is paused
             
         Returns:
             True if updated successfully, False otherwise
@@ -324,6 +326,8 @@ class HistoryService:
                     session.error_message = error_message
                 if final_analysis:
                     session.final_analysis = final_analysis
+                if pause_metadata is not None:
+                    session.pause_metadata = pause_metadata
                 if status in AlertSessionStatus.terminal_values():
                     session.completed_at_us = now_us()
                 

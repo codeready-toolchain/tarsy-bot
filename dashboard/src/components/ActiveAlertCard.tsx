@@ -198,37 +198,44 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
       <CardContent sx={{ pb: 2 }}>
         {/* Header with status and new tab icon */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-            <Chip
-              icon={statusConfig.icon}
-              label={statusConfig.label}
-              color={statusConfig.color}
-              size="small"
-              sx={
-                session.status === SESSION_STATUS.PAUSED
-                  ? {
-                      fontWeight: 600,
-                      backgroundColor: '#e65100',
-                      color: 'white',
-                      '& .MuiChip-icon': {
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Chip
+                icon={statusConfig.icon}
+                label={statusConfig.label}
+                color={statusConfig.color}
+                size="small"
+                sx={
+                  session.status === SESSION_STATUS.PAUSED
+                    ? {
+                        fontWeight: 600,
+                        backgroundColor: '#e65100',
                         color: 'white',
-                      },
-                      animation: 'pulse 2s ease-in-out infinite',
-                      '@keyframes pulse': {
-                        '0%, 100%': {
-                          backgroundColor: '#e65100',
+                        '& .MuiChip-icon': {
+                          color: 'white',
                         },
-                        '50%': {
-                          backgroundColor: '#ff9800',
+                        animation: 'pulse 2s ease-in-out infinite',
+                        '@keyframes pulse': {
+                          '0%, 100%': {
+                            backgroundColor: '#e65100',
+                          },
+                          '50%': {
+                            backgroundColor: '#ff9800',
+                          },
                         },
-                      },
-                    }
-                  : { fontWeight: 500 }
-              }
-            />
-            <Typography variant="body2" color="text.secondary">
-              {session.agent_type}
-            </Typography>
+                      }
+                    : { fontWeight: 500 }
+                }
+              />
+              <Typography variant="body2" color="text.secondary">
+                {session.agent_type}
+              </Typography>
+            </Box>
+            {session.status === SESSION_STATUS.PAUSED && session.pause_metadata && (
+              <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                {session.pause_metadata.message}
+              </Typography>
+            )}
           </Box>
           
           {/* New Tab Icon */}

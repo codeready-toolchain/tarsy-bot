@@ -31,6 +31,7 @@ from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.runbook_service import RunbookService
 from tarsy.utils.logger import get_module_logger
 from tarsy.agents.exceptions import SessionPaused
+from tarsy.models.pause_metadata import PauseMetadata, PauseReason
 
 logger = get_module_logger(__name__)
 
@@ -366,7 +367,7 @@ class AlertService:
                 )
                 
                 # Mark history session as completed successfully
-                self._update_session_completed(chain_context.session_id, AlertSessionStatus.COMPLETED.value, final_analysis=final_result)
+                self._update_session_status(chain_context.session_id, AlertSessionStatus.COMPLETED.value, final_analysis=final_result)
                 
                 # Publish session.completed event
                 from tarsy.services.events.event_helpers import publish_session_completed
@@ -552,7 +553,7 @@ class AlertService:
             
             # Handle result
             if result.status == ChainStatus.COMPLETED:
-                self._update_session_completed(session_id, AlertSessionStatus.COMPLETED.value, result.final_analysis)
+                self._update_session_status(session_id, AlertSessionStatus.COMPLETED.value, final_analysis=result.final_analysis)
                 from tarsy.services.events.event_helpers import publish_session_completed
                 await publish_session_completed(session_id)
                 return result.final_analysis or "Analysis completed"
@@ -563,7 +564,7 @@ class AlertService:
                 return result.final_analysis or "Session paused again - waiting for user to resume"
             else:
                 error_msg = result.error or "Chain execution failed"
-                self._update_session_completed(session_id, AlertSessionStatus.FAILED.value)
+                self._update_session_status(session_id, AlertSessionStatus.FAILED.value)
                 from tarsy.services.events.event_helpers import publish_session_failed
                 await publish_session_failed(session_id)
                 return error_msg
@@ -707,6 +708,17 @@ class AlertService:
                         # Session paused at max iterations - update status and exit gracefully
                         logger.info(f"Stage '{stage.name}' paused at iteration {e.iteration}")
                         
+                        # Create pause metadata
+                        pause_meta = PauseMetadata(
+                            reason=PauseReason.MAX_ITERATIONS_REACHED,
+                            current_iteration=e.iteration,
+                            message=f"Paused after {e.iteration} iterations - resume to continue",
+                            paused_at_us=now_us()
+                        )
+                        
+                        # Serialize pause metadata (convert enum to string)
+                        pause_meta_dict = pause_meta.model_dump(mode='json')
+                        
                         # Create partial AgentExecutionResult with conversation state for resume
                         paused_result = AgentExecutionResult(
                             status=StageStatus.PAUSED,
@@ -721,13 +733,17 @@ class AlertService:
                         # Update stage execution as paused with current iteration and conversation state
                         await self._update_stage_execution_paused(stage_execution_id, e.iteration, paused_result)
                         
-                        # Update session status to PAUSED
+                        # Update session status to PAUSED with metadata
                         from tarsy.models.constants import AlertSessionStatus
-                        self._update_session_status(chain_context.session_id, AlertSessionStatus.PAUSED.value)
+                        self._update_session_status(
+                            chain_context.session_id, 
+                            AlertSessionStatus.PAUSED.value,
+                            pause_metadata=pause_meta_dict
+                        )
                         
-                        # Publish pause event
+                        # Publish pause event with metadata
                         from tarsy.services.events.event_helpers import publish_session_paused
-                        await publish_session_paused(chain_context.session_id)
+                        await publish_session_paused(chain_context.session_id, pause_metadata=pause_meta_dict)
                         
                         # Return paused result (not failed)
                         return ChainExecutionResult(
@@ -1021,13 +1037,23 @@ class AlertService:
             logger.warning(f"Failed to create chain history session: {str(e)}")
             return False
     
-    def _update_session_status(self, session_id: Optional[str], status: str):
+    def _update_session_status(
+        self, 
+        session_id: Optional[str], 
+        status: str,
+        error_message: Optional[str] = None,
+        final_analysis: Optional[str] = None,
+        pause_metadata: Optional[dict] = None
+    ):
         """
         Update history session status.
         
         Args:
             session_id: Session ID to update
             status: New status
+            error_message: Optional error message if failed
+            final_analysis: Optional final analysis if completed
+            pause_metadata: Optional pause metadata if paused
         """
         try:
             if not session_id or not self.history_service or not self.history_service.is_enabled:
@@ -1035,34 +1061,15 @@ class AlertService:
                 
             self.history_service.update_session_status(
                 session_id=session_id,
-                status=status
+                status=status,
+                error_message=error_message,
+                final_analysis=final_analysis,
+                pause_metadata=pause_metadata
             )
             
         except Exception as e:
             logger.warning(f"Failed to update session status: {str(e)}")
     
-    def _update_session_completed(self, session_id: Optional[str], status: str, final_analysis: Optional[str] = None):
-        """
-        Mark history session as completed.
-        
-        Args:
-            session_id: Session ID to complete
-            status: Final status (must be from AlertSessionStatus enum: 'completed' or 'failed')
-            final_analysis: Final formatted analysis if status is completed successfully
-        """
-        try:
-            if not session_id or not self.history_service or not self.history_service.is_enabled:
-                return
-                
-            # The history service automatically sets completed_at_us when status is 'completed' or 'failed'
-            self.history_service.update_session_status(
-                session_id=session_id,
-                status=status,
-                final_analysis=final_analysis
-            )
-            
-        except Exception as e:
-            logger.warning(f"Failed to mark session completed: {str(e)}")
     
     def _update_session_error(self, session_id: Optional[str], error_message: str):
         """

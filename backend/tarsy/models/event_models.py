@@ -6,7 +6,7 @@ Clients use these events to determine when to refresh data via REST API.
 """
 
 import time
-from typing import Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -62,6 +62,7 @@ class SessionPausedEvent(BaseEvent):
     type: Literal["session.paused"] = "session.paused"
     session_id: str = Field(description="Session identifier")
     status: Literal["paused"] = "paused"  # For instant client update
+    pause_metadata: Optional[Dict[str, Any]] = Field(default=None, description="Metadata about why session paused")
 
 
 class SessionResumedEvent(BaseEvent):
