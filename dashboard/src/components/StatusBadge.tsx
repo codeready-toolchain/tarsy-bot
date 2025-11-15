@@ -1,5 +1,5 @@
 import React from 'react';
-import { Chip, type ChipProps } from '@mui/material';
+import { Chip, type ChipProps, type SxProps, type Theme } from '@mui/material';
 import { 
   CheckCircle, 
   Error, 
@@ -19,43 +19,43 @@ const getStatusConfig = (status: string): {
   label: string 
 } => {
   switch (status) {
-    case 'pending': 
+    case SESSION_STATUS.PENDING: 
       return { 
         color: 'warning', 
         icon: <Schedule sx={{ fontSize: 16 }} />, 
         label: 'Pending' 
       };
-    case 'in_progress':
+    case SESSION_STATUS.IN_PROGRESS:
       return { 
         color: 'info', 
         icon: <Refresh sx={{ fontSize: 16 }} />, 
         label: 'In Progress' 
       };
-    case 'paused':
+    case SESSION_STATUS.PAUSED:
       return { 
         color: 'warning', 
         icon: <PauseCircle sx={{ fontSize: 16 }} />, 
         label: 'Paused' 
       };
-    case 'canceling':
+    case SESSION_STATUS.CANCELING:
       return { 
         color: 'warning', 
         icon: <HourglassEmpty sx={{ fontSize: 16 }} />, 
         label: 'Canceling' 
       };
-    case 'completed': 
+    case SESSION_STATUS.COMPLETED: 
       return { 
         color: 'success', 
         icon: <CheckCircle sx={{ fontSize: 16 }} />, 
         label: 'Completed' 
       };
-    case 'failed': 
+    case SESSION_STATUS.FAILED: 
       return { 
         color: 'error', 
         icon: <Error sx={{ fontSize: 16 }} />, 
         label: 'Failed' 
       };
-    case 'cancelled': 
+    case SESSION_STATUS.CANCELLED: 
       return { 
         color: 'default', 
         icon: <Cancel sx={{ fontSize: 16 }} />, 
@@ -78,21 +78,19 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => 
   const { color, icon, label } = getStatusConfig(status);
   
   // Base styling for all status badges (non-interactive/static)
-  const baseSx: Record<string, any> = {
+  const baseSx: SxProps<Theme> = {
     fontWeight: 500,
     transition: 'none', // Disable all transitions for static badges
     transform: 'none',  // Disable all transforms for static badges
-    outline: 'none', // Disable focus outline
     '&.MuiChip-root': {
       animation: 'none', // Disable default animations
     },
-    '&:focus': {
-      outline: 'none',
-      boxShadow: 'none',
-    },
+    // Consistent focus indicator for keyboard navigation (accessibility)
     '&:focus-visible': {
-      outline: 'none',
-      boxShadow: 'none',
+      outline: '2px solid',
+      outlineColor: 'primary.main',
+      outlineOffset: '2px',
+      boxShadow: '0 0 0 4px rgba(25, 118, 210, 0.2)', // Subtle glow for visibility
     },
     // Disable ripple effect by targeting the ripple element
     '& .MuiTouchRipple-root': {
@@ -104,7 +102,7 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => 
   };
 
   // Custom styling for special statuses
-  let customSx: Record<string, any> = { ...baseSx };
+  let customSx: SxProps<Theme> = { ...baseSx };
 
   if (status === SESSION_STATUS.CANCELLED) {
     customSx = {
