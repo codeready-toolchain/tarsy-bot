@@ -91,9 +91,8 @@ sequenceDiagram
 class Alert(BaseModel):
     alert_type: Optional[str]          # Optional - determines chain selection (uses default if not specified)
     runbook: Optional[str]             # Optional - GitHub runbook URL (uses built-in default if not provided)
+    timestamp: Optional[int]           # Optional - defaults to current time (microseconds)
     data: Dict[str, Any]               # Flexible JSON payload
-    severity: Optional[str]            # Defaults to "warning"
-    timestamp: Optional[int]           # Defaults to current time (microseconds)
     mcp: Optional[MCPSelectionConfig]  # Optional - override default agent MCP server configuration
 ```
 

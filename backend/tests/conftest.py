@@ -174,9 +174,9 @@ def sample_kubernetes_alert():
     return Alert(
         alert_type="kubernetes",
         runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-        severity="critical",
         timestamp=now_us(),
         data={
+            "severity": "critical",
             "environment": "production",
             "cluster": "main-cluster", 
             "namespace": "test-namespace",
@@ -192,9 +192,9 @@ def sample_generic_alert():
     return Alert(
         alert_type="generic",
         runbook="https://example.com/runbook",
-        severity="warning",
         timestamp=now_us(),
         data={
+            "severity": "warning",
             "environment": "production",
             "message": "Generic alert message",
             "source": "monitoring-system"

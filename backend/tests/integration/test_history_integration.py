@@ -128,9 +128,9 @@ class TestHistoryServiceIntegration:
         """Create sample alert for testing."""
         return Alert(
             alert_type="NamespaceTerminating",
-            severity="high",
             runbook="namespace-terminating.md",
             data={
+                "severity": "high",
                 "environment": "production",
                 "cluster": "k8s-prod",
                 "namespace": "stuck-namespace",
@@ -652,9 +652,9 @@ class TestAlertServiceHistoryIntegration:
         """Create sample alert."""
         return Alert(
             alert_type="NamespaceTerminating",
-            severity="high",
             runbook="namespace-terminating.md",
             data={
+                "severity": "high",
                 "environment": "production",
                 "cluster": "k8s-prod",
                 "namespace": "stuck-namespace",

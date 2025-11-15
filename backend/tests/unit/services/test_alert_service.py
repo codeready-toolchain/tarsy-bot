@@ -541,9 +541,9 @@ class TestHistorySessionManagement:
         return Alert(
             alert_type="kubernetes",
             runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "environment": "production", 
                 "cluster": "main-cluster",
                 "namespace": "test-namespace",
@@ -643,9 +643,9 @@ class TestResponseFormatting:
         return Alert(
             alert_type="kubernetes",
             runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "environment": "production",
                 "cluster": "main-cluster",
                 "namespace": "test-namespace",
@@ -783,9 +783,9 @@ class TestAlertServiceDuplicatePrevention:
         return Alert(
             alert_type="kubernetes",
             runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "environment": "production",
                 "cluster": "main-cluster",
                 "namespace": "test-namespace", 
@@ -845,8 +845,8 @@ class TestAlertServiceDuplicatePrevention:
         long_message_alert = Alert(
             alert_type="kubernetes",
             runbook="https://example.com/runbook",
-            severity="high",
             data={
+                "severity": "high",
                 "environment": "production",
                 "cluster": "default",
                 "namespace": "default",

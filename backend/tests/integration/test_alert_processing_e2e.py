@@ -30,9 +30,9 @@ class TestAlertProcessingE2E:
         return Alert(
             alert_type="kubernetes",
             runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "environment": "production",
                 "cluster": "main-cluster",
                 "namespace": "default",
@@ -192,8 +192,8 @@ class TestErrorHandlingScenarios:
         unknown_alert = Alert(
             alert_type="Unknown Alert Type",
             runbook="https://github.com/company/runbooks/blob/main/unknown.md",
-            severity="high",
             data={
+                "severity": "high",
                 "environment": "production", 
                 "cluster": "https://k8s-cluster.example.com",
                 "namespace": "test-namespace",
@@ -411,12 +411,14 @@ class TestConcurrencyAndPerformance:
         for i in range(3):
             alert = Alert(
                 alert_type="NamespaceTerminating",
-                severity="high",
-                environment=f"env-{i}",
-                cluster="https://k8s-cluster.example.com",
-                namespace=f"namespace-{i}",
-                message=f"Test alert {i}",
-                runbook="https://github.com/company/runbooks/blob/main/k8s-namespace-terminating.md"
+                runbook="https://github.com/company/runbooks/blob/main/k8s-namespace-terminating.md",
+                data={
+                    "severity": "high",
+                    "environment": f"env-{i}",
+                    "cluster": "https://k8s-cluster.example.com",
+                    "namespace": f"namespace-{i}",
+                    "message": f"Test alert {i}"
+                }
             )
             alerts.append(alert)
         

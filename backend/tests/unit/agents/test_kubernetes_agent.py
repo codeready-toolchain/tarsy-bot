@@ -234,9 +234,9 @@ class TestKubernetesAgentInheritedFunctionality:
         return Alert(
             alert_type="kubernetes",
             runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "alert": "PodCrashLoopBackOff",
                 "environment": "production",
                 "cluster": "main-cluster",
@@ -527,14 +527,16 @@ class TestKubernetesAgentIntegrationScenarios:
         """Create realistic pod crash alert."""
         return Alert(
             alert_type="PodCrashLooping",
-            message="Pod app-deployment-abc123 in namespace production is crash looping with exit code 1",
-            environment="production",
-            severity="critical",
-            cluster="prod-cluster-01",
-            namespace="production",
-            pod="app-deployment-abc123",
             runbook="https://runbook.example.com/pod-crash-troubleshooting",
-            context="Labels: app=web-service,version=v1.2.3; Restart count: 15; Last exit code: 1"
+            data={
+                "message": "Pod app-deployment-abc123 in namespace production is crash looping with exit code 1",
+                "environment": "production",
+                "severity": "critical",
+                "cluster": "prod-cluster-01",
+                "namespace": "production",
+                "pod": "app-deployment-abc123",
+                "context": "Labels: app=web-service,version=v1.2.3; Restart count: 15; Last exit code: 1"
+            }
         )
     
     @pytest.mark.asyncio
@@ -571,9 +573,9 @@ class TestKubernetesAgentIntegrationScenarios:
         pod_crash_alert = Alert(
             alert_type="kubernetes",
             runbook="https://runbooks.company.com/k8s-pod-crash",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "alert": "PodCrashLoopBackOff",
                 "environment": "production",
                 "cluster": "prod-cluster", 
@@ -614,9 +616,9 @@ class TestKubernetesAgentIntegrationScenarios:
         pod_crash_alert = Alert(
             alert_type="kubernetes", 
             runbook="https://runbooks.company.com/k8s-pod-crash",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "alert": "PodCrashLoopBackOff",
                 "environment": "production",
                 "cluster": "prod-cluster",
@@ -661,9 +663,9 @@ class TestKubernetesAgentIntegrationScenarios:
         pod_crash_alert = Alert(
             alert_type="kubernetes",
             runbook="https://runbooks.company.com/k8s-pod-crash",
-            severity="critical", 
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "alert": "PodCrashLoopBackOff",
                 "environment": "production",
                 "cluster": "prod-cluster",
@@ -729,9 +731,9 @@ class TestKubernetesAgentIntegrationScenarios:
         pod_crash_alert = Alert(
             alert_type="kubernetes",
             runbook="https://runbooks.company.com/k8s-pod-crash",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "alert": "PodCrashLoopBackOff",
                 "environment": "production",
                 "cluster": "prod-cluster",
