@@ -160,6 +160,9 @@ function SessionDetailPageBase({
   const [isBottomCanceling, setIsBottomCanceling] = useState(false);
   const [bottomCancelError, setBottomCancelError] = useState<string | null>(null);
   
+  // Bottom resume state
+  const [isBottomResuming, setIsBottomResuming] = useState(false);
+  
   // Ref for Final Analysis Card (for scrolling)
   const finalAnalysisRef = useRef<HTMLDivElement>(null);
   const disableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -169,6 +172,20 @@ function SessionDetailPageBase({
   useEffect(() => {
     hasPerformedInitialScrollRef.current = false;
   }, [sessionId]);
+  
+  // Clear bottom resuming state when session status changes away from paused
+  useEffect(() => {
+    if (session?.status !== SESSION_STATUS.PAUSED && isBottomResuming) {
+      setIsBottomResuming(false);
+    }
+  }, [session?.status, isBottomResuming]);
+  
+  // Clear bottom canceling state when session status changes to cancelled
+  useEffect(() => {
+    if (session?.status === SESSION_STATUS.CANCELLED && isBottomCanceling) {
+      setIsBottomCanceling(false);
+    }
+  }, [session?.status, isBottomCanceling]);
   
   // Update auto-scroll enabled state when session transitions between active/inactive
   useEffect(() => {
@@ -801,14 +818,18 @@ function SessionDetailPageBase({
                         color="inherit"
                         size="small"
                         variant="contained"
-                        startIcon={<PlayArrow />}
+                        startIcon={isBottomResuming ? <CircularProgress size={14} color="inherit" /> : <PlayArrow />}
+                        disabled={isBottomResuming}
+                        aria-label={isBottomResuming ? "Resuming session" : "Resume paused session"}
                         onClick={async () => {
+                          setIsBottomResuming(true);
                           try {
                             const apiClient = (await import('../services/api')).apiClient;
                             await apiClient.resumeSession(session.session_id);
                             // WebSocket will update the session status
                           } catch (error) {
                             console.error('Failed to resume session:', error);
+                            setIsBottomResuming(false);
                           }
                         }}
                         sx={{
@@ -823,17 +844,19 @@ function SessionDetailPageBase({
                           },
                         }}
                       >
-                        Resume
+                        {isBottomResuming ? 'Resuming...' : 'Resume'}
                       </Button>
                       <Button
                         color="error"
                         size="small"
                         variant="outlined"
+                        startIcon={isBottomCanceling ? <CircularProgress size={14} color="inherit" /> : undefined}
                         onClick={() => {
                           setShowBottomCancelDialog(true);
                           setBottomCancelError(null);
                         }}
                         disabled={isBottomCanceling}
+                        aria-label={isBottomCanceling ? "Canceling session" : "Cancel session"}
                         sx={{
                           fontWeight: 600,
                           '&:hover': {
@@ -843,7 +866,7 @@ function SessionDetailPageBase({
                           },
                         }}
                       >
-                        Cancel
+                        {isBottomCanceling ? 'Canceling...' : 'Cancel'}
                       </Button>
                     </Box>
                   }
