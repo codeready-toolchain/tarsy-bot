@@ -579,7 +579,7 @@ class AlertService:
                 self._update_session_status(session_id, AlertSessionStatus.FAILED.value)
                 from tarsy.services.events.event_helpers import publish_session_failed
                 await publish_session_failed(session_id)
-                return error_msg
+                return self._format_error_response(chain_context, error_msg)
         
         except Exception as e:
             error_msg = f"Failed to resume session: {str(e)}"

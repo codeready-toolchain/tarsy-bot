@@ -246,8 +246,8 @@ class TestAlertProcessing:
     def sample_alert(self):
         """Create a sample alert for testing."""
         return AlertFactory.create_kubernetes_alert(
-            severity="critical",
             data={
+                "severity": "critical",
                 "environment": "production",
                 "cluster": "main-cluster",
                 "namespace": "test-namespace",

@@ -46,8 +46,7 @@ Basic usage:
     
     # Override specific fields
     alert = AlertFactory.create_kubernetes_alert(
-        severity="warning",
-        environment="staging"
+        data={"severity": "warning", "environment": "staging"}
     )
 
 Parameterized tests:
@@ -89,8 +88,7 @@ class AlertFactory:
         
         # Override specific fields
         alert = AlertFactory.create_kubernetes_alert(
-            severity="warning",
-            environment="staging"
+            data={"severity": "warning", "environment": "staging"}
         )
         
         # Create alert processing data

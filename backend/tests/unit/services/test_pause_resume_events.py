@@ -78,9 +78,20 @@ class TestPauseResumeEvents:
             # Call the function
             await publish_session_paused(session_id, pause_metadata)
             
-            # Verify event contains metadata
-            event = mock_publish.call_args_list[0][0][2]
+            # Verify publish_event was called twice (global + session-specific)
+            assert mock_publish.call_count == 2
+            
+            # Verify first call (global channel) - event contains metadata
+            first_call = mock_publish.call_args_list[0]
+            event = first_call[0][2]
+            assert isinstance(event, SessionPausedEvent)
             assert event.pause_metadata == pause_metadata
+            
+            # Verify second call (session-specific channel) - same event type
+            second_call = mock_publish.call_args_list[1]
+            assert second_call[0][1] == f"session:{session_id}"
+            second_event = second_call[0][2]
+            assert isinstance(second_event, SessionPausedEvent)
     
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -125,9 +136,11 @@ class TestPauseResumeEvents:
             assert event.session_id == session_id
             assert event.status == AlertSessionStatus.IN_PROGRESS.value
             
-            # Verify second call (session-specific channel)
+            # Verify second call (session-specific channel) - same event type
             second_call = mock_publish.call_args_list[1]
             assert second_call[0][1] == f"session:{session_id}"
+            second_event = second_call[0][2]
+            assert isinstance(second_event, SessionResumedEvent)
     
     @pytest.mark.unit
     @pytest.mark.asyncio

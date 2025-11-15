@@ -327,4 +327,74 @@ class TestAlertServiceResumePausedSession:
         
         with pytest.raises(Exception, match="History service not available"):
             await alert_service.resume_paused_session("test-session")
+    
+    @pytest.mark.asyncio
+    async def test_resume_handles_chain_execution_failure(self) -> None:
+        """Test that resume returns formatted error response when chain execution fails."""
+        session_id = "test-session"
+        
+        mock_session = MagicMock(spec=AlertSession)
+        mock_session.status = AlertSessionStatus.PAUSED.value
+        mock_session.alert_type = "kubernetes"
+        mock_session.alert_data = {"severity": "critical", "environment": "production"}
+        mock_session.started_at_us = 1000000
+        mock_session.runbook_url = None
+        mock_session.mcp_selection = None
+        mock_session.author = None
+        mock_session.chain_config = MagicMock()
+        mock_session.chain_config.chain_id = "test-chain"
+        mock_session.chain_config.stages = []
+        
+        mock_paused_stage = MagicMock(spec=StageExecution)
+        mock_paused_stage.status = StageStatus.PAUSED.value
+        mock_paused_stage.stage_name = "analysis"
+        mock_paused_stage.current_iteration = 30
+        mock_paused_stage.stage_output = None
+        
+        mock_history_service = MagicMock()
+        mock_history_service.get_session.return_value = mock_session
+        mock_history_service.get_stage_executions = AsyncMock(return_value=[mock_paused_stage])
+        
+        mock_settings = MagicMock()
+        mock_settings.agent_config_path = None
+        
+        with patch('tarsy.services.alert_service.RunbookService'):
+            alert_service = AlertService(settings=mock_settings)
+        
+        alert_service.history_service = mock_history_service
+        alert_service.runbook_service = MagicMock()
+        alert_service.runbook_service.download_runbook = AsyncMock(return_value="# Default runbook")
+        alert_service._update_session_status = MagicMock()
+        
+        # Chain execution returns FAILED status
+        alert_service._execute_chain_stages = AsyncMock(
+            return_value=ChainExecutionResult(
+                status=ChainStatus.FAILED,
+                timestamp_us=1234567890,
+                error="Stage 'analysis' failed: Database connection timeout"
+            )
+        )
+        
+        with patch.object(alert_service, 'mcp_client_factory') as mock_mcp_factory:
+            mock_mcp_factory.create_client = AsyncMock()
+            
+            with patch('tarsy.services.events.event_helpers.publish_session_resumed', new=AsyncMock()), \
+                 patch('tarsy.services.events.event_helpers.publish_session_failed', new=AsyncMock()) as mock_failed_event, \
+                 patch('tarsy.hooks.hook_context.stage_execution_context'):
+                
+                result = await alert_service.resume_paused_session(session_id)
+        
+        # Verify returns formatted error response (Markdown format)
+        assert "# Alert Processing Error" in result
+        assert "**Alert Type:** kubernetes" in result
+        assert "**Environment:** production" in result
+        assert "Database connection timeout" in result
+        assert "## Troubleshooting" in result
+        
+        # Verify session status updated to FAILED
+        status_calls = [call[0][1] for call in alert_service._update_session_status.call_args_list]
+        assert AlertSessionStatus.FAILED.value in status_calls
+        
+        # Verify failed event was published
+        mock_failed_event.assert_called_once_with(session_id)
 

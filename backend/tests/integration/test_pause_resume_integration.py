@@ -155,7 +155,7 @@ class TestPauseResumeIntegration:
         # Verify event was published to session-specific channel
         async with async_test_session_factory() as session:
             repo = EventRepository(session)
-            session_channel = f"session:{session_id}"
+            session_channel = EventChannel.session_details(session_id)
             events = await repo.get_events_after(session_channel, after_id=0, limit=10)
             
             assert len(events) > 0
@@ -197,7 +197,7 @@ class TestPauseResumeIntegration:
         # Verify event was published to session-specific channel
         async with async_test_session_factory() as session:
             repo = EventRepository(session)
-            session_channel = f"session:{session_id}"
+            session_channel = EventChannel.session_details(session_id)
             events = await repo.get_events_after(session_channel, after_id=0, limit=10)
             
             assert len(events) > 0
@@ -630,4 +630,183 @@ class TestPauseResumeIntegration:
             assert alert_session.pause_metadata is None, \
                 "pause_metadata should be cleared when transitioning from PAUSED to COMPLETED"
             assert alert_session.final_analysis == "Analysis completed successfully"
+    
+    @pytest.mark.integration
+    def test_history_service_clears_pause_metadata_on_resume(
+        self, history_service_with_test_db
+    ) -> None:
+        """Test that history_service.update_session_status clears pause_metadata on resume.
+        
+        This test exercises the actual service layer logic (not just ORM) to ensure
+        the production code path for clearing pause_metadata works correctly.
+        """
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
+        from tarsy.models.constants import AlertSessionStatus
+        
+        history_service = history_service_with_test_db
+        session_id = "service-test-resume"
+        
+        # Create a paused session with pause_metadata
+        pause_meta = PauseMetadata(
+            reason=PauseReason.MAX_ITERATIONS_REACHED,
+            current_iteration=30,
+            message="Paused for service test",
+            paused_at_us=now_us()
+        )
+        
+        with history_service.get_repository() as repo:
+            session = AlertSession(
+                session_id=session_id,
+                alert_type="kubernetes",
+                agent_type="chain:test-chain",
+                status=AlertSessionStatus.PAUSED.value,
+                started_at_us=now_us(),
+                chain_id="test-chain",
+                pause_metadata=pause_meta.model_dump(mode='json')
+            )
+            repo.create_alert_session(session)
+        
+        # Verify initial state
+        retrieved_session = history_service.get_session(session_id)
+        assert retrieved_session is not None
+        assert retrieved_session.pause_metadata is not None
+        assert retrieved_session.pause_metadata["reason"] == "max_iterations_reached"
+        
+        # Resume via history_service.update_session_status
+        success = history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.IN_PROGRESS.value
+        )
+        assert success is True
+        
+        # Verify pause_metadata was cleared by the service
+        retrieved_session = history_service.get_session(session_id)
+        assert retrieved_session is not None
+        assert retrieved_session.status == AlertSessionStatus.IN_PROGRESS.value
+        assert retrieved_session.pause_metadata is None, \
+            "history_service.update_session_status should automatically clear pause_metadata on resume"
+    
+    @pytest.mark.integration
+    def test_history_service_clears_pause_metadata_on_completion(
+        self, history_service_with_test_db
+    ) -> None:
+        """Test that history_service.update_session_status clears pause_metadata on completion.
+        
+        This test exercises the actual service layer logic (not just ORM) to ensure
+        the production code path for clearing pause_metadata works correctly.
+        """
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
+        from tarsy.models.constants import AlertSessionStatus
+        
+        history_service = history_service_with_test_db
+        session_id = "service-test-complete"
+        
+        # Create a paused session with pause_metadata
+        pause_meta = PauseMetadata(
+            reason=PauseReason.MAX_ITERATIONS_REACHED,
+            current_iteration=30,
+            message="Paused for service test",
+            paused_at_us=now_us()
+        )
+        
+        with history_service.get_repository() as repo:
+            session = AlertSession(
+                session_id=session_id,
+                alert_type="kubernetes",
+                agent_type="chain:test-chain",
+                status=AlertSessionStatus.PAUSED.value,
+                started_at_us=now_us(),
+                chain_id="test-chain",
+                pause_metadata=pause_meta.model_dump(mode='json')
+            )
+            repo.create_alert_session(session)
+        
+        # Verify initial state
+        retrieved_session = history_service.get_session(session_id)
+        assert retrieved_session is not None
+        assert retrieved_session.pause_metadata is not None
+        
+        # Complete via history_service.update_session_status
+        success = history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.COMPLETED.value,
+            final_analysis="Test completed successfully"
+        )
+        assert success is True
+        
+        # Verify pause_metadata was cleared by the service
+        retrieved_session = history_service.get_session(session_id)
+        assert retrieved_session is not None
+        assert retrieved_session.status == AlertSessionStatus.COMPLETED.value
+        assert retrieved_session.pause_metadata is None, \
+            "history_service.update_session_status should automatically clear pause_metadata on completion"
+        assert retrieved_session.final_analysis == "Test completed successfully"
+        assert retrieved_session.completed_at_us is not None
+    
+    @pytest.mark.integration
+    def test_history_service_sets_pause_metadata_when_pausing(
+        self, history_service_with_test_db
+    ) -> None:
+        """Test that history_service.update_session_status sets pause_metadata when pausing.
+        
+        This test verifies the complete pause/resume cycle through the service layer.
+        """
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
+        from tarsy.models.constants import AlertSessionStatus
+        
+        history_service = history_service_with_test_db
+        session_id = "service-test-pause-cycle"
+        
+        # Create an in-progress session
+        with history_service.get_repository() as repo:
+            session = AlertSession(
+                session_id=session_id,
+                alert_type="kubernetes",
+                agent_type="chain:test-chain",
+                status=AlertSessionStatus.IN_PROGRESS.value,
+                started_at_us=now_us(),
+                chain_id="test-chain"
+            )
+            repo.create_alert_session(session)
+        
+        # Verify initial state (no pause_metadata)
+        retrieved_session = history_service.get_session(session_id)
+        assert retrieved_session is not None
+        assert retrieved_session.pause_metadata is None
+        
+        # Pause via history_service with metadata
+        pause_meta = PauseMetadata(
+            reason=PauseReason.MAX_ITERATIONS_REACHED,
+            current_iteration=30,
+            message="Service test pause",
+            paused_at_us=now_us()
+        )
+        success = history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.PAUSED.value,
+            pause_metadata=pause_meta.model_dump(mode='json')
+        )
+        assert success is True
+        
+        # Verify pause_metadata was set
+        retrieved_session = history_service.get_session(session_id)
+        assert retrieved_session is not None
+        assert retrieved_session.status == AlertSessionStatus.PAUSED.value
+        assert retrieved_session.pause_metadata is not None
+        assert retrieved_session.pause_metadata["reason"] == "max_iterations_reached"
+        assert retrieved_session.pause_metadata["current_iteration"] == 30
+        
+        # Resume via history_service
+        success = history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.IN_PROGRESS.value
+        )
+        assert success is True
+        
+        # Verify pause_metadata was cleared on resume
+        retrieved_session = history_service.get_session(session_id)
+        assert retrieved_session is not None
+        assert retrieved_session.status == AlertSessionStatus.IN_PROGRESS.value
+        assert retrieved_session.pause_metadata is None, \
+            "pause_metadata should be cleared when resuming through service"
 
