@@ -508,6 +508,8 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
       // Show error
       const errorMessage = handleAPIError(error);
       setResumeError(errorMessage);
+    } finally {
+      // Always reset the resuming flag after the API call completes
       setIsResuming(false);
     }
   };
