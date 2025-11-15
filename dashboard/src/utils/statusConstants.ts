@@ -26,6 +26,7 @@ export type SessionStatus = typeof SESSION_STATUS[keyof typeof SESSION_STATUS];
 export const STAGE_STATUS = {
   PENDING: 'pending',
   ACTIVE: 'active',
+  PAUSED: 'paused',
   COMPLETED: 'completed',
   FAILED: 'failed',
 } as const;
@@ -102,6 +103,7 @@ export const TERMINAL_STAGE_STATUSES: StageStatus[] = [
 export const ACTIVE_STAGE_STATUSES: StageStatus[] = [
   STAGE_STATUS.PENDING,
   STAGE_STATUS.ACTIVE,
+  STAGE_STATUS.PAUSED,
 ];
 
 export const ALL_STAGE_STATUSES: StageStatus[] = [
@@ -216,6 +218,8 @@ export function getStageStatusDisplayName(status: string): string {
       return 'Active';
     case STAGE_STATUS.PENDING:
       return 'Pending';
+    case STAGE_STATUS.PAUSED:
+      return 'Paused';
     default:
       return status;
   }
@@ -314,6 +318,8 @@ export function getStageStatusChipColor(
       return 'primary';
     case STAGE_STATUS.PENDING:
       return 'warning';
+    case STAGE_STATUS.PAUSED:
+      return 'warning';
     default:
       return 'default';
   }
@@ -333,6 +339,8 @@ export function getStageStatusProgressColor(
     case STAGE_STATUS.ACTIVE:
       return 'primary';
     case STAGE_STATUS.PENDING:
+      return 'warning';
+    case STAGE_STATUS.PAUSED:
       return 'warning';
     default:
       return 'inherit';
@@ -402,4 +410,3 @@ export function getChainOverallStatusChipColor(
       return 'default';
   }
 }
-

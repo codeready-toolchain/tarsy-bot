@@ -555,8 +555,8 @@ class PauseMetadata(BaseModel):
 6. **Session status** updates to "active", processing continues
 
 **Failure Distinction**:
-- **Paused**: Last interaction successful → recoverable, manual resume required
-- **Failed**: Last interaction failed at max iterations → non-recoverable, marked as failed
+- **Paused**: Last interaction successful → recoverable, manual resume required.
+- **Failed**: Last interaction failed at max iterations → non-recoverable, marked as failed.
 
 **Dashboard Integration**:
 - **Prominent visual indicators** for paused sessions (warning alert with pause reason)

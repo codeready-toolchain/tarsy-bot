@@ -2,10 +2,10 @@ import type { SessionStatus, StageStatus, ChainOverallStatus, AlertProcessingSta
 
 // Reusable pause metadata type (align with backend PauseReason/metadata)
 export interface PauseMetadata {
-  reason: string;                // e.g., 'max_iterations' | 'manual' | 'external'
-  current_iteration?: number;    // iteration at pause
-  message: string;               // brief explanation for UI
-  paused_at_us: number;          // microseconds since epoch
+  reason: 'max_iterations_reached';  // Backend enum: PauseReason.MAX_ITERATIONS_REACHED
+  current_iteration?: number;        // iteration at pause
+  message: string;                   // brief explanation for UI
+  paused_at_us: number;              // microseconds since epoch
 }
 
 export interface Session {

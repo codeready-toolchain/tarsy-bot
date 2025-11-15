@@ -31,9 +31,10 @@ class E2ETestUtils:
         Returns:
             Normalized content with placeholders for dynamic values
         """
-        # Normalize timestamps (microsecond precision)
-        content = re.sub(r"\*\*Timestamp:\*\* \d+", "**Timestamp:** {TIMESTAMP}", content)
-        content = re.sub(r"Timestamp:\*\* \d+", "Timestamp:** {TIMESTAMP}", content)
+        # Normalize timestamps (handles microsecond, millisecond, and second precision)
+        # Matches timestamps with 10-16 digits (covers all common timestamp formats)
+        content = re.sub(r"\*\*Timestamp:\*\*\s*\d{10,16}", "**Timestamp:** {TIMESTAMP}", content)
+        content = re.sub(r"Timestamp:\*\*\s*\d{10,16}", "Timestamp:** {TIMESTAMP}", content)
         
         # Normalize alert IDs and session IDs (UUIDs)
         content = re.sub(
@@ -295,7 +296,8 @@ class E2ETestUtils:
         async def mock_call_tool(tool_name, _parameters):
             mock_result = Mock()
             mock_content = Mock()
-            mock_content.text = f"Mock {tool_name} response"
+            # Use the provided response_text parameter
+            mock_content.text = response_text or f"Mock {tool_name} response"
             mock_result.content = [mock_content]
             return mock_result
 
@@ -342,9 +344,53 @@ class E2ETestUtils:
         return session_id
 
     @staticmethod
+    async def get_session_details_async(e2e_test_client, session_id: str, max_retries: int = 1, retry_delay: float = 0.5) -> Dict[str, Any]:
+        """
+        Get session details with optional retry logic for robustness (async version).
+
+        This async variant should be used when calling from async contexts to avoid
+        blocking the event loop during retries.
+
+        Args:
+            e2e_test_client: Test client for making API calls
+            session_id: The session ID to get details for
+            max_retries: Maximum number of retries (default 1 = no retry)
+            retry_delay: Delay between retries in seconds
+
+        Returns:
+            detail_data: Session detail data
+
+        Raises:
+            AssertionError: If session details cannot be retrieved
+        """
+        for attempt in range(max_retries):
+            session_detail_response = e2e_test_client.get(f"/api/v1/history/sessions/{session_id}")
+            assert session_detail_response.status_code == 200
+
+            detail_data = session_detail_response.json()
+
+            # If this isn't the last attempt and we want to retry, wait and continue
+            if attempt < max_retries - 1:
+                stages = detail_data.get("stages", [])
+                if len(stages) == 0:  # No stages yet, might need to wait
+                    print(f"🔄 Waiting for stages to be available (attempt {attempt + 1}/{max_retries})...")
+                    await asyncio.sleep(retry_delay)
+                    continue
+
+            # Return data on last attempt or if we have stages
+            return detail_data
+
+        # This should never be reached due to the loop logic, but just in case
+        raise AssertionError(f"Failed to get session details after {max_retries} attempts")
+
+    @staticmethod
     def get_session_details(e2e_test_client, session_id: str, max_retries: int = 1, retry_delay: float = 0.5) -> Dict[str, Any]:
         """
-        Get session details with optional retry logic for robustness.
+        Get session details with optional retry logic for robustness (sync version).
+
+        Note: This synchronous version uses time.sleep and will block the event loop
+        if called from async contexts. Use get_session_details_async() instead when
+        calling from async test functions.
 
         Args:
             e2e_test_client: Test client for making API calls

@@ -143,7 +143,7 @@ class TestPauseResumeE2E:
         
         # Verify conversation structure if expected
         if 'expected_conversation' in expected_stage:
-            print(f"   🔍 Validating conversation history (proving restoration from pause)...")
+            print("   🔍 Validating conversation history (proving restoration from pause)...")
             expected_conversation = expected_stage['expected_conversation']
             
             # Get the last LLM interaction's conversation (should contain full history)
@@ -173,19 +173,19 @@ class TestPauseResumeE2E:
                         f"Stage '{stage_name}' ({stage_key}) message {i+1} content mismatch: expected length {len(expected_content)}, got {len(actual_content)}"
                 
                 print(f"   ✅ Conversation validation passed! {len(actual_messages)} messages verified")
-                print(f"      - Message 1 (system): Agent instructions preserved")
-                print(f"      - Message 2 (user): Complete context restored:")
-                print(f"        * Available tools (kubectl_get, kubectl_describe)")
-                print(f"        * Alert metadata (type: test-kubernetes, severity: warning, env: production)")
-                print(f"        * Alert data (namespace, cluster, finalizers)")
-                print(f"        * Runbook content (Mock Runbook, Test runbook content)")
-                print(f"        * Stage instructions (DATA-COLLECTION with specific tasks)")
-                print(f"      - Messages 3-4: First iteration restored (kubectl_get + observation)")
-                print(f"      - Messages 5-6: Second iteration restored (kubectl_describe + observation)")
-                print(f"      - Message 7 (NEW): Completion after resume (Final Answer referencing history)")
-                print(f"      ✅ PROVES: resume_paused_session() restored COMPLETE context, not just raw messages")
+                print("      - Message 1 (system): Agent instructions preserved")
+                print("      - Message 2 (user): Complete context restored:")
+                print("        * Available tools (kubectl_get, kubectl_describe)")
+                print("        * Alert metadata (type: test-kubernetes, severity: warning, env: production)")
+                print("        * Alert data (namespace, cluster, finalizers)")
+                print("        * Runbook content (Mock Runbook, Test runbook content)")
+                print("        * Stage instructions (DATA-COLLECTION with specific tasks)")
+                print("      - Messages 3-4: First iteration restored (kubectl_get + observation)")
+                print("      - Messages 5-6: Second iteration restored (kubectl_describe + observation)")
+                print("      - Message 7 (NEW): Completion after resume (Final Answer referencing history)")
+                print("      ✅ PROVES: resume_paused_session() restored COMPLETE context, not just raw messages")
         
-        print(f"   ✅ Stage validation passed!")
+        print("   ✅ Stage validation passed!")
         print(f"   Total tokens: input={total_input_tokens}, output={total_output_tokens}, total={total_tokens}")
 
     @pytest.mark.e2e
@@ -329,7 +329,7 @@ Analysis complete after successful resume from pause.""",
             def create_streaming_mock():
                 """Create a mock astream function that returns streaming responses."""
 
-                async def mock_astream(*args, **kwargs):
+                async def mock_astream(*args, **_kwargs):
                     interaction_num = len(all_llm_interactions) + 1
                     all_llm_interactions.append(interaction_num)
 
@@ -370,7 +370,6 @@ Analysis complete after successful resume from pause.""",
                     if tool_name == "kubectl_get":
                         resource = _parameters.get("resource", "pods")
                         name = _parameters.get("name", "")
-                        namespace = _parameters.get("namespace", "")
 
                         if resource == "namespaces" and name == "stuck-namespace":
                             mock_content = Mock()
@@ -494,7 +493,7 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             print(f"✅ Session paused: {session_id}")
 
                             # Get session details to verify pause metadata
-                            detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
+                            detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
                             
                             # Verify pause metadata exists
                             pause_metadata = detail_data.get("pause_metadata")
@@ -527,7 +526,7 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             # Increase max_iterations to 4 so the session can complete after resume
                             # Mock responses 3 and 4 will execute, with 4 providing the Final Answer
                             settings.max_llm_mcp_iterations = 4
-                            print(f"🔧 Increased max_llm_mcp_iterations to 4")
+                            print("🔧 Increased max_llm_mcp_iterations to 4")
 
                             print("⏳ Step 5: Resuming paused session...")
                             resume_response = e2e_test_client.post(
@@ -557,7 +556,7 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             print(f"✅ Final status: {final_status}")
 
                             # Verify audit trail
-                            final_detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
+                            final_detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
                             
                             # Verify session-level timestamps
                             assert final_detail_data.get("started_at_us") > 0, "started_at_us missing"
@@ -591,7 +590,7 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             assert final_stages[2].get("stage_name") == "analysis", "Third stage should be analysis"
                             assert final_stages[2].get("status") == "completed", "Analysis should be completed"
                             
-                            print(f"✅ All 3 stage executions verified: data-collection (reused), verification, analysis")
+                            print("✅ All 3 stage executions verified: data-collection (reused), verification, analysis")
 
                             # Verify LLM interactions match our mock setup
                             # Mock interactions: 1,2 (pause) → 3,4 (data-collection resume) → 5 (verification) → 6 (analysis)

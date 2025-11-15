@@ -717,6 +717,15 @@ class TestAlertServiceHistoryIntegration:
         statuses = [call[1]["status"] for call in status_calls]
         assert "in_progress" in statuses
         assert "completed" in statuses
+        
+        # Verify stage execution flow - lock in expected chain execution behavior
+        # Stage execution should be created for the chain stage
+        alert_service_with_history._create_stage_execution.assert_called()
+        assert alert_service_with_history._create_stage_execution.call_count >= 1
+        
+        # Stage execution should be marked as completed (not failed)
+        alert_service_with_history._update_stage_execution_completed.assert_called()
+        alert_service_with_history._update_stage_execution_failed.assert_not_called()
     
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -753,6 +762,15 @@ class TestAlertServiceHistoryIntegration:
         error_calls = [call for call in status_calls if call[1].get("error_message")]
         assert len(error_calls) > 0
         assert "Chain processing failed" in error_calls[0][1]["error_message"] or "Agent processing failed" in error_calls[0][1]["error_message"]  # Chain architecture error format
+        
+        # Verify stage execution flow - lock in expected error handling behavior
+        # Stage execution should be created even when processing fails
+        alert_service_with_history._create_stage_execution.assert_called()
+        assert alert_service_with_history._create_stage_execution.call_count >= 1
+        
+        # Stage execution should be marked as failed (not completed)
+        alert_service_with_history._update_stage_execution_failed.assert_called()
+        alert_service_with_history._update_stage_execution_completed.assert_not_called()
 
 
 class TestHistoryAPIIntegration:

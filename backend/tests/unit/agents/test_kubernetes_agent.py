@@ -590,16 +590,16 @@ class TestKubernetesAgentIntegrationScenarios:
         # Create ChainContext for new interface
         processing_alert = ProcessingAlert(
             alert_type=pod_crash_alert.alert_type,
-            severity="warning",
+            severity="critical",  # Match severity from alert.data
             timestamp=now_us(),
             environment="production",
             alert_data=pod_crash_alert.data
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test-session-123",
-            current_stage_name="analysis"
+            session_id="test-session-123"
         )
+        chain_context.current_stage_name = "analysis"
         chain_context.runbook_content = runbook_content
         
         result = await agent.process_alert(chain_context)
@@ -678,16 +678,16 @@ class TestKubernetesAgentIntegrationScenarios:
         from tarsy.models.processing_context import ChainContext
         processing_alert = ProcessingAlert(
             alert_type=pod_crash_alert.alert_type,
-            severity="warning",
+            severity="critical",  # Match severity from alert.data
             timestamp=now_us(),
             environment="production",
             alert_data=pod_crash_alert.data
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test-session-123",
-            current_stage_name="analysis"
+            session_id="test-session-123"
         )
+        chain_context.current_stage_name = "analysis"
         chain_context.runbook_content = "runbook"
         result = await agent.process_alert(chain_context)
         
@@ -746,16 +746,16 @@ class TestKubernetesAgentIntegrationScenarios:
         from tarsy.models.processing_context import ChainContext
         processing_alert = ProcessingAlert(
             alert_type=pod_crash_alert.alert_type,
-            severity="warning",
+            severity="critical",  # Match severity from alert.data
             timestamp=now_us(),
             environment="production",
             alert_data=pod_crash_alert.data
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test-session-123",
-            current_stage_name="analysis"
+            session_id="test-session-123"
         )
+        chain_context.current_stage_name = "analysis"
         chain_context.runbook_content = "runbook"
         result = await agent.process_alert(chain_context)
         

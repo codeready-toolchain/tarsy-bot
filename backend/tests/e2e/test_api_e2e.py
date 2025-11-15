@@ -501,7 +501,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                     # Verify session completed successfully
                     if final_status != "completed":
                         # Get detailed error info
-                        detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
+                        detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
                         error_msg = detail_data.get("error_message", "No error message")
                         print(f"❌ Session failed with error: {error_msg}")
                     assert (
@@ -510,7 +510,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                     print("✅ Session completed successfully!")
 
                     # Get session details to verify stages structure
-                    detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
+                    detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
                     stages = detail_data.get("stages", [])
                     print(f"Found {len(stages)} stages in completed session")
 
@@ -1030,7 +1030,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             verified_stage_ids = set()
         
         # Get current chat stage count before sending message
-        detail_data = E2ETestUtils.get_session_details(test_client, session_id)
+        detail_data = await E2ETestUtils.get_session_details_async(test_client, session_id)
         stages_before = [s for s in detail_data.get("stages", []) 
                         if s.get("stage_id", "").startswith("chat-response")]
         num_stages_before = len(stages_before)
@@ -1063,7 +1063,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         chat_stage = None
         for i in range(int(max_wait / poll_interval)):
             # Get session details to check chat execution
-            detail_data = E2ETestUtils.get_session_details(test_client, session_id)
+            detail_data = await E2ETestUtils.get_session_details_async(test_client, session_id)
             stages = detail_data.get("stages", [])
             
             # Look for NEW chat stages (not already verified)
@@ -1085,7 +1085,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             await asyncio.sleep(poll_interval)
         else:
             # Provide more debug info on timeout
-            detail_data = E2ETestUtils.get_session_details(test_client, session_id)
+            detail_data = await E2ETestUtils.get_session_details_async(test_client, session_id)
             stages = detail_data.get("stages", [])
             chat_stages = [s for s in stages if s.get("stage_id", "").startswith("chat-response")]
             new_stages = [s for s in chat_stages if s.get("stage_id") not in verified_stage_ids]
