@@ -539,11 +539,11 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
   
   // Clear resuming state when session status changes away from paused
   useEffect(() => {
-    if (session.status !== SESSION_STATUS.PAUSED && isResuming) {
+    if (session?.status !== SESSION_STATUS.PAUSED && isResuming) {
       setIsResuming(false);
       setResumeError(null);
     }
-  }, [session.status]);
+  }, [session?.status]);
   
   // Handle re-submit button click
   const handleResubmit = () => {
