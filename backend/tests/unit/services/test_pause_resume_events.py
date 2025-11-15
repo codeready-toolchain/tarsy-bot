@@ -13,6 +13,7 @@ from tarsy.services.events.event_helpers import (
 )
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.event_models import SessionPausedEvent, SessionResumedEvent
+from tarsy.models.pause_metadata import PauseReason
 
 
 class TestPauseResumeEvents:
@@ -25,12 +26,14 @@ class TestPauseResumeEvents:
         session_id = "test-session-123"
         
         with patch('tarsy.services.events.event_helpers.get_async_session_factory') as mock_factory, \
-             patch('tarsy.services.events.event_helpers.publish_event') as mock_publish:
+             patch('tarsy.services.events.event_helpers.publish_event', new_callable=AsyncMock) as mock_publish:
             
-            # Setup mock session factory
+            # Setup mock session factory - factory() returns async context manager
             mock_session = AsyncMock()
-            mock_factory.return_value.__aenter__.return_value = mock_session
-            mock_factory.return_value.__aexit__.return_value = None
+            mock_context_manager = AsyncMock()
+            mock_context_manager.__aenter__.return_value = mock_session
+            mock_context_manager.__aexit__.return_value = None
+            mock_factory.return_value = lambda: mock_context_manager
             
             # Call the function
             await publish_session_paused(session_id)
@@ -57,18 +60,20 @@ class TestPauseResumeEvents:
         """Test publishing session.paused event with metadata."""
         session_id = "test-session-456"
         pause_metadata = {
-            "reason": "max_iterations",
+            "reason": PauseReason.MAX_ITERATIONS_REACHED.value,
             "iteration": 30,
             "stage_id": "initial-analysis"
         }
         
         with patch('tarsy.services.events.event_helpers.get_async_session_factory') as mock_factory, \
-             patch('tarsy.services.events.event_helpers.publish_event') as mock_publish:
+             patch('tarsy.services.events.event_helpers.publish_event', new_callable=AsyncMock) as mock_publish:
             
-            # Setup mock session factory
+            # Setup mock session factory - factory() returns async context manager
             mock_session = AsyncMock()
-            mock_factory.return_value.__aenter__.return_value = mock_session
-            mock_factory.return_value.__aexit__.return_value = None
+            mock_context_manager = AsyncMock()
+            mock_context_manager.__aenter__.return_value = mock_session
+            mock_context_manager.__aexit__.return_value = None
+            mock_factory.return_value = lambda: mock_context_manager
             
             # Call the function
             await publish_session_paused(session_id, pause_metadata)
@@ -97,12 +102,14 @@ class TestPauseResumeEvents:
         session_id = "test-session-789"
         
         with patch('tarsy.services.events.event_helpers.get_async_session_factory') as mock_factory, \
-             patch('tarsy.services.events.event_helpers.publish_event') as mock_publish:
+             patch('tarsy.services.events.event_helpers.publish_event', new_callable=AsyncMock) as mock_publish:
             
-            # Setup mock session factory
+            # Setup mock session factory - factory() returns async context manager
             mock_session = AsyncMock()
-            mock_factory.return_value.__aenter__.return_value = mock_session
-            mock_factory.return_value.__aexit__.return_value = None
+            mock_context_manager = AsyncMock()
+            mock_context_manager.__aenter__.return_value = mock_session
+            mock_context_manager.__aexit__.return_value = None
+            mock_factory.return_value = lambda: mock_context_manager
             
             # Call the function
             await publish_session_resumed(session_id)

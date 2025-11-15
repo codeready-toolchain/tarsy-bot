@@ -216,7 +216,7 @@ class BaseAgent(ABC):
         except AgentError as e:
             # Special handling for SessionPaused - let it propagate up
             if isinstance(e, SessionPaused):
-                logger.error(f"Agent processing failed with structured error: {e.to_dict()}", exc_info=True)
+                logger.info(f"Agent processing failed with structured error: {e.to_dict()}")
                 raise  # Re-raise SessionPaused to be handled by alert_service
             
             # Handle other structured agent errors with recovery information

@@ -215,7 +215,7 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
                         '& .MuiChip-icon': {
                           color: 'white',
                         },
-                        animation: 'pulse 2s ease-in-out infinite !important',
+                        animation: 'pausedChipPulse 2s ease-in-out infinite !important',
                         transition: 'none !important',
                         transform: 'none !important',
                         outline: 'none !important',
@@ -224,7 +224,7 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
                           outline: 'none !important',
                           boxShadow: 'none !important',
                         },
-                        '@keyframes pulse': {
+                        '@keyframes pausedChipPulse': {
                           '0%, 100%': {
                             backgroundColor: '#e65100',
                           },
@@ -268,7 +268,7 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
             sx={{ mb: 2 }}
           >
             <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
-            {session.pause_metadata.message}
+            {session.pause_metadata.message || 'Session is paused and awaiting action.'}
           </Alert>
         )}
 

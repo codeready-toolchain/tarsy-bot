@@ -414,7 +414,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     session.status === SESSION_STATUS.PENDING ||
     session.status === SESSION_STATUS.CANCELING;
   const sessionIsCanceling = session.status === SESSION_STATUS.CANCELING;
-  const sessionIsPaused = session.status === 'paused';
+  const sessionIsPaused = session.status === SESSION_STATUS.PAUSED;
   const canCancel = isInProgress || sessionIsCanceling || sessionIsPaused;
   const isTerminalStatus = isTerminalSessionStatus(session.status);
   const previousStatusRef = useRef<string>(session.status);
@@ -514,7 +514,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
   
   // Clear resuming state when session status changes away from paused
   useEffect(() => {
-    if (session.status !== 'paused' && isResuming) {
+    if (session.status !== SESSION_STATUS.PAUSED && isResuming) {
       setIsResuming(false);
       setResumeError(null);
     }
@@ -710,7 +710,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                       sx={{ mb: 1.5, width: '100%' }}
                     >
                       <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
-                      {session.pause_metadata.message}
+                      {session.pause_metadata.message || 'Session is paused and awaiting action.'}
                     </Alert>
                   )}
                   

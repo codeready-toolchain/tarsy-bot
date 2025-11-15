@@ -1,3 +1,11 @@
+// Reusable pause metadata type (align with backend PauseReason/metadata)
+export interface PauseMetadata {
+  reason: string;                // e.g., 'max_iterations' | 'manual' | 'external'
+  current_iteration?: number;    // iteration at pause
+  message: string;               // brief explanation for UI
+  paused_at_us: number;          // microseconds since epoch
+}
+
 export interface Session {
   session_id: string;
   alert_type: string | null;
@@ -10,12 +18,7 @@ export interface Session {
   completed_at_us: number | null; // Unix timestamp (microseconds since epoch)
   duration_ms: number | null; // Computed property from backend
   error_message: string | null;
-  pause_metadata: {
-    reason: string;
-    current_iteration?: number;
-    message: string;
-    paused_at_us: number;
-  } | null;
+  pause_metadata: PauseMetadata | null;
   
   // Interaction counts (now always present)
   llm_interaction_count: number;

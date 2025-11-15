@@ -86,10 +86,10 @@ describe('Status Constants - Pause/Resume', () => {
   });
 
   describe('canCancelSession', () => {
-    it('should return false for paused sessions (cannot cancel paused, must resume or explicitly cancel)', () => {
-      // Paused sessions should be resumed or explicitly cancelled via the pause UI
-      // Not through regular cancellation flow
-      expect(canCancelSession('paused')).toBe(false);
+    it('should return true for paused sessions (paused sessions can be cancelled)', () => {
+      // Paused sessions are active and can be cancelled just like in_progress sessions
+      // Mirrors backend behavior and ACTIVE_SESSION_STATUSES
+      expect(canCancelSession('paused')).toBe(true);
     });
 
     it('should return true for pending sessions', () => {

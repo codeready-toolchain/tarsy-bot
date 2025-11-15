@@ -326,8 +326,11 @@ class HistoryService:
                     session.error_message = error_message
                 if final_analysis:
                     session.final_analysis = final_analysis
-                if pause_metadata is not None:
+                # Set pause_metadata if PAUSED, clear it otherwise
+                if status == AlertSessionStatus.PAUSED.value:
                     session.pause_metadata = pause_metadata
+                else:
+                    session.pause_metadata = None
                 if status in AlertSessionStatus.terminal_values():
                     session.completed_at_us = now_us()
                 

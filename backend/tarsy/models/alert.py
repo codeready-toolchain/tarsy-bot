@@ -35,10 +35,6 @@ class Alert(BaseModel):
         None, 
         description="Processing runbook URL (optional, uses built-in default if not provided)"
     )
-    severity: Optional[str] = Field(
-        None, 
-        description="Alert severity (defaults to 'warning')"
-    )
     timestamp: Optional[int] = Field(
         None, 
         description="Alert timestamp in unix microseconds (auto-generated if not provided)"
@@ -138,7 +134,8 @@ class ProcessingAlert(BaseModel):
         from tarsy.utils.timestamp import now_us
         from datetime import datetime
         
-        # Extract environment from client data if present (but keep it there too)
+        # Extract severity and environment from client data if present (but keep them there too)
+        severity = alert.data.get('severity', 'warning')
         environment = alert.data.get('environment', 'production')
         
         # Generate timestamp if not provided
@@ -154,7 +151,7 @@ class ProcessingAlert(BaseModel):
         
         return cls(
             alert_type=alert_type,
-            severity=alert.severity or 'warning',
+            severity=severity,
             timestamp=timestamp,
             environment=environment,
             runbook_url=alert.runbook,

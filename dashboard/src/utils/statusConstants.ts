@@ -129,11 +129,13 @@ export function isActiveSessionStatus(status: string): boolean {
 
 /**
  * Check if a session can be cancelled
+ * Includes all active statuses that haven't reached terminal state
  */
 export function canCancelSession(status: string): boolean {
   return (
     status === SESSION_STATUS.PENDING ||
     status === SESSION_STATUS.IN_PROGRESS ||
+    status === SESSION_STATUS.PAUSED ||
     status === SESSION_STATUS.CANCELING
   );
 }

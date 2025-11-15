@@ -92,7 +92,7 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
   useEffect(() => {
     if (analysis && analysis !== prevAnalysis) {
       // Check if session is actively being processed
-      const isActiveSession = sessionStatus === 'in_progress' || sessionStatus === 'pending';
+      const isActiveSession = sessionStatus === SESSION_STATUS.IN_PROGRESS || sessionStatus === SESSION_STATUS.PENDING;
       
       // If this is the first time analysis appears, or if it's significantly different
       const isFirstTime = !prevAnalysis && analysis;
@@ -482,7 +482,7 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
           </Box>
 
           {/* Error message for failed sessions with real analysis (not fake) */}
-          {sessionStatus === 'failed' && errorMessage && !isFakeAnalysis && (
+          {sessionStatus === SESSION_STATUS.FAILED && errorMessage && !isFakeAnalysis && (
             <Alert severity="error" sx={{ mt: 2 }}>
               <AlertTitle>Session completed with errors</AlertTitle>
               <Typography variant="body2">

@@ -81,8 +81,10 @@ class TestAlertServiceResumePausedSession:
                 # Call resume
                 result = await alert_service.resume_paused_session(session_id)
         
-        # Verify result
-        assert result == "Analysis completed after resume"
+        # Verify result is formatted as a Markdown report
+        assert "# Alert Analysis Report" in result
+        assert "Analysis completed after resume" in result
+        assert "**Processing Chain:** test-chain" in result
         
         # Verify session status updated to IN_PROGRESS
         assert alert_service._update_session_status.call_count >= 1
@@ -90,8 +92,15 @@ class TestAlertServiceResumePausedSession:
         assert first_call[0][0] == session_id
         assert first_call[0][1] == AlertSessionStatus.IN_PROGRESS.value
         
-        # Verify resume event published
+        # Verify resume and completion events published
         mock_resume_event.assert_called_once_with(session_id)
+        mock_complete_event.assert_called_once_with(session_id)
+        
+        # Verify session was eventually marked COMPLETED
+        assert any(
+            call_args[0][1] == AlertSessionStatus.COMPLETED.value
+            for call_args in alert_service._update_session_status.call_args_list
+        )
         
         # Verify chain execution called
         alert_service._execute_chain_stages.assert_called_once()
@@ -229,9 +238,20 @@ class TestAlertServiceResumePausedSession:
                 
                 await alert_service.resume_paused_session(session_id)
         
-        # Verify _execute_chain_stages was called
-        # (indirectly verifies conversation was restored in chain_context)
+        # Verify _execute_chain_stages was called with a ChainContext that has
+        # the paused conversation state restored for the analysis stage
         alert_service._execute_chain_stages.assert_called_once()
+        call_args = alert_service._execute_chain_stages.call_args[0]
+        chain_definition_arg = call_args[0]
+        chain_context_arg = call_args[1]
+        
+        # Verify chain definition
+        assert chain_definition_arg.chain_id == "test-chain"
+        
+        # Verify the paused stage output was reconstructed in ChainContext
+        assert "analysis" in chain_context_arg.stage_outputs
+        paused_result = chain_context_arg.stage_outputs["analysis"]
+        assert paused_result.paused_conversation_state == conversation_state
     
     @pytest.mark.asyncio
     async def test_resume_handles_re_pause(self) -> None:
@@ -285,8 +305,10 @@ class TestAlertServiceResumePausedSession:
                 
                 result = await alert_service.resume_paused_session(session_id)
         
-        # Verify returns pause message
+        # Verify returns formatted pause message in Markdown report
+        assert "# Alert Analysis Report" in result
         assert "paused again" in result.lower()
+        assert "**Processing Chain:** test-chain" in result
         
         # Verify no COMPLETED status was set (should stay PAUSED)
         status_calls = [call[0][1] for call in alert_service._update_session_status.call_args_list]

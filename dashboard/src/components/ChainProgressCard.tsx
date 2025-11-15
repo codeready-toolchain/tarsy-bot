@@ -269,7 +269,7 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
             sx={{ mb: 2 }}
           >
             <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
-            {session.pause_metadata.message}
+            {session.pause_metadata.message || 'Session is paused and awaiting action.'}
           </Alert>
         )}
 

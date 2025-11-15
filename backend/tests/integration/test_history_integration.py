@@ -197,7 +197,7 @@ class TestHistoryServiceIntegration:
         from tarsy.models.alert import ProcessingAlert
         chain_context.processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            severity=sample_alert.severity or "warning",
+            severity=sample_alert.data.get('severity', 'warning'),
             timestamp=chain_context.processing_alert.timestamp,
             environment=sample_alert.data.get('environment', 'production'),
             runbook_url=sample_alert.runbook,
@@ -492,7 +492,7 @@ class TestHistoryServiceIntegration:
         from tarsy.models.alert import ProcessingAlert
         chain_context.processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            severity=sample_alert.severity or "warning",
+            severity=sample_alert.data.get('severity', 'warning'),
             timestamp=chain_context.processing_alert.timestamp,
             environment=sample_alert.data.get('environment', 'production'),
             runbook_url=sample_alert.runbook,
@@ -551,7 +551,7 @@ class TestHistoryServiceIntegration:
         from tarsy.models.alert import ProcessingAlert
         chain_context.processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            severity=sample_alert.severity or "warning",
+            severity=sample_alert.data.get('severity', 'warning'),
             timestamp=chain_context.processing_alert.timestamp,
             environment=sample_alert.data.get('environment', 'production'),
             runbook_url=sample_alert.runbook,

@@ -414,33 +414,34 @@ class TestPauseResumeE2E:
         settings.max_llm_mcp_iterations = 2
         print(f"🔧 Overrode max_llm_mcp_iterations from {original_max_iterations} to 2")
 
-        # Track all LLM interactions
-        all_llm_interactions = []
+        try:
+            # Track all LLM interactions
+            all_llm_interactions = []
 
-        # Define mock response map for LLM interactions
-        # Each interaction gets a mock response to simulate ReAct pattern
-        # DETERMINISTIC TEST FLOW:
-        # Phase 1 (max_iterations=2): Interactions 1-2, then PAUSE
-        # Phase 2 (max_iterations=4): Resume + Interaction 3 with Final Answer → COMPLETE
-        mock_response_map = {
-            1: {  # First iteration - initial analysis
-                "response_content": """Thought: I need to get namespace information to understand the issue.
+            # Define mock response map for LLM interactions
+            # Each interaction gets a mock response to simulate ReAct pattern
+            # DETERMINISTIC TEST FLOW:
+            # Phase 1 (max_iterations=2): Interactions 1-2, then PAUSE
+            # Phase 2 (max_iterations=4): Resume + Interaction 3 with Final Answer → COMPLETE
+            mock_response_map = {
+                1: {  # First iteration - initial analysis
+                    "response_content": """Thought: I need to get namespace information to understand the issue.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
-                "input_tokens": 200,
-                "output_tokens": 80,
-                "total_tokens": 280,
-            },
-            2: {  # Second iteration - will trigger pause
-                "response_content": """Thought: I see the namespace is in Terminating state. I need more information to continue the analysis, but I've reached the iteration limit.
+                    "input_tokens": 200,
+                    "output_tokens": 80,
+                    "total_tokens": 280,
+                },
+                2: {  # Second iteration - will trigger pause
+                    "response_content": """Thought: I see the namespace is in Terminating state. I need more information to continue the analysis, but I've reached the iteration limit.
 Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}""",
-                "input_tokens": 220,
-                "output_tokens": 90,
-                "total_tokens": 310,
-            },
-            3: {  # Third iteration - after resume, completes data-collection stage
-                "response_content": """Thought: I've gathered enough information from the namespace describe showing finalizers. I can now provide the data collection summary.
+                    "input_tokens": 220,
+                    "output_tokens": 90,
+                    "total_tokens": 310,
+                },
+                3: {  # Third iteration - after resume, completes data-collection stage
+                    "response_content": """Thought: I've gathered enough information from the namespace describe showing finalizers. I can now provide the data collection summary.
 
 Final Answer: **Data Collection Complete**
 
@@ -450,12 +451,12 @@ Collected the following information:
 - Status: Namespace is stuck and cannot complete termination
 
 Data collection stage is now complete. The gathered information shows finalizers are preventing namespace deletion.""",
-                "input_tokens": 240,
-                "output_tokens": 120,
-                "total_tokens": 360,
-            },
-            4: {  # Verification stage - iteration 1, immediate Final Answer
-                "response_content": """Thought: Based on the data collection results, I can verify the findings.
+                    "input_tokens": 240,
+                    "output_tokens": 120,
+                    "total_tokens": 360,
+                },
+                4: {  # Verification stage - iteration 1, immediate Final Answer
+                    "response_content": """Thought: Based on the data collection results, I can verify the findings.
 
 Final Answer: **Verification Complete**
 
@@ -465,12 +466,12 @@ Verified the root cause:
 - This is a common issue when PVCs are not properly cleaned up
 
 Verification confirms the data collection findings are accurate.""",
-                "input_tokens": 200,
-                "output_tokens": 100,
-                "total_tokens": 300,
-            },
-            5: {  # Analysis stage - iteration 1, immediate Final Answer
-                "response_content": """Thought: I can now provide the final analysis based on previous stages.
+                    "input_tokens": 200,
+                    "output_tokens": 100,
+                    "total_tokens": 300,
+                },
+                5: {  # Analysis stage - iteration 1, immediate Final Answer
+                    "response_content": """Thought: I can now provide the final analysis based on previous stages.
 
 Final Answer: **Final Analysis**
 
@@ -483,319 +484,318 @@ Final Answer: **Final Analysis**
 **Prevention:** Ensure PVCs are deleted before namespace deletion to allow proper finalizer cleanup.
 
 Analysis complete after successful resume from pause.""",
-                "input_tokens": 250,
-                "output_tokens": 140,
-                "total_tokens": 390,
-            },
-        }
+                    "input_tokens": 250,
+                    "output_tokens": 140,
+                    "total_tokens": 390,
+                },
+            }
 
-        # Create streaming mock for LLM client
-        def create_streaming_mock():
-            """Create a mock astream function that returns streaming responses."""
+            # Create streaming mock for LLM client
+            def create_streaming_mock():
+                """Create a mock astream function that returns streaming responses."""
 
-            async def mock_astream(*args, **kwargs):
-                interaction_num = len(all_llm_interactions) + 1
-                all_llm_interactions.append(interaction_num)
+                async def mock_astream(*args, **kwargs):
+                    interaction_num = len(all_llm_interactions) + 1
+                    all_llm_interactions.append(interaction_num)
 
-                print(f"\n🔍 LLM REQUEST #{interaction_num}:")
-                if args and len(args) > 0:
-                    messages = args[0]
-                    for i, msg in enumerate(messages):
-                        role = getattr(msg, "type", "unknown") if hasattr(msg, "type") else "unknown"
-                        content = getattr(msg, "content", "") if hasattr(msg, "content") else ""
-                        print(f"  Message {i+1} ({role}): {content[:100]}...")
+                    print(f"\n🔍 LLM REQUEST #{interaction_num}:")
+                    if args and len(args) > 0:
+                        messages = args[0]
+                        for i, msg in enumerate(messages):
+                            role = getattr(msg, "type", "unknown") if hasattr(msg, "type") else "unknown"
+                            content = getattr(msg, "content", "") if hasattr(msg, "content") else ""
+                            print(f"  Message {i+1} ({role}): {content[:100]}...")
 
-                # Get mock response for this interaction
-                mock_response = mock_response_map.get(
-                    interaction_num,
-                    {"response_content": "", "input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
-                )
+                    # Get mock response for this interaction
+                    mock_response = mock_response_map.get(
+                        interaction_num,
+                        {"response_content": "", "input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+                    )
 
-                content = mock_response["response_content"]
-                usage_metadata = {
-                    "input_tokens": mock_response["input_tokens"],
-                    "output_tokens": mock_response["output_tokens"],
-                    "total_tokens": mock_response["total_tokens"],
-                }
+                    content = mock_response["response_content"]
+                    usage_metadata = {
+                        "input_tokens": mock_response["input_tokens"],
+                        "output_tokens": mock_response["output_tokens"],
+                        "total_tokens": mock_response["total_tokens"],
+                    }
 
-                async for chunk in create_mock_stream(content, usage_metadata):
-                    yield chunk
+                    async for chunk in create_mock_stream(content, usage_metadata):
+                        yield chunk
 
-            return mock_astream
+                return mock_astream
 
-        # Create MCP session mock
-        def create_mcp_session_mock():
-            """Create a mock MCP session that provides kubectl tools."""
-            mock_session = AsyncMock()
+            # Create MCP session mock
+            def create_mcp_session_mock():
+                """Create a mock MCP session that provides kubectl tools."""
+                mock_session = AsyncMock()
 
-            async def mock_call_tool(tool_name, _parameters):
-                mock_result = Mock()
+                async def mock_call_tool(tool_name, _parameters):
+                    mock_result = Mock()
 
-                if tool_name == "kubectl_get":
-                    resource = _parameters.get("resource", "pods")
-                    name = _parameters.get("name", "")
-                    namespace = _parameters.get("namespace", "")
+                    if tool_name == "kubectl_get":
+                        resource = _parameters.get("resource", "pods")
+                        name = _parameters.get("name", "")
+                        namespace = _parameters.get("namespace", "")
 
-                    if resource == "namespaces" and name == "stuck-namespace":
+                        if resource == "namespaces" and name == "stuck-namespace":
+                            mock_content = Mock()
+                            mock_content.text = "stuck-namespace   Terminating   45m"
+                            mock_result.content = [mock_content]
+                        elif resource == "events":
+                            mock_content = Mock()
+                            mock_content.text = "LAST SEEN   TYPE      REASON      OBJECT                MESSAGE\n5m          Warning   FailedDelete namespace/stuck-namespace   Finalizers blocking deletion"
+                            mock_result.content = [mock_content]
+                        else:
+                            mock_content = Mock()
+                            mock_content.text = f"Mock kubectl get {resource} response"
+                            mock_result.content = [mock_content]
+
+                    elif tool_name == "kubectl_describe":
+                        # Simulate a kubectl describe response
                         mock_content = Mock()
-                        mock_content.text = "stuck-namespace   Terminating   45m"
-                        mock_result.content = [mock_content]
-                    elif resource == "events":
-                        mock_content = Mock()
-                        mock_content.text = "LAST SEEN   TYPE      REASON      OBJECT                MESSAGE\n5m          Warning   FailedDelete namespace/stuck-namespace   Finalizers blocking deletion"
-                        mock_result.content = [mock_content]
-                    else:
-                        mock_content = Mock()
-                        mock_content.text = f"Mock kubectl get {resource} response"
-                        mock_result.content = [mock_content]
-
-                elif tool_name == "kubectl_describe":
-                    # Simulate a kubectl describe response
-                    mock_content = Mock()
-                    mock_content.text = """Name:         stuck-namespace
+                        mock_content.text = """Name:         stuck-namespace
 Status:       Terminating
 Finalizers:   [kubernetes.io/pvc-protection]
 """
-                    mock_result.content = [mock_content]
-                else:
-                    mock_content = Mock()
-                    mock_content.text = f"Mock response for tool: {tool_name}"
-                    mock_result.content = [mock_content]
+                        mock_result.content = [mock_content]
+                    else:
+                        mock_content = Mock()
+                        mock_content.text = f"Mock response for tool: {tool_name}"
+                        mock_result.content = [mock_content]
 
-                return mock_result
+                    return mock_result
 
-            async def mock_list_tools():
-                mock_tool1 = Tool(
-                    name="kubectl_get",
-                    description="Get Kubernetes resources",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "resource": {"type": "string"},
-                            "namespace": {"type": "string"},
-                            "name": {"type": "string"},
+                async def mock_list_tools():
+                    mock_tool1 = Tool(
+                        name="kubectl_get",
+                        description="Get Kubernetes resources",
+                        inputSchema={
+                            "type": "object",
+                            "properties": {
+                                "resource": {"type": "string"},
+                                "namespace": {"type": "string"},
+                                "name": {"type": "string"},
+                            },
                         },
-                    },
-                )
+                    )
 
-                mock_tool2 = Tool(
-                    name="kubectl_describe",
-                    description="Describe Kubernetes resources",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "resource": {"type": "string"},
-                            "namespace": {"type": "string"},
-                            "name": {"type": "string"},
+                    mock_tool2 = Tool(
+                        name="kubectl_describe",
+                        description="Describe Kubernetes resources",
+                        inputSchema={
+                            "type": "object",
+                            "properties": {
+                                "resource": {"type": "string"},
+                                "namespace": {"type": "string"},
+                                "name": {"type": "string"},
+                            },
                         },
-                    },
-                )
+                    )
 
-                mock_result = Mock()
-                mock_result.tools = [mock_tool1, mock_tool2]
-                return mock_result
+                    mock_result = Mock()
+                    mock_result.tools = [mock_tool1, mock_tool2]
+                    return mock_result
 
-            mock_session.call_tool.side_effect = mock_call_tool
-            mock_session.list_tools.side_effect = mock_list_tools
+                mock_session.call_tool.side_effect = mock_call_tool
+                mock_session.list_tools.side_effect = mock_list_tools
 
-            return mock_session
+                return mock_session
 
-        # Create test MCP server configurations
-        k8s_config = E2ETestUtils.create_simple_kubernetes_mcp_config(
-            command_args=["kubernetes-mock-server-ready"],
-            instructions="Test kubernetes server for pause/resume e2e testing",
-        )
+            # Create test MCP server configurations
+            k8s_config = E2ETestUtils.create_simple_kubernetes_mcp_config(
+                command_args=["kubernetes-mock-server-ready"],
+                instructions="Test kubernetes server for pause/resume e2e testing",
+            )
 
-        test_mcp_servers = E2ETestUtils.create_test_mcp_servers(
-            BUILTIN_MCP_SERVERS, {"kubernetes-server": k8s_config}
-        )
+            test_mcp_servers = E2ETestUtils.create_test_mcp_servers(
+                BUILTIN_MCP_SERVERS, {"kubernetes-server": k8s_config}
+            )
 
-        # Apply comprehensive mocking
-        with patch("tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers), \
-             patch("tarsy.services.mcp_server_registry.MCPServerRegistry._DEFAULT_SERVERS", test_mcp_servers), \
-             E2ETestUtils.setup_runbook_service_patching():
+            # Apply comprehensive mocking
+            with patch("tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers), \
+                 patch("tarsy.services.mcp_server_registry.MCPServerRegistry._DEFAULT_SERVERS", test_mcp_servers), \
+                 E2ETestUtils.setup_runbook_service_patching():
 
-                # Mock LLM streaming
-                streaming_mock = create_streaming_mock()
+                    # Mock LLM streaming
+                    streaming_mock = create_streaming_mock()
 
-                from langchain_openai import ChatOpenAI
-                from langchain_anthropic import ChatAnthropic
-                from langchain_xai import ChatXAI
-                from langchain_google_genai import ChatGoogleGenerativeAI
+                    from langchain_openai import ChatOpenAI
+                    from langchain_anthropic import ChatAnthropic
+                    from langchain_xai import ChatXAI
+                    from langchain_google_genai import ChatGoogleGenerativeAI
 
-                with patch.object(ChatOpenAI, "astream", streaming_mock), \
-                     patch.object(ChatAnthropic, "astream", streaming_mock), \
-                     patch.object(ChatXAI, "astream", streaming_mock), \
-                     patch.object(ChatGoogleGenerativeAI, "astream", streaming_mock):
+                    with patch.object(ChatOpenAI, "astream", streaming_mock), \
+                         patch.object(ChatAnthropic, "astream", streaming_mock), \
+                         patch.object(ChatXAI, "astream", streaming_mock), \
+                         patch.object(ChatGoogleGenerativeAI, "astream", streaming_mock):
 
-                    # Mock MCP client
-                    mock_kubernetes_session = create_mcp_session_mock()
-                    mock_sessions = {"kubernetes-server": mock_kubernetes_session}
-                    mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
+                        # Mock MCP client
+                        mock_kubernetes_session = create_mcp_session_mock()
+                        mock_sessions = {"kubernetes-server": mock_kubernetes_session}
+                        mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
 
-                    async def mock_initialize(self):
-                        """Mock initialization that sets up mock sessions."""
-                        self.sessions = mock_sessions.copy()
-                        self._initialized = True
+                        async def mock_initialize(self):
+                            """Mock initialization that sets up mock sessions."""
+                            self.sessions = mock_sessions.copy()
+                            self._initialized = True
 
-                    with patch.object(MCPClient, "initialize", mock_initialize), \
-                         patch.object(MCPClient, "list_tools", mock_list_tools), \
-                         patch.object(MCPClient, "call_tool", mock_call_tool):
+                        with patch.object(MCPClient, "initialize", mock_initialize), \
+                             patch.object(MCPClient, "list_tools", mock_list_tools), \
+                             patch.object(MCPClient, "call_tool", mock_call_tool):
 
-                        print("⏳ Step 1: Submitting alert with max_iterations=2...")
-                        session_id = E2ETestUtils.submit_alert(
-                            e2e_test_client, e2e_realistic_kubernetes_alert
-                        )
+                            print("⏳ Step 1: Submitting alert with max_iterations=2...")
+                            session_id = E2ETestUtils.submit_alert(
+                                e2e_test_client, e2e_realistic_kubernetes_alert
+                            )
 
-                        print("⏳ Step 2: Waiting for session to pause...")
-                        paused_session_id, paused_status = await E2ETestUtils.wait_for_session_completion(
-                            e2e_test_client, max_wait_seconds=15, debug_logging=True
-                        )
+                            print("⏳ Step 2: Waiting for session to pause...")
+                            paused_session_id, paused_status = await E2ETestUtils.wait_for_session_completion(
+                                e2e_test_client, max_wait_seconds=15, debug_logging=True
+                            )
 
-                        print("🔍 Step 3: Verifying pause state...")
-                        assert paused_session_id == session_id, "Session ID mismatch"
-                        assert paused_status == "paused", f"Expected status 'paused', got '{paused_status}'"
-                        print(f"✅ Session paused: {session_id}")
+                            print("🔍 Step 3: Verifying pause state...")
+                            assert paused_session_id == session_id, "Session ID mismatch"
+                            assert paused_status == "paused", f"Expected status 'paused', got '{paused_status}'"
+                            print(f"✅ Session paused: {session_id}")
 
-                        # Get session details to verify pause metadata
-                        detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
-                        
-                        # Verify pause metadata exists
-                        pause_metadata = detail_data.get("pause_metadata")
-                        assert pause_metadata is not None, "pause_metadata missing from paused session"
-                        assert pause_metadata.get("reason") == "max_iterations_reached", \
-                            f"Expected pause reason 'max_iterations_reached', got '{pause_metadata.get('reason')}'"
-                        assert pause_metadata.get("current_iteration") == 2, \
-                            f"Expected current_iteration=2, got {pause_metadata.get('current_iteration')}"
-                        assert "message" in pause_metadata, "pause_metadata missing 'message' field"
-                        assert "paused_at_us" in pause_metadata, "pause_metadata missing 'paused_at_us' field"
-                        print(f"✅ Pause metadata verified: {pause_metadata}")
+                            # Get session details to verify pause metadata
+                            detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
+                            
+                            # Verify pause metadata exists
+                            pause_metadata = detail_data.get("pause_metadata")
+                            assert pause_metadata is not None, "pause_metadata missing from paused session"
+                            assert pause_metadata.get("reason") == "max_iterations_reached", \
+                                f"Expected pause reason 'max_iterations_reached', got '{pause_metadata.get('reason')}'"
+                            assert pause_metadata.get("current_iteration") == 2, \
+                                f"Expected current_iteration=2, got {pause_metadata.get('current_iteration')}"
+                            assert "message" in pause_metadata, "pause_metadata missing 'message' field"
+                            assert "paused_at_us" in pause_metadata, "pause_metadata missing 'paused_at_us' field"
+                            print(f"✅ Pause metadata verified: {pause_metadata}")
 
-                        # Verify stages exist and last stage is paused
-                        stages = detail_data.get("stages", [])
-                        assert len(stages) > 0, "No stages found in paused session"
-                        
-                        # Find the paused stage
-                        paused_stage = None
-                        for stage in stages:
-                            if stage.get("status") == "paused":
-                                paused_stage = stage
-                                break
-                        
-                        assert paused_stage is not None, "No paused stage found"
-                        # Note: current_iteration is stored in DB but not exposed in API DetailedStage model
-                        # The iteration information is available in pause_metadata at session level
-                        print(f"✅ Paused stage verified: {paused_stage.get('stage_name')}")
+                            # Verify stages exist and last stage is paused
+                            stages = detail_data.get("stages", [])
+                            assert len(stages) > 0, "No stages found in paused session"
+                            
+                            # Find the paused stage
+                            paused_stage = None
+                            for stage in stages:
+                                if stage.get("status") == "paused":
+                                    paused_stage = stage
+                                    break
+                            
+                            assert paused_stage is not None, "No paused stage found"
+                            # Note: current_iteration is stored in DB but not exposed in API DetailedStage model
+                            # The iteration information is available in pause_metadata at session level
+                            print(f"✅ Paused stage verified: {paused_stage.get('stage_name')}")
 
-                        print("⏳ Step 4: Increasing max_iterations to allow completion after resume...")
-                        # Increase max_iterations to 4 so the session can complete after resume
-                        # Mock responses 3 and 4 will execute, with 4 providing the Final Answer
-                        settings.max_llm_mcp_iterations = 4
-                        print(f"🔧 Increased max_llm_mcp_iterations to 4")
+                            print("⏳ Step 4: Increasing max_iterations to allow completion after resume...")
+                            # Increase max_iterations to 4 so the session can complete after resume
+                            # Mock responses 3 and 4 will execute, with 4 providing the Final Answer
+                            settings.max_llm_mcp_iterations = 4
+                            print(f"🔧 Increased max_llm_mcp_iterations to 4")
 
-                        print("⏳ Step 5: Resuming paused session...")
-                        resume_response = e2e_test_client.post(
-                            f"/api/v1/history/sessions/{session_id}/resume"
-                        )
-                        assert resume_response.status_code == 200, \
-                            f"Resume failed with status {resume_response.status_code}: {resume_response.text}"
-                        
-                        resume_data = resume_response.json()
-                        assert resume_data.get("success") is True, "Resume response indicates failure"
-                        assert resume_data.get("status") == "resuming", \
-                            f"Expected status 'resuming', got '{resume_data.get('status')}'"
-                        print(f"✅ Resume initiated: {resume_data}")
+                            print("⏳ Step 5: Resuming paused session...")
+                            resume_response = e2e_test_client.post(
+                                f"/api/v1/history/sessions/{session_id}/resume"
+                            )
+                            assert resume_response.status_code == 200, \
+                                f"Resume failed with status {resume_response.status_code}: {resume_response.text}"
+                            
+                            resume_data = resume_response.json()
+                            assert resume_data.get("success") is True, "Resume response indicates failure"
+                            assert resume_data.get("status") == "resuming", \
+                                f"Expected status 'resuming', got '{resume_data.get('status')}'"
+                            print(f"✅ Resume initiated: {resume_data}")
 
-                        print("⏳ Step 6: Waiting for resumed session to complete...")
-                        # With max_iterations=4 and mock response 4 providing Final Answer,
-                        # the session MUST complete (not pause again)
-                        final_session_id, final_status = await E2ETestUtils.wait_for_session_completion(
-                            e2e_test_client, max_wait_seconds=15, debug_logging=True
-                        )
+                            print("⏳ Step 6: Waiting for resumed session to complete...")
+                            # With max_iterations=4 and mock response 4 providing Final Answer,
+                            # the session MUST complete (not pause again)
+                            final_session_id, final_status = await E2ETestUtils.wait_for_session_completion(
+                                e2e_test_client, max_wait_seconds=15, debug_logging=True
+                            )
 
-                        print("🔍 Step 7: Verifying final state...")
-                        assert final_session_id == session_id, "Session ID mismatch after resume"
-                        # With our mock setup, session MUST complete (not pause again)
-                        assert final_status == "completed", \
-                            f"Expected status 'completed' after resume, got '{final_status}'"
-                        print(f"✅ Final status: {final_status}")
+                            print("🔍 Step 7: Verifying final state...")
+                            assert final_session_id == session_id, "Session ID mismatch after resume"
+                            # With our mock setup, session MUST complete (not pause again)
+                            assert final_status == "completed", \
+                                f"Expected status 'completed' after resume, got '{final_status}'"
+                            print(f"✅ Final status: {final_status}")
 
-                        # Verify audit trail
-                        final_detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
-                        
-                        # Verify session-level timestamps
-                        assert final_detail_data.get("started_at_us") > 0, "started_at_us missing"
-                        assert final_detail_data.get("completed_at_us") > 0, "completed_at_us missing"
-                        assert final_detail_data.get("completed_at_us") > final_detail_data.get("started_at_us"), \
-                            "completed_at_us should be after started_at_us"
-                        
-                        # Verify stages structure after resume
-                        # After pause/resume, we have 4 stage executions:
-                        # 1. data-collection (active/paused - the initial execution that paused)
-                        # 2. data-collection (completed - the resumed execution)
-                        # 3. verification (completed)
-                        # 4. analysis (completed)
-                        final_stages = final_detail_data.get("stages", [])
-                        
-                        # Extract stage info for verification
-                        stage_info = [(s.get("stage_name"), s.get("status")) for s in final_stages]
-                        print(f"📊 Actual stages found: {stage_info}")
-                        
-                        # We expect exactly 4 stage executions
-                        assert len(final_stages) == 4, \
-                            f"Expected 4 stage executions (paused data-collection + completed data-collection + verification + analysis), got {len(final_stages)}"
-                        
-                        # Verify stage order and statuses
-                        assert final_stages[0].get("stage_name") == "data-collection", "First stage should be data-collection"
-                        assert final_stages[0].get("status") in ["active", "paused"], \
-                            f"First data-collection should be active/paused, got {final_stages[0].get('status')}"
-                        
-                        assert final_stages[1].get("stage_name") == "data-collection", "Second stage should be data-collection"
-                        assert final_stages[1].get("status") == "completed", "Second data-collection should be completed"
-                        
-                        assert final_stages[2].get("stage_name") == "verification", "Third stage should be verification"
-                        assert final_stages[2].get("status") == "completed", "Verification should be completed"
-                        
-                        assert final_stages[3].get("stage_name") == "analysis", "Fourth stage should be analysis"
-                        assert final_stages[3].get("status") == "completed", "Analysis should be completed"
-                        
-                        print(f"✅ All 4 stage executions verified: paused data-collection, completed data-collection, verification, analysis")
+                            # Verify audit trail
+                            final_detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
+                            
+                            # Verify session-level timestamps
+                            assert final_detail_data.get("started_at_us") > 0, "started_at_us missing"
+                            assert final_detail_data.get("completed_at_us") > 0, "completed_at_us missing"
+                            assert final_detail_data.get("completed_at_us") > final_detail_data.get("started_at_us"), \
+                                "completed_at_us should be after started_at_us"
+                            
+                            # Verify stages structure after resume
+                            # After pause/resume, we have 4 stage executions:
+                            # 1. data-collection (active/paused - the initial execution that paused)
+                            # 2. data-collection (completed - the resumed execution)
+                            # 3. verification (completed)
+                            # 4. analysis (completed)
+                            final_stages = final_detail_data.get("stages", [])
+                            
+                            # Extract stage info for verification
+                            stage_info = [(s.get("stage_name"), s.get("status")) for s in final_stages]
+                            print(f"📊 Actual stages found: {stage_info}")
+                            
+                            # We expect exactly 4 stage executions
+                            assert len(final_stages) == 4, \
+                                f"Expected 4 stage executions (paused data-collection + completed data-collection + verification + analysis), got {len(final_stages)}"
+                            
+                            # Verify stage order and statuses
+                            assert final_stages[0].get("stage_name") == "data-collection", "First stage should be data-collection"
+                            assert final_stages[0].get("status") in ["active", "paused"], \
+                                f"First data-collection should be active/paused, got {final_stages[0].get('status')}"
+                            
+                            assert final_stages[1].get("stage_name") == "data-collection", "Second stage should be data-collection"
+                            assert final_stages[1].get("status") == "completed", "Second data-collection should be completed"
+                            
+                            assert final_stages[2].get("stage_name") == "verification", "Third stage should be verification"
+                            assert final_stages[2].get("status") == "completed", "Verification should be completed"
+                            
+                            assert final_stages[3].get("stage_name") == "analysis", "Fourth stage should be analysis"
+                            assert final_stages[3].get("status") == "completed", "Analysis should be completed"
+                            
+                            print(f"✅ All 4 stage executions verified: paused data-collection, completed data-collection, verification, analysis")
 
-                        # Verify LLM interactions match our mock setup
-                        # Mock interactions: 1,2 (pause) → 3 (data-collection) → 4 (verification) → 5 (analysis)
-                        # Total: 5 interactions
-                        total_llm_interactions = sum(
-                            len(stage.get("llm_interactions", [])) for stage in final_stages
-                        )
-                        print(f"✅ Total LLM interactions: {total_llm_interactions}")
-                        assert total_llm_interactions == 5, \
-                            f"Expected exactly 5 LLM interactions (2 before pause + 3 after resume), got {total_llm_interactions}"
+                            # Verify LLM interactions match our mock setup
+                            # Mock interactions: 1,2 (pause) → 3 (data-collection) → 4 (verification) → 5 (analysis)
+                            # Total: 5 interactions
+                            total_llm_interactions = sum(
+                                len(stage.get("llm_interactions", [])) for stage in final_stages
+                            )
+                            print(f"✅ Total LLM interactions: {total_llm_interactions}")
+                            assert total_llm_interactions == 5, \
+                                f"Expected exactly 5 LLM interactions (2 before pause + 3 after resume), got {total_llm_interactions}"
 
-                        print("\n🔍 Step 8: Comprehensive stage validation (proving resume from pause, not restart)...")
-                        
-                        # Validate paused data-collection stage (first execution - paused at iteration 2)
-                        self._validate_stage(final_stages[0], 'paused_data-collection')
-                        
-                        # Validate resumed data-collection stage (second execution - completed with iteration 3)
-                        # This proves we resumed from where we paused, not restarted
-                        self._validate_stage(final_stages[1], 'resumed_data-collection')
-                        
-                        # Validate verification stage (ran after data-collection completed)
-                        self._validate_stage(final_stages[2], 'verification')
-                        
-                        # Validate analysis stage (final stage)
-                        self._validate_stage(final_stages[3], 'analysis')
-                        
-                        print("\n✅ ALL VALIDATIONS PASSED!")
-                        print("   - Paused stage has exactly 2 LLM interactions (proving it stopped)")
-                        print("   - Resumed stage has exactly 1 LLM interaction (proving it continued, not restarted)")
-                        print("   - Token counts match expected (proving no extra work)")
-                        print("   - Timeline is correct (paused → resumed → verification → analysis)")
+                            print("\n🔍 Step 8: Comprehensive stage validation (proving resume from pause, not restart)...")
+                            
+                            # Validate paused data-collection stage (first execution - paused at iteration 2)
+                            self._validate_stage(final_stages[0], 'paused_data-collection')
+                            
+                            # Validate resumed data-collection stage (second execution - completed with iteration 3)
+                            # This proves we resumed from where we paused, not restarted
+                            self._validate_stage(final_stages[1], 'resumed_data-collection')
+                            
+                            # Validate verification stage (ran after data-collection completed)
+                            self._validate_stage(final_stages[2], 'verification')
+                            
+                            # Validate analysis stage (final stage)
+                            self._validate_stage(final_stages[3], 'analysis')
+                            
+                            print("\n✅ ALL VALIDATIONS PASSED!")
+                            print("   - Paused stage has exactly 2 LLM interactions (proving it stopped)")
+                            print("   - Resumed stage has exactly 1 LLM interaction (proving it continued, not restarted)")
+                            print("   - Token counts match expected (proving no extra work)")
+                            print("   - Timeline is correct (paused → resumed → verification → analysis)")
 
-                        print("\n✅ PAUSE/RESUME E2E TEST PASSED!")
-                        
-                        # Restore original max_iterations
-                        settings.max_llm_mcp_iterations = original_max_iterations
-                        print(f"🔧 Restored max_llm_mcp_iterations to {original_max_iterations}")
-                        return
+                            print("\n✅ PAUSE/RESUME E2E TEST PASSED!")
+        finally:
+            # Always restore original value, even on failure
+            settings.max_llm_mcp_iterations = original_max_iterations
+            print(f"🔧 Restored max_llm_mcp_iterations to {original_max_iterations}")
 

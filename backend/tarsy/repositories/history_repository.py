@@ -602,12 +602,7 @@ class HistoryRepository:
             mcp_communications_db = self.get_mcp_communications_for_session(session_id)
             
             # Get stage executions
-            stages_stmt = (
-                select(StageExecution)
-                .where(StageExecution.session_id == session_id)
-                .order_by(StageExecution.stage_index)
-            )
-            stage_executions_db = self.session.exec(stages_stmt).all()
+            stage_executions_db = self.get_stage_executions_for_session(session_id)
             
             # Collect all chat user message IDs from stages
             message_ids = [
@@ -851,12 +846,7 @@ class HistoryRepository:
                 return None
             
             # Get stage executions for counting (without loading full interactions for performance)
-            stages_stmt = (
-                select(StageExecution)
-                .where(StageExecution.session_id == session_id)
-                .order_by(StageExecution.stage_index)
-            )
-            stage_executions_db = self.session.exec(stages_stmt).all()
+            stage_executions_db = self.get_stage_executions_for_session(session_id)
             
             # Get interaction counts for all stages (needed for summary calculations)
             stage_execution_ids = [stage.execution_id for stage in stage_executions_db]

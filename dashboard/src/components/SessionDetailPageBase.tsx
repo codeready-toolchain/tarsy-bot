@@ -35,7 +35,7 @@ import { useChatState } from '../hooks/useChatState';
 import type { DetailedSession } from '../types';
 import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
 import { isTerminalSessionEvent } from '../utils/eventTypes';
-import { isActiveSessionStatus, isTerminalSessionStatus } from '../utils/statusConstants';
+import { isActiveSessionStatus, isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
 
 // Lazy load shared components
 const SessionHeader = lazy(() => import('./SessionHeader'));
@@ -789,7 +789,7 @@ function SessionDetailPageBase({
             )}
 
             {/* Bottom Pause Alert - For paused sessions, shown at the end for easy access after scrolling */}
-            {session.status === 'paused' && session.pause_metadata && (
+            {session.status === SESSION_STATUS.PAUSED && session.pause_metadata && (
               <>
                 <Alert 
                   severity="warning" 
@@ -849,7 +849,7 @@ function SessionDetailPageBase({
                   }
                 >
                   <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
-                  {session.pause_metadata.message}
+                  {session.pause_metadata.message || 'Session is paused and awaiting action.'}
                 </Alert>
 
                 {/* Bottom Cancel Confirmation Dialog */}
@@ -912,6 +912,8 @@ function SessionDetailPageBase({
                           const { handleAPIError } = await import('../services/api');
                           const errorMessage = handleAPIError(error);
                           setBottomCancelError(errorMessage);
+                        } finally {
+                          // Always reset the canceling flag after the API call completes
                           setIsBottomCanceling(false);
                         }
                       }}

@@ -132,7 +132,7 @@ Tarsy uses an AI-powered chain-based architecture where alerts flow through sequ
 4. **Sequential stages execute** where each agent builds upon previous stage data using AI to select and execute domain-specific tools
 5. **Automatic pause** if investigation reaches iteration limits - preserves full state and allows manual resume with one click
 6. **Comprehensive multi-stage analysis** provided to engineers with actionable recommendations
-7. **Follow-up chat available** after investigation completes - engineers can ask questions, request deeper analysis, or explore different aspects
+7. **Follow-up chat available** after investigation completes - engineers can ask questions, request more comprehensive analysis, or explore different aspects
 8. **Full audit trail** captured with stage-level detail for monitoring and continuous improvement
 
 ```mermaid

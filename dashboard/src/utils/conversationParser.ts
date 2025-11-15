@@ -3,6 +3,7 @@
 
 import type { DetailedSession, StageExecution, LLMMessage, LLMInteractionDetail, LLMEventDetails } from '../types';
 import { parseReActMessage } from './reactParser';
+import { STAGE_STATUS } from './statusConstants';
 
 export interface ConversationStepData {
   type: 'thought' | 'action' | 'analysis' | 'summarization' | 'error';
@@ -389,7 +390,7 @@ export function parseStageConversation(stage: StageExecution): StageConversation
   }
 
   // If no steps were found, create a placeholder
-  if (steps.length === 0 && stage.status === 'active') {
+  if (steps.length === 0 && stage.status === STAGE_STATUS.ACTIVE) {
     steps.push({
       type: 'thought',
       content: 'Stage is starting...',

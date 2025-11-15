@@ -46,6 +46,7 @@ async def async_test_engine():
 @pytest_asyncio.fixture
 async def async_test_session_factory(async_test_engine):
     """Create an async session factory for testing."""
+    _ = async_test_engine  # ensure fixture dependency, avoid ARG001
     from tarsy import database
     return database.init_db._async_session_factory
 
@@ -374,7 +375,9 @@ class TestPauseResumeIntegration:
             from sqlmodel import select
             
             result = await session.execute(
-                select(StageExecution).where(StageExecution.session_id == session_id)
+                select(StageExecution)
+                .where(StageExecution.session_id == session_id)
+                .order_by(StageExecution.stage_index)
             )
             stages = result.scalars().all()
             
@@ -509,4 +512,122 @@ class TestPauseResumeIntegration:
             alert_session = result.scalar_one()
             
             assert alert_session.pause_metadata is None
+    
+    @pytest.mark.asyncio
+    async def test_pause_metadata_cleared_on_resume(
+        self, async_test_session_factory
+    ) -> None:
+        """Test that pause_metadata is cleared when session transitions from PAUSED to IN_PROGRESS."""
+        session_id = "cleared-metadata-test"
+        
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
+        from sqlmodel import select
+        
+        # Step 1: Create session with PAUSED status and pause_metadata
+        pause_meta = PauseMetadata(
+            reason=PauseReason.MAX_ITERATIONS_REACHED,
+            current_iteration=30,
+            message="Paused at iteration 30",
+            paused_at_us=1234567890
+        )
+        
+        async with async_test_session_factory() as session:
+            test_session = AlertSession(
+                session_id=session_id,
+                alert_type="kubernetes",
+                agent_type="chain:test-chain",
+                status=AlertSessionStatus.PAUSED.value,
+                started_at_us=now_us(),
+                chain_id="test-chain",
+                pause_metadata=pause_meta.model_dump(mode='json')
+            )
+            session.add(test_session)
+            await session.commit()
+        
+        # Verify pause_metadata is set
+        async with async_test_session_factory() as session:
+            result = await session.execute(
+                select(AlertSession).where(AlertSession.session_id == session_id)
+            )
+            alert_session = result.scalar_one()
+            assert alert_session.pause_metadata is not None
+            assert alert_session.pause_metadata["reason"] == "max_iterations_reached"
+        
+        # Step 2: Update status to IN_PROGRESS (simulating resume) and clear pause_metadata
+        async with async_test_session_factory() as session:
+            result = await session.execute(
+                select(AlertSession).where(AlertSession.session_id == session_id)
+            )
+            alert_session = result.scalar_one()
+            alert_session.status = AlertSessionStatus.IN_PROGRESS.value
+            # The history_service.update_session_status logic clears pause_metadata when status != PAUSED
+            alert_session.pause_metadata = None
+            session.add(alert_session)
+            await session.commit()
+        
+        # Step 3: Verify pause_metadata is cleared
+        async with async_test_session_factory() as session:
+            result = await session.execute(
+                select(AlertSession).where(AlertSession.session_id == session_id)
+            )
+            alert_session = result.scalar_one()
+            assert alert_session.status == AlertSessionStatus.IN_PROGRESS.value
+            assert alert_session.pause_metadata is None, \
+                "pause_metadata should be cleared when transitioning from PAUSED to IN_PROGRESS"
+    
+    @pytest.mark.asyncio
+    async def test_pause_metadata_cleared_on_completion(
+        self, async_test_session_factory
+    ) -> None:
+        """Test that pause_metadata is cleared when session completes after being paused."""
+        session_id = "cleared-on-complete-test"
+        
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
+        from sqlmodel import select
+        
+        # Create session with PAUSED status and pause_metadata
+        pause_meta = PauseMetadata(
+            reason=PauseReason.MAX_ITERATIONS_REACHED,
+            current_iteration=30,
+            message="Paused at iteration 30",
+            paused_at_us=1234567890
+        )
+        
+        async with async_test_session_factory() as session:
+            test_session = AlertSession(
+                session_id=session_id,
+                alert_type="kubernetes",
+                agent_type="chain:test-chain",
+                status=AlertSessionStatus.PAUSED.value,
+                started_at_us=now_us(),
+                chain_id="test-chain",
+                pause_metadata=pause_meta.model_dump(mode='json')
+            )
+            session.add(test_session)
+            await session.commit()
+        
+        # Update status to COMPLETED and clear pause_metadata
+        async with async_test_session_factory() as session:
+            result = await session.execute(
+                select(AlertSession).where(AlertSession.session_id == session_id)
+            )
+            alert_session = result.scalar_one()
+            alert_session.status = AlertSessionStatus.COMPLETED.value
+            alert_session.final_analysis = "Analysis completed successfully"
+            # The history_service.update_session_status logic clears pause_metadata when status != PAUSED
+            alert_session.pause_metadata = None
+            alert_session.completed_at_us = now_us()
+            session.add(alert_session)
+            await session.commit()
+        
+        # Verify pause_metadata is cleared
+        async with async_test_session_factory() as session:
+            result = await session.execute(
+                select(AlertSession).where(AlertSession.session_id == session_id)
+            )
+            alert_session = result.scalar_one()
+            assert alert_session.status == AlertSessionStatus.COMPLETED.value
+            assert alert_session.pause_metadata is None, \
+                "pause_metadata should be cleared when transitioning from PAUSED to COMPLETED"
+            assert alert_session.final_analysis == "Analysis completed successfully"
 

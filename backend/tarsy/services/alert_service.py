@@ -553,15 +553,33 @@ class AlertService:
             
             # Handle result
             if result.status == ChainStatus.COMPLETED:
-                self._update_session_status(session_id, AlertSessionStatus.COMPLETED.value, final_analysis=result.final_analysis)
+                analysis = result.final_analysis or "No analysis provided"
+                final_result = self._format_chain_success_response(
+                    chain_context,
+                    chain_definition,
+                    analysis,
+                    result.timestamp_us,
+                )
+                self._update_session_status(
+                    session_id,
+                    AlertSessionStatus.COMPLETED.value,
+                    final_analysis=final_result,
+                )
                 from tarsy.services.events.event_helpers import publish_session_completed
                 await publish_session_completed(session_id)
-                return result.final_analysis or "Analysis completed"
+                return final_result
             elif result.status == ChainStatus.PAUSED:
                 # Session paused again - this is normal, not an error
                 # Status already updated to PAUSED and pause event already published in _execute_chain_stages
                 logger.info(f"Resumed session {session_id} paused again (hit max iterations)")
-                return result.final_analysis or "Session paused again - waiting for user to resume"
+                # Format the pause message consistently with initial execution path
+                pause_message = result.final_analysis or "Session paused again - waiting for user to resume"
+                return self._format_chain_success_response(
+                    chain_context,
+                    chain_definition,
+                    pause_message,
+                    result.timestamp_us,
+                )
             else:
                 error_msg = result.error or "Chain execution failed"
                 self._update_session_status(session_id, AlertSessionStatus.FAILED.value)
@@ -1137,7 +1155,7 @@ class AlertService:
         # Trigger stage execution hooks (history + dashboard) via context manager
         try:
             from tarsy.hooks.hook_context import stage_execution_context
-            async with stage_execution_context(session_id, stage_execution) as ctx:
+            async with stage_execution_context(session_id, stage_execution):
                 # Context automatically triggers hooks when exiting
                 # History hook will create DB record and set execution_id on the model
                 pass
@@ -1212,7 +1230,7 @@ class AlertService:
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
                 from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+                async with stage_execution_context(existing_stage.session_id, existing_stage):
                     # Context automatically triggers hooks when exiting
                     pass
                 logger.debug(f"Triggered stage hooks for stage completion {existing_stage.stage_index}: {existing_stage.stage_id}")
@@ -1253,7 +1271,7 @@ class AlertService:
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
                 from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+                async with stage_execution_context(existing_stage.session_id, existing_stage):
                     # Context automatically triggers hooks when exiting
                     pass
                 logger.debug(f"Triggered stage hooks for stage failure {existing_stage.stage_index}: {existing_stage.stage_id}")
@@ -1302,7 +1320,7 @@ class AlertService:
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
                 from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+                async with stage_execution_context(existing_stage.session_id, existing_stage):
                     # Context automatically triggers hooks when exiting
                     pass
                 logger.debug(f"Triggered stage hooks for stage pause {existing_stage.stage_index}: {existing_stage.stage_id}")
@@ -1336,7 +1354,7 @@ class AlertService:
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
                 from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+                async with stage_execution_context(existing_stage.session_id, existing_stage):
                     # Context automatically triggers hooks when exiting
                     # History hook will update DB record and dashboard hook will broadcast
                     pass

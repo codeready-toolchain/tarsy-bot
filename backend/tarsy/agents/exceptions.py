@@ -5,7 +5,10 @@ Provides a consistent exception hierarchy for better error handling,
 recovery strategies, and debugging throughout the agent system.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tarsy.models.unified_interactions import LLMConversation
 
 
 class AgentError(Exception):
@@ -170,12 +173,12 @@ class SessionPaused(AgentError):
         self, 
         message: str, 
         iteration: int, 
-        conversation: Optional[Any] = None,
+        conversation: Optional['LLMConversation'] = None,
         context: Optional[Dict[str, Any]] = None
     ):
         super().__init__(message, context, recoverable=True)
         self.iteration = iteration
-        self.conversation = conversation  # LLMConversation object with full history
+        self.conversation = conversation  # Full conversation history for resume
         
     def to_dict(self) -> Dict[str, Any]:
         result = super().to_dict()

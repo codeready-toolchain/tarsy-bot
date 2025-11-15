@@ -139,6 +139,12 @@ sequenceDiagram
 
 When a stage reaches its maximum iteration limit, the system automatically pauses if the last LLM interaction was successful. The complete conversation state and context are preserved in the database. Engineers can resume processing with one click via `POST /api/v1/history/sessions/{session_id}/resume`, continuing from exactly where it paused. Sessions with failed last interactions are marked as failed, not paused.
 
+**Pause Metadata Fields:** When a session pauses, the following metadata is available in the UI and API responses:
+- `reason`: Why the session paused (currently `"max_iterations_reached"`)
+- `current_iteration`: The iteration count when paused (optional, included for iteration-based pauses)
+- `message`: User-friendly explanation of the pause (e.g., "Paused after 15 iterations - resume to continue")
+- `paused_at_us`: Timestamp when session paused (microseconds since epoch)
+
 ### Follow-up Chat
 
 After a session completes (or fails/is cancelled), engineers can start a chat conversation to ask follow-up questions. The chat agent uses the same ReAct processing shown above, with full investigation context and access to the same MCP tools used during the original session. Responses stream in real-time and appear inline in the conversation timeline.

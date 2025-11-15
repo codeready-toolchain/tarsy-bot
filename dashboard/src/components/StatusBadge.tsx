@@ -9,6 +9,7 @@ import {
   Cancel,
   PauseCircle
 } from '@mui/icons-material';
+import { SESSION_STATUS } from '../utils/statusConstants';
 import type { StatusBadgeProps } from '../types';
 
 // Status configuration mapping
@@ -76,16 +77,38 @@ const getStatusConfig = (status: string): {
 const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => {
   const { color, icon, label } = getStatusConfig(status);
   
-  // Custom styling for special statuses
-  let customSx: Record<string, any> = {
+  // Base styling for all status badges (non-interactive/static)
+  const baseSx: Record<string, any> = {
     fontWeight: 500,
+    transition: 'none', // Disable all transitions for static badges
+    transform: 'none',  // Disable all transforms for static badges
+    outline: 'none', // Disable focus outline
+    '&.MuiChip-root': {
+      animation: 'none', // Disable default animations
+    },
+    '&:focus': {
+      outline: 'none',
+      boxShadow: 'none',
+    },
+    '&:focus-visible': {
+      outline: 'none',
+      boxShadow: 'none',
+    },
+    // Disable ripple effect by targeting the ripple element
+    '& .MuiTouchRipple-root': {
+      display: 'none',
+    },
     '& .MuiChip-icon': {
       marginLeft: '4px',
     },
   };
 
-  if (status === 'cancelled') {
+  // Custom styling for special statuses
+  let customSx: Record<string, any> = { ...baseSx };
+
+  if (status === SESSION_STATUS.CANCELLED) {
     customSx = {
+      ...baseSx,
       fontWeight: 600,
       backgroundColor: 'rgba(0, 0, 0, 0.7)',
       color: 'white',
@@ -95,8 +118,9 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => 
         color: 'white',
       },
     };
-  } else if (status === 'paused') {
+  } else if (status === SESSION_STATUS.PAUSED) {
     customSx = {
+      ...baseSx,
       fontWeight: 600,
       backgroundColor: '#e65100',
       color: 'white',
@@ -104,14 +128,13 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => 
         marginLeft: '4px',
         color: 'white',
       },
-      animation: 'pulse 2s ease-in-out infinite !important', // Force our custom animation
+      animation: 'pulse 2s ease-in-out infinite !important', // Force our custom animation (override baseSx)
       transition: 'none !important',
       transform: 'none !important',
-      outline: 'none !important',
-      boxShadow: 'none !important',
-      '&:focus, &:focus-visible': {
-        outline: 'none !important',
-        boxShadow: 'none !important',
+      '&:focus-visible': {
+        outline: '2px solid #ffffff',
+        outlineOffset: '2px',
+        boxShadow: '0 0 0 4px rgba(255, 152, 0, 0.4)',
       },
       '@keyframes pulse': {
         '0%, 100%': {

@@ -120,14 +120,14 @@ class AlertFactory:
             Alert: Configured Kubernetes alert
             
         Example:
-            alert = AlertFactory.create_kubernetes_alert(severity="warning")
+            alert = AlertFactory.create_kubernetes_alert(data={"severity": "warning"})
         """
         base_data = {
             "alert_type": "kubernetes",
             "runbook": "https://github.com/company/runbooks/blob/main/k8s.md",
-            "severity": "critical",
             "timestamp": now_us(),
             "data": {
+                "severity": "critical",
                 "environment": "production",
                 "cluster": "main-cluster",
                 "namespace": "default",
@@ -144,9 +144,9 @@ class AlertFactory:
         base_data = {
             "alert_type": "generic",
             "runbook": "https://example.com/runbook",
-            "severity": "warning",
             "timestamp": now_us(),
             "data": {
+                "severity": "warning",
                 "environment": "production",
                 "message": "Generic alert message",
                 "source": "monitoring-system"

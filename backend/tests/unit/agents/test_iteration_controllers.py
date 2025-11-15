@@ -205,6 +205,7 @@ class TestSimpleReActController:
         # Verify the exception details
         assert exc_info.value.iteration == 1
         assert exc_info.value.conversation is not None
+        assert "Session paused at maximum iterations" in str(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_max_iterations_with_failed_last_interaction(
@@ -638,6 +639,7 @@ class TestReactStageController:
         # Verify the exception details
         assert exc_info.value.iteration == 1
         assert exc_info.value.conversation is not None
+        assert "Session paused at maximum iterations" in str(exc_info.value)
         
         # Should have attempted the ReAct analysis 
         assert mock_llm_client.generate_response.call_count >= 1
@@ -664,6 +666,7 @@ class TestReactStageController:
         # Verify the exception details
         assert exc_info.value.iteration == 1
         assert exc_info.value.conversation is not None
+        assert "Session paused at maximum iterations" in str(exc_info.value)
 
 @pytest.mark.unit
 class TestIterationControllerFactory:
