@@ -33,14 +33,142 @@ from .conftest import create_mock_stream
 logger = logging.getLogger(__name__)
 
 
+# Expected conversation for resumed data-collection stage
+# This proves conversation history was restored when resuming
+EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION = {
+    "messages": [
+        # System message (same as original)
+        {
+            "role": "system",
+            "content_contains": [
+                "## General SRE Agent Instructions",
+                "You are an expert Site Reliability Engineer",
+                "## Agent-Specific Instructions",
+                "You are a Kubernetes data collection specialist"
+            ]
+        },
+        # Initial user question (restored from pause)
+        # This proves resume_paused_session() restored COMPLETE context, not just messages
+        {
+            "role": "user",
+            "content_contains": [
+                # Question header
+                "Question: Investigate this test-kubernetes alert",
+                
+                # Available tools - proves tool discovery context was restored
+                "Available tools:",
+                "kubernetes-server.kubectl_get",
+                "kubernetes-server.kubectl_describe",
+                
+                # Alert metadata - proves alert context was restored
+                "## Alert Details",
+                "**Alert Type:** test-kubernetes",
+                "**Severity:** warning",
+                "**Environment:** production",
+                
+                # Alert data - proves detailed alert information was restored
+                '"namespace": "test-namespace"',
+                '"description": "Namespace stuck in Terminating state"',
+                '"cluster": "test-cluster"',
+                '"finalizers": "kubernetes.io/pv-protection"',
+                
+                # Runbook content - CRITICAL: proves runbook was included in restored context
+                "## Runbook Content",
+                "# Mock Runbook",
+                "Test runbook content",
+                
+                # Previous stage data notice - proves stage chain context was restored
+                "## Previous Stage Data",
+                "No previous stage data is available",
+                "This is the first stage of analysis",
+                
+                # Stage-specific instructions - proves stage context was restored
+                "## Your Task: DATA-COLLECTION STAGE",
+                "Use available tools to:",
+                "Collect additional data relevant to this stage",
+                "Analyze findings in the context of this specific stage",
+                "Provide stage-specific insights and recommendations",
+                
+                # Final instruction
+                "Begin!"
+            ]
+        },
+        # Assistant iteration 1 (restored from pause)
+        {
+            "role": "assistant",
+            "content_contains": [
+                "Thought:",
+                "namespace",
+                "Action: kubernetes-server.kubectl_get",
+                "Action Input:",
+                "stuck-namespace"
+            ]
+        },
+        # Observation 1 (restored from pause)
+        # Proves tool execution results were preserved
+        {
+            "role": "user",
+            "content_contains": [
+                "Observation:",
+                "kubernetes-server.kubectl_get",
+                "stuck-namespace",
+                "Terminating",
+                "45m"
+            ]
+        },
+        # Assistant iteration 2 (restored from pause)
+        # Proves agent reasoning was preserved (references previous observation)
+        {
+            "role": "assistant",
+            "content_contains": [
+                "Thought:",
+                "Terminating",  # References previous observation
+                "Action: kubernetes-server.kubectl_describe",
+                "Action Input:",
+                "namespace"
+            ]
+        },
+        # Observation 2 (restored from pause)
+        # Proves second tool execution result was preserved
+        {
+            "role": "user",
+            "content_contains": [
+                "Observation:",
+                "kubernetes-server.kubectl_describe",
+                "stuck-namespace",
+                "Terminating",
+                "Finalizers",
+                "kubernetes.io/pvc-protection"
+            ]
+        },
+        # NEW: Iteration 3 (after resume) - completes the stage
+        # This proves the agent can reference previous observations after resume
+        {
+            "role": "assistant",
+            "content_contains": [
+                "Thought:",
+                "gathered enough information",  # Shows agent reviewed history
+                "Final Answer:",
+                "Data Collection",
+                "Complete",
+                "stuck-namespace",  # References previous observations
+                "Terminating",  # References previous observations
+                "Finalizers",  # References kubectl_describe result
+                "blocking deletion"  # Shows understanding of the issue
+            ]
+        }
+    ]
+}
+
 # Expected stage definitions for pause/resume flow
 # These prove that resume continues from where we paused, not from scratch
 EXPECTED_PAUSE_RESUME_STAGES = {
     'paused_data-collection': {
         'llm_count': 2,  # 2 LLM interactions before pause
-        'mcp_count': 4,  # 2 tool_list + 2 tool_call
+        'mcp_count': 4,  # 2 tool_list (k8s + test-data) + 2 tool_call (only k8s provides tools)
         'expected_status': 'active',  # Paused stage shows as "active" in DB
         'interactions': [
+            # Both servers are discovered (tool_list), but only kubernetes-server provides tools (we don't mock the second MCP server for simplisity)
             {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 80, 'total_tokens': 280},
@@ -51,9 +179,11 @@ EXPECTED_PAUSE_RESUME_STAGES = {
     },
     'resumed_data-collection': {
         'llm_count': 1,  # 1 additional LLM interaction to complete
-        'mcp_count': 2,  # 2 tool_list (no new tool calls - just completes)
+        'mcp_count': 2,  # 2 tool_list (k8s + test-data rediscovered, no new tool calls - just completes)
         'expected_status': 'completed',
+        'expected_conversation': EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION,  # Verify conversation history was restored
         'interactions': [
+            # Both servers rediscovered after resume (tool_list)
             {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 240, 'output_tokens': 120, 'total_tokens': 360, 'interaction_type': 'final_analysis'},
@@ -185,6 +315,49 @@ class TestPauseResumeE2E:
                 f"Stage '{stage_name}' ({stage_key}) stage_output_tokens mismatch: expected {total_output_tokens}, got {actual_stage['stage_output_tokens']}"
             assert actual_stage['stage_total_tokens'] == total_tokens, \
                 f"Stage '{stage_name}' ({stage_key}) stage_total_tokens mismatch: expected {total_tokens}, got {actual_stage['stage_total_tokens']}"
+        
+        # Verify conversation structure if expected
+        if 'expected_conversation' in expected_stage:
+            print(f"   🔍 Validating conversation history (proving restoration from pause)...")
+            expected_conversation = expected_stage['expected_conversation']
+            
+            # Get the last LLM interaction's conversation (should contain full history)
+            if llm_interactions:
+                last_llm_interaction = llm_interactions[-1]
+                actual_conversation = last_llm_interaction['details']['conversation']
+                actual_messages = actual_conversation['messages']
+                expected_messages = expected_conversation['messages']
+                
+                # Verify message count
+                assert len(actual_messages) == len(expected_messages), \
+                    f"Stage '{stage_name}' ({stage_key}) conversation message count mismatch: expected {len(expected_messages)}, got {len(actual_messages)}"
+                
+                # Verify each message
+                for i, expected_msg in enumerate(expected_messages):
+                    actual_msg = actual_messages[i]
+                    
+                    # Verify role
+                    assert actual_msg['role'] == expected_msg['role'], \
+                        f"Stage '{stage_name}' ({stage_key}) message {i+1} role mismatch: expected '{expected_msg['role']}', got '{actual_msg['role']}'"
+                    
+                    # Verify content contains expected strings
+                    if 'content_contains' in expected_msg:
+                        for expected_str in expected_msg['content_contains']:
+                            assert expected_str in actual_msg['content'], \
+                                f"Stage '{stage_name}' ({stage_key}) message {i+1} missing expected content: '{expected_str}'"
+                
+                print(f"   ✅ Conversation validation passed! {len(actual_messages)} messages verified")
+                print(f"      - Message 1 (system): Agent instructions preserved")
+                print(f"      - Message 2 (user): Complete context restored:")
+                print(f"        * Available tools (kubectl_get, kubectl_describe)")
+                print(f"        * Alert metadata (type: test-kubernetes, severity: warning, env: production)")
+                print(f"        * Alert data (namespace, cluster, finalizers)")
+                print(f"        * Runbook content (Mock Runbook, Test runbook content)")
+                print(f"        * Stage instructions (DATA-COLLECTION with specific tasks)")
+                print(f"      - Messages 3-4: First iteration restored (kubectl_get + observation)")
+                print(f"      - Messages 5-6: Second iteration restored (kubectl_describe + observation)")
+                print(f"      - Message 7 (NEW): Completion after resume (Final Answer referencing history)")
+                print(f"      ✅ PROVES: resume_paused_session() restored COMPLETE context, not just raw messages")
         
         print(f"   ✅ Stage validation passed!")
         print(f"   Total tokens: input={total_input_tokens}, output={total_output_tokens}, total={total_tokens}")
