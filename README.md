@@ -262,8 +262,8 @@ export KUBECONFIG=/path/to/your/kubeconfig
 ### History API
 - `GET /api/v1/history/sessions` - List alert processing sessions with filtering and pagination
 - `GET /api/v1/history/sessions/{session_id}` - Get detailed session with chronological timeline
-- `POST /api/v1/history/sessions/{session_id}/resume` - Resume a paused session from where it left off
-- `POST /api/v1/history/sessions/{session_id}/cancel` - Cancel an active or paused session
+- `POST /api/v1/history/sessions/{session_id}/resume` - Resume a paused session from where it left off. Session must be in `PAUSED` state
+- `POST /api/v1/history/sessions/{session_id}/cancel` - Cancel an active or paused session. Session must not be in a terminal state (COMPLETED, FAILED, CANCELLED)
 
 ### Chat API
 - `POST /api/v1/sessions/{session_id}/chat` - Create follow-up chat for a completed session

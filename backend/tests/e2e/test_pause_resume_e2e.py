@@ -29,178 +29,9 @@ from mcp.types import Tool
 
 from .e2e_utils import E2ETestUtils
 from .conftest import create_mock_stream
+from .expected_pause_resume_conversations import EXPECTED_PAUSE_RESUME_STAGES
 
 logger = logging.getLogger(__name__)
-
-
-# Expected conversation for resumed data-collection stage
-# This proves conversation history was restored when resuming
-EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION = {
-    "messages": [
-        # System message (same as original)
-        {
-            "role": "system",
-            "content_contains": [
-                "## General SRE Agent Instructions",
-                "You are an expert Site Reliability Engineer",
-                "## Agent-Specific Instructions",
-                "You are a Kubernetes data collection specialist"
-            ]
-        },
-        # Initial user question (restored from pause)
-        # This proves resume_paused_session() restored COMPLETE context, not just messages
-        {
-            "role": "user",
-            "content_contains": [
-                # Question header
-                "Question: Investigate this test-kubernetes alert",
-                
-                # Available tools - proves tool discovery context was restored
-                "Available tools:",
-                "kubernetes-server.kubectl_get",
-                "kubernetes-server.kubectl_describe",
-                
-                # Alert metadata - proves alert context was restored
-                "## Alert Details",
-                "**Alert Type:** test-kubernetes",
-                "**Severity:** warning",
-                "**Environment:** production",
-                
-                # Alert data - proves detailed alert information was restored
-                '"namespace": "test-namespace"',
-                '"description": "Namespace stuck in Terminating state"',
-                '"cluster": "test-cluster"',
-                '"finalizers": "kubernetes.io/pv-protection"',
-                
-                # Runbook content - CRITICAL: proves runbook was included in restored context
-                "## Runbook Content",
-                "# Mock Runbook",
-                "Test runbook content",
-                
-                # Previous stage data notice - proves stage chain context was restored
-                "## Previous Stage Data",
-                "No previous stage data is available",
-                "This is the first stage of analysis",
-                
-                # Stage-specific instructions - proves stage context was restored
-                "## Your Task: DATA-COLLECTION STAGE",
-                "Use available tools to:",
-                "Collect additional data relevant to this stage",
-                "Analyze findings in the context of this specific stage",
-                "Provide stage-specific insights and recommendations",
-                
-                # Final instruction
-                "Begin!"
-            ]
-        },
-        # Assistant iteration 1 (restored from pause)
-        {
-            "role": "assistant",
-            "content_contains": [
-                "Thought:",
-                "namespace",
-                "Action: kubernetes-server.kubectl_get",
-                "Action Input:",
-                "stuck-namespace"
-            ]
-        },
-        # Observation 1 (restored from pause)
-        # Proves tool execution results were preserved
-        {
-            "role": "user",
-            "content_contains": [
-                "Observation:",
-                "kubernetes-server.kubectl_get",
-                "stuck-namespace",
-                "Terminating",
-                "45m"
-            ]
-        },
-        # Assistant iteration 2 (restored from pause)
-        # Proves agent reasoning was preserved (references previous observation)
-        {
-            "role": "assistant",
-            "content_contains": [
-                "Thought:",
-                "Terminating",  # References previous observation
-                "Action: kubernetes-server.kubectl_describe",
-                "Action Input:",
-                "namespace"
-            ]
-        },
-        # Observation 2 (restored from pause)
-        # Proves second tool execution result was preserved
-        {
-            "role": "user",
-            "content_contains": [
-                "Observation:",
-                "kubernetes-server.kubectl_describe",
-                "stuck-namespace",
-                "Terminating",
-                "Finalizers",
-                "kubernetes.io/pvc-protection"
-            ]
-        },
-        # NEW: Iteration 3 (after resume) - completes the stage
-        # This proves the agent can reference previous observations after resume
-        {
-            "role": "assistant",
-            "content_contains": [
-                "Thought:",
-                "gathered enough information",  # Shows agent reviewed history
-                "Final Answer:",
-                "Data Collection",
-                "Complete",
-                "stuck-namespace",  # References previous observations
-                "Terminating",  # References previous observations
-                "Finalizers",  # References kubectl_describe result
-                "blocking deletion"  # Shows understanding of the issue
-            ]
-        }
-    ]
-}
-
-# Expected stage definitions for pause/resume flow
-# These prove that resume continues from where we paused, not from scratch
-# There is only ONE data-collection stage execution that gets reused
-EXPECTED_PAUSE_RESUME_STAGES = {
-    'data-collection': {
-        'llm_count': 3,  # 2 LLM interactions before pause + 1 after resume to complete
-        'mcp_count': 6,  # Initial: 2 tool_list + 2 tool_call, Resume: 2 tool_list (servers rediscovered)
-        'expected_status': 'completed',  # Final status after completion
-        'expected_conversation': EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION,  # Verify conversation history was restored
-        'interactions': [
-            # Initial execution (before pause)
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
-            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 80, 'total_tokens': 280},
-            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
-            {'type': 'llm', 'position': 2, 'success': True, 'input_tokens': 220, 'output_tokens': 90, 'total_tokens': 310},
-            {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe'},
-            # After resume (same stage execution continues)
-            {'type': 'mcp', 'position': 5, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            {'type': 'mcp', 'position': 6, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
-            {'type': 'llm', 'position': 3, 'success': True, 'input_tokens': 240, 'output_tokens': 120, 'total_tokens': 360, 'interaction_type': 'final_analysis'},
-        ]
-    },
-    'verification': {
-        'llm_count': 1,
-        'mcp_count': 1,
-        'expected_status': 'completed',
-        'interactions': [
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 100, 'total_tokens': 300, 'interaction_type': 'final_analysis'},
-        ]
-    },
-    'analysis': {
-        'llm_count': 1,
-        'mcp_count': 0,
-        'expected_status': 'completed',
-        'interactions': [
-            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 250, 'output_tokens': 140, 'total_tokens': 390, 'interaction_type': 'final_analysis'},
-        ]
-    }
-}
 
 
 @pytest.mark.asyncio
@@ -326,7 +157,7 @@ class TestPauseResumeE2E:
                 assert len(actual_messages) == len(expected_messages), \
                     f"Stage '{stage_name}' ({stage_key}) conversation message count mismatch: expected {len(expected_messages)}, got {len(actual_messages)}"
                 
-                # Verify each message
+                # Verify each message with full content matching
                 for i, expected_msg in enumerate(expected_messages):
                     actual_msg = actual_messages[i]
                     
@@ -334,11 +165,12 @@ class TestPauseResumeE2E:
                     assert actual_msg['role'] == expected_msg['role'], \
                         f"Stage '{stage_name}' ({stage_key}) message {i+1} role mismatch: expected '{expected_msg['role']}', got '{actual_msg['role']}'"
                     
-                    # Verify content contains expected strings
-                    if 'content_contains' in expected_msg:
-                        for expected_str in expected_msg['content_contains']:
-                            assert expected_str in actual_msg['content'], \
-                                f"Stage '{stage_name}' ({stage_key}) message {i+1} missing expected content: '{expected_str}'"
+                    # Normalize and verify full content match
+                    expected_content = E2ETestUtils.normalize_content(expected_msg['content'])
+                    actual_content = E2ETestUtils.normalize_content(actual_msg['content'])
+                    
+                    assert expected_content == actual_content, \
+                        f"Stage '{stage_name}' ({stage_key}) message {i+1} content mismatch: expected length {len(expected_content)}, got {len(actual_content)}"
                 
                 print(f"   ✅ Conversation validation passed! {len(actual_messages)} messages verified")
                 print(f"      - Message 1 (system): Agent instructions preserved")
@@ -434,22 +266,31 @@ Action Input: {"resource": "namespace", "name": "stuck-namespace"}""",
                     "output_tokens": 90,
                     "total_tokens": 310,
                 },
-                3: {  # Third iteration - after resume, completes data-collection stage
-                    "response_content": """Thought: I've gathered enough information from the namespace describe showing finalizers. I can now provide the data collection summary.
+                3: {  # Third iteration - after resume, makes additional tool call
+                    "response_content": """Thought: I've seen the namespace is stuck with finalizers. Let me check for related events to understand what's happening.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "events", "namespace": "stuck-namespace"}""",
+                    "input_tokens": 240,
+                    "output_tokens": 100,
+                    "total_tokens": 340,
+                },
+                4: {  # Fourth iteration - after tool call, completes data-collection stage
+                    "response_content": """Thought: I've gathered enough information from the namespace describe and events. I can now provide the data collection summary.
 
 Final Answer: **Data Collection Complete**
 
 Collected the following information:
 - Namespace: stuck-namespace is in Terminating state (45m)
 - Finalizers: kubernetes.io/pvc-protection is blocking deletion
+- Events: FailedDelete warning shows finalizers blocking deletion
 - Status: Namespace is stuck and cannot complete termination
 
 Data collection stage is now complete. The gathered information shows finalizers are preventing namespace deletion.""",
-                    "input_tokens": 240,
-                    "output_tokens": 120,
-                    "total_tokens": 360,
+                    "input_tokens": 260,
+                    "output_tokens": 140,
+                    "total_tokens": 400,
                 },
-                4: {  # Verification stage - iteration 1, immediate Final Answer
+                5: {  # Verification stage - iteration 1, immediate Final Answer
                     "response_content": """Thought: Based on the data collection results, I can verify the findings.
 
 Final Answer: **Verification Complete**
@@ -464,7 +305,7 @@ Verification confirms the data collection findings are accurate.""",
                     "output_tokens": 100,
                     "total_tokens": 300,
                 },
-                5: {  # Analysis stage - iteration 1, immediate Final Answer
+                6: {  # Analysis stage - iteration 1, immediate Final Answer
                     "response_content": """Thought: I can now provide the final analysis based on previous stages.
 
 Final Answer: **Final Analysis**
@@ -753,18 +594,18 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             print(f"✅ All 3 stage executions verified: data-collection (reused), verification, analysis")
 
                             # Verify LLM interactions match our mock setup
-                            # Mock interactions: 1,2 (pause) → 3 (data-collection) → 4 (verification) → 5 (analysis)
-                            # Total: 5 interactions
+                            # Mock interactions: 1,2 (pause) → 3,4 (data-collection resume) → 5 (verification) → 6 (analysis)
+                            # Total: 6 interactions
                             total_llm_interactions = sum(
                                 len(stage.get("llm_interactions", [])) for stage in final_stages
                             )
                             print(f"✅ Total LLM interactions: {total_llm_interactions}")
-                            assert total_llm_interactions == 5, \
-                                f"Expected exactly 5 LLM interactions (2 before pause + 3 after resume), got {total_llm_interactions}"
+                            assert total_llm_interactions == 6, \
+                                f"Expected exactly 6 LLM interactions (2 before pause + 4 after resume), got {total_llm_interactions}"
 
                             print("\n🔍 Step 8: Comprehensive stage validation (proving resume reused paused stage)...")
                             
-                            # Validate data-collection stage (reused: 2 interactions before pause + 1 after resume)
+                            # Validate data-collection stage (reused: 2 interactions before pause + 2 after resume)
                             # This proves we resumed the same stage execution, not created a new one
                             self._validate_stage(final_stages[0], 'data-collection')
                             
@@ -775,7 +616,7 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             self._validate_stage(final_stages[2], 'analysis')
                             
                             print("\n✅ ALL VALIDATIONS PASSED!")
-                            print("   - Data-collection stage has exactly 3 LLM interactions (2 before pause + 1 after resume)")
+                            print("   - Data-collection stage has exactly 4 LLM interactions (2 before pause + 2 after resume)")
                             print("   - Single stage execution was reused (no duplicate stage created)")
                             print("   - Token counts match expected (proving no extra work)")
                             print("   - Timeline is correct (data-collection resumed → verification → analysis)")

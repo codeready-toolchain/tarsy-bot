@@ -212,7 +212,7 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
                         '& .MuiChip-icon': {
                           color: 'white',
                         },
-                        animation: 'pulse 2s ease-in-out infinite !important',
+                        animation: 'pausedChipPulse 2s ease-in-out infinite !important',
                         transition: 'none !important',
                         transform: 'none !important',
                         outline: 'none !important',
@@ -221,7 +221,7 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
                           outline: 'none !important',
                           boxShadow: 'none !important',
                         },
-                        '@keyframes pulse': {
+                        '@keyframes pausedChipPulse': {
                           '0%, 100%': {
                             backgroundColor: '#e65100',
                           },

@@ -12,7 +12,6 @@ Architecture:
 import asyncio
 import logging
 import os
-import re
 from unittest.mock import AsyncMock, Mock, patch
 from mcp.types import Tool
 
@@ -35,27 +34,6 @@ from .expected_conversations import (
 from .conftest import create_mock_stream
 
 logger = logging.getLogger(__name__)
-
-
-def normalize_content(content: str) -> str:
-    """Normalize dynamic content in messages for stable comparison."""
-    # Normalize timestamps (microsecond precision)
-    content = re.sub(r"\*\*Timestamp:\*\* \d+", "**Timestamp:** {TIMESTAMP}", content)
-    content = re.sub(r"Timestamp:\*\* \d+", "Timestamp:** {TIMESTAMP}", content)
-
-    # Normalize alert IDs and session IDs (UUIDs)
-    content = re.sub(
-        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
-        "{UUID}",
-        content,
-    )
-
-    # Normalize specific test-generated data keys
-    content = re.sub(
-        r"test-kubernetes_[a-f0-9]+_\d+", "test-kubernetes_{DATA_KEY}", content
-    )
-
-    return content
 
 
 def assert_conversation_messages(
@@ -94,8 +72,8 @@ def assert_conversation_messages(
         ), f"Role mismatch: expected {expected_role}, got {actual_role}"
 
         # Normalize content for comparison
-        expected_content = normalize_content(expected_msg.get("content", ""))
-        actual_content = normalize_content(actual_msg.get("content", ""))
+        expected_content = E2ETestUtils.normalize_content(expected_msg.get("content", ""))
+        actual_content = E2ETestUtils.normalize_content(actual_msg.get("content", ""))
         
         assert (
             expected_content == actual_content

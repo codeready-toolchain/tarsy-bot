@@ -6,6 +6,7 @@ to reduce duplication and improve maintainability.
 """
 
 import asyncio
+import re
 import time
 from typing import Tuple, Dict, Any, List, Callable, Optional
 from unittest.mock import AsyncMock, Mock
@@ -15,6 +16,38 @@ from mcp.types import Tool
 
 class E2ETestUtils:
     """Shared utility methods for E2E tests."""
+
+    @staticmethod
+    def normalize_content(content: str) -> str:
+        """
+        Normalize dynamic content in messages for stable comparison.
+        
+        This function replaces dynamic values (timestamps, UUIDs) with 
+        placeholders to enable consistent content comparison across test runs.
+        
+        Args:
+            content: The message content to normalize
+            
+        Returns:
+            Normalized content with placeholders for dynamic values
+        """
+        # Normalize timestamps (microsecond precision)
+        content = re.sub(r"\*\*Timestamp:\*\* \d+", "**Timestamp:** {TIMESTAMP}", content)
+        content = re.sub(r"Timestamp:\*\* \d+", "Timestamp:** {TIMESTAMP}", content)
+        
+        # Normalize alert IDs and session IDs (UUIDs)
+        content = re.sub(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            "{UUID}",
+            content,
+        )
+        
+        # Normalize specific test-generated data keys
+        content = re.sub(
+            r"test-kubernetes_[a-f0-9]+_\d+", "test-kubernetes_{DATA_KEY}", content
+        )
+        
+        return content
 
     @staticmethod
     async def wait_for_session_completion(

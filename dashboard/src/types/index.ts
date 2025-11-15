@@ -1,3 +1,5 @@
+import type { SessionStatus, StageStatus, ChainOverallStatus, AlertProcessingStatus } from '../utils/statusConstants';
+
 // Reusable pause metadata type (align with backend PauseReason/metadata)
 export interface PauseMetadata {
   reason: string;                // e.g., 'max_iterations' | 'manual' | 'external'
@@ -10,7 +12,7 @@ export interface Session {
   session_id: string;
   alert_type: string | null;
   agent_type: string;
-  status: 'pending' | 'in_progress' | 'paused' | 'canceling' | 'completed' | 'failed' | 'cancelled';
+  status: SessionStatus;
   author: string | null;
   runbook_url: string | null;
   mcp_selection: MCPSelectionConfig | null;
@@ -55,7 +57,7 @@ export interface StageExecution {
   stage_index: number;
   stage_name: string;
   agent: string;
-  status: 'pending' | 'active' | 'completed' | 'failed';
+  status: StageStatus;
   started_at_us: number | null;
   completed_at_us: number | null;
   duration_ms: number | null;
@@ -258,7 +260,7 @@ export interface ChainProgressUpdate {
   total_stages?: number | null;
   completed_stages?: number | null;
   failed_stages?: number | null;
-  overall_status: 'pending' | 'processing' | 'completed' | 'failed' | 'partial';
+  overall_status: ChainOverallStatus;
   stage_details?: any | null;
   timestamp_us: number;
 }
@@ -272,7 +274,7 @@ export interface StageProgressUpdate {
   stage_name: string;
   stage_index: number;
   agent: string;
-  status: 'pending' | 'active' | 'completed' | 'failed';
+  status: StageStatus;
   started_at_us?: number | null;
   completed_at_us?: number | null;
   duration_ms?: number | null;
@@ -581,7 +583,7 @@ export interface AlertSubmissionResponse {
 
 export interface ProcessingStatus {
   session_id: string;
-  status: 'queued' | 'processing' | 'completed' | 'error' | 'cancelled';
+  status: AlertProcessingStatus;
   progress: number;
   current_step: string;
   result?: string;
