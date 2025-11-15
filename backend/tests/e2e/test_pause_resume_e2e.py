@@ -33,6 +33,52 @@ from .conftest import create_mock_stream
 logger = logging.getLogger(__name__)
 
 
+# Expected stage definitions for pause/resume flow
+# These prove that resume continues from where we paused, not from scratch
+EXPECTED_PAUSE_RESUME_STAGES = {
+    'paused_data-collection': {
+        'llm_count': 2,  # 2 LLM interactions before pause
+        'mcp_count': 4,  # 2 tool_list + 2 tool_call
+        'expected_status': 'active',  # Paused stage shows as "active" in DB
+        'interactions': [
+            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 80, 'total_tokens': 280},
+            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
+            {'type': 'llm', 'position': 2, 'success': True, 'input_tokens': 220, 'output_tokens': 90, 'total_tokens': 310},
+            {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe'},
+        ]
+    },
+    'resumed_data-collection': {
+        'llm_count': 1,  # 1 additional LLM interaction to complete
+        'mcp_count': 2,  # 2 tool_list (no new tool calls - just completes)
+        'expected_status': 'completed',
+        'interactions': [
+            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 240, 'output_tokens': 120, 'total_tokens': 360, 'interaction_type': 'final_analysis'},
+        ]
+    },
+    'verification': {
+        'llm_count': 1,
+        'mcp_count': 1,
+        'expected_status': 'completed',
+        'interactions': [
+            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 100, 'total_tokens': 300, 'interaction_type': 'final_analysis'},
+        ]
+    },
+    'analysis': {
+        'llm_count': 1,
+        'mcp_count': 0,
+        'expected_status': 'completed',
+        'interactions': [
+            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 250, 'output_tokens': 140, 'total_tokens': 390, 'interaction_type': 'final_analysis'},
+        ]
+    }
+}
+
+
 @pytest.mark.asyncio
 @pytest.mark.e2e
 class TestPauseResumeE2E:
@@ -47,6 +93,101 @@ class TestPauseResumeE2E:
     5. Session resumes and continues processing
     6. Verification of pause metadata and state transitions
     """
+
+    def _validate_stage(self, actual_stage, stage_key):
+        """
+        Validate a stage's interactions match expected structure.
+        
+        This validates that:
+        - The correct number of LLM/MCP interactions occurred
+        - Token counts match (proving no extra work was done)
+        - Interaction types and success status match
+        - For resumed stages: proves conversation history was restored
+        """
+        stage_name = actual_stage["stage_name"]
+        expected_stage = EXPECTED_PAUSE_RESUME_STAGES[stage_key]
+        llm_interactions = actual_stage.get("llm_interactions", [])
+        mcp_interactions = actual_stage.get("mcp_communications", [])
+        
+        print(f"\n🔍 Validating stage '{stage_name}' (key: {stage_key})")
+        print(f"   Status: {actual_stage['status']} (expected: {expected_stage['expected_status']})")
+        print(f"   LLM interactions: {len(llm_interactions)} (expected: {expected_stage['llm_count']})")
+        print(f"   MCP interactions: {len(mcp_interactions)} (expected: {expected_stage['mcp_count']})")
+        
+        # Verify interaction counts
+        assert len(llm_interactions) == expected_stage["llm_count"], \
+            f"Stage '{stage_name}' ({stage_key}): Expected {expected_stage['llm_count']} LLM interactions, got {len(llm_interactions)}"
+        assert len(mcp_interactions) == expected_stage["mcp_count"], \
+            f"Stage '{stage_name}' ({stage_key}): Expected {expected_stage['mcp_count']} MCP interactions, got {len(mcp_interactions)}"
+        
+        # Verify status
+        assert actual_stage['status'] == expected_stage['expected_status'], \
+            f"Stage '{stage_name}' ({stage_key}): Expected status '{expected_stage['expected_status']}', got '{actual_stage['status']}'"
+        
+        # Verify chronological interaction flow
+        chronological_interactions = actual_stage.get("chronological_interactions", [])
+        assert len(chronological_interactions) == len(expected_stage["interactions"]), \
+            f"Stage '{stage_name}' ({stage_key}) chronological interaction count mismatch: expected {len(expected_stage['interactions'])}, got {len(chronological_interactions)}"
+        
+        # Track token totals for the stage
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_tokens = 0
+        
+        # Validate each interaction
+        for i, expected_interaction in enumerate(expected_stage["interactions"]):
+            actual_interaction = chronological_interactions[i]
+            interaction_type = expected_interaction["type"]
+            
+            assert actual_interaction["type"] == interaction_type, \
+                f"Stage '{stage_name}' ({stage_key}) interaction {i+1} type mismatch: expected {interaction_type}, got {actual_interaction['type']}"
+            
+            details = actual_interaction["details"]
+            assert details["success"] == expected_interaction["success"], \
+                f"Stage '{stage_name}' ({stage_key}) interaction {i+1} success mismatch"
+            
+            if interaction_type == "llm":
+                # Verify token usage matches (proves no extra work was done)
+                if "input_tokens" in expected_interaction:
+                    assert details["input_tokens"] == expected_interaction["input_tokens"], \
+                        f"Stage '{stage_name}' ({stage_key}) interaction {i+1} input_tokens mismatch: expected {expected_interaction['input_tokens']}, got {details['input_tokens']}"
+                    assert details["output_tokens"] == expected_interaction["output_tokens"], \
+                        f"Stage '{stage_name}' ({stage_key}) interaction {i+1} output_tokens mismatch: expected {expected_interaction['output_tokens']}, got {details['output_tokens']}"
+                    assert details["total_tokens"] == expected_interaction["total_tokens"], \
+                        f"Stage '{stage_name}' ({stage_key}) interaction {i+1} total_tokens mismatch: expected {expected_interaction['total_tokens']}, got {details['total_tokens']}"
+                    
+                    total_input_tokens += details["input_tokens"]
+                    total_output_tokens += details["output_tokens"]
+                    total_tokens += details["total_tokens"]
+                
+                # Verify interaction type
+                if "interaction_type" in expected_interaction:
+                    assert details.get("interaction_type") == expected_interaction["interaction_type"], \
+                        f"Stage '{stage_name}' ({stage_key}) interaction {i+1} interaction_type mismatch: expected '{expected_interaction['interaction_type']}', got '{details.get('interaction_type')}'"
+            
+            elif interaction_type == "mcp":
+                assert details["communication_type"] == expected_interaction["communication_type"], \
+                    f"Stage '{stage_name}' ({stage_key}) interaction {i+1} communication_type mismatch"
+                
+                if "server_name" in expected_interaction:
+                    assert details.get("server_name") == expected_interaction["server_name"], \
+                        f"Stage '{stage_name}' ({stage_key}) interaction {i+1} server_name mismatch: expected '{expected_interaction['server_name']}', got '{details.get('server_name')}'"
+                
+                if "tool_name" in expected_interaction:
+                    assert details.get("tool_name") == expected_interaction["tool_name"], \
+                        f"Stage '{stage_name}' ({stage_key}) interaction {i+1} tool_name mismatch: expected '{expected_interaction['tool_name']}', got '{details.get('tool_name')}'"
+        
+        # Verify stage-level token counts
+        if total_tokens > 0:
+            assert actual_stage['stage_input_tokens'] == total_input_tokens, \
+                f"Stage '{stage_name}' ({stage_key}) stage_input_tokens mismatch: expected {total_input_tokens}, got {actual_stage['stage_input_tokens']}"
+            assert actual_stage['stage_output_tokens'] == total_output_tokens, \
+                f"Stage '{stage_name}' ({stage_key}) stage_output_tokens mismatch: expected {total_output_tokens}, got {actual_stage['stage_output_tokens']}"
+            assert actual_stage['stage_total_tokens'] == total_tokens, \
+                f"Stage '{stage_name}' ({stage_key}) stage_total_tokens mismatch: expected {total_tokens}, got {actual_stage['stage_total_tokens']}"
+        
+        print(f"   ✅ Stage validation passed!")
+        print(f"   Total tokens: input={total_input_tokens}, output={total_output_tokens}, total={total_tokens}")
 
     @pytest.mark.e2e
     async def test_pause_and_resume_workflow(
@@ -457,7 +598,28 @@ Finalizers:   [kubernetes.io/pvc-protection]
                         assert total_llm_interactions == 5, \
                             f"Expected exactly 5 LLM interactions (2 before pause + 3 after resume), got {total_llm_interactions}"
 
-                        print("✅ PAUSE/RESUME E2E TEST PASSED!")
+                        print("\n🔍 Step 8: Comprehensive stage validation (proving resume from pause, not restart)...")
+                        
+                        # Validate paused data-collection stage (first execution - paused at iteration 2)
+                        self._validate_stage(final_stages[0], 'paused_data-collection')
+                        
+                        # Validate resumed data-collection stage (second execution - completed with iteration 3)
+                        # This proves we resumed from where we paused, not restarted
+                        self._validate_stage(final_stages[1], 'resumed_data-collection')
+                        
+                        # Validate verification stage (ran after data-collection completed)
+                        self._validate_stage(final_stages[2], 'verification')
+                        
+                        # Validate analysis stage (final stage)
+                        self._validate_stage(final_stages[3], 'analysis')
+                        
+                        print("\n✅ ALL VALIDATIONS PASSED!")
+                        print("   - Paused stage has exactly 2 LLM interactions (proving it stopped)")
+                        print("   - Resumed stage has exactly 1 LLM interaction (proving it continued, not restarted)")
+                        print("   - Token counts match expected (proving no extra work)")
+                        print("   - Timeline is correct (paused → resumed → verification → analysis)")
+
+                        print("\n✅ PAUSE/RESUME E2E TEST PASSED!")
                         
                         # Restore original max_iterations
                         settings.max_llm_mcp_iterations = original_max_iterations
