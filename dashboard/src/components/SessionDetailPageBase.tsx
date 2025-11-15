@@ -7,6 +7,7 @@ import {
   Box, 
   Paper, 
   Alert, 
+  AlertTitle,
   CircularProgress,
   Skeleton,
   Switch,
@@ -14,9 +15,15 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   IconButton,
-  Button
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  alpha,
 } from '@mui/material';
-import { Psychology, BugReport, KeyboardDoubleArrowDown, KeyboardDoubleArrowUp } from '@mui/icons-material';
+import { Psychology, BugReport, KeyboardDoubleArrowDown, KeyboardDoubleArrowUp, PauseCircle, PlayArrow } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
 import VersionFooter from './VersionFooter';
 import FloatingSubmitAlertFab from './FloatingSubmitAlertFab';
@@ -147,6 +154,11 @@ function SessionDetailPageBase({
   
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
+  
+  // Bottom cancel dialog state
+  const [showBottomCancelDialog, setShowBottomCancelDialog] = useState(false);
+  const [isBottomCanceling, setIsBottomCanceling] = useState(false);
+  const [bottomCancelError, setBottomCancelError] = useState<string | null>(null);
   
   // Ref for Final Analysis Card (for scrolling)
   const finalAnalysisRef = useRef<HTMLDivElement>(null);
@@ -774,6 +786,145 @@ function SessionDetailPageBase({
                   Jump to Follow-up Chat
                 </Button>
               </Box>
+            )}
+
+            {/* Bottom Pause Alert - For paused sessions, shown at the end for easy access after scrolling */}
+            {session.status === 'paused' && session.pause_metadata && (
+              <>
+                <Alert 
+                  severity="warning" 
+                  icon={<PauseCircle />}
+                  sx={{ mt: 3 }}
+                  action={
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        color="inherit"
+                        size="small"
+                        variant="contained"
+                        startIcon={<PlayArrow />}
+                        onClick={async () => {
+                          try {
+                            const apiClient = (await import('../services/api')).apiClient;
+                            await apiClient.resumeSession(session.session_id);
+                            // WebSocket will update the session status
+                          } catch (error) {
+                            console.error('Failed to resume session:', error);
+                          }
+                        }}
+                        sx={{
+                          fontWeight: 600,
+                          backgroundColor: 'warning.main',
+                          color: 'white',
+                          '& .MuiSvgIcon-root': {
+                            color: 'white',
+                          },
+                          '&:hover': {
+                            backgroundColor: 'warning.dark',
+                          },
+                        }}
+                      >
+                        Resume
+                      </Button>
+                      <Button
+                        color="error"
+                        size="small"
+                        variant="outlined"
+                        onClick={() => {
+                          setShowBottomCancelDialog(true);
+                          setBottomCancelError(null);
+                        }}
+                        disabled={isBottomCanceling}
+                        sx={{
+                          fontWeight: 600,
+                          '&:hover': {
+                            backgroundColor: 'error.main',
+                            borderColor: 'error.main',
+                            color: 'white',
+                          },
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </Box>
+                  }
+                >
+                  <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
+                  {session.pause_metadata.message}
+                </Alert>
+
+                {/* Bottom Cancel Confirmation Dialog */}
+                <Dialog
+                  open={showBottomCancelDialog}
+                  onClose={() => {
+                    if (!isBottomCanceling) {
+                      setShowBottomCancelDialog(false);
+                      setBottomCancelError(null);
+                    }
+                  }}
+                  maxWidth="sm"
+                  fullWidth
+                >
+                  <DialogTitle>Cancel Session?</DialogTitle>
+                  <DialogContent>
+                    <DialogContentText>
+                      Are you sure you want to cancel this session? This action cannot be undone.
+                      The session will be marked as cancelled and any ongoing processing will be stopped.
+                    </DialogContentText>
+                    {bottomCancelError && (
+                      <Box sx={(theme) => ({ 
+                        mt: 2, 
+                        p: 2, 
+                        bgcolor: alpha(theme.palette.error.main, 0.05), 
+                        borderRadius: 1, 
+                        border: '1px solid', 
+                        borderColor: 'error.main' 
+                      })}>
+                        <Typography variant="body2" color="error.main">
+                          {bottomCancelError}
+                        </Typography>
+                      </Box>
+                    )}
+                  </DialogContent>
+                  <DialogActions sx={{ px: 3, pb: 2 }}>
+                    <Button 
+                      onClick={() => {
+                        setShowBottomCancelDialog(false);
+                        setBottomCancelError(null);
+                      }}
+                      disabled={isBottomCanceling}
+                      color="inherit"
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={async () => {
+                        setIsBottomCanceling(true);
+                        setBottomCancelError(null);
+                        
+                        try {
+                          const { apiClient, handleAPIError } = await import('../services/api');
+                          await apiClient.cancelSession(session.session_id);
+                          // Close dialog on success
+                          setShowBottomCancelDialog(false);
+                          // WebSocket will update the session status
+                        } catch (error) {
+                          // Show error, allow retry
+                          const { handleAPIError } = await import('../services/api');
+                          const errorMessage = handleAPIError(error);
+                          setBottomCancelError(errorMessage);
+                          setIsBottomCanceling(false);
+                        }
+                      }}
+                      variant="contained" 
+                      color="warning"
+                      disabled={isBottomCanceling}
+                      startIcon={isBottomCanceling ? <CircularProgress size={16} color="inherit" /> : undefined}
+                    >
+                      {isBottomCanceling ? 'CANCELING...' : 'CONFIRM CANCELLATION'}
+                    </Button>
+                  </DialogActions>
+                </Dialog>
+              </>
             )}
           </Box>
         )}

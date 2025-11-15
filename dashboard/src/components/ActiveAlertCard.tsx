@@ -4,10 +4,11 @@ import {
   CardContent,
   Typography,
   Box,
-
   Chip,
   IconButton,
   Tooltip,
+  Alert,
+  AlertTitle,
 } from '@mui/material';
 import {
   Error,
@@ -239,11 +240,6 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
                 {session.agent_type}
               </Typography>
             </Box>
-            {session.status === SESSION_STATUS.PAUSED && session.pause_metadata && (
-              <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                {session.pause_metadata.message}
-              </Typography>
-            )}
           </Box>
           
           {/* New Tab Icon */}
@@ -263,6 +259,18 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
             </IconButton>
           </Tooltip>
         </Box>
+
+        {/* Pause Alert */}
+        {session.status === SESSION_STATUS.PAUSED && session.pause_metadata && (
+          <Alert 
+            severity="warning" 
+            icon={<PauseCircle />}
+            sx={{ mb: 2 }}
+          >
+            <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
+            {session.pause_metadata.message}
+          </Alert>
+        )}
 
         {/* Alert Type Title */}
         <Typography 

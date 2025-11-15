@@ -10,6 +10,8 @@ import {
   LinearProgress,
   Collapse,
   Divider,
+  Alert,
+  AlertTitle,
 } from '@mui/material';
 import {
   Error as ErrorIcon,
@@ -256,13 +258,20 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
                 </Tooltip>
               )}
             </Box>
-            {session.status === SESSION_STATUS.PAUSED && session.pause_metadata && (
-              <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                {session.pause_metadata.message}
-              </Typography>
-            )}
           </Box>
         </Box>
+
+        {/* Pause Alert */}
+        {session.status === SESSION_STATUS.PAUSED && session.pause_metadata && (
+          <Alert 
+            severity="warning" 
+            icon={<PauseCircle />}
+            sx={{ mb: 2 }}
+          >
+            <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
+            {session.pause_metadata.message}
+          </Alert>
+        )}
 
         {/* Chain progress overview */}
         {isChainSession && totalStages > 0 && (

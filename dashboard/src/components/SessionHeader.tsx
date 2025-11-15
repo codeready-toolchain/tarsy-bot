@@ -13,8 +13,10 @@ import {
   CircularProgress,
   Tooltip,
   alpha,
+  Alert,
+  AlertTitle,
 } from '@mui/material';
-import { CancelOutlined, Replay as ReplayIcon, PlayArrow } from '@mui/icons-material';
+import { CancelOutlined, Replay as ReplayIcon, PlayArrow, PauseCircle } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import ProgressIndicator from './ProgressIndicator';
 import TokenUsageDisplay from './TokenUsageDisplay';
@@ -700,20 +702,16 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               {/* Resume Button - Only for paused sessions */}
               {sessionIsPaused && (
                 <>
-                  {/* Pause Reason Display */}
+                  {/* Pause Alert */}
                   {session.pause_metadata && (
-                    <Box sx={(theme) => ({ 
-                      p: 1.5, 
-                      bgcolor: alpha(theme.palette.warning.main, 0.08), 
-                      borderRadius: 1, 
-                      border: '1px solid', 
-                      borderColor: alpha(theme.palette.warning.main, 0.3),
-                      mb: 1.5
-                    })}>
-                      <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500 }}>
-                        {session.pause_metadata.message}
-                      </Typography>
-                    </Box>
+                    <Alert 
+                      severity="warning" 
+                      icon={<PauseCircle />}
+                      sx={{ mb: 1.5, width: '100%' }}
+                    >
+                      <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
+                      {session.pause_metadata.message}
+                    </Alert>
                   )}
                   
                   <Button
