@@ -1770,7 +1770,7 @@ class TestHistoryRepositoryErrorHandling:
         # Should return default structure with empty lists on error
         assert result.agent_types == []
         assert result.alert_types == []
-        assert result.status_options == ["pending", "in_progress", "canceling", "completed", "failed", "cancelled"]
+        assert result.status_options == ["pending", "in_progress", "paused", "canceling", "completed", "failed", "cancelled"]
         assert len(result.time_ranges) == 5
 
 class TestHistoryRepositoryPerformance:
@@ -1896,9 +1896,10 @@ class TestHistoryRepositoryPerformance:
         
         # Verify status options
         assert hasattr(result, 'status_options')
-        assert len(result.status_options) == 6
+        assert len(result.status_options) == 7
         assert "pending" in result.status_options
         assert "in_progress" in result.status_options
+        assert "paused" in result.status_options
         assert "canceling" in result.status_options
         assert "completed" in result.status_options
         assert "failed" in result.status_options

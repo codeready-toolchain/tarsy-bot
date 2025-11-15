@@ -83,14 +83,14 @@ class E2ETestUtils:
                     if debug_logging:
                         print(f"🔍 Polling attempt {attempts} (elapsed: {elapsed_time:.1f}s): Session {session_id} -> {status}")
 
-                    # Check if session is complete (either successful or failed)
-                    if status in ["completed", "failed"]:
+                    # Check if session is complete (either successful, failed, or paused)
+                    if status in ["completed", "failed", "paused"]:
                         print(f"✅ Session completed with status: {status}")
                         return session_id, status
 
                     # If session is still processing, continue polling
-                    # Valid active statuses: pending, in_progress
-                    if status in ["pending", "in_progress"]:
+                    # Valid active statuses: pending, in_progress, canceling
+                    if status in ["pending", "in_progress", "canceling"]:
                         await asyncio.sleep(poll_interval)
                         continue
 
