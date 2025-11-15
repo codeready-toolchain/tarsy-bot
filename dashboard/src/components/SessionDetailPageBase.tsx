@@ -902,7 +902,7 @@ function SessionDetailPageBase({
                         setBottomCancelError(null);
                         
                         try {
-                          const { apiClient, handleAPIError } = await import('../services/api');
+                          const { apiClient } = await import('../services/api');
                           await apiClient.cancelSession(session.session_id);
                           // Close dialog on success
                           setShowBottomCancelDialog(false);
