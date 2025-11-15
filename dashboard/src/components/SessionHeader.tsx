@@ -741,7 +741,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                     variant="contained"
                     size="large"
                     onClick={handleResumeClick}
-                    disabled={isResuming}
+                    disabled={isResuming || isCanceling || sessionIsCanceling}
                     aria-label={isResuming ? "Resuming session" : "Resume paused session"}
                     sx={{
                       minWidth: 180,

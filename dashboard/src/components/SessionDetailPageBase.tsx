@@ -825,7 +825,7 @@ function SessionDetailPageBase({
                         size="small"
                         variant="contained"
                         startIcon={isBottomResuming ? <CircularProgress size={14} color="inherit" /> : <PlayArrow />}
-                        disabled={isBottomResuming}
+                        disabled={isBottomResuming || isBottomCanceling}
                         aria-label={isBottomResuming ? "Resuming session" : "Resume paused session"}
                         onClick={async () => {
                           setIsBottomResuming(true);
@@ -865,7 +865,7 @@ function SessionDetailPageBase({
                           setShowBottomCancelDialog(true);
                           setBottomCancelError(null);
                         }}
-                        disabled={isBottomCanceling}
+                        disabled={isBottomCanceling || isBottomResuming}
                         aria-label={isBottomCanceling ? "Canceling session" : "Cancel session"}
                         sx={{
                           fontWeight: 600,
