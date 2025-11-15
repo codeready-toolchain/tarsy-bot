@@ -726,6 +726,12 @@ class TestAlertServiceHistoryIntegration:
         # Stage execution should be marked as completed (not failed)
         alert_service_with_history._update_stage_execution_completed.assert_called()
         alert_service_with_history._update_stage_execution_failed.assert_not_called()
+        
+        # Verify current stage tracking - ensures stage progression is properly recorded
+        alert_service_with_history._update_session_current_stage.assert_called()
+        # Verify agent received the stage execution ID for context tracking
+        mock_agent = alert_service_with_history.agent_factory.get_agent()
+        mock_agent.set_current_stage_execution_id.assert_called()
     
     @pytest.mark.asyncio
     @pytest.mark.integration

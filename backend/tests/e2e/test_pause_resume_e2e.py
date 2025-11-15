@@ -1,20 +1,23 @@
 """
-E2E Test for Pause/Resume Functionality.
+E2E Test for Pause/Resume Functionality with Multiple Cycles.
 
-This test verifies the complete pause/resume workflow:
+This test verifies the complete pause/resume workflow including multiple pause/resume cycles:
 1. Submit alert with max_iterations=2
-2. Wait for session to pause (max iterations reached after 2 iterations)
+2. Wait for session to pause (first pause at iteration 2)
 3. Verify pause metadata and paused state
-4. Increase max_iterations to 4 to allow completion after resume
-5. Resume the paused session
-6. Wait for session to complete (deterministic - iteration 3 has Final Answer)
-7. Verify final state and audit trail
+4. Set max_iterations to 1 and resume (iteration counter resets)
+5. Wait for session to pause again (second pause at iteration 1 of resumed session)
+6. Verify second pause metadata (overwrites first, shows iteration 1)
+7. Increase max_iterations to 4 and resume again
+8. Wait for session to complete (deterministic - interaction 5 has Final Answer)
+9. Verify final state shows LAST pause metadata (iteration 1) and audit trail
 
 Architecture:
 - REAL: FastAPI app, AlertService, HistoryService, hook system, database
 - MOCKED: HTTP requests to LLM APIs, MCP servers, GitHub runbooks
-- CONFIGURED: max_llm_mcp_iterations dynamically changed during test (2→4)
-- DETERMINISTIC: Iteration 3 provides Final Answer → guaranteed completion
+- CONFIGURED: max_llm_mcp_iterations dynamically changed during test (2→1→4)
+- DETERMINISTIC: Interaction 5 provides Final Answer → guaranteed completion
+- AUDIT TRAIL: pause_metadata preserved with last pause information
 """
 
 import asyncio
@@ -61,6 +64,12 @@ class TestPauseResumeE2E:
         """
         stage_name = actual_stage["stage_name"]
         expected_stage = EXPECTED_PAUSE_RESUME_STAGES[stage_key]
+        
+        # Ensure the stage_key mapping is correct (stage_key should match stage_name)
+        assert stage_name == stage_key, (
+            f"Stage key '{stage_key}' does not match actual stage_name '{stage_name}'. "
+            f"This indicates a mismatch between EXPECTED_PAUSE_RESUME_STAGES keys and API data."
+        )
         llm_interactions = actual_stage.get("llm_interactions", [])
         mcp_interactions = actual_stage.get("mcp_communications", [])
         
@@ -193,16 +202,18 @@ class TestPauseResumeE2E:
         self, e2e_test_client, e2e_realistic_kubernetes_alert
     ):
         """
-        Test complete pause and resume workflow.
+        Test complete pause and resume workflow with multiple pause/resume cycles.
 
         Flow:
         1. POST alert with max_iterations=2
-        2. Wait for session to pause (max iterations reached after 2 iterations)
-        3. Verify pause metadata and state
-        4. Increase max_iterations to 4 to allow completion
-        5. POST to resume endpoint
-        6. Wait for session to complete (deterministic - iteration 3 has Final Answer)
-        7. Verify final state and audit trail
+        2. Wait for session to pause (first pause at iteration 2)
+        3. Verify first pause metadata and state
+        4. Set max_iterations to 1 and resume (first resume) - iteration counter resets
+        5. Wait for session to pause again (second pause at iteration 1 of resumed session)
+        6. Verify second pause metadata (overwrites first, shows iteration 1)
+        7. Increase max_iterations to 4 and resume (second resume)
+        8. Wait for session to complete (deterministic - interaction 4 has Final Answer)
+        9. Verify final state shows LAST pause metadata (iteration 1 from second pause) for audit trail
         """
 
         # Wrap entire test in timeout to prevent hanging
@@ -237,18 +248,19 @@ class TestPauseResumeE2E:
         from tarsy.config.settings import get_settings
         settings = get_settings()
         original_max_iterations = settings.max_llm_mcp_iterations
-        settings.max_llm_mcp_iterations = 2
-        print(f"🔧 Overrode max_llm_mcp_iterations from {original_max_iterations} to 2")
 
         try:
+            settings.max_llm_mcp_iterations = 2
+            print(f"🔧 Overrode max_llm_mcp_iterations from {original_max_iterations} to 2")
             # Track all LLM interactions
             all_llm_interactions = []
 
             # Define mock response map for LLM interactions
             # Each interaction gets a mock response to simulate ReAct pattern
-            # DETERMINISTIC TEST FLOW:
-            # Phase 1 (max_iterations=2): Interactions 1-2, then PAUSE
-            # Phase 2 (max_iterations=4): Resume + Interaction 3 with Final Answer → COMPLETE
+            # DETERMINISTIC TEST FLOW WITH MULTIPLE PAUSE/RESUME:
+            # Phase 1 (max_iterations=2): Interactions 1-2, then PAUSE #1 (at iteration 2)
+            # Phase 2 (max_iterations=1): Resume + Interaction 3, then PAUSE #2 (at iteration 1 - counter resets)
+            # Phase 3 (max_iterations=4): Resume + Interactions 4-5 (tool call + Final Answer) → COMPLETE
             mock_response_map = {
                 1: {  # First iteration - initial analysis
                     "response_content": """Thought: I need to get namespace information to understand the issue.
@@ -258,7 +270,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                     "output_tokens": 80,
                     "total_tokens": 280,
                 },
-                2: {  # Second iteration - will trigger pause
+                2: {  # Second iteration - will trigger FIRST pause
                     "response_content": """Thought: I see the namespace is in Terminating state. I need more information to continue the analysis, but I've reached the iteration limit.
 Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "namespace", "name": "stuck-namespace"}""",
@@ -266,7 +278,7 @@ Action Input: {"resource": "namespace", "name": "stuck-namespace"}""",
                     "output_tokens": 90,
                     "total_tokens": 310,
                 },
-                3: {  # Third iteration - after resume, makes additional tool call
+                3: {  # Third iteration - after first resume, makes additional tool call, will trigger SECOND pause
                     "response_content": """Thought: I've seen the namespace is stuck with finalizers. Let me check for related events to understand what's happening.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "events", "namespace": "stuck-namespace"}""",
@@ -274,8 +286,16 @@ Action Input: {"resource": "events", "namespace": "stuck-namespace"}""",
                     "output_tokens": 100,
                     "total_tokens": 340,
                 },
-                4: {  # Fourth iteration - after tool call, completes data-collection stage
-                    "response_content": """Thought: I've gathered enough information from the namespace describe and events. I can now provide the data collection summary.
+                4: {  # Fourth iteration - after second resume, continues ReAct loop with tool call
+                    "response_content": """Thought: I have good information about the namespace and events. Let me check pods to see if any are still running.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "pods", "namespace": "stuck-namespace"}""",
+                    "input_tokens": 260,
+                    "output_tokens": 100,
+                    "total_tokens": 360,
+                },
+                5: {  # Fifth iteration - after second resume, completes data-collection stage with Final Answer
+                    "response_content": """Thought: I've gathered comprehensive information. No pods are running, and the namespace is stuck due to finalizers. I can now provide the data collection summary.
 
 Final Answer: **Data Collection Complete**
 
@@ -283,14 +303,15 @@ Collected the following information:
 - Namespace: stuck-namespace is in Terminating state (45m)
 - Finalizers: kubernetes.io/pvc-protection is blocking deletion
 - Events: FailedDelete warning shows finalizers blocking deletion
-- Status: Namespace is stuck and cannot complete termination
+- Pods: No pods running in the namespace
+- Status: Namespace is stuck and cannot complete termination due to finalizers
 
 Data collection stage is now complete. The gathered information shows finalizers are preventing namespace deletion.""",
-                    "input_tokens": 260,
-                    "output_tokens": 140,
-                    "total_tokens": 400,
+                    "input_tokens": 280,
+                    "output_tokens": 150,
+                    "total_tokens": 430,
                 },
-                5: {  # Verification stage - iteration 1, immediate Final Answer
+                6: {  # Verification stage - iteration 1, immediate Final Answer
                     "response_content": """Thought: Based on the data collection results, I can verify the findings.
 
 Final Answer: **Verification Complete**
@@ -305,7 +326,7 @@ Verification confirms the data collection findings are accurate.""",
                     "output_tokens": 100,
                     "total_tokens": 300,
                 },
-                6: {  # Analysis stage - iteration 1, immediate Final Answer
+                7: {  # Analysis stage - iteration 1, immediate Final Answer
                     "response_content": """Thought: I can now provide the final analysis based on previous stages.
 
 Final Answer: **Final Analysis**
@@ -378,6 +399,10 @@ Analysis complete after successful resume from pause.""",
                         elif resource == "events":
                             mock_content = Mock()
                             mock_content.text = "LAST SEEN   TYPE      REASON      OBJECT                MESSAGE\n5m          Warning   FailedDelete namespace/stuck-namespace   Finalizers blocking deletion"
+                            mock_result.content = [mock_content]
+                        elif resource == "pods":
+                            mock_content = Mock()
+                            mock_content.text = "No resources found in stuck-namespace namespace."
                             mock_result.content = [mock_content]
                         else:
                             mock_content = Mock()
@@ -522,13 +547,13 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             # The iteration information is available in pause_metadata at session level
                             print(f"✅ Paused stage verified: {paused_stage.get('stage_name')}")
 
-                            print("⏳ Step 4: Increasing max_iterations to allow completion after resume...")
-                            # Increase max_iterations to 4 so the session can complete after resume
-                            # Mock responses 3 and 4 will execute, with 4 providing the Final Answer
-                            settings.max_llm_mcp_iterations = 4
-                            print("🔧 Increased max_llm_mcp_iterations to 4")
+                            print("⏳ Step 4: Setting max_iterations to 1 (will cause second pause after 1 iteration)...")
+                            # Set max_iterations to 1 - this will allow exactly one more iteration then pause again
+                            # Note: iteration counter resets on resume, so this allows 1 iteration from resumed state
+                            settings.max_llm_mcp_iterations = 1
+                            print("🔧 Set max_llm_mcp_iterations to 1")
 
-                            print("⏳ Step 5: Resuming paused session...")
+                            print("⏳ Step 5: Resuming paused session (first resume)...")
                             resume_response = e2e_test_client.post(
                                 f"/api/v1/history/sessions/{session_id}/resume"
                             )
@@ -541,22 +566,66 @@ Finalizers:   [kubernetes.io/pvc-protection]
                                 f"Expected status 'resuming', got '{resume_data.get('status')}'"
                             print(f"✅ Resume initiated: {resume_data}")
 
-                            print("⏳ Step 6: Waiting for resumed session to complete...")
+                            print("⏳ Step 6: Waiting for resumed session to pause again (second pause)...")
+                            # With max_iterations=3, session will pause again after interaction 3
+                            second_paused_session_id, second_paused_status = await E2ETestUtils.wait_for_session_completion(
+                                e2e_test_client, max_wait_seconds=15, debug_logging=True
+                            )
+                            
+                            print("🔍 Step 7: Verifying second pause state...")
+                            assert second_paused_session_id == session_id, "Session ID mismatch after first resume"
+                            assert second_paused_status == "paused", f"Expected status 'paused' after first resume, got '{second_paused_status}'"
+                            print(f"✅ Second pause verified: {session_id}")
+                            
+                            # Get session details to verify second pause metadata
+                            second_pause_detail = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
+                            second_pause_metadata = second_pause_detail.get("pause_metadata")
+                            assert second_pause_metadata is not None, "pause_metadata missing from second paused session"
+                            assert second_pause_metadata.get("reason") == "max_iterations_reached"
+                            assert second_pause_metadata.get("current_iteration") == 1, \
+                                f"Expected current_iteration=1 for second pause (resets on resume), got {second_pause_metadata.get('current_iteration')}"
+                            print(f"✅ Second pause metadata verified: {second_pause_metadata}")
+
+                            print("⏳ Step 8: Increasing max_iterations to 4 to allow final completion...")
+                            settings.max_llm_mcp_iterations = 4
+                            print("🔧 Increased max_llm_mcp_iterations to 4")
+
+                            print("⏳ Step 9: Resuming paused session (second resume)...")
+                            second_resume_response = e2e_test_client.post(
+                                f"/api/v1/history/sessions/{session_id}/resume"
+                            )
+                            assert second_resume_response.status_code == 200, \
+                                f"Second resume failed with status {second_resume_response.status_code}: {second_resume_response.text}"
+                            print(f"✅ Second resume initiated")
+
+                            print("⏳ Step 10: Waiting for resumed session to complete...")
                             # With max_iterations=4 and mock response 4 providing Final Answer,
                             # the session MUST complete (not pause again)
                             final_session_id, final_status = await E2ETestUtils.wait_for_session_completion(
                                 e2e_test_client, max_wait_seconds=15, debug_logging=True
                             )
 
-                            print("🔍 Step 7: Verifying final state...")
-                            assert final_session_id == session_id, "Session ID mismatch after resume"
-                            # With our mock setup, session MUST complete (not pause again)
+                            print("🔍 Step 11: Verifying final state after multiple pause/resume cycles...")
+                            assert final_session_id == session_id, "Session ID mismatch after second resume"
                             assert final_status == "completed", \
-                                f"Expected status 'completed' after resume, got '{final_status}'"
+                                f"Expected status 'completed' after second resume, got '{final_status}'"
                             print(f"✅ Final status: {final_status}")
 
                             # Verify audit trail
                             final_detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
+                            
+                            # Verify pause_metadata persists after completion (audit trail)
+                            # Should contain LAST pause metadata (second pause at iteration 3)
+                            final_pause_metadata = final_detail_data.get("pause_metadata")
+                            assert final_pause_metadata is not None, \
+                                "pause_metadata should remain available after resume/completion for audit trail"
+                            assert final_pause_metadata.get("reason") == "max_iterations_reached", \
+                                f"Expected pause reason 'max_iterations_reached' in final state, got '{final_pause_metadata.get('reason')}'"
+                            assert final_pause_metadata.get("current_iteration") == 1, \
+                                f"Expected current_iteration=1 (last pause, resets on resume) in final state, got {final_pause_metadata.get('current_iteration')}"
+                            assert "paused_at_us" in final_pause_metadata, \
+                                "pause_metadata should retain 'paused_at_us' timestamp for audit trail"
+                            print(f"✅ Pause metadata persisted after completion (shows LAST pause iteration=1): {final_pause_metadata}")
                             
                             # Verify session-level timestamps
                             assert final_detail_data.get("started_at_us") > 0, "started_at_us missing"
@@ -593,16 +662,16 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             print("✅ All 3 stage executions verified: data-collection (reused), verification, analysis")
 
                             # Verify LLM interactions match our mock setup
-                            # Mock interactions: 1,2 (pause) → 3,4 (data-collection resume) → 5 (verification) → 6 (analysis)
-                            # Total: 6 interactions
+                            # Mock interactions: 1,2 (pause #1) → 3 (pause #2) → 4,5 (data-collection complete) → 6 (verification) → 7 (analysis)
+                            # Total: 7 interactions
                             total_llm_interactions = sum(
                                 len(stage.get("llm_interactions", [])) for stage in final_stages
                             )
                             print(f"✅ Total LLM interactions: {total_llm_interactions}")
-                            assert total_llm_interactions == 6, \
-                                f"Expected exactly 6 LLM interactions (2 before pause + 4 after resume), got {total_llm_interactions}"
+                            assert total_llm_interactions == 7, \
+                                f"Expected exactly 7 LLM interactions (2 before first pause + 1 before second pause + 2 after second resume + 2 for other stages), got {total_llm_interactions}"
 
-                            print("\n🔍 Step 8: Comprehensive stage validation (proving resume reused paused stage)...")
+                            print("\n🔍 Step 12: Comprehensive stage validation (proving multiple pause/resume cycles work)...")
                             
                             # Validate data-collection stage (reused: 2 interactions before pause + 2 after resume)
                             # This proves we resumed the same stage execution, not created a new one
@@ -615,12 +684,18 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             self._validate_stage(final_stages[2], 'analysis')
                             
                             print("\n✅ ALL VALIDATIONS PASSED!")
-                            print("   - Data-collection stage has exactly 4 LLM interactions (2 before pause + 2 after resume)")
+                            print("   - Data-collection stage has exactly 5 LLM interactions")
+                            print("   - Multiple pause/resume cycles worked correctly:")
+                            print("     * First pause at iteration 2 (global: interactions 1-2)")
+                            print("     * Second pause at iteration 1 (global: interaction 3, counter resets)")  
+                            print("     * Completed after second resume at iteration 2 (global: interactions 4-5)")
+                            print("     * PROVES: Agent can do full ReAct loops after second resume (interaction 4: tool call)")
                             print("   - Single stage execution was reused (no duplicate stage created)")
                             print("   - Token counts match expected (proving no extra work)")
-                            print("   - Timeline is correct (data-collection resumed → verification → analysis)")
+                            print("   - pause_metadata preserved with LAST pause info (iteration 1 from second pause)")
+                            print("   - Timeline is correct (data-collection → verification → analysis)")
 
-                            print("\n✅ PAUSE/RESUME E2E TEST PASSED!")
+                            print("\n✅ MULTIPLE PAUSE/RESUME E2E TEST PASSED!")
         finally:
             # Always restore original value, even on failure
             settings.max_llm_mcp_iterations = original_max_iterations

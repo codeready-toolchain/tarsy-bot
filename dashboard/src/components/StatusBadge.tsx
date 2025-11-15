@@ -2,7 +2,7 @@ import React from 'react';
 import { Chip, type ChipProps, type SxProps, type Theme } from '@mui/material';
 import { 
   CheckCircle, 
-  Error, 
+  Error as ErrorIcon, 
   Schedule, 
   Refresh,
   HourglassEmpty,
@@ -52,7 +52,7 @@ const getStatusConfig = (status: string): {
     case SESSION_STATUS.FAILED: 
       return { 
         color: 'error', 
-        icon: <Error sx={{ fontSize: 16 }} />, 
+        icon: <ErrorIcon sx={{ fontSize: 16 }} />, 
         label: 'Failed' 
       };
     case SESSION_STATUS.CANCELLED: 

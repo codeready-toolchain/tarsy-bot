@@ -597,9 +597,9 @@ class TestKubernetesAgentIntegrationScenarios:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test-session-123"
+            session_id="test-session-123",
+            current_stage_name="analysis"
         )
-        chain_context.current_stage_name = "analysis"
         chain_context.runbook_content = runbook_content
         
         result = await agent.process_alert(chain_context)
@@ -685,9 +685,9 @@ class TestKubernetesAgentIntegrationScenarios:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test-session-123"
+            session_id="test-session-123",
+            current_stage_name="analysis"
         )
-        chain_context.current_stage_name = "analysis"
         chain_context.runbook_content = "runbook"
         result = await agent.process_alert(chain_context)
         
@@ -753,9 +753,9 @@ class TestKubernetesAgentIntegrationScenarios:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test-session-123"
+            session_id="test-session-123",
+            current_stage_name="analysis"
         )
-        chain_context.current_stage_name = "analysis"
         chain_context.runbook_content = "runbook"
         result = await agent.process_alert(chain_context)
         

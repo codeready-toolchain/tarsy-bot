@@ -6,8 +6,10 @@ for the pause/resume workflow, demonstrating that conversation history
 is fully restored when resuming a paused session.
 """
 
-# Expected conversation for resumed data-collection stage
-# This proves conversation history was restored when resuming
+# Expected conversation for resumed data-collection stage with multiple pause/resume cycles
+# This proves conversation history was restored correctly across multiple pause/resume cycles
+# Flow: Pause at iteration 2 → Resume → Pause at iteration 1 → Resume → Tool call → Final Answer
+# Total: 11 messages (1 system + 1 user + 9 assistant/observation messages)
 EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION = {
     "messages": [
         # Message 1: System message (same as original)
@@ -228,7 +230,7 @@ Action Input: {"resource": "namespace", "name": "stuck-namespace"}"""
   "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   [kubernetes.io/pvc-protection]\\n"
 }"""
         },
-        # Message 7: NEW - Iteration 3 (after resume) - makes additional tool call
+        # Message 7: Iteration 3 (after first resume, before second pause) - makes additional tool call
         # This proves the agent continues its loop after resume, not just final answer
         {
             "role": "assistant",
@@ -236,7 +238,7 @@ Action Input: {"resource": "namespace", "name": "stuck-namespace"}"""
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "events", "namespace": "stuck-namespace"}"""
         },
-        # Message 8: Observation 3 (after resume)
+        # Message 8: Observation 3 (after first resume, before second pause)
         # Proves tool execution works correctly after resume
         {
             "role": "user",
@@ -244,11 +246,27 @@ Action Input: {"resource": "events", "namespace": "stuck-namespace"}"""
   "result": "LAST SEEN   TYPE      REASON      OBJECT                MESSAGE\\n5m          Warning   FailedDelete namespace/stuck-namespace   Finalizers blocking deletion"
 }"""
         },
-        # Message 9: Iteration 4 (after resume) - completes the stage
-        # This proves the agent can reference all previous observations after resume
+        # Message 9: Iteration 4 (after second resume) - continues ReAct loop with another tool call
+        # This proves the agent can do full ReAct loops even after second resume, not just Final Answer
         {
             "role": "assistant",
-            "content": """Thought: I've gathered enough information from the namespace describe and events. I can now provide the data collection summary.
+            "content": """Thought: I have good information about the namespace and events. Let me check pods to see if any are still running.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "pods", "namespace": "stuck-namespace"}"""
+        },
+        # Message 10: Observation 4 (after second resume)
+        # Proves tool execution continues to work correctly after second resume
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "No resources found in stuck-namespace namespace."
+}"""
+        },
+        # Message 11: Iteration 5 (after second resume) - completes the stage with Final Answer
+        # This proves multiple pause/resume cycles work and agent can reference all observations
+        {
+            "role": "assistant",
+            "content": """Thought: I've gathered comprehensive information. No pods are running, and the namespace is stuck due to finalizers. I can now provide the data collection summary.
 
 Final Answer: **Data Collection Complete**
 
@@ -256,36 +274,42 @@ Collected the following information:
 - Namespace: stuck-namespace is in Terminating state (45m)
 - Finalizers: kubernetes.io/pvc-protection is blocking deletion
 - Events: FailedDelete warning shows finalizers blocking deletion
-- Status: Namespace is stuck and cannot complete termination
+- Pods: No pods running in the namespace
+- Status: Namespace is stuck and cannot complete termination due to finalizers
 
 Data collection stage is now complete. The gathered information shows finalizers are preventing namespace deletion."""
         }
     ]
 }
 
-# Expected stage definitions for pause/resume flow
+# Expected stage definitions for pause/resume flow with MULTIPLE pause/resume cycles
 # These prove that resume continues from where we paused, not from scratch
-# There is only ONE data-collection stage execution that gets reused
+# There is only ONE data-collection stage execution that gets reused across multiple pause/resume cycles
 EXPECTED_PAUSE_RESUME_STAGES = {
     'data-collection': {
-        'llm_count': 4,  # 2 LLM interactions before pause + 2 after resume (1 tool call + 1 final answer)
-        'mcp_count': 7,  # Initial: 2 tool_list + 2 tool_call, Resume: 2 tool_list + 1 tool_call
+        'llm_count': 5,  # 2 before first pause + 1 before second pause + 2 after second resume (1 tool call + 1 final answer)
+        'mcp_count': 10,  # Initial: 2 tool_list + 2 tool_call, First resume: 2 tool_list + 1 tool_call, Second resume: 2 tool_list + 1 tool_call
         'expected_status': 'completed',  # Final status after completion
         'expected_conversation': EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION,  # Verify conversation history was restored
         'interactions': [
-            # Initial execution (before pause)
+            # Initial execution (before first pause at iteration 2)
             {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 80, 'total_tokens': 280},
             {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
             {'type': 'llm', 'position': 2, 'success': True, 'input_tokens': 220, 'output_tokens': 90, 'total_tokens': 310},
             {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe'},
-            # After resume (same stage execution continues with proper loop)
+            # After first resume (before second pause at iteration 1 of resumed session)
             {'type': 'mcp', 'position': 5, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             {'type': 'mcp', 'position': 6, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             {'type': 'llm', 'position': 3, 'success': True, 'input_tokens': 240, 'output_tokens': 100, 'total_tokens': 340},
             {'type': 'mcp', 'position': 7, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
-            {'type': 'llm', 'position': 4, 'success': True, 'input_tokens': 260, 'output_tokens': 140, 'total_tokens': 400, 'interaction_type': 'final_analysis'},
+            # After second resume (continues ReAct loop with tool call, then final answer)
+            {'type': 'mcp', 'position': 8, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'position': 9, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'llm', 'position': 4, 'success': True, 'input_tokens': 260, 'output_tokens': 100, 'total_tokens': 360},
+            {'type': 'mcp', 'position': 10, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
+            {'type': 'llm', 'position': 5, 'success': True, 'input_tokens': 280, 'output_tokens': 150, 'total_tokens': 430, 'interaction_type': 'final_analysis'},
         ]
     },
     'verification': {

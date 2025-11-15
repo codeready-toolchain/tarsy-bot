@@ -1,8 +1,11 @@
 import type { SessionStatus, StageStatus, ChainOverallStatus, AlertProcessingStatus } from '../utils/statusConstants';
 
+// Pause reason type (aligned with backend PauseReason enum)
+export type PauseReason = 'max_iterations_reached'; // extend as backend adds more (e.g., 'manual_pause', 'timeout')
+
 // Reusable pause metadata type (align with backend PauseReason/metadata)
 export interface PauseMetadata {
-  reason: 'max_iterations_reached';  // Backend enum: PauseReason.MAX_ITERATIONS_REACHED
+  reason: PauseReason;               // Backend enum: PauseReason.MAX_ITERATIONS_REACHED
   current_iteration?: number;        // iteration at pause
   message: string;                   // brief explanation for UI
   paused_at_us: number;              // microseconds since epoch
