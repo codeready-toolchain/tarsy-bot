@@ -162,31 +162,25 @@ EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION = {
 
 # Expected stage definitions for pause/resume flow
 # These prove that resume continues from where we paused, not from scratch
+# There is only ONE data-collection stage execution that gets reused
 EXPECTED_PAUSE_RESUME_STAGES = {
-    'paused_data-collection': {
-        'llm_count': 2,  # 2 LLM interactions before pause
-        'mcp_count': 4,  # 2 tool_list (k8s + test-data) + 2 tool_call (only k8s provides tools)
-        'expected_status': 'active',  # Paused stage shows as "active" in DB
+    'data-collection': {
+        'llm_count': 3,  # 2 LLM interactions before pause + 1 after resume to complete
+        'mcp_count': 6,  # Initial: 2 tool_list + 2 tool_call, Resume: 2 tool_list (servers rediscovered)
+        'expected_status': 'completed',  # Final status after completion
+        'expected_conversation': EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION,  # Verify conversation history was restored
         'interactions': [
-            # Both servers are discovered (tool_list), but only kubernetes-server provides tools (we don't mock the second MCP server for simplicity)
+            # Initial execution (before pause)
             {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 80, 'total_tokens': 280},
             {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
             {'type': 'llm', 'position': 2, 'success': True, 'input_tokens': 220, 'output_tokens': 90, 'total_tokens': 310},
             {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe'},
-        ]
-    },
-    'resumed_data-collection': {
-        'llm_count': 1,  # 1 additional LLM interaction to complete
-        'mcp_count': 2,  # 2 tool_list (k8s + test-data rediscovered, no new tool calls - just completes)
-        'expected_status': 'completed',
-        'expected_conversation': EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION,  # Verify conversation history was restored
-        'interactions': [
-            # Both servers rediscovered after resume (tool_list)
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
-            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 240, 'output_tokens': 120, 'total_tokens': 360, 'interaction_type': 'final_analysis'},
+            # After resume (same stage execution continues)
+            {'type': 'mcp', 'position': 5, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'position': 6, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'llm', 'position': 3, 'success': True, 'input_tokens': 240, 'output_tokens': 120, 'total_tokens': 360, 'interaction_type': 'final_analysis'},
         ]
     },
     'verification': {
@@ -731,36 +725,32 @@ Finalizers:   [kubernetes.io/pvc-protection]
                                 "completed_at_us should be after started_at_us"
                             
                             # Verify stages structure after resume
-                            # After pause/resume, we have 4 stage executions:
-                            # 1. data-collection (active/paused - the initial execution that paused)
-                            # 2. data-collection (completed - the resumed execution)
-                            # 3. verification (completed)
-                            # 4. analysis (completed)
+                            # After pause/resume, we have 3 stage executions:
+                            # 1. data-collection (completed - reused from paused execution)
+                            # 2. verification (completed)
+                            # 3. analysis (completed)
                             final_stages = final_detail_data.get("stages", [])
                             
                             # Extract stage info for verification
                             stage_info = [(s.get("stage_name"), s.get("status")) for s in final_stages]
                             print(f"📊 Actual stages found: {stage_info}")
                             
-                            # We expect exactly 4 stage executions
-                            assert len(final_stages) == 4, \
-                                f"Expected 4 stage executions (paused data-collection + completed data-collection + verification + analysis), got {len(final_stages)}"
+                            # We expect exactly 3 stage executions
+                            assert len(final_stages) == 3, \
+                                f"Expected 3 stage executions (data-collection reused + verification + analysis), got {len(final_stages)}"
                             
                             # Verify stage order and statuses
                             assert final_stages[0].get("stage_name") == "data-collection", "First stage should be data-collection"
-                            assert final_stages[0].get("status") in ["active", "paused"], \
-                                f"First data-collection should be active/paused, got {final_stages[0].get('status')}"
+                            assert final_stages[0].get("status") == "completed", \
+                                f"Data-collection should be completed (reused from paused), got {final_stages[0].get('status')}"
                             
-                            assert final_stages[1].get("stage_name") == "data-collection", "Second stage should be data-collection"
-                            assert final_stages[1].get("status") == "completed", "Second data-collection should be completed"
+                            assert final_stages[1].get("stage_name") == "verification", "Second stage should be verification"
+                            assert final_stages[1].get("status") == "completed", "Verification should be completed"
                             
-                            assert final_stages[2].get("stage_name") == "verification", "Third stage should be verification"
-                            assert final_stages[2].get("status") == "completed", "Verification should be completed"
+                            assert final_stages[2].get("stage_name") == "analysis", "Third stage should be analysis"
+                            assert final_stages[2].get("status") == "completed", "Analysis should be completed"
                             
-                            assert final_stages[3].get("stage_name") == "analysis", "Fourth stage should be analysis"
-                            assert final_stages[3].get("status") == "completed", "Analysis should be completed"
-                            
-                            print(f"✅ All 4 stage executions verified: paused data-collection, completed data-collection, verification, analysis")
+                            print(f"✅ All 3 stage executions verified: data-collection (reused), verification, analysis")
 
                             # Verify LLM interactions match our mock setup
                             # Mock interactions: 1,2 (pause) → 3 (data-collection) → 4 (verification) → 5 (analysis)
@@ -772,26 +762,23 @@ Finalizers:   [kubernetes.io/pvc-protection]
                             assert total_llm_interactions == 5, \
                                 f"Expected exactly 5 LLM interactions (2 before pause + 3 after resume), got {total_llm_interactions}"
 
-                            print("\n🔍 Step 8: Comprehensive stage validation (proving resume from pause, not restart)...")
+                            print("\n🔍 Step 8: Comprehensive stage validation (proving resume reused paused stage)...")
                             
-                            # Validate paused data-collection stage (first execution - paused at iteration 2)
-                            self._validate_stage(final_stages[0], 'paused_data-collection')
-                            
-                            # Validate resumed data-collection stage (second execution - completed with iteration 3)
-                            # This proves we resumed from where we paused, not restarted
-                            self._validate_stage(final_stages[1], 'resumed_data-collection')
+                            # Validate data-collection stage (reused: 2 interactions before pause + 1 after resume)
+                            # This proves we resumed the same stage execution, not created a new one
+                            self._validate_stage(final_stages[0], 'data-collection')
                             
                             # Validate verification stage (ran after data-collection completed)
-                            self._validate_stage(final_stages[2], 'verification')
+                            self._validate_stage(final_stages[1], 'verification')
                             
                             # Validate analysis stage (final stage)
-                            self._validate_stage(final_stages[3], 'analysis')
+                            self._validate_stage(final_stages[2], 'analysis')
                             
                             print("\n✅ ALL VALIDATIONS PASSED!")
-                            print("   - Paused stage has exactly 2 LLM interactions (proving it stopped)")
-                            print("   - Resumed stage has exactly 1 LLM interaction (proving it continued, not restarted)")
+                            print("   - Data-collection stage has exactly 3 LLM interactions (2 before pause + 1 after resume)")
+                            print("   - Single stage execution was reused (no duplicate stage created)")
                             print("   - Token counts match expected (proving no extra work)")
-                            print("   - Timeline is correct (paused → resumed → verification → analysis)")
+                            print("   - Timeline is correct (data-collection resumed → verification → analysis)")
 
                             print("\n✅ PAUSE/RESUME E2E TEST PASSED!")
         finally:

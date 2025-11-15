@@ -38,8 +38,7 @@ def alert_to_api_format(alert: Alert, default_alert_type: str = "kubernetes") ->
     # Return ChainContext instance that AlertService expects
     return ChainContext.from_processing_alert(
         processing_alert=processing_alert,
-        session_id=f"test-session-{hash(str(alert.data))}",  # EP-0012: Generate test session ID from alert data
-        current_stage_name="initial"  # Default stage for tests
+        session_id=f"test-session-{hash(str(alert.data))}"
     )
 
 

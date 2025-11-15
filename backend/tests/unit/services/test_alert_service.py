@@ -284,6 +284,8 @@ class TestAlertProcessing:
         mock_history_service.store_llm_interaction = Mock()
         mock_history_service.store_mcp_interaction = Mock()
         mock_history_service.record_session_interaction = AsyncMock()
+        mock_history_service.get_stage_executions = AsyncMock(return_value=[])
+        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
         service.history_service = mock_history_service
         
         yield service, dependencies
@@ -900,8 +902,7 @@ class TestChainErrorAggregation:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Add successful stage result
@@ -976,8 +977,7 @@ class TestChainErrorAggregation:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Add single failed result
@@ -1013,8 +1013,7 @@ class TestChainErrorAggregation:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Add only successful results
@@ -1047,8 +1046,7 @@ class TestChainErrorAggregation:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # No stage results added
@@ -1070,8 +1068,7 @@ class TestChainErrorAggregation:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Add a non-AgentExecutionResult object (edge case)
@@ -1124,6 +1121,7 @@ class TestEnhancedChainExecution:
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
         service.history_service.get_stage_execution = AsyncMock()
+        service.history_service.get_stage_executions = AsyncMock(return_value=[])
         service.history_service.update_session_current_stage = AsyncMock()
         service.history_service.record_session_interaction = AsyncMock()
         
@@ -1164,8 +1162,7 @@ class TestEnhancedChainExecution:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Mock agents - some successful, some failing
@@ -1256,8 +1253,7 @@ class TestEnhancedChainExecution:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Mock successful agent
@@ -1318,8 +1314,7 @@ class TestEnhancedChainExecution:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Mock agent that throws exception
@@ -1372,6 +1367,8 @@ class TestFullErrorPropagation:
         service.history_service.is_enabled = True
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
+        service.history_service.get_stage_execution = AsyncMock()
+        service.history_service.get_stage_executions = AsyncMock(return_value=[])
         service.history_service.record_session_interaction = AsyncMock()
         service.history_service.start_session_processing = AsyncMock(return_value=True)
         

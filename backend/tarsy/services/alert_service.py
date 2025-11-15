@@ -533,14 +533,8 @@ class AlertService:
             from tarsy.services.events.event_helpers import publish_session_resumed
             await publish_session_resumed(session_id)
             
-            # Update stage status back to ACTIVE
-            paused_stage.status = StageStatus.ACTIVE.value
-            paused_stage.current_iteration = None  # Will be reset by agent
-            from tarsy.hooks.hook_context import stage_execution_context
-            async with stage_execution_context(session_id, paused_stage):
-                pass
-            
             # Step 6: Create new MCP client and continue execution
+            # Note: Stage status transition from PAUSED→ACTIVE is handled in _update_stage_execution_started
             logger.info(f"Creating session-scoped MCP client for resumed session {session_id}")
             session_mcp_client = await self.mcp_client_factory.create_client()
             
@@ -649,7 +643,7 @@ class AlertService:
                 
                 # For resumed sessions, reuse existing stage execution ID for the paused stage
                 # For new sessions or subsequent stages, create new stage execution record
-                if i == start_from_stage and start_from_stage > 0:
+                if i == start_from_stage and chain_context.current_stage_name:
                     # Resuming - find existing stage execution ID from history
                     stage_executions = await self.history_service.get_stage_executions(chain_context.session_id)
                     paused_stage_exec = next((s for s in stage_executions if s.stage_name == stage.name and s.status == StageStatus.PAUSED.value), None)
@@ -1334,6 +1328,10 @@ class AlertService:
         """
         Update stage execution as started.
         
+        Handles PAUSED→ACTIVE transition for resumed sessions and initial PENDING→ACTIVE
+        transition for new stages. Clears current_iteration for both cases to ensure
+        consistent state management.
+        
         Args:
             stage_execution_id: Stage execution ID
         """
@@ -1348,8 +1346,12 @@ class AlertService:
                 return
             
             # Update to active status and set start time
+            # This handles both PENDING→ACTIVE (new) and PAUSED→ACTIVE (resumed)
             existing_stage.status = StageStatus.ACTIVE.value
             existing_stage.started_at_us = now_us()
+            # Clear current_iteration for both new and resumed executions
+            # Agent will set this during execution
+            existing_stage.current_iteration = None
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:

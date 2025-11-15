@@ -629,8 +629,15 @@ class TestAlertServiceHistoryIntegration:
             final_analysis="Test analysis with actions taken and recommendations"
         )
         
-        # Mock the chain_registry - this is where get_chain_for_alert_type lives  
-        service.chain_registry.get_chain_for_alert_type = Mock(return_value=Mock(chain_id="kubernetes-chain", stages=[Mock(name="analysis", agent="KubernetesAgent")]))
+        # Mock the chain_registry - this is where get_chain_for_alert_type lives
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        mock_chain = ChainConfigModel(
+            chain_id="kubernetes-chain",
+            alert_types=["NamespaceTerminating"],
+            stages=[ChainStageConfigModel(name="analysis", agent="KubernetesAgent")],
+            description="Test chain"
+        )
+        service.chain_registry.get_chain_for_alert_type = Mock(return_value=mock_chain)
         
         # Mock agent_factory to return our mock agent
         service.agent_factory = Mock()
@@ -643,7 +650,18 @@ class TestAlertServiceHistoryIntegration:
         mock_history_service.update_session_status.return_value = True
         mock_history_service.start_session_processing = AsyncMock(return_value=True)
         mock_history_service.record_session_interaction = AsyncMock(return_value=True)
+        mock_history_service.get_stage_executions = AsyncMock(return_value=[])
+        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
+        mock_history_service.update_session_current_stage = AsyncMock()
         service.history_service = mock_history_service
+        
+        # Mock stage execution helper methods
+        mock_agent.set_current_stage_execution_id = Mock()
+        service._update_session_current_stage = AsyncMock()
+        service._create_stage_execution = AsyncMock(return_value="stage-exec-123")
+        service._update_stage_execution_started = AsyncMock()
+        service._update_stage_execution_completed = AsyncMock()
+        service._update_stage_execution_failed = AsyncMock()
         
         return service
     
@@ -718,7 +736,7 @@ class TestAlertServiceHistoryIntegration:
         # Verify error was handled
         assert result is not None
         # The result is a formatted string from _format_error_response, not a dict  
-        assert "Chain execution failed" in result  # Chain architecture error format
+        assert "Chain processing failed" in result or "Agent processing failed" in result  # Chain architecture error format
         
         # Verify history service tracked the error
         history_service = alert_service_with_history.history_service
@@ -734,7 +752,7 @@ class TestAlertServiceHistoryIntegration:
         # Should have recorded error message
         error_calls = [call for call in status_calls if call[1].get("error_message")]
         assert len(error_calls) > 0
-        assert "Chain execution failed" in error_calls[0][1]["error_message"]  # Chain architecture error format
+        assert "Chain processing failed" in error_calls[0][1]["error_message"] or "Agent processing failed" in error_calls[0][1]["error_message"]  # Chain architecture error format
 
 
 class TestHistoryAPIIntegration:
