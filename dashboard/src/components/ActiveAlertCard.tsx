@@ -15,6 +15,7 @@ import {
   Refresh,
   Schedule,
   OpenInNew,
+  PauseCircle,
 } from '@mui/icons-material';
 import type { ActiveAlertCardProps } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
@@ -35,6 +36,12 @@ const getStatusChipConfig = (status: string) => {
         color: 'warning' as const,
         icon: <Schedule sx={{ fontSize: 16 }} />,
         label: getSessionStatusDisplayName(SESSION_STATUS.PENDING),
+      };
+    case SESSION_STATUS.PAUSED:
+      return {
+        color: 'warning' as const,
+        icon: <PauseCircle sx={{ fontSize: 16 }} />,
+        label: getSessionStatusDisplayName(SESSION_STATUS.PAUSED),
       };
     case SESSION_STATUS.FAILED:
       return {
@@ -197,7 +204,27 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
               label={statusConfig.label}
               color={statusConfig.color}
               size="small"
-              sx={{ fontWeight: 500 }}
+              sx={
+                session.status === SESSION_STATUS.PAUSED
+                  ? {
+                      fontWeight: 600,
+                      backgroundColor: '#e65100',
+                      color: 'white',
+                      '& .MuiChip-icon': {
+                        color: 'white',
+                      },
+                      animation: 'pulse 2s ease-in-out infinite',
+                      '@keyframes pulse': {
+                        '0%, 100%': {
+                          backgroundColor: '#e65100',
+                        },
+                        '50%': {
+                          backgroundColor: '#ff9800',
+                        },
+                      },
+                    }
+                  : { fontWeight: 500 }
+              }
             />
             <Typography variant="body2" color="text.secondary">
               {session.agent_type}

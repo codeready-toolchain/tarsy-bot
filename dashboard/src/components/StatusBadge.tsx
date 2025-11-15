@@ -76,24 +76,45 @@ const getStatusConfig = (status: string): {
 const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'small' }) => {
   const { color, icon, label } = getStatusConfig(status);
   
-  // Custom styling for cancelled status to make it more noticeable
-  const customSx = status === 'cancelled' 
-    ? {
-        fontWeight: 600,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  // Custom styling for special statuses
+  let customSx: Record<string, any> = {
+    fontWeight: 500,
+    '& .MuiChip-icon': {
+      marginLeft: '4px',
+    },
+  };
+
+  if (status === 'cancelled') {
+    customSx = {
+      fontWeight: 600,
+      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      color: 'white',
+      border: '1px solid rgba(0, 0, 0, 0.8)',
+      '& .MuiChip-icon': {
+        marginLeft: '4px',
         color: 'white',
-        border: '1px solid rgba(0, 0, 0, 0.8)',
-        '& .MuiChip-icon': {
-          marginLeft: '4px',
-          color: 'white',
+      },
+    };
+  } else if (status === 'paused') {
+    customSx = {
+      fontWeight: 600,
+      backgroundColor: '#e65100',
+      color: 'white',
+      '& .MuiChip-icon': {
+        marginLeft: '4px',
+        color: 'white',
+      },
+      animation: 'pulse 2s ease-in-out infinite',
+      '@keyframes pulse': {
+        '0%, 100%': {
+          backgroundColor: '#e65100',
         },
-      }
-    : {
-        fontWeight: 500,
-        '& .MuiChip-icon': {
-          marginLeft: '4px',
+        '50%': {
+          backgroundColor: '#ff9800',
         },
-      };
+      },
+    };
+  }
   
   return (
     <Chip

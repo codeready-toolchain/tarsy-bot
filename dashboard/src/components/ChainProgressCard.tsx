@@ -21,6 +21,7 @@ import {
   ExpandMore,
   ExpandLess,
   Link as LinkIcon,
+  PauseCircle,
 } from '@mui/icons-material';
 import type { ChainProgressCardProps, Session } from '../types';
 import { formatTimestamp, formatDuration, getCurrentTimestampUs, formatDurationMs } from '../utils/timestamp';
@@ -43,6 +44,12 @@ const getStatusChipConfig = (status: string) => {
         color: 'warning' as const,
         icon: <Schedule sx={{ fontSize: 16 }} />,
         label: getSessionStatusDisplayName(SESSION_STATUS.PENDING),
+      };
+    case SESSION_STATUS.PAUSED:
+      return {
+        color: 'warning' as const,
+        icon: <PauseCircle sx={{ fontSize: 16 }} />,
+        label: getSessionStatusDisplayName(SESSION_STATUS.PAUSED),
       };
     case SESSION_STATUS.FAILED:
       return {
@@ -193,6 +200,27 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
               color={statusConfig.color}
               size="small"
               variant="filled"
+              sx={
+                session.status === SESSION_STATUS.PAUSED
+                  ? {
+                      fontWeight: 600,
+                      backgroundColor: '#e65100',
+                      color: 'white',
+                      '& .MuiChip-icon': {
+                        color: 'white',
+                      },
+                      animation: 'pulse 2s ease-in-out infinite',
+                      '@keyframes pulse': {
+                        '0%, 100%': {
+                          backgroundColor: '#e65100',
+                        },
+                        '50%': {
+                          backgroundColor: '#ff9800',
+                        },
+                      },
+                    }
+                  : {}
+              }
             />
             <Tooltip title="View Details">
               <IconButton 
