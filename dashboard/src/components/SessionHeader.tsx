@@ -703,25 +703,14 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               {sessionIsPaused && (
                 <>
                   {/* Pause Alert - Show with metadata message or fallback */}
-                  {session.pause_metadata ? (
-                    <Alert 
-                      severity="warning" 
-                      icon={<PauseCircle />}
-                      sx={{ mb: 1.5, width: '100%' }}
-                    >
-                      <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
-                      {session.pause_metadata.message || 'Session is paused and awaiting action.'}
-                    </Alert>
-                  ) : (
-                    <Alert 
-                      severity="warning" 
-                      icon={<PauseCircle />}
-                      sx={{ mb: 1.5, width: '100%' }}
-                    >
-                      <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
-                      Session is paused and awaiting action.
-                    </Alert>
-                  )}
+                  <Alert 
+                    severity="warning" 
+                    icon={<PauseCircle />}
+                    sx={{ mb: 1.5, width: '100%' }}
+                  >
+                    <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
+                    {session.pause_metadata?.message || 'Session is paused and awaiting action.'}
+                  </Alert>
                   
                   <Button
                     variant="contained"
@@ -780,7 +769,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                   variant="outlined"
                   size="large"
                   onClick={handleCancelClick}
-                  disabled={isCanceling || sessionIsCanceling}
+                  disabled={isCanceling || sessionIsCanceling || isResuming}
                   aria-label={isCanceling || sessionIsCanceling ? "Canceling session" : "Cancel session"}
                   sx={{
                     minWidth: 180,

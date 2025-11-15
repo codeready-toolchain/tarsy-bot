@@ -162,6 +162,7 @@ function SessionDetailPageBase({
   
   // Bottom resume state
   const [isBottomResuming, setIsBottomResuming] = useState(false);
+  const [bottomResumeError, setBottomResumeError] = useState<string | null>(null);
   
   // Ref for Final Analysis Card (for scrolling)
   const finalAnalysisRef = useRef<HTMLDivElement>(null);
@@ -179,6 +180,11 @@ function SessionDetailPageBase({
       setIsBottomResuming(false);
     }
   }, [session?.status, isBottomResuming]);
+  
+  // Clear bottom resume error when session status or pause_metadata changes
+  useEffect(() => {
+    setBottomResumeError(null);
+  }, [session?.status, session?.pause_metadata]);
   
   // Clear bottom canceling state when session status changes to cancelled
   useEffect(() => {
@@ -823,12 +829,16 @@ function SessionDetailPageBase({
                         aria-label={isBottomResuming ? "Resuming session" : "Resume paused session"}
                         onClick={async () => {
                           setIsBottomResuming(true);
+                          setBottomResumeError(null);
                           try {
-                            const apiClient = (await import('../services/api')).apiClient;
+                            const { apiClient } = await import('../services/api');
                             await apiClient.resumeSession(session.session_id);
                             // WebSocket will update the session status
                           } catch (error) {
-                            console.error('Failed to resume session:', error);
+                            const { handleAPIError } = await import('../services/api');
+                            const errorMessage = handleAPIError(error);
+                            setBottomResumeError(errorMessage);
+                          } finally {
                             setIsBottomResuming(false);
                           }
                         }}
@@ -873,6 +883,20 @@ function SessionDetailPageBase({
                 >
                   <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
                   {session.pause_metadata.message || 'Session is paused and awaiting action.'}
+                  {bottomResumeError && (
+                    <Box sx={(theme) => ({ 
+                      mt: 2, 
+                      p: 2, 
+                      bgcolor: alpha(theme.palette.error.main, 0.05), 
+                      borderRadius: 1, 
+                      border: '1px solid', 
+                      borderColor: 'error.main' 
+                    })}>
+                      <Typography variant="body2" color="error.main">
+                        {bottomResumeError}
+                      </Typography>
+                    </Box>
+                  )}
                 </Alert>
 
                 {/* Bottom Cancel Confirmation Dialog */}
