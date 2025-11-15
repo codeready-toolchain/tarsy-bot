@@ -25,6 +25,29 @@ import { apiClient, handleAPIError } from '../services/api';
 import { isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
 import type { SessionHeaderProps } from '../types';
 
+/**
+ * ErrorAlert Component
+ * Displays error messages with consistent styling across the application.
+ */
+function ErrorAlert({ error, sx = {} }: { error: string | null; sx?: object }) {
+  if (!error) return null;
+  
+  return (
+    <Box sx={(theme) => ({ 
+      p: 1.5, 
+      bgcolor: alpha(theme.palette.error.main, 0.05), 
+      borderRadius: 1, 
+      border: '1px solid', 
+      borderColor: 'error.main',
+      ...sx
+    })}>
+      <Typography variant="body2" color="error.main">
+        {error}
+      </Typography>
+    </Box>
+  );
+}
+
 // Animation styles for processing sessions
 const animationStyles = {
   breathingGlow: {
@@ -520,7 +543,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
       setIsResuming(false);
       setResumeError(null);
     }
-  }, [session.status, isResuming]);
+  }, [session.status]);
   
   // Handle re-submit button click
   const handleResubmit = () => {
@@ -749,19 +772,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                   </Button>
                   
                   {/* Resume Error Display */}
-                  {resumeError && (
-                    <Box sx={(theme) => ({ 
-                      p: 1.5, 
-                      bgcolor: alpha(theme.palette.error.main, 0.05), 
-                      borderRadius: 1, 
-                      border: '1px solid', 
-                      borderColor: 'error.main' 
-                    })}>
-                      <Typography variant="body2" color="error.main">
-                        {resumeError}
-                      </Typography>
-                    </Box>
-                  )}
+                  <ErrorAlert error={resumeError} />
                 </>
               )}
               
@@ -859,13 +870,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               Are you sure you want to cancel this session? This action cannot be undone.
               The session will be marked as cancelled and any ongoing processing will be stopped.
             </DialogContentText>
-            {cancelError && (
-              <Box sx={(theme) => ({ mt: 2, p: 2, bgcolor: alpha(theme.palette.error.main, 0.05), borderRadius: 1, border: '1px solid', borderColor: 'error.main' })}>
-                <Typography variant="body2" color="error.main">
-                  {cancelError}
-                </Typography>
-              </Box>
-            )}
+            <ErrorAlert error={cancelError} sx={{ mt: 2, p: 2 }} />
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button 
