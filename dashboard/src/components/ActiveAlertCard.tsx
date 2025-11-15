@@ -214,7 +214,15 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
                         '& .MuiChip-icon': {
                           color: 'white',
                         },
-                        animation: 'pulse 2s ease-in-out infinite',
+                        animation: 'pulse 2s ease-in-out infinite !important',
+                        transition: 'none !important',
+                        transform: 'none !important',
+                        outline: 'none !important',
+                        boxShadow: 'none !important',
+                        '&:focus, &:focus-visible': {
+                          outline: 'none !important',
+                          boxShadow: 'none !important',
+                        },
                         '@keyframes pulse': {
                           '0%, 100%': {
                             backgroundColor: '#e65100',

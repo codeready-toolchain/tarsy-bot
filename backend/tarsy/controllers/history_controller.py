@@ -278,6 +278,7 @@ async def get_active_sessions(
                 "started_at_us": session.started_at_us,
                 "completed_at_us": session.completed_at_us,
                 "error_message": session.error_message,
+                "pause_metadata": session.pause_metadata,
                 "duration_seconds": (
                     (session.completed_at_us - session.started_at_us) / 1000000
                     if session.completed_at_us else 

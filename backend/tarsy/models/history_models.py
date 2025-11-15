@@ -175,6 +175,7 @@ class SessionOverview(BaseModel):
     
     # Basic status info
     error_message: Optional[str] = None
+    pause_metadata: Optional[Dict[str, Any]] = None
     
     # Summary counts (for dashboard display)
     llm_interaction_count: int = 0

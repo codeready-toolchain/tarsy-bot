@@ -525,6 +525,7 @@ class HistoryRepository:
                     
                     # Basic status info
                     error_message=alert_session.error_message,
+                    pause_metadata=alert_session.pause_metadata,
                     
                     # Summary counts (merged from interaction_counts)
                     llm_interaction_count=llm_count,
@@ -759,6 +760,7 @@ class HistoryRepository:
                 alert_data=session.alert_data,
                 final_analysis=session.final_analysis,
                 session_metadata=session.session_metadata,
+                pause_metadata=session.pause_metadata,
                 
                 # Chain execution details
                 chain_id=session.chain_id,
@@ -907,6 +909,7 @@ class HistoryRepository:
                 
                 # Basic status info
                 error_message=session.error_message,
+                pause_metadata=session.pause_metadata,
                 
                 # Summary counts (for dashboard display)
                 llm_interaction_count=total_llm,

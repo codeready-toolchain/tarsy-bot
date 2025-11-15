@@ -43,6 +43,24 @@ export const theme = createTheme({
       styleOverrides: {
         root: {
           fontWeight: 500,
+          transition: 'none', // Disable all transitions globally
+          transform: 'none',  // Disable all transforms globally
+          outline: 'none', // Disable focus outline
+          '&.MuiChip-root': {
+            animation: 'none', // Disable default animations
+          },
+          '&:focus': {
+            outline: 'none',
+            boxShadow: 'none',
+          },
+          '&:focus-visible': {
+            outline: 'none',
+            boxShadow: 'none',
+          },
+          // Disable ripple effect by targeting the ripple element
+          '& .MuiTouchRipple-root': {
+            display: 'none',
+          },
         },
       },
     },
