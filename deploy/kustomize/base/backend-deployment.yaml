@@ -56,6 +56,8 @@ spec:
                   key: github-token
             - name: MCP_KUBECONFIG
               value: /app/.kube/mcp-config
+            - name: KUBECONFIG
+              value: /app/.kube/mcp-config
             - name: JWT_PUBLIC_KEY_PATH
               value: /app/.keys/jwt_public_key.pem
           envFrom:
