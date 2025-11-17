@@ -30,6 +30,8 @@ from tarsy.services.history_service import get_history_service
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.runbook_service import RunbookService
 from tarsy.utils.logger import get_module_logger
+from tarsy.agents.exceptions import SessionPaused
+from tarsy.models.pause_metadata import PauseMetadata, PauseReason
 
 logger = get_module_logger(__name__)
 
@@ -365,13 +367,25 @@ class AlertService:
                 )
                 
                 # Mark history session as completed successfully
-                self._update_session_completed(chain_context.session_id, AlertSessionStatus.COMPLETED.value, final_analysis=final_result)
+                self._update_session_status(chain_context.session_id, AlertSessionStatus.COMPLETED.value, final_analysis=final_result)
                 
                 # Publish session.completed event
                 from tarsy.services.events.event_helpers import publish_session_completed
                 await publish_session_completed(chain_context.session_id)
                 
                 return final_result
+            elif chain_result.status == ChainStatus.PAUSED:
+                # Session was paused - this is not an error condition
+                # Status was already updated to PAUSED and pause event was already published in _execute_chain_stages
+                logger.info(f"Session {chain_context.session_id} paused successfully")
+                
+                # Return a response indicating pause (not an error)
+                return self._format_chain_success_response(
+                    chain_context,
+                    chain_definition,
+                    chain_result.final_analysis,
+                    chain_result.timestamp_us
+                )
             else:
                 # Handle chain processing error
                 error_msg = chain_result.error or 'Chain processing failed'
@@ -409,6 +423,178 @@ class AlertService:
                 except Exception as cleanup_error:
                     # Log but don't raise - cleanup errors shouldn't fail the session
                     logger.warning(f"Error closing session MCP client: {cleanup_error}")
+    
+    async def resume_paused_session(self, session_id: str) -> str:
+        """
+        Resume a paused session from where it left off.
+        
+        Reconstructs the session state from database and continues execution.
+        
+        Args:
+            session_id: The session ID to resume
+            
+        Returns:
+            Analysis result as a string
+            
+        Raises:
+            Exception: If session not found, not paused, or resume fails
+        """
+        session_mcp_client = None
+        
+        try:
+            # Step 1: Validate session exists and is paused
+            if not self.history_service:
+                raise Exception("History service not available")
+            
+            session = self.history_service.get_session(session_id)
+            if not session:
+                raise Exception(f"Session {session_id} not found")
+            
+            if session.status != AlertSessionStatus.PAUSED.value:
+                raise Exception(f"Session {session_id} is not paused (status: {session.status})")
+            
+            logger.info(f"Resuming paused session {session_id}")
+            
+            # Step 2: Get all stage executions for this session
+            stage_executions = await self.history_service.get_stage_executions(session_id)
+            
+            # Find paused stage
+            paused_stage = None
+            for stage_exec in stage_executions:
+                if stage_exec.status == StageStatus.PAUSED.value:
+                    paused_stage = stage_exec
+                    break
+            
+            if not paused_stage:
+                raise Exception(f"No paused stage found for session {session_id}")
+            
+            logger.info(f"Found paused stage: {paused_stage.stage_name} at iteration {paused_stage.current_iteration}")
+            
+            # Step 3: Reconstruct ChainContext from session data
+            from tarsy.models.alert import ProcessingAlert
+            
+            # Reconstruct ProcessingAlert from session fields
+            # Note: session.alert_data only contains the nested alert dict, not the full ProcessingAlert
+            processing_alert = ProcessingAlert(
+                alert_type=session.alert_type or "unknown",
+                severity=session.alert_data.get("severity", "warning"),  # Extract from alert_data or use default
+                timestamp=session.started_at_us,
+                environment=session.alert_data.get("environment", "production"),
+                runbook_url=session.runbook_url,
+                alert_data=session.alert_data
+            )
+            
+            chain_context = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
+                session_id=session_id,
+                current_stage_name=paused_stage.stage_name,
+                author=session.author
+            )
+            
+            # Restore MCP selection if it was present
+            if session.mcp_selection:
+                from tarsy.models.mcp_selection_models import MCPSelectionConfig
+                chain_context.mcp = MCPSelectionConfig.model_validate(session.mcp_selection)
+            
+            # Reconstruct stage outputs from completed AND paused stages
+            # IMPORTANT: Paused stages need their conversation history restored
+            for stage_exec in stage_executions:
+                if stage_exec.status == StageStatus.COMPLETED.value and stage_exec.stage_output:
+                    # Reconstruct AgentExecutionResult from stage_output
+                    result = AgentExecutionResult.model_validate(stage_exec.stage_output)
+                    chain_context.add_stage_result(stage_exec.stage_name, result)
+                elif stage_exec.status == StageStatus.PAUSED.value and stage_exec.stage_output:
+                    # Restore paused stage's conversation history for resume
+                    result = AgentExecutionResult.model_validate(stage_exec.stage_output)
+                    chain_context.add_stage_result(stage_exec.stage_name, result)
+                    logger.info(f"Restored conversation history for paused stage '{stage_exec.stage_name}'")
+            
+            # Step 4: Get chain definition
+            chain_definition = session.chain_config
+            if not chain_definition:
+                raise Exception("Chain definition not found in session")
+            
+            chain_context.set_chain_context(chain_definition.chain_id, paused_stage.stage_name)
+            
+            # Download runbook if needed
+            runbook_url = processing_alert.runbook_url
+            if runbook_url:
+                runbook_content = await self.runbook_service.download_runbook(runbook_url)
+            else:
+                from tarsy.config.builtin_config import DEFAULT_RUNBOOK_CONTENT
+                runbook_content = DEFAULT_RUNBOOK_CONTENT
+            
+            chain_context.set_runbook_content(runbook_content)
+            
+            # Step 5: Update session status to IN_PROGRESS
+            self._update_session_status(session_id, AlertSessionStatus.IN_PROGRESS.value)
+            
+            # Publish resume event
+            from tarsy.services.events.event_helpers import publish_session_resumed
+            await publish_session_resumed(session_id)
+            
+            # Step 6: Create new MCP client and continue execution
+            # Note: Stage status transition from PAUSED→ACTIVE is handled in _update_stage_execution_started
+            logger.info(f"Creating session-scoped MCP client for resumed session {session_id}")
+            session_mcp_client = await self.mcp_client_factory.create_client()
+            
+            # Execute from the paused stage
+            result = await self._execute_chain_stages(
+                chain_definition,
+                chain_context,
+                session_mcp_client
+            )
+            
+            # Handle result
+            if result.status == ChainStatus.COMPLETED:
+                analysis = result.final_analysis or "No analysis provided"
+                final_result = self._format_chain_success_response(
+                    chain_context,
+                    chain_definition,
+                    analysis,
+                    result.timestamp_us,
+                )
+                self._update_session_status(
+                    session_id,
+                    AlertSessionStatus.COMPLETED.value,
+                    final_analysis=final_result,
+                )
+                from tarsy.services.events.event_helpers import publish_session_completed
+                await publish_session_completed(session_id)
+                return final_result
+            elif result.status == ChainStatus.PAUSED:
+                # Session paused again - this is normal, not an error
+                # Status already updated to PAUSED and pause event already published in _execute_chain_stages
+                logger.info(f"Resumed session {session_id} paused again (hit max iterations)")
+                # Format the pause message consistently with initial execution path
+                pause_message = result.final_analysis or "Session paused again - waiting for user to resume"
+                return self._format_chain_success_response(
+                    chain_context,
+                    chain_definition,
+                    pause_message,
+                    result.timestamp_us,
+                )
+            else:
+                error_msg = result.error or "Chain execution failed"
+                self._update_session_status(session_id, AlertSessionStatus.FAILED.value)
+                from tarsy.services.events.event_helpers import publish_session_failed
+                await publish_session_failed(session_id)
+                return self._format_error_response(chain_context, error_msg)
+        
+        except Exception as e:
+            error_msg = f"Failed to resume session: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            self._update_session_error(session_id, error_msg)
+            raise
+        
+        finally:
+            # Clean up MCP client
+            if session_mcp_client:
+                try:
+                    await session_mcp_client.close()
+                    logger.debug(f"Session-scoped MCP client closed for resumed session {session_id}")
+                except Exception as cleanup_error:
+                    logger.warning(f"Error closing session MCP client: {cleanup_error}")
 
     async def _execute_chain_stages(
         self, 
@@ -437,11 +623,40 @@ class AlertService:
             failed_stages = 0
             
             # Execute each stage sequentially
+            # If resuming, skip stages before the current stage
+            start_from_stage = 0
+            if chain_context.current_stage_name:
+                # Find the index of the current stage to resume from
+                for i, stage in enumerate(chain_definition.stages):
+                    if stage.name == chain_context.current_stage_name:
+                        start_from_stage = i
+                        logger.info(f"Resuming from stage {i+1}: '{stage.name}'")
+                        break
+            
             for i, stage in enumerate(chain_definition.stages):
+                # Skip stages before the resume point
+                if i < start_from_stage:
+                    logger.debug(f"Skipping already completed stage {i+1}: '{stage.name}'")
+                    continue
+                    
                 logger.info(f"Executing stage {i+1}/{len(chain_definition.stages)}: '{stage.name}' with agent '{stage.agent}'")
                 
-                # Create stage execution record
-                stage_execution_id = await self._create_stage_execution(chain_context.session_id, stage, i)
+                # For resumed sessions, reuse existing stage execution ID for the paused stage
+                # For new sessions or subsequent stages, create new stage execution record
+                if i == start_from_stage and chain_context.current_stage_name:
+                    # Resuming - find existing stage execution ID from history
+                    stage_executions = await self.history_service.get_stage_executions(chain_context.session_id)
+                    paused_stage_exec = next((s for s in stage_executions if s.stage_name == stage.name and s.status == StageStatus.PAUSED.value), None)
+                    if paused_stage_exec:
+                        stage_execution_id = paused_stage_exec.execution_id
+                        logger.info(f"Reusing existing stage execution ID {stage_execution_id} for resumed stage '{stage.name}'")
+                    else:
+                        # Fallback: create new if not found (shouldn't happen)
+                        logger.warning(f"Could not find paused stage execution for '{stage.name}', creating new")
+                        stage_execution_id = await self._create_stage_execution(chain_context.session_id, stage, i)
+                else:
+                    # Create new stage execution record
+                    stage_execution_id = await self._create_stage_execution(chain_context.session_id, stage, i)
                 
                 # Update session current stage
                 await self._update_session_current_stage(chain_context.session_id, i, stage_execution_id)
@@ -500,6 +715,56 @@ class AlertService:
                         failed_stages += 1
                     
                 except Exception as e:
+                    # Check if this is a pause signal (SessionPaused)
+                    if isinstance(e, SessionPaused):
+                        # Session paused at max iterations - update status and exit gracefully
+                        logger.info(f"Stage '{stage.name}' paused at iteration {e.iteration}")
+                        
+                        # Create pause metadata
+                        pause_meta = PauseMetadata(
+                            reason=PauseReason.MAX_ITERATIONS_REACHED,
+                            current_iteration=e.iteration,
+                            message=f"Paused after {e.iteration} iterations - resume to continue",
+                            paused_at_us=now_us()
+                        )
+                        
+                        # Serialize pause metadata (convert enum to string)
+                        pause_meta_dict = pause_meta.model_dump(mode='json')
+                        
+                        # Create partial AgentExecutionResult with conversation state for resume
+                        paused_result = AgentExecutionResult(
+                            status=StageStatus.PAUSED,
+                            agent_name=stage.agent,
+                            stage_name=stage.name,
+                            timestamp_us=now_us(),
+                            result_summary=f"Stage '{stage.name}' paused at iteration {e.iteration}",
+                            paused_conversation_state=e.conversation.model_dump() if e.conversation else None,
+                            error_message=None
+                        )
+                        
+                        # Update stage execution as paused with current iteration and conversation state
+                        await self._update_stage_execution_paused(stage_execution_id, e.iteration, paused_result)
+                        
+                        # Update session status to PAUSED with metadata
+                        from tarsy.models.constants import AlertSessionStatus
+                        self._update_session_status(
+                            chain_context.session_id, 
+                            AlertSessionStatus.PAUSED.value,
+                            pause_metadata=pause_meta_dict
+                        )
+                        
+                        # Publish pause event with metadata
+                        from tarsy.services.events.event_helpers import publish_session_paused
+                        await publish_session_paused(chain_context.session_id, pause_metadata=pause_meta_dict)
+                        
+                        # Return paused result (not failed)
+                        return ChainExecutionResult(
+                            status=ChainStatus.PAUSED,
+                            final_analysis="Session paused - waiting for user to resume",
+                            error=None,
+                            timestamp_us=now_us()
+                        )
+                    
                     # Log the error with full context
                     error_msg = f"Stage '{stage.name}' failed with agent '{stage.agent}': {str(e)}"
                     logger.error(error_msg, exc_info=True)
@@ -784,13 +1049,23 @@ class AlertService:
             logger.warning(f"Failed to create chain history session: {str(e)}")
             return False
     
-    def _update_session_status(self, session_id: Optional[str], status: str):
+    def _update_session_status(
+        self, 
+        session_id: Optional[str], 
+        status: str,
+        error_message: Optional[str] = None,
+        final_analysis: Optional[str] = None,
+        pause_metadata: Optional[dict] = None
+    ):
         """
         Update history session status.
         
         Args:
             session_id: Session ID to update
             status: New status
+            error_message: Optional error message if failed
+            final_analysis: Optional final analysis if completed
+            pause_metadata: Optional pause metadata if paused
         """
         try:
             if not session_id or not self.history_service or not self.history_service.is_enabled:
@@ -798,34 +1073,15 @@ class AlertService:
                 
             self.history_service.update_session_status(
                 session_id=session_id,
-                status=status
+                status=status,
+                error_message=error_message,
+                final_analysis=final_analysis,
+                pause_metadata=pause_metadata
             )
             
         except Exception as e:
             logger.warning(f"Failed to update session status: {str(e)}")
     
-    def _update_session_completed(self, session_id: Optional[str], status: str, final_analysis: Optional[str] = None):
-        """
-        Mark history session as completed.
-        
-        Args:
-            session_id: Session ID to complete
-            status: Final status (must be from AlertSessionStatus enum: 'completed' or 'failed')
-            final_analysis: Final formatted analysis if status is completed successfully
-        """
-        try:
-            if not session_id or not self.history_service or not self.history_service.is_enabled:
-                return
-                
-            # The history service automatically sets completed_at_us when status is 'completed' or 'failed'
-            self.history_service.update_session_status(
-                session_id=session_id,
-                status=status,
-                final_analysis=final_analysis
-            )
-            
-        except Exception as e:
-            logger.warning(f"Failed to mark session completed: {str(e)}")
     
     def _update_session_error(self, session_id: Optional[str], error_message: str):
         """
@@ -893,7 +1149,7 @@ class AlertService:
         # Trigger stage execution hooks (history + dashboard) via context manager
         try:
             from tarsy.hooks.hook_context import stage_execution_context
-            async with stage_execution_context(session_id, stage_execution) as ctx:
+            async with stage_execution_context(session_id, stage_execution):
                 # Context automatically triggers hooks when exiting
                 # History hook will create DB record and set execution_id on the model
                 pass
@@ -968,7 +1224,7 @@ class AlertService:
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
                 from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+                async with stage_execution_context(existing_stage.session_id, existing_stage):
                     # Context automatically triggers hooks when exiting
                     pass
                 logger.debug(f"Triggered stage hooks for stage completion {existing_stage.stage_index}: {existing_stage.stage_id}")
@@ -1009,7 +1265,7 @@ class AlertService:
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
                 from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+                async with stage_execution_context(existing_stage.session_id, existing_stage):
                     # Context automatically triggers hooks when exiting
                     pass
                 logger.debug(f"Triggered stage hooks for stage failure {existing_stage.stage_index}: {existing_stage.stage_id}")
@@ -1019,9 +1275,62 @@ class AlertService:
         except Exception as e:
             logger.warning(f"Failed to update stage execution as failed: {str(e)}")
     
+    async def _update_stage_execution_paused(
+        self, 
+        stage_execution_id: str, 
+        iteration: int, 
+        paused_result: Optional[AgentExecutionResult] = None
+    ):
+        """
+        Update stage execution as paused.
+        
+        Args:
+            stage_execution_id: Stage execution ID
+            iteration: Current iteration number when paused
+            paused_result: Optional partial AgentExecutionResult with conversation history
+        """
+        try:
+            if not self.history_service:
+                return
+            
+            # Get the existing stage execution record
+            existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
+            if not existing_stage:
+                logger.warning(f"Stage execution {stage_execution_id} not found for update")
+                return
+            
+            # Update to paused status with iteration count
+            existing_stage.status = StageStatus.PAUSED.value
+            existing_stage.current_iteration = iteration
+            # Don't set completed_at_us - stage is not complete
+            # IMPORTANT: Save conversation state so resume can continue from where it left off
+            if paused_result:
+                existing_stage.stage_output = paused_result.model_dump(mode='json')
+                logger.info(f"Saved conversation state for paused stage {existing_stage.stage_name}")
+            else:
+                existing_stage.stage_output = None
+            existing_stage.error_message = None
+            
+            # Trigger stage execution hooks (history + dashboard) via context manager
+            try:
+                from tarsy.hooks.hook_context import stage_execution_context
+                async with stage_execution_context(existing_stage.session_id, existing_stage):
+                    # Context automatically triggers hooks when exiting
+                    pass
+                logger.debug(f"Triggered stage hooks for stage pause {existing_stage.stage_index}: {existing_stage.stage_id}")
+            except Exception as e:
+                logger.warning(f"Failed to trigger stage pause hooks: {str(e)}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to update stage execution as paused: {str(e)}")
+    
     async def _update_stage_execution_started(self, stage_execution_id: str):
         """
         Update stage execution as started.
+        
+        Handles PAUSED→ACTIVE transition for resumed sessions and initial PENDING→ACTIVE
+        transition for new stages. Clears current_iteration for both cases to ensure
+        consistent state management.
         
         Args:
             stage_execution_id: Stage execution ID
@@ -1037,13 +1346,17 @@ class AlertService:
                 return
             
             # Update to active status and set start time
+            # This handles both PENDING→ACTIVE (new) and PAUSED→ACTIVE (resumed)
             existing_stage.status = StageStatus.ACTIVE.value
             existing_stage.started_at_us = now_us()
+            # Clear current_iteration for both new and resumed executions
+            # Agent will set this during execution
+            existing_stage.current_iteration = None
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             try:
                 from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage) as ctx:
+                async with stage_execution_context(existing_stage.session_id, existing_stage):
                     # Context automatically triggers hooks when exiting
                     # History hook will update DB record and dashboard hook will broadcast
                     pass
@@ -1077,3 +1390,14 @@ class AlertService:
             logger.info("AlertService resources cleaned up")
         except Exception as e:
             logger.error(f"Error during cleanup: {str(e)}")
+
+
+def get_alert_service() -> Optional[AlertService]:
+    """
+    Get the global alert service instance.
+    
+    Returns:
+        AlertService instance or None if not initialized
+    """
+    from tarsy.main import alert_service
+    return alert_service

@@ -157,8 +157,28 @@ class ReactController(IterationController):
         settings = get_settings()
         iteration_timeout = settings.llm_iteration_timeout
         
-        # 1. Build initial conversation (controller-specific)
-        conversation = self.build_initial_conversation(context)
+        # 1. Check if resuming from a paused session with conversation history
+        conversation = None
+        if context.stage_name in context.chain_context.stage_outputs:
+            stage_result = context.chain_context.stage_outputs[context.stage_name]
+            if hasattr(stage_result, 'status') and hasattr(stage_result, 'paused_conversation_state'):
+                # Type-safe status comparison (handle both enum and string values)
+                from tarsy.models.constants import StageStatus
+                status_value = stage_result.status.value if isinstance(stage_result.status, StageStatus) else stage_result.status
+                
+                if status_value == StageStatus.PAUSED.value and stage_result.paused_conversation_state:
+                    # Restore conversation from paused state
+                    from tarsy.models.unified_interactions import LLMConversation
+                    try:
+                        conversation = LLMConversation.model_validate(stage_result.paused_conversation_state)
+                        self.logger.info(f"Resuming from paused state with {len(conversation.messages)} messages")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to restore conversation history: {e}, starting fresh")
+                        conversation = None
+        
+        # Build initial conversation if not resuming
+        if conversation is None:
+            conversation = self.build_initial_conversation(context)
         
         # 2. Track last interaction success for failure detection
         last_interaction_failed = False
@@ -306,7 +326,7 @@ class ReactController(IterationController):
                 conversation.append_observation(format_reminder)
                 continue
                 
-        # 8. Timeout handling - check if stage should be marked as failed
+        # 8. Max iterations reached - pause for user action or fail
         if last_interaction_failed:
             # Stage failure: reached max iterations with failed last interaction
             from ..exceptions import MaxIterationsFailureError
@@ -321,9 +341,19 @@ class ReactController(IterationController):
                 }
             )
         else:
-            # Max iterations reached but last interaction was successful - return incomplete result
-            self.logger.warning("ReAct analysis reached maximum iterations without final answer")
-            return f"Analysis incomplete: reached maximum iterations ({max_iterations}) without final answer"
+            # Max iterations reached but last interaction was successful - pause session
+            from tarsy.agents.exceptions import SessionPaused
+            self.logger.warning(f"Session paused: reached maximum iterations ({max_iterations}) without final answer")
+            raise SessionPaused(
+                f"Session paused at maximum iterations ({max_iterations})",
+                iteration=max_iterations,
+                conversation=conversation,  # Pass conversation history for resume
+                context={
+                    "session_id": context.session_id,
+                    "stage_execution_id": context.agent.get_current_stage_execution_id(),
+                    "stage_name": context.stage_name
+                }
+            )
 
     @abstractmethod
     def build_initial_conversation(self, context: 'StageContext') -> 'LLMConversation':

@@ -19,6 +19,7 @@ class TestAlertSessionStatus:
         [
             (AlertSessionStatus.PENDING, True, False),
             (AlertSessionStatus.IN_PROGRESS, True, False),
+            (AlertSessionStatus.PAUSED, True, False),
             (AlertSessionStatus.CANCELING, True, False),
             (AlertSessionStatus.COMPLETED, False, True),
             (AlertSessionStatus.FAILED, False, True),
@@ -53,6 +54,12 @@ class TestAlertSessionStatus:
         assert AlertSessionStatus.CANCELLED not in AlertSessionStatus.get_active_statuses()
     
     @pytest.mark.unit
+    def test_paused_is_active_not_terminal(self) -> None:
+        """Test that PAUSED status is active but not terminal."""
+        assert AlertSessionStatus.PAUSED in AlertSessionStatus.get_active_statuses()
+        assert AlertSessionStatus.PAUSED not in AlertSessionStatus.get_terminal_statuses()
+    
+    @pytest.mark.unit
     def test_active_and_terminal_are_mutually_exclusive(self) -> None:
         """Test that no status can be both active and terminal."""
         active_statuses = set(AlertSessionStatus.get_active_statuses())
@@ -78,6 +85,7 @@ class TestAlertSessionStatus:
         
         assert isinstance(active_values, list)
         assert all(isinstance(v, str) for v in active_values)
+        assert "paused" in active_values
         assert "canceling" in active_values
         assert "cancelled" not in active_values
     

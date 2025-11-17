@@ -292,16 +292,18 @@ class HistoryService:
         session_id: str,
         status: str,
         error_message: Optional[str] = None,
-        final_analysis: Optional[str] = None
+        final_analysis: Optional[str] = None,
+        pause_metadata: Optional[dict] = None
     ) -> bool:
         """
         Update session processing status with retry logic.
         
         Args:
             session_id: The session identifier
-            status: New status (pending, in_progress, completed, failed)
+            status: New status (pending, in_progress, completed, failed, paused)
             error_message: Error message if status is failed
             final_analysis: Final formatted analysis if status is completed
+            pause_metadata: Pause metadata if status is paused
             
         Returns:
             True if updated successfully, False otherwise
@@ -324,6 +326,12 @@ class HistoryService:
                     session.error_message = error_message
                 if final_analysis:
                     session.final_analysis = final_analysis
+                # Set pause_metadata when transitioning to PAUSED, clear it otherwise
+                if status == AlertSessionStatus.PAUSED.value:
+                    session.pause_metadata = pause_metadata
+                else:
+                    # Clear pause_metadata when not paused (keep it clean)
+                    session.pause_metadata = None
                 if status in AlertSessionStatus.terminal_values():
                     session.completed_at_us = now_us()
                 
@@ -567,6 +575,21 @@ class HistoryService:
             treat_none_as_success=True,
         )
         return result
+    
+    async def get_stage_executions(self, session_id: str) -> List[StageExecution]:
+        """Get all stage executions for a session."""
+        def _get_stage_executions_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    raise RuntimeError("History repository unavailable - cannot retrieve stage executions")
+                return repo.get_stage_executions_for_session(session_id)
+        
+        result = await self._retry_database_operation_async(
+            "get_stage_executions",
+            _get_stage_executions_operation,
+            treat_none_as_success=True,
+        )
+        return result or []
     
     # LLM Interaction Logging
     def store_llm_interaction(self, interaction: LLMInteraction) -> bool:

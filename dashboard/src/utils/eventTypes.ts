@@ -7,6 +7,8 @@
 export const SESSION_EVENTS = {
   CREATED: 'session.created',
   STARTED: 'session.started',
+  PAUSED: 'session.paused',
+  RESUMED: 'session.resumed',
   COMPLETED: 'session.completed',
   FAILED: 'session.failed',
   CANCELLED: 'session.cancelled',

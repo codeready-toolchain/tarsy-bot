@@ -13,8 +13,10 @@ import {
   CircularProgress,
   Tooltip,
   alpha,
+  Alert,
+  AlertTitle,
 } from '@mui/material';
-import { CancelOutlined, Replay as ReplayIcon } from '@mui/icons-material';
+import { CancelOutlined, Replay as ReplayIcon, PlayArrow, PauseCircle } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import ProgressIndicator from './ProgressIndicator';
 import TokenUsageDisplay from './TokenUsageDisplay';
@@ -22,6 +24,29 @@ import { formatTimestamp } from '../utils/timestamp';
 import { apiClient, handleAPIError } from '../services/api';
 import { isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
 import type { SessionHeaderProps } from '../types';
+
+/**
+ * ErrorAlert Component
+ * Displays error messages with consistent styling across the application.
+ */
+function ErrorAlert({ error, sx = {} }: { error: string | null; sx?: object }) {
+  if (!error) return null;
+  
+  return (
+    <Box sx={(theme) => ({ 
+      p: 1.5, 
+      bgcolor: alpha(theme.palette.error.main, 0.05), 
+      borderRadius: 1, 
+      border: '1px solid', 
+      borderColor: 'error.main',
+      ...sx
+    })}>
+      <Typography variant="body2" color="error.main">
+        {error}
+      </Typography>
+    </Box>
+  );
+}
 
 // Animation styles for processing sessions
 const animationStyles = {
@@ -412,7 +437,8 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     session.status === SESSION_STATUS.PENDING ||
     session.status === SESSION_STATUS.CANCELING;
   const sessionIsCanceling = session.status === SESSION_STATUS.CANCELING;
-  const canCancel = isInProgress || sessionIsCanceling;
+  const sessionIsPaused = session.status === SESSION_STATUS.PAUSED;
+  const canCancel = isInProgress || sessionIsCanceling || sessionIsPaused;
   const isTerminalStatus = isTerminalSessionStatus(session.status);
   const previousStatusRef = useRef<string>(session.status);
   
@@ -421,15 +447,20 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
   const [isCanceling, setIsCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   
+  // Resume state
+  const [isResuming, setIsResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  
   // Detect status changes from in_progress to completed and trigger refresh
   useEffect(() => {
     const previousStatus = previousStatusRef.current;
     const currentStatus = session.status;
     
-    // Check if status changed from in_progress/pending to completed/failed/cancelled
+    // Check if status changed from in_progress/pending/paused to completed/failed/cancelled
     const wasInProgress =
       previousStatus === SESSION_STATUS.IN_PROGRESS ||
       previousStatus === SESSION_STATUS.PENDING ||
+      previousStatus === SESSION_STATUS.PAUSED ||
       previousStatus === SESSION_STATUS.CANCELING;
     const nowCompleted =
       currentStatus === SESSION_STATUS.COMPLETED ||
@@ -486,6 +517,33 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
       setIsCanceling(false);
     }
   };
+  
+  // Handle resume button click
+  const handleResumeClick = async () => {
+    setIsResuming(true);
+    setResumeError(null);
+    
+    try {
+      await apiClient.resumeSession(session.session_id);
+      // Resume initiated successfully
+      // WebSocket will update status to 'in_progress'
+    } catch (error) {
+      // Show error
+      const errorMessage = handleAPIError(error);
+      setResumeError(errorMessage);
+    } finally {
+      // Always reset the resuming flag after the API call completes
+      setIsResuming(false);
+    }
+  };
+  
+  // Clear resuming state when session status changes away from paused
+  useEffect(() => {
+    if (session?.status !== SESSION_STATUS.PAUSED && isResuming) {
+      setIsResuming(false);
+      setResumeError(null);
+    }
+  }, [session?.status]);
   
   // Handle re-submit button click
   const handleResubmit = () => {
@@ -666,13 +724,66 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               width: '100%',
               mt: 1
             }}>
+              {/* Resume Button - Only for paused sessions */}
+              {sessionIsPaused && (
+                <>
+                  {/* Pause Alert - Show with metadata message or fallback */}
+                  <Alert 
+                    severity="warning" 
+                    icon={<PauseCircle />}
+                    sx={{ mb: 1.5, width: '100%' }}
+                  >
+                    <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
+                    {session.pause_metadata?.message || 'Session is paused and awaiting action.'}
+                  </Alert>
+                  
+                  <Button
+                    variant="contained"
+                    size="large"
+                    onClick={handleResumeClick}
+                    disabled={isResuming || isCanceling || sessionIsCanceling}
+                    aria-label={isResuming ? "Resuming session" : "Resume paused session"}
+                    sx={{
+                      minWidth: 180,
+                      textTransform: 'none',
+                      fontWeight: 600,
+                      fontSize: '0.95rem',
+                      py: 1,
+                      px: 2.5,
+                      backgroundColor: 'success.main',
+                      color: 'white',
+                      '&:hover': {
+                        backgroundColor: 'success.dark',
+                      },
+                      transition: 'all 0.2s ease-in-out',
+                    }}
+                  >
+                    {isResuming ? (
+                      <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />
+                    ) : (
+                      <PlayArrow 
+                        sx={{ 
+                          mr: 1,
+                          fontSize: '1.2rem',
+                        }} 
+                      />
+                    )}
+                    {isResuming ? 'RESUMING...' : 'RESUME SESSION'}
+                  </Button>
+                  
+                  {/* Resume Error Display */}
+                  <ErrorAlert error={resumeError} />
+                </>
+              )}
+              
               {/* Cancel Button - Only for active sessions */}
               {canCancel && (
                 <Button
                   variant="outlined"
                   size="large"
                   onClick={handleCancelClick}
-                  disabled={isCanceling || sessionIsCanceling}
+                  disabled={isCanceling || sessionIsCanceling || isResuming}
+                  aria-label={isCanceling || sessionIsCanceling ? "Canceling session" : "Cancel session"}
                   sx={{
                     minWidth: 180,
                     textTransform: 'none',
@@ -759,13 +870,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               Are you sure you want to cancel this session? This action cannot be undone.
               The session will be marked as cancelled and any ongoing processing will be stopped.
             </DialogContentText>
-            {cancelError && (
-              <Box sx={(theme) => ({ mt: 2, p: 2, bgcolor: alpha(theme.palette.error.main, 0.05), borderRadius: 1, border: '1px solid', borderColor: 'error.main' })}>
-                <Typography variant="body2" color="error.main">
-                  {cancelError}
-                </Typography>
-              </Box>
-            )}
+            <ErrorAlert error={cancelError} sx={{ mt: 2, p: 2 }} />
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button 

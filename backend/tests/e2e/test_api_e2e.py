@@ -12,7 +12,6 @@ Architecture:
 import asyncio
 import logging
 import os
-import re
 from unittest.mock import AsyncMock, Mock, patch
 from mcp.types import Tool
 
@@ -35,27 +34,6 @@ from .expected_conversations import (
 from .conftest import create_mock_stream
 
 logger = logging.getLogger(__name__)
-
-
-def normalize_content(content: str) -> str:
-    """Normalize dynamic content in messages for stable comparison."""
-    # Normalize timestamps (microsecond precision)
-    content = re.sub(r"\*\*Timestamp:\*\* \d+", "**Timestamp:** {TIMESTAMP}", content)
-    content = re.sub(r"Timestamp:\*\* \d+", "Timestamp:** {TIMESTAMP}", content)
-
-    # Normalize alert IDs and session IDs (UUIDs)
-    content = re.sub(
-        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
-        "{UUID}",
-        content,
-    )
-
-    # Normalize specific test-generated data keys
-    content = re.sub(
-        r"test-kubernetes_[a-f0-9]+_\d+", "test-kubernetes_{DATA_KEY}", content
-    )
-
-    return content
 
 
 def assert_conversation_messages(
@@ -94,8 +72,8 @@ def assert_conversation_messages(
         ), f"Role mismatch: expected {expected_role}, got {actual_role}"
 
         # Normalize content for comparison
-        expected_content = normalize_content(expected_msg.get("content", ""))
-        actual_content = normalize_content(actual_msg.get("content", ""))
+        expected_content = E2ETestUtils.normalize_content(expected_msg.get("content", ""))
+        actual_content = E2ETestUtils.normalize_content(actual_msg.get("content", ""))
         
         assert (
             expected_content == actual_content
@@ -523,7 +501,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                     # Verify session completed successfully
                     if final_status != "completed":
                         # Get detailed error info
-                        detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
+                        detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
                         error_msg = detail_data.get("error_message", "No error message")
                         print(f"❌ Session failed with error: {error_msg}")
                     assert (
@@ -532,7 +510,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                     print("✅ Session completed successfully!")
 
                     # Get session details to verify stages structure
-                    detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id)
+                    detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
                     stages = detail_data.get("stages", [])
                     print(f"Found {len(stages)} stages in completed session")
 
@@ -1052,7 +1030,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             verified_stage_ids = set()
         
         # Get current chat stage count before sending message
-        detail_data = E2ETestUtils.get_session_details(test_client, session_id)
+        detail_data = await E2ETestUtils.get_session_details_async(test_client, session_id)
         stages_before = [s for s in detail_data.get("stages", []) 
                         if s.get("stage_id", "").startswith("chat-response")]
         num_stages_before = len(stages_before)
@@ -1085,7 +1063,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         chat_stage = None
         for i in range(int(max_wait / poll_interval)):
             # Get session details to check chat execution
-            detail_data = E2ETestUtils.get_session_details(test_client, session_id)
+            detail_data = await E2ETestUtils.get_session_details_async(test_client, session_id)
             stages = detail_data.get("stages", [])
             
             # Look for NEW chat stages (not already verified)
@@ -1107,7 +1085,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             await asyncio.sleep(poll_interval)
         else:
             # Provide more debug info on timeout
-            detail_data = E2ETestUtils.get_session_details(test_client, session_id)
+            detail_data = await E2ETestUtils.get_session_details_async(test_client, session_id)
             stages = detail_data.get("stages", [])
             chat_stages = [s for s in stages if s.get("stage_id", "").startswith("chat-response")]
             new_stages = [s for s in chat_stages if s.get("stage_id") not in verified_stage_ids]

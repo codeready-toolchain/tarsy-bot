@@ -60,12 +60,10 @@ class TestAlertControllerCriticalCoverage:
             alert_data = {
                 "alert_type": alert.alert_type,
                 "runbook": alert.runbook,
-                "severity": alert.severity,
                 "data": alert.data
             }
             response = client.post("/api/v1/alerts", json=alert_data)
             assert response.status_code == 200
-
 
 
 @pytest.mark.unit
@@ -746,7 +744,6 @@ class TestAlertControllerCriticalCoverage:
                 alert_data = {
                     "alert_type": alert.alert_type,
                     "runbook": alert.runbook,
-                    "severity": alert.severity,
                     "data": alert.data
                 }
                 response = client.post("/api/v1/alerts", json=alert_data)
@@ -782,7 +779,6 @@ class TestGracefulShutdownBehavior:
         alert_data = {
             "alert_type": alert.alert_type,
             "runbook": alert.runbook,
-            "severity": alert.severity,
             "data": alert.data
         }
         
@@ -806,7 +802,6 @@ class TestGracefulShutdownBehavior:
         alert_data = {
             "alert_type": alert.alert_type,
             "runbook": alert.runbook,
-            "severity": alert.severity,
             "data": alert.data
         }
         

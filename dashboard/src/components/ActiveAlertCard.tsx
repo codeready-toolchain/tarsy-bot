@@ -4,10 +4,11 @@ import {
   CardContent,
   Typography,
   Box,
-
   Chip,
   IconButton,
   Tooltip,
+  Alert,
+  AlertTitle,
 } from '@mui/material';
 import {
   Error,
@@ -15,6 +16,7 @@ import {
   Refresh,
   Schedule,
   OpenInNew,
+  PauseCircle,
 } from '@mui/icons-material';
 import type { ActiveAlertCardProps } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
@@ -35,6 +37,12 @@ const getStatusChipConfig = (status: string) => {
         color: 'warning' as const,
         icon: <Schedule sx={{ fontSize: 16 }} />,
         label: getSessionStatusDisplayName(SESSION_STATUS.PENDING),
+      };
+    case SESSION_STATUS.PAUSED:
+      return {
+        color: 'warning' as const,
+        icon: <PauseCircle sx={{ fontSize: 16 }} />,
+        label: getSessionStatusDisplayName(SESSION_STATUS.PAUSED),
       };
     case SESSION_STATUS.FAILED:
       return {
@@ -191,17 +199,47 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
       <CardContent sx={{ pb: 2 }}>
         {/* Header with status and new tab icon */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-            <Chip
-              icon={statusConfig.icon}
-              label={statusConfig.label}
-              color={statusConfig.color}
-              size="small"
-              sx={{ fontWeight: 500 }}
-            />
-            <Typography variant="body2" color="text.secondary">
-              {session.agent_type}
-            </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Chip
+                icon={statusConfig.icon}
+                label={statusConfig.label}
+                color={statusConfig.color}
+                size="small"
+                sx={
+                  session.status === SESSION_STATUS.PAUSED
+                    ? {
+                        fontWeight: 600,
+                        backgroundColor: '#e65100',
+                        color: 'white',
+                        '& .MuiChip-icon': {
+                          color: 'white',
+                        },
+                        animation: 'pausedChipPulse 2s ease-in-out infinite !important',
+                        transition: 'none !important',
+                        transform: 'none !important',
+                        outline: 'none !important',
+                        boxShadow: 'none !important',
+                        '&:focus, &:focus-visible': {
+                          outline: 'none !important',
+                          boxShadow: 'none !important',
+                        },
+                        '@keyframes pausedChipPulse': {
+                          '0%, 100%': {
+                            backgroundColor: '#e65100',
+                          },
+                          '50%': {
+                            backgroundColor: '#ff9800',
+                          },
+                        },
+                      }
+                    : { fontWeight: 500 }
+                }
+              />
+              <Typography variant="body2" color="text.secondary">
+                {session.agent_type}
+              </Typography>
+            </Box>
           </Box>
           
           {/* New Tab Icon */}
@@ -221,6 +259,18 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
             </IconButton>
           </Tooltip>
         </Box>
+
+        {/* Pause Alert */}
+        {session.status === SESSION_STATUS.PAUSED && session.pause_metadata && (
+          <Alert 
+            severity="warning" 
+            icon={<PauseCircle />}
+            sx={{ mb: 2 }}
+          >
+            <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
+            {session.pause_metadata.message || 'Session is paused and awaiting action.'}
+          </Alert>
+        )}
 
         {/* Alert Type Title */}
         <Typography 

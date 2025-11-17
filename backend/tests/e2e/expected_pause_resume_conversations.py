@@ -1,0 +1,333 @@
+"""
+Expected conversation structures for pause/resume E2E tests.
+
+This module contains the expected LLM conversation message structures
+for the pause/resume workflow, demonstrating that conversation history
+is fully restored when resuming a paused session.
+"""
+
+# Expected conversation for resumed data-collection stage with multiple pause/resume cycles
+# This proves conversation history was restored correctly across multiple pause/resume cycles
+# Flow: Pause at iteration 2 → Resume → Pause at iteration 1 → Resume → Tool call → Final Answer
+# Total: 11 messages (1 system + 1 user + 9 assistant/observation messages)
+EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION = {
+    "messages": [
+        # Message 1: System message (same as original)
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Kubernetes Server Instructions
+
+For Kubernetes operations:
+- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
+  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
+  * Use this information to determine which context to target before performing any operations
+  * This prevents working on the wrong cluster and helps you understand the environment
+- Be careful with cluster-scoped resource listings in large clusters
+- Always prefer namespaced queries when possible
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
+
+## Custom Server Instructions
+
+Simple data collection server for testing - provides system information gathering tools
+
+## Agent-Specific Instructions
+
+You are a Kubernetes data collection specialist. Your role is to gather comprehensive 
+information about problematic resources using available kubectl tools.
+
+Focus on:
+- Namespace status and finalizers
+- Pod states and termination details  
+- Events showing errors and warnings
+- Resource dependencies that might block cleanup
+
+Be thorough but efficient. Collect all relevant data before stopping.
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on collecting additional data and providing stage-specific analysis for human operators to execute."""
+        },
+        # Message 2: Initial user question (restored from pause)
+        # This proves resume_paused_session() restored COMPLETE context
+        {
+            "role": "user",
+            "content": """Answer the following question using the available tools.
+
+Available tools:
+
+1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
+    **Parameters**:
+    - resource (optional, string): No description
+    - namespace (optional, string): No description
+    - name (optional, string): No description
+
+2. **kubernetes-server.kubectl_describe**: Describe Kubernetes resources
+    **Parameters**:
+    - resource (optional, string): No description
+    - namespace (optional, string): No description
+    - name (optional, string): No description
+
+Question: Investigate this test-kubernetes alert and provide stage-specific analysis.
+
+## Alert Details
+
+### Alert Metadata
+**Alert Type:** test-kubernetes
+**Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
+
+### Alert Data
+```json
+{
+  "namespace": "test-namespace",
+  "description": "Namespace stuck in Terminating state",
+  "cluster": "test-cluster",
+  "contact": "__MASKED_EMAIL__",
+  "labels": {
+    "env": "test",
+    "team": "platform"
+  },
+  "annotations": {
+    "finalizers": "kubernetes.io/pv-protection"
+  }
+}
+```
+
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
+# Mock Runbook
+Test runbook content
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+No previous stage data is available for this alert. This is the first stage of analysis.
+
+## Your Task: DATA-COLLECTION STAGE
+Use available tools to:
+1. Collect additional data relevant to this stage
+2. Analyze findings in the context of this specific stage
+3. Provide stage-specific insights and recommendations
+
+Your Final Answer should include both the data collected and your stage-specific analysis.
+
+Begin!"""
+        },
+        # Message 3: Assistant iteration 1 (restored from pause)
+        {
+            "role": "assistant",
+            "content": """Thought: I need to get namespace information to understand the issue.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
+        },
+        # Message 4: Observation 1 (restored from pause)
+        # Proves tool execution results were preserved
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "stuck-namespace   Terminating   45m"
+}"""
+        },
+        # Message 5: Assistant iteration 2 (restored from pause)
+        # Proves agent reasoning was preserved (references previous observation)
+        {
+            "role": "assistant",
+            "content": """Thought: I see the namespace is in Terminating state. I need more information to continue the analysis, but I've reached the iteration limit.
+Action: kubernetes-server.kubectl_describe
+Action Input: {"resource": "namespace", "name": "stuck-namespace"}"""
+        },
+        # Message 6: Observation 2 (restored from pause)
+        # Proves second tool execution result was preserved
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_describe: {
+  "result": "Name:         stuck-namespace\\nStatus:       Terminating\\nFinalizers:   [kubernetes.io/pvc-protection]\\n"
+}"""
+        },
+        # Message 7: Iteration 3 (after first resume, before second pause) - makes additional tool call
+        # This proves the agent continues its loop after resume, not just final answer
+        {
+            "role": "assistant",
+            "content": """Thought: I've seen the namespace is stuck with finalizers. Let me check for related events to understand what's happening.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "events", "namespace": "stuck-namespace"}"""
+        },
+        # Message 8: Observation 3 (after first resume, before second pause)
+        # Proves tool execution works correctly after resume
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "LAST SEEN   TYPE      REASON      OBJECT                MESSAGE\\n5m          Warning   FailedDelete namespace/stuck-namespace   Finalizers blocking deletion"
+}"""
+        },
+        # Message 9: Iteration 4 (after second resume) - continues ReAct loop with another tool call
+        # This proves the agent can do full ReAct loops even after second resume, not just Final Answer
+        {
+            "role": "assistant",
+            "content": """Thought: I have good information about the namespace and events. Let me check pods to see if any are still running.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "pods", "namespace": "stuck-namespace"}"""
+        },
+        # Message 10: Observation 4 (after second resume)
+        # Proves tool execution continues to work correctly after second resume
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "No resources found in stuck-namespace namespace."
+}"""
+        },
+        # Message 11: Iteration 5 (after second resume) - completes the stage with Final Answer
+        # This proves multiple pause/resume cycles work and agent can reference all observations
+        {
+            "role": "assistant",
+            "content": """Thought: I've gathered comprehensive information. No pods are running, and the namespace is stuck due to finalizers. I can now provide the data collection summary.
+
+Final Answer: **Data Collection Complete**
+
+Collected the following information:
+- Namespace: stuck-namespace is in Terminating state (45m)
+- Finalizers: kubernetes.io/pvc-protection is blocking deletion
+- Events: FailedDelete warning shows finalizers blocking deletion
+- Pods: No pods running in the namespace
+- Status: Namespace is stuck and cannot complete termination due to finalizers
+
+Data collection stage is now complete. The gathered information shows finalizers are preventing namespace deletion."""
+        }
+    ]
+}
+
+# Expected stage definitions for pause/resume flow with MULTIPLE pause/resume cycles
+# These prove that resume continues from where we paused, not from scratch
+# There is only ONE data-collection stage execution that gets reused across multiple pause/resume cycles
+EXPECTED_PAUSE_RESUME_STAGES = {
+    'data-collection': {
+        'llm_count': 5,  # 2 before first pause + 1 before second pause + 2 after second resume (1 tool call + 1 final answer)
+        'mcp_count': 10,  # Initial: 2 tool_list + 2 tool_call, First resume: 2 tool_list + 1 tool_call, Second resume: 2 tool_list + 1 tool_call
+        'expected_status': 'completed',  # Final status after completion
+        'expected_conversation': EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION,  # Verify conversation history was restored
+        'interactions': [
+            # Initial execution (before first pause at iteration 2)
+            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 80, 'total_tokens': 280},
+            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
+            {'type': 'llm', 'position': 2, 'success': True, 'input_tokens': 220, 'output_tokens': 90, 'total_tokens': 310},
+            {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe'},
+            # After first resume (before second pause at iteration 1 of resumed session)
+            {'type': 'mcp', 'position': 5, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'position': 6, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'llm', 'position': 3, 'success': True, 'input_tokens': 240, 'output_tokens': 100, 'total_tokens': 340},
+            {'type': 'mcp', 'position': 7, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
+            # After second resume (continues ReAct loop with tool call, then final answer)
+            {'type': 'mcp', 'position': 8, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'position': 9, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'llm', 'position': 4, 'success': True, 'input_tokens': 260, 'output_tokens': 100, 'total_tokens': 360},
+            {'type': 'mcp', 'position': 10, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
+            {'type': 'llm', 'position': 5, 'success': True, 'input_tokens': 280, 'output_tokens': 150, 'total_tokens': 430, 'interaction_type': 'final_analysis'},
+        ]
+    },
+    'verification': {
+        'llm_count': 1,
+        'mcp_count': 1,
+        'expected_status': 'completed',
+        'interactions': [
+            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 100, 'total_tokens': 300, 'interaction_type': 'final_analysis'},
+        ]
+    },
+    'analysis': {
+        'llm_count': 1,
+        'mcp_count': 0,
+        'expected_status': 'completed',
+        'interactions': [
+            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 250, 'output_tokens': 140, 'total_tokens': 390, 'interaction_type': 'final_analysis'},
+        ]
+    }
+}
+

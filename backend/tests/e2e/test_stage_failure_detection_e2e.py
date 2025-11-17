@@ -138,7 +138,7 @@ class TestStageFailureDetectionE2E:
                     print(f"✅ Session correctly marked as FAILED: {session_id}")
 
                     # Get session details with retry logic for robustness
-                    detail_data = E2ETestUtils.get_session_details(e2e_test_client, session_id, max_retries=5)
+                    detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id, max_retries=5)
                     stages = detail_data.get("stages", [])
                     assert len(stages) == 3, f"Expected 3 stages, got {len(stages)}"
 

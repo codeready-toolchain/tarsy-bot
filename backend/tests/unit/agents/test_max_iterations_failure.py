@@ -145,7 +145,9 @@ class TestReactControllerMaxIterationsFailure:
     
     @pytest.mark.asyncio
     async def test_max_iterations_with_last_interaction_successful(self, controller, sample_context, mock_llm_client):
-        """Test that no exception is raised when max iterations reached but last interaction succeeded."""
+        """Test that SessionPaused is raised when max iterations reached without final answer."""
+        from tarsy.agents.exceptions import SessionPaused
+        
         # Mock LLM to fail first, then succeed on last attempt
         call_count = 0
         async def mock_generate_with_final_success(conversation, session_id, stage_execution_id=None, **kwargs):
@@ -160,10 +162,12 @@ class TestReactControllerMaxIterationsFailure:
         
         mock_llm_client.generate_response.side_effect = mock_generate_with_final_success
         
-        # Should return timeout message, not raise exception
-        result = await controller.execute_analysis_loop(sample_context)
+        # Should raise SessionPaused exception at max iterations
+        with pytest.raises(SessionPaused) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
         
-        assert "Analysis incomplete: reached maximum iterations (2) without final answer" in result
+        assert "maximum iterations" in str(exc_info.value)
+        assert exc_info.value.iteration == 2
         assert mock_llm_client.generate_response.call_count == 2
     
     @pytest.mark.asyncio 

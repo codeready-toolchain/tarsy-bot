@@ -10,6 +10,8 @@ import {
   LinearProgress,
   Collapse,
   Divider,
+  Alert,
+  AlertTitle,
 } from '@mui/material';
 import {
   Error as ErrorIcon,
@@ -21,6 +23,7 @@ import {
   ExpandMore,
   ExpandLess,
   Link as LinkIcon,
+  PauseCircle,
 } from '@mui/icons-material';
 import type { ChainProgressCardProps, Session } from '../types';
 import { formatTimestamp, formatDuration, getCurrentTimestampUs, formatDurationMs } from '../utils/timestamp';
@@ -43,6 +46,12 @@ const getStatusChipConfig = (status: string) => {
         color: 'warning' as const,
         icon: <Schedule sx={{ fontSize: 16 }} />,
         label: getSessionStatusDisplayName(SESSION_STATUS.PENDING),
+      };
+    case SESSION_STATUS.PAUSED:
+      return {
+        color: 'warning' as const,
+        icon: <PauseCircle sx={{ fontSize: 16 }} />,
+        label: getSessionStatusDisplayName(SESSION_STATUS.PAUSED),
       };
     case SESSION_STATUS.FAILED:
       return {
@@ -67,12 +76,6 @@ const getStatusChipConfig = (status: string) => {
         color: 'default' as const,
         icon: <Warning sx={{ fontSize: 16 }} />,
         label: getSessionStatusDisplayName(SESSION_STATUS.CANCELLED),
-      };
-    case CHAIN_OVERALL_STATUS.PARTIAL:
-      return {
-        color: 'warning' as const,
-        icon: <Warning sx={{ fontSize: 16 }} />,
-        label: 'Partial',
       };
     default:
       return {
@@ -192,40 +195,83 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
             </Typography>
           </Box>
           
-          <Box display="flex" alignItems="center" gap={1}>
-            <Chip
-              icon={statusConfig.icon}
-              label={statusConfig.label}
-              color={statusConfig.color}
-              size="small"
-              variant="filled"
-            />
-            <Tooltip title="View Details">
-              <IconButton 
-                size="small" 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCardClick();
-                }}
-                aria-label="View details"
-                sx={{ p: 0.5 }}
-              >
-                <OpenInNew fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            {(isChainSession && totalStages > 0) && (
-              <Tooltip title={expanded ? "Collapse stages" : "Expand stages"}>
+          <Box display="flex" flexDirection="column" gap={0.5} alignItems="flex-start">
+            <Box display="flex" alignItems="center" gap={1}>
+              <Chip
+                icon={statusConfig.icon}
+                label={statusConfig.label}
+                color={statusConfig.color}
+                size="small"
+                variant="filled"
+                sx={
+                  session.status === SESSION_STATUS.PAUSED
+                    ? {
+                        fontWeight: 600,
+                        backgroundColor: '#e65100',
+                        color: 'white',
+                        '& .MuiChip-icon': {
+                          color: 'white',
+                        },
+                        animation: 'pausedChipPulse 2s ease-in-out infinite !important',
+                        transition: 'none !important',
+                        transform: 'none !important',
+                        outline: 'none !important',
+                        boxShadow: 'none !important',
+                        '&:focus, &:focus-visible': {
+                          outline: 'none !important',
+                          boxShadow: 'none !important',
+                        },
+                        '@keyframes pausedChipPulse': {
+                          '0%, 100%': {
+                            backgroundColor: '#e65100',
+                          },
+                          '50%': {
+                            backgroundColor: '#ff9800',
+                          },
+                        },
+                      }
+                    : {}
+                }
+              />
+              <Tooltip title="View Details">
                 <IconButton 
                   size="small" 
-                  onClick={handleExpandClick}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCardClick();
+                  }}
+                  aria-label="View details"
                   sx={{ p: 0.5 }}
                 >
-                  {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+                  <OpenInNew fontSize="small" />
                 </IconButton>
               </Tooltip>
-            )}
+              {(isChainSession && totalStages > 0) && (
+                <Tooltip title={expanded ? "Collapse stages" : "Expand stages"}>
+                  <IconButton 
+                    size="small" 
+                    onClick={handleExpandClick}
+                    sx={{ p: 0.5 }}
+                  >
+                    {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Box>
           </Box>
         </Box>
+
+        {/* Pause Alert */}
+        {session.status === SESSION_STATUS.PAUSED && session.pause_metadata && (
+          <Alert 
+            severity="warning" 
+            icon={<PauseCircle />}
+            sx={{ mb: 2 }}
+          >
+            <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
+            {session.pause_metadata.message || 'Session is paused and awaiting action.'}
+          </Alert>
+        )}
 
         {/* Chain progress overview */}
         {isChainSession && totalStages > 0 && (

@@ -26,9 +26,9 @@ class TestProcessingAlertTransformation:
         alert = Alert(
             alert_type="kubernetes",
             runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-            severity="critical",
             timestamp=123456789,
             data={
+                "severity": "critical",
                 "namespace": "prod",
                 "pod": "api-123"
             }
@@ -36,14 +36,15 @@ class TestProcessingAlertTransformation:
         
         processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
-        # Metadata correctly extracted
+        # Metadata correctly extracted (severity from data dict)
         assert processing_alert.alert_type == "kubernetes"
         assert processing_alert.severity == "critical"
         assert processing_alert.timestamp == 123456789
         assert processing_alert.runbook_url == "https://github.com/company/runbooks/blob/main/k8s.md"
         
-        # Client data pristine
+        # Client data pristine (severity remains in data)
         assert processing_alert.alert_data == {
+            "severity": "critical",
             "namespace": "prod",
             "pod": "api-123"
         }
@@ -163,11 +164,10 @@ class TestProcessingAlertTransformation:
 class TestNameCollisionPrevention:
     """Test that EP-0021 prevents name collisions between client data and our metadata."""
     
-    def test_client_severity_does_not_collide_with_metadata_severity(self):
-        """Test that client can have their own 'severity' field without collision."""
+    def test_client_severity_extracted_from_data_and_preserved(self):
+        """Test that severity is extracted from client data and remains there (no removal)."""
         alert = Alert(
             alert_type="kubernetes",
-            severity="critical",  # Our metadata
             data={
                 "severity": "INFO",  # Client's field
                 "message": "Test alert"
@@ -176,10 +176,10 @@ class TestNameCollisionPrevention:
         
         processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
         
-        # Our metadata has our value
-        assert processing_alert.severity == "critical"
+        # Metadata extracted from client data
+        assert processing_alert.severity == "INFO"
         
-        # Client's data has their value (no collision!)
+        # Client's data still has the field (preserved, not removed)
         assert processing_alert.alert_data["severity"] == "INFO"
     
     def test_client_timestamp_does_not_collide_with_metadata_timestamp(self):
@@ -212,7 +212,6 @@ class TestDataPreservationAndPurity:
         """Test that client data does NOT contain any of our internal metadata."""
         alert = Alert(
             alert_type="kubernetes",
-            severity="critical",
             runbook="https://example.com/runbook",
             timestamp=123456789,
             data={
@@ -229,21 +228,21 @@ class TestDataPreservationAndPurity:
             "namespace": "prod"
         }
         
-        # Should NOT contain any of our metadata fields
+        # Should NOT contain any of our metadata fields that weren't in their data
         assert "alert_type" not in processing_alert.alert_data
-        assert "severity" not in processing_alert.alert_data
+        assert "severity" not in processing_alert.alert_data  # They didn't send it, so not there
         assert "runbook" not in processing_alert.alert_data
         assert "timestamp" not in processing_alert.alert_data
         assert "runbook_url" not in processing_alert.alert_data
     
-    def test_client_data_with_conflicting_names_preserved_pristine(self):
-        """Test that even when client uses our field names, their data stays pristine."""
+    def test_client_data_with_our_field_names_preserved_pristine(self):
+        """Test that when client uses 'severity' or 'environment', their data stays pristine."""
         alert = Alert(
             alert_type="kubernetes",
-            severity="critical",
             data={
                 "namespace": "prod",
-                "severity": "user-severity",  # Client's severity (different!)
+                "severity": "user-severity",  # Client's severity
+                "environment": "staging",  # Client's environment
                 "custom_field": "value",
                 "nested": {
                     "deeply": {
@@ -260,6 +259,7 @@ class TestDataPreservationAndPurity:
         assert processing_alert.alert_data == {
             "namespace": "prod",
             "severity": "user-severity",  # ← PRESERVED!
+            "environment": "staging",  # ← PRESERVED!
             "custom_field": "value",
             "nested": {
                 "deeply": {
@@ -269,5 +269,6 @@ class TestDataPreservationAndPurity:
             "array": [1, 2, 3]
         }
         
-        # Our metadata separate
-        assert processing_alert.severity == "critical"  # Our value, not theirs
+        # Metadata extracted from their data (same values)
+        assert processing_alert.severity == "user-severity"  # Extracted from data
+        assert processing_alert.environment == "staging"  # Extracted from data

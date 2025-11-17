@@ -105,6 +105,28 @@ async def handle_cancel_request(event: dict) -> None:
                 # - Publishing session.cancelled event
             else:
                 logger.debug(f"Session {session_id} not found on this pod")
+                
+                # If session is CANCELING but has no active task, it needs cancellation completion
+                # This handles sessions that were PAUSED when cancellation was requested
+                from tarsy.services.history_service import get_history_service
+                from tarsy.models.constants import AlertSessionStatus
+                from tarsy.services.events.event_helpers import publish_session_cancelled
+                
+                history_service = get_history_service()
+                if history_service:
+                    session = history_service.get_session(session_id)
+                    # Complete the cancellation: CANCELING → CANCELLED
+                    # Sessions in PAUSED state transition to CANCELING when cancel is requested,
+                    # but have no active task to handle the completion
+                    if session and session.status == AlertSessionStatus.CANCELING.value:
+                        logger.info(f"Completing cancellation for non-active session {session_id} (was likely PAUSED)")
+                        # Update session status to CANCELLED
+                        history_service.update_session_status(
+                            session_id,
+                            AlertSessionStatus.CANCELLED.value
+                        )
+                        # Publish cancellation event
+                        await publish_session_cancelled(session_id)
         
         # Handle chat execution cancellation
         if stage_execution_id:

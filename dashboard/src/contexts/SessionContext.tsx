@@ -160,19 +160,26 @@ export function SessionProvider({ children }: SessionProviderProps) {
         const stagesChanged = JSON.stringify(prevSession.stages) !== JSON.stringify(sessionData.stages);
         const analysisChanged = prevSession.final_analysis !== sessionData.final_analysis;
         const statusChanged = prevSession.status !== sessionData.status;
+        const pauseMetadataChanged = JSON.stringify(prevSession.pause_metadata) !== JSON.stringify(sessionData.pause_metadata);
         
-        if (!stagesChanged && !analysisChanged && !statusChanged) {
+        if (!stagesChanged && !analysisChanged && !statusChanged && !pauseMetadataChanged) {
           console.log('📊 [SessionContext] No stage changes detected, skipping update');
           return prevSession;
         }
         
-        console.log('📊 [SessionContext] Updating session stages and analysis:', { stagesChanged, analysisChanged, statusChanged });
+        console.log('📊 [SessionContext] Updating session stages and analysis:', { 
+          stagesChanged, 
+          analysisChanged, 
+          statusChanged,
+          pauseMetadataChanged 
+        });
         return {
           ...prevSession,
           stages: sessionData.stages,
           final_analysis: sessionData.final_analysis,
           status: sessionData.status as typeof prevSession.status,
           error_message: sessionData.error_message,
+          pause_metadata: sessionData.pause_metadata,
           // Update token usage fields from full session data
           session_input_tokens: sessionData.session_input_tokens ?? prevSession.session_input_tokens,
           session_output_tokens: sessionData.session_output_tokens ?? prevSession.session_output_tokens,

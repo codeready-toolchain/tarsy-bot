@@ -4,6 +4,7 @@ import { SessionProvider } from '../contexts/SessionContext';
 import SessionDetailPageBase from './SessionDetailPageBase';
 import ConversationTimeline from './ConversationTimeline';
 import TechnicalTimeline from './TechnicalTimeline';
+import { SESSION_STATUS } from '../utils/statusConstants';
 import type { DetailedSession } from '../types';
 
 /**
@@ -37,7 +38,7 @@ function SessionDetailWrapper() {
   // Timeline component factory based on current view
   const renderTimeline = (session: DetailedSession, autoScroll?: boolean) => {
     // Use provided autoScroll preference, or default to enabled for live sessions
-    const shouldAutoScroll = autoScroll !== undefined ? autoScroll : (session.status === 'in_progress' || session.status === 'pending');
+    const shouldAutoScroll = autoScroll !== undefined ? autoScroll : (session.status === SESSION_STATUS.IN_PROGRESS || session.status === SESSION_STATUS.PENDING);
     
     if (currentView === 'technical') {
       return <TechnicalTimeline session={session} autoScroll={shouldAutoScroll} />;

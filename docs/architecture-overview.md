@@ -6,6 +6,8 @@
 
 Tarsy is an **AI-powered incident analysis system** that processes alerts through sequential chains of specialized agents. When an alert comes in, Tarsy automatically selects the appropriate chain, executes multiple stages where agents build upon each other's work, and provides comprehensive analysis and recommendations for engineers to act upon. This chain-based approach enables complex multi-stage workflows for thorough incident investigation and analysis.
 
+**Pause & Resume**: Long-running investigations that reach iteration limits automatically pause, preserving full conversation state and allowing engineers to resume with one click. The system continues exactly where it left off, maintaining complete context from the paused stage.
+
 After an investigation completes, engineers can continue the conversation through **follow-up chat** - asking clarifying questions, requesting deeper analysis, or exploring different aspects of the incident. The chat agent maintains full access to the investigation context and tools, enabling continued exploration without restarting the analysis pipeline.
 
 ## Core Concept
@@ -30,6 +32,8 @@ graph LR
 - Receives alerts from monitoring systems
 - Determines which sequential chain should handle each alert type
 - Manages the overall chain execution workflow with stage-by-stage processing
+- Handles automatic pause when iteration limits are reached during stage execution
+- Supports resume operations to continue paused investigations from their exact state
 
 ### 2. Sequential Agent Chains
 - **Multi-stage workflows** where specialized agents build upon each other's work
@@ -56,6 +60,7 @@ graph LR
 - **Real-time LLM streaming** - see agent thinking process as it happens (Thought and Final Answer sections)
 - Complete audit trail of what each stage and agent did and why
 - Stage execution tracking with detailed performance metrics
+- **Pause/Resume UI** - prominent visual indicators for paused sessions with one-click resume functionality
 - **MCP Health Monitoring** - background service monitors MCP server health, automatically attempts recovery, and displays warnings for unavailable servers
 - SREs can observe and learn from multi-stage decision processes
 
@@ -129,6 +134,16 @@ sequenceDiagram
     
     A->>A: Process final analysis for return
 ```
+
+### Pause & Resume Flow
+
+When a stage reaches its maximum iteration limit, the system automatically pauses if the last LLM interaction was successful. The complete conversation state and context are preserved in the database. Engineers can resume processing with one click via `POST /api/v1/history/sessions/{session_id}/resume`, continuing from exactly where it paused. Sessions with failed last interactions are marked as failed, not paused.
+
+**Pause Metadata Fields:** When a session pauses, the following metadata is available in the UI and API responses:
+- `reason`: Why the session paused (currently `"max_iterations_reached"`)
+- `current_iteration`: The iteration count when paused (optional, included for iteration-based pauses)
+- `message`: User-friendly explanation of the pause (e.g., "Paused after 15 iterations - resume to continue")
+- `paused_at_us`: Timestamp when session paused (microseconds since epoch)
 
 ### Follow-up Chat
 

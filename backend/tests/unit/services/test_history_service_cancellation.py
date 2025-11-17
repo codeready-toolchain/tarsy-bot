@@ -91,6 +91,7 @@ class TestHistoryServiceCancellation:
         [
             (AlertSessionStatus.PENDING.value, True, AlertSessionStatus.CANCELING.value),
             (AlertSessionStatus.IN_PROGRESS.value, True, AlertSessionStatus.CANCELING.value),
+            (AlertSessionStatus.PAUSED.value, True, AlertSessionStatus.CANCELING.value),  # Can cancel paused sessions
             (AlertSessionStatus.CANCELING.value, True, AlertSessionStatus.CANCELING.value),  # Idempotent
             (AlertSessionStatus.COMPLETED.value, False, AlertSessionStatus.COMPLETED.value),
             (AlertSessionStatus.FAILED.value, False, AlertSessionStatus.FAILED.value),
