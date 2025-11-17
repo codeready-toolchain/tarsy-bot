@@ -333,7 +333,7 @@ openshift-urls: openshift-check ## Show OpenShift application URLs
 
 # Cleanup targets
 .PHONY: openshift-clean
-openshift-clean: openshift-check openshift-check-config-files ## Delete all resources from OpenShift
+openshift-clean: openshift-check ## Delete all resources from OpenShift
 	@echo -e "$(YELLOW)⚠️  This will delete all Tarsy resources from OpenShift!$(NC)"
 	@printf "Are you sure? [y/N] "; \
 	read REPLY; \
