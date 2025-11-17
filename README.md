@@ -115,6 +115,7 @@ This deployment is designed for development and testing environments, serving as
 - **📊 Comprehensive Audit Trail**: Complete visibility into chain processing workflows with stage-level timeline reconstruction
 - **🖥️ SRE Dashboard**: Real-time monitoring with live LLM streaming and interactive chain timeline visualization
 - **💬 Follow-up Chat**: Continue investigating after sessions complete - ask clarifying questions, request deeper analysis, or explore different aspects with full context and tool access
+- **⏸️ Pause & Resume**: Long-running investigations automatically pause at iteration limits and can be resumed with one click - preserves full conversation state and continues exactly where it left off
 - **🔒 Data Masking**: Hybrid masking system combining code-based structural analysis (Kubernetes Secrets) with regex patterns (API keys, passwords, certificates, emails, SSH keys) to automatically protect sensitive data in MCP responses and alert payloads
 
 ## Architecture
@@ -129,9 +130,10 @@ Tarsy uses an AI-powered chain-based architecture where alerts flow through sequ
 2. **Orchestrator selects** appropriate agent chain based on alert type  
 3. **Runbook downloaded** automatically from GitHub for chain guidance
 4. **Sequential stages execute** where each agent builds upon previous stage data using AI to select and execute domain-specific tools
-5. **Comprehensive multi-stage analysis** provided to engineers with actionable recommendations
-6. **Follow-up chat available** after investigation completes - engineers can ask questions, request deeper analysis, or explore different aspects
-7. **Full audit trail** captured with stage-level detail for monitoring and continuous improvement
+5. **Automatic pause** if investigation reaches iteration limits - preserves full state and allows manual resume with one click
+6. **Comprehensive multi-stage analysis** provided to engineers with actionable recommendations
+7. **Follow-up chat available** after investigation completes - engineers can ask questions, request more comprehensive analysis, or explore different aspects
+8. **Full audit trail** captured with stage-level detail for monitoring and continuous improvement
 
 ```mermaid
 sequenceDiagram
@@ -260,6 +262,8 @@ export KUBECONFIG=/path/to/your/kubeconfig
 ### History API
 - `GET /api/v1/history/sessions` - List alert processing sessions with filtering and pagination
 - `GET /api/v1/history/sessions/{session_id}` - Get detailed session with chronological timeline
+- `POST /api/v1/history/sessions/{session_id}/resume` - Resume a paused session from where it left off. Session must be in `PAUSED` state
+- `POST /api/v1/history/sessions/{session_id}/cancel` - Cancel an active or paused session. Session must not be in a terminal state (COMPLETED, FAILED, CANCELLED)
 
 ### Chat API
 - `POST /api/v1/sessions/{session_id}/chat` - Create follow-up chat for a completed session

@@ -10,6 +10,7 @@
 export const SESSION_STATUS = {
   PENDING: 'pending',
   IN_PROGRESS: 'in_progress',
+  PAUSED: 'paused',
   CANCELING: 'canceling',
   COMPLETED: 'completed',
   FAILED: 'failed',
@@ -25,6 +26,7 @@ export type SessionStatus = typeof SESSION_STATUS[keyof typeof SESSION_STATUS];
 export const STAGE_STATUS = {
   PENDING: 'pending',
   ACTIVE: 'active',
+  PAUSED: 'paused',
   COMPLETED: 'completed',
   FAILED: 'failed',
 } as const;
@@ -52,9 +54,9 @@ export type AlertProcessingStatus = typeof ALERT_PROCESSING_STATUS[keyof typeof 
 export const CHAIN_OVERALL_STATUS = {
   PENDING: 'pending',
   PROCESSING: 'processing',
+  PAUSED: 'paused',
   COMPLETED: 'completed',
   FAILED: 'failed',
-  PARTIAL: 'partial',
 } as const;
 
 export type ChainOverallStatus = typeof CHAIN_OVERALL_STATUS[keyof typeof CHAIN_OVERALL_STATUS];
@@ -84,6 +86,7 @@ export const TERMINAL_SESSION_STATUSES: SessionStatus[] = [
 export const ACTIVE_SESSION_STATUSES: SessionStatus[] = [
   SESSION_STATUS.IN_PROGRESS,
   SESSION_STATUS.PENDING,
+  SESSION_STATUS.PAUSED,
   SESSION_STATUS.CANCELING,
 ];
 
@@ -100,6 +103,7 @@ export const TERMINAL_STAGE_STATUSES: StageStatus[] = [
 export const ACTIVE_STAGE_STATUSES: StageStatus[] = [
   STAGE_STATUS.PENDING,
   STAGE_STATUS.ACTIVE,
+  STAGE_STATUS.PAUSED,
 ];
 
 export const ALL_STAGE_STATUSES: StageStatus[] = [
@@ -127,11 +131,13 @@ export function isActiveSessionStatus(status: string): boolean {
 
 /**
  * Check if a session can be cancelled
+ * Includes all active statuses that haven't reached terminal state
  */
 export function canCancelSession(status: string): boolean {
   return (
     status === SESSION_STATUS.PENDING ||
     status === SESSION_STATUS.IN_PROGRESS ||
+    status === SESSION_STATUS.PAUSED ||
     status === SESSION_STATUS.CANCELING
   );
 }
@@ -190,6 +196,8 @@ export function getSessionStatusDisplayName(status: string): string {
       return 'In Progress';
     case SESSION_STATUS.PENDING:
       return 'Pending';
+    case SESSION_STATUS.PAUSED:
+      return 'Paused';
     case SESSION_STATUS.CANCELING:
       return 'Canceling';
     default:
@@ -210,6 +218,8 @@ export function getStageStatusDisplayName(status: string): string {
       return 'Active';
     case STAGE_STATUS.PENDING:
       return 'Pending';
+    case STAGE_STATUS.PAUSED:
+      return 'Paused';
     default:
       return status;
   }
@@ -257,6 +267,8 @@ export function getSessionStatusChipColor(
       return 'info';
     case SESSION_STATUS.PENDING:
       return 'warning';
+    case SESSION_STATUS.PAUSED:
+      return 'warning';
     case SESSION_STATUS.CANCELING:
       return 'warning';
     default:
@@ -282,6 +294,8 @@ export function getSessionStatusProgressColor(
       return 'info';
     case SESSION_STATUS.PENDING:
       return 'warning';
+    case SESSION_STATUS.PAUSED:
+      return 'warning';
     case SESSION_STATUS.CANCELING:
       return 'warning';
     default:
@@ -304,6 +318,8 @@ export function getStageStatusChipColor(
       return 'primary';
     case STAGE_STATUS.PENDING:
       return 'warning';
+    case STAGE_STATUS.PAUSED:
+      return 'warning';
     default:
       return 'default';
   }
@@ -323,6 +339,8 @@ export function getStageStatusProgressColor(
     case STAGE_STATUS.ACTIVE:
       return 'primary';
     case STAGE_STATUS.PENDING:
+      return 'warning';
+    case STAGE_STATUS.PAUSED:
       return 'warning';
     default:
       return 'inherit';
@@ -382,7 +400,7 @@ export function getChainOverallStatusChipColor(
       return 'success';
     case CHAIN_OVERALL_STATUS.FAILED:
       return 'error';
-    case CHAIN_OVERALL_STATUS.PARTIAL:
+    case CHAIN_OVERALL_STATUS.PAUSED:
       return 'warning';
     case CHAIN_OVERALL_STATUS.PROCESSING:
       return 'info';
@@ -392,4 +410,3 @@ export function getChainOverallStatusChipColor(
       return 'default';
   }
 }
-

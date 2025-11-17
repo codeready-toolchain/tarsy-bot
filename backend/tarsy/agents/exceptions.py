@@ -5,7 +5,10 @@ Provides a consistent exception hierarchy for better error handling,
 recovery strategies, and debugging throughout the agent system.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tarsy.models.unified_interactions import LLMConversation
 
 
 class AgentError(Exception):
@@ -36,9 +39,6 @@ class AgentError(Exception):
             "context": self.context,
             "recoverable": self.recoverable
         }
-
-
-
 
 
 class ToolSelectionError(AgentError):
@@ -160,6 +160,31 @@ class MaxIterationsFailureError(AgentError):
         result["max_iterations"] = self.max_iterations
         return result
 
+
+class SessionPaused(AgentError):
+    """
+    Control flow signal when session is paused at max iterations.
+    
+    Not an error condition, but a normal pause state that requires user action to resume.
+    Recoverable as processing can continue after resume.
+    """
+    
+    def __init__(
+        self, 
+        message: str, 
+        iteration: int, 
+        conversation: Optional['LLMConversation'] = None,
+        context: Optional[Dict[str, Any]] = None
+    ):
+        super().__init__(message, context, recoverable=True)
+        self.iteration = iteration
+        self.conversation = conversation  # Full conversation history for resume
+        
+    def to_dict(self) -> Dict[str, Any]:
+        result = super().to_dict()
+        result["iteration"] = self.iteration
+        # Don't include conversation in to_dict - it's for internal use only
+        return result
 
 
 # Recovery strategies

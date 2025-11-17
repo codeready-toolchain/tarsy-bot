@@ -91,9 +91,8 @@ sequenceDiagram
 class Alert(BaseModel):
     alert_type: Optional[str]          # Optional - determines chain selection (uses default if not specified)
     runbook: Optional[str]             # Optional - GitHub runbook URL (uses built-in default if not provided)
+    timestamp: Optional[int]           # Optional - defaults to current time (microseconds)
     data: Dict[str, Any]               # Flexible JSON payload
-    severity: Optional[str]            # Defaults to "warning"
-    timestamp: Optional[int]           # Defaults to current time (microseconds)
     mcp: Optional[MCPSelectionConfig]  # Optional - override default agent MCP server configuration
 ```
 
@@ -406,6 +405,8 @@ class ProcessingAlert(BaseModel):
 
 Agents are specialized AI-powered components that analyze alerts using domain expertise and configurable reasoning strategies. The system supports both hardcoded agents (like KubernetesAgent) and YAML-configured agents.
 
+**Pause & Resume Support**: Agents automatically pause when reaching iteration limits (configurable via `max_llm_mcp_iterations`). The complete conversation state, stage context, and processing metadata are preserved, allowing engineers to manually resume processing from the exact point where it paused. Sessions are marked as "paused" (recoverable) only if the last LLM interaction succeeded; otherwise, they fail.
+
 #### Agent Framework Architecture
 
 ```mermaid
@@ -518,6 +519,63 @@ final_instructions = (
 - **Dependency injection** for LLM client, MCP client, registries
 - **Strategy configuration** per stage
 - **Both hardcoded and configured agent support**
+
+#### Pause & Resume Functionality
+
+**Purpose**: Handle long-running investigations gracefully without data loss
+
+When agents reach their iteration limit (`max_llm_mcp_iterations`, default 30) during ReAct processing:
+
+**Automatic Pause Conditions**:
+1. **Max iterations reached** during any ReAct-based stage execution
+2. **Last LLM interaction successful** - returned valid response (not error/timeout)
+3. **Session status** changes to "paused" with metadata capture
+
+**Pause Metadata** (`backend/tarsy/models/pause_metadata.py`):
+```python
+class PauseMetadata(BaseModel):
+    reason: PauseReason              # "max_iterations_reached"
+    current_iteration: int           # Iteration count when paused
+    message: str                     # User-friendly explanation
+    paused_at_us: int               # Timestamp (microseconds)
+```
+
+**State Preservation**:
+- **LLM conversation history** - complete message list with roles and content
+- **Stage execution context** - current stage name, execution ID, accumulated data
+- **Processing metadata** - alert data, chain definition, MCP configuration
+- **Database storage** - `alert_sessions.pause_metadata` (JSON) and stage execution state
+
+**Resume Process** (`POST /api/v1/history/sessions/{session_id}/resume`):
+1. **Validate session** exists and has status "paused"
+2. **Reconstruct ChainContext** from database (alert data, chain definition, stage outputs)
+3. **Restore LLM conversation** from `paused_conversation_state` in stage execution
+4. **Reinitialize MCP client** with same server configuration
+5. **Continue execution** from paused iteration with full context
+6. **Session status** updates to "active", processing continues
+
+**Failure Distinction**:
+- **Paused**: Last interaction successful → recoverable, manual resume required.
+- **Failed**: Last interaction failed at max iterations → non-recoverable, marked as failed.
+
+**Dashboard Integration**:
+- **Prominent visual indicators** for paused sessions (warning alert with pause reason)
+- **One-click resume button** in session header and detail page
+- **Real-time status updates** via WebSocket when session resumes
+- **Pause metadata display** showing iteration count and pause message
+
+**Configuration**:
+```bash
+# backend/.env
+MAX_LLM_MCP_ITERATIONS=30  # Default: 30 iterations before pause
+```
+
+**📍 Implementation**:
+- **Pause exception**: `backend/tarsy/agents/exceptions.py` - `SessionPaused` exception with conversation state
+- **Iteration controller**: `backend/tarsy/agents/iteration_controllers/base_controller.py` - automatic pause check at max iterations
+- **Resume service**: `backend/tarsy/services/alert_service.py` - `resume_paused_session()` method
+- **Resume endpoint**: `backend/tarsy/controllers/history_controller.py` - `POST /sessions/{id}/resume`
+- **Database models**: `backend/tarsy/models/db_models.py` - `pause_metadata` field in `AlertSession`
 
 ### 5. MCP Integration & Tool Management
 **Purpose**: External tool server integration and tool orchestration  
@@ -1261,6 +1319,8 @@ class DetailedSession(BaseModel):
 - **`GET /api/v1/history/sessions`** - Paginated session list with filtering
 - **`GET /api/v1/history/sessions/{id}`** - Detailed session with complete timeline  
 - **`GET /api/v1/history/active-sessions`** - Currently processing sessions
+- **`POST /api/v1/history/sessions/{id}/resume`** - Resume a paused session from where it left off
+- **`POST /api/v1/history/sessions/{id}/cancel`** - Cancel an active or paused session
 - **`GET /api/v1/history/health`** - History service health check
 
 **Advanced Filtering Support**:

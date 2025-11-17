@@ -128,9 +128,9 @@ class TestHistoryServiceIntegration:
         """Create sample alert for testing."""
         return Alert(
             alert_type="NamespaceTerminating",
-            severity="high",
             runbook="namespace-terminating.md",
             data={
+                "severity": "high",
                 "environment": "production",
                 "cluster": "k8s-prod",
                 "namespace": "stuck-namespace",
@@ -197,7 +197,7 @@ class TestHistoryServiceIntegration:
         from tarsy.models.alert import ProcessingAlert
         chain_context.processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            severity=sample_alert.severity or "warning",
+            severity=sample_alert.data.get('severity', 'warning'),
             timestamp=chain_context.processing_alert.timestamp,
             environment=sample_alert.data.get('environment', 'production'),
             runbook_url=sample_alert.runbook,
@@ -492,7 +492,7 @@ class TestHistoryServiceIntegration:
         from tarsy.models.alert import ProcessingAlert
         chain_context.processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            severity=sample_alert.severity or "warning",
+            severity=sample_alert.data.get('severity', 'warning'),
             timestamp=chain_context.processing_alert.timestamp,
             environment=sample_alert.data.get('environment', 'production'),
             runbook_url=sample_alert.runbook,
@@ -551,7 +551,7 @@ class TestHistoryServiceIntegration:
         from tarsy.models.alert import ProcessingAlert
         chain_context.processing_alert = ProcessingAlert(
             alert_type=sample_alert.alert_type,
-            severity=sample_alert.severity or "warning",
+            severity=sample_alert.data.get('severity', 'warning'),
             timestamp=chain_context.processing_alert.timestamp,
             environment=sample_alert.data.get('environment', 'production'),
             runbook_url=sample_alert.runbook,
@@ -629,8 +629,15 @@ class TestAlertServiceHistoryIntegration:
             final_analysis="Test analysis with actions taken and recommendations"
         )
         
-        # Mock the chain_registry - this is where get_chain_for_alert_type lives  
-        service.chain_registry.get_chain_for_alert_type = Mock(return_value=Mock(chain_id="kubernetes-chain", stages=[Mock(name="analysis", agent="KubernetesAgent")]))
+        # Mock the chain_registry - this is where get_chain_for_alert_type lives
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        mock_chain = ChainConfigModel(
+            chain_id="kubernetes-chain",
+            alert_types=["NamespaceTerminating"],
+            stages=[ChainStageConfigModel(name="analysis", agent="KubernetesAgent")],
+            description="Test chain"
+        )
+        service.chain_registry.get_chain_for_alert_type = Mock(return_value=mock_chain)
         
         # Mock agent_factory to return our mock agent
         service.agent_factory = Mock()
@@ -643,7 +650,18 @@ class TestAlertServiceHistoryIntegration:
         mock_history_service.update_session_status.return_value = True
         mock_history_service.start_session_processing = AsyncMock(return_value=True)
         mock_history_service.record_session_interaction = AsyncMock(return_value=True)
+        mock_history_service.get_stage_executions = AsyncMock(return_value=[])
+        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
+        mock_history_service.update_session_current_stage = AsyncMock()
         service.history_service = mock_history_service
+        
+        # Mock stage execution helper methods
+        mock_agent.set_current_stage_execution_id = Mock()
+        service._update_session_current_stage = AsyncMock()
+        service._create_stage_execution = AsyncMock(return_value="stage-exec-123")
+        service._update_stage_execution_started = AsyncMock()
+        service._update_stage_execution_completed = AsyncMock()
+        service._update_stage_execution_failed = AsyncMock()
         
         return service
     
@@ -652,9 +670,9 @@ class TestAlertServiceHistoryIntegration:
         """Create sample alert."""
         return Alert(
             alert_type="NamespaceTerminating",
-            severity="high",
             runbook="namespace-terminating.md",
             data={
+                "severity": "high",
                 "environment": "production",
                 "cluster": "k8s-prod",
                 "namespace": "stuck-namespace",
@@ -699,6 +717,21 @@ class TestAlertServiceHistoryIntegration:
         statuses = [call[1]["status"] for call in status_calls]
         assert "in_progress" in statuses
         assert "completed" in statuses
+        
+        # Verify stage execution flow - lock in expected chain execution behavior
+        # Stage execution should be created for the chain stage
+        alert_service_with_history._create_stage_execution.assert_called()
+        assert alert_service_with_history._create_stage_execution.call_count >= 1
+        
+        # Stage execution should be marked as completed (not failed)
+        alert_service_with_history._update_stage_execution_completed.assert_called()
+        alert_service_with_history._update_stage_execution_failed.assert_not_called()
+        
+        # Verify current stage tracking - ensures stage progression is properly recorded
+        alert_service_with_history._update_session_current_stage.assert_called()
+        # Verify agent received the stage execution ID for context tracking
+        mock_agent = alert_service_with_history.agent_factory.get_agent()
+        mock_agent.set_current_stage_execution_id.assert_called()
     
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -718,7 +751,7 @@ class TestAlertServiceHistoryIntegration:
         # Verify error was handled
         assert result is not None
         # The result is a formatted string from _format_error_response, not a dict  
-        assert "Chain execution failed" in result  # Chain architecture error format
+        assert "Chain processing failed" in result or "Agent processing failed" in result  # Chain architecture error format
         
         # Verify history service tracked the error
         history_service = alert_service_with_history.history_service
@@ -734,7 +767,16 @@ class TestAlertServiceHistoryIntegration:
         # Should have recorded error message
         error_calls = [call for call in status_calls if call[1].get("error_message")]
         assert len(error_calls) > 0
-        assert "Chain execution failed" in error_calls[0][1]["error_message"]  # Chain architecture error format
+        assert "Chain processing failed" in error_calls[0][1]["error_message"] or "Agent processing failed" in error_calls[0][1]["error_message"]  # Chain architecture error format
+        
+        # Verify stage execution flow - lock in expected error handling behavior
+        # Stage execution should be created even when processing fails
+        alert_service_with_history._create_stage_execution.assert_called()
+        assert alert_service_with_history._create_stage_execution.call_count >= 1
+        
+        # Stage execution should be marked as failed (not completed)
+        alert_service_with_history._update_stage_execution_failed.assert_called()
+        alert_service_with_history._update_stage_execution_completed.assert_not_called()
 
 
 class TestHistoryAPIIntegration:

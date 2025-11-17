@@ -5,6 +5,8 @@ Tests that ChainContext correctly accepts, stores, and propagates
 author information through the processing pipeline.
 """
 
+import uuid
+
 import pytest
 
 from tarsy.models.alert import Alert, ProcessingAlert
@@ -152,9 +154,11 @@ class TestChainContextAuthorField:
         ]
 
         for author in special_authors:
+            # Create deterministic session ID for testing
+            stable_id = uuid.uuid5(uuid.NAMESPACE_URL, author)
             context = ChainContext.from_processing_alert(
                 processing_alert=processing_alert,
-                session_id=f"test-session-{hash(author)}",
+                session_id=f"test-session-{stable_id}",
                 current_stage_name="initial",
                 author=author
             )

@@ -278,6 +278,7 @@ async def get_active_sessions(
                 "started_at_us": session.started_at_us,
                 "completed_at_us": session.completed_at_us,
                 "error_message": session.error_message,
+                "pause_metadata": session.pause_metadata,
                 "duration_seconds": (
                     (session.completed_at_us - session.started_at_us) / 1000000
                     if session.completed_at_us else 
@@ -474,6 +475,72 @@ async def cancel_session(
         "success": True,
         "message": "Cancellation request sent",
         "status": "canceling"
+    }
+
+
+@router.post(
+    "/sessions/{session_id}/resume",
+    summary="Resume Paused Session",
+    description="Resume a paused alert processing session"
+)
+async def resume_session(
+    *,
+    session_id: str = Path(..., description="Session ID to resume"),
+    background_tasks: BackgroundTasks,
+    history_service: Annotated[HistoryService, Depends(get_history_service)]
+) -> dict:
+    """
+    Resume a paused session.
+    
+    Validates the session is paused and triggers resume processing in background.
+    
+    Args:
+        session_id: Session identifier
+        background_tasks: FastAPI background tasks
+        history_service: Injected history service
+        
+    Returns:
+        Success response with resume status
+        
+    Raises:
+        HTTPException: 404 if session not found, 400 if not paused
+    """
+    from tarsy.models.constants import AlertSessionStatus
+    from tarsy.services.alert_service import get_alert_service
+    
+    # Step 1: Validate session exists
+    session = history_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    
+    # Step 2: Validate session is paused
+    if session.status != AlertSessionStatus.PAUSED.value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session is not paused (status: {session.status})"
+        )
+    
+    # Step 3: Trigger resume in background
+    alert_service = get_alert_service()
+    if not alert_service:
+        raise HTTPException(status_code=500, detail="Alert service not available")
+    
+    async def resume_session_background():
+        """Background task to resume session processing."""
+        try:
+            logger.info(f"Starting background resume for session {session_id}")
+            await alert_service.resume_paused_session(session_id)
+            logger.info(f"Successfully resumed session {session_id}")
+        except Exception as e:
+            logger.error(f"Failed to resume session {session_id}: {str(e)}", exc_info=True)
+    
+    background_tasks.add_task(resume_session_background)
+    
+    # Step 4: Return success immediately
+    return {
+        "success": True,
+        "message": "Session resume initiated",
+        "status": "resuming"
     }
 
 

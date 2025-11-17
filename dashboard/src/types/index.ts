@@ -1,8 +1,21 @@
+import type { SessionStatus, StageStatus, ChainOverallStatus, AlertProcessingStatus } from '../utils/statusConstants';
+
+// Pause reason type (aligned with backend PauseReason enum)
+export type PauseReason = 'max_iterations_reached'; // extend as backend adds more (e.g., 'manual_pause', 'timeout')
+
+// Reusable pause metadata type (align with backend PauseReason/metadata)
+export interface PauseMetadata {
+  reason: PauseReason;               // Backend enum: PauseReason.MAX_ITERATIONS_REACHED
+  current_iteration?: number;        // iteration at pause
+  message: string;                   // brief explanation for UI
+  paused_at_us: number;              // microseconds since epoch
+}
+
 export interface Session {
   session_id: string;
   alert_type: string | null;
   agent_type: string;
-  status: 'pending' | 'in_progress' | 'canceling' | 'completed' | 'failed' | 'cancelled';
+  status: SessionStatus;
   author: string | null;
   runbook_url: string | null;
   mcp_selection: MCPSelectionConfig | null;
@@ -10,6 +23,7 @@ export interface Session {
   completed_at_us: number | null; // Unix timestamp (microseconds since epoch)
   duration_ms: number | null; // Computed property from backend
   error_message: string | null;
+  pause_metadata: PauseMetadata | null;
   
   // Interaction counts (now always present)
   llm_interaction_count: number;
@@ -46,7 +60,7 @@ export interface StageExecution {
   stage_index: number;
   stage_name: string;
   agent: string;
-  status: 'pending' | 'active' | 'completed' | 'failed';
+  status: StageStatus;
   started_at_us: number | null;
   completed_at_us: number | null;
   duration_ms: number | null;
@@ -249,7 +263,7 @@ export interface ChainProgressUpdate {
   total_stages?: number | null;
   completed_stages?: number | null;
   failed_stages?: number | null;
-  overall_status: 'pending' | 'processing' | 'completed' | 'failed' | 'partial';
+  overall_status: ChainOverallStatus;
   stage_details?: any | null;
   timestamp_us: number;
 }
@@ -263,7 +277,7 @@ export interface StageProgressUpdate {
   stage_name: string;
   stage_index: number;
   agent: string;
-  status: 'pending' | 'active' | 'completed' | 'failed';
+  status: StageStatus;
   started_at_us?: number | null;
   completed_at_us?: number | null;
   duration_ms?: number | null;
@@ -572,7 +586,7 @@ export interface AlertSubmissionResponse {
 
 export interface ProcessingStatus {
   session_id: string;
-  status: 'queued' | 'processing' | 'completed' | 'error' | 'cancelled';
+  status: AlertProcessingStatus;
   progress: number;
   current_step: string;
   result?: string;

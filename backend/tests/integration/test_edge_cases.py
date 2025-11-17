@@ -30,9 +30,9 @@ class TestEdgeCases:
         long_alert = Alert(
             alert_type="kubernetes",
             runbook="https://example.com/runbook",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "environment": "production",
                 "cluster": "test-cluster",
                 "namespace": "test-namespace",
@@ -63,9 +63,9 @@ class TestEdgeCases:
         special_alert = Alert(
             alert_type="kubernetes",
             runbook="https://example.com/runbook",
-            severity="warning",
             timestamp=now_us(),
             data={
+                "severity": "warning",
                 "environment": "production",
                 "cluster": "test-cluster", 
                 "namespace": "test-namespace",
@@ -112,9 +112,9 @@ class TestEdgeCases:
         old_alert = Alert(
             alert_type="kubernetes",
             runbook="https://example.com/runbook",
-            severity="medium",
             timestamp=old_timestamp,
             data={
+                "severity": "medium",
                 "environment": "production",
                 "cluster": "test-cluster",
                 "namespace": "test-namespace",
@@ -139,9 +139,9 @@ class TestEdgeCases:
         malformed_alert = Alert(
             alert_type="kubernetes",
             runbook="not-a-valid-url-format",
-            severity="high",
             timestamp=now_us(),
             data={
+                "severity": "high",
                 "environment": "production",
                 "cluster": "test-cluster",
                 "namespace": "test-namespace",
@@ -212,14 +212,16 @@ class TestStressScenarios:
         for i in range(10):
             alert = Alert(
                 alert_type="NamespaceTerminating",
-                severity=["low", "medium", "high"][i % 3],
-                environment=f"env-{i}",
-                cluster=f"https://cluster-{i}.example.com",
-                namespace=f"namespace-{i}",
-                pod=f"pod-{i}",
-                message=f"Stress test alert {i}",
                 runbook="https://github.com/company/runbooks/blob/main/k8s-namespace-terminating.md",
-                context=f"Stress test context for alert {i}"
+                data={
+                    "severity": ["low", "medium", "high"][i % 3],
+                    "environment": f"env-{i}",
+                    "cluster": f"https://cluster-{i}.example.com",
+                    "namespace": f"namespace-{i}",
+                    "pod": f"pod-{i}",
+                    "message": f"Stress test alert {i}",
+                    "context": f"Stress test context for alert {i}"
+                }
             )
             alerts.append(alert)
         
@@ -301,9 +303,9 @@ class TestStressScenarios:
         
         large_alert = Alert(
             alert_type="NamespaceTerminating",
-            severity="high",
             runbook="https://github.com/company/runbooks/blob/main/k8s-namespace-terminating.md",
             data={
+                "severity": "high",
                 "environment": "production",
                 "cluster": "https://k8s-cluster.example.com",
                 "namespace": "memory-test-namespace",
@@ -431,9 +433,9 @@ class TestBoundaryConditions:
         # Arrange - Create alert with diverse Unicode content
         unicode_alert = Alert(
             alert_type="NamespaceTerminating",
-            severity="high",
             runbook="https://github.com/company/runbooks/blob/main/k8s-namespace-terminating.md",
             data={
+                "severity": "high",
                 "environment": "production",
                 "cluster": "https://k8s-cluster.example.com",
                 "namespace": "测试-namespace-тест",

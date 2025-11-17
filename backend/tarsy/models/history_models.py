@@ -175,6 +175,7 @@ class SessionOverview(BaseModel):
     
     # Basic status info
     error_message: Optional[str] = None
+    pause_metadata: Optional[Dict[str, Any]] = None
     
     # Summary counts (for dashboard display)
     llm_interaction_count: int = 0
@@ -321,6 +322,7 @@ class DetailedSession(BaseModel):
     alert_data: dict  # Complete alert information
     final_analysis: Optional[str] = None
     session_metadata: Optional[dict] = None
+    pause_metadata: Optional[Dict[str, Any]] = None
     
     # Chain execution details
     chain_id: str

@@ -606,3 +606,138 @@ describe('API Client Session Cancellation', () => {
   });
 });
 
+describe('API Client Session Resume', () => {
+  let consoleErrorSpy: any;
+  const mockClient = mockedAxios.create();
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('should successfully resume a paused session', async () => {
+    const sessionId = 'paused-session-123';
+    const successResponse = {
+      data: {
+        success: true,
+        message: 'Session resumed successfully',
+        status: 'in_progress'
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    };
+
+    mockClient.post.mockResolvedValueOnce(successResponse);
+
+    const result = await apiClient.resumeSession(sessionId);
+
+    expect(result).toEqual({
+      success: true,
+      message: 'Session resumed successfully',
+      status: 'in_progress'
+    });
+    expect(mockClient.post).toHaveBeenCalledWith(`/api/v1/history/sessions/${sessionId}/resume`);
+    expect(mockClient.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('should handle 404 when resuming non-existent session', async () => {
+    const sessionId = 'non-existent-session';
+    const notFoundError: any = {
+      isAxiosError: true,
+      request: {},
+      response: {
+        status: 404,
+        data: { detail: 'Session non-existent-session not found' },
+      },
+      message: 'Request failed with status code 404',
+    };
+
+    mockClient.post.mockRejectedValueOnce(notFoundError);
+
+    await expect(apiClient.resumeSession(sessionId)).rejects.toThrow();
+    expect(mockClient.post).toHaveBeenCalledWith(`/api/v1/history/sessions/${sessionId}/resume`);
+  });
+
+  it('should handle 400 when resuming non-paused session', async () => {
+    const sessionId = 'completed-session';
+    const badRequestError: any = {
+      isAxiosError: true,
+      request: {},
+      response: {
+        status: 400,
+        data: { detail: 'Session is not paused, cannot resume' },
+      },
+      message: 'Request failed with status code 400',
+    };
+
+    mockClient.post.mockRejectedValueOnce(badRequestError);
+
+    await expect(apiClient.resumeSession(sessionId)).rejects.toThrow();
+    expect(mockClient.post).toHaveBeenCalledWith(`/api/v1/history/sessions/${sessionId}/resume`);
+  });
+
+  it('should handle 400 when resuming already completed session', async () => {
+    const sessionId = 'terminal-session';
+    const badRequestError: any = {
+      isAxiosError: true,
+      request: {},
+      response: {
+        status: 400,
+        data: { detail: 'Cannot resume terminal session' },
+      },
+      message: 'Request failed with status code 400',
+    };
+
+    mockClient.post.mockRejectedValueOnce(badRequestError);
+
+    await expect(apiClient.resumeSession(sessionId)).rejects.toThrow();
+    expect(mockClient.post).toHaveBeenCalledWith(`/api/v1/history/sessions/${sessionId}/resume`);
+  });
+
+  it('should handle network errors when resuming session', async () => {
+    const sessionId = 'paused-session-456';
+    const networkError: any = {
+      isAxiosError: true,
+      request: {},
+      response: undefined,
+      message: 'Network Error',
+    };
+
+    mockClient.post.mockRejectedValueOnce(networkError);
+
+    await expect(apiClient.resumeSession(sessionId)).rejects.toThrow();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Error resuming session:',
+      networkError
+    );
+  });
+
+  it('should log error details when resume fails', async () => {
+    const sessionId = 'test-session-789';
+    const serverError: any = {
+      isAxiosError: true,
+      request: {},
+      response: {
+        status: 500,
+        data: { detail: 'Internal server error during resume' },
+      },
+      message: 'Request failed with status code 500',
+    };
+
+    mockClient.post.mockRejectedValueOnce(serverError);
+
+    await expect(apiClient.resumeSession(sessionId)).rejects.toThrow();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Error resuming session:',
+      serverError
+    );
+    expect(mockClient.post).toHaveBeenCalledTimes(1);
+  });
+});
+
