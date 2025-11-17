@@ -37,15 +37,16 @@ OPENSHIFT_TARGETS := openshift-check openshift-login-registry openshift-create-n
                      openshift-clean openshift-clean-images
 
 ifneq ($(filter $(OPENSHIFT_TARGETS),$(MAKECMDGOALS)),)
+	# Auto-detect ROUTE_HOST
+	ifneq ($(CLUSTER_DOMAIN),)
+		ROUTE_HOST := $(OPENSHIFT_NAMESPACE).$(CLUSTER_DOMAIN)
+	endif
     -include deploy/openshift.env
-    # Auto-detect ROUTE_HOST if not manually set in deploy/openshift.env
     ifndef ROUTE_HOST
-        ifneq ($(CLUSTER_DOMAIN),)
-            ROUTE_HOST := $(OPENSHIFT_NAMESPACE).$(CLUSTER_DOMAIN)
-        else
-            $(error ROUTE_HOST could not be auto-detected. Please define ROUTE_HOST in deploy/openshift.env)
-        endif
-    endif
+		$(error ROUTE_HOST is not defined. Please define ROUTE_HOST in deploy/openshift.env)
+	else ifeq ($(ROUTE_HOST),localhost:8080)
+		$(error ROUTE_HOST is not defined or auto-detected. Please fix your cluster context or define ROUTE_HOST in deploy/openshift.env)
+	endif
 endif
 
 # Prerequisites for OpenShift workflow
