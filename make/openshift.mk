@@ -22,6 +22,9 @@ USE_SKOPEO ?=
 # Container management (reuse existing)
 PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman compose -f deploy/podman-compose.yml
 
+# Auto-detect OpenShift cluster domain
+CLUSTER_DOMAIN := $(shell oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
+
 # Auto-load deploy/openshift.env ONLY when running OpenShift targets
 # Check if any OpenShift target is in the command line goals
 OPENSHIFT_TARGETS := openshift-check openshift-login-registry openshift-create-namespace \
@@ -34,11 +37,16 @@ OPENSHIFT_TARGETS := openshift-check openshift-login-registry openshift-create-n
                      openshift-clean openshift-clean-images
 
 ifneq ($(filter $(OPENSHIFT_TARGETS),$(MAKECMDGOALS)),)
+	# Auto-detect ROUTE_HOST
+	ifneq ($(CLUSTER_DOMAIN),)
+		ROUTE_HOST := $(OPENSHIFT_NAMESPACE).$(CLUSTER_DOMAIN)
+	endif
     -include deploy/openshift.env
-    # Validate that ROUTE_HOST is defined for targets that need it
     ifndef ROUTE_HOST
-        $(error ROUTE_HOST is not defined. Please define ROUTE_HOST in deploy/openshift.env)
-    endif
+		$(error ROUTE_HOST is not defined. Please define ROUTE_HOST in deploy/openshift.env)
+	else ifeq ($(ROUTE_HOST),localhost:8080)
+		$(error ROUTE_HOST is not defined or auto-detected. Please fix your cluster context or define ROUTE_HOST in deploy/openshift.env)
+	endif
 endif
 
 # Prerequisites for OpenShift workflow
@@ -88,7 +96,11 @@ openshift-build-backend: sync-backend-deps openshift-login-registry ## Build bac
 .PHONY: openshift-build-dashboard  
 openshift-build-dashboard: openshift-login-registry ## Build dashboard image locally
 	@echo -e "$(GREEN)Building dashboard image for OpenShift...$(NC)"
-	@echo -e "$(YELLOW)Using Route Host: $(ROUTE_HOST)$(NC)"
+	@if [ -f deploy/openshift.env ] && grep -q "^export ROUTE_HOST" deploy/openshift.env 2>/dev/null; then \
+		echo -e "$(YELLOW)Using manually configured Route Host: $(ROUTE_HOST)$(NC)"; \
+	else \
+		echo -e "$(YELLOW)Using auto-detected Route Host: $(ROUTE_HOST)$(NC)"; \
+	fi
 	@podman build -t localhost/tarsy_dashboard:latest \
 		--build-arg VITE_API_BASE_URL="" \
 		--build-arg VITE_WS_BASE_URL="wss://$(ROUTE_HOST)" \
@@ -272,6 +284,11 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 .PHONY: openshift-deploy
 openshift-deploy: openshift-create-secrets openshift-push-all openshift-check-config-files ## Complete deployment: secrets, images, and manifests
 	@echo -e "$(GREEN)Deploying application to OpenShift...$(NC)"
+	@if [ -f deploy/openshift.env ] && grep -q "^export ROUTE_HOST" deploy/openshift.env 2>/dev/null; then \
+		echo -e "$(BLUE)Using manually configured Route Host: $(ROUTE_HOST)$(NC)"; \
+	else \
+		echo -e "$(BLUE)Using auto-detected Route Host: $(ROUTE_HOST)$(NC)"; \
+	fi
 	@echo -e "$(BLUE)Replacing {{ROUTE_HOST}} with $(ROUTE_HOST)...$(NC)"
 	@sed -i.bak 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/base/routes.yaml
 	@oc apply -k deploy/kustomize/overlays/development/
@@ -282,6 +299,11 @@ openshift-deploy: openshift-create-secrets openshift-push-all openshift-check-co
 .PHONY: openshift-apply
 openshift-apply: openshift-check openshift-check-config-files ## Apply manifests only (assumes secrets and images exist)
 	@echo -e "$(GREEN)Applying manifests to OpenShift...$(NC)"
+	@if [ -f deploy/openshift.env ] && grep -q "^export ROUTE_HOST" deploy/openshift.env 2>/dev/null; then \
+		echo -e "$(BLUE)Using manually configured Route Host: $(ROUTE_HOST)$(NC)"; \
+	else \
+		echo -e "$(BLUE)Using auto-detected Route Host: $(ROUTE_HOST)$(NC)"; \
+	fi
 	@echo -e "$(BLUE)Replacing {{ROUTE_HOST}} with $(ROUTE_HOST)...$(NC)"
 	@sed -i.bak 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/base/routes.yaml
 	@oc apply -k deploy/kustomize/overlays/development/
