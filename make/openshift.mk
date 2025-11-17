@@ -333,14 +333,22 @@ openshift-urls: openshift-check ## Show OpenShift application URLs
 
 # Cleanup targets
 .PHONY: openshift-clean
-openshift-clean: openshift-check ## Delete all resources from OpenShift
+openshift-clean: openshift-check openshift-check-config-files ## Delete all resources from OpenShift
 	@echo -e "$(YELLOW)⚠️  This will delete all Tarsy resources from OpenShift!$(NC)"
 	@printf "Are you sure? [y/N] "; \
 	read REPLY; \
 	case "$$REPLY" in \
 		[Yy]|[Yy][Ee][Ss]) \
 			echo -e "$(YELLOW)Deleting OpenShift resources...$(NC)"; \
+			if [ -f deploy/openshift.env ] && grep -q "^export ROUTE_HOST" deploy/openshift.env 2>/dev/null; then \
+				echo -e "$(BLUE)Using manually configured Route Host: $(ROUTE_HOST)$(NC)"; \
+			else \
+				echo -e "$(BLUE)Using auto-detected Route Host: $(ROUTE_HOST)$(NC)"; \
+			fi; \
+			echo -e "$(BLUE)Replacing {{ROUTE_HOST}} with $(ROUTE_HOST)...$(NC)"; \
+			sed -i.bak 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/base/routes.yaml; \
 			oc delete -k deploy/kustomize/overlays/development/ 2>/dev/null || true; \
+			mv deploy/kustomize/base/routes.yaml.bak deploy/kustomize/base/routes.yaml; \
 			echo -e "$(GREEN)✅ OpenShift resources deleted$(NC)"; \
 			;; \
 		*) \
