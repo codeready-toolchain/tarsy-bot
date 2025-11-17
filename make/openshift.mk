@@ -282,17 +282,12 @@ openshift-check-config-files: ## Check that required config files exist in deplo
 
 # Deploy targets
 .PHONY: openshift-deploy
-openshift-deploy: openshift-create-secrets openshift-push-all openshift-check-config-files ## Complete deployment: secrets, images, and manifests
-	@echo -e "$(GREEN)Deploying application to OpenShift...$(NC)"
-	@if [ -f deploy/openshift.env ] && grep -q "^export ROUTE_HOST" deploy/openshift.env 2>/dev/null; then \
-		echo -e "$(BLUE)Using manually configured Route Host: $(ROUTE_HOST)$(NC)"; \
-	else \
-		echo -e "$(BLUE)Using auto-detected Route Host: $(ROUTE_HOST)$(NC)"; \
-	fi
-	@echo -e "$(BLUE)Replacing {{ROUTE_HOST}} with $(ROUTE_HOST)...$(NC)"
-	@sed -i.bak 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/base/routes.yaml
-	@oc apply -k deploy/kustomize/overlays/development/
-	@mv deploy/kustomize/base/routes.yaml.bak deploy/kustomize/base/routes.yaml
+openshift-deploy: openshift-create-secrets openshift-push-all openshift-check-config-files openshift-apply ## Complete deployment: secrets, images, and manifests
+	@echo -e "$(BLUE)Reloading deployments to pick up changes...$(NC)"
+	@for deployment in $$(oc get deployments -n $(OPENSHIFT_NAMESPACE) -o name 2>/dev/null | sed 's|deployment.apps/||'); do \
+		echo -e "$(BLUE)  Restarting deployment: $$deployment$(NC)"; \
+		oc rollout restart deployment/$$deployment -n $(OPENSHIFT_NAMESPACE); \
+	done
 	@echo -e "$(GREEN)✅ Deployed to OpenShift namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
 	@echo -e "$(BLUE)Check status with: make openshift-status$(NC)"
 
