@@ -15,7 +15,7 @@ import ChatFlowItem from './ChatFlowItem';
 import CopyButton from './CopyButton';
 import StreamingContentRenderer, { type StreamingItem } from './StreamingContentRenderer';
 import { websocketService } from '../services/websocketService';
-import { isTerminalSessionStatus } from '../utils/statusConstants';
+import { isTerminalSessionStatus, SESSION_STATUS, STAGE_STATUS } from '../utils/statusConstants';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface ProcessingIndicatorProps {
@@ -655,8 +655,8 @@ function ConversationTimeline({
 
   // Calculate stage stats
   const stageCount = session.stages?.length || 0;
-  const completedStages = session.stages?.filter(s => s.status === 'completed').length || 0;
-  const failedStages = session.stages?.filter(s => s.status === 'failed').length || 0;
+  const completedStages = session.stages?.filter(s => s.status === STAGE_STATUS.COMPLETED).length || 0;
+  const failedStages = session.stages?.filter(s => s.status === STAGE_STATUS.FAILED).length || 0;
 
   // Show error state if parsing failed
   if (error) {
@@ -793,7 +793,7 @@ function ConversationTimeline({
         ) : chatFlow.length === 0 ? (
           // Empty/Loading state - show appropriate message based on session status
           <Box>
-            {session.status === 'in_progress' ? (
+            {session.status === SESSION_STATUS.IN_PROGRESS ? (
               // Session is actively processing - show processing indicator
               <ProcessingIndicator centered />
             ) : (
@@ -823,7 +823,7 @@ function ConversationTimeline({
             ))}
 
             {/* Processing indicator at bottom when session/chat is in progress OR when there are streaming items */}
-            {(session.status === 'in_progress' || streamingItems.size > 0 || activeChatStageInProgress) && <ProcessingIndicator />}
+            {(session.status === SESSION_STATUS.IN_PROGRESS || streamingItems.size > 0 || activeChatStageInProgress) && <ProcessingIndicator />}
           </>
         )}
       </Box>

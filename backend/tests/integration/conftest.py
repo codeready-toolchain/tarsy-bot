@@ -127,9 +127,9 @@ def sample_alert():
     return Alert(
         alert_type="kubernetes",
         runbook="https://github.com/company/runbooks/blob/main/k8s-namespace-terminating.md",
-        severity="high",
         timestamp=1704110400000000,  # Fixed timestamp for testing
         data={
+            "severity": "high",
             "environment": "production",
             "cluster": "https://k8s-cluster.example.com",
             "namespace": "stuck-namespace",

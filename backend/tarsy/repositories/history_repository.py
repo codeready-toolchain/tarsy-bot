@@ -323,6 +323,20 @@ class HistoryRepository:
         except Exception as e:
             logger.error(f"Failed to get stage execution {execution_id}: {str(e)}")
             raise
+    
+    def get_stage_executions_for_session(self, session_id: str) -> List['StageExecution']:
+        """Get all stage executions for a session, ordered by stage_index."""
+        try:
+            stmt = (
+                select(StageExecution)
+                .where(StageExecution.session_id == session_id)
+                .order_by(StageExecution.stage_index)
+            )
+            stage_executions = self.session.exec(stmt).all()
+            return list(stage_executions)
+        except Exception as e:
+            logger.error(f"Failed to get stage executions for session {session_id}: {str(e)}")
+            raise
 
     def get_alert_sessions(
         self,
@@ -511,6 +525,7 @@ class HistoryRepository:
                     
                     # Basic status info
                     error_message=alert_session.error_message,
+                    pause_metadata=alert_session.pause_metadata,
                     
                     # Summary counts (merged from interaction_counts)
                     llm_interaction_count=llm_count,
@@ -587,12 +602,7 @@ class HistoryRepository:
             mcp_communications_db = self.get_mcp_communications_for_session(session_id)
             
             # Get stage executions
-            stages_stmt = (
-                select(StageExecution)
-                .where(StageExecution.session_id == session_id)
-                .order_by(StageExecution.stage_index)
-            )
-            stage_executions_db = self.session.exec(stages_stmt).all()
+            stage_executions_db = self.get_stage_executions_for_session(session_id)
             
             # Collect all chat user message IDs from stages
             message_ids = [
@@ -745,6 +755,7 @@ class HistoryRepository:
                 alert_data=session.alert_data,
                 final_analysis=session.final_analysis,
                 session_metadata=session.session_metadata,
+                pause_metadata=session.pause_metadata,
                 
                 # Chain execution details
                 chain_id=session.chain_id,
@@ -835,12 +846,7 @@ class HistoryRepository:
                 return None
             
             # Get stage executions for counting (without loading full interactions for performance)
-            stages_stmt = (
-                select(StageExecution)
-                .where(StageExecution.session_id == session_id)
-                .order_by(StageExecution.stage_index)
-            )
-            stage_executions_db = self.session.exec(stages_stmt).all()
+            stage_executions_db = self.get_stage_executions_for_session(session_id)
             
             # Get interaction counts for all stages (needed for summary calculations)
             stage_execution_ids = [stage.execution_id for stage in stage_executions_db]
@@ -893,6 +899,7 @@ class HistoryRepository:
                 
                 # Basic status info
                 error_message=session.error_message,
+                pause_metadata=session.pause_metadata,
                 
                 # Summary counts (for dashboard display)
                 llm_interaction_count=total_llm,

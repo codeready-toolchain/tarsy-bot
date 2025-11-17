@@ -103,6 +103,12 @@ class AlertSession(SQLModel, table=True):
         description="Additional context and metadata for the session"
     )
     
+    pause_metadata: Optional[dict] = Field(
+        default=None,
+        sa_column=Column[Any](JSON),
+        description="Metadata about why session paused (iteration count, reason, message)"
+    )
+    
     author: Optional[str] = Field(
         default=None,
         max_length=255,
@@ -198,6 +204,10 @@ class StageExecution(SQLModel, table=True):
     error_message: Optional[str] = Field(
         default=None, 
         description="Error message if stage failed (mutually exclusive with stage_output)"
+    )
+    current_iteration: Optional[int] = Field(
+        default=None,
+        description="Current iteration number when paused (for pause/resume)"
     )
     
     # Chat context tracking

@@ -13,7 +13,8 @@ class AlertSessionStatus(Enum):
     """Status values for AlertSession processing."""
     
     PENDING = "pending"
-    IN_PROGRESS = "in_progress"  
+    IN_PROGRESS = "in_progress"
+    PAUSED = "paused"  # Waiting for user resume - active but not processing
     CANCELING = "canceling"  # Intermediate state - cancellation requested
     COMPLETED = "completed"
     FAILED = "failed"
@@ -22,7 +23,7 @@ class AlertSessionStatus(Enum):
     @classmethod
     def get_active_statuses(cls) -> List['AlertSessionStatus']:
         """Statuses that indicate session is still being processed."""
-        return [cls.PENDING, cls.IN_PROGRESS, cls.CANCELING]
+        return [cls.PENDING, cls.IN_PROGRESS, cls.PAUSED, cls.CANCELING]
     
     @classmethod
     def get_terminal_statuses(cls) -> List['AlertSessionStatus']:
@@ -55,7 +56,8 @@ class StageStatus(Enum):
     """Status values for individual stage execution within a chain."""
     
     PENDING = "pending"
-    ACTIVE = "active" 
+    ACTIVE = "active"
+    PAUSED = "paused"  # Waiting for user resume
     COMPLETED = "completed"
     FAILED = "failed"
     PARTIAL = "partial"  # Some results but with warnings/issues
@@ -66,9 +68,9 @@ class ChainStatus(Enum):
     
     PENDING = "pending"        # All stages pending
     PROCESSING = "processing"  # At least one stage active
+    PAUSED = "paused"          # Execution paused, waiting for user action to resume
     COMPLETED = "completed"    # All stages completed successfully  
     FAILED = "failed"          # One or more stages failed, no active stages
-    PARTIAL = "partial"        # Mix of completed and failed, no active stages
 
 
 class SystemHealthStatus(Enum):

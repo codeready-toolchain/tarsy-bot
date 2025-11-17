@@ -414,6 +414,19 @@ class APIClient {
     }
   }
 
+  /**
+   * Resume a paused session
+   */
+  async resumeSession(sessionId: string): Promise<{ success: boolean; message: string; status: string }> {
+    try {
+      const response = await this.client.post(`/api/v1/history/sessions/${sessionId}/resume`);
+      return response.data;
+    } catch (error) {
+      console.error('Error resuming session:', error);
+      throw error;
+    }
+  }
+
   // Phase 4: Search and filtering methods
 
   /**

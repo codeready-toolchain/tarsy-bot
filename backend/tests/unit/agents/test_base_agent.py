@@ -157,9 +157,9 @@ class TestBaseAgentUtilityMethods:
         return Alert(
             alert_type="kubernetes",
             runbook="test-runbook.md",
-            severity="high",
             timestamp=now_us(),
             data={
+                "severity": "high",
                 "alert": "TestAlert",
                 "message": "Test alert message",
                 "environment": "test",
@@ -759,10 +759,10 @@ class TestBaseAgentErrorHandling:
     def sample_alert(self):
         return Alert(
             alert_type="TestAlert",
-            severity="high",
             runbook="test-runbook.md",
             timestamp=now_us(),
             data={
+                "severity": "high",
                 "environment": "test",
                 "cluster": "test-cluster",
                 "namespace": "test-namespace",
@@ -893,9 +893,9 @@ class TestBaseAgent:
         return Alert(
             alert_type="kubernetes",
             runbook="test-runbook.md",
-            severity="high",
             timestamp=now_us(),
             data={
+                "severity": "high",
                 "alert": "TestAlert",
                 "message": "Test alert message",
                 "environment": "test",

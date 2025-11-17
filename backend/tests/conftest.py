@@ -5,7 +5,9 @@ This module provides common fixtures and configuration for both unit and integra
 ensuring proper test isolation and database handling.
 """
 
+import json
 import os
+import uuid
 from pathlib import Path
 from typing import Generator
 from unittest.mock import Mock, patch
@@ -31,15 +33,20 @@ def alert_to_api_format(alert: Alert, default_alert_type: str = "kubernetes") ->
     Convert an Alert object to the ChainContext format that AlertService expects.
     
     This matches the format created in the alert controller using ProcessingAlert.
+    Uses deterministic UUID generation to ensure session IDs are stable across test runs.
     """
     # Transform API alert to ProcessingAlert (adds metadata, keeps data pristine)
     processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type=default_alert_type)
     
+    # Create deterministic session ID using UUID5 (stable across runs)
+    # json.dumps with sort_keys ensures consistent ordering
+    data_str = json.dumps(alert.data, sort_keys=True)
+    stable_id = uuid.uuid5(uuid.NAMESPACE_URL, data_str)
+    
     # Return ChainContext instance that AlertService expects
     return ChainContext.from_processing_alert(
         processing_alert=processing_alert,
-        session_id=f"test-session-{hash(str(alert.data))}",  # EP-0012: Generate test session ID from alert data
-        current_stage_name="initial"  # Default stage for tests
+        session_id=f"test-session-{stable_id}"
     )
 
 
@@ -174,9 +181,9 @@ def sample_kubernetes_alert():
     return Alert(
         alert_type="kubernetes",
         runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-        severity="critical",
         timestamp=now_us(),
         data={
+            "severity": "critical",
             "environment": "production",
             "cluster": "main-cluster", 
             "namespace": "test-namespace",
@@ -192,9 +199,9 @@ def sample_generic_alert():
     return Alert(
         alert_type="generic",
         runbook="https://example.com/runbook",
-        severity="warning",
         timestamp=now_us(),
         data={
+            "severity": "warning",
             "environment": "production",
             "message": "Generic alert message",
             "source": "monitoring-system"

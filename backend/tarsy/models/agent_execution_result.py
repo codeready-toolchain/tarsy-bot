@@ -5,8 +5,8 @@ This module defines a simple format for agent execution results,
 allowing agents to provide their own summary format as a string.
 """
 
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional
+from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationInfo
+from typing import Optional, Dict, Any
 from tarsy.models.constants import StageStatus
 
 
@@ -29,8 +29,17 @@ class AgentExecutionResult(BaseModel):
     # The key field - agent decides the format (could be ReAct JSON, markdown, plain text, etc.)
     result_summary: str = Field(..., description="Agent-provided summary in whatever format the agent chooses")
     
-    # Complete conversation history for stage context passing
-    complete_conversation_history: Optional[str] = Field(None, description="Complete ReAct conversation history with all Thought/Action/Observation sequences for progressive conversation format")
+    # Complete conversation history for stage context passing (string format for inter-stage context)
+    complete_conversation_history: Optional[str] = Field(
+        None, 
+        description="Formatted ReAct conversation for passing context to subsequent stages (string format)"
+    )
+    
+    # Conversation state for pause/resume (dict format for exact state restoration)
+    paused_conversation_state: Optional[Dict[str, Any]] = Field(
+        None,
+        description="LLMConversation state for resuming paused stages (only populated when status=PAUSED)"
+    )
     
     # Optional clean final analysis for end-user consumption
     final_analysis: Optional[str] = Field(None, description="Clean final analysis for end-user, extracted from result_summary")
@@ -40,3 +49,19 @@ class AgentExecutionResult(BaseModel):
     
     # Optional metadata
     duration_ms: Optional[int] = Field(None, description="Execution duration in milliseconds")
+    
+    @field_validator('paused_conversation_state')
+    @classmethod
+    def validate_paused_state(cls, v: Optional[Dict[str, Any]], info: ValidationInfo) -> Optional[Dict[str, Any]]:
+        """Ensure paused_conversation_state is only set when status is PAUSED."""
+        if v is not None:
+            status = info.data.get('status')
+            # Handle both enum and string values
+            if isinstance(status, StageStatus):
+                status_value = status.value
+            else:
+                status_value = status
+            
+            if status_value != StageStatus.PAUSED.value:
+                raise ValueError(f"paused_conversation_state can only be set when status is PAUSED, got status={status_value}")
+        return v

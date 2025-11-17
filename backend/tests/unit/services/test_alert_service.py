@@ -246,8 +246,8 @@ class TestAlertProcessing:
     def sample_alert(self):
         """Create a sample alert for testing."""
         return AlertFactory.create_kubernetes_alert(
-            severity="critical",
             data={
+                "severity": "critical",
                 "environment": "production",
                 "cluster": "main-cluster",
                 "namespace": "test-namespace",
@@ -284,6 +284,8 @@ class TestAlertProcessing:
         mock_history_service.store_llm_interaction = Mock()
         mock_history_service.store_mcp_interaction = Mock()
         mock_history_service.record_session_interaction = AsyncMock()
+        mock_history_service.get_stage_executions = AsyncMock(return_value=[])
+        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
         service.history_service = mock_history_service
         
         yield service, dependencies
@@ -541,9 +543,9 @@ class TestHistorySessionManagement:
         return Alert(
             alert_type="kubernetes",
             runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "environment": "production", 
                 "cluster": "main-cluster",
                 "namespace": "test-namespace",
@@ -561,7 +563,10 @@ class TestHistorySessionManagement:
         
         service.history_service.update_session_status.assert_called_once_with(
             session_id="session_123",
-            status="in_progress"
+            status="in_progress",
+            error_message=None,
+            final_analysis=None,
+            pause_metadata=None
         )
     
     def test_update_session_status_disabled(self, alert_service_with_history):
@@ -577,12 +582,14 @@ class TestHistorySessionManagement:
         """Test marking session as completed."""
         service = alert_service_with_history
         
-        service._update_session_completed("session_123", "completed")
+        service._update_session_status("session_123", "completed")
         
         service.history_service.update_session_status.assert_called_once_with(
             session_id="session_123",
             status="completed",
-            final_analysis=None
+            error_message=None,
+            final_analysis=None,
+            pause_metadata=None
         )
     
     def test_update_session_completed_with_final_analysis(self, alert_service_with_history):
@@ -590,12 +597,14 @@ class TestHistorySessionManagement:
         service = alert_service_with_history
         analysis = "# Alert Analysis\n\nSuccessfully resolved the issue."
         
-        service._update_session_completed("session_123", "completed", analysis)
+        service._update_session_status("session_123", "completed", final_analysis=analysis)
         
         service.history_service.update_session_status.assert_called_once_with(
             session_id="session_123",
             status="completed",
-            final_analysis=analysis
+            error_message=None,
+            final_analysis=analysis,
+            pause_metadata=None
         )
     
     def test_update_session_error_success(self, alert_service_with_history):
@@ -636,9 +645,9 @@ class TestResponseFormatting:
         return Alert(
             alert_type="kubernetes",
             runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "environment": "production",
                 "cluster": "main-cluster",
                 "namespace": "test-namespace",
@@ -776,9 +785,9 @@ class TestAlertServiceDuplicatePrevention:
         return Alert(
             alert_type="kubernetes",
             runbook="https://github.com/company/runbooks/blob/main/k8s.md",
-            severity="critical",
             timestamp=now_us(),
             data={
+                "severity": "critical",
                 "environment": "production",
                 "cluster": "main-cluster",
                 "namespace": "test-namespace", 
@@ -838,8 +847,8 @@ class TestAlertServiceDuplicatePrevention:
         long_message_alert = Alert(
             alert_type="kubernetes",
             runbook="https://example.com/runbook",
-            severity="high",
             data={
+                "severity": "high",
                 "environment": "production",
                 "cluster": "default",
                 "namespace": "default",
@@ -893,8 +902,7 @@ class TestChainErrorAggregation:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Add successful stage result
@@ -969,8 +977,7 @@ class TestChainErrorAggregation:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Add single failed result
@@ -1006,8 +1013,7 @@ class TestChainErrorAggregation:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Add only successful results
@@ -1040,8 +1046,7 @@ class TestChainErrorAggregation:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # No stage results added
@@ -1063,8 +1068,7 @@ class TestChainErrorAggregation:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Add a non-AgentExecutionResult object (edge case)
@@ -1117,6 +1121,7 @@ class TestEnhancedChainExecution:
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
         service.history_service.get_stage_execution = AsyncMock()
+        service.history_service.get_stage_executions = AsyncMock(return_value=[])
         service.history_service.update_session_current_stage = AsyncMock()
         service.history_service.record_session_interaction = AsyncMock()
         
@@ -1157,8 +1162,7 @@ class TestEnhancedChainExecution:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Mock agents - some successful, some failing
@@ -1249,8 +1253,7 @@ class TestEnhancedChainExecution:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Mock successful agent
@@ -1311,8 +1314,7 @@ class TestEnhancedChainExecution:
         )
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
-            session_id="test_session",
-            current_stage_name="test_stage"
+            session_id="test_session"
         )
         
         # Mock agent that throws exception
@@ -1365,6 +1367,8 @@ class TestFullErrorPropagation:
         service.history_service.is_enabled = True
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
+        service.history_service.get_stage_execution = AsyncMock()
+        service.history_service.get_stage_executions = AsyncMock(return_value=[])
         service.history_service.record_session_interaction = AsyncMock()
         service.history_service.start_session_processing = AsyncMock(return_value=True)
         

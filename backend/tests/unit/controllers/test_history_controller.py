@@ -1336,7 +1336,9 @@ class TestHistoryControllerResponseFormat:
             "author",
             # MCP selection field for re-submit functionality
             "mcp_selection",
-            "chat_message_count"
+            "chat_message_count",
+            # Pause/resume metadata
+            "pause_metadata"
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)
