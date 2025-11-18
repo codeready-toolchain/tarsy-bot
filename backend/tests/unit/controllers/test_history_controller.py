@@ -1123,7 +1123,134 @@ class TestHistoryControllerEndpoints:
         
         assert response.status_code == 500
         assert "detail" in response.json()
+    
+    # Final Analysis Endpoint Tests    
+    @pytest.mark.unit
+    def test_get_final_analysis(self, app, client, mock_history_service):
+        """Test final analysis retrieval with different session statuses."""
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
+        
+        test_cases = [
+            ("pending", AlertSessionStatus.PENDING, None),
+            ("failed", AlertSessionStatus.FAILED, None),
+            ("cancelled", AlertSessionStatus.CANCELLED, None),
+            ("completed", AlertSessionStatus.COMPLETED, "Analysis complete"),
+            ("completed-long", AlertSessionStatus.COMPLETED, "# Analysis Results\n\nThe namespace termination issue has been resolved.\n\n## Actions Taken\n- Removed stuck finalizers\n- Verified namespace cleanup\n\n## Recommendations\n- Monitor for similar issues"),
+            ("in_progress", AlertSessionStatus.IN_PROGRESS, "")
+        ]
+        
+        for session_suffix, status, expected_analysis in test_cases:
+            session_id = f"test-session-{session_suffix}"
+            
+            mock_session = AlertSession(
+                session_id=session_id,
+                alert_type="TestAlert",
+                agent_type="TestAgent",
+                status=status.value,
+                started_at_us=now_us() - 300000000,
+                completed_at_us=now_us() if status == AlertSessionStatus.COMPLETED else None,
+                alert_data={},
+                chain_id="test-chain",
+                final_analysis=expected_analysis
+            )
+            
+            mock_history_service.get_session.return_value = mock_session
+            
+            # Override FastAPI dependency
+            app.dependency_overrides[get_history_service] = lambda: mock_history_service
+            
+            response = client.get(f"/api/v1/history/sessions/{session_id}/final-analysis")
+            
+            # Clean up
+            app.dependency_overrides.clear()
+            
+            assert response.status_code == 200
+            data = response.json()
+            
+            # Verify response structure matches FinalAnalysisResponse
+            assert "final_analysis" in data
+            assert "session_id" in data
+            assert "status" in data
 
+            assert data["session_id"] == session_id
+            assert data["status"] == status.value
+            assert data["final_analysis"] == expected_analysis
+
+            if expected_analysis and "Analysis Results" in expected_analysis:
+                # Verify content for the detailed analysis case
+                assert "Analysis Results" in data["final_analysis"]
+                assert "Actions Taken" in data["final_analysis"]
+                assert "Recommendations" in data["final_analysis"]
+            
+            # Verify service was called correctly
+            mock_history_service.get_session.assert_called_once_with(session_id)
+        
+            # Reset mock for next iteration
+            mock_history_service.reset_mock()
+    
+    @pytest.mark.unit
+    def test_get_final_analysis_session_not_found(self, app, client, mock_history_service):
+        """Test final analysis retrieval for non-existent session."""
+        # Mock service returns None for non-existent session
+        mock_history_service.get_session.return_value = None
+        
+        # Override FastAPI dependency
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        response = client.get("/api/v1/history/sessions/non-existent-session/final-analysis")
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        assert response.status_code == 404
+        error_data = response.json()
+        assert "detail" in error_data
+        assert "non-existent-session" in error_data["detail"]
+        assert "not found" in error_data["detail"].lower()
+        
+        # Verify service was called correctly
+        mock_history_service.get_session.assert_called_once_with("non-existent-session")
+    
+    @pytest.mark.unit
+    def test_get_final_analysis_service_unavailable(self, app, client, mock_history_service):
+        """Test final analysis retrieval when service is unavailable."""
+        # Mock service raises RuntimeError (database unavailable)
+        mock_history_service.get_session.side_effect = RuntimeError("Database connection failed")
+        
+        # Override FastAPI dependency
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        response = client.get("/api/v1/history/sessions/test-session/final-analysis")
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        assert response.status_code == 503
+        error_data = response.json()
+        assert "detail" in error_data
+        assert "History service unavailable" in error_data["detail"]
+        assert "Database connection failed" in error_data["detail"]
+    
+    @pytest.mark.unit
+    def test_get_final_analysis_internal_server_error(self, app, client, mock_history_service):
+        """Test final analysis retrieval with internal server error."""
+        # Mock service raises unexpected exception
+        mock_history_service.get_session.side_effect = Exception("Unexpected error occurred")
+        
+        # Override FastAPI dependency
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        response = client.get("/api/v1/history/sessions/test-session/final-analysis")
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        assert response.status_code == 500
+        error_data = response.json()
+        assert "detail" in error_data
+        assert "Failed to retrieve final analysis" in error_data["detail"]
+        assert "Unexpected error occurred" in error_data["detail"]
 
 class TestHistoryControllerValidation:
     """Test suite for request validation in HistoryController."""

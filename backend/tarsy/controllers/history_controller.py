@@ -20,6 +20,7 @@ from tarsy.models.history_models import (
     PaginatedSessions,
     SessionStats,
     FilterOptions,
+    FinalAnalysisResponse,
 )
 from tarsy.models.api_models import ErrorResponse
 from tarsy.utils.timestamp import now_us
@@ -252,6 +253,82 @@ async def get_session_summary(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve session summary: {str(e)}"
+        )
+
+@router.get(
+    "/sessions/{session_id}/final-analysis",
+    response_model=FinalAnalysisResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Session not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    },
+    summary="Get Session Final Analysis",
+    description="""
+    Retrieve the final analysis content for an alert processing session.
+    
+    **Response behavior:**
+    - Returns session status and final_analysis field (null if not available)
+    - Completed sessions with analysis: final_analysis contains markdown content
+    - Completed sessions without analysis: final_analysis is null
+    - Non-completed sessions (pending, in_progress, etc.): final_analysis is null
+    - Failed/cancelled sessions: final_analysis is null
+    
+    **Response includes:**
+    - Final analysis content in markdown format (or null)
+    - Current session status
+    - Timestamp of the response
+    """
+)
+async def get_session_final_analysis(
+    *,
+    session_id: str = Path(..., description="Unique session identifier"),
+    history_service: Annotated[HistoryService, Depends(get_history_service)]
+) -> FinalAnalysisResponse:
+    """
+    Get final analysis content for any session.
+    
+    Args:
+        session_id: Unique session identifier
+        history_service: Injected history service
+        
+    Returns:
+        FinalAnalysisResponse containing the analysis content (or null) and session status
+        
+    Raises:
+        HTTPException: 404 if session not found, 500 for internal errors
+    """
+    try:
+        from tarsy.models.constants import AlertSessionStatus
+        
+        # Get the session
+        session = history_service.get_session(session_id)
+        
+        if not session:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session {session_id} not found"
+            )
+        
+        # Always return response with current status and final_analysis (or null)
+        return FinalAnalysisResponse(
+            final_analysis=session.final_analysis,  # Will be None if not available
+            session_id=session_id,
+            status=AlertSessionStatus(session.status)
+        )
+        
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        # Database unavailable - return 503
+        raise HTTPException(
+            status_code=503,
+            detail=f"History service unavailable: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to get final analysis for session {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve final analysis: {str(e)}"
         )
 
 

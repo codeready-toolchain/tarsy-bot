@@ -380,3 +380,10 @@ class PaginatedSessions(BaseModel):
     sessions: List[SessionOverview]  # Session overviews for list display
     pagination: PaginationInfo
     filters_applied: Dict[str, Any] = Field(default_factory=dict)  # Applied filters for this query
+
+
+class FinalAnalysisResponse(BaseModel):
+    """Response for session final analysis endpoint."""
+    final_analysis: Optional[str] = Field(description="Final analysis content (markdown formatted), null if not available")
+    session_id: str = Field(description="Session identifier")
+    status: AlertSessionStatus = Field(description="Current session status")

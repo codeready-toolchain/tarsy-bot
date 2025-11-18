@@ -1318,6 +1318,7 @@ class DetailedSession(BaseModel):
 **Core Endpoints**:
 - **`GET /api/v1/history/sessions`** - Paginated session list with filtering
 - **`GET /api/v1/history/sessions/{id}`** - Detailed session with complete timeline  
+- **`GET /api/v1/history/sessions/{id}/final-analysis`** - Get final analysis content for any session (returns null if not available)
 - **`GET /api/v1/history/active-sessions`** - Currently processing sessions
 - **`POST /api/v1/history/sessions/{id}/resume`** - Resume a paused session from where it left off
 - **`POST /api/v1/history/sessions/{id}/cancel`** - Cancel an active or paused session
