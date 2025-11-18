@@ -82,7 +82,8 @@ email_domains=["*"]
 ## JWT Bearer Token Authentication
 ## Allow API clients to authenticate directly with JWT tokens
 ## while maintaining GitHub OAuth for web dashboard users
-skip_jwt_bearer_tokens = false
+# skip_jwt_bearer_tokens = true means: skip normal OAuth authentication if valid JWT is present
+skip_jwt_bearer_tokens = true
 oidc_jwks_url = "http://tarsy-backend:8000/.well-known/jwks.json"
 skip_oidc_discovery = true
 
