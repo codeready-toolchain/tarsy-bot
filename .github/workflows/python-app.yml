@@ -37,7 +37,7 @@ jobs:
         cache: 'npm'
     
     - name: Install kubernetes MCP server
-      run: npm install -g kubernetes-mcp-server@latest
+      run: npm install -g kubernetes-mcp-server@0.0.54
     
     - name: Create mock kubeconfig for testing
       run: |

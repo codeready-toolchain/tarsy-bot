@@ -330,4 +330,4 @@ async def submit_alert(request: Request) -> AlertResponse:
                 "message": "An unexpected error occurred while processing the alert",
                 "support_info": "Please check the server logs or contact support if this persists"
             }
-        )
+        ) from e

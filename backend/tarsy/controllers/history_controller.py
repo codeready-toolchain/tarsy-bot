@@ -147,12 +147,12 @@ async def list_sessions(
         raise HTTPException(
             status_code=503,
             detail=f"History service unavailable: {str(e)}"
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve sessions: {str(e)}"
-        )
+        ) from e
 
 @router.get(
     "/sessions/{session_id}",
@@ -209,7 +209,7 @@ async def get_session_detail(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve session details: {str(e)}"
-        )
+        ) from e
 
 @router.get(
     "/sessions/{session_id}/summary",
@@ -253,7 +253,7 @@ async def get_session_summary(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve session summary: {str(e)}"
-        )
+        ) from e
 
 @router.get(
     "/sessions/{session_id}/final-analysis",
@@ -323,13 +323,13 @@ async def get_session_final_analysis(
         raise HTTPException(
             status_code=503,
             detail=f"History service unavailable: {str(e)}"
-        )
+        ) from e
     except Exception as e:
         logger.error(f"Failed to get final analysis for session {session_id}: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve final analysis: {str(e)}"
-        )
+        ) from e
 
 
 # Dashboard-specific endpoints for EP-0004 implementation
@@ -369,9 +369,9 @@ async def get_active_sessions(
         raise HTTPException(
             status_code=503, 
             detail=f"History service unavailable: {str(e)}"
-        )
+        ) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get active sessions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get active sessions: {str(e)}") from e
 
 @router.get(
     "/filter-options",
@@ -392,9 +392,9 @@ async def get_filter_options(
         raise HTTPException(
             status_code=503, 
             detail=f"History service unavailable: {str(e)}"
-        )
+        ) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get filter options: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get filter options: {str(e)}") from e
 
 
 async def check_cancellation_completion(
