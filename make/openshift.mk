@@ -301,8 +301,11 @@ openshift-apply: openshift-check openshift-check-config-files ## Apply manifests
 	fi
 	@echo -e "$(BLUE)Replacing {{ROUTE_HOST}} with $(ROUTE_HOST)...$(NC)"
 	@sed -i.bak 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' deploy/kustomize/base/routes.yaml
+	@echo -e "$(BLUE)Replacing \$${LLM_PROVIDER} with $${LLM_PROVIDER:-google-default}...$(NC)"
+	@sed -i.bak 's|\$${LLM_PROVIDER}|'"$${LLM_PROVIDER:-google-default}"'|g' deploy/kustomize/overlays/development/kustomization.yaml
 	@oc apply -k deploy/kustomize/overlays/development/
 	@mv deploy/kustomize/base/routes.yaml.bak deploy/kustomize/base/routes.yaml
+	@mv deploy/kustomize/overlays/development/kustomization.yaml.bak deploy/kustomize/overlays/development/kustomization.yaml
 	@echo -e "$(GREEN)✅ Manifests applied to OpenShift namespace: $(OPENSHIFT_NAMESPACE)$(NC)"
 
 # Status and info targets  

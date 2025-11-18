@@ -56,7 +56,7 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
   };
 
   // Page size options
-  const pageSizeOptions = [10, 25, 50, 100, 250];
+  const pageSizeOptions = [10, 25, 50, 100];
 
   // Handle page size change
   const handlePageSizeChange = (newPageSize: number) => {
