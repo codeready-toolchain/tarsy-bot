@@ -783,7 +783,7 @@ async with mcp_interaction_context(session_id, server_name, tool_name, parameter
         "type": "stdio",
         "command": "npx",
         "args": ["-y", "kubernetes-mcp-server@latest", "--read-only", 
-                "--disable-destructive", "--kubeconfig", "${KUBECONFIG}"]
+                "--disable-destructive", "--kubeconfig", "${MCP_KUBECONFIG}"]
     },
     "instructions": "For Kubernetes operations: Be careful with cluster-scoped...",
     "data_masking": {

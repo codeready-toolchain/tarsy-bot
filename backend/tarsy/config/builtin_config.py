@@ -98,7 +98,7 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
         "transport": {
             "type": TRANSPORT_STDIO,
             "command": "npx",
-            "args": ["-y", "kubernetes-mcp-server@0.0.54", "--read-only", "--disable-destructive", "--kubeconfig", "${KUBECONFIG}"]
+            "args": ["-y", "kubernetes-mcp-server@0.0.54", "--read-only", "--disable-destructive", "--kubeconfig", "${MCP_KUBECONFIG}"]
         },
         # "transport": {
         #     "type": TRANSPORT_SSE,

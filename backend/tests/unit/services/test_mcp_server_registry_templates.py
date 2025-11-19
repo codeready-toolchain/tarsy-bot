@@ -29,8 +29,8 @@ class TestMCPServerRegistryTemplateResolution:
         import os
         from unittest.mock import patch
         
-        # Create temporary .env file with known KUBECONFIG value
-        env_content = "KUBECONFIG=/test/kubeconfig/path\n"
+        # Create temporary .env file with known MCP_KUBECONFIG value
+        env_content = "MCP_KUBECONFIG=/test/kubeconfig/path\n"
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
             f.write(env_content)
@@ -60,7 +60,7 @@ class TestMCPServerRegistryTemplateResolution:
                 
                 # Should resolve to our specific test value
                 assert kubeconfig_arg == "/test/kubeconfig/path"
-                assert kubeconfig_arg != "${KUBECONFIG}"  # Should not be unresolved
+                assert kubeconfig_arg != "${MCP_KUBECONFIG}"  # Should not be unresolved
                 
             finally:
                 os.unlink(f.name)
@@ -73,14 +73,14 @@ class TestMCPServerRegistryTemplateResolution:
         
         # Save current state
         original_cwd = os.getcwd()
-        original_kubeconfig = os.environ.pop("KUBECONFIG", None)
+        original_kubeconfig = os.environ.pop("MCP_KUBECONFIG", None)
         
         try:
             # Create temporary directory with no .env file
             with tempfile.TemporaryDirectory() as temp_dir:
                 os.chdir(temp_dir)
                 
-                # Ensure no .env file exists and no KUBECONFIG in environment
+                # Ensure no .env file exists and no MCP_KUBECONFIG in environment
                 # This forces the system to use Settings defaults
                 settings = Settings()
                 registry = MCPServerRegistry(settings=settings)
@@ -98,14 +98,14 @@ class TestMCPServerRegistryTemplateResolution:
                 # Should resolve to Settings default (expanded ~/.kube/config)
                 expected_default = os.path.expanduser("~/.kube/config")
                 assert kubeconfig_arg == expected_default
-                assert kubeconfig_arg != "${KUBECONFIG}"  # Should not be unresolved
+                assert kubeconfig_arg != "${MCP_KUBECONFIG}"  # Should not be unresolved
                 assert "~" not in kubeconfig_arg  # Tilde should be expanded
                 
         finally:
             # Restore original state
             os.chdir(original_cwd)
             if original_kubeconfig is not None:
-                os.environ["KUBECONFIG"] = original_kubeconfig
+                os.environ["MCP_KUBECONFIG"] = original_kubeconfig
     
     def test_configured_server_template_resolution(self):
         """Test template resolution in configured MCP servers."""
@@ -143,12 +143,12 @@ class TestMCPServerRegistryTemplateResolution:
                 transport={
                     "type": "stdio",
                     "command": "test",
-                    "args": ["--kubeconfig", "${KUBECONFIG}", "--token", "${MISSING_TOKEN}"]
+                    "args": ["--kubeconfig", "${MCP_KUBECONFIG}", "--token", "${MISSING_TOKEN}"]
                 }
             )
         }
         
-        # KUBECONFIG will use default, MISSING_TOKEN will cause fallback to original config
+        # MCP_KUBECONFIG will use default, MISSING_TOKEN will cause fallback to original config
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
             
@@ -158,7 +158,7 @@ class TestMCPServerRegistryTemplateResolution:
             config = registry.get_server_config("mixed-server")
             
             # Should use original template strings due to fallback
-            assert "${KUBECONFIG}" in config.transport.args
+            assert "${MCP_KUBECONFIG}" in config.transport.args
             assert "${MISSING_TOKEN}" in config.transport.args
     
     def test_template_resolution_fallback_on_error(self):
@@ -180,11 +180,11 @@ class TestMCPServerRegistryTemplateResolution:
     
     def test_settings_integration_without_settings(self):
         """Test that registry works without Settings parameter (backwards compatibility)."""
-        # Create a test .env file with the desired KUBECONFIG
+        # Create a test .env file with the desired MCP_KUBECONFIG
         import tempfile
         import os
         
-        env_content = "KUBECONFIG=/env/kubeconfig\n"
+        env_content = "MCP_KUBECONFIG=/env/kubeconfig\n"
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
             f.write(env_content)
@@ -271,7 +271,7 @@ class TestMCPServerRegistryTemplateSettings:
                     # Create Settings with custom defaults
                     mock_settings = MagicMock(spec=Settings)
                     mock_settings.get_template_default.side_effect = lambda var: {
-                        'KUBECONFIG': '/custom/default/kubeconfig',
+                        'MCP_KUBECONFIG': '/custom/default/kubeconfig',
                         'CUSTOM_VAR': 'custom-default-value'
                     }.get(var)
                     
@@ -286,7 +286,7 @@ class TestMCPServerRegistryTemplateSettings:
                             transport={
                                 "type": "stdio",
                                 "command": "test",
-                                "args": ["--kubeconfig", "${KUBECONFIG}", "--custom", "${CUSTOM_VAR}"]
+                                "args": ["--kubeconfig", "${MCP_KUBECONFIG}", "--custom", "${CUSTOM_VAR}"]
                             }
                         )
                     }

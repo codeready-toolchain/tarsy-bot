@@ -153,7 +153,7 @@ def sample_mcp_server_config_data():
             "command": "kubectl",
             "args": ["proxy", "--port=8001"],
             "env": {
-                "KUBECONFIG": "/path/to/kubeconfig"
+                "MCP_KUBECONFIG": "/path/to/kubeconfig"
             }
         }
     }

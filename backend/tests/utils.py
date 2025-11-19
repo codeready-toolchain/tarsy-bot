@@ -1160,7 +1160,7 @@ class MCPServerFactory:
                 "type": "stdio",
                 "command": "kubectl",
                 "args": ["proxy", "--port=8001"],
-                "env": {"KUBECONFIG": "/path/to/kubeconfig"}
+                "env": {"MCP_KUBECONFIG": "/path/to/kubeconfig"}
             },
             "instructions": "Kubernetes MCP server for cluster operations"
         }
@@ -1622,7 +1622,7 @@ class MCPServerMaskingFactory:
                 "command": "complex-${SERVER_TYPE}",
                 "args": ["--endpoint", "https://${HOST}:${PORT}/api"],
                 "env": {
-                    "CONFIG_PATH": "${KUBECONFIG}",
+                    "CONFIG_PATH": "${MCP_KUBECONFIG}",
                     "AUTH_TOKEN": "${AUTH_TOKEN}"
                 }
             }
@@ -1656,7 +1656,7 @@ class MCPServerMaskingFactory:
             'HOST': 'api.company.com',
             'PORT': '8443',
             'AUTH_TOKEN': 'bearer-token-123',
-            'KUBECONFIG': '/home/.kube/config'
+            'MCP_KUBECONFIG': '/home/.kube/config'
         }
         base_data.update(overrides)
         return base_data

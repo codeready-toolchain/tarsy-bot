@@ -50,7 +50,7 @@ class E2ETestIsolation:
         
         # Store original environment variables we'll modify
         env_vars_to_isolate = [
-            "KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
+            "MCP_KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
             "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
             "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
             "LLM_PROVIDER",
@@ -229,7 +229,7 @@ current-context: test-context
     e2e_isolation.set_isolated_env("AGENT_CONFIG_PATH", str(test_agents_path))
     e2e_isolation.set_isolated_env("OPENAI_API_KEY", "test-key-123")
     e2e_isolation.set_isolated_env("LLM_PROVIDER", "openai-default")
-    e2e_isolation.set_isolated_env("KUBECONFIG", kubeconfig_path)
+    e2e_isolation.set_isolated_env("MCP_KUBECONFIG", kubeconfig_path)
     
     # Create real Settings object with isolated environment
     settings = Settings()
@@ -271,7 +271,7 @@ def ensure_e2e_isolation(request):
     # Store original environment for e2e tests
     original_env = {}
     e2e_env_vars = [
-        "TESTING", "KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
+        "TESTING", "MCP_KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
         "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
         "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
         "LLM_PROVIDER"
@@ -369,7 +369,7 @@ def pytest_runtest_teardown(item):
         
         # Clean up environment variables that might have been modified
         test_env_vars = [
-            "KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
+            "MCP_KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
             "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
             "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
             "LLM_PROVIDER"

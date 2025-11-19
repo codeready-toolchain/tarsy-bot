@@ -196,7 +196,7 @@ CUSTOM_SERVER_TIMEOUT=60
         )
         
         # Should still work with system environment and defaults
-        with patch.dict(os.environ, {'KUBECONFIG': '/system/kubeconfig'}):
+        with patch.dict(os.environ, {'MCP_KUBECONFIG': '/system/kubeconfig'}):
             with patch("tarsy.services.mcp_server_registry.TemplateResolver") as tr_cls:
                 tr_cls.return_value = template_resolver
                 registry = MCPServerRegistry(settings=settings)

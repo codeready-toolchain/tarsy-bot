@@ -216,7 +216,7 @@ class TestSettingsTemplateDefaults:
         """Test getting kubeconfig template default."""
         settings = Settings()
         
-        kubeconfig_default = settings.get_template_default('KUBECONFIG')
+        kubeconfig_default = settings.get_template_default('MCP_KUBECONFIG')
         
         assert kubeconfig_default is not None
         assert kubeconfig_default.endswith('/.kube/config')
@@ -235,12 +235,12 @@ class TestSettingsTemplateDefaults:
         """Test that template variable name case is handled correctly."""
         settings = Settings()
         
-        # Should convert KUBECONFIG -> kubeconfig_default
-        result = settings.get_template_default('KUBECONFIG')
+        # Should convert MCP_KUBECONFIG -> mcp_kubeconfig_default
+        result = settings.get_template_default('MCP_KUBECONFIG')
         assert result is not None
         
         # Should handle mixed case
-        result_lower = settings.get_template_default('kubeconfig')
+        result_lower = settings.get_template_default('mcp_kubeconfig')
         assert result_lower is not None
 
 

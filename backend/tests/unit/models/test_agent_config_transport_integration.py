@@ -27,7 +27,7 @@ class TestTransportConfigDiscrimination:
                 "type": "stdio",
                 "command": "npx",
                 "args": ["-y", "kubernetes-mcp-server@latest"],
-                "env": {"KUBECONFIG": "/path/to/kubeconfig"}
+                "env": {"MCP_KUBECONFIG": "/path/to/kubeconfig"}
             }
         }
         
@@ -143,7 +143,7 @@ class TestMCPServerConfigModelTransport:
                 "type": "stdio",
                 "command": "npx",
                 "args": ["-y", "kubernetes-mcp-server@latest"],
-                "env": {"KUBECONFIG": "/path/to/kubeconfig"},
+                "env": {"MCP_KUBECONFIG": "/path/to/kubeconfig"},
                 "timeout": 45
             },
             "instructions": "Kubernetes MCP server for cluster management.",
