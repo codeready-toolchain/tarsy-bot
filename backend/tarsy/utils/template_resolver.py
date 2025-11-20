@@ -191,7 +191,8 @@ class TemplateResolver:
         Resolution order:
         1. .env file variables (self.env_file_vars) - highest priority - project-specific  
         2. System environment variables (os.getenv) - medium priority - global system
-        3. Settings defaults (get_template_default) - lowest priority - fallback defaults
+        3. Special fallbacks for specific variables (e.g., MCP_KUBECONFIG -> KUBECONFIG)
+        4. Settings defaults (get_template_default) - lowest priority - fallback defaults
         
         Args:
             var_name: Name of the template variable to resolve
@@ -220,7 +221,13 @@ class TemplateResolver:
         else:
             logger.debug(f"Template variable {var_name} not found in system environment")
         
-        # 3. Try settings default if available (lowest priority - fallback defaults)
+        # 3. Try special fallbacks for specific variables
+        fallback_value = self._try_special_fallbacks(var_name)
+        if fallback_value is not None:
+            logger.debug(f"Resolved template variable {var_name} using special fallback")
+            return fallback_value
+        
+        # 4. Try settings default if available (lowest priority - fallback defaults)
         if self.settings:
             default_value = self.settings.get_template_default(var_name)
             if default_value is not None:
@@ -231,8 +238,30 @@ class TemplateResolver:
         else:
             logger.debug("No settings instance available for template defaults")
         
-        # 4. Variable not found - this should not happen due to pre-validation
+        # 5. Variable not found - this should not happen due to pre-validation
         raise TemplateResolutionError(f"Template variable {var_name} not found and no default available")
+    
+    def _try_special_fallbacks(self, var_name: str) -> Optional[str]:
+        """
+        Try special fallback logic for specific template variables.
+        
+        Special fallbacks:
+        - MCP_KUBECONFIG: Falls back to KUBECONFIG environment variable
+        
+        Args:
+            var_name: Name of the template variable
+            
+        Returns:
+            Fallback value if available, None otherwise
+        """
+        if var_name == "MCP_KUBECONFIG":
+            # For MCP_KUBECONFIG, try KUBECONFIG environment variable as fallback
+            kubeconfig_value = os.getenv("KUBECONFIG")
+            if kubeconfig_value is not None:
+                logger.debug(f"Using KUBECONFIG environment variable as fallback for {var_name}")
+                return kubeconfig_value
+        
+        return None
     
     def validate_templates(self, config: Dict[str, Any]) -> List[str]:
         """
@@ -275,7 +304,8 @@ class TemplateResolver:
         Resolution order:
         1. .env file variables (self.env_file_vars) - highest priority - project-specific
         2. System environment variables (os.getenv) - medium priority - global system  
-        3. Settings defaults (get_template_default) - lowest priority - fallback defaults
+        3. Special fallbacks for specific variables (e.g., MCP_KUBECONFIG -> KUBECONFIG)
+        4. Settings defaults (get_template_default) - lowest priority - fallback defaults
         
         Args:
             var_name: Name of the template variable
@@ -291,7 +321,11 @@ class TemplateResolver:
         if os.getenv(var_name) is not None:
             return True
         
-        # 3. Check settings default (lowest priority)
+        # 3. Check special fallbacks
+        if self._try_special_fallbacks(var_name) is not None:
+            return True
+        
+        # 4. Check settings default (lowest priority)
         if self.settings and self.settings.get_template_default(var_name) is not None:
             return True
         

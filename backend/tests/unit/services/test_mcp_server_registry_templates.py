@@ -332,3 +332,33 @@ class TestMCPServerRegistryTemplateSettings:
             assert config.transport.args == ["--value", "environment-value"]
             # The default value should not appear in the result
             assert "should-not-be-used" not in str(config.transport.args)
+    
+    def test_kubeconfig_fallback_integration(self):
+        """Test that MCP_KUBECONFIG falls back to KUBECONFIG in MCP server registry."""
+        # Set only KUBECONFIG, not MCP_KUBECONFIG
+        with patch.dict(os.environ, {'KUBECONFIG': '/home/user/.kube/config'}, clear=True):
+            registry = MCPServerRegistry()
+            
+            config = registry.get_server_config("kubernetes-server")
+            
+            # Should use KUBECONFIG as fallback for MCP_KUBECONFIG
+            assert "/home/user/.kube/config" in config.transport.args
+            
+            # Verify it's in the right position (last argument)
+            assert config.transport.args[-1] == "/home/user/.kube/config"
+    
+    def test_mcp_kubeconfig_takes_precedence_over_kubeconfig(self):
+        """Test that MCP_KUBECONFIG takes precedence over KUBECONFIG in MCP server registry."""
+        env_vars = {
+            'MCP_KUBECONFIG': '/path/to/mcp/config',
+            'KUBECONFIG': '/path/to/fallback/config'
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            registry = MCPServerRegistry()
+            
+            config = registry.get_server_config("kubernetes-server")
+            
+            # Should use MCP_KUBECONFIG, not KUBECONFIG
+            assert "/path/to/mcp/config" in config.transport.args
+            assert "/path/to/fallback/config" not in config.transport.args
+            assert config.transport.args[-1] == "/path/to/mcp/config"
