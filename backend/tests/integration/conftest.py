@@ -851,6 +851,9 @@ async def alert_service(ensure_integration_test_isolation, mock_settings, mock_r
                        mock_mcp_server_registry, mock_mcp_client, mock_llm_manager,
                        mock_agent_factory):
     """Create AlertService with mocked dependencies."""
+    mock_settings.slack_webhook_url = ""
+    mock_settings.slack_channel = ""
+
     service = AlertService(mock_settings)
     
     # Replace dependencies with mocks
@@ -887,6 +890,9 @@ def alert_service_with_mocks(
     mock_agent_factory
 ):
     """Create AlertService with all dependencies mocked for integration testing."""
+    mock_settings.slack_webhook_url = ""
+    mock_settings.slack_channel = ""
+    
     # Create service with mocked settings
     service = AlertService(mock_settings)
     

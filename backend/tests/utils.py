@@ -675,6 +675,8 @@ class MockFactory:
             "anthropic_api_key": "test-anthropic-key",
             "default_llm_provider": "gemini",
             "max_llm_mcp_iterations": 3,
+            "slack_webhook_url": "",
+            "slack_channel": "",
             "llm_providers": {
                 "gemini": {
                     "model": "gemini-2.5-pro",

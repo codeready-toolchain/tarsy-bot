@@ -44,6 +44,9 @@ class AgentExecutionResult(BaseModel):
     # Optional clean final analysis for end-user consumption
     final_analysis: Optional[str] = Field(None, description="Clean final analysis for end-user, extracted from result_summary")
     
+    # Optional resume for end-user consumption
+    resume: Optional[str] = Field(None, description="Resume of the agent execution")
+    
     # Error handling
     error_message: Optional[str] = Field(None, description="Error message if execution failed")
     

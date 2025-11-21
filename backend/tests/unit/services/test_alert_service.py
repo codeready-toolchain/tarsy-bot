@@ -12,6 +12,8 @@ import pytest
 
 from tarsy.config.settings import Settings
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+from tarsy.models.api_models import ChainExecutionResult
+from tarsy.models.constants import ChainStatus
 from tarsy.models.alert import Alert
 from tarsy.models.alert_processing import AlertKey
 from tarsy.models.processing_context import ChainContext
@@ -100,6 +102,8 @@ class TestAlertServiceAsyncInitialization:
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None  # Prevent agent config loading
         mock_settings.llm_provider = "test-provider"  # Add configured provider
+        mock_settings.slack_webhook_url = ""
+        mock_settings.slack_channel = ""
         
         with patch('tarsy.services.alert_service.RunbookService'), \
              patch('tarsy.services.alert_service.get_history_service'), \
@@ -523,6 +527,8 @@ class TestHistorySessionManagement:
         """Create AlertService with mocked history service."""
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None  # No agent config for unit tests
+        mock_settings.slack_webhook_url = ""
+        mock_settings.slack_channel = ""
         
         with patch('tarsy.services.alert_service.RunbookService'), \
              patch('tarsy.services.alert_service.get_history_service') as mock_history, \
@@ -629,6 +635,8 @@ class TestResponseFormatting:
         """Create basic AlertService for formatting tests."""
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None  # No agent config for unit tests
+        mock_settings.slack_webhook_url = ""
+        mock_settings.slack_channel = ""
         
         with patch('tarsy.services.alert_service.RunbookService'), \
              patch('tarsy.services.alert_service.get_history_service'), \
@@ -736,6 +744,8 @@ class TestCleanup:
         """Create AlertService with resource mocks."""
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None  # No agent config for unit tests
+        mock_settings.slack_webhook_url = ""
+        mock_settings.slack_channel = ""
         
         with patch('tarsy.services.alert_service.RunbookService') as mock_runbook, \
              patch('tarsy.services.alert_service.get_history_service'), \
@@ -822,6 +832,8 @@ class TestAlertServiceDuplicatePrevention:
         mock_settings.github_token = "test_token"
         mock_settings.history_enabled = True
         mock_settings.agent_config_path = None  # No agent config for unit tests
+        mock_settings.slack_webhook_url = ""
+        mock_settings.slack_channel = ""
         
         service = AlertService(mock_settings)
         service.agent_factory = Mock()
@@ -876,6 +888,8 @@ class TestChainErrorAggregation:
         """Create basic AlertService for error aggregation tests."""
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None
+        mock_settings.slack_webhook_url = ""
+        mock_settings.slack_channel = ""
         
         with patch('tarsy.services.alert_service.RunbookService'), \
              patch('tarsy.services.alert_service.get_history_service'), \
@@ -1541,3 +1555,133 @@ class TestFullErrorPropagation:
         # Should NOT contain "with X stage failures:" since it's a single failure
         assert "stage failures:" not in result
 
+@pytest.mark.unit
+class TestAlertServiceSlackIntegration:
+    """Test AlertService Slack notification integration."""
+    
+    @pytest.fixture
+    def mock_settings(self):
+        """Mock settings for testing."""
+        return MockFactory.create_mock_settings(
+            github_token="test_token",
+            history_enabled=True,
+            agent_config_path=None,  # No agent config for unit tests
+            slack_webhook_url="https://hooks.slack.com/test"  # Enable Slack
+        )
+    
+    @pytest.fixture
+    def sample_chain_context(self):
+        """Create sample ChainContext for testing."""
+        from tarsy.models.alert import ProcessingAlert
+        
+        processing_alert = ProcessingAlert(
+            alert_type="kubernetes",
+            severity="critical",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={
+                "cluster": "main-cluster",
+                "namespace": "test-namespace",
+                "message": "Namespace is terminating",
+                "alert": "NamespaceTerminating"
+            }
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id=str(uuid.uuid4()),
+            current_stage_name="test-stage"
+        )
+        
+        return chain_context
+    
+    @pytest.fixture
+    def alert_service_with_slack(self, mock_settings):
+        """AlertService with Slack enabled."""
+        with patch('tarsy.services.alert_service.SlackService') as mock_slack_class:
+            service = AlertService(mock_settings)
+            mock_slack_instance = mock_slack_class.return_value
+            mock_slack_instance.enabled = True
+            service.slack_service = mock_slack_instance
+            return service, mock_slack_instance
+    
+    @pytest.mark.asyncio
+    async def test_slack_notification_on_success(self, alert_service_with_slack, sample_chain_context):
+        """Test Slack notification is sent on successful processing."""
+        service, mock_slack = alert_service_with_slack
+        mock_slack.send_alert_notification = AsyncMock(return_value=True)
+        
+        # Mock successful chain execution
+        with patch.object(service, '_execute_chain_stages', new_callable=AsyncMock) as mock_execute_stages:
+            mock_execute_stages.return_value = ChainExecutionResult(
+                status=ChainStatus.COMPLETED,
+                timestamp_us=now_us(),  # Add this required field
+                final_analysis="Test analysis",
+                resume="Test resume",
+            )
+            
+            # Mock other dependencies
+            service.llm_manager = Mock()
+            service.llm_manager.is_available.return_value = True
+            service.agent_factory = Mock()
+            service.chain_registry = Mock()
+            service.chain_registry.get_chain_for_alert_type.return_value = ChainConfigModel(
+                chain_id='test-chain',
+                alert_types=['kubernetes'],
+                stages=[ChainStageConfigModel(name='test-stage', agent='TestAgent')],
+                description='Test chain'
+            )
+            service.runbook_service = Mock()
+            service.runbook_service.download_runbook = AsyncMock(return_value="Test runbook")
+            service.history_service = Mock()
+            service.history_service.is_enabled = True
+            service.history_service.create_session.return_value = True
+            service.history_service.update_session_status = Mock()
+            service.history_service.start_session_processing = AsyncMock(return_value=True)
+            
+            await service.process_alert(sample_chain_context)
+            
+            # Verify Slack notification was called
+            mock_slack.send_alert_notification.assert_called_once_with(
+                alert_type=sample_chain_context.processing_alert.alert_type,
+                analysis="Test resume",
+                session_id=sample_chain_context.session_id,
+            )
+    
+    @pytest.mark.asyncio
+    async def test_slack_notification_on_failure(self, alert_service_with_slack, sample_chain_context):
+        """Test Slack notification is sent on processing failure."""
+        service, mock_slack = alert_service_with_slack
+        mock_slack.send_alert_notification = AsyncMock(return_value=True)
+        
+        # Mock failed chain execution
+        with patch.object(service, '_execute_chain_stages') as mock_execute_stages:
+            mock_execute_stages.side_effect = Exception("Processing failed")
+            
+            # Mock other dependencies
+            service.llm_manager = Mock()
+            service.llm_manager.is_available.return_value = True
+            service.agent_factory = Mock()
+            service.chain_registry = Mock()
+            service.chain_registry.get_chain_for_alert_type.return_value = ChainConfigModel(
+                chain_id='test-chain',
+                alert_types=['kubernetes'],
+                stages=[ChainStageConfigModel(name='test-stage', agent='TestAgent')],  # Add a stage
+                description='Test chain'
+            )
+            service.runbook_service = Mock()
+            service.runbook_service.download_runbook = AsyncMock(return_value="Test runbook")
+            service.history_service = Mock()
+            service.history_service.is_enabled = True
+            service.history_service.create_session.return_value = True
+            service.history_service.update_session_status = Mock()
+            service.history_service.start_session_processing = AsyncMock(return_value=True)
+            
+            await service.process_alert(sample_chain_context)
+            
+            # Verify Slack notification was called for failure
+            mock_slack.send_alert_notification.assert_called_once_with(
+                alert_type=sample_chain_context.processing_alert.alert_type,
+                error="Alert processing failed: Processing failed",
+                session_id=sample_chain_context.session_id
+            )

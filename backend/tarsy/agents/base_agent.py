@@ -204,13 +204,19 @@ class BaseAgent(ABC):
                 context=stage_context
             )
             
+            resume = await self._iteration_controller.generate_resume(
+                analysis_result=analysis_result,
+                context=stage_context
+            )
+            
             return AgentExecutionResult(
                 status=StageStatus.COMPLETED,
                 agent_name=self.__class__.__name__,
                 timestamp_us=now_us(),
                 result_summary=result_summary,
                 complete_conversation_history=analysis_result,
-                final_analysis=final_analysis
+                final_analysis=final_analysis,
+                resume=resume
             )
             
         except AgentError as e:

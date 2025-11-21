@@ -41,6 +41,7 @@ class ChainExecutionResult(BaseModel):
     
     # Success case fields - present when status is completed or partial
     final_analysis: Optional[str] = Field(None, description="Final analysis result from the chain")
+    resume: Optional[str] = Field(None, description="Resume of the chain execution")
     
     # Error case fields - present when status is failed
     error: Optional[str] = Field(None, description="Error message when execution fails")

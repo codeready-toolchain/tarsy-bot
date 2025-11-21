@@ -226,6 +226,20 @@ You have access to the same tools and systems that were used in the original inv
             tool_name=tool_name,
             result_text=result_text
         )
+
+    def build_resume_prompt(self, analysis_result: str) -> str:
+        """Build prompt for creating a concise 1-2 line resume of analysis result."""
+        return f"""Please create a concise 1-2 line resume of the following technical analysis:
+
+    {analysis_result}
+
+    Requirements:
+    - Maximum 1-2 sentences
+    - Focus on key findings and conclusions
+    - Use clear, non-technical language where possible
+    - Highlight the most important insights
+
+    Resume:"""
     
     # ============ Chat Formatting Methods ============
     

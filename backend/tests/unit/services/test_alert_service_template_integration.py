@@ -139,6 +139,8 @@ class TestAlertServiceTemplateIntegration:
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None  # Prevent agent config loading
         mock_settings.get_template_default.return_value = None
+        mock_settings.slack_webhook_url = ""
+        mock_settings.slack_channel = ""
         
         # Mock other services
         with patch('tarsy.services.alert_service.RunbookService'), \

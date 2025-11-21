@@ -30,6 +30,7 @@ from tarsy.services.history_service import get_history_service
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.runbook_service import RunbookService
 from tarsy.utils.logger import get_module_logger
+from tarsy.services.slack_service import SlackService
 from tarsy.agents.exceptions import SessionPaused
 from tarsy.models.pause_metadata import PauseMetadata, PauseReason
 
@@ -74,6 +75,7 @@ class AlertService:
 
         # Initialize services
         self.runbook_service = RunbookService(settings, runbook_http_client)
+        self.slack_service = SlackService(settings)
         self.history_service = get_history_service()
         
         # Initialize registries with loaded configuration
@@ -372,6 +374,13 @@ class AlertService:
                 # Publish session.completed event
                 from tarsy.services.events.event_helpers import publish_session_completed
                 await publish_session_completed(chain_context.session_id)
+
+                if self.slack_service.enabled:
+                    await self.slack_service.send_alert_notification(
+                        alert_type=chain_context.processing_alert.alert_type,
+                        analysis=chain_result.resume,
+                        session_id=chain_context.session_id
+                    )
                 
                 return final_result
             elif chain_result.status == ChainStatus.PAUSED:
@@ -397,6 +406,13 @@ class AlertService:
                 # Publish session.failed event
                 from tarsy.services.events.event_helpers import publish_session_failed
                 await publish_session_failed(chain_context.session_id)
+
+                if self.slack_service.enabled:
+                    await self.slack_service.send_alert_notification(
+                        alert_type=chain_context.processing_alert.alert_type,
+                        error=error_msg,
+                        session_id=chain_context.session_id
+                    )
                 
                 return self._format_error_response(chain_context, error_msg)
                 
@@ -410,6 +426,13 @@ class AlertService:
             # Publish session.failed event
             from tarsy.services.events.event_helpers import publish_session_failed
             await publish_session_failed(chain_context.session_id)
+
+            if self.slack_service.enabled:
+                    await self.slack_service.send_alert_notification(
+                        alert_type=chain_context.processing_alert.alert_type,
+                        error=error_msg,
+                        session_id=chain_context.session_id
+                    )
             
             return self._format_error_response(chain_context, error_msg)
         
@@ -808,10 +831,18 @@ class AlertService:
             
             # Set completion timestamp just before returning result
             timestamp_us = now_us()
+
+            resume=self.extract_resume(chain_context)
+
+            if resume is None and overall_status == ChainStatus.COMPLETED:
+                logger.error("Chain completed but failed to generate resume - this is unexpected")
+                if not chain_error:
+                    chain_error = "Chain completed but resume generation failed"
             
             return ChainExecutionResult(
                 status=overall_status,
                 final_analysis=final_analysis if overall_status == ChainStatus.COMPLETED else None,
+                resume=resume,
                 error=chain_error if overall_status == ChainStatus.FAILED else None,
                 timestamp_us=timestamp_us
             )
@@ -1367,6 +1398,33 @@ class AlertService:
         except Exception as e:
             logger.warning(f"Failed to update stage execution as started: {str(e)}")
     
+    def extract_resume(self, chain_context: ChainContext) -> Optional[str]:
+        """
+        Extract resume (resume) from agent execution results.
+        
+        The base agent generates AI-powered resumes using the iteration controller
+        and stores them in AgentExecutionResult.resume field.
+        """
+        # Look for resume from the last successful stage
+        for stage_name in reversed(list(chain_context.stage_outputs.keys())):
+            stage_result = chain_context.stage_outputs[stage_name]
+            if (isinstance(stage_result, AgentExecutionResult) and 
+                stage_result.status == StageStatus.COMPLETED and 
+                stage_result.resume):
+                logger.info(f"Found resume from stage '{stage_name}': {stage_result.resume[:100]}...")
+                return stage_result.resume
+        
+        # Fallback: look for any resume from any successful stage
+        for stage_name, stage_result in chain_context.stage_outputs.items():
+            if (isinstance(stage_result, AgentExecutionResult) and 
+                stage_result.status == StageStatus.COMPLETED and 
+                stage_result.resume):
+                logger.info(f"Found resume from stage '{stage_name}' (fallback): {stage_result.resume[:100]}...")
+                return stage_result.resume
+        
+        logger.warning("No AI-generated resume found, using result_summary fallback")
+        return None
+
     async def close(self):
         """
         Clean up resources.

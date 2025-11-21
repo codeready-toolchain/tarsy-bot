@@ -922,3 +922,134 @@ Action Input: pod_name=test-pod"""
         # None should be handled gracefully
         result = controller._extract_react_final_analysis(None)
         assert result == "No analysis generated"
+
+@pytest.mark.unit
+class TestGenerateResume:
+    """Test generate_resume method for AI-powered resume generation."""
+
+    @pytest.fixture
+    def mock_context(self):
+        """Create mock StageContext with agent and llm_client."""
+        context = Mock(spec=StageContext)
+        context.session_id = "test-session-123"
+
+        # Mock agent with llm_client
+        mock_agent = Mock()
+        mock_agent.get_current_stage_execution_id.return_value = "stage-exec-456"
+
+        # Mock LLM manager
+        mock_llm_manager = Mock()
+        mock_agent.llm_client = mock_llm_manager
+
+        # Mock prompt_builder
+        mock_prompt_builder = Mock()
+        mock_prompt_builder.build_resume_prompt = Mock(side_effect=lambda x: f"Please create a concise 1-2 line resume of the following technical analysis:\n\n{x}\n\nRequirements:\n- Maximum 1-2 sentences\n- Focus on key findings and conclusions\n- Use clear, non-technical language where possible\n- Highlight the most important insights\n\nResume:")
+        mock_agent.prompt_builder = mock_prompt_builder
+
+        context.agent = mock_agent
+        return context
+
+    @pytest.fixture
+    def controller(self):
+        """Create a controller instance for testing."""
+        return SimpleReActController(Mock(), Mock())
+
+    @pytest.mark.asyncio
+    async def test_generate_resume_success(self, controller, mock_context):
+        """Test successful AI resume generation."""
+        # Mock LLM response
+        mock_response_conversation = Mock()
+        mock_assistant_message = Mock()
+        mock_assistant_message.content = "Resume: The Kubernetes pod failed due to missing resources. Investigation revealed the Job 'etl-job-new' was not found. Recommended checking deployment configuration."
+        mock_response_conversation.get_latest_assistant_message.return_value = mock_assistant_message
+
+        mock_context.agent.llm_client.generate_response = AsyncMock(return_value=mock_response_conversation)
+
+        # Test input
+        analysis_result = """
+        Thought: I need to investigate the Kubernetes pod failure.
+        Action: Check pod status
+        Observation: Pod is in failed state
+        Final Answer: The pod failed because the Job 'etl-job-new' was not found in the namespace.
+        """
+
+        # Execute
+        result = await controller.generate_resume(analysis_result, mock_context)
+
+        # Verify
+        assert result == "The Kubernetes pod failed due to missing resources. Investigation revealed the Job 'etl-job-new' was not found. Recommended checking deployment configuration."
+
+        # Verify LLM was called correctly
+        mock_context.agent.llm_client.generate_response.assert_called_once()
+        call_args = mock_context.agent.llm_client.generate_response.call_args
+
+        # Check conversation structure
+        conversation = call_args[1]['conversation']
+        assert len(conversation.messages) == 2
+        assert conversation.messages[0].role == MessageRole.SYSTEM
+        assert conversation.messages[1].role == MessageRole.USER
+        assert "Please create a concise 1-2 line resume" in conversation.messages[1].content
+
+        # Check other parameters
+        assert call_args[1]['session_id'] == "test-session-123"
+        assert call_args[1]['stage_execution_id'] == "stage-exec-456"
+        assert call_args[1]['max_tokens'] == 150
+        assert call_args[1]['interaction_type'] == "summarization"
+
+    @pytest.mark.asyncio
+    async def test_generate_resume_strips_prefix(self, controller, mock_context):
+        """Test that 'Resume:' prefix is properly stripped."""
+        # Mock LLM response with prefix
+        mock_response_conversation = Mock()
+        mock_assistant_message = Mock()
+        mock_assistant_message.content = "Resume: Alert analysis completed successfully. No critical issues found."
+        mock_response_conversation.get_latest_assistant_message.return_value = mock_assistant_message
+
+        mock_context.agent.llm_client.generate_response = AsyncMock(return_value=mock_response_conversation)
+
+        result = await controller.generate_resume("Some analysis", mock_context)
+
+        # Verify prefix was stripped
+        assert result == "Alert analysis completed successfully. No critical issues found."
+        assert not result.startswith("Resume:")
+
+
+    @pytest.mark.asyncio
+    async def test_generate_resume_no_assistant_response(self, controller, mock_context):
+        """Test handling when LLM returns no assistant message."""
+        # Mock LLM response with no assistant message
+        mock_response_conversation = Mock()
+        mock_response_conversation.get_latest_assistant_message.return_value = None
+
+        mock_context.agent.llm_client.generate_response = AsyncMock(return_value=mock_response_conversation)
+
+        result = await controller.generate_resume("Some analysis", mock_context)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_generate_resume_llm_exception(self, controller, mock_context):
+        """Test handling when LLM generation fails."""
+        # Mock LLM to raise exception
+        mock_context.agent.llm_client.generate_response = AsyncMock(side_effect=Exception("LLM API error"))
+
+        result = await controller.generate_resume("Some analysis", mock_context)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_generate_resume_empty_analysis(self, controller, mock_context):
+        """Test handling of empty analysis result."""
+        result = await controller.generate_resume("", mock_context)
+
+        assert result == "No analysis result available"
+
+        # Verify LLM was not called
+        mock_context.agent.llm_client.generate_response.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_generate_resume_none_analysis(self, controller, mock_context):
+        """Test handling of None analysis result."""
+        result = await controller.generate_resume(None, mock_context)
+
+        assert result == "No analysis result available"
