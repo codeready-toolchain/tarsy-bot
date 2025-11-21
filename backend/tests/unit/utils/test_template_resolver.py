@@ -370,3 +370,106 @@ class TestVariableNamingRules:
         # None of these should be recognized as templates, so no error should occur
         result = self.resolver.resolve_configuration(config)
         assert result == config  # Should be unchanged
+
+
+@pytest.mark.unit
+class TestSpecialFallbacks:
+    """Test special fallback behavior for specific template variables."""
+    
+    def setup_method(self):
+        """Set up test environment."""
+        self.resolver = TemplateResolver()
+    
+    def test_mcp_kubeconfig_fallback_to_kubeconfig(self):
+        """Test that MCP_KUBECONFIG falls back to KUBECONFIG when not set."""
+        # Clear MCP_KUBECONFIG and set KUBECONFIG
+        env_vars = {'KUBECONFIG': '/home/user/.kube/config'}
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = {"kubeconfig_path": "${MCP_KUBECONFIG}"}
+            result = self.resolver.resolve_configuration(config)
+            assert result == {"kubeconfig_path": "/home/user/.kube/config"}
+    
+    def test_mcp_kubeconfig_direct_takes_precedence(self):
+        """Test that MCP_KUBECONFIG takes precedence over KUBECONFIG fallback."""
+        env_vars = {
+            'MCP_KUBECONFIG': '/path/to/mcp/config',
+            'KUBECONFIG': '/path/to/fallback/config'
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = {"kubeconfig_path": "${MCP_KUBECONFIG}"}
+            result = self.resolver.resolve_configuration(config)
+            assert result == {"kubeconfig_path": "/path/to/mcp/config"}
+    
+    def test_mcp_kubeconfig_fallback_to_settings_default(self):
+        """Test that MCP_KUBECONFIG falls back to settings default when neither env var is set."""
+        mock_settings = MagicMock()
+        mock_settings.get_template_default.return_value = "/default/kube/config"
+        resolver_with_settings = TemplateResolver(settings=mock_settings)
+        
+        # Clear both environment variables
+        with patch.dict(os.environ, {}, clear=True):
+            config = {"kubeconfig_path": "${MCP_KUBECONFIG}"}
+            result = resolver_with_settings.resolve_configuration(config)
+            assert result == {"kubeconfig_path": "/default/kube/config"}
+            
+            # Verify settings was called with correct variable name
+            mock_settings.get_template_default.assert_called_with("MCP_KUBECONFIG")
+    
+    def test_mcp_kubeconfig_missing_all_sources_raises_error(self):
+        """Test that missing MCP_KUBECONFIG with no fallbacks raises error."""
+        # Clear all environment variables
+        with patch.dict(os.environ, {}, clear=True):
+            config = {"kubeconfig_path": "${MCP_KUBECONFIG}"}
+            with pytest.raises(TemplateResolutionError) as exc_info:
+                self.resolver.resolve_configuration(config)
+            assert "Missing required environment variables" in str(exc_info.value)
+            assert "MCP_KUBECONFIG" in str(exc_info.value)
+    
+    def test_mcp_kubeconfig_validation_with_kubeconfig_fallback(self):
+        """Test that validation recognizes KUBECONFIG as valid fallback for MCP_KUBECONFIG."""
+        # Set only KUBECONFIG, not MCP_KUBECONFIG
+        with patch.dict(os.environ, {'KUBECONFIG': '/fallback/config'}, clear=True):
+            config = {"kubeconfig_path": "${MCP_KUBECONFIG}"}
+            missing_vars = self.resolver.validate_templates(config)
+            assert missing_vars == []  # Should be empty since KUBECONFIG provides fallback
+    
+    def test_mcp_kubeconfig_validation_without_fallback(self):
+        """Test that validation fails when neither MCP_KUBECONFIG nor KUBECONFIG are set."""
+        # Clear all environment variables
+        with patch.dict(os.environ, {}, clear=True):
+            config = {"kubeconfig_path": "${MCP_KUBECONFIG}"}
+            missing_vars = self.resolver.validate_templates(config)
+            assert missing_vars == ["MCP_KUBECONFIG"]
+    
+    def test_other_variables_not_affected_by_fallback(self):
+        """Test that other template variables are not affected by special fallback logic."""
+        # Set KUBECONFIG but not OTHER_VAR
+        with patch.dict(os.environ, {'KUBECONFIG': '/some/config'}, clear=True):
+            config = {"other_path": "${OTHER_VAR}"}
+            with pytest.raises(TemplateResolutionError) as exc_info:
+                self.resolver.resolve_configuration(config)
+            assert "OTHER_VAR" in str(exc_info.value)
+    
+    def test_mcp_kubeconfig_in_complex_config(self):
+        """Test MCP_KUBECONFIG fallback in a realistic MCP server configuration."""
+        # Simulate a kubernetes MCP server config with KUBECONFIG fallback
+        env_vars = {'KUBECONFIG': '/home/user/.kube/config'}
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = {
+                "server_id": "kubernetes-server",
+                "server_type": "kubernetes",
+                "enabled": True,
+                "transport": {
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": [
+                        "-y", 
+                        "kubernetes-mcp-server@0.0.54", 
+                        "--read-only",
+                        "--disable-destructive",
+                        "--kubeconfig", "${MCP_KUBECONFIG}"
+                    ]
+                }
+            }
+            result = self.resolver.resolve_configuration(config)
+            assert result["transport"]["args"][-1] == "/home/user/.kube/config"

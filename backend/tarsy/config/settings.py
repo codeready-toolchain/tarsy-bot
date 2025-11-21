@@ -211,7 +211,7 @@ class Settings(BaseSettings):
     
     # Template Variable Defaults
     # These provide default values for template variables if not set in environment
-    kubeconfig_default: str = Field(
+    mcp_kubeconfig_default: str = Field(
         default_factory=lambda: os.path.expanduser("~/.kube/config"),
         description="Default kubeconfig path for Kubernetes MCP server (tilde expanded)"
     )
@@ -360,7 +360,7 @@ class Settings(BaseSettings):
         Get default value for a template variable.
         
         Args:
-            var_name: Template variable name (e.g., 'KUBECONFIG')
+            var_name: Template variable name (e.g., 'MCP_KUBECONFIG')
             
         Returns:
             Default value if available, None otherwise

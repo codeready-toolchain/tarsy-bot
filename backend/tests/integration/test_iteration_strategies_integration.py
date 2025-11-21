@@ -421,7 +421,7 @@ mcp_servers:
       command: "npx"
       args: ["-y", "kubernetes-mcp-server@latest"]
       env:
-        KUBECONFIG: "/tmp/kubeconfig"
+        MCP_KUBECONFIG: "/tmp/kubeconfig"
     instructions: "Kubernetes troubleshooting"
         """
         

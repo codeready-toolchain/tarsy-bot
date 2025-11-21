@@ -78,7 +78,7 @@ class TestStdioTransportConfig:
             "type": "stdio",
             "command": "npx",
             "args": ["-y", "kubernetes-mcp-server@latest"],
-            "env": {"KUBECONFIG": "/path/to/kubeconfig"},
+            "env": {"MCP_KUBECONFIG": "/path/to/kubeconfig"},
             "timeout": 45
         }
         
@@ -87,7 +87,7 @@ class TestStdioTransportConfig:
         assert config.type == "stdio"
         assert config.command == "npx"
         assert config.args == ["-y", "kubernetes-mcp-server@latest"]
-        assert config.env == {"KUBECONFIG": "/path/to/kubeconfig"}
+        assert config.env == {"MCP_KUBECONFIG": "/path/to/kubeconfig"}
         assert config.timeout == 45
 
     def test_minimal_stdio_config(self):
@@ -129,7 +129,7 @@ class TestStdioTransportConfig:
         valid_data = {
             "command": "npx",
             "args": ["-y", "kubernetes-mcp-server@latest"],
-            "env": {"KUBECONFIG": "/path/to/kubeconfig"}
+            "env": {"MCP_KUBECONFIG": "/path/to/kubeconfig"}
         }
         
         model_test_helpers.test_serialization_roundtrip(StdioTransportConfig, valid_data)
