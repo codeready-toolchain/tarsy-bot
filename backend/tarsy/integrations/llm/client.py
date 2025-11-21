@@ -1,6 +1,21 @@
 """
 Unified LLM client implementation using LangChain.
 Handles all LLM providers through LangChain's abstraction.
+
+HYBRID APPROACH FOR GOOGLE/GEMINI NATIVE TOOLS:
+-----------------------------------------------
+For Google/Gemini models, we use a hybrid approach combining:
+1. LangChain's ChatGoogleGenerativeAI for multi-provider abstraction
+2. NEW google.genai.types for tool definitions (modern format)
+3. .bind() method to attach tools to model (not passed to astream)
+
+This approach enables:
+- Tool combination support (e.g., google_search + code_execution)
+- Modern tool format matching Google's official documentation
+- Full LangChain compatibility across all providers
+
+Note: LangChain's older protobuf-based approach (v1beta) does NOT support
+tool combination. The NEW SDK types (google.genai.types) are required.
 """
 
 import asyncio
@@ -18,7 +33,7 @@ from langchain_google_vertexai.model_garden import ChatAnthropicVertex
 from langchain_openai import ChatOpenAI
 from langchain_xai import ChatXAI
 from langchain_anthropic import ChatAnthropic
-from google.ai.generativelanguage_v1beta.types import Tool as GoogleTool
+from google.genai import types as google_genai_types  # Google SDK types for tool definitions
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.hook_context import llm_interaction_context
@@ -143,7 +158,7 @@ class LLMClient:
         self.settings = settings  # Store settings for feature flag access
         self.available: bool = False
         self._sqlite_warning_logged: bool = False
-        self.google_search_tool: Optional[GoogleTool] = None  # Store Google Search tool for Gemini models
+        self.google_search_tool: Optional[google_genai_types.Tool] = None  # Store Google Search tool for Gemini models
         self._initialize_client()
     
     def _initialize_client(self):
@@ -172,12 +187,15 @@ class LLMClient:
                 )
                 
                 # Initialize Google Search tool for Google/Gemini models (if enabled)
+                # Uses Google AI SDK types (google.genai.types) for tool definition format
                 if (
                     provider_type == LLMProviderType.GOOGLE
                     and self.config.enable_native_search
                 ):
                     try:
-                        self.google_search_tool = GoogleTool(google_search={})
+                        self.google_search_tool = google_genai_types.Tool(
+                            google_search=google_genai_types.GoogleSearch()
+                        )
                         logger.info(f"Successfully initialized Google Search tool for {self.provider_name}")
                     except Exception as e:
                         logger.warning(f"Failed to initialize Google Search tool for {self.provider_name}: {e}")
@@ -290,23 +308,28 @@ class LLMClient:
                     if max_tokens is not None:
                         config["max_tokens"] = max_tokens
                     
-                    # Prepare tools for Gemini models
-                    # Tools must be passed as a keyword argument, not in config dict
-                    # Defensive check: Only include tools for Google providers
-                    tools_kwarg = {}
+                    # HYBRID APPROACH: Bind tools to model using Google AI SDK types
+                    # Tools are converted to dicts and bound to the model, not passed to astream()
+                    llm_with_tools = self.llm_client
                     if (
                         self.google_search_tool is not None
                         and self.config.type == LLMProviderType.GOOGLE
                     ):
-                        tools_kwarg["tools"] = [self.google_search_tool]
-                        logger.info(f"Including Google Search tool for {self.provider_name}")
+                        try:
+                            # Convert Google AI SDK tool to dict and bind to model
+                            tools_as_dicts = [self.google_search_tool.model_dump(exclude_none=True)]
+                            llm_with_tools = self.llm_client.bind(tools=tools_as_dicts)
+                            logger.info(f"Bound Google Search tool to {self.provider_name} model")
+                        except Exception as e:
+                            logger.error(f"Failed to bind Google Search tool: {e}, continuing without tools")
+                            llm_with_tools = self.llm_client
                     
                     # Aggregate chunks for usage metadata (OpenAI stream_usage=True approach)
                     aggregate_chunk = None
                     
                     # Wrap streaming with timeout protection (Python 3.11+)
                     async with asyncio.timeout(timeout_seconds):
-                        async for chunk in self.llm_client.astream(langchain_messages, config=config, **tools_kwarg):
+                        async for chunk in llm_with_tools.astream(langchain_messages, config=config):
                             # Aggregate chunks by adding them together
                             # This properly accumulates usage_metadata across all chunks
                             aggregate_chunk = chunk if aggregate_chunk is None else aggregate_chunk + chunk
