@@ -118,6 +118,27 @@ class TestLLMProviderConfigValidation:
             api_key_env="TEST_API_KEY"
         )
         
+        # Validator converts string to enum
+        assert config.type == LLMProviderType(provider_type)
+
+    @pytest.mark.parametrize(
+        "provider_type",
+        [
+            LLMProviderType.OPENAI,
+            LLMProviderType.GOOGLE,
+            LLMProviderType.XAI,
+            LLMProviderType.ANTHROPIC,
+            LLMProviderType.VERTEXAI,
+        ],
+    )
+    def test_valid_enum_provider_types(self, provider_type: LLMProviderType) -> None:
+        """Test that LLMProviderType enum values are accepted and normalized."""
+        config = LLMProviderConfig(
+            type=provider_type,
+            model="test-model",
+            api_key_env="TEST_API_KEY",
+        )
+        # Validator should preserve enum type
         assert config.type == provider_type
 
     def test_invalid_provider_type_raises_validation_error(self) -> None:
@@ -161,7 +182,7 @@ class TestLLMProviderConfigValidation:
             disable_ssl_verification=False
         )
         
-        assert config.type == "google"
+        assert config.type == LLMProviderType.GOOGLE
         assert config.model == "gemini-2.5-flash"
         assert config.api_key_env == "GOOGLE_API_KEY"
         assert config.base_url == "https://custom.api.endpoint"

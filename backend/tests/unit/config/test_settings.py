@@ -10,6 +10,7 @@ import pytest
 from unittest.mock import patch
 
 from tarsy.config.settings import Settings, is_testing, get_settings
+from tarsy.models.llm_models import LLMProviderType
 
 
 @pytest.mark.unit
@@ -117,7 +118,7 @@ class TestSettingsYAMLConfiguration:
         
         # Check YAML provider details
         custom_openai = providers['custom-openai']
-        assert custom_openai.type == 'openai'
+        assert custom_openai.type == LLMProviderType.OPENAI
         assert custom_openai.model == 'gpt-4-custom'
         assert custom_openai.base_url == 'https://custom-openai.example.com/v1'
     
@@ -258,7 +259,7 @@ class TestSettingsLLMConfiguration:
         # Get config for built-in provider
         config = settings.get_llm_config("google-default")
         
-        assert config.type == 'google'
+        assert config.type == LLMProviderType.GOOGLE
         assert config.api_key == "test-google-key"
         assert hasattr(config, 'disable_ssl_verification')
     

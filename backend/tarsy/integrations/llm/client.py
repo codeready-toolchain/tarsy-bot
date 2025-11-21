@@ -152,7 +152,7 @@ class LLMClient:
             # Map provider name to provider type for LLM_PROVIDERS
             provider_type = self.config.type  # Direct field access on BaseModel
             
-            if provider_type in LLM_PROVIDERS:
+            if provider_type.value in LLM_PROVIDERS:
                 if not self.api_key:
                     logger.warning(f"No API key provided for {self.provider_name}")
                     self.available = False
@@ -163,7 +163,7 @@ class LLMClient:
                     logger.warning(f"SSL verification is DISABLED for {self.provider_name} - use with caution!")
                 
                 base_url = self.config.base_url
-                self.llm_client = LLM_PROVIDERS[provider_type](
+                self.llm_client = LLM_PROVIDERS[provider_type.value](
                     self.temperature, 
                     self.api_key, 
                     self.model,
@@ -172,7 +172,10 @@ class LLMClient:
                 )
                 
                 # Initialize Google Search tool for Google/Gemini models (if enabled)
-                if provider_type == LLMProviderType.GOOGLE.value and self.config.enable_native_search:
+                if (
+                    provider_type == LLMProviderType.GOOGLE
+                    and self.config.enable_native_search
+                ):
                     try:
                         self.google_search_tool = GoogleTool(google_search={})
                         logger.info(f"Successfully initialized Google Search tool for {self.provider_name}")
@@ -183,7 +186,7 @@ class LLMClient:
                 self.available = True
                 logger.info(f"Successfully initialized {self.provider_name} with LangChain")
             else:
-                logger.error(f"Unknown LLM provider type: {provider_type} for provider: {self.provider_name}")
+                logger.error(f"Unknown LLM provider type: {provider_type.value} for provider: {self.provider_name}")
                 self.available = False
         except Exception as e:
             logger.error(f"Failed to initialize {self.provider_name}: {str(e)}")
@@ -289,8 +292,12 @@ class LLMClient:
                     
                     # Prepare tools for Gemini models
                     # Tools must be passed as a keyword argument, not in config dict
+                    # Defensive check: Only include tools for Google providers
                     tools_kwarg = {}
-                    if self.google_search_tool is not None:
+                    if (
+                        self.google_search_tool is not None
+                        and self.config.type == LLMProviderType.GOOGLE
+                    ):
                         tools_kwarg["tools"] = [self.google_search_tool]
                         logger.info(f"Including Google Search tool for {self.provider_name}")
                     

@@ -81,18 +81,20 @@ class LLMProviderConfig(BaseModel):
         description="Runtime SSL verification setting"
     )
     
-    @field_validator("type")
+    @field_validator("type", mode="before")
     @classmethod
-    def validate_provider_type(cls, v: str | LLMProviderType) -> str:
-        """Validate that provider type is supported."""
-        # Convert enum to string if needed
-        value = v.value if isinstance(v, LLMProviderType) else v
+    def validate_provider_type(cls, v: str | LLMProviderType) -> LLMProviderType:
+        """Validate that provider type is supported and convert to enum."""
+        # Convert to string for validation
+        value = v.value if isinstance(v, LLMProviderType) else str(v)
         
         # Validate against enum values
         supported = [e.value for e in LLMProviderType]
         if value not in supported:
             raise ValueError(f"Unsupported provider type: {value}. Must be one of: {', '.join(supported)}")
-        return value
+        
+        # Return enum instance
+        return LLMProviderType(value)
     
     @field_validator("model")
     @classmethod

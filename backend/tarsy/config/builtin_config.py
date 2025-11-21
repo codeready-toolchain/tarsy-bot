@@ -16,7 +16,7 @@ Agent classes are imported dynamically by AgentFactory when needed.
 
 import copy
 from typing import Dict, Any
-from tarsy.models.llm_models import LLMProviderConfig
+from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
 from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
 
@@ -234,35 +234,35 @@ BUILTIN_CODE_MASKERS: Dict[str, str] = {
 # Format: "provider-name" -> LLMProviderConfig instance
 BUILTIN_LLM_PROVIDERS: Dict[str, LLMProviderConfig] = {
     "openai-default": LLMProviderConfig(
-        type="openai",
+        type=LLMProviderType.OPENAI,
         model="gpt-5",
         api_key_env="OPENAI_API_KEY",
         temperature=DEFAULT_LLM_TEMPERATURE,
         max_tool_result_tokens=250000  # Conservative for 272K context
     ),
     "google-default": LLMProviderConfig(
-        type="google", 
+        type=LLMProviderType.GOOGLE, 
         model="gemini-2.5-pro",
         api_key_env="GOOGLE_API_KEY",
         temperature=DEFAULT_LLM_TEMPERATURE,
         max_tool_result_tokens=950000  # Conservative for 1M context
     ),
     "xai-default": LLMProviderConfig(
-        type="xai",
+        type=LLMProviderType.XAI,
         model="grok-4", 
         api_key_env="XAI_API_KEY",
         temperature=DEFAULT_LLM_TEMPERATURE,
         max_tool_result_tokens=200000  # Conservative for 256K context
     ),
     "anthropic-default": LLMProviderConfig(
-        type="anthropic",
+        type=LLMProviderType.ANTHROPIC,
         model="claude-sonnet-4-20250514",
         api_key_env="ANTHROPIC_API_KEY",
         temperature=DEFAULT_LLM_TEMPERATURE,
         max_tool_result_tokens=150000  # Conservative for 200K context
     ),
     "vertexai-default": LLMProviderConfig(
-        type="vertexai",
+        type=LLMProviderType.VERTEXAI,
         model="claude-sonnet-4-5@20250929",  # Claude Sonnet 4.5 on Vertex AI
         api_key_env="VERTEX_AI_PROJECT",  # Format: "project_id:location" or "project_id"
         temperature=DEFAULT_LLM_TEMPERATURE,
