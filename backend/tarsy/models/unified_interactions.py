@@ -140,10 +140,17 @@ class LLMInteraction(SQLModel, table=True):
         description="Complete conversation object with messages and metadata"
     )
     
-    # NEW: Token usage tracking fields
+    # Token usage tracking fields
     input_tokens: Optional[int] = Field(None, ge=0, description="Input/prompt tokens")
     output_tokens: Optional[int] = Field(None, ge=0, description="Output/completion tokens")  
     total_tokens: Optional[int] = Field(None, ge=0, description="Total tokens used")
+    
+    # Response metadata from aggregated streaming chunks
+    response_metadata: Optional[dict] = Field(
+        None,
+        sa_column=Column(JSON),
+        description="Complete response metadata including grounding sources, tool usage, etc."
+    )
     
     # Interaction type for categorization and UI rendering
     interaction_type: str = Field(

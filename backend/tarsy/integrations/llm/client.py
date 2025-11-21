@@ -43,6 +43,11 @@ from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.error_details import extract_error_details
 
+# Apply url_context patch for Gemini models
+# This enables url_context tool support which is not yet natively supported in LangChain
+from tarsy.integrations.llm.gemini_url_context_patch import apply_url_context_patch
+apply_url_context_patch()
+
 # Suppress SSL warnings when SSL verification is disabled
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -515,6 +520,16 @@ class LLMClient:
                     
                     # Store usage metadata (from aggregated chunks or callback)
                     self._store_usage_metadata(ctx, callback, chunk_usage)
+                    
+                    # Extract complete response metadata from aggregated chunk
+                    if aggregate_chunk and hasattr(aggregate_chunk, 'response_metadata'):
+                        ctx.interaction.response_metadata = aggregate_chunk.response_metadata
+                        try:
+                            keys = list(aggregate_chunk.response_metadata.keys()) if aggregate_chunk.response_metadata else []
+                            logger.debug(f"Captured response metadata with keys: {keys if keys else 'none'}")
+                        except (TypeError, AttributeError):
+                            # Handle cases where response_metadata is not a dict (e.g., in tests)
+                            logger.debug("Captured response metadata (keys unavailable)")
                     
                     # Finalize conversation and interaction
                     self._finalize_conversation(ctx, conversation, accumulated_content, interaction_type, mcp_event_id)

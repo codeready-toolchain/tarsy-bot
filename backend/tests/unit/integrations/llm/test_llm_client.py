@@ -1877,3 +1877,96 @@ class TestLLMClientGoogleSearchTool:
             # Verify astream was called WITHOUT tools kwarg, even though google_search_tool was set
             call = mock_llm_client.astream.call_args
             assert "tools" not in call.kwargs, f"Expected no 'tools' kwarg for {provider_type} provider"
+
+
+@pytest.mark.unit
+class TestLLMClientChunkAggregation:
+    """Test chunk aggregation and metadata extraction helpers."""
+    
+    @pytest.mark.asyncio
+    async def test_aggregate_chunks_preserves_metadata(self):
+        """Test that chunk aggregation preserves response metadata."""
+        from langchain_core.messages import AIMessageChunk
+        from .metadata_helpers import aggregate_chunks
+        
+        # Create mock chunks with metadata
+        chunk1 = AIMessageChunk(content="Hello", response_metadata={})
+        chunk2 = AIMessageChunk(content=" world", response_metadata={})
+        chunk3 = AIMessageChunk(
+            content="!",
+            response_metadata={
+                'finish_reason': 'stop',
+                'grounding_metadata': {'web_search_queries': ['test query']}
+            }
+        )
+        
+        # Test aggregation
+        final = aggregate_chunks([chunk1, chunk2, chunk3])
+        
+        assert final is not None
+        assert final.content == "Hello world!"
+        assert 'grounding_metadata' in final.response_metadata
+        assert final.response_metadata['finish_reason'] == 'stop'
+        assert final.response_metadata['grounding_metadata']['web_search_queries'] == ['test query']
+    
+    @pytest.mark.asyncio
+    async def test_aggregate_chunks_empty_list(self):
+        """Test that aggregate_chunks handles empty list gracefully."""
+        from .metadata_helpers import aggregate_chunks
+        
+        final = aggregate_chunks([])
+        
+        assert final is None
+    
+    def test_extract_tool_usage_summary_google_search(self):
+        """Test extraction of Google Search tool usage from metadata."""
+        from .metadata_helpers import extract_tool_usage_summary
+        
+        metadata = {
+            'grounding_metadata': {
+                'web_search_queries': ['query1', 'query2'],
+                'search_entry_point': {'rendered_content': '...'}
+            }
+        }
+        
+        summary = extract_tool_usage_summary(metadata)
+        
+        assert summary is not None
+        assert 'google_search' in summary
+        assert summary['google_search']['query_count'] == 2
+        assert summary['google_search']['queries'] == ['query1', 'query2']
+    
+    def test_extract_tool_usage_summary_url_context(self):
+        """Test extraction of URL Context tool usage from metadata."""
+        from .metadata_helpers import extract_tool_usage_summary
+        
+        metadata = {
+            'grounding_metadata': {
+                'grounding_chunks': [
+                    {
+                        'web': {
+                            'uri': 'https://example.com',
+                            'title': 'Example Page'
+                        }
+                    }
+                ],
+                'web_search_queries': []  # No search queries means URL context
+            }
+        }
+        
+        summary = extract_tool_usage_summary(metadata)
+        
+        assert summary is not None
+        assert 'url_context' in summary
+        assert summary['url_context']['url_count'] == 1
+        assert summary['url_context']['urls'][0]['uri'] == 'https://example.com'
+        assert summary['url_context']['urls'][0]['title'] == 'Example Page'
+    
+    def test_extract_tool_usage_summary_no_tools(self):
+        """Test extraction returns None when no tools were used."""
+        from .metadata_helpers import extract_tool_usage_summary
+        
+        metadata = {}
+        summary = extract_tool_usage_summary(metadata)
+        
+        assert summary is None
