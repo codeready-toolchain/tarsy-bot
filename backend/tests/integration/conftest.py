@@ -65,20 +65,20 @@ def mock_settings():
     }
     
     # Mock the get_llm_config method that Settings class provides
-    from tarsy.models.llm_models import LLMProviderConfig
+    from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
 
     def mock_get_llm_config(provider: str) -> LLMProviderConfig:
         if provider not in settings.llm_providers:
             raise ValueError(f"Unsupported LLM provider: {provider}")
         base_dict = settings.llm_providers[provider]
         provider_type = base_dict["type"]
-        if provider_type == "google":
+        if provider_type == LLMProviderType.GOOGLE.value:
             api_key = settings.google_api_key
-        elif provider_type == "openai":
+        elif provider_type == LLMProviderType.OPENAI.value:
             api_key = settings.openai_api_key
-        elif provider_type == "xai":
+        elif provider_type == LLMProviderType.XAI.value:
             api_key = settings.xai_api_key
-        elif provider_type == "anthropic":
+        elif provider_type == LLMProviderType.ANTHROPIC.value:
             api_key = settings.anthropic_api_key
         else:
             api_key = ""

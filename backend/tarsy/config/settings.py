@@ -14,7 +14,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tarsy.config.builtin_config import get_builtin_llm_providers
-from tarsy.models.llm_models import LLMProviderConfig
+from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
 
 
 def is_testing() -> bool:
@@ -248,13 +248,13 @@ class Settings(BaseSettings):
         # Get API key based on provider type (not provider name)
         provider_type = base_config.type  # Type-safe field access
         
-        if provider_type == "google":
+        if provider_type == LLMProviderType.GOOGLE:
             api_key = self.google_api_key
-        elif provider_type == "openai":
+        elif provider_type == LLMProviderType.OPENAI:
             api_key = self.openai_api_key
-        elif provider_type == "xai":
+        elif provider_type == LLMProviderType.XAI:
             api_key = self.xai_api_key
-        elif provider_type == "anthropic":
+        elif provider_type == LLMProviderType.ANTHROPIC:
             api_key = self.anthropic_api_key
         else:
             api_key = ""

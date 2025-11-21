@@ -72,7 +72,7 @@ import pytest
 from pydantic import ValidationError
 
 from tarsy.models.alert import Alert
-from tarsy.models.llm_models import LLMProviderConfig
+from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
 from tarsy.utils.timestamp import now_us
 
 
@@ -716,13 +716,13 @@ class MockFactory:
             
             # Map provider type to correct API key (mirror Settings.get_llm_config)
             provider_type = base_config.type  # Direct field access
-            if provider_type == "google":
+            if provider_type == LLMProviderType.GOOGLE:
                 api_key = mock_settings.google_api_key
-            elif provider_type == "openai":
+            elif provider_type == LLMProviderType.OPENAI:
                 api_key = mock_settings.openai_api_key
-            elif provider_type == "xai":
+            elif provider_type == LLMProviderType.XAI:
                 api_key = mock_settings.xai_api_key
-            elif provider_type == "anthropic":
+            elif provider_type == LLMProviderType.ANTHROPIC:
                 api_key = mock_settings.anthropic_api_key
             else:
                 api_key = ""
