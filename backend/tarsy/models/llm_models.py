@@ -10,6 +10,13 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
+# Provider type constants
+PROVIDER_OPENAI = "openai"
+PROVIDER_GOOGLE = "google"
+PROVIDER_XAI = "xai"
+PROVIDER_ANTHROPIC = "anthropic"
+PROVIDER_VERTEXAI = "vertexai"
+
 # Supported LLM provider types
 ProviderType = Literal["openai", "google", "xai", "anthropic", "vertexai"]
 
@@ -55,6 +62,10 @@ class LLMProviderConfig(BaseModel):
         gt=0,
         description="Maximum tokens for tool results truncation"
     )
+    enable_native_search: bool = Field(
+        default=False,
+        description="Enable native search grounding (currently Google-only: enables Google Search for Gemini models)"
+    )
     
     # Runtime fields (added by Settings.get_llm_config())
     api_key: Optional[str] = Field(
@@ -70,8 +81,9 @@ class LLMProviderConfig(BaseModel):
     @classmethod
     def validate_provider_type(cls, v: str) -> str:
         """Validate that provider type is supported."""
-        if v not in ["openai", "google", "xai", "anthropic", "vertexai"]:
-            raise ValueError(f"Unsupported provider type: {v}. Must be one of: openai, google, xai, anthropic, vertexai")
+        supported = [PROVIDER_OPENAI, PROVIDER_GOOGLE, PROVIDER_XAI, PROVIDER_ANTHROPIC, PROVIDER_VERTEXAI]
+        if v not in supported:
+            raise ValueError(f"Unsupported provider type: {v}. Must be one of: {', '.join(supported)}")
         return v
     
     @field_validator("model")

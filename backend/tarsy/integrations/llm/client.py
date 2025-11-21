@@ -18,11 +18,19 @@ from langchain_google_vertexai.model_garden import ChatAnthropicVertex
 from langchain_openai import ChatOpenAI
 from langchain_xai import ChatXAI
 from langchain_anthropic import ChatAnthropic
+from google.ai.generativelanguage_v1beta.types import Tool as GoogleTool
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.hook_context import llm_interaction_context
 from tarsy.models.constants import LLMInteractionType, StreamingEventType
-from tarsy.models.llm_models import LLMProviderConfig
+from tarsy.models.llm_models import (
+    LLMProviderConfig,
+    PROVIDER_OPENAI,
+    PROVIDER_GOOGLE,
+    PROVIDER_XAI,
+    PROVIDER_ANTHROPIC,
+    PROVIDER_VERTEXAI,
+)
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.error_details import extract_error_details
@@ -119,11 +127,11 @@ def _create_vertexai_client(temp, api_key, model, disable_ssl_verification=False
     return ChatAnthropicVertex(**client_kwargs)
 
 LLM_PROVIDERS = {
-    "openai": _create_openai_client,
-    "google": _create_google_client,
-    "xai": _create_xai_client,
-    "anthropic": _create_anthropic_client,
-    "vertexai": _create_vertexai_client
+    PROVIDER_OPENAI: _create_openai_client,
+    PROVIDER_GOOGLE: _create_google_client,
+    PROVIDER_XAI: _create_xai_client,
+    PROVIDER_ANTHROPIC: _create_anthropic_client,
+    PROVIDER_VERTEXAI: _create_vertexai_client
 }
 
 
@@ -142,6 +150,7 @@ class LLMClient:
         self.settings = settings  # Store settings for feature flag access
         self.available: bool = False
         self._sqlite_warning_logged: bool = False
+        self.google_search_tool: Optional[GoogleTool] = None  # Store Google Search tool for Gemini models
         self._initialize_client()
     
     def _initialize_client(self):
@@ -168,6 +177,16 @@ class LLMClient:
                     disable_ssl_verification,
                     base_url
                 )
+                
+                # Initialize Google Search tool for Google/Gemini models (if enabled)
+                if provider_type == PROVIDER_GOOGLE and self.config.enable_native_search:
+                    try:
+                        self.google_search_tool = GoogleTool(google_search={})
+                        logger.info(f"Successfully initialized Google Search tool for {self.provider_name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize Google Search tool for {self.provider_name}: {e}")
+                        # Don't fail client initialization if tool creation fails
+                
                 self.available = True
                 logger.info(f"Successfully initialized {self.provider_name} with LangChain")
             else:
@@ -275,12 +294,19 @@ class LLMClient:
                     if max_tokens is not None:
                         config["max_tokens"] = max_tokens
                     
+                    # Prepare tools for Gemini models
+                    # Tools must be passed as a keyword argument, not in config dict
+                    tools_kwarg = {}
+                    if self.google_search_tool is not None:
+                        tools_kwarg["tools"] = [self.google_search_tool]
+                        logger.info(f"Including Google Search tool for {self.provider_name}")
+                    
                     # Aggregate chunks for usage metadata (OpenAI stream_usage=True approach)
                     aggregate_chunk = None
                     
                     # Wrap streaming with timeout protection (Python 3.11+)
                     async with asyncio.timeout(timeout_seconds):
-                        async for chunk in self.llm_client.astream(langchain_messages, config=config):
+                        async for chunk in self.llm_client.astream(langchain_messages, config=config, **tools_kwarg):
                             # Aggregate chunks by adding them together
                             # This properly accumulates usage_metadata across all chunks
                             aggregate_chunk = chunk if aggregate_chunk is None else aggregate_chunk + chunk

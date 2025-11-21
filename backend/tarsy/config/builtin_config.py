@@ -18,7 +18,7 @@ import copy
 from typing import Dict, Any
 from tarsy.models.llm_models import LLMProviderConfig
 from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
-from tarsy.models.mcp_transport_config import TRANSPORT_HTTP, TRANSPORT_STDIO, TRANSPORT_SSE
+from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
 
 
 # ==============================================================================
