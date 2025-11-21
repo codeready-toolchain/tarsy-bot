@@ -1736,7 +1736,7 @@ class TestLLMClientGoogleSearchTool:
         )
         
         with patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google, \
-             patch('tarsy.integrations.llm.client.GoogleTool', side_effect=Exception("Tool init failed")):
+             patch('tarsy.integrations.llm.client.google_genai_types.Tool', side_effect=Exception("Tool init failed")):
             mock_google.return_value = Mock()
             
             # Client creation should succeed even if tool init fails
@@ -1749,7 +1749,7 @@ class TestLLMClientGoogleSearchTool:
 
     @pytest.mark.asyncio
     async def test_generate_response_includes_google_search_tool_when_enabled(self) -> None:
-        """Test that astream is called with google_search_tool when enable_native_search=True."""
+        """Test that google_search_tool is bound to model when enable_native_search=True."""
         config = create_test_config(
             type="google",
             model="gemini-2.5-flash",
@@ -1759,10 +1759,14 @@ class TestLLMClientGoogleSearchTool:
 
         with patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google:
             mock_llm_client = AsyncMock()
-            # Use create_stream_side_effect helper for consistent mock streaming
-            mock_llm_client.astream = Mock(
+            mock_bound_client = AsyncMock()
+            
+            # Set up astream for the bound client to return an async generator
+            mock_bound_client.astream = Mock(
                 side_effect=create_stream_side_effect("Search-backed response")
             )
+            # Set up bind to return the bound client
+            mock_llm_client.bind = Mock(return_value=mock_bound_client)
             mock_google.return_value = mock_llm_client
 
             client = LLMClient("google", config)
@@ -1780,10 +1784,12 @@ class TestLLMClientGoogleSearchTool:
 
                 await client.generate_response(conversation, "session-id")
 
-            # Verify astream was called with tools kwarg containing the search tool
-            call = mock_llm_client.astream.call_args
-            assert "tools" in call.kwargs, "Expected 'tools' kwarg when enable_native_search=True"
-            assert call.kwargs["tools"] == [client.google_search_tool]
+            # Verify bind was called with tools containing the search tool
+            assert mock_llm_client.bind.called, "Expected bind() to be called when enable_native_search=True"
+            bind_call = mock_llm_client.bind.call_args
+            assert "tools" in bind_call.kwargs, "Expected 'tools' kwarg in bind() call"
+            # Verify astream was called on the bound client
+            assert mock_bound_client.astream.called, "Expected astream() to be called on bound client"
 
     @pytest.mark.asyncio
     async def test_generate_response_omits_tools_when_search_disabled(self) -> None:
@@ -1841,6 +1847,7 @@ class TestLLMClientGoogleSearchTool:
 
         with patch(mock_client_path) as mock_provider:
             mock_llm_client = AsyncMock()
+            # Use Mock (not AsyncMock) for astream with side_effect to return async generator
             mock_llm_client.astream = Mock(
                 side_effect=create_stream_side_effect("Response without tools")
             )
@@ -1850,9 +1857,8 @@ class TestLLMClientGoogleSearchTool:
             
             # Defensive test: Manually set google_search_tool to simulate edge case
             # The defensive check in generate_response should prevent it from being used
-            with patch('tarsy.integrations.llm.client.GoogleTool') as mock_tool:
-                mock_tool.return_value = Mock()
-                client.google_search_tool = mock_tool.return_value
+            mock_tool = Mock()
+            client.google_search_tool = mock_tool
             
             conversation = LLMConversation(
                 messages=[
