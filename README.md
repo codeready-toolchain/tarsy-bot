@@ -113,7 +113,7 @@ This deployment is designed for development and testing environments, serving as
 - **🔧 Flexible Alert Processing**: Accept arbitrary JSON payloads from any monitoring system  
 - **🧠 Chain-Based Agent Architecture**: Specialized agents with domain-specific tools and AI reasoning working in coordinated stages
 - **🔌 MCP Server Integration**: Agents dynamically connect to MCP servers for domain-specific tools (kubectl, database clients, monitoring APIs). Add new MCP servers via configuration without code changes
-- **🤖 Multi-LLM Provider Support**: Configure and switch between multiple LLM providers (OpenAI, Google, Anthropic, xAI, etc.) via YAML. Define your own LLM provider
+- **🤖 Multi-LLM Provider Support**: Configure and switch between multiple LLM providers (OpenAI, Google, Anthropic, xAI, etc.) via YAML. Define your own LLM provider. Optional Google Search grounding for Gemini models to enhance responses with real-time web information
 - **📚 GitHub Runbook Integration**: Optional automatic retrieval and inclusion of relevant runbooks from GitHub repositories per agent chain. Contextualizes investigations with team knowledge
 - **📊 Comprehensive Audit Trail**: Complete visibility into chain processing workflows with stage-level timeline reconstruction
 - **🖥️ SRE Dashboard**: Real-time monitoring with live LLM streaming and interactive chain timeline visualization

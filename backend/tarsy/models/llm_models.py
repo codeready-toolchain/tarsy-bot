@@ -5,20 +5,24 @@ This module defines type definitions for LLM provider configurations,
 including supported provider types and configuration structures.
 """
 
-from typing import Literal, Optional
+from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 
-# Provider type constants
-PROVIDER_OPENAI = "openai"
-PROVIDER_GOOGLE = "google"
-PROVIDER_XAI = "xai"
-PROVIDER_ANTHROPIC = "anthropic"
-PROVIDER_VERTEXAI = "vertexai"
+class LLMProviderType(str, Enum):
+    """Supported LLM provider types."""
+    
+    OPENAI = "openai"
+    GOOGLE = "google"
+    XAI = "xai"
+    ANTHROPIC = "anthropic"
+    VERTEXAI = "vertexai"
 
-# Supported LLM provider types
-ProviderType = Literal["openai", "google", "xai", "anthropic", "vertexai"]
+
+# Type alias for backward compatibility
+ProviderType = LLMProviderType
 
 
 class LLMProviderConfig(BaseModel):
@@ -79,12 +83,16 @@ class LLMProviderConfig(BaseModel):
     
     @field_validator("type")
     @classmethod
-    def validate_provider_type(cls, v: str) -> str:
+    def validate_provider_type(cls, v: str | LLMProviderType) -> str:
         """Validate that provider type is supported."""
-        supported = [PROVIDER_OPENAI, PROVIDER_GOOGLE, PROVIDER_XAI, PROVIDER_ANTHROPIC, PROVIDER_VERTEXAI]
-        if v not in supported:
-            raise ValueError(f"Unsupported provider type: {v}. Must be one of: {', '.join(supported)}")
-        return v
+        # Convert enum to string if needed
+        value = v.value if isinstance(v, LLMProviderType) else v
+        
+        # Validate against enum values
+        supported = [e.value for e in LLMProviderType]
+        if value not in supported:
+            raise ValueError(f"Unsupported provider type: {value}. Must be one of: {', '.join(supported)}")
+        return value
     
     @field_validator("model")
     @classmethod

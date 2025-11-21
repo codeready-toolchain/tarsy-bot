@@ -71,7 +71,15 @@ def create_stream_side_effect(content: str, usage_metadata: Optional[dict] = Non
 
 
 def create_test_config(provider_type: str = "openai", **overrides):
-    """Helper to create test LLMProviderConfig instances."""
+    """Helper to create test LLMProviderConfig instances.
+    
+    Args:
+        provider_type: The LLM provider type (e.g., "openai", "google")
+        **overrides: Any fields to override in the config
+        
+    Returns:
+        LLMProviderConfig instance for testing
+    """
     from tarsy.models.llm_models import LLMProviderConfig
     
     defaults = {
@@ -80,6 +88,7 @@ def create_test_config(provider_type: str = "openai", **overrides):
         "api_key_env": "OPENAI_API_KEY",
         "temperature": 0.7,
         "api_key": "test-api-key",
+        "enable_native_search": False,  # Default to False for backward compatibility
     }
     defaults.update(overrides)
     return LLMProviderConfig(**defaults)

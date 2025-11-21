@@ -23,14 +23,7 @@ from google.ai.generativelanguage_v1beta.types import Tool as GoogleTool
 from tarsy.config.settings import Settings
 from tarsy.hooks.hook_context import llm_interaction_context
 from tarsy.models.constants import LLMInteractionType, StreamingEventType
-from tarsy.models.llm_models import (
-    LLMProviderConfig,
-    PROVIDER_OPENAI,
-    PROVIDER_GOOGLE,
-    PROVIDER_XAI,
-    PROVIDER_ANTHROPIC,
-    PROVIDER_VERTEXAI,
-)
+from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.error_details import extract_error_details
@@ -127,11 +120,11 @@ def _create_vertexai_client(temp, api_key, model, disable_ssl_verification=False
     return ChatAnthropicVertex(**client_kwargs)
 
 LLM_PROVIDERS = {
-    PROVIDER_OPENAI: _create_openai_client,
-    PROVIDER_GOOGLE: _create_google_client,
-    PROVIDER_XAI: _create_xai_client,
-    PROVIDER_ANTHROPIC: _create_anthropic_client,
-    PROVIDER_VERTEXAI: _create_vertexai_client
+    LLMProviderType.OPENAI.value: _create_openai_client,
+    LLMProviderType.GOOGLE.value: _create_google_client,
+    LLMProviderType.XAI.value: _create_xai_client,
+    LLMProviderType.ANTHROPIC.value: _create_anthropic_client,
+    LLMProviderType.VERTEXAI.value: _create_vertexai_client
 }
 
 
@@ -179,7 +172,7 @@ class LLMClient:
                 )
                 
                 # Initialize Google Search tool for Google/Gemini models (if enabled)
-                if provider_type == PROVIDER_GOOGLE and self.config.enable_native_search:
+                if provider_type == LLMProviderType.GOOGLE.value and self.config.enable_native_search:
                     try:
                         self.google_search_tool = GoogleTool(google_search={})
                         logger.info(f"Successfully initialized Google Search tool for {self.provider_name}")
