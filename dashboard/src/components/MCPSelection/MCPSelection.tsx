@@ -112,9 +112,14 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
   const [nativeToolsExpanded, setNativeToolsExpanded] = useState(false);
   
-  // Ref to track the expected alert type for in-flight requests
-  // This prevents race conditions when alertType changes while loading
-  const requestedAlertTypeRef = useRef<string | undefined>(alertType);
+  // Ref to track the latest alert type
+  // Updated whenever alertType prop changes to prevent race conditions
+  const latestAlertTypeRef = useRef<string | undefined>(alertType);
+  
+  // Update ref whenever alertType changes
+  useEffect(() => {
+    latestAlertTypeRef.current = alertType;
+  }, [alertType]);
   
   /**
    * Load defaults and server details for the current alert type
@@ -122,9 +127,6 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
   const loadDefaultsAndServers = useCallback(async () => {
     // Capture the alert type we're requesting for
     const requestAlertType = alertType;
-    
-    // Update the ref to track this request
-    requestedAlertTypeRef.current = requestAlertType;
     
     setLoading(true);
     setError(null);
@@ -139,7 +141,7 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       
       // Check if alertType changed while we were loading
       // If it did, discard these results (a newer request is active or will fire)
-      if (requestedAlertTypeRef.current !== requestAlertType) {
+      if (latestAlertTypeRef.current !== requestAlertType) {
         console.debug(`Discarding stale results for alertType="${requestAlertType}"`);
         return;
       }
@@ -155,15 +157,13 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       setNativeToolsExpanded(false);
     } catch (err: any) {
       // Only set error if this request is still current
-      if (requestedAlertTypeRef.current === requestAlertType) {
+      if (latestAlertTypeRef.current === requestAlertType) {
         console.error('Failed to load defaults:', err);
         setError(err.message || 'Failed to load configuration. Please try again.');
       }
     } finally {
-      // Only clear loading if this request is still current
-      if (requestedAlertTypeRef.current === requestAlertType) {
-        setLoading(false);
-      }
+      // Always clear loading to prevent stuck state
+      setLoading(false);
     }
   }, [alertType]);
   
@@ -191,9 +191,17 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     const changed = !configsAreEqual(currentConfig, defaultConfig);
     setHasChanges(changed);
     
-    // Notify parent: undefined if no changes, config if changed
-    onChange(changed ? currentConfig || undefined : undefined);
-  }, [currentConfig, defaultConfig]);
+    // Notify parent with proper semantics:
+    // - undefined = no override, use defaults from agent config
+    // - actual config (even with servers: []) = explicit override
+    if (!changed) {
+      // No changes from defaults -> don't send override (use agent defaults)
+      onChange(undefined);
+    } else {
+      // User made changes -> send the override (even if servers: [] for tool-less agent)
+      onChange(currentConfig || undefined);
+    }
+  }, [currentConfig, defaultConfig, onChange]);
   
   /**
    * Reset to defaults
@@ -205,14 +213,14 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
   };
   
   /**
-   * Normalize tool arrays: convert empty arrays to null to match backend semantics.
-   * Backend treats both null and [] as "all tools", but UI shows [] as "no tools".
+   * Normalize tool arrays: preserve semantic meaning
+   * - null = all tools from the server
+   * - empty array = no tools (server effectively disabled)
+   * - array with tools = only those specific tools
    */
   const normalizeServers = (servers: MCPSelectionConfig['servers']): MCPSelectionConfig['servers'] => {
-    return servers.map(server => ({
-      ...server,
-      tools: server.tools && server.tools.length > 0 ? server.tools : null
-    }));
+    // No normalization needed - pass through as-is
+    return servers;
   };
 
   /**
@@ -232,13 +240,6 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       const newExpanded = new Set(expandedServers);
       newExpanded.delete(serverId);
       setExpandedServers(newExpanded);
-      
-      // If removing the last server, reset to defaults instead of creating invalid config
-      // Backend requires min_length=1 for servers array
-      if (newServers.length === 0) {
-        setCurrentConfig(defaultConfig);
-        return;
-      }
     } else {
       // Add server with all tools
       newServers.push({
@@ -275,24 +276,17 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     const newServers = currentConfig.servers.map(server => {
       if (server.name === serverId) {
         if (checked) {
-          // Checking "All Tools": set to null (no filtering)
+          // Checking "All Tools": set to null (all tools from server)
           return {
             ...server,
             tools: null
           };
         } else {
-          // Unchecking "All Tools": switch to individual selection with all tools initially selected
-          const serverInfo = availableServers.find(s => s.server_id === serverId);
-          if (serverInfo && serverInfo.tools.length > 0) {
-            return {
-              ...server,
-              tools: serverInfo.tools.map(t => t.name)
-            };
-          }
-          // Fallback: if no tools available, keep as null (all tools)
+          // Unchecking "All Tools": set to empty array (no tools selected)
+          // This allows user to see the change and then select individual tools
           return {
             ...server,
-            tools: null
+            tools: []
           };
         }
       }
@@ -330,10 +324,6 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
           const toolSet = new Set(server.tools);
           if (toolSet.has(toolName)) {
             toolSet.delete(toolName);
-            // If removing last tool, mark server for removal
-            if (toolSet.size === 0) {
-              return null;  // Signal to remove this server
-            }
           } else {
             toolSet.add(toolName);
           }
@@ -345,18 +335,9 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       return server;
     });
     
-    // Filter out servers marked for removal (null entries)
-    const filteredServers = newServers.filter((s): s is NonNullable<typeof s> => s !== null);
-    
-    // If no servers remain, reset to defaults
-    if (filteredServers.length === 0) {
-      setCurrentConfig(defaultConfig);
-      return;
-    }
-    
     setCurrentConfig({
       ...currentConfig,
-      servers: normalizeServers(filteredServers)
+      servers: normalizeServers(newServers)
     });
   };
   

@@ -80,8 +80,7 @@ class MCPSelectionConfig(BaseModel):
     
     servers: List[MCPServerSelection] = Field(
         ..., 
-        min_length=1,
-        description="List of selected MCP servers with optional tool filtering"
+        description="List of selected MCP servers with optional tool filtering. Empty list allowed for tool-less agents."
     )
     native_tools: Optional[NativeToolsConfig] = Field(
         None,
