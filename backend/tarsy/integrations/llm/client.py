@@ -39,6 +39,7 @@ from tarsy.config.settings import Settings
 from tarsy.hooks.hook_context import llm_interaction_context
 from tarsy.models.constants import LLMInteractionType, StreamingEventType
 from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
+from tarsy.models.mcp_selection_models import NativeToolsConfig
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.error_details import extract_error_details
@@ -263,6 +264,68 @@ class LLMClient:
         else:
             logger.info(f"No native tools enabled for {self.provider_name}")
 
+    def _apply_native_tools_override(
+        self,
+        override: NativeToolsConfig
+    ) -> Dict[str, Optional[google_genai_types.Tool]]:
+        """
+        Apply per-session native tools override.
+        
+        Creates a temporary tools dictionary based on the override configuration.
+        This completely replaces the provider's default settings for the session.
+        
+        Args:
+            override: Session-level native tools configuration
+            
+        Returns:
+            Dictionary of native tools with override applied (tool_name -> Tool or None)
+        """
+        overridden_tools = {
+            GoogleNativeTool.GOOGLE_SEARCH.value: None,
+            GoogleNativeTool.CODE_EXECUTION.value: None,
+            GoogleNativeTool.URL_CONTEXT.value: None
+        }
+        
+        enabled_tools = []
+        
+        # Google Search tool
+        if override.google_search is True:
+            try:
+                overridden_tools[GoogleNativeTool.GOOGLE_SEARCH.value] = google_genai_types.Tool(
+                    google_search=google_genai_types.GoogleSearch()
+                )
+                enabled_tools.append(GoogleNativeTool.GOOGLE_SEARCH.value)
+            except Exception as e:
+                logger.warning(f"Failed to create {GoogleNativeTool.GOOGLE_SEARCH.value} tool override: {e}")
+        
+        # Code Execution tool
+        if override.code_execution is True:
+            try:
+                overridden_tools[GoogleNativeTool.CODE_EXECUTION.value] = google_genai_types.Tool(
+                    code_execution={}
+                )
+                enabled_tools.append(GoogleNativeTool.CODE_EXECUTION.value)
+            except Exception as e:
+                logger.warning(f"Failed to create {GoogleNativeTool.CODE_EXECUTION.value} tool override: {e}")
+        
+        # URL Context tool
+        if override.url_context is True:
+            try:
+                overridden_tools[GoogleNativeTool.URL_CONTEXT.value] = google_genai_types.Tool(
+                    url_context={}
+                )
+                enabled_tools.append(GoogleNativeTool.URL_CONTEXT.value)
+            except Exception as e:
+                logger.warning(f"Failed to create {GoogleNativeTool.URL_CONTEXT.value} tool override: {e}")
+        
+        logger.info(
+            f"Applied native tools override for {self.provider_name}: "
+            f"enabled={enabled_tools}, "
+            f"disabled={[k for k in overridden_tools.keys() if overridden_tools[k] is None]}"
+        )
+        
+        return overridden_tools
+
     def _convert_conversation_to_langchain(self, conversation: LLMConversation) -> List:
         """Convert typed conversation to LangChain message objects."""
         langchain_messages = []
@@ -284,7 +347,8 @@ class LLMClient:
         interaction_type: Optional[str] = None,
         max_retries: int = 3,
         timeout_seconds: int = 120,
-        mcp_event_id: Optional[str] = None
+        mcp_event_id: Optional[str] = None,
+        native_tools_override: Optional[NativeToolsConfig] = None
     ) -> LLMConversation:
         """
         Generate response with streaming to WebSocket.
@@ -310,6 +374,9 @@ class LLMClient:
                            Increased from 60s to accommodate code execution which can take up to
                            30s per execution plus multiple regeneration rounds (up to 5x).
             mcp_event_id: Optional MCP event ID if summarizing a tool result
+            native_tools_override: Optional per-session native tools configuration override.
+                                 When specified, completely replaces provider's default native tools
+                                 settings for this request (Google/Gemini only).
         
         Returns:
             Updated conversation with assistant response appended
@@ -326,12 +393,21 @@ class LLMClient:
         }
         
         # Prepare native tools config for audit trail (Google/Gemini only)
+        # Apply session-level override if provided
         native_tools_config = None
+        active_native_tools = self.native_tools  # Default to provider config
+        
         if self.config.type == LLMProviderType.GOOGLE:
+            # Apply override if provided (session-level takes precedence)
+            if native_tools_override is not None:
+                active_native_tools = self._apply_native_tools_override(native_tools_override)
+                logger.info(f"Using session-level native tools override for {session_id}")
+            
+            # Capture effective config for audit trail
             native_tools_config = {
-                GoogleNativeTool.GOOGLE_SEARCH.value: bool(self.native_tools[GoogleNativeTool.GOOGLE_SEARCH.value]),
-                GoogleNativeTool.CODE_EXECUTION.value: bool(self.native_tools[GoogleNativeTool.CODE_EXECUTION.value]),
-                GoogleNativeTool.URL_CONTEXT.value: bool(self.native_tools[GoogleNativeTool.URL_CONTEXT.value])
+                GoogleNativeTool.GOOGLE_SEARCH.value: bool(active_native_tools[GoogleNativeTool.GOOGLE_SEARCH.value]),
+                GoogleNativeTool.CODE_EXECUTION.value: bool(active_native_tools[GoogleNativeTool.CODE_EXECUTION.value]),
+                GoogleNativeTool.URL_CONTEXT.value: bool(active_native_tools[GoogleNativeTool.URL_CONTEXT.value])
             }
         
         # Use typed hook context for clean data flow
@@ -375,21 +451,22 @@ class LLMClient:
                     # HYBRID APPROACH: Bind native tools to model using Google AI SDK types
                     # Tools are converted to dicts and bound to the model, not passed to astream()
                     # Supports multiple tools: GoogleNativeTool enum (GOOGLE_SEARCH, CODE_EXECUTION, URL_CONTEXT)
+                    # Uses active_native_tools which may be overridden at session level
                     llm_with_tools = self.llm_client
                     code_execution_enabled = False
                     
                     if self.config.type == LLMProviderType.GOOGLE:
-                        # Collect all enabled native tools
-                        active_tools = [tool for tool in self.native_tools.values() if tool is not None]
+                        # Collect all enabled native tools (from active config which may be overridden)
+                        active_tools = [tool for tool in active_native_tools.values() if tool is not None]
                         # Check if code execution is specifically enabled
-                        code_execution_enabled = self.native_tools.get(GoogleNativeTool.CODE_EXECUTION.value) is not None
+                        code_execution_enabled = active_native_tools.get(GoogleNativeTool.CODE_EXECUTION.value) is not None
                         
                         if active_tools:
                             try:
                                 # Convert all Google AI SDK tools to dicts and bind to model
                                 tools_as_dicts = [t.model_dump(exclude_none=True) for t in active_tools]
                                 llm_with_tools = self.llm_client.bind(tools=tools_as_dicts)
-                                tool_names = [k for k, v in self.native_tools.items() if v is not None]
+                                tool_names = [k for k, v in active_native_tools.items() if v is not None]
                                 logger.info(f"Bound native tools to {self.provider_name} model: {tool_names}")
                             except Exception as e:
                                 logger.error(f"Failed to bind native tools: {e}, continuing without tools")
@@ -1034,7 +1111,8 @@ class LLMManager:
                               provider: str = None,
                               max_tokens: Optional[int] = None,
                               interaction_type: Optional[str] = None,
-                              mcp_event_id: Optional[str] = None) -> LLMConversation:
+                              mcp_event_id: Optional[str] = None,
+                              native_tools_override: Optional[NativeToolsConfig] = None) -> LLMConversation:
         """Generate a response using the specified or default LLM provider.
         
         Args:
@@ -1046,6 +1124,7 @@ class LLMManager:
             interaction_type: Optional interaction type (investigation, summarization, final_analysis).
                             If None, auto-detects based on response content.
             mcp_event_id: Optional MCP event ID if summarizing a tool result
+            native_tools_override: Optional per-session native tools configuration override
             
         Returns:
             Updated LLMConversation with new assistant message appended
@@ -1055,7 +1134,15 @@ class LLMManager:
             available = list(self.clients.keys())
             raise Exception(f"LLM provider not available. Available: {available}")
 
-        return await client.generate_response(conversation, session_id, stage_execution_id, max_tokens, interaction_type, mcp_event_id=mcp_event_id)
+        return await client.generate_response(
+            conversation, 
+            session_id, 
+            stage_execution_id, 
+            max_tokens, 
+            interaction_type, 
+            mcp_event_id=mcp_event_id,
+            native_tools_override=native_tools_override
+        )
 
     def list_available_providers(self) -> List[str]:
         """List available LLM providers."""

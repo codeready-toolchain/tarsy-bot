@@ -33,6 +33,21 @@ class ReactFinalAnalysisController(IterationController):
         self.llm_client = llm_client
         self.prompt_builder = prompt_builder
     
+    def _get_native_tools_override(self, context: 'StageContext'):
+        """
+        Extract native tools override from processing context.
+        
+        Args:
+            context: StageContext containing processing alert with optional native tools config
+            
+        Returns:
+            NativeToolsConfig if specified in alert, None otherwise
+        """
+        if (context.chain_context.processing_alert.mcp and 
+            context.chain_context.processing_alert.mcp.native_tools):
+            return context.chain_context.processing_alert.mcp.native_tools
+        return None
+    
     def needs_mcp_tools(self) -> bool:
         """Final analysis doesn't need MCP tool discovery."""
         return False
@@ -70,13 +85,17 @@ class ReactFinalAnalysisController(IterationController):
         # Capture stage execution ID once for reuse
         stage_execution_id = context.agent.get_current_stage_execution_id()
         
+        # Extract native tools override from context (if specified)
+        native_tools_override = self._get_native_tools_override(context)
+        
         # Generate response and get the latest assistant message content
         try:
             updated_conversation = await self.llm_client.generate_response(
                 conversation, 
                 context.session_id, 
                 stage_execution_id,
-                interaction_type=LLMInteractionType.FINAL_ANALYSIS.value
+                interaction_type=LLMInteractionType.FINAL_ANALYSIS.value,
+                native_tools_override=native_tools_override
             )
             latest_message = updated_conversation.get_latest_assistant_message()
             

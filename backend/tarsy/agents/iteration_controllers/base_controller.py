@@ -141,6 +141,21 @@ class ReactController(IterationController):
         # Import here to avoid circular imports during class definition
         from tarsy.utils.logger import get_module_logger
         self.logger = get_module_logger(__name__)
+    
+    def _get_native_tools_override(self, context: 'StageContext'):
+        """
+        Extract native tools override from processing context.
+        
+        Args:
+            context: StageContext containing processing alert with optional native tools config
+            
+        Returns:
+            NativeToolsConfig if specified in alert, None otherwise
+        """
+        if (context.chain_context.processing_alert.mcp and 
+            context.chain_context.processing_alert.mcp.native_tools):
+            return context.chain_context.processing_alert.mcp.native_tools
+        return None
         
     def needs_mcp_tools(self) -> bool:
         """All ReAct controllers use tools."""
@@ -201,10 +216,14 @@ class ReactController(IterationController):
                     nonlocal conversation, last_interaction_failed, consecutive_timeout_failures
                     
                     # 3. Call LLM with current conversation
+                    # Extract native tools override from context (if specified)
+                    native_tools_override = self._get_native_tools_override(context)
+                    
                     conversation_result = await self.llm_client.generate_response(
                         conversation=conversation,
                         session_id=context.session_id,
-                        stage_execution_id=context.agent.get_current_stage_execution_id()
+                        stage_execution_id=context.agent.get_current_stage_execution_id(),
+                        native_tools_override=native_tools_override
                     )
                     
                     # 4. Extract and parse assistant response

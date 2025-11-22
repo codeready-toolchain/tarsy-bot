@@ -284,10 +284,10 @@ llm_providers:
     type: google
     model: gemini-2.5-flash
     api_key_env: GOOGLE_API_KEY
-    native_tools:  # Native tools for Gemini (all enabled by default if not specified)
-      google_search: true      # Google Search grounding
-      code_execution: true     # Python code execution sandbox
-      url_context: true        # URL grounding for specific pages
+    native_tools:  # Native tools for Gemini
+      google_search: true      # Google Search grounding (enabled by default)
+      code_execution: false    # Python code execution sandbox (disabled by default)
+      url_context: true        # URL grounding for specific pages (enabled by default)
     max_tool_result_tokens: 950000
 ```
 
@@ -665,10 +665,54 @@ class MCPServerSelection(BaseModel):
     name: str                          # MCP server ID (must match configured server)
     tools: Optional[List[str]] = None  # None = all tools; list = specific tools only
 
+class NativeToolsConfig(BaseModel):
+    """Configuration for Google/Gemini native tools override."""
+    google_search: Optional[bool] = None    # Enable/disable Google Search
+    code_execution: Optional[bool] = None   # Enable/disable code execution
+    url_context: Optional[bool] = None      # Enable/disable URL context
+
 class MCPSelectionConfig(BaseModel):
     """Per-alert MCP configuration override."""
-    servers: List[MCPServerSelection]  # At least one server required
+    servers: List[MCPServerSelection]               # At least one server required
+    native_tools: Optional[NativeToolsConfig] = None  # Optional native tools override
 ```
+
+**Getting Default Configuration**:
+
+Before customizing tools, you can retrieve the system's default configuration for a specific alert type to understand what will be used if no override is provided:
+
+```json
+GET /api/v1/system/default-tools?alert_type=NamespaceAlertK8s
+
+Response:
+{
+  "alert_type": "NamespaceAlertK8s",
+  "mcp_servers": [
+    {
+      "server_id": "kubernetes-server",
+      "server_type": "kubernetes"
+    },
+    {
+      "server_id": "argocd-server",
+      "server_type": "argocd"
+    }
+  ],
+  "native_tools": {
+    "google_search": true,
+    "code_execution": false,
+    "url_context": true
+  }
+}
+```
+
+This endpoint:
+- **Accepts optional `alert_type` parameter** - if not provided, uses the default alert type
+- Returns MCP servers that would be used by default for the specified alert type's chain
+- Different alert types use different chains with different agent configurations
+- Each agent in a chain has its own default MCP server configuration
+- Returns the current provider's default native tools configuration
+- Useful for UI clients to populate tool selection interfaces
+- Allows clients to detect changes from defaults (only send overrides when changed)
 
 **Usage in Alert Submission**:
 ```json
@@ -682,7 +726,12 @@ POST /api/v1/alerts
         "name": "kubernetes-server",
         "tools": ["kubectl_get_pods", "kubectl_describe_pod"]
       }
-    ]
+    ],
+    "native_tools": {
+      "google_search": true,
+      "code_execution": false,
+      "url_context": true
+    }
   }
 }
 ```
@@ -692,6 +741,7 @@ POST /api/v1/alerts
 1. **No Override** (default):
    - Agents use their configured MCP servers from `config/agents.yaml` or built-in defaults
    - Example: K8s agent gets `kubernetes-server` by default
+   - Google/Gemini models use default native tools from `config/llm_providers.yaml`
 
 2. **Server Selection**:
    - Override which MCP servers to use for all agents in the chain
@@ -707,6 +757,23 @@ POST /api/v1/alerts
    { "servers": [{ "name": "kubernetes-server", "tools": ["kubectl_get_pods"] }] }
    ```
 
+4. **Native Tools Override** (Google/Gemini only):
+   - Override default Google/Gemini native tools configuration per session
+   - When specified, **completely replaces** provider defaults for the session
+   - Only enabled tools will be available during LLM interactions
+   ```json
+   {
+     "servers": [{ "name": "kubernetes-server", "tools": null }],
+     "native_tools": {
+       "google_search": true,
+       "code_execution": false,
+       "url_context": true
+     }
+   }
+   ```
+   - If `native_tools` is omitted, provider defaults from `config/llm_providers.yaml` are used
+   - Can be combined with MCP server/tool selection for full control
+
 **Validation & Security**:
 - **Server existence check**: Selected servers must exist in MCP registry
 - **Tool existence check**: Selected tools must exist on the specified server
@@ -715,8 +782,11 @@ POST /api/v1/alerts
 - **Audit logging**: All MCP selection validations are logged
 
 **Implementation Points**:
+- `GET /api/v1/system/default-tools` - Returns provider defaults for MCP servers and native tools
 - `BaseAgent._get_available_tools()` - Applies MCP selection override
-- `MCPClient._validate_tool_call()` - Enforces selection at runtime
+- `MCPClient._validate_tool_call()` - Enforces MCP tool selection at runtime
+- `LLMClient.generate_response()` - Applies native tools override for Google/Gemini
+- `IterationController._get_native_tools_override()` - Extracts native tools from context
 - `ChainContext.processing_alert.mcp` - Carries configuration through pipeline
 
 **Use Cases**:
@@ -1064,10 +1134,10 @@ llm_providers:
     type: google
     model: gemini-2.5-flash
     api_key_env: GOOGLE_API_KEY
-    native_tools:  # Native tools for Gemini (all enabled by default if not specified)
-      google_search: true      # Google Search for real-time information
-      code_execution: true     # Python code execution sandbox
-      url_context: true        # URL grounding for specific pages
+    native_tools:  # Native tools for Gemini
+      google_search: true      # Google Search for real-time information (enabled by default)
+      code_execution: false    # Python code execution sandbox (disabled by default)
+      url_context: true        # URL grounding for specific pages (enabled by default)
     max_tool_result_tokens: 950000
 ```
 

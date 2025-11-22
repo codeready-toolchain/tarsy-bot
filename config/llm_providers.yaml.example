@@ -36,9 +36,9 @@ llm_providers:
     model: gemini-2.5-flash
     api_key_env: GOOGLE_API_KEY
     max_tool_result_tokens: 950000  # Conservative for 1M context
-    native_tools:  # Optional: Native tool configuration (Google-only, default: all enabled)
+    native_tools:  # Optional: Native tool configuration (Google-only, search/url_context enabled by default)
       google_search: true      # Google Search grounding
-      code_execution: true     # Python code execution sandbox
+      code_execution: false    # Python code execution sandbox (disabled by default)
       url_context: true        # URL grounding for specific pages
     
   # Custom Grok provider
@@ -72,9 +72,9 @@ llm_providers:
 # - max_tool_result_tokens: (Optional) Maximum tokens for tool result content before LLM processing
 # - native_tools: (Optional) Native tool configuration for Google/Gemini models
 #     - google_search: Enable Google Search grounding (default: true)
-#     - code_execution: Enable Python code execution sandbox (default: true)
+#     - code_execution: Enable Python code execution sandbox (default: false)
 #     - url_context: Enable URL grounding for specific pages (default: true)
-#     If native_tools is not specified, all tools are enabled by default
+#     If native_tools is not specified, google_search and url_context are enabled, code_execution is disabled
 # 
 # For Vertex AI (vertexai type):
 #   - Requires GOOGLE_APPLICATION_CREDENTIALS environment variable pointing to service account JSON key

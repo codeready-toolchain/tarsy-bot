@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
-import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult, SystemWarning, MCPServersResponse, Chat, ChatUserMessage, ChatAvailabilityResponse } from '../types';
+import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult, SystemWarning, MCPServersResponse, Chat, ChatUserMessage, ChatAvailabilityResponse, MCPSelectionConfig } from '../types';
 import { authService } from './auth';
 import { TERMINAL_SESSION_STATUSES } from '../utils/statusConstants';
 
@@ -394,6 +394,49 @@ class APIClient {
       }
     } catch (error) {
       console.error('Error fetching MCP servers:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get default tools configuration.
+   * 
+   * Returns the provider's default configuration including:
+   * - Available MCP servers (enabled by default)
+   * - Native tools default state (per provider config)
+   * 
+   * Used to populate initial UI state and detect user changes.
+   */
+  /**
+   * Get default tools configuration for a specific alert type.
+   * 
+   * Different alert types use different chains with different default MCP servers.
+   * If no alert_type is provided, uses the system's default alert type.
+   */
+  async getDefaultToolsConfig(alertType?: string): Promise<MCPSelectionConfig> {
+    try {
+      const params = alertType ? `?alert_type=${encodeURIComponent(alertType)}` : '';
+      const response = await this.client.get<{
+        alert_type: string;
+        mcp_servers: Array<{ server_id: string; server_type: string }>;
+        native_tools: { [key: string]: boolean };
+      }>(`/api/v1/system/default-tools${params}`);
+      
+      if (response.data && typeof response.data === 'object') {
+        // Transform backend response to MCPSelectionConfig format
+        // Note: Backend returns 'server_id' but frontend MCPServerSelection uses 'name'
+        return {
+          servers: response.data.mcp_servers.map(server => ({
+            name: server.server_id,  // Backend uses server_id, frontend uses name
+            tools: null  // null means all tools selected by default
+          })),
+          native_tools: response.data.native_tools
+        };
+      } else {
+        throw new Error('Invalid default tools response format');
+      }
+    } catch (error) {
+      console.error('Error fetching default tools config:', error);
       throw error;
     }
   }

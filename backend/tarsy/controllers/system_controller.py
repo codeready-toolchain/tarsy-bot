@@ -1,12 +1,14 @@
 """System-level API endpoints."""
 
-from typing import List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
 from tarsy.models.system_models import SystemWarning
 from tarsy.models.mcp_api_models import MCPServersResponse, MCPServerInfo, MCPToolInfo
+from tarsy.models.llm_models import GoogleNativeTool
 from tarsy.services.system_warnings_service import get_warnings_service
+from tarsy.config.settings import get_settings
 from tarsy.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -201,3 +203,127 @@ async def _get_mcp_servers_direct(alert_service, server_ids: list[str]) -> MCPSe
         if mcp_client:
             logger.info("Cleaning up dedicated MCP client")
             await mcp_client.close()
+
+
+@router.get("/default-tools")
+async def get_default_tools(
+    _request: Request,
+    alert_type: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Get default tools configuration for a specific alert type.
+    
+    Returns the default MCP servers and native tools that would be used
+    for the specified alert type based on its chain configuration.
+    Different alert types use different chains with different agent configurations.
+    
+    Args:
+        alert_type: Optional alert type. If not provided, uses the default alert type.
+    
+    Returns:
+        Dict with:
+        - alert_type: The alert type these defaults are for
+        - mcp_servers: List of default MCP server IDs for this alert type's chain
+        - native_tools: Dict of native tool names and their default states
+        
+    Raises:
+        400: Invalid alert type
+        503: Service not initialized or configuration unavailable
+    """
+    try:
+        # Get settings to access LLM provider configuration
+        settings = get_settings()
+        
+        # Get current provider configuration for native tools
+        provider_config = settings.get_llm_config(settings.llm_provider)
+        
+        # Extract default native tools from provider config
+        # If native_tools is None in config, default is all enabled for Google/Gemini
+        native_tools_config = provider_config.native_tools
+        
+        if native_tools_config is None:
+            # Default: Google Search and URL Context enabled, Code Execution disabled for security
+            default_native_tools = {
+                GoogleNativeTool.GOOGLE_SEARCH.value: True,
+                GoogleNativeTool.CODE_EXECUTION.value: False,
+                GoogleNativeTool.URL_CONTEXT.value: True,
+            }
+        else:
+            # Use provider's explicit configuration
+            default_native_tools = native_tools_config.copy()
+        
+        # Get alert service for chain and agent configuration
+        from tarsy.main import alert_service
+        
+        if alert_service is None:
+            raise HTTPException(status_code=503, detail="Service not initialized")
+        
+        # Determine which alert type to use
+        effective_alert_type = alert_type or alert_service.chain_registry.get_default_alert_type()
+        
+        # Get the chain for this alert type
+        try:
+            chain_config = alert_service.chain_registry.get_chain_for_alert_type(effective_alert_type)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        
+        # Collect MCP servers from all agents in the chain
+        server_names = set()
+        for stage in chain_config.stages:
+            agent_name = stage.agent
+            if not agent_name:
+                continue
+            
+            # Look up agent's default MCP servers from configuration
+            # Try configured agents first, then builtin agents
+            if alert_service.agent_factory.agent_configs and agent_name in alert_service.agent_factory.agent_configs:
+                agent_config = alert_service.agent_factory.agent_configs[agent_name]
+                server_names.update(agent_config.mcp_servers)
+            else:
+                # Builtin agent - get MCP servers by instantiating the agent class
+                try:
+                    # Get the agent class from the factory's registry
+                    agent_class = alert_service.agent_factory.static_agent_classes.get(agent_name)
+                    if agent_class:
+                        # Create a temporary instance to call mcp_servers()
+                        # Note: We can't use agent_factory.create_agent() here because it
+                        # requires an MCPClient which requires async initialization
+                        # Instead, create a minimal instance just to get mcp_servers()
+                        temp_agent = agent_class.__new__(agent_class)
+                        if hasattr(temp_agent, 'mcp_servers'):
+                            mcp_server_list = temp_agent.mcp_servers()
+                            server_names.update(mcp_server_list)
+                            logger.debug(f"Got MCP servers from builtin agent {agent_name}: {mcp_server_list}")
+                except Exception as e:
+                    logger.warning(f"Failed to get MCP servers from builtin agent '{agent_name}': {e}")
+        
+        # Get server details for the collected server names
+        mcp_servers = []
+        for server_id in sorted(server_names):
+            try:
+                server_config = alert_service.mcp_server_registry.get_server_config(server_id)
+                mcp_servers.append({
+                    "server_id": server_config.server_id,
+                    "server_type": server_config.server_type,
+                })
+            except Exception as e:
+                logger.warning(f"Failed to get config for server '{server_id}': {e}")
+                continue
+        
+        logger.info(f"Returning defaults for alert_type='{effective_alert_type}': "
+                   f"{len(mcp_servers)} MCP servers, native_tools={default_native_tools}")
+        
+        return {
+            "alert_type": effective_alert_type,
+            "mcp_servers": mcp_servers,
+            "native_tools": default_native_tools
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get default tools: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to retrieve default tools configuration: {str(e)}"
+        ) from e

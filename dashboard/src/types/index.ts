@@ -675,8 +675,16 @@ export interface MCPServerSelection {
   tools?: string[] | null; // null or undefined = all tools, array = specific tools
 }
 
+// Native tools configuration for Google/Gemini models
+export interface NativeToolsConfig {
+  google_search?: boolean;
+  code_execution?: boolean;
+  url_context?: boolean;
+}
+
 export interface MCPSelectionConfig {
   servers: MCPServerSelection[];
+  native_tools?: NativeToolsConfig; // Optional per-session native tools override
 }
 
 // MCP Discovery API types

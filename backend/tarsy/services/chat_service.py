@@ -609,11 +609,19 @@ class ChatService:
                 agent_config = self.agent_factory.agent_configs[agent_name]
                 server_names.update(agent_config.mcp_servers)
             else:
-                # Builtin agent - get from builtin config
-                from tarsy.config.builtin_config import get_builtin_agent_config
-                builtin_config = get_builtin_agent_config(agent_name)
-                if builtin_config and "mcp_servers" in builtin_config:
-                    server_names.update(builtin_config["mcp_servers"])
+                # Builtin agent - get MCP servers by instantiating the agent class
+                try:
+                    # Get the agent class from the factory's registry
+                    agent_class = self.agent_factory.static_agent_classes.get(agent_name)
+                    if agent_class:
+                        # Create a temporary instance to call mcp_servers()
+                        temp_agent = agent_class.__new__(agent_class)
+                        if hasattr(temp_agent, 'mcp_servers'):
+                            mcp_server_list = temp_agent.mcp_servers()
+                            server_names.update(mcp_server_list)
+                            logger.debug(f"Got MCP servers from builtin agent {agent_name}: {mcp_server_list}")
+                except Exception as e:
+                    logger.warning(f"Failed to get MCP servers from builtin agent '{agent_name}': {e}")
         
         if not server_names:
             logger.warning(f"No MCP servers found in chain definition for session {session.session_id}")

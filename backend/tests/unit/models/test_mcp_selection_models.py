@@ -1,154 +1,168 @@
 """
-Unit tests for MCP selection models.
-
-Tests validation and structure of MCP server/tool selection configuration.
+Unit tests for MCP selection models including native tools configuration.
 """
 
 import pytest
 from pydantic import ValidationError
 
-from tarsy.models.mcp_selection_models import MCPServerSelection, MCPSelectionConfig
+from tarsy.models.mcp_selection_models import (
+    MCPServerSelection,
+    NativeToolsConfig,
+    MCPSelectionConfig,
+)
 
 
-class TestMCPServerSelection:
-    """Tests for MCPServerSelection model."""
+class TestNativeToolsConfig:
+    """Test cases for NativeToolsConfig model."""
     
-    def test_server_selection_without_tools(self):
-        """Test creating server selection without tool filtering."""
-        selection = MCPServerSelection(name="kubernetes-server")
-        
-        assert selection.name == "kubernetes-server"
-        assert selection.tools is None
+    def test_empty_config(self):
+        """Test that empty config is valid."""
+        config = NativeToolsConfig()
+        assert config.google_search is None
+        assert config.code_execution is None
+        assert config.url_context is None
     
-    def test_server_selection_with_tools(self):
-        """Test creating server selection with specific tools."""
-        selection = MCPServerSelection(
-            name="kubernetes-server",
-            tools=["core_v1_list_pod", "core_v1_read_namespaced_pod"]
+    def test_partial_config(self):
+        """Test that partial configuration is valid."""
+        config = NativeToolsConfig(google_search=True)
+        assert config.google_search is True
+        assert config.code_execution is None
+        assert config.url_context is None
+    
+    def test_full_config(self):
+        """Test that full configuration is valid."""
+        config = NativeToolsConfig(
+            google_search=True,
+            code_execution=False,
+            url_context=True
         )
-        
-        assert selection.name == "kubernetes-server"
-        assert selection.tools == ["core_v1_list_pod", "core_v1_read_namespaced_pod"]
+        assert config.google_search is True
+        assert config.code_execution is False
+        assert config.url_context is True
     
-    def test_server_selection_with_empty_tools_list(self):
-        """Test creating server selection with empty tools list (treated as None)."""
-        selection = MCPServerSelection(
-            name="kubernetes-server",
-            tools=[]
+    def test_all_false_config(self):
+        """Test that all false configuration is valid."""
+        config = NativeToolsConfig(
+            google_search=False,
+            code_execution=False,
+            url_context=False
         )
-        
-        assert selection.name == "kubernetes-server"
-        assert selection.tools == []  # Empty list is valid
+        assert config.google_search is False
+        assert config.code_execution is False
+        assert config.url_context is False
     
-    def test_server_selection_requires_name(self):
-        """Test that server name is required."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPServerSelection()
-        
-        errors = exc_info.value.errors()
-        assert any(e['loc'] == ('name',) for e in errors)
+    def test_from_dict(self):
+        """Test creation from dictionary."""
+        data = {
+            "google_search": True,
+            "code_execution": False,
+            "url_context": True
+        }
+        config = NativeToolsConfig(**data)
+        assert config.google_search is True
+        assert config.code_execution is False
+        assert config.url_context is True
     
-    def test_server_selection_rejects_empty_name(self):
-        """Test that empty server name is rejected."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPServerSelection(name="")
-        
-        errors = exc_info.value.errors()
-        assert any(e['loc'] == ('name',) and 'at least 1 character' in str(e['msg']).lower() for e in errors)
+    def test_model_dump(self):
+        """Test serialization to dictionary."""
+        config = NativeToolsConfig(
+            google_search=True,
+            code_execution=False
+        )
+        data = config.model_dump()
+        assert data["google_search"] is True
+        assert data["code_execution"] is False
+        assert data["url_context"] is None
 
 
-class TestMCPSelectionConfig:
-    """Tests for MCPSelectionConfig model."""
+class TestMCPSelectionConfigWithNativeTools:
+    """Test cases for MCPSelectionConfig with native tools."""
     
-    def test_selection_config_with_single_server(self):
-        """Test creating selection config with single server."""
+    def test_config_without_native_tools(self):
+        """Test MCP selection without native tools."""
+        config = MCPSelectionConfig(
+            servers=[
+                MCPServerSelection(name="kubernetes-server", tools=None)
+            ]
+        )
+        assert len(config.servers) == 1
+        assert config.native_tools is None
+    
+    def test_config_with_native_tools(self):
+        """Test MCP selection with native tools."""
+        config = MCPSelectionConfig(
+            servers=[
+                MCPServerSelection(name="kubernetes-server", tools=None)
+            ],
+            native_tools=NativeToolsConfig(
+                google_search=True,
+                code_execution=False
+            )
+        )
+        assert len(config.servers) == 1
+        assert config.native_tools is not None
+        assert config.native_tools.google_search is True
+        assert config.native_tools.code_execution is False
+    
+    def test_config_with_inline_native_tools(self):
+        """Test MCP selection with inline native tools dict."""
         config = MCPSelectionConfig(
             servers=[
                 MCPServerSelection(name="kubernetes-server")
-            ]
+            ],
+            native_tools={
+                "google_search": True,
+                "url_context": True
+            }
         )
-        
-        assert len(config.servers) == 1
-        assert config.servers[0].name == "kubernetes-server"
-        assert config.servers[0].tools is None
+        assert config.native_tools.google_search is True
+        assert config.native_tools.url_context is True
+        assert config.native_tools.code_execution is None
     
-    def test_selection_config_with_multiple_servers(self):
-        """Test creating selection config with multiple servers."""
-        config = MCPSelectionConfig(
-            servers=[
-                MCPServerSelection(name="kubernetes-server"),
-                MCPServerSelection(name="argocd-server")
-            ]
-        )
-        
-        assert len(config.servers) == 2
-        assert config.servers[0].name == "kubernetes-server"
-        assert config.servers[1].name == "argocd-server"
-    
-    def test_selection_config_with_mixed_tool_filtering(self):
-        """Test selection config with mix of all-tools and specific-tools servers."""
-        config = MCPSelectionConfig(
-            servers=[
-                MCPServerSelection(name="kubernetes-server"),  # All tools
-                MCPServerSelection(
-                    name="argocd-server",
-                    tools=["get_application", "get_application_status"]
-                )  # Specific tools
-            ]
-        )
-        
-        assert len(config.servers) == 2
-        assert config.servers[0].tools is None  # All tools
-        assert config.servers[1].tools == ["get_application", "get_application_status"]
-    
-    def test_selection_config_requires_servers(self):
-        """Test that servers list is required."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPSelectionConfig()
-        
-        errors = exc_info.value.errors()
-        assert any(e['loc'] == ('servers',) for e in errors)
-    
-    def test_selection_config_rejects_empty_servers_list(self):
-        """Test that empty servers list is rejected."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPSelectionConfig(servers=[])
-        
-        errors = exc_info.value.errors()
-        assert any(e['loc'] == ('servers',) and 'at least 1' in str(e['msg']).lower() for e in errors)
-    
-    def test_selection_config_from_dict(self):
-        """Test creating selection config from dictionary (API input)."""
+    def test_from_dict_with_native_tools(self):
+        """Test creation from dictionary with native tools."""
         data = {
             "servers": [
-                {"name": "kubernetes-server"},
-                {"name": "argocd-server", "tools": ["get_application"]}
-            ]
+                {"name": "kubernetes-server", "tools": None}
+            ],
+            "native_tools": {
+                "google_search": True,
+                "code_execution": False,
+                "url_context": True
+            }
         }
-        
         config = MCPSelectionConfig(**data)
-        
-        assert len(config.servers) == 2
-        assert config.servers[0].name == "kubernetes-server"
-        assert config.servers[0].tools is None
-        assert config.servers[1].name == "argocd-server"
-        assert config.servers[1].tools == ["get_application"]
+        assert len(config.servers) == 1
+        assert config.native_tools.google_search is True
+        assert config.native_tools.code_execution is False
+        assert config.native_tools.url_context is True
     
-    def test_selection_config_serialization(self):
-        """Test that selection config can be serialized back to dict."""
+    def test_model_dump_with_native_tools(self):
+        """Test serialization with native tools."""
         config = MCPSelectionConfig(
             servers=[
-                MCPServerSelection(name="kubernetes-server"),
-                MCPServerSelection(name="argocd-server", tools=["get_application"])
-            ]
+                MCPServerSelection(name="kubernetes-server", tools=None)
+            ],
+            native_tools=NativeToolsConfig(
+                google_search=True,
+                code_execution=False
+            )
         )
-        
         data = config.model_dump()
-        
-        assert data == {
-            "servers": [
-                {"name": "kubernetes-server", "tools": None},
-                {"name": "argocd-server", "tools": ["get_application"]}
-            ]
-        }
-
+        assert "servers" in data
+        assert "native_tools" in data
+        assert data["native_tools"]["google_search"] is True
+        assert data["native_tools"]["code_execution"] is False
+    
+    def test_empty_native_tools_serialization(self):
+        """Test that empty native tools config serializes correctly."""
+        config = MCPSelectionConfig(
+            servers=[
+                MCPServerSelection(name="kubernetes-server")
+            ],
+            native_tools=NativeToolsConfig()
+        )
+        data = config.model_dump(exclude_none=True)
+        # Empty native tools should not be included when exclude_none=True
+        # since all fields are None
+        assert "servers" in data

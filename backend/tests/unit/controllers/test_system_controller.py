@@ -428,3 +428,356 @@ async def test_get_mcp_servers_partial_cache(client: TestClient) -> None:
     # Failing server should have no tools (not in cache yet)
     failing_server = next(s for s in data["servers"] if s["server_id"] == "failing-server")
     assert len(failing_server["tools"]) == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_default_tools_success(client: TestClient) -> None:
+    """Test successfully retrieving default tools configuration for default alert type."""
+    from unittest.mock import Mock, patch
+    
+    # Create mock alert_service
+    mock_alert_service = Mock()
+    
+    # Mock chain registry
+    mock_chain_registry = Mock()
+    mock_chain_registry.get_default_alert_type.return_value = "NamespaceAlertK8s"
+    
+    # Mock chain config with stages
+    mock_chain_config = Mock()
+    mock_stage1 = Mock()
+    mock_stage1.agent = "kubernetes-agent"
+    mock_stage2 = Mock()
+    mock_stage2.agent = "final-analysis-agent"
+    mock_chain_config.stages = [mock_stage1, mock_stage2]
+    mock_chain_registry.get_chain_for_alert_type.return_value = mock_chain_config
+    mock_alert_service.chain_registry = mock_chain_registry
+    
+    # Mock agent factory
+    mock_agent_factory = Mock()
+    mock_agent_factory.agent_configs = {
+        "kubernetes-agent": Mock(mcp_servers=["kubernetes-server"]),
+        "final-analysis-agent": Mock(mcp_servers=["argocd-server"])
+    }
+    mock_alert_service.agent_factory = mock_agent_factory
+    
+    # Mock MCP server registry
+    mock_registry = Mock()
+    k8s_config = Mock()
+    k8s_config.server_id = "kubernetes-server"
+    k8s_config.server_type = "kubernetes"
+    
+    argocd_config = Mock()
+    argocd_config.server_id = "argocd-server"
+    argocd_config.server_type = "argocd"
+    
+    def mock_get_server_config(server_id):
+        if server_id == "kubernetes-server":
+            return k8s_config
+        elif server_id == "argocd-server":
+            return argocd_config
+        raise ValueError(f"Server {server_id} not found")
+    
+    mock_registry.get_server_config.side_effect = mock_get_server_config
+    mock_alert_service.mcp_server_registry = mock_registry
+    
+    # Mock settings
+    mock_settings = Mock()
+    mock_provider_config = Mock()
+    mock_provider_config.native_tools = None  # Default: all enabled
+    mock_settings.get_llm_config.return_value = mock_provider_config
+    mock_settings.llm_provider = "google-default"
+    
+    # Patch both alert_service and settings
+    with patch("tarsy.main.alert_service", mock_alert_service), \
+         patch("tarsy.controllers.system_controller.get_settings", return_value=mock_settings):
+        response = client.get("/api/v1/system/default-tools")
+    
+    # Verify response
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Check structure
+    assert "alert_type" in data
+    assert "mcp_servers" in data
+    assert "native_tools" in data
+    
+    # Verify alert type
+    assert data["alert_type"] == "NamespaceAlertK8s"
+    
+    # Verify MCP servers (from chain's agents)
+    assert len(data["mcp_servers"]) == 2
+    server_ids = [s["server_id"] for s in data["mcp_servers"]]
+    assert "kubernetes-server" in server_ids
+    assert "argocd-server" in server_ids
+    
+    # Verify native tools (default: search and url_context enabled, code_execution disabled)
+    assert data["native_tools"]["google_search"] is True
+    assert data["native_tools"]["code_execution"] is False
+    assert data["native_tools"]["url_context"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_default_tools_with_custom_native_tools(client: TestClient) -> None:
+    """Test default tools with custom native tools configuration."""
+    from unittest.mock import Mock, patch
+    
+    mock_alert_service = Mock()
+    
+    # Mock chain registry and chain config
+    mock_chain_registry = Mock()
+    mock_chain_registry.get_default_alert_type.return_value = "TestAlert"
+    mock_chain_config = Mock()
+    mock_stage = Mock()
+    mock_stage.agent = "test-agent"
+    mock_chain_config.stages = [mock_stage]
+    mock_chain_registry.get_chain_for_alert_type.return_value = mock_chain_config
+    mock_alert_service.chain_registry = mock_chain_registry
+    
+    # Mock agent factory
+    mock_agent_factory = Mock()
+    mock_agent_factory.agent_configs = {
+        "test-agent": Mock(mcp_servers=["test-server"])
+    }
+    mock_alert_service.agent_factory = mock_agent_factory
+    
+    # Mock MCP server registry
+    mock_registry = Mock()
+    test_config = Mock()
+    test_config.server_id = "test-server"
+    test_config.server_type = "test"
+    mock_registry.get_server_config.return_value = test_config
+    mock_alert_service.mcp_server_registry = mock_registry
+    
+    # Mock settings with custom native tools
+    mock_settings = Mock()
+    mock_provider_config = Mock()
+    # Custom config: only google_search and url_context enabled
+    mock_provider_config.native_tools = {
+        "google_search": True,
+        "code_execution": False,
+        "url_context": True
+    }
+    mock_settings.get_llm_config.return_value = mock_provider_config
+    mock_settings.llm_provider = "google-custom"
+    
+    with patch("tarsy.main.alert_service", mock_alert_service), \
+         patch("tarsy.controllers.system_controller.get_settings", return_value=mock_settings):
+        response = client.get("/api/v1/system/default-tools")
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify custom native tools configuration
+    assert data["native_tools"]["google_search"] is True
+    assert data["native_tools"]["code_execution"] is False
+    assert data["native_tools"]["url_context"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_default_tools_no_mcp_servers(client: TestClient) -> None:
+    """Test default tools when chain agents have no MCP servers configured."""
+    from unittest.mock import Mock, patch
+    
+    mock_alert_service = Mock()
+    
+    # Mock chain registry with agent that has no MCP servers
+    mock_chain_registry = Mock()
+    mock_chain_registry.get_default_alert_type.return_value = "SimpleAlert"
+    mock_chain_config = Mock()
+    mock_stage = Mock()
+    mock_stage.agent = "simple-agent"
+    mock_chain_config.stages = [mock_stage]
+    mock_chain_registry.get_chain_for_alert_type.return_value = mock_chain_config
+    mock_alert_service.chain_registry = mock_chain_registry
+    
+    # Mock agent factory with agent that has no MCP servers
+    mock_agent_factory = Mock()
+    mock_agent_factory.agent_configs = {
+        "simple-agent": Mock(mcp_servers=[])  # No servers
+    }
+    mock_alert_service.agent_factory = mock_agent_factory
+    mock_alert_service.mcp_server_registry = Mock()
+    
+    mock_settings = Mock()
+    mock_provider_config = Mock()
+    mock_provider_config.native_tools = None
+    mock_settings.get_llm_config.return_value = mock_provider_config
+    mock_settings.llm_provider = "google-default"
+    
+    with patch("tarsy.main.alert_service", mock_alert_service), \
+         patch("tarsy.controllers.system_controller.get_settings", return_value=mock_settings):
+        response = client.get("/api/v1/system/default-tools")
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Should still succeed with empty servers list
+    assert data["mcp_servers"] == []
+    assert data["native_tools"]["google_search"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_default_tools_with_specific_alert_type(client: TestClient) -> None:
+    """Test getting defaults for a specific alert type."""
+    from unittest.mock import Mock, patch
+    
+    mock_alert_service = Mock()
+    
+    # Mock chain registry
+    mock_chain_registry = Mock()
+    mock_chain_config = Mock()
+    mock_stage = Mock()
+    mock_stage.agent = "specialized-agent"
+    mock_chain_config.stages = [mock_stage]
+    mock_chain_registry.get_chain_for_alert_type.return_value = mock_chain_config
+    mock_alert_service.chain_registry = mock_chain_registry
+    
+    # Mock agent factory with specialized agent
+    mock_agent_factory = Mock()
+    mock_agent_factory.agent_configs = {
+        "specialized-agent": Mock(mcp_servers=["specialized-server"])
+    }
+    mock_alert_service.agent_factory = mock_agent_factory
+    
+    # Mock MCP server registry
+    mock_registry = Mock()
+    specialized_config = Mock()
+    specialized_config.server_id = "specialized-server"
+    specialized_config.server_type = "specialized"
+    mock_registry.get_server_config.return_value = specialized_config
+    mock_alert_service.mcp_server_registry = mock_registry
+    
+    mock_settings = Mock()
+    mock_provider_config = Mock()
+    mock_provider_config.native_tools = None
+    mock_settings.get_llm_config.return_value = mock_provider_config
+    mock_settings.llm_provider = "google-default"
+    
+    with patch("tarsy.main.alert_service", mock_alert_service), \
+         patch("tarsy.controllers.system_controller.get_settings", return_value=mock_settings):
+        response = client.get("/api/v1/system/default-tools?alert_type=CustomAlert")
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify alert type
+    assert data["alert_type"] == "CustomAlert"
+    
+    # Verify it used the chain for CustomAlert
+    mock_chain_registry.get_chain_for_alert_type.assert_called_with("CustomAlert")
+    
+    # Verify the correct server is returned
+    assert len(data["mcp_servers"]) == 1
+    assert data["mcp_servers"][0]["server_id"] == "specialized-server"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_default_tools_invalid_alert_type(client: TestClient) -> None:
+    """Test error when alert_type is invalid."""
+    from unittest.mock import Mock, patch
+    
+    mock_alert_service = Mock()
+    
+    # Mock chain registry that raises ValueError for invalid alert type
+    mock_chain_registry = Mock()
+    mock_chain_registry.get_chain_for_alert_type.side_effect = ValueError("No chain found for alert type 'InvalidType'")
+    mock_alert_service.chain_registry = mock_chain_registry
+    
+    mock_settings = Mock()
+    mock_provider_config = Mock()
+    mock_provider_config.native_tools = None
+    mock_settings.get_llm_config.return_value = mock_provider_config
+    mock_settings.llm_provider = "google-default"
+    
+    with patch("tarsy.main.alert_service", mock_alert_service), \
+         patch("tarsy.controllers.system_controller.get_settings", return_value=mock_settings):
+        response = client.get("/api/v1/system/default-tools?alert_type=InvalidType")
+    
+    assert response.status_code == 400
+    assert "No chain found" in response.json()["detail"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_default_tools_service_not_initialized(client: TestClient) -> None:
+    """Test error when alert_service is not initialized."""
+    from unittest.mock import Mock, patch
+    
+    # Mock settings (will be accessed before checking alert_service)
+    mock_settings = Mock()
+    mock_provider_config = Mock()
+    mock_provider_config.native_tools = None
+    mock_settings.get_llm_config.return_value = mock_provider_config
+    mock_settings.llm_provider = "google-default"
+    
+    with patch("tarsy.main.alert_service", None), \
+         patch("tarsy.controllers.system_controller.get_settings", return_value=mock_settings):
+        response = client.get("/api/v1/system/default-tools")
+    
+    assert response.status_code == 503
+    assert "Service not initialized" in response.json()["detail"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_default_tools_handles_server_config_error(client: TestClient) -> None:
+    """Test that endpoint handles errors when fetching individual server configs gracefully."""
+    from unittest.mock import Mock, patch
+    
+    mock_alert_service = Mock()
+    
+    # Mock chain registry
+    mock_chain_registry = Mock()
+    mock_chain_registry.get_default_alert_type.return_value = "TestAlert"
+    mock_chain_config = Mock()
+    mock_stage = Mock()
+    mock_stage.agent = "test-agent"
+    mock_chain_config.stages = [mock_stage]
+    mock_chain_registry.get_chain_for_alert_type.return_value = mock_chain_config
+    mock_alert_service.chain_registry = mock_chain_registry
+    
+    # Mock agent factory with agent that uses both servers
+    mock_agent_factory = Mock()
+    mock_agent_factory.agent_configs = {
+        "test-agent": Mock(mcp_servers=["good-server", "bad-server"])
+    }
+    mock_alert_service.agent_factory = mock_agent_factory
+    
+    # Mock MCP server registry
+    mock_registry = Mock()
+    good_config = Mock()
+    good_config.server_id = "good-server"
+    good_config.server_type = "test"
+    
+    def mock_get_server_config(server_id):
+        if server_id == "good-server":
+            return good_config
+        elif server_id == "bad-server":
+            raise Exception("Failed to get config")
+        raise ValueError(f"Server {server_id} not found")
+    
+    mock_registry.get_server_config.side_effect = mock_get_server_config
+    mock_alert_service.mcp_server_registry = mock_registry
+    
+    mock_settings = Mock()
+    mock_provider_config = Mock()
+    mock_provider_config.native_tools = None
+    mock_settings.get_llm_config.return_value = mock_provider_config
+    mock_settings.llm_provider = "google-default"
+    
+    with patch("tarsy.main.alert_service", mock_alert_service), \
+         patch("tarsy.controllers.system_controller.get_settings", return_value=mock_settings):
+        response = client.get("/api/v1/system/default-tools")
+    
+    # Should succeed despite error with one server
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Only good server should be included
+    assert len(data["mcp_servers"]) == 1
+    assert data["mcp_servers"][0]["server_id"] == "good-server"

@@ -247,7 +247,7 @@ BUILTIN_LLM_PROVIDERS: Dict[str, LLMProviderConfig] = {
         temperature=DEFAULT_LLM_TEMPERATURE,
         native_tools={
             GoogleNativeTool.GOOGLE_SEARCH.value: True,
-            GoogleNativeTool.CODE_EXECUTION.value: True,
+            GoogleNativeTool.CODE_EXECUTION.value: False,  # Disabled by default
             GoogleNativeTool.URL_CONTEXT.value: True,
         },
         max_tool_result_tokens=950000  # Conservative for 1M context
