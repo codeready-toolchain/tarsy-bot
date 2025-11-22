@@ -151,7 +151,7 @@ describe('parseNativeToolsUsage', () => {
   });
 
   describe('Code Execution', () => {
-    it('should detect Python code blocks', () => {
+    it('should detect Python code blocks in content (markdown format)', () => {
       const content = `Here's some code:
 \`\`\`python
 print("hello")
@@ -168,7 +168,84 @@ Done.`;
       });
     });
 
-    it('should detect output blocks', () => {
+    it('should detect structured code execution parts in metadata (Google native format)', () => {
+      const metadata = {
+        parts: [
+          {
+            text: 'Let me calculate that'
+          },
+          {
+            executable_code: {
+              language: 'PYTHON',
+              code: 'print("hello")'
+            }
+          },
+          {
+            code_execution_result: {
+              outcome: 'OUTCOME_OK',
+              output: 'hello\n'
+            }
+          }
+        ]
+      };
+
+      const result = parseNativeToolsUsage(metadata, null);
+
+      expect(result).not.toBeNull();
+      expect(result?.code_execution).toEqual({
+        code_blocks: 1,
+        output_blocks: 1,
+        detected: true
+      });
+    });
+
+    it('should detect camelCase structured parts (JavaScript SDK format)', () => {
+      const metadata = {
+        parts: [
+          {
+            executableCode: {
+              language: 'PYTHON',
+              code: 'x = 5'
+            }
+          },
+          {
+            codeExecutionResult: {
+              outcome: 'OUTCOME_OK',
+              output: ''
+            }
+          }
+        ]
+      };
+
+      const result = parseNativeToolsUsage(metadata, null);
+
+      expect(result?.code_execution).toEqual({
+        code_blocks: 1,
+        output_blocks: 1,
+        detected: true
+      });
+    });
+
+    it('should count multiple structured code execution parts', () => {
+      const metadata = {
+        parts: [
+          { executable_code: { code: 'code1' } },
+          { code_execution_result: { output: 'output1' } },
+          { executable_code: { code: 'code2' } },
+          { code_execution_result: { output: 'output2' } }
+        ]
+      };
+
+      const result = parseNativeToolsUsage(metadata, null);
+
+      expect(result?.code_execution).toEqual({
+        code_blocks: 2,
+        output_blocks: 2,
+        detected: true
+      });
+    });
+
+    it('should detect output blocks in content', () => {
       const content = `Result:
 \`\`\`output
 hello world
@@ -183,7 +260,7 @@ hello world
       });
     });
 
-    it('should count multiple code and output blocks', () => {
+    it('should count multiple code and output blocks in content', () => {
       const content = `
 \`\`\`python
 code1()
@@ -207,6 +284,21 @@ output2
       });
     });
 
+    it('should prefer structured parts over markdown when both present', () => {
+      const metadata = {
+        parts: [
+          { executable_code: { code: 'structured' } },
+          { code_execution_result: { output: 'result' } }
+        ]
+      };
+      const content = '```python\nmarkdown\n```';
+
+      const result = parseNativeToolsUsage(metadata, content);
+
+      // Should use structured count (1) not markdown count (1)
+      expect(result?.code_execution?.code_blocks).toBe(1);
+    });
+
     it('should return null when no code blocks found', () => {
       const content = 'Just regular text without code blocks';
 
@@ -215,12 +307,36 @@ output2
       expect(result).toBeNull();
     });
 
-    it('should be case-insensitive for code block detection', () => {
-      const content = '\`\`\`PYTHON\ncode()\n\`\`\`';
+    it('should be case-insensitive for code block detection in content', () => {
+      const content = '```PYTHON\ncode()\n```';
 
       const result = parseNativeToolsUsage(null, content);
 
       expect(result?.code_execution?.code_blocks).toBe(1);
+    });
+
+    it('should handle metadata without parts array', () => {
+      const metadata = {
+        other_field: 'value'
+      };
+
+      const result = parseNativeToolsUsage(metadata, null);
+
+      expect(result).toBeNull();
+    });
+
+    it('should handle malformed parts array', () => {
+      const metadata = {
+        parts: [
+          { text: 'just text' },
+          null,
+          { unknown_field: 'value' }
+        ]
+      };
+
+      const result = parseNativeToolsUsage(metadata, null);
+
+      expect(result).toBeNull();
     });
   });
 
@@ -231,7 +347,7 @@ output2
           web_search_queries: ['test query']
         }
       };
-      const content = '\`\`\`python\nprint("test")\n\`\`\`';
+      const content = '```python\nprint("test")\n```';
 
       const result = parseNativeToolsUsage(metadata, content);
 
@@ -247,7 +363,7 @@ output2
           ]
         }
       };
-      const content = '\`\`\`python\ncode()\n\`\`\`';
+      const content = '```python\ncode()\n```';
 
       const result = parseNativeToolsUsage(metadata, content);
       expect(result?.url_context).not.toBeUndefined();

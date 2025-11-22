@@ -1,7 +1,7 @@
 """
 Unit tests for LLM client timeout functionality.
 
-Tests the 60-second timeout implementation for LLM API calls
+Tests the 120-second timeout implementation for LLM API calls
 to prevent indefinite hanging.
 """
 
@@ -47,10 +47,10 @@ class TestLLMClientTimeout:
         ])
     
     @pytest.mark.asyncio
-    async def test_llm_call_timeout_after_60_seconds(self, client, mock_llm_client, sample_conversation):
-        """Test that LLM call times out after 60 seconds."""
+    async def test_llm_call_timeout_after_120_seconds(self, client, mock_llm_client, sample_conversation):
+        """Test that LLM call times out after 120 seconds."""
         # Mock astream to raise TimeoutError (simulating asyncio.wait_for timeout)
-        mock_llm_client.astream.side_effect = asyncio.TimeoutError("LLM API call timed out after 60s")
+        mock_llm_client.astream.side_effect = asyncio.TimeoutError("LLM API call timed out after 120s")
         
         with patch('tarsy.integrations.llm.client.llm_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
@@ -195,8 +195,8 @@ class TestLLMClientTimeout:
     "timeout_duration,expected_retries,should_succeed",
     [
         (30, 1, True),    # Short timeout, retry once and succeed
-        (65, 1, True),    # Just over 60s, retry once and succeed  
-        (120, 4, False),  # Long timeout, exhaust all retries
+        (125, 1, True),   # Just over 120s, retry once and succeed  
+        (180, 4, False),  # Long timeout, exhaust all retries
         (10, 1, True),    # Very short, retry once and succeed
     ],
 )
@@ -279,5 +279,5 @@ class TestLLMClientTimeoutLogging:
                         await client.generate_response(conversation, "test-session")
             
             # Verify timeout was logged
-            assert any("timed out after 60s" in record.message for record in caplog.records)
+            assert any("timed out after 120s" in record.message for record in caplog.records)
 

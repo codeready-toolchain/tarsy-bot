@@ -57,6 +57,12 @@ logger = get_module_logger(__name__)
 # Setup separate logger for LLM communications
 llm_comm_logger = get_module_logger("llm.communications")
 
+# Constants for Google code execution response parts
+# These part types are returned by Google's native code execution tool
+# See: https://ai.google.dev/gemini-api/docs/code-execution
+CODE_EXECUTION_PART_EXECUTABLE = 'executable_code'
+CODE_EXECUTION_PART_RESULT = 'code_execution_result'
+
 
 # LLM Providers mapping using LangChain
 def _create_openai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
@@ -277,7 +283,7 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         interaction_type: Optional[str] = None,
         max_retries: int = 3,
-        timeout_seconds: int = 60,
+        timeout_seconds: int = 120,
         mcp_event_id: Optional[str] = None
     ) -> LLMConversation:
         """
@@ -287,7 +293,7 @@ class LLMClient:
         Event publishing automatically disabled in SQLite/dev mode via publish_transient.
         
         Includes retry logic:
-        - Timeout protection (default: 60s)
+        - Timeout protection (default: 120s, increased for code execution scenarios)
         - Rate limit retry with exponential backoff
         - Timeout retry with increasing delays
         - Empty response handling
@@ -300,7 +306,9 @@ class LLMClient:
             interaction_type: Optional interaction type (investigation, summarization, final_analysis).
                             If None, auto-detects based on response content.
             max_retries: Maximum number of retry attempts (default: 3)
-            timeout_seconds: Timeout for LLM streaming call (default: 60s)
+            timeout_seconds: Timeout for LLM streaming call (default: 120s).
+                           Increased from 60s to accommodate code execution which can take up to
+                           30s per execution plus multiple regeneration rounds (up to 5x).
             mcp_event_id: Optional MCP event ID if summarizing a tool result
         
         Returns:
@@ -368,9 +376,14 @@ class LLMClient:
                     # Tools are converted to dicts and bound to the model, not passed to astream()
                     # Supports multiple tools: GoogleNativeTool enum (GOOGLE_SEARCH, CODE_EXECUTION, URL_CONTEXT)
                     llm_with_tools = self.llm_client
+                    code_execution_enabled = False
+                    
                     if self.config.type == LLMProviderType.GOOGLE:
                         # Collect all enabled native tools
                         active_tools = [tool for tool in self.native_tools.values() if tool is not None]
+                        # Check if code execution is specifically enabled
+                        code_execution_enabled = self.native_tools.get(GoogleNativeTool.CODE_EXECUTION.value) is not None
+                        
                         if active_tools:
                             try:
                                 # Convert all Google AI SDK tools to dicts and bind to model
@@ -392,7 +405,9 @@ class LLMClient:
                             # This properly accumulates usage_metadata across all chunks
                             aggregate_chunk = chunk if aggregate_chunk is None else aggregate_chunk + chunk
                             
-                            token = self._extract_token_content(chunk)
+                            # Extract token content, filtering out code execution parts if enabled
+                            # This preserves ReAct format by only accumulating text content
+                            token = self._extract_token_content(chunk, filter_code_execution=code_execution_enabled)
                             accumulated_content += token
                             
                             # Detect start of "Thought:" streaming (disabled during summarization)
@@ -584,6 +599,31 @@ class LLMClient:
                             # Handle cases where response_metadata is not a dict (e.g., in tests)
                             logger.debug("Captured response metadata (keys unavailable)")
                     
+                    # For Google code execution, extract structured parts from chunk content
+                    # ONLY extract if code execution is actually enabled to avoid unnecessary processing
+                    # Google returns parts with types defined in CODE_EXECUTION_PART_* constants
+                    # See: https://ai.google.dev/gemini-api/docs/code-execution
+                    if code_execution_enabled and aggregate_chunk and hasattr(aggregate_chunk, 'content'):
+                        content = aggregate_chunk.content
+                        if isinstance(content, list):
+                            # Extract parts array from list content
+                            parts = []
+                            for item in content:
+                                if isinstance(item, dict):
+                                    parts.append(item)
+                                elif hasattr(item, '__dict__'):
+                                    # Convert object to dict
+                                    parts.append(vars(item))
+                            
+                            # Add parts to response_metadata if we found any structured content
+                            if parts:
+                                if ctx.interaction.response_metadata is None:
+                                    ctx.interaction.response_metadata = {}
+                                if not isinstance(ctx.interaction.response_metadata, dict):
+                                    ctx.interaction.response_metadata = {}
+                                ctx.interaction.response_metadata['parts'] = parts
+                                logger.debug(f"Captured {len(parts)} structured parts from content for code execution")
+                    
                     # Finalize conversation and interaction
                     self._finalize_conversation(ctx, conversation, accumulated_content, interaction_type, mcp_event_id)
                     
@@ -671,17 +711,20 @@ class LLMClient:
         """Return the maximum tool result tokens for the current provider."""
         return self.provider_config.max_tool_result_tokens  # Already an int with BaseModel validation
     
-    def _extract_token_content(self, chunk: Any) -> str:
+    def _extract_token_content(self, chunk: Any, filter_code_execution: bool = False) -> str:
         """
         Extract string content from LLM chunk, handling various provider formats.
         
         Some providers return lists of content blocks that need to be flattened.
+        When filter_code_execution is True, filters out executable_code and 
+        code_execution_result parts to preserve ReAct format.
         
         Args:
             chunk: Raw chunk from LLM stream
+            filter_code_execution: If True, skip code execution parts (for Google native tool)
             
         Returns:
-            String content extracted from chunk
+            String content extracted from chunk (text only when filtering)
         """
         token = (chunk.content if hasattr(chunk, "content") else str(chunk)) or ""
         
@@ -689,13 +732,25 @@ class LLMClient:
         if isinstance(token, list):
             token_str = ""
             for block in token:
+                # Skip code execution parts if filtering is enabled
+                # These parts are captured in metadata but shouldn't be in streamed content
+                if filter_code_execution:
+                    if isinstance(block, dict):
+                        # Skip code execution parts using constants
+                        if CODE_EXECUTION_PART_EXECUTABLE in block or CODE_EXECUTION_PART_RESULT in block:
+                            continue
+                    elif hasattr(block, CODE_EXECUTION_PART_EXECUTABLE) or hasattr(block, CODE_EXECUTION_PART_RESULT):
+                        continue
+                
+                # Extract text content
                 if isinstance(block, str):
                     token_str += block
                 elif isinstance(block, dict) and 'text' in block:
                     token_str += block['text'] or ""
                 elif hasattr(block, 'text'):
                     token_str += block.text or ""
-                else:
+                elif not filter_code_execution:
+                    # Only stringify unknown blocks if not filtering
                     token_str += str(block)
             return token_str
         

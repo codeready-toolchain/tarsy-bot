@@ -179,8 +179,9 @@ class Settings(BaseSettings):
         description="Timeout in seconds for processing a single alert (default: 10 minutes)"
     )
     llm_iteration_timeout: int = Field(
-        default=180,
-        description="Timeout in seconds for a single LLM iteration (default: 3 minutes)"
+        default=210,
+        description="Timeout in seconds for a single LLM iteration (default: 3.5 minutes). "
+                   "Must accommodate LLM call (120s max) + tool execution (70s max) + overhead."
     )
     mcp_tool_call_timeout: int = Field(
         default=70,
